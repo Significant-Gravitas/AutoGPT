@@ -6,14 +6,12 @@ import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Bundle
 import android.os.Parcel
 import android.view.View
-import android.view.inputmethod.EditorInfo
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
@@ -26,11 +24,8 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.LinearLayout
 import android.widget.PopupMenu
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -154,11 +149,8 @@ class MainActivity : ComponentActivity() {
         microphonePromptOutstanding = savedInstanceState?.getBoolean("microphone_prompt") == true
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowCompat.getInsetsController(window, window.decorView).apply {
-            val light =
-                resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK !=
-                    Configuration.UI_MODE_NIGHT_YES
-            isAppearanceLightStatusBars = light
-            isAppearanceLightNavigationBars = light
+            isAppearanceLightStatusBars = true
+            isAppearanceLightNavigationBars = true
         }
         origin =
             ServerOrigin.parse(
@@ -553,8 +545,7 @@ class MainActivity : ComponentActivity() {
         if (webView == null) createWebView()
         pendingError = null
         pageFailed = false
-        layout.showPage()
-        layout.loading(5)
+        layout.showLoading()
         lastSafeUrl = url
         webView?.loadUrl(url)
     }
@@ -580,11 +571,11 @@ class MainActivity : ComponentActivity() {
     private fun showSignIn() {
         pageFailed = true
         layout.showPanel(
-            R.string.app_name,
+            R.string.native_login_title,
             R.string.sign_in_detail,
-            R.string.sign_in,
+            R.string.continue_browser,
             { beginSignIn() },
-            R.string.settings to { showSettings() },
+            R.string.open_browser to { openBrowser(origin.chatUrl) },
         )
     }
 
@@ -717,61 +708,7 @@ class MainActivity : ComponentActivity() {
 
     private fun showSettings() {
         if (auth.replacingSession) return
-        val input =
-            EditText(this).apply {
-                setText(origin.value)
-                hint = ServerOrigin.DEFAULT
-                inputType = EditorInfo.TYPE_CLASS_TEXT or EditorInfo.TYPE_TEXT_VARIATION_URI
-                setSingleLine()
-                selectAll()
-            }
-        val form =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                val inset = (24 * resources.displayMetrics.density).toInt()
-                setPadding(inset, inset / 2, inset, 0)
-                addView(
-                    TextView(this@MainActivity).apply {
-                        text =
-                            if (BuildConfig.DEBUG) {
-                                getString(
-                                    R.string.server_description_debug,
-                                    getString(R.string.server_explanation),
-                                    getString(R.string.server_debug_explanation),
-                                )
-                            } else getString(R.string.server_explanation)
-                    }
-                )
-                addView(input)
-            }
-        val dialog =
-            AlertDialog.Builder(this)
-                .setTitle(R.string.server_address)
-                .setView(form)
-                .setNegativeButton(R.string.cancel, null)
-                .setPositiveButton(R.string.save, null)
-                .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val candidate = ServerOrigin.parse(input.text.toString(), BuildConfig.DEBUG)
-                if (candidate == null) {
-                    input.error = getString(R.string.server_invalid)
-                } else if (candidate == origin) {
-                    dialog.dismiss()
-                } else {
-                    AlertDialog.Builder(this)
-                        .setTitle(R.string.switch_server_title)
-                        .setMessage(getString(R.string.switch_server_detail, candidate.value))
-                        .setNegativeButton(R.string.cancel, null)
-                        .setPositiveButton(R.string.connect) { _, _ ->
-                            dialog.dismiss()
-                            clearSession(candidate)
-                        }
-                        .show()
-                }
-            }
-        }
-        dialog.show()
+        ServerSettingsDialog.create(this, origin) { clearSession(it) }.show()
     }
 
     private fun clearSession(nextOrigin: ServerOrigin? = null) {

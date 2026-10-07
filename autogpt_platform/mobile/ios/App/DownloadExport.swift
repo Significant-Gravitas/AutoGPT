@@ -98,8 +98,8 @@ final class DownloadExport: NSObject, WKDownloadDelegate {
       finish(message: "The downloaded file could not be opened. Please try again.")
       return
     }
-    guard let presenter, presenter.viewIfLoaded?.window != nil,
-      UIApplication.shared.applicationState == .active, !presenter.isBeingDismissed
+    guard let presenter, let window = presenter.viewIfLoaded?.window,
+      window.windowScene?.activationState == .foregroundActive, !presenter.isBeingDismissed
     else {
       finish(message: "Return to AutoGPT and download the file again to save or share it.")
       return

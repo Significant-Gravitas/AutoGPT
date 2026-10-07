@@ -15,7 +15,6 @@
     <string name="ssl_error_detail">This server’s secure connection could not be verified. Check the server certificate before trying again.</string>
     <string name="renderer_error_detail">Android closed the web page to free memory. Open it again to continue. Unsaved text may have been lost.</string>
     <string name="server_address">Server address</string>
-    <string name="server_explanation">Use the HTTPS origin of your AutoGPT server, such as https://platform.agpt.co. Chat is loaded directly from this server.</string>
     <string name="server_debug_explanation">Debug builds also accept HTTP on localhost, 127.0.0.1, or 10.0.2.2.</string>
     <string name="server_invalid">Enter an HTTPS origin without a path, username, query, or fragment.</string>
     <string name="save">Save</string>
@@ -44,12 +43,16 @@
     <string name="download_failed">Couldn’t download this file. Try opening the page in your browser.</string>
     <string name="download_browser">This file needs the full browser. Open the page there to download it.</string>
     <string name="share_file">Save or share file</string>
-    <string name="sign_in_detail">Sign in securely in your browser to open your AutoGPT chats here.</string>
+    <string name="sign_in_detail">Sign in to continue your conversations and run your agents.</string>
     <string name="browser_sign_in_detail">Return to AutoGPT after approving access. If you closed the browser, start sign-in again.</string>
     <string name="browser_exchange_detail">Connecting your account to this app.</string>
-    <string name="server_description_debug">%1$s\n\n%2$s</string>
     <string name="connecting">Connecting…</string>
     <string name="update_webview">Update Android System WebView to connect or switch accounts securely, then reopen AutoGPT.</string>
     <string name="too_many_files">Choose up to 32 files at a time.</string>
     <string name="save_interrupted">Saving was interrupted. The selected file may be incomplete.</string>
+    <string name="native_login_title">Welcome back</string>
+    <string name="continue_browser">Sign in to AutoGPT</string>
+    <string name="loading_title">Opening AutoGPT…</string>
+    <string name="loading_detail">Your workspace is on its way.</string>
+    <string name="server_settings_detail">Choose where to connect. Use AutoGPT Cloud or your own hosted workspace.</string>
 </resources>

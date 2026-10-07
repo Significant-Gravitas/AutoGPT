@@ -35,6 +35,66 @@ describe("openOAuthPopup popup-close handling", () => {
     vi.unstubAllGlobals();
   });
 
+  test.each(["iOS", "Android"])(
+    "does not pre-open an unsupported provider window in the %s app",
+    (platform) => {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+        `Mozilla/5.0 AutoGPTMobile/${platform}`,
+      );
+      const open = setupPopup(makePopupStub());
+      expect(preOpenOAuthPopup()).toBeNull();
+      expect(open).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(["iOS", "Android"])(
+    "rejects direct %s popup requests with guidance and no side effects",
+    async (platform) => {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+        `Mozilla/5.0 AutoGPTMobile/${platform}`,
+      );
+      const open = setupPopup(makePopupStub());
+      const fetch = vi.fn();
+      vi.stubGlobal("fetch", fetch);
+      const flow = openOAuthPopup("https://provider.example.com/authorize", {
+        stateToken: "native-state",
+        cancelUrl: "/api/integrations/pending/cancel",
+        useCrossOriginListeners: true,
+      });
+      await expect(flow.promise).rejects.toThrow("Open in browser");
+      expect(open).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(flow.popupBlocked).toBe(false);
+      expect(flow.fallbackBlocked).toBe(false);
+      expect(flow.cleanup.signal.aborted).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  test.each([
+    "Other-AutoGPTMobile/iOS",
+    "Mozilla AutoGPTMobile/iOS ExtraBrowser/1",
+    "Mozilla AutoGPTMobile/AndroidExtra",
+  ])(
+    "does not block a browser with a nonmatching app suffix: %s",
+    (userAgent) => {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
+      const popup = makePopupStub();
+      setupPopup(popup);
+      expect(preOpenOAuthPopup()).toBe(popup);
+    },
+  );
+
+  test("retains popups in ordinary mobile Safari", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 Version/18.3 Mobile/15E148 Safari/604.1",
+    );
+    const popup = makePopupStub();
+    const open = setupPopup(popup);
+    expect(preOpenOAuthPopup()).toBe(popup);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
   test("cross-origin flow survives a COOP-severed handle reporting closed", async () => {
     const popup = makePopupStub();
     setupPopup(popup);

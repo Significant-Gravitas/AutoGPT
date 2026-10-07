@@ -44,6 +44,8 @@ PKCE verifiers and pending cookies stay in memory and survive rotation. They are
 
 An updated System WebView with the `DELETE_BROWSING_DATA` feature is required for signing in, switching servers, and clearing the session. Older WebViews display an update message. App backup and device-transfer backup are disabled for website/session data.
 
+Provider connections that use popup callbacks must be completed through **Open in browser**, followed by **Reload** in the app. Use the same AutoGPT account in both. See [provider connection limitations](../README.md#provider-connections); device-code polling flows remain available.
+
 ## Files and navigation
 
 Web file inputs use Android's document picker without broad storage permissions. Each selection is bound to its original WebView, document generation, and server; late results after navigation or recreation are discarded. The native activity validates content-URI shape without opening cloud files on the main thread, leaving file reads to WebView. The existing web voice recorder can request Android microphone permission; only audio capture from the configured origin in the current WebView is eligible. Camera and unrelated web permissions remain denied, and pending microphone grants are discarded after navigation or account/server changes. HTTPS downloads from the configured origin can be saved to temporary app storage and exported through the system share sheet. Such requests carry cookies only to the same origin, including every redirect, and are limited to 50 MiB. Temporary exports are pruned after a day or beyond a 100 MiB retained budget and cleared during account/server changes. Active requests are cancelled when their WebView is destroyed; they cannot present old-account share results after a switch.
@@ -75,9 +77,11 @@ Automated checks cover exact-origin matching and spoof attempts, debug HTTP rest
 
 Device verification is still required for real browser sign-in and switching between two accounts, Custom Tabs callbacks, file pickers and cloud document providers, portrait/landscape keyboard behavior, predictive Back, background process death, TalkBack, large text, and real streaming chats. An APK build and JVM tests do not substitute for those runtime checks.
 
+On the first native download service initialization in each process, stale `native-downloads/export-*.partial` files are removed on the same serial queue used to create new staging files. Later views preserve current-process transfers. This cleanup never follows a picker URI or recursively clears the cache.
+
 ## Disposable-device runtime probe
 
-The dependency-free instrumentation suite checks the installed WebView's required capabilities, completion ordering of full browsing-data deletion, and the real native download listener. Its top-frame request gets a simulated picker cancellation, malformed metadata is rejected, a same-origin iframe cannot launch a picker, and an unrelated origin receives no bridge object.
+The dependency-free instrumentation suite checks the installed WebView's required capabilities, completion ordering of full browsing-data deletion, and the real native download listener. Its top-frame request gets a simulated picker cancellation, malformed metadata is rejected, a same-origin iframe cannot launch a picker, and an unrelated origin receives no bridge object. A second check saves 98,321 bytes through three acknowledged chunks to a pending MediaStore row created by the probe, verifies exact bytes, then verifies that canceling a later transfer preserves the existing bytes. It deletes and verifies removal of only that test-owned row, without opening a picker or requesting storage permissions.
 
 With `--fixture-origin`, it also verifies the real `AuthViewModel` against the labelled local fixture: PKCE callback and native HTTP exchange, both token and cache cookies, old-account cookie removal before success, authenticated fixture requests, and preservation of the current cookies when sign-in is cancelled. The fixture origin must be a loopback host or Android's emulator host alias; the runner checks `/health` identifies the native fixture first.
 
@@ -93,7 +97,7 @@ python3 scripts/run-runtime-probe.py --serial emulator-5554 --disposable \
 adb -s emulator-5554 reverse --remove tcp:8765
 ```
 
-Pass `--adb /absolute/path/to/adb` if it is not on `PATH`. Omit `--fixture-origin` to run only the three Android platform checks. The wrapper enforces a three-minute deadline and checks the explicit `PASS` status, suite name, expected check count, and `INSTRUMENTATION_CODE: -1` (`Activity.RESULT_OK`). An `adb shell` exit status of zero alone is insufficient: failed instrumentation can still return zero. For direct inspection, the full-fixture command is:
+Pass `--adb /absolute/path/to/adb` if it is not on `PATH`. Omit `--fixture-origin` to run only the four Android platform checks. The wrapper enforces a three-minute deadline and checks the explicit `PASS` status, suite name, expected check count, and `INSTRUMENTATION_CODE: -1` (`Activity.RESULT_OK`). An `adb shell` exit status of zero alone is insufficient: failed instrumentation can still return zero. For direct inspection, the full-fixture command is:
 
 ```sh
 adb -s emulator-5554 shell am instrument -w -r -e disposable true \
@@ -101,6 +105,6 @@ adb -s emulator-5554 shell am instrument -w -r -e disposable true \
   com.agpt.mobile.test/com.agpt.mobile.RuntimeProbe
 ```
 
-All four checks passed on the API 36 Google APIs arm64 revision 7 image with a Pixel 9 Pro profile and Google WebView 133.0.6943.137. Omitting the disposable-device argument was verified to refuse execution; the wrapper was also verified to fail on an actual instrumentation failure. This is API 36 emulator evidence, distinct from the intended Pixel 11 Pro device target. Browser sign-in UI, real system save/upload pickers, and physical-device microphone quality still need separate validation.
+All five checks passed on the API 36 Google APIs arm64 revision 7 image with a Pixel 9 Pro profile and Google WebView 133.0.6943.137. Omitting the disposable-device argument was verified to refuse execution; the wrapper was also verified to fail on an actual instrumentation failure. This is API 36 emulator evidence, distinct from the intended Pixel 11 Pro device target. Browser sign-in UI, real system save/upload pickers, and physical-device microphone quality still need separate validation.
 
 Screenshots, exact environment, APK hash, and raw results are in [Android runtime evidence](docs/evidence/README.md).

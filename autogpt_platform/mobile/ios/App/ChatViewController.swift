@@ -41,20 +41,39 @@ final class ChatViewController: UIViewController {
   override func viewDidLoad() {
     super.viewDidLoad()
     title = "AutoGPT"
-    view.backgroundColor = .systemBackground
+    view.backgroundColor = NativeTheme.background
+    view.tintColor = NativeTheme.text
+    overrideUserInterfaceStyle = .light
+    navigationController?.overrideUserInterfaceStyle = .light
+    let appearance = UINavigationBarAppearance()
+    appearance.configureWithOpaqueBackground()
+    appearance.backgroundColor = NativeTheme.background
+    appearance.shadowColor = .clear
+    appearance.titleTextAttributes = [
+      .font: NativeTheme.font("Geist-Medium", size: 16, style: .headline),
+      .foregroundColor: NativeTheme.text,
+    ]
+    navigationController?.navigationBar.standardAppearance = appearance
+    navigationController?.navigationBar.scrollEdgeAppearance = appearance
+    navigationController?.navigationBar.compactAppearance = appearance
+    navigationController?.navigationBar.tintColor = NativeTheme.text
+    progress.progressTintColor = NativeTheme.primary
     navigationController?.navigationBar.prefersLargeTitles = false
     configureStatus()
     installWebView()
     #if DEBUG
-      if ProcessInfo.processInfo.environment["AUTOGPT_UI_TEST_SCREEN"] == "large-status" {
-        let category = UIContentSizeCategory.accessibilityExtraExtraExtraLarge
-        if #available(iOS 17, *) {
-          traitOverrides.preferredContentSizeCategory = category
-        } else {
-          parent?.setOverrideTraitCollection(
-            UITraitCollection(preferredContentSizeCategory: category), forChild: self)
+      if let screen = ProcessInfo.processInfo.environment["AUTOGPT_UI_TEST_SCREEN"] {
+        if screen == "large-status" {
+          let category = UIContentSizeCategory.accessibilityExtraExtraExtraLarge
+          if #available(iOS 17, *) {
+            traitOverrides.preferredContentSizeCategory = category
+          } else {
+            parent?.setOverrideTraitCollection(
+              UITraitCollection(preferredContentSizeCategory: category), forChild: self)
+          }
         }
         showSignIn()
+        if screen == "error" { showError("Check your connection and try again.") }
         return
       }
     #endif
@@ -68,19 +87,38 @@ final class ChatViewController: UIViewController {
     super.viewWillTransition(to: size, with: coordinator)
   }
 
+  override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+    super.traitCollectionDidChange(previousTraitCollection)
+    guard isViewLoaded,
+      previousTraitCollection?.preferredContentSizeCategory
+        != traitCollection.preferredContentSizeCategory
+    else { return }
+    updateStatusTypography()
+    if let title = statusTitle.text, let message = statusMessage.text {
+      applyStatusText(title: title, message: message)
+    }
+  }
+
+  private func updateStatusTypography() {
+    statusTitle.font = NativeTheme.font(
+      "Poppins-Medium", size: 28, style: .title1, compatibleWith: traitCollection)
+    statusMessage.font = NativeTheme.font(
+      "Geist-Regular", size: 14, style: .body, compatibleWith: traitCollection)
+    primaryButton.setNeedsUpdateConfiguration()
+    secondaryButton.setNeedsUpdateConfiguration()
+  }
+
   private func configureStatus() {
-    let mark = UIImageView(image: UIImage(named: "AutoGPTMark"))
+    let mark = UIImageView(image: UIImage(named: "AutoGPTLogo"))
     mark.translatesAutoresizingMaskIntoConstraints = false
     mark.contentMode = .scaleAspectFit
-    mark.layer.cornerRadius = 16
-    mark.clipsToBounds = true
     mark.isAccessibilityElement = false
     let brand = UIView()
     brand.addSubview(mark)
     NSLayoutConstraint.activate([
-      brand.heightAnchor.constraint(equalToConstant: 72),
-      mark.widthAnchor.constraint(equalToConstant: 64),
-      mark.heightAnchor.constraint(equalToConstant: 64),
+      brand.heightAnchor.constraint(equalToConstant: 58),
+      mark.widthAnchor.constraint(equalToConstant: 128),
+      mark.heightAnchor.constraint(equalToConstant: 58),
       mark.topAnchor.constraint(equalTo: brand.topAnchor),
       mark.centerXAnchor.constraint(equalTo: brand.centerXAnchor),
     ])
@@ -89,34 +127,33 @@ final class ChatViewController: UIViewController {
     status.alignment = .fill
     status.spacing = 16
     status.translatesAutoresizingMaskIntoConstraints = false
-    statusTitle.font = .preferredFont(forTextStyle: .title1)
+    statusTitle.font = NativeTheme.font("Poppins-Medium", size: 28, style: .title1)
+    statusTitle.textColor = NativeTheme.text
     statusTitle.adjustsFontForContentSizeCategory = true
-    statusTitle.textAlignment = .center
+    statusTitle.textAlignment = .left
     statusTitle.numberOfLines = 0
     statusTitle.accessibilityTraits.insert(.header)
     statusTitle.accessibilityIdentifier = "Native status title"
-    statusMessage.font = .preferredFont(forTextStyle: .body)
+    statusMessage.font = NativeTheme.font("Geist-Regular", size: 14, style: .body)
     statusMessage.adjustsFontForContentSizeCategory = true
-    statusMessage.textAlignment = .center
-    statusMessage.textColor = .secondaryLabel
+    statusMessage.textAlignment = .left
+    statusMessage.textColor = NativeTheme.secondaryText
     statusMessage.numberOfLines = 0
     statusMessage.accessibilityIdentifier = "Native status message"
-    primaryButton.configuration = .filled()
-    primaryButton.configuration?.cornerStyle = .large
-    primaryButton.configuration?.titleAlignment = .center
-    primaryButton.configuration?.titleLineBreakMode = .byWordWrapping
-    primaryButton.configuration?.contentInsets = NSDirectionalEdgeInsets(
-      top: 16, leading: 20, bottom: 16, trailing: 20)
+    NativeTheme.styleButton(primaryButton, primary: true)
+    primaryButton.titleLabel?.adjustsFontForContentSizeCategory = true
     primaryButton.addAction(
       UIAction { [weak self] _ in self?.primaryAction?() }, for: .touchUpInside)
+    NativeTheme.styleButton(secondaryButton, primary: false)
     secondaryButton.setTitle("Open in browser", for: .normal)
-    secondaryButton.titleLabel?.font = .preferredFont(forTextStyle: .body)
     secondaryButton.titleLabel?.adjustsFontForContentSizeCategory = true
-    secondaryButton.titleLabel?.numberOfLines = 0
-    secondaryButton.titleLabel?.textAlignment = .center
     secondaryButton.addAction(
       UIAction { [weak self] _ in self?.openInBrowser() }, for: .touchUpInside)
     [statusTitle, statusMessage, primaryButton, secondaryButton].forEach(status.addArrangedSubview)
+    status.setCustomSpacing(40, after: brand)
+    status.setCustomSpacing(8, after: statusTitle)
+    status.setCustomSpacing(32, after: statusMessage)
+    status.setCustomSpacing(12, after: primaryButton)
     statusScroll.translatesAutoresizingMaskIntoConstraints = false
     statusScroll.contentInsetAdjustmentBehavior = .never
     statusScroll.alwaysBounceVertical = false
@@ -130,7 +167,7 @@ final class ChatViewController: UIViewController {
       equalTo: statusScroll.frameLayoutGuide.heightAnchor)
     preferredHeight.priority = .defaultLow
     let preferredWidth = status.widthAnchor.constraint(
-      equalTo: statusScroll.frameLayoutGuide.widthAnchor, constant: -56)
+      equalTo: statusScroll.frameLayoutGuide.widthAnchor, constant: -48)
     preferredWidth.priority = .defaultHigh
     NSLayoutConstraint.activate([
       statusScroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -147,13 +184,14 @@ final class ChatViewController: UIViewController {
       preferredHeight,
       preferredWidth,
       status.centerYAnchor.constraint(equalTo: content.centerYAnchor),
-      status.topAnchor.constraint(greaterThanOrEqualTo: content.topAnchor, constant: 24),
-      status.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -24),
-      status.leadingAnchor.constraint(greaterThanOrEqualTo: content.leadingAnchor, constant: 28),
-      status.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -28),
+      status.topAnchor.constraint(greaterThanOrEqualTo: content.topAnchor, constant: 48),
+      status.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -48),
+      status.leadingAnchor.constraint(greaterThanOrEqualTo: content.leadingAnchor, constant: 24),
+      status.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -24),
       status.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-      status.widthAnchor.constraint(lessThanOrEqualToConstant: 420),
-      secondaryButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+      status.widthAnchor.constraint(lessThanOrEqualToConstant: 416),
+      primaryButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
+      secondaryButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
     ])
   }
 
@@ -286,8 +324,7 @@ final class ChatViewController: UIViewController {
     view.endEditing(true)
     webView.isHidden = true
     progress.isHidden = true
-    statusTitle.text = title
-    statusMessage.text = message
+    applyStatusText(title: title, message: message)
     primaryButton.setTitle(button, for: .normal)
     primaryAction = action
     statusScroll.isHidden = false
@@ -295,11 +332,25 @@ final class ChatViewController: UIViewController {
     UIAccessibility.post(notification: .screenChanged, argument: statusTitle)
   }
 
+  private func applyStatusText(title: String, message: String) {
+    updateStatusTypography()
+    let headingParagraph = NSMutableParagraphStyle()
+    headingParagraph.minimumLineHeight = UIFontMetrics(forTextStyle: .title1).scaledValue(
+      for: 40, compatibleWith: traitCollection)
+    statusTitle.attributedText = NSAttributedString(
+      string: title, attributes: [.paragraphStyle: headingParagraph, .kern: -0.21])
+    let bodyParagraph = NSMutableParagraphStyle()
+    bodyParagraph.minimumLineHeight = UIFontMetrics(forTextStyle: .body).scaledValue(
+      for: 22, compatibleWith: traitCollection)
+    statusMessage.attributedText = NSAttributedString(
+      string: message, attributes: [.paragraphStyle: bodyParagraph])
+  }
+
   private func showSignIn() {
     showStatus(
-      title: "Your AutoGPT, on the go",
+      title: "Welcome back",
       message:
-        "Sign in securely to continue your conversations, run agents, and pick up where you left off.",
+        "Sign in to continue your conversations and run your agents.",
       button: "Sign in to AutoGPT", action: { [weak self] in self?.signIn() })
   }
 
@@ -366,55 +417,42 @@ final class ChatViewController: UIViewController {
   }
 
   private func settings() {
-    guard !isSigningIn, !isChangingServer else { return }
-    let alert = UIAlertController(
-      title: "Server settings",
-      message:
-        "Connect to AutoGPT or your own HTTPS server. Changing servers clears this app's saved website session.",
-      preferredStyle: .alert)
-    alert.addTextField { [origin] field in
-      field.text = origin.url.absoluteString
-      field.placeholder = "https://platform.agpt.co"
-      field.accessibilityLabel = "Server address"
-      field.keyboardType = .URL
-      field.autocapitalizationType = .none
-      field.autocorrectionType = .no
-    }
-    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-    alert.addAction(
-      UIAlertAction(title: "Connect", style: .default) { [weak self, weak alert] _ in
-        guard let self, let address = alert?.textFields?.first?.text else { return }
-        do {
-          var allowLocalHTTP = false
-          #if DEBUG
-            allowLocalHTTP = true
-          #endif
-          let next = try AppOrigin(address, allowLocalHTTP: allowLocalHTTP)
-          if next == self.origin { return }
-          self.authentication.cancel()
-          self.isChangingServer = true
+    guard !isSigningIn, !isChangingServer, presentedViewController == nil else { return }
+    let sheet = ServerSettingsViewController(address: origin.url.absoluteString) {
+      [weak self] address in
+      guard let self, !self.isSigningIn, !self.isChangingServer else { return }
+      do {
+        var allowLocalHTTP = false
+        #if DEBUG
+          allowLocalHTTP = true
+        #endif
+        let next = try AppOrigin(address, allowLocalHTTP: allowLocalHTTP)
+        if next == self.origin { return }
+        self.authentication.cancel()
+        self.isChangingServer = true
+        self.installWebView()
+        self.showStatus(
+          title: "Changing servers", message: "Clearing the previous website session.",
+          button: "Connecting…", action: {})
+        self.primaryButton.isEnabled = false
+        self.secondaryButton.isEnabled = false
+        Task { @MainActor in
+          await self.webView.configuration.websiteDataStore.removeData(
+            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+          self.isChangingServer = false
+          self.primaryButton.isEnabled = true
+          self.secondaryButton.isEnabled = true
+          self.origin = next
+          self.lastCommittedURL = nil
+          UserDefaults.standard.set(next.url.absoluteString, forKey: "serverOrigin")
           self.installWebView()
-          self.showStatus(
-            title: "Changing servers", message: "Clearing the previous website session.",
-            button: "Connecting…", action: {})
-          self.primaryButton.isEnabled = false
-          self.secondaryButton.isEnabled = false
-          Task { @MainActor in
-            await self.webView.configuration.websiteDataStore.removeData(
-              ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
-            self.isChangingServer = false
-            self.primaryButton.isEnabled = true
-            self.secondaryButton.isEnabled = true
-            self.origin = next
-            self.lastCommittedURL = nil
-            UserDefaults.standard.set(next.url.absoluteString, forKey: "serverOrigin")
-            self.installWebView()
-            self.loadChat()
-          }
-        } catch { self.showError(error.localizedDescription) }
-      })
-    present(alert, animated: true)
+          self.loadChat()
+        }
+      } catch { self.showError(error.localizedDescription) }
+    }
+    present(sheet, animated: true)
   }
+
 }
 
 extension ChatViewController: WKNavigationDelegate {

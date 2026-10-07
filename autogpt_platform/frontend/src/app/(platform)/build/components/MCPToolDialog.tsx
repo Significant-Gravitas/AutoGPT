@@ -30,6 +30,7 @@ import {
   postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { openOAuthPopup } from "@/lib/oauth-popup";
+import { assertOAuthPopupSupported } from "@/lib/oauth-popup-support";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
 import {
@@ -283,6 +284,7 @@ export function MCPToolDialog({
     setOauthLoading(true);
 
     try {
+      assertOAuthPopupSupported();
       // Only a 400 from the *initiate* call means "this server has no OAuth
       // to offer" and justifies the manual-token fallback.  A 400 later in
       // the flow is a rejected authorization response — a failed issuer

@@ -34,6 +34,10 @@ import {
 } from "@/lib/mcp-errors";
 import { mcpServerIdentity, normalizeMcpUrl } from "@/lib/mcp-url";
 import { openOAuthPopup } from "@/lib/oauth-popup";
+import {
+  assertOAuthPopupSupported,
+  NativeOAuthPopupError,
+} from "@/lib/oauth-popup-support";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 
 interface Props {
@@ -91,6 +95,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
     oauthAbortRef.current?.();
 
     try {
+      assertOAuthPopupSupported();
       // Only a 400 from the *initiate* call means "server doesn't support
       // OAuth" — fall back to manual-token for that. A 400 from anywhere else
       // (popup callback, token exchange) is a real error and should surface
@@ -138,6 +143,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
       await invalidateCredentials();
       onSuccess(exchanged.data);
     } catch (e: unknown) {
+      if (e instanceof NativeOAuthPopupError) setPhase("manual-token");
       const message = getErrorMessage(e);
       if (message === "OAuth flow timed out") {
         setError("OAuth sign-in timed out. Please try again.");

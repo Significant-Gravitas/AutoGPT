@@ -88,6 +88,9 @@ class RuntimeProbe : Instrumentation() {
             verify("native_download_origin_boundary") {
                 RuntimeDownloadProbe(targetContext, runtime).run()
             }
+            verify("native_provider_save_and_cancellation") {
+                RuntimeSaveProbe(targetContext, runtime).run()
+            }
             result.putString("probe_status", "PASS")
             result.putString("suite", if (fixtureOrigin == null) "platform" else "fixture")
             result.putString(

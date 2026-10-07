@@ -2,6 +2,8 @@
 
 A small UIKit/WKWebView host for the existing AutoGPT website. Chat, streaming, agents, history, settings, and onboarding stay on the website. The app provides safe navigation, browser sign-in, persistent website storage, keyboard/safe-area integration, native file selection, and attachment export. There is no JavaScript-to-native bridge on iOS.
 
+The app uses a single `UIWindowScene`; multiple windows are disabled. Browser app-account authentication remains owned by `ASWebAuthenticationSession`.
+
 ## Build
 
 Requires Xcode, its iOS platform support, and [XcodeGen](https://github.com/yonaskolb/XcodeGen). The app supports iOS 16 and newer and targets the iPhone 17 Pro form factor; iPad and rotation remain enabled.
@@ -45,6 +47,8 @@ Sign-in uses `ASWebAuthenticationSession` and an S256 proof bound to a random pe
 
 External user links open in the system browser. Programmatic external navigation asks before opening. Unsupported schemes are blocked. Same-origin web navigation stays in the app. App and system browser sessions remain independent.
 
+Provider connections that use popup callbacks must be completed through **Open in browser**, followed by **Reload** in the app. Use the same AutoGPT account in both. See [provider connection limitations](../README.md#provider-connections); device-code polling flows remain available.
+
 WebKit handles the keyboard viewport. Rotating or resizing the app dismisses the keyboard to avoid stale focus scrolling; the page remains loaded, and tapping the input resumes editing. Native sign-in and recovery screens scroll when landscape or larger text leaves less room.
 
 ## Local checks
@@ -79,5 +83,5 @@ swift-format lint --strict --recursive \
 - The local fixture's system-browser sign-in returns to the app with both token and cache cookies installed. Switching servers and returning to the fixture clears that prior session.
 - A generated Markdown file exports through the native share sheet into Files and can be selected again as an attachment; external navigation and HTTP-error recovery were also checked in the simulator.
 - Rotation dismisses the software keyboard, preserves the typed fixture draft, and allows visible landscape refocus on iOS 18.3.
-- Large-text status layout has a scrollable content range, but manual scrolling remains unverified: simulator automation produced no observed pan events. The new XCUITest is not runtime-verified on this host because the installed runtime is not eligible for the current Xcode test destination.
+- At `dc4b0ddd93`, GitHub Actions ran both XCUITests on iPhone 16 Pro / iOS 18.5 with two passes and no skipped tests. The large-text landscape test performed a swipe and verified that both actions became reachable. Local CUA scrolling remains unverified because simulator automation produced no observed pan events; the CI result precedes the single-scene migration.
 - Exact iPhone 17 Pro / iOS 26 runtime testing, real-provider sign-in, and release signing remain separate checks.

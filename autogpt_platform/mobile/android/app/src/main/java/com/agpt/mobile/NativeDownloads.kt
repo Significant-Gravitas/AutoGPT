@@ -34,6 +34,10 @@ class NativeDownloads(
     private var closed = false
     private val timeout = Runnable { abort("The download timed out. Please try again.") }
 
+    init {
+        localIo.execute { stagingCleanup.runOnce(app.cacheDir) }
+    }
+
     private class Active(val request: DownloadMessage.Start, val reply: JavaScriptReplyProxy) {
         var destination: Uri? = null
         @Volatile var stagedFile: File? = null
@@ -308,6 +312,7 @@ class NativeDownloads(
 
     companion object {
         private val localIo = Executors.newSingleThreadExecutor()
+        private val stagingCleanup = NativeStagingCleanup()
         private val providerIo = Executors.newFixedThreadPool(2)
         private val cancellationIo = Executors.newFixedThreadPool(2)
         private val copySlots = Semaphore(2)

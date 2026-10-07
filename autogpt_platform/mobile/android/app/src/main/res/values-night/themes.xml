@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.AutoGPT" parent="android:style/Theme.Material.NoActionBar">
-        <item name="android:fontFamily">sans</item>
+    <style name="Theme.AutoGPT" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">@font/geist_regular</item>
         <item name="android:colorAccent">@color/shell_accent</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowBackground">@color/shell_background</item>

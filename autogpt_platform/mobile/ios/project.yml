@@ -18,7 +18,12 @@ targets:
   AutoGPT:
     type: application
     platform: iOS
-    sources: [App]
+    sources:
+      - App
+      - path: ../design-system/AutoGPTLogo.png
+        buildPhase: resources
+      - path: ../design-system/fonts
+        buildPhase: resources
     dependencies:
       - package: AutoGPTMobileCore
     settings:
@@ -37,12 +42,23 @@ targets:
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UIAppFonts:
+          - Geist-Regular.ttf
+          - Geist-Medium.ttf
+          - Poppins-Medium.ttf
         CFBundleIcons:
           CFBundlePrimaryIcon:
             CFBundleIconFiles: [AppIcon60x60]
         CFBundleURLTypes:
           - CFBundleURLName: com.agpt.mobile.authentication
             CFBundleURLSchemes: [autogpt]
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Default Configuration
+                UISceneClassName: UIWindowScene
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).SceneDelegate
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft

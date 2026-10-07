@@ -26,6 +26,10 @@ import {
 import { getAPIResponseError, getErrorStatus } from "@/lib/mcp-errors";
 import { normalizeMcpUrl } from "@/lib/mcp-url";
 import { openOAuthPopup } from "@/lib/oauth-popup";
+import {
+  assertOAuthPopupSupported,
+  NativeOAuthPopupError,
+} from "@/lib/oauth-popup-support";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { useContext, useEffect, useId, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
@@ -173,6 +177,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     oauthAbortRef.current?.();
 
     try {
+      assertOAuthPopupSupported();
       // Only a 400 from the *initiate* call means "this server has no OAuth
       // to offer" and justifies the manual-token fallback.  A 400 from the
       // callback is a rejected authorization response — a failed issuer
@@ -240,6 +245,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       setConnected(true);
       onSend(retryInstruction ?? "I've connected. Please retry.");
     } catch (e: unknown) {
+      if (e instanceof NativeOAuthPopupError) setShowManualToken(true);
       const err = e as Record<string, unknown>;
       // Reconnect failures must drop the Connected view so the user sees
       // the error / manual-token input rendered by the not-connected

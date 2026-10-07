@@ -16,6 +16,7 @@ import {
   type ChainActionEntry,
 } from "../../../../../components/ToolChain/chainActions";
 import { MCPSetupCard } from "../MCPSetupCard";
+import { McpConnectorRow } from "../../../../../components/ChainActionCard/McpConnectorRow";
 
 // Mock the copilot chat actions used by MCPSetupCard
 const mockOnSend = vi.fn();
@@ -114,11 +115,39 @@ describe("MCPSetupCard", () => {
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     // Without this, call history leaks between tests and any
     // `not.toHaveBeenCalled()` assertion silently depends on declaration order.
     vi.clearAllMocks();
     setMockLiveCreds([]);
     currentOnSend = mockOnSend;
+  });
+
+  it("explains native browser connection without starting MCP authorization", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "AutoGPTMobile/Android",
+    );
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2ExchangeOauthCodeForMcpTokens,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    const { openOAuthPopup } = await import("@/lib/oauth-popup");
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+    expect(await screen.findByText(/Open in browser/)).toBeDefined();
+    expect(postV2InitiateOauthLoginForAnMcpServer).not.toHaveBeenCalled();
+    expect(postV2ExchangeOauthCodeForMcpTokens).not.toHaveBeenCalled();
+    expect(openOAuthPopup).not.toHaveBeenCalled();
+    expect(mockOnSend).not.toHaveBeenCalled();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /connect example\.com/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
   });
 
   it("renders setup message and connect button", () => {
@@ -127,6 +156,48 @@ describe("MCPSetupCard", () => {
     expect(
       screen.getByRole("button", { name: /connect example\.com/i }),
     ).toBeDefined();
+  });
+
+  it("keeps the native manual credential form reachable and probes before saving", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "AutoGPTMobile/Android",
+    );
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        id: "native-manual",
+        provider: "mcp",
+        type: "oauth2",
+        title: "Native manual",
+      },
+      headers: new Headers(),
+    } as never);
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+    expect(await screen.findByText(/Open in browser/)).toBeDefined();
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
+      target: { value: "public-native-fixture" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /use token/i }));
+    await waitFor(() =>
+      expect(mockOnSend).toHaveBeenCalledWith("I've connected. Please retry."),
+    );
+    expect(postV2DiscoverAvailableToolsOnAnMcpServer).toHaveBeenCalledWith({
+      server_url: "https://mcp.example.com/mcp",
+      auth_token: "Bearer public-native-fixture", // pragma: allowlist secret
+    }); // pragma: allowlist secret
+    expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
+      server_url: "https://mcp.example.com/mcp",
+      token: "Bearer public-native-fixture", // pragma: allowlist secret
+    }); // pragma: allowlist secret
+    expect(postV2InitiateOauthLoginForAnMcpServer).not.toHaveBeenCalled();
   });
 
   it("renders Connected/Reconnect when live creds say the server is connected even if the persisted snapshot was disconnected", () => {
@@ -889,6 +960,57 @@ describe("MCPSetupCard", () => {
     });
     expect(initialProviderCallback).not.toHaveBeenCalled();
     expect(initialOnSend).not.toHaveBeenCalled();
+  });
+
+  it("makes native manual entry reachable in the chain connector row", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "AutoGPTMobile/Android",
+    );
+    const {
+      postV2StoreABearerTokenForAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        id: "native-chain",
+        provider: "mcp",
+        type: "oauth2",
+        title: "Native chain MCP",
+      },
+      headers: new Headers(),
+    } as never);
+    let registeredEntry: ChainActionEntry | null = null;
+    const chainActions = {
+      register: vi.fn((entry: ChainActionEntry) => {
+        registeredEntry = entry;
+      }),
+      unregister: vi.fn(),
+    };
+    render(
+      <ChainActionsContext.Provider value={chainActions}>
+        <MCPSetupCard output={makeSetupOutput()} />
+      </ChainActionsContext.Provider>,
+    );
+    await waitFor(() => expect(registeredEntry?.mcp).toBeDefined());
+    await act(async () => {
+      registeredEntry!.mcp!.onConnect();
+    });
+    await waitFor(() =>
+      expect(registeredEntry?.mcp?.showManualToken).toBe(true),
+    );
+    render(<McpConnectorRow request={registeredEntry!.mcp!} />);
+    fireEvent.change(screen.getByLabelText(/API token for/i), {
+      target: { value: "public-native-chain" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /use token/i }));
+    await waitFor(() =>
+      expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
+        server_url: "https://mcp.example.com/mcp",
+        token: "Bearer public-native-chain", // pragma: allowlist secret
+      }),
+    ); // pragma: allowlist secret
+    expect(postV2InitiateOauthLoginForAnMcpServer).not.toHaveBeenCalled();
   });
 
   it("does not reinterpret an already prepared Basic chain credential", async () => {

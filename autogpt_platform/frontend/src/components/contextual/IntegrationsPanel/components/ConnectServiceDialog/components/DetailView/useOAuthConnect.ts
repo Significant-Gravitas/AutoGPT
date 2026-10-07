@@ -18,6 +18,7 @@ import {
 import { CredentialsActionsContext } from "@/providers/agent-credentials/credentials-provider";
 
 import { getOAuthErrorMessage } from "./helpers";
+import { assertOAuthPopupSupported } from "@/lib/oauth-popup-support";
 
 interface Args {
   provider: string;
@@ -78,6 +79,7 @@ export function useOAuthConnect({
     const preOpenedWindow = preOpenOAuthPopup();
     preOpenedWindowRef.current = preOpenedWindow;
     try {
+      assertOAuthPopupSupported();
       // Without the scopes the consent screen grants provider defaults, and
       // a credential missing a required scope never satisfies the caller.
       const initiateResponse = await initiateLogin(

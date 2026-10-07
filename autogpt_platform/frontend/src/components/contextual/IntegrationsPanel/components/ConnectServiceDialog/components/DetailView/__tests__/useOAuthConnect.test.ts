@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -67,7 +67,37 @@ async function mockInitiateOk() {
 describe("useOAuthConnect — error toast", () => {
   afterEach(() => {
     vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
+
+  it.each(["iOS", "Android"])(
+    "guides the %s app to its browser before initiating a provider connection",
+    async (platform) => {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+        `Mozilla/5.0 AutoGPTMobile/${platform}`,
+      );
+      const { getV1InitiateOauthFlow, postV1ExchangeOauthCodeForTokens } =
+        await import(
+          "@/app/api/__generated__/endpoints/integrations/integrations"
+        );
+      const { openOAuthPopup } = await import("@/lib/oauth-popup");
+      const { result } = renderHook(() =>
+        useOAuthConnect({ provider: "codex", onSuccess: vi.fn() }),
+      );
+      await act(async () => {
+        await result.current.connect();
+      });
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: expect.stringContaining("Open in browser"),
+        }),
+      );
+      expect(getV1InitiateOauthFlow).not.toHaveBeenCalled();
+      expect(postV1ExchangeOauthCodeForTokens).not.toHaveBeenCalled();
+      expect(openOAuthPopup).not.toHaveBeenCalled();
+      expect(result.current.isPending).toBe(false);
+    },
+  );
 
   it("shows the FastAPI 422 validation message, not [object Object]", async () => {
     await setupSuccessfulPopup();

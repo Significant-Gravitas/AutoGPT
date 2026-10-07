@@ -142,6 +142,41 @@ jobs:
           compression-level: 0
           if-no-files-found: error
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.18.0"
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run Android framework probes
+        id: runtime_tests
+        timeout-minutes: 12
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_9_pro
+          avd-name: AutoGPT_CI
+          emulator-port: 5554
+          emulator-boot-timeout: 300
+          ram-size: 2048M
+          disk-size: 2048M
+          cores: 2
+          disable-animations: true
+          working-directory: autogpt_platform/mobile/android
+          script: bash scripts/run-ci-runtime.sh
+      - name: Upload Android runtime evidence
+        if: always() && steps.runtime_tests.outcome != 'skipped'
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-runtime-results
+          path: ${{ runner.temp }}/autogpt-android-runtime
+          retention-days: 7
+          if-no-files-found: ignore
+
   fixture:
     runs-on: ubuntu-latest
     timeout-minutes: 5
