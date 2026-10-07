@@ -5,6 +5,7 @@ import * as Sentry from "@sentry/nextjs";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { SwapFade } from "@/components/atoms/SwapFade/SwapFade";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   ArrowReloadHorizontalIcon,
   Cancel01Icon,
@@ -114,7 +115,9 @@ export function RecordingControls({
           {pendingStatus && (
             <div className="flex h-8 items-start justify-center pt-2">
               <SwapFade swapKey={pendingAction ?? "idle"}>
-                <p className="text-sm text-zinc-500">{pendingStatus}</p>
+                <Text variant="body" tone="muted">
+                  {pendingStatus}
+                </Text>
               </SwapFade>
             </div>
           )}
