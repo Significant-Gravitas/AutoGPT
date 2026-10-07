@@ -197,6 +197,39 @@ describe("GenericTool", () => {
       expect(secondLink.getAttribute("href")).toBe("https://example.com/two");
     });
 
+    it("labels each cited source with its [n] and still renders older results without one", () => {
+      render(
+        <GenericTool
+          part={makeWebSearchPart([
+            {
+              n: 3,
+              title: "Cited source",
+              url: "https://example.com/cited",
+            },
+            {
+              title: "Legacy result",
+              url: "https://example.com/legacy",
+              snippet: "Legacy snippet",
+              page_age: "1 week ago",
+            },
+          ])}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { expanded: false }));
+
+      const citedRow = screen.getByRole("link", {
+        name: "Cited source",
+      }).parentElement as HTMLElement;
+      expect(citedRow.textContent).toMatch(/^\[3\]Cited source/);
+
+      const legacyRow = screen.getByRole("link", {
+        name: "Legacy result",
+      }).parentElement as HTMLElement;
+      expect(legacyRow.textContent).not.toMatch(/\[\d+\]/);
+      expect(screen.queryByText("Legacy snippet")).not.toBeNull();
+      expect(screen.queryByText("1 week ago")).not.toBeNull();
+    });
+
     it("uses singular 'search result' when there is exactly one result", () => {
       render(
         <GenericTool
