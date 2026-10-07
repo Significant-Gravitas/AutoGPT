@@ -1,5 +1,7 @@
 import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 type Props = {
   reason?: string;
@@ -19,22 +21,21 @@ export function SharedChatErrorState({ onRetry }: Props) {
             />
           </div>
           <div className="space-y-2">
-            <h3 className="text-lg font-semibold">Share link not found</h3>
-            <p className="text-sm text-zinc-500">
+            <Text variant="large-semibold" as="h3">
+              Share link not found
+            </Text>
+            <Text variant="body" tone="muted">
               This link is invalid or has been disabled by the owner. Ask the
               person who shared it for an updated link.
-            </p>
+            </Text>
           </div>
-          <button
-            onClick={onRetry}
-            className="text-sm text-zinc-700 underline hover:text-zinc-900"
-          >
+          <Button variant="link" onClick={onRetry}>
             Try again
-          </button>
+          </Button>
         </div>
-        <p className="mt-8 text-center text-xs text-zinc-400">
+        <Text variant="small" className="mt-8 text-center text-zinc-400">
           Powered by AutoGPT Platform
-        </p>
+        </Text>
       </div>
     </div>
   );

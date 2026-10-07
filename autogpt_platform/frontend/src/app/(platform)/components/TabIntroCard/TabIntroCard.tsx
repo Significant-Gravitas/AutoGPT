@@ -135,20 +135,20 @@ export function TabIntroCard({
             tabIndex={-1}
           >
             {/* Tinted stage: the card's icon floats here. */}
-            <div className="relative h-44 bg-gradient-to-br from-[#e6dbff] via-[#ddccff] to-[#d0b9ff]">
+            <div className="relative h-44 bg-gradient-to-br from-purple-100 to-purple-200">
               <GlassPixelBackdrop />
               <div className="flex h-full items-center justify-center">
                 <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white shadow-lg">
-                  <Icon icon={icon} size={40} className="text-violet-600" />
+                  <Icon icon={icon} size={40} className="text-purple-600" />
                 </div>
               </div>
             </div>
 
             <div className="flex flex-col gap-3 px-7 pb-7 pt-6 text-left">
-              <Text variant="lead-semibold" as="h3" className="text-zinc-900">
+              <Text variant="lead-semibold" as="h3" tone="primary">
                 {title}
               </Text>
-              <Text variant="large" className="text-zinc-600">
+              <Text variant="large" tone="secondary">
                 {body}
               </Text>
               {altAction && (
@@ -156,7 +156,7 @@ export function TabIntroCard({
                   variant="ghost"
                   size="small"
                   onClick={altAction.onClick}
-                  className="w-fit self-start px-0 text-violet-600 underline-offset-4 hover:bg-transparent hover:underline"
+                  className="w-fit self-start px-0 text-purple-600 underline-offset-4 hover:bg-transparent hover:underline"
                 >
                   {altAction.label}
                 </Button>

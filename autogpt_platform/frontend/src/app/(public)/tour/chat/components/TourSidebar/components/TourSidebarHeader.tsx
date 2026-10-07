@@ -1,6 +1,7 @@
 "use client";
 
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
+import { Button } from "@/components/atoms/Button/Button";
 import { SidebarHeader, useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -12,19 +13,22 @@ export function TourSidebarHeader() {
   const isCollapsed = state === "collapsed";
 
   const toggleButton = (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon-sm"
+      withTooltip={false}
       aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
       onClick={toggleSidebar}
       className={cn(
-        "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-zinc-200",
+        "shrink-0 rounded-md hover:border-zinc-200 hover:bg-zinc-200",
         isCollapsed
           ? "absolute inset-0 hidden group-focus-within:flex group-hover:flex"
           : "flex",
       )}
     >
       <Icon icon={SidebarLeftIcon} className="size-5 text-sidebar-foreground" />
-    </button>
+    </Button>
   );
 
   return (

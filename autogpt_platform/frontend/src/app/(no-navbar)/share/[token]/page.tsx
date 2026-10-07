@@ -3,14 +3,13 @@
 import { RunOutputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/SelectedRunView/components/RunOutputs";
 import { okData } from "@/app/api/helpers";
 import { useGetV1GetSharedExecution } from "@/app/api/__generated__/endpoints/default/default";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/__legacy__/ui/card";
+import { Button } from "@/components/atoms/Button/Button";
+import { Card } from "@/components/atoms/Card/Card";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Text } from "@/components/atoms/Text/Text";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
-import { InfoIcon } from "lucide-react";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { useParams } from "next/navigation";
 import { ShareActions } from "../components/ShareHeader/ShareActions";
 import { ShareHeader } from "../components/ShareHeader/ShareHeader";
@@ -52,8 +51,10 @@ export default function SharePage() {
       <ExecutionShareChrome>
         <div className="flex items-center justify-center py-16">
           <div className="text-center">
-            <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-primary"></div>
-            <p className="text-muted-foreground">Loading shared execution...</p>
+            <LoadingSpinner size="large" className="mx-auto mb-4" />
+            <Text variant="large" tone="muted">
+              Loading shared execution...
+            </Text>
           </div>
         </div>
       </ExecutionShareChrome>
@@ -65,36 +66,37 @@ export default function SharePage() {
       <ExecutionShareChrome>
         <div className="flex items-center justify-center py-16">
           <div className="mx-auto w-full max-w-md p-6">
-            <Card className="border-dashed">
-              <CardContent className="pt-6">
-                <div className="space-y-4 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                    <InfoIcon className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-lg font-semibold">
-                      {is404 ? "Share Link Not Found" : "Unable to Load"}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {is404
-                        ? "This shared link is invalid or has been disabled by the owner. Please check with the person who shared this link."
-                        : "There was an error loading this shared execution. Please try refreshing the page."}
-                    </p>
-                  </div>
-                  <div className="pt-2">
-                    <button
-                      onClick={() => window.location.reload()}
-                      className="text-sm text-primary hover:underline"
-                    >
-                      Try again
-                    </button>
-                  </div>
+            <Card className="border border-dashed border-zinc-300">
+              <div className="space-y-4 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                  <Icon
+                    icon={InformationCircleIcon}
+                    className="h-6 w-6 text-muted-foreground"
+                  />
                 </div>
-              </CardContent>
+                <div className="space-y-2">
+                  <Text variant="large-semibold" as="h3">
+                    {is404 ? "Share Link Not Found" : "Unable to Load"}
+                  </Text>
+                  <Text variant="body" tone="muted">
+                    {is404
+                      ? "This shared link is invalid or has been disabled by the owner. Please check with the person who shared this link."
+                      : "There was an error loading this shared execution. Please try refreshing the page."}
+                  </Text>
+                </div>
+                <div className="pt-2">
+                  <Button
+                    variant="link"
+                    onClick={() => window.location.reload()}
+                  >
+                    Try again
+                  </Button>
+                </div>
+              </div>
             </Card>
-            <div className="mt-8 text-center text-xs text-muted-foreground">
-              <p>Powered by AutoGPT Platform</p>
-            </div>
+            <Text variant="small" tone="muted" className="mt-8 text-center">
+              Powered by AutoGPT Platform
+            </Text>
           </div>
         </div>
       </ExecutionShareChrome>
@@ -106,7 +108,6 @@ export default function SharePage() {
       <div className="mx-auto max-w-6xl">
         <div className="mb-6">
           <Alert>
-            <InfoIcon className="h-4 w-4" />
             <AlertDescription>
               This is a publicly shared agent run result. The person who shared
               this link can disable access at any time.
@@ -115,17 +116,22 @@ export default function SharePage() {
         </div>
 
         <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="text-2xl">
+          <div className="flex flex-col space-y-1.5">
+            <Text variant="h4" as="h3" unmask={false}>
               {executionData.graph_name}
-            </CardTitle>
+            </Text>
             {executionData.graph_description && (
-              <p className="mt-2 text-muted-foreground">
+              <Text
+                variant="large"
+                tone="muted"
+                unmask={false}
+                className="mt-2"
+              >
                 {executionData.graph_description}
-              </p>
+              </Text>
             )}
-          </CardHeader>
-          <CardContent>
+          </div>
+          <div className="mt-6">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="font-medium">Status:</span>
@@ -140,21 +146,21 @@ export default function SharePage() {
                 </span>
               </div>
             </div>
-          </CardContent>
+          </div>
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Output</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <Text variant="large-semibold" as="h3">
+            Output
+          </Text>
+          <div className="mt-6">
             <RunOutputs outputs={executionData.outputs} shareToken={token} />
-          </CardContent>
+          </div>
         </Card>
 
-        <div className="mt-8 text-center text-sm text-muted-foreground">
-          <p>Powered by AutoGPT Platform</p>
-        </div>
+        <Text variant="body" tone="muted" className="mt-8 text-center">
+          Powered by AutoGPT Platform
+        </Text>
       </div>
     </ExecutionShareChrome>
   );

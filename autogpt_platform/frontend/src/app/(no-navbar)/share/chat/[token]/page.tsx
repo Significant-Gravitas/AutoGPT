@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
+import { Button } from "@/components/atoms/Button/Button";
 import { sharedChatFilePattern, sharedChatFileUrl } from "@/lib/share/routes";
 import { cn } from "@/lib/utils";
 import { ShareActions } from "../../components/ShareHeader/ShareActions";
@@ -20,10 +21,9 @@ import { useSharedChatArtifacts } from "./useSharedChatArtifacts";
 // + CTAs.  Matches ``ExecutionShareChrome`` on the execution share
 // page so the two routes feel like the same surface.
 //
-// Uses ``bg-background`` (theme-aware) on the chrome wrappers so dark
-// mode renders correctly.  Inner success-state wrappers still use the
-// owner-side copilot's hardcoded ``#f8f8f9`` so the in-chat surface
-// matches the owner experience pixel-for-pixel — see the
+// Uses ``bg-background`` on the chrome wrappers.  Inner success-state
+// wrappers use the owner-side copilot's ``bg-zinc-50`` surface so the
+// in-chat surface matches the owner experience pixel-for-pixel — see the
 // ``CopilotPage`` / ``ChatContainer`` styling.
 function SharedChatChrome({
   title,
@@ -145,20 +145,22 @@ export default function SharedChatPage() {
 
   return (
     <SharedChatChrome title={title} subtitle={`Shared ${sharedOn}`}>
-      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f8f8f9]">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-zinc-50">
         {messagesError && (
           // Session loaded but messages failed — transient 5xx, not a
           // revoked link.  Keep the chrome (so the viewer knows the
           // share is real) and show an inline retry instead of the
           // permanent not-found card.
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-yellow-200 bg-yellow-50 px-4 py-2 text-xs text-yellow-900">
             <span>Couldn&apos;t load messages. The share link is valid.</span>
-            <button
+            <Button
+              variant="outline"
+              size="xs"
               onClick={retry}
-              className="rounded border border-amber-300 bg-white px-2 py-0.5 font-medium hover:bg-amber-100"
+              className="border-yellow-300 bg-white hover:border-yellow-300 hover:bg-yellow-100"
             >
               Try again
-            </button>
+            </Button>
           </div>
         )}
         {hasMore && (
@@ -170,7 +172,7 @@ export default function SharedChatPage() {
         <div
           data-testid="shared-chat-content-column"
           className={cn(
-            "mx-auto flex min-h-0 w-full flex-1 flex-col bg-[#f8f8f9] px-2 lg:px-0",
+            "mx-auto flex min-h-0 w-full flex-1 flex-col bg-zinc-50 px-2 lg:px-0",
             !isArtifactPanelOpen && "max-w-3xl",
           )}
         >

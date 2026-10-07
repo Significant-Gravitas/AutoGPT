@@ -27,7 +27,7 @@ export function TourNextScenarioChip() {
       <button
         type="button"
         onClick={handleClick}
-        className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-violet-400 bg-violet-50/80 px-3.5 py-1.5 text-sm font-medium text-violet-700 transition-colors duration-300 animate-in fade-in slide-in-from-bottom-1 hover:bg-violet-100"
+        className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-purple-400 bg-purple-50/80 px-3.5 py-1.5 text-sm font-medium text-purple-700 transition-colors duration-300 animate-in fade-in slide-in-from-bottom-1 hover:bg-purple-100"
       >
         <Icon icon={PlayIcon} className="size-3.5 shrink-0" />
         <span className="truncate">

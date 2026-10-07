@@ -75,7 +75,7 @@ export function ReadyView({
           onClick={onLink}
           loading={isLinking}
           disabled={isLinking}
-          className="w-full sm:w-auto sm:min-w-[16rem]"
+          className="w-full sm:w-auto sm:min-w-64"
         >
           {forUser
             ? `Connect my ${platform} DMs`

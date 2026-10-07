@@ -7,14 +7,14 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function TourHero() {
   return (
-    <section className="relative flex flex-1 flex-col items-center justify-center overflow-hidden border-b border-neutral-100 px-6 py-16">
+    <section className="relative flex flex-1 flex-col items-center justify-center overflow-hidden border-b border-zinc-100 px-6 py-16">
       <TourBackground />
       <div className="relative z-10 flex w-full max-w-2xl flex-col items-center text-center">
         <AutoGPTLogo hideText viewBox="46 0 43 40" className="mb-6 h-20 w-20" />
 
         <span className="relative mb-6 inline-flex overflow-hidden rounded-full bg-[linear-gradient(135deg,rgba(99,102,241,0.6),rgba(59,130,246,0.35),rgba(165,180,252,0.6))] p-px shadow-[0_6px_20px_-6px_rgba(59,130,246,0.35)]">
           <span className="relative inline-flex items-center gap-2 rounded-full bg-white/50 px-4 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl">
-            <Icon icon={SparklesIcon} className="h-4 w-4 text-violet-600" />
+            <Icon icon={SparklesIcon} className="h-4 w-4 text-purple-600" />
             <Text variant="small-medium" className="text-sm text-zinc-700">
               Live demo, no signup required
             </Text>
@@ -24,7 +24,7 @@ export function TourHero() {
         <Text
           as="h1"
           variant="h1"
-          className="text-balance text-[4rem] font-[600] leading-[1]"
+          className="text-balance text-[4rem] font-[600] leading-none"
         >
           Build AI agents by just chatting
         </Text>

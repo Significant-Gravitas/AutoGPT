@@ -64,7 +64,7 @@ function TourPlanStepItem({
         icon={CheckmarkCircle02Icon}
         size={18}
         aria-label="completed"
-        className="mt-0.5 shrink-0 text-emerald-500 duration-300 animate-in fade-in zoom-in-50 fill-mode-both"
+        className="mt-0.5 shrink-0 text-green-500 duration-300 animate-in fade-in zoom-in-50 fill-mode-both"
         style={{ animationDelay: `${index * STEP_STAGGER_MS + 200}ms` }}
       />
       <div className="min-w-0 flex-1">
