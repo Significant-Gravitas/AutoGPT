@@ -20,12 +20,12 @@ const STATUS_STYLES: Partial<
 > = {
   working: {
     label: "Working",
-    className: "bg-emerald-50 text-emerald-700",
+    className: "bg-green-50 text-green-700",
     icon: Activity01Icon,
   },
   "needs-you": {
     label: "Needs you",
-    className: "bg-amber-50 text-amber-700",
+    className: "bg-yellow-50 text-yellow-700",
     icon: Alert01Icon,
   },
 };

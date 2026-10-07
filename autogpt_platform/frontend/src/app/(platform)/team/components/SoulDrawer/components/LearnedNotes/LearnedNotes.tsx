@@ -89,7 +89,7 @@ function NotesList({
               type="button"
               variant="ghost"
               size="small"
-              className="h-7 !min-w-0 shrink-0 px-2 text-zinc-600"
+              className="h-7 min-w-0 shrink-0 px-2 text-zinc-600"
               loading={forgettingUuid === fact.uuid}
               onClick={() => onForget(fact.uuid)}
             >

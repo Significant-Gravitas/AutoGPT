@@ -37,10 +37,10 @@ export function SetupNeeded({ enabled }: Props) {
         <Icon
           icon={Alert01Icon}
           size={14}
-          className="text-amber-600"
+          className="text-yellow-600"
           aria-hidden
         />
-        <Text variant="small-medium" as="h2" className="!text-zinc-700">
+        <Text variant="small-medium" as="h2" className="text-zinc-700">
           Setup needed ({items.length})
         </Text>
       </div>

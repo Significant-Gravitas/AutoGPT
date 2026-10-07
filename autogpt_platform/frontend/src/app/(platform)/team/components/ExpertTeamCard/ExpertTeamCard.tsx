@@ -186,8 +186,8 @@ export function ExpertTeamCard({
       />
 
       {isPaused ? (
-        <div className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 ring-1 ring-inset ring-amber-200">
-          <Text variant="body" className="text-amber-700">
+        <div className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-lg bg-yellow-50 px-3 py-2 ring-1 ring-inset ring-yellow-200">
+          <Text variant="body" className="text-yellow-700">
             Schedules paused
           </Text>
           <Button

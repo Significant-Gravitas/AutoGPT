@@ -109,7 +109,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-name"
         label="Name"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        labelClassName="text-zinc-700"
         value={soul.name}
         maxLength={100}
         required
@@ -119,7 +119,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-identity"
         label="Identity and personality"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        labelClassName="text-zinc-700"
         type="textarea"
         rows={6}
         value={soul.identity}
@@ -131,7 +131,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-voice"
         label="Voice"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        labelClassName="text-zinc-700"
         type="textarea"
         rows={3}
         value={soul.voice_preferences}
@@ -145,7 +145,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-boundaries"
         label="Boundaries"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        labelClassName="text-zinc-700"
         type="textarea"
         rows={4}
         value={soul.boundaries}

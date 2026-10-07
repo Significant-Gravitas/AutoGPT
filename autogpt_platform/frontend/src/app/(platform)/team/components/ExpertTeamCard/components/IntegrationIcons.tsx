@@ -51,7 +51,7 @@ export function IntegrationIcons({ expertName, providers }: Props) {
               <Text
                 variant="body-medium"
                 as="span"
-                className="cursor-default whitespace-nowrap !text-zinc-800"
+                className="cursor-default whitespace-nowrap text-zinc-800"
               >
                 +{hidden.length} more
                 <span className="sr-only">: {hiddenNames}</span>
