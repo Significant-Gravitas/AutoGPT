@@ -36,4 +36,4 @@ def gate_denied_error(name: str, session_id: str) -> ErrorResponse:
         ),
         error="tool_disabled",
         session_id=session_id,
-    )
+    ).from_outside()

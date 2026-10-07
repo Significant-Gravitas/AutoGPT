@@ -155,7 +155,6 @@ vi.mock("../components/ChatMessagesContainer/helpers", () => ({
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
-  parseSpecialMarkers: () => ({ markerType: null }),
 }));
 vi.mock("../components/JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,
