@@ -45,7 +45,7 @@ export function BotCardDmTile({
           className="shrink-0 text-zinc-500"
         />
         <div className="flex min-w-0 flex-col">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span" unmask={false}>
             {title}
           </Text>
           <Text variant="small" as="span" className="text-zinc-500">

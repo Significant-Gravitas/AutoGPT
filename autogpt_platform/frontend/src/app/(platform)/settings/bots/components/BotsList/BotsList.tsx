@@ -1,6 +1,7 @@
 "use client";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 
 import { BotCard } from "../BotCard/BotCard";
@@ -13,7 +14,7 @@ export function BotsList() {
   if (isLoading) {
     return (
       <div className="flex w-full flex-col gap-3 px-4">
-        <div className="h-40 animate-pulse rounded-large bg-zinc-100" />
+        <Skeleton className="h-40 rounded-large" />
       </div>
     );
   }
@@ -35,7 +36,7 @@ export function BotsList() {
   if (isEmpty) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-        <Text variant="large-medium" as="span" className="text-textBlack">
+        <Text variant="large-medium" as="span">
           No bots enabled
         </Text>
         <Text variant="body" className="max-w-[360px] text-zinc-500">

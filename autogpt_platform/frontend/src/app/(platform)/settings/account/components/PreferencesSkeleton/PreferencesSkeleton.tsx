@@ -80,7 +80,7 @@ function NotificationsSkeleton() {
           {Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
-              className="flex items-center justify-between gap-4 rounded-[12px] px-4 py-3"
+              className="flex items-center justify-between gap-4 rounded-xl px-4 py-3"
             >
               <div className="flex min-w-0 flex-col gap-2">
                 <Skeleton className="h-4 w-56" />

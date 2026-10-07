@@ -35,7 +35,7 @@ export function BotCard({ platform }: Props) {
             height={32}
             className="rounded-md"
           />
-          <Text variant="large-medium" as="h2" className="text-textBlack">
+          <Text variant="large-medium" as="h2">
             {platform.display_name}
           </Text>
           {pendingInstall ? (
@@ -78,13 +78,7 @@ export function BotCard({ platform }: Props) {
       </header>
 
       <section className="flex flex-col gap-2">
-        <Text
-          variant="small-medium"
-          as="span"
-          className="uppercase tracking-wide text-zinc-500"
-        >
-          Direct messages
-        </Text>
+        <Text variant="eyebrow">Direct messages</Text>
         <BotCardDmTile
           platformName={platform.display_name}
           serverNoun={serverNoun}
@@ -96,13 +90,7 @@ export function BotCard({ platform }: Props) {
       </section>
 
       <section className="flex flex-col gap-2">
-        <Text
-          variant="small-medium"
-          as="span"
-          className="uppercase tracking-wide text-zinc-500"
-        >
-          Linked {serverNoun}s
-        </Text>
+        <Text variant="eyebrow">Linked {serverNoun}s</Text>
         <BotCardServerList
           platformName={platform.display_name}
           serverNoun={serverNoun}

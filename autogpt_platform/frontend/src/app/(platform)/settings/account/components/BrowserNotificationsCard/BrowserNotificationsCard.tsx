@@ -27,7 +27,7 @@ export function BrowserNotificationsCard({ index = 0 }: Props) {
     >
       <div className="flex h-fit flex-col gap-4 rounded-[18px] border border-zinc-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         <div className="flex flex-col gap-1">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span">
             Browser
           </Text>
           {/* Unlike the email settings above, these live in this browser's

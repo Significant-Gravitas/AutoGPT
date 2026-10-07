@@ -86,14 +86,15 @@ function BotCardServerRow({
           <Text
             variant="body-medium"
             as="span"
-            className="truncate text-textBlack"
+            className="truncate"
+            unmask={false}
           >
             {displayLabel}
           </Text>
           {botMissing ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="inline-flex items-center gap-1 text-xs text-amber-600">
+                <span className="inline-flex items-center gap-1 text-xs text-yellow-600">
                   <Icon icon={AlertCircleIcon} size={14} /> Name unavailable
                 </span>
               </TooltipTrigger>
