@@ -23,50 +23,94 @@ from backend.data.subscription_activation_evidence import (
     invoice_subscription,
     line_price,
     qualifying_invoice,
+    settled_proration_invoice,
     settled_recurring_invoice,
 )
+from backend.data.subscription_activation_models import PaidActivationResult
 from backend.data.subscription_trial import TrialState
 
 
-async def reconcile_paid_activation(user_id: str, subscription_id: str) -> bool:
+async def reconcile_paid_activation(
+    user_id: str, subscription_id: str
+) -> PaidActivationResult | None:
     user = await User.prisma().find_unique_or_raise(where={"id": user_id})
     raw = await stripe_call(stripe.Subscription.retrieve_async, subscription_id)
     verify_subscription_owner(user, dict(raw))
     await credit.sync_subscription_from_stripe(dict(raw))
     state = await get_usage_activation_state(user_id)
     if not state.ready or state.tier != SubscriptionTier.PRO:
-        return False
-    if raw.status != "active" or not await current_invoice_is_settled(dict(raw)):
-        return False
+        return None
+    if raw.status != "active" or not await current_invoice_is_settled(
+        dict(raw), allow_proration=True
+    ):
+        return None
     async with transaction() as tx:
         locked = await lock_activation_user(user_id, tx)
         if locked.subscriptionTier != SubscriptionTier.PRO:
-            return False
-        await query_raw_with_schema(
-            'SELECT "id" FROM {schema_prefix}"SubscriptionTrial" WHERE "userId" = $1 FOR UPDATE',
-            user_id,
-            client=tx,
-        )
-        row = await tx.subscriptiontrial.find_unique(where={"userId": user_id})
-        trial = TrialState.from_db(row) if row else None
-        current = dict(
-            await stripe_call(stripe.Subscription.retrieve_async, subscription_id)
-        )
-        price_id = subscription_price_id(current)
-        if not price_id:
-            return False
-        if trial and trial.subscription_id == subscription_id:
-            if price_id != trial.offer.price_id:
-                return False
-        elif (await credit.build_price_to_tier_map()).get(
-            price_id
-        ) != SubscriptionTier.PRO:
-            return False
-        # Even a pre-existing/admin Pro label cannot hide incomplete first-payment
-        # reconciliation. This returns false if reset eligibility is unknown.
-        return await publish_initial_pro_activation(
-            locked, current, price_id, tx, trial
-        )
+            return None
+        return await _reconcile_locked_activation(locked, subscription_id, tx)
+
+
+async def _reconcile_locked_activation(
+    user: User, subscription_id: str, tx: Prisma
+) -> PaidActivationResult | None:
+    await query_raw_with_schema(
+        'SELECT "id" FROM {schema_prefix}"SubscriptionTrial" WHERE "userId" = $1 FOR UPDATE',
+        user.id,
+        client=tx,
+    )
+    row = await tx.subscriptiontrial.find_unique(where={"userId": user.id})
+    trial = (
+        TrialState.from_db(row)
+        if row and row.stripeSubscriptionId == subscription_id
+        else None
+    )
+    current = dict(
+        await stripe_call(stripe.Subscription.retrieve_async, subscription_id)
+    )
+    price_id = subscription_price_id(current)
+    if not price_id:
+        return None
+    accepted_price = bool(
+        trial
+        and price_id == trial.offer.price_id
+        and trial.offer.tier == SubscriptionTier.PRO
+    )
+    if trial and trial.converted_at is None and not accepted_price:
+        return None
+    if (
+        not accepted_price
+        and (await credit.build_price_to_tier_map()).get(price_id)
+        != SubscriptionTier.PRO
+    ):
+        return None
+    # Even an admin Pro label cannot hide incomplete first-payment reconciliation.
+    if not await publish_initial_pro_activation(
+        user, current, price_id, tx, trial if accepted_price else None
+    ):
+        return None
+    return await _paid_activation_result(user.id, current, tx)
+
+
+async def _paid_activation_result(
+    user_id: str, subscription: dict, tx: Prisma
+) -> PaidActivationResult | None:
+    activation = await tx.paidusageactivation.find_unique(where={"userId": user_id})
+    if activation and activation.readyAt is None:
+        return None
+    invoice_id = INVOICE_REFERENCE.validate_python(
+        subscription["latest_invoice"]
+    ).invoice_id
+    usage_reset = bool(
+        activation
+        and activation.stripeSubscriptionId == subscription["id"]
+        and activation.stripeInvoiceId == invoice_id
+    )
+    return PaidActivationResult(
+        invoice_id=invoice_id,
+        usage_reset=usage_reset,
+        activation_id=activation.id if activation and usage_reset else None,
+    )
 
 
 async def lock_activation_user(user_id: str, tx: Prisma) -> User:
@@ -94,7 +138,9 @@ def subscription_price_id(subscription: dict) -> str | None:
     return data[0].get("price", {}).get("id")
 
 
-async def current_invoice_is_settled(subscription: dict) -> bool:
+async def current_invoice_is_settled(
+    subscription: dict, *, allow_proration: bool = False
+) -> bool:
     latest = subscription.get("latest_invoice")
     if not latest or subscription.get("status") != "active":
         return False
@@ -109,7 +155,15 @@ async def current_invoice_is_settled(subscription: dict) -> bool:
             "has_more": False,
         }
     return bool(
-        settled_recurring_invoice(invoice)
+        (
+            settled_recurring_invoice(invoice)
+            or (
+                allow_proration
+                and settled_proration_invoice(
+                    invoice, subscription_price_id(subscription)
+                )
+            )
+        )
         and invoice.get("customer") == subscription.get("customer")
         and invoice_subscription(invoice) == subscription.get("id")
         and (
@@ -130,7 +184,7 @@ async def publish_initial_pro_activation(
     verify_subscription_owner(user, subscription)
     if subscription_price_id(subscription) != price_id:
         return False
-    if not await current_invoice_is_settled(subscription):
+    if not await current_invoice_is_settled(subscription, allow_proration=True):
         return False
     existing = await tx.paidusageactivation.find_unique(where={"userId": user.id})
     if existing:

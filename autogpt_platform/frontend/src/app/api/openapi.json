@@ -17835,6 +17835,7 @@
               "action_required",
               "processing",
               "ready",
+              "not_applicable",
               "failed"
             ],
             "title": "Status"
@@ -17869,6 +17870,15 @@
           "error_code": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error Code"
+          },
+          "usage_reset": {
+            "type": "boolean",
+            "title": "Usage Reset",
+            "default": false
+          },
+          "activation_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Activation Id"
           }
         },
         "type": "object",

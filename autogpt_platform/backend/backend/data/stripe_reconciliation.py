@@ -7,17 +7,17 @@ then for every reconcilable user (has a Stripe customer, not ENTERPRISE) sets th
 tier from the map (NO_TIER when the customer is absent). Manual grants (no Stripe
 customer) and ENTERPRISE rows are never touched.
 
-Pro candidates also pass through subscription and settled-invoice reconciliation,
-including accounts already marked Pro: tier assignment alone does not establish
-that first paid activation and its usage generation completed. Other unchanged
-tiers need no writes. Manual grants (no customer) remain excluded.
+Pro candidates without a completed activation for their current subscription pass
+through subscription and settled-invoice reconciliation: tier assignment alone
+does not establish that first paid activation and its usage generation completed.
+Other unchanged tiers need no writes. Manual grants (no customer) remain excluded.
 """
 
 import logging
 
 import stripe
 from prisma.enums import SubscriptionTier
-from prisma.models import User
+from prisma.models import PaidUsageActivation, User
 from pydantic import BaseModel, Field
 
 from backend.data.credit import (
@@ -170,7 +170,8 @@ async def _reconcile_one(
             # Stripe under the activation lock and requires settled evidence.
             # Run this even for an unchanged tier to recover incomplete usage
             # activation; never grant Pro by calling set_subscription_tier.
-            target_tier = await _reconcile_pro_tier(user, subscription)
+            if await _requires_pro_reconciliation(user, subscription):
+                target_tier = await _reconcile_pro_tier(user, subscription)
         if target_tier == current_tier:
             summary.unchanged += 1
             return
@@ -205,6 +206,19 @@ async def _reconcile_one(
         summary.downgrades += 1
     else:
         summary.upgrades += 1
+
+
+async def _requires_pro_reconciliation(user: User, subscription: dict) -> bool:
+    if user.subscriptionTier != SubscriptionTier.PRO:
+        return True
+    activation = await PaidUsageActivation.prisma().find_unique(
+        where={"userId": user.id}
+    )
+    return not (
+        activation
+        and activation.readyAt is not None
+        and activation.stripeSubscriptionId == subscription.get("id")
+    )
 
 
 async def _reconcile_pro_tier(user: User, subscription: dict) -> SubscriptionTier:

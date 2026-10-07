@@ -133,11 +133,11 @@ async def activation_case(mocker):
         15432,
         "/trial_test",
     )
-    ci = os.environ.get("GITHUB_ACTIONS") == "true" and (
-        target.hostname,
-        target.port,
-        target.path,
-    ) == ("localhost", 5432, "/postgres")
+    ci = (
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and (target.hostname, target.port) == ("localhost", 5432)
+        and target.path in ("/postgres", "/ci_copilot")
+    )
     assert (
         local or ci
     ), "Requires the explicitly selected disposable activation database"

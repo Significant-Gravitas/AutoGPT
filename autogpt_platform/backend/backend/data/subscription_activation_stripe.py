@@ -4,9 +4,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 import stripe
+from prisma.enums import SubscriptionTier
 from prisma.models import User
 from pydantic import BaseModel, Field
 
+from backend.data import credit
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_activation_models import (
     ActivationTerms,
@@ -121,6 +123,28 @@ async def owned_subscription(user_id: str, subscription_id: str) -> BillingSubsc
     ):
         raise ActivationUnavailable("Subscription ownership could not be established")
     return sub
+
+
+async def is_pro_subscription(
+    user_id: str, sub: BillingSubscription, accepted_price_id: str | None = None
+) -> bool | None:
+    if sub.items.has_more or len(sub.items.data) != 1:
+        return None
+    item = sub.items.data[0]
+    if item.quantity != 1:
+        return None
+    if accepted_price_id == item.price.id:
+        return True
+    trial = await get_subscription_trial(user_id)
+    if (
+        trial
+        and trial.subscription_id == sub.id
+        and trial.offer.tier == "PRO"
+        and trial.offer.price_id == item.price.id
+    ):
+        return True
+    tier = (await credit.build_price_to_tier_map()).get(item.price.id)
+    return tier == SubscriptionTier.PRO if tier is not None else None
 
 
 async def conversion_trial(user_id: str) -> tuple[TrialState, BillingSubscription]:
