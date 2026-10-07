@@ -168,7 +168,9 @@ class ExpertOnboardingTool(BaseTool):
             message="; ".join(step.question for step in steps),
             session_id=session.session_id,
             expert_id=expert_id,
-            greeting=_strip_dashes(greeting)[:MAX_GREETING_LENGTH],
+            # Cap before the regex: its leading ``\s*`` backtracks
+            # quadratically over a long run of spaces.
+            greeting=_strip_dashes(greeting.strip()[:MAX_GREETING_LENGTH]),
             steps=steps,
         )
 
