@@ -129,28 +129,28 @@ function ChatGPTConnectionDialog({
         <Dialog.Content>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1">
-              <Text variant="small" className="text-[#8A8A90]">
+              <Text variant="small" tone="muted">
                 Connected account
               </Text>
-              <Text variant="body-medium" className="text-black">
+              <Text variant="body-medium" unmask={false}>
                 {snapshot?.email ?? account ?? "Your ChatGPT account"}
               </Text>
               {accountQuery.isLoading ? (
-                <Text variant="small" className="text-[#8A8A90]">
+                <Text variant="small" tone="muted">
                   Checking with ChatGPT…
                 </Text>
               ) : accountQuery.isError ? (
-                <Text variant="small" className="text-[#8A8A90]">
+                <Text variant="small" tone="muted">
                   Could not reach ChatGPT to confirm the plan on this account.
                 </Text>
               ) : requiresReconnect ? (
-                <Text variant="small" className="text-amber-700">
+                <Text variant="small" className="text-yellow-700">
                   ChatGPT says this connection needs to be reconnected.
                 </Text>
               ) : (
                 snapshot?.plan_type && (
                   <span className="mt-1 flex flex-wrap gap-2">
-                    <span className="rounded-[10px] bg-[#F1EBFF] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#4A25AD]">
+                    <span className="rounded-[10px] bg-purple-50 px-2 py-0.5 text-[13px] font-medium leading-5 text-purple-800">
                       {snapshot.plan_type} plan
                     </span>
                   </span>
@@ -158,12 +158,12 @@ function ChatGPTConnectionDialog({
               )}
             </div>
 
-            <Text variant="small" className="text-[#8A8A90]">
+            <Text variant="small" tone="muted">
               ChatGPT identifies the workspace behind this connection only by an
               internal id, so it cannot be named here yet.
             </Text>
 
-            <Text variant="small" className="text-[#505057]">
+            <Text variant="small" tone="secondary">
               {connection?.is_default
                 ? "New chats start on this connection and run on your ChatGPT plan."
                 : "Chats you route here run on your ChatGPT plan instead of AutoGPT credits."}
@@ -190,7 +190,7 @@ function ChatGPTConnectionDialog({
               </Button>
             </div>
 
-            <Text variant="small" className="text-[#8A8A90]">
+            <Text variant="small" tone="muted">
               Disconnecting stops new chats running on your ChatGPT plan. Your
               chat history is kept, and your other integrations are unaffected.
             </Text>
@@ -275,28 +275,28 @@ function Microsoft365CopilotConnectionDialog({
         <Dialog.Content>
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-1">
-              <Text variant="small" className="text-[#8A8A90]">
+              <Text variant="small" tone="muted">
                 Connected work account
               </Text>
-              <Text variant="body-medium" className="text-black">
+              <Text variant="body-medium" unmask={false}>
                 {displayName ??
                   credential?.username ??
                   "Microsoft 365 Copilot account"}
               </Text>
               {displayName && credential?.username && (
-                <Text variant="small" className="text-[#505057]">
+                <Text variant="small" tone="secondary" unmask={false}>
                   {credential.username}
                 </Text>
               )}
               {!credential?.username && (
-                <Text variant="small" className="text-[#8A8A90]">
+                <Text variant="small" tone="muted">
                   Reconnect once to show the signed-in account here.
                 </Text>
               )}
             </div>
 
             <div className="flex flex-col gap-2">
-              <Text variant="small-medium" className="text-[#505057]">
+              <Text variant="small-medium" tone="secondary">
                 Access granted
               </Text>
               {accessLabels.length > 0 ? (
@@ -304,20 +304,20 @@ function Microsoft365CopilotConnectionDialog({
                   {accessLabels.map((label) => (
                     <span
                       key={label}
-                      className="rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#505057]"
+                      className="rounded-[10px] bg-slate-100 px-2 py-0.5 text-[13px] font-medium leading-5 text-zinc-700"
                     >
                       {label}
                     </span>
                   ))}
                 </div>
               ) : (
-                <Text variant="small" className="text-[#8A8A90]">
+                <Text variant="small" tone="muted">
                   Reconnect once to refresh the access shown here.
                 </Text>
               )}
             </div>
 
-            <Text variant="small" className="text-[#505057]">
+            <Text variant="small" tone="secondary">
               Microsoft still limits every answer to content this work account
               can already access in Microsoft 365.
             </Text>
@@ -333,7 +333,7 @@ function Microsoft365CopilotConnectionDialog({
               </Button>
             </div>
 
-            <Text variant="small" className="text-[#8A8A90]">
+            <Text variant="small" tone="muted">
               Disconnecting stops new chats using this Copilot subscription.
               Your chat history is kept, and your other integrations are
               unaffected.

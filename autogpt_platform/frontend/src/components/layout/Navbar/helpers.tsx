@@ -1,23 +1,36 @@
 import {
-  IconBuilder,
-  IconEdit,
-  IconLibrary,
-  IconLogOut,
-  IconMarketplace,
-  IconRefresh,
-  IconSettings,
-  IconSliders,
-  IconType,
-  IconUploadCloud,
-} from "@/components/__legacy__/ui/icons";
-import {
+  Book02Icon,
+  CloudUploadIcon,
   CreditCardIcon,
+  Logout03Icon,
   MessageMultiple02Icon,
   NewsIcon,
+  PencilEdit02Icon,
   QuestionIcon,
+  RefreshIcon,
+  Settings01Icon,
+  SlidersHorizontalIcon,
   Store01Icon,
+  ToyBrickIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+
+export enum IconType {
+  Marketplace,
+  Library,
+  Builder,
+  Edit,
+  LayoutDashboard,
+  UploadCloud,
+  Settings,
+  LogOut,
+  AutoGPTLogo,
+  Sliders,
+  Chat,
+  Billing,
+  Help,
+  WhatsNew,
+}
 
 type Link = {
   name: string;
@@ -225,21 +238,21 @@ export function getAccountMenuOptionIcon(icon: IconType) {
     case IconType.LayoutDashboard:
       return <Icon icon={Store01Icon} className={iconClass} />;
     case IconType.UploadCloud:
-      return <IconUploadCloud className={iconClass} />;
+      return <Icon icon={CloudUploadIcon} className={iconClass} />;
     case IconType.Edit:
-      return <IconEdit className={iconClass} />;
+      return <Icon icon={PencilEdit02Icon} className={iconClass} />;
     case IconType.Settings:
-      return <IconSettings className={iconClass} />;
+      return <Icon icon={Settings01Icon} className={iconClass} />;
     case IconType.LogOut:
-      return <IconLogOut className={iconClass} />;
+      return <Icon icon={Logout03Icon} className={iconClass} />;
     case IconType.Marketplace:
-      return <IconMarketplace className={iconClass} />;
+      return <Icon icon={Store01Icon} className={iconClass} />;
     case IconType.Library:
-      return <IconLibrary className={iconClass} />;
+      return <Icon icon={Book02Icon} className={iconClass} />;
     case IconType.Builder:
-      return <IconBuilder className={iconClass} />;
+      return <Icon icon={ToyBrickIcon} className={iconClass} />;
     case IconType.Sliders:
-      return <IconSliders className={iconClass} />;
+      return <Icon icon={SlidersHorizontalIcon} className={iconClass} />;
     case IconType.Chat:
       return <Icon icon={MessageMultiple02Icon} className={iconClass} />;
     case IconType.Billing:
@@ -249,6 +262,6 @@ export function getAccountMenuOptionIcon(icon: IconType) {
     case IconType.WhatsNew:
       return <Icon icon={NewsIcon} className={iconClass} />;
     default:
-      return <IconRefresh className={iconClass} />;
+      return <Icon icon={RefreshIcon} className={iconClass} />;
   }
 }

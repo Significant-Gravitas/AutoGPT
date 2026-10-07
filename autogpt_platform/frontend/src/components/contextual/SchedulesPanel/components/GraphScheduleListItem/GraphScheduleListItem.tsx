@@ -71,14 +71,14 @@ export function GraphScheduleListItem({
       >
         <div
           className={cn(
-            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-slate-50 bg-emerald-50",
+            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-slate-50 bg-green-50",
             iconClassName,
           )}
         >
           <Icon
             icon={Calendar03Icon}
             size={18}
-            className={iconClassName ? "text-inherit" : "text-emerald-700"}
+            className={iconClassName ? "text-inherit" : "text-green-700"}
           />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
@@ -89,20 +89,16 @@ export function GraphScheduleListItem({
             {agentLabel}
           </Text>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <Text
-              variant="small"
-              className="!text-zinc-500"
-              title={nextRunTitle}
-            >
+            <Text variant="small" tone="muted" title={nextRunTitle}>
               {nextRunLabel}
             </Text>
             <span className="text-zinc-300">•</span>
-            <Text variant="small" className="!text-zinc-500">
+            <Text variant="small" tone="muted">
               {recurrenceLabel}
             </Text>
             <span className="text-zinc-300">•</span>
             <span
-              className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700"
+              className="rounded-md bg-green-100 px-2 py-0.5 text-xs text-green-700"
               data-testid="schedule-kind-badge"
             >
               Agent run
@@ -145,18 +141,18 @@ export function GraphScheduleListItem({
         <Dialog.Content>
           <div className="flex flex-col gap-5">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-green-100 bg-green-50">
                 <Icon
                   icon={Calendar03Icon}
                   size={20}
-                  className="text-emerald-700"
+                  className="text-green-700"
                 />
               </div>
               <div className="min-w-0">
                 <Text variant="body-medium" className="truncate">
                   {agentLabel}
                 </Text>
-                <Text variant="small" className="!text-zinc-500">
+                <Text variant="small" tone="muted">
                   Recurring agent run
                 </Text>
               </div>

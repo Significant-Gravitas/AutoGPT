@@ -44,7 +44,7 @@ export function AuthCard({ children, title, className }: Props) {
   return (
     <Card
       className={cn(
-        "mx-auto flex min-h-[40vh] w-full max-w-[32rem] flex-col items-center justify-center gap-8",
+        "mx-auto flex min-h-[40vh] w-full max-w-lg flex-col items-center justify-center gap-8",
         className,
       )}
     >

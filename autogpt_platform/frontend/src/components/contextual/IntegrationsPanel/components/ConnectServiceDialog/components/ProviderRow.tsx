@@ -23,12 +23,12 @@ export function ProviderRow({ provider, onSelect }: Props) {
     <button
       type="button"
       onClick={() => onSelect(provider.id)}
-      className="group flex min-h-20 w-full items-center gap-3 rounded-xl border border-zinc-200 bg-white px-[0.875rem] py-[0.625rem] text-left transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 active:bg-zinc-100"
+      className="group flex min-h-20 w-full items-center gap-3 rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-left transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 active:bg-zinc-100"
     >
       {!src || brokenSrc === src ? (
         <div
           aria-hidden
-          className="flex size-9 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-[14px] font-semibold uppercase text-zinc-600"
+          className="flex size-9 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-sm font-semibold uppercase text-zinc-600"
         >
           {provider.name?.charAt(0) ?? provider.id.charAt(0)}
         </div>
@@ -44,7 +44,7 @@ export function ProviderRow({ provider, onSelect }: Props) {
         />
       )}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] font-medium leading-[22px] text-zinc-800">
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium leading-[22px] text-zinc-800">
           <span>{provider.name}</span>
           {provider.mcpServer && (
             <Badge variant="info" size="small">
@@ -58,7 +58,7 @@ export function ProviderRow({ provider, onSelect }: Props) {
               </Badge>
             )}
         </span>
-        <span className="truncate text-[12px] leading-[20px] text-zinc-500">
+        <span className="truncate text-xs leading-5 text-zinc-500">
           {provider.description ?? provider.id}
         </span>
       </span>

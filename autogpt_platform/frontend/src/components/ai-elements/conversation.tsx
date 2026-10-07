@@ -1,8 +1,11 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import type { ButtonProps } from "@/components/atoms/Button/helpers";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { ArrowDownIcon } from "lucide-react";
+import { ArrowDown02Icon } from "@hugeicons/core-free-icons";
 import type { ComponentProps } from "react";
 import { useCallback } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
@@ -61,11 +64,15 @@ export const ConversationEmptyState = ({
   >
     {children ?? (
       <>
-        {icon && <div className="text-neutral-500">{icon}</div>}
+        {icon && <div className="text-zinc-500">{icon}</div>}
         <div className="space-y-1">
-          <h3 className="text-sm font-medium">{title}</h3>
+          <Text variant="body-medium" as="h3">
+            {title}
+          </Text>
           {description && (
-            <p className="text-sm text-neutral-500">{description}</p>
+            <Text variant="body" tone="muted">
+              {description}
+            </Text>
           )}
         </div>
       </>
@@ -73,7 +80,10 @@ export const ConversationEmptyState = ({
   </div>
 );
 
-export type ConversationScrollButtonProps = ComponentProps<typeof Button>;
+export type ConversationScrollButtonProps = Extract<
+  ButtonProps,
+  { as?: "button" }
+>;
 
 export const ConversationScrollButton = ({
   className,
@@ -89,16 +99,18 @@ export const ConversationScrollButton = ({
     !isAtBottom && (
       <Button
         className={cn(
-          "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full",
+          "absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full",
           className,
         )}
         onClick={handleScrollToBottom}
-        size="icon"
+        size="icon-sm"
         type="button"
-        variant="outline"
+        variant="secondary"
+        aria-label="Scroll to bottom"
+        withTooltip={false}
         {...props}
       >
-        <ArrowDownIcon className="size-4" />
+        <Icon icon={ArrowDown02Icon} className="size-4" />
       </Button>
     )
   );

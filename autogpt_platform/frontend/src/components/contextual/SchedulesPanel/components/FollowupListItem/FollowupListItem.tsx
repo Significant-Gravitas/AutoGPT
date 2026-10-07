@@ -58,11 +58,11 @@ export function FollowupListItem({ followup }: Props) {
           {messagePreview}
         </Text>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          <Text variant="small" className="!text-zinc-500" title={nextRunTitle}>
+          <Text variant="small" tone="muted" title={nextRunTitle}>
             {nextRunLabel}
           </Text>
           <span className="text-zinc-300">•</span>
-          <Text variant="small" className="!text-zinc-500">
+          <Text variant="small" tone="muted">
             {recurrenceLabel}
           </Text>
           <span className="text-zinc-300">•</span>
@@ -126,19 +126,18 @@ export function FollowupListItem({ followup }: Props) {
         <Dialog.Content>
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <Text variant="small" className="!text-zinc-500">
+              <Text variant="small" tone="muted">
                 {nextRunLabel}
               </Text>
               <span className="text-zinc-300">•</span>
-              <Text variant="small" className="!text-zinc-500">
+              <Text variant="small" tone="muted">
                 {recurrenceLabel}
               </Text>
               <span className="text-zinc-300">•</span>
               {kindBadge}
             </div>
             <pre
-              className="max-h-[60vh] overflow-auto rounded-medium bg-zinc-50 p-3 text-sm text-zinc-800"
-              style={{ whiteSpace: "pre-wrap" }}
+              className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-medium bg-zinc-50 p-3 text-sm text-zinc-800"
               data-testid="followup-view-body"
             >
               {fullMessage}

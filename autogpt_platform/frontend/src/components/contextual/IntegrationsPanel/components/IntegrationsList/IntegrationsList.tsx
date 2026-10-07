@@ -116,7 +116,7 @@ export function IntegrationsList({ query, onQueryChange: setQuery }: Props) {
 
   return (
     <div className="flex w-full flex-col gap-3">
-      <div className="sticky top-0 z-10 -mx-1 bg-[#F9F9FA] px-1 pb-1 pt-1">
+      <div className="sticky top-0 z-10 -mx-1 bg-zinc-50 px-1 pb-1 pt-1">
         <IntegrationsSearch value={query} onChange={setQuery} />
       </div>
 
@@ -140,7 +140,7 @@ export function IntegrationsList({ query, onQueryChange: setQuery }: Props) {
                 : { opacity: 0, height: 0, marginBottom: -12 }
             }
             transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
-            className="sticky top-2 z-20 bg-[#F9F9FA] sm:top-0"
+            className="sticky top-2 z-20 bg-zinc-50 sm:top-0"
             style={{ overflow: "hidden" }}
           >
             <IntegrationsSelectionBar

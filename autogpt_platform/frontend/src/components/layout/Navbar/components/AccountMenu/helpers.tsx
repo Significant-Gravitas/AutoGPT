@@ -1,4 +1,4 @@
-import { IconType } from "@/components/__legacy__/ui/icons";
+import { IconType } from "../../helpers";
 import {
   ChartIncreaseIcon,
   CreditCardIcon,
@@ -13,7 +13,7 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function getAccountMenuIcon(icon: IconType) {
-  const className = "h-[18px] w-[18px] shrink-0";
+  const className = "size-4.5 shrink-0";
   switch (icon) {
     case IconType.Edit:
       return <Icon icon={UserIcon} className={className} />;

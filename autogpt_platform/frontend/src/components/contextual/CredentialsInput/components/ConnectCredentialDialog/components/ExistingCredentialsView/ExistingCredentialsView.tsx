@@ -53,7 +53,7 @@ export function ExistingCredentialsView({
         </span>
         <span aria-hidden className="grid grid-cols-3 gap-1.5">
           {Array.from({ length: 9 }, (_, dot) => (
-            <span key={dot} className="h-1 w-1 rounded-full bg-[#5b21b6]/30" />
+            <span key={dot} className="h-1 w-1 rounded-full bg-purple-700/30" />
           ))}
         </span>
         <span className="flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-[0_8px_24px_rgba(0,0,0,0.08)] ring-1 ring-zinc-100">
@@ -62,10 +62,10 @@ export function ExistingCredentialsView({
       </div>
 
       <div className="flex flex-col gap-1.5 text-center">
-        <Text variant="h3" className="!text-[1.25rem] text-zinc-900">
+        <Text variant="h3" tone="primary" className="text-[1.25rem]">
           {TITLES[purpose](displayName)}
         </Text>
-        <Text variant="body" className="!text-zinc-500">
+        <Text variant="body" tone="muted">
           {DESCRIPTIONS[purpose]}
         </Text>
       </div>
@@ -73,7 +73,7 @@ export function ExistingCredentialsView({
       <div
         role="radiogroup"
         aria-label="Account"
-        className="flex flex-col gap-1 rounded-2xl bg-neutral-100 p-1.5"
+        className="flex flex-col gap-1 rounded-2xl bg-zinc-100 p-1.5"
       >
         {credentials.map((credential) => {
           const isSelected = credential.id === selectedId;
@@ -111,12 +111,12 @@ export function ExistingCredentialsView({
                 aria-hidden
                 className={
                   isSelected
-                    ? "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-violet-600"
+                    ? "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-purple-600"
                     : "h-5 w-5 shrink-0 rounded-full border-2 border-zinc-200"
                 }
               >
                 {isSelected && (
-                  <span className="h-2.5 w-2.5 rounded-full bg-violet-600" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-purple-600" />
                 )}
               </span>
             </button>

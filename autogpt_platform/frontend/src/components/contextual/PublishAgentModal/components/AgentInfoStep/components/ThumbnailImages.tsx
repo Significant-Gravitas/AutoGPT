@@ -51,18 +51,22 @@ export function ThumbnailImages({
     <div className="space-y-4">
       <div className="flex flex-col gap-1">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <Text variant="body-medium" as="h3" className="text-textBlack">
+          <Text variant="body-medium" as="h3">
             Media
           </Text>
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" tone="muted">
             {images.length}/5 images
           </Text>
         </div>
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" tone="muted">
           The selected image is submitted first and appears as the marketplace
           thumbnail.
         </Text>
-        {errorMessage && <p className="text-sm text-red-500">{errorMessage}</p>}
+        {errorMessage && (
+          <Text variant="body" tone="danger" unmask={false}>
+            {errorMessage}
+          </Text>
+        )}
       </div>
 
       <div
@@ -76,7 +80,7 @@ export function ThumbnailImages({
               aria-disabled={isUploading}
               data-testid="thumbnail-add-image-empty"
               className={cn(
-                "inline-flex h-[2.25rem] min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950",
+                "inline-flex h-9 min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950",
                 isUploading && "pointer-events-none opacity-60",
               )}
             >
@@ -102,7 +106,7 @@ export function ThumbnailImages({
               onClick={handleGenerateImage}
               disabled={isGenerating || isUploading || images.length >= 5}
               loading={isGenerating}
-              leftIcon={<Icon icon={MagicWand01Icon} className="h-4 w-4" />}
+              leadingIcon={MagicWand01Icon}
             >
               {isGenerating ? "Generating" : "Generate"}
             </Button>
@@ -163,11 +167,7 @@ export function ThumbnailImages({
                   size="small"
                   disabled={isUploading || isGenerating}
                   loading={isUploading}
-                  leftIcon={
-                    isUploading ? undefined : (
-                      <Icon icon={PlusSignIcon} size={16} />
-                    )
-                  }
+                  leadingIcon={PlusSignIcon}
                   data-testid="thumbnail-add-image"
                 >
                   {isUploading ? "Uploading" : "Add image"}
@@ -180,7 +180,7 @@ export function ThumbnailImages({
                 onClick={handleGenerateImage}
                 disabled={isGenerating || isUploading || images.length >= 5}
                 loading={isGenerating}
-                leftIcon={<Icon icon={MagicWand01Icon} className="h-4 w-4" />}
+                leadingIcon={MagicWand01Icon}
               >
                 {isGenerating
                   ? "Generating"

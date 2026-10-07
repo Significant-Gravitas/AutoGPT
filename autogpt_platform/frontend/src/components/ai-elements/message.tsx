@@ -1,13 +1,14 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { Button as AtomButton } from "@/components/atoms/Button/Button";
+import { Button } from "@/components/atoms/Button/Button";
+import type { ButtonProps } from "@/components/atoms/Button/helpers";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { cn } from "@/lib/utils";
@@ -17,7 +18,7 @@ import { createMathPlugin } from "@streamdown/math";
 import { escapeCurrencyAmounts } from "@/lib/markdown-math";
 import { mermaid } from "@streamdown/mermaid";
 import type { UIMessage } from "ai";
-import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import type { LinkSafetyModalProps } from "streamdown";
@@ -49,8 +50,8 @@ export const MessageContent = ({
     className={cn(
       "is-user:dark flex w-full min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
       "group-[.is-user]:w-fit",
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-neutral-100 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-neutral-950",
-      "group-[.is-assistant]:text-neutral-950",
+      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-zinc-950",
+      "group-[.is-assistant]:text-zinc-950",
       className,
     )}
     {...props}
@@ -71,7 +72,9 @@ export const MessageActions = ({
   </div>
 );
 
-export type MessageActionProps = ComponentProps<typeof Button> & {
+type ButtonElementProps = Extract<ButtonProps, { as?: "button" }>;
+
+export type MessageActionProps = ButtonElementProps & {
   tooltip?: string;
   label?: string;
 };
@@ -234,7 +237,7 @@ export const MessageBranchSelector = ({
   );
 };
 
-export type MessageBranchPreviousProps = ComponentProps<typeof Button>;
+export type MessageBranchPreviousProps = ButtonElementProps;
 
 export const MessageBranchPrevious = ({
   children,
@@ -245,6 +248,7 @@ export const MessageBranchPrevious = ({
   return (
     <Button
       aria-label="Previous branch"
+      withTooltip={false}
       disabled={totalBranches <= 1}
       onClick={goToPrevious}
       size="icon-sm"
@@ -252,12 +256,12 @@ export const MessageBranchPrevious = ({
       variant="ghost"
       {...props}
     >
-      {children ?? <ChevronLeftIcon size={14} />}
+      {children ?? <Icon icon={ArrowLeft01Icon} size={16} />}
     </Button>
   );
 };
 
-export type MessageBranchNextProps = ComponentProps<typeof Button>;
+export type MessageBranchNextProps = ButtonElementProps;
 
 export const MessageBranchNext = ({
   children,
@@ -268,6 +272,7 @@ export const MessageBranchNext = ({
   return (
     <Button
       aria-label="Next branch"
+      withTooltip={false}
       disabled={totalBranches <= 1}
       onClick={goToNext}
       size="icon-sm"
@@ -275,7 +280,7 @@ export const MessageBranchNext = ({
       variant="ghost"
       {...props}
     >
-      {children ?? <ChevronRightIcon size={14} />}
+      {children ?? <Icon icon={ArrowRight01Icon} size={16} />}
     </Button>
   );
 };
@@ -291,7 +296,7 @@ export const MessageBranchPage = ({
   return (
     <ButtonGroupText
       className={cn(
-        "border-none bg-transparent text-neutral-500 shadow-none",
+        "border-none bg-transparent text-zinc-500 shadow-none",
         className,
       )}
       {...props}
@@ -335,17 +340,18 @@ function ExternalLinkModal({
         </Text>
         <Text
           variant="small"
-          className="mt-2 break-all rounded-md bg-neutral-100 p-3 font-mono"
+          className="mt-2 break-all rounded-md bg-zinc-100 p-3 font-mono"
+          unmask={false}
         >
           {url}
         </Text>
         <Dialog.Footer>
-          <AtomButton variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
-          </AtomButton>
-          <AtomButton variant="primary" onClick={onConfirm}>
+          </Button>
+          <Button variant="primary" onClick={onConfirm}>
             Open link
-          </AtomButton>
+          </Button>
         </Dialog.Footer>
       </Dialog.Content>
     </Dialog>

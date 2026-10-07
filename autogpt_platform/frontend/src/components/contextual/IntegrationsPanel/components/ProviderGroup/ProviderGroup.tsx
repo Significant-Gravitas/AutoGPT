@@ -34,22 +34,22 @@ export function ProviderGroup({
       type="single"
       collapsible
       defaultValue={provider.id}
-      className="w-full overflow-hidden rounded-2xl border border-[#DADADC] bg-white"
+      className="w-full overflow-hidden rounded-2xl border border-zinc-200 bg-white"
     >
       <AccordionItem value={provider.id} className="border-b-0">
-        <AccordionTrigger className="px-3 py-3 pr-5 hover:no-underline [&>svg]:text-[#1F1F20]">
+        <AccordionTrigger className="px-3 py-3 pr-5 hover:no-underline [&>svg]:text-black">
           <div className="flex items-center gap-3">
             <ProviderAvatar provider={provider} />
-            <span className="text-[16px] font-medium leading-[26px] tracking-[-0.08px] text-black">
+            <span className="text-base font-medium leading-[26px] tracking-[-0.08px] text-black">
               {provider.name}
             </span>
-            <span className="inline-flex items-center justify-center rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[14px] font-medium leading-[22px] text-black">
+            <span className="inline-flex items-center justify-center rounded-[10px] bg-slate-100 px-2 py-0.5 text-sm font-medium leading-[22px] text-black">
               {count}
             </span>
           </div>
         </AccordionTrigger>
         <AccordionContent className="px-0 pb-0 pt-0">
-          <div className="flex flex-col divide-y divide-[#DADADC] border-t border-[#DADADC]">
+          <div className="flex flex-col divide-y divide-zinc-200 border-t border-zinc-200">
             {provider.credentials.map((credential) => (
               <CredentialRow
                 key={credential.id}
@@ -75,7 +75,7 @@ function ProviderAvatar({ provider }: { provider: ProviderGroupView }) {
     return (
       <div
         aria-hidden="true"
-        className="flex size-6 items-center justify-center rounded-full bg-[#D9D9D9] text-[10px] font-semibold uppercase text-zinc-700"
+        className="flex size-6 items-center justify-center rounded-full bg-zinc-200 text-[10px] font-semibold uppercase text-zinc-700"
         data-testid={`provider-avatar-${provider.id}`}
       >
         {provider.name?.charAt(0) ?? provider.id.charAt(0)}

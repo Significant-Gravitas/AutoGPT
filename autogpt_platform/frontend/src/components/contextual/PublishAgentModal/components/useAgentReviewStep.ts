@@ -30,8 +30,8 @@ function getHeroContent(
         description:
           "Your agent has been approved and is now live on the AutoGPT marketplace.",
         Icon: Tick02Icon,
-        pulse: "bg-emerald-400/40",
-        gradient: "from-emerald-400 to-emerald-600",
+        pulse: "bg-green-400/40",
+        gradient: "from-green-400 to-green-600",
       };
     case SubmissionStatus.REJECTED:
       return {
@@ -39,8 +39,8 @@ function getHeroContent(
         description:
           "Your submission was not approved. Review the feedback and resubmit.",
         Icon: Cancel01Icon,
-        pulse: "bg-rose-400/40",
-        gradient: "from-rose-400 to-rose-600",
+        pulse: "bg-red-400/40",
+        gradient: "from-red-400 to-red-600",
       };
     case SubmissionStatus.DRAFT:
       return {

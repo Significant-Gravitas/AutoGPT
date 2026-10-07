@@ -1,9 +1,9 @@
-import { IconType } from "@/components/__legacy__/ui/icons";
 import { describe, expect, test } from "vitest";
 import { getAccountMenuIcon } from "../helpers";
 import {
   getAccountMenuItems,
   getAccountMenuOptionIcon,
+  IconType,
 } from "../../../helpers";
 
 function flattenTexts(groups: ReturnType<typeof getAccountMenuItems>) {

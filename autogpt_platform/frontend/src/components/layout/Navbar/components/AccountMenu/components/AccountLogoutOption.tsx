@@ -21,7 +21,7 @@ export function AccountLogoutOption({ weight = "bold" }: Props) {
       destructive
       label="Log out"
       newLayout={weight === "regular"}
-      icon={<Icon icon={Logout03Icon} className="h-[18px] w-[18px] shrink-0" />}
+      icon={<Icon icon={Logout03Icon} className="size-4.5 shrink-0" />}
       onClick={handleLogout}
     />
   );

@@ -34,13 +34,13 @@ export function LlmMenuItem({
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {icon}
-          <Text variant="body" className="text-zinc-900">
+          <Text variant="body" tone="primary">
             {title}
           </Text>
         </div>
         <div className="flex items-center gap-2">
           {isActive && (
-            <Icon icon={Tick02Icon} className="h-4 w-4 text-emerald-600" />
+            <Icon icon={Tick02Icon} className="h-4 w-4 text-green-600" />
           )}
           {rightSlot}
           {showChevron && (
@@ -51,7 +51,8 @@ export function LlmMenuItem({
       {subtitle && (
         <Text
           variant="small"
-          className={cn("mb-1 text-zinc-500", hasIcon && "pl-0")}
+          tone="muted"
+          className={cn("mb-1", hasIcon && "pl-0")}
         >
           {subtitle}
         </Text>

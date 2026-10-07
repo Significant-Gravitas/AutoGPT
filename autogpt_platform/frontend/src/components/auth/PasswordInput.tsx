@@ -1,6 +1,7 @@
 import { forwardRef, useState } from "react";
-import { EyeIcon, EyeOffIcon } from "lucide-react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { ViewIcon, ViewOffSlashIcon } from "@hugeicons/core-free-icons";
+import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Input, InputProps } from "@/components/__legacy__/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -22,8 +23,8 @@ const PasswordInput = forwardRef<HTMLInputElement, InputProps>(
         <Button
           type="button"
           variant="ghost"
-          size="sm"
-          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+          size="small"
+          className="absolute right-0 top-0 h-full min-w-0 rounded-md px-3 py-2 hover:border-transparent hover:bg-transparent"
           onMouseDown={() => setShowPassword(true)}
           onMouseUp={() => setShowPassword(false)}
           onMouseLeave={() => setShowPassword(false)}
@@ -31,9 +32,9 @@ const PasswordInput = forwardRef<HTMLInputElement, InputProps>(
           tabIndex={-1}
         >
           {showPassword && !disabled ? (
-            <EyeIcon className="h-4 w-4" aria-hidden="true" />
+            <Icon icon={ViewIcon} size={16} aria-hidden="true" />
           ) : (
-            <EyeOffIcon className="h-4 w-4" aria-hidden="true" />
+            <Icon icon={ViewOffSlashIcon} size={16} aria-hidden="true" />
           )}
           <span className="sr-only">
             {showPassword ? "Hide password" : "Show password"}

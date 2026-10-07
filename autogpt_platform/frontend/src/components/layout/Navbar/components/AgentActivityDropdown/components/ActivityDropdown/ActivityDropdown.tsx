@@ -102,34 +102,35 @@ export function ActivityDropdown({
                   size="small"
                   value={searchQuery}
                   onChange={(e) => handleSearchChange(e.target.value)}
-                  className="!focus:border-1 w-full pr-10"
-                  wrapperClassName="!mb-0"
+                  className="w-full pr-10"
+                  wrapperClassName="mb-0"
                   autoComplete="off"
                   autoFocus
                 />
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   onClick={handleClearSearch}
-                  className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
+                  className="absolute right-1 top-1/2 size-6 -translate-y-1/2 hover:border-transparent hover:bg-transparent"
                   aria-label="Clear search"
+                  withTooltip={false}
                 >
                   <Icon
                     icon={Cancel01Icon}
                     size={16}
-                    className="text-gray-500"
+                    className="text-zinc-500"
                   />
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
             <div className={cn(styles.headerContainer, newLayout && "py-0.5")}>
               {newLayout ? (
-                <span className="text-xs font-medium uppercase text-neutral-500">
+                <span className="text-xs font-medium uppercase text-zinc-500">
                   Agent Activity
                 </span>
               ) : (
-                <Text variant="large-semibold" className="!text-black">
-                  Agent Activity
-                </Text>
+                <Text variant="large-semibold">Agent Activity</Text>
               )}
               {withSearch ? (
                 <Button
@@ -139,15 +140,13 @@ export function ActivityDropdown({
                   aria-label="Search agents"
                   className={cn(
                     "hover:border-transparent hover:bg-transparent",
-                    newLayout
-                      ? "!h-auto !w-fit !min-w-0 !p-0"
-                      : "relative left-3",
+                    newLayout ? "h-auto w-fit min-w-0 p-0" : "relative left-3",
                   )}
                 >
                   <Icon
                     icon={Search01Icon}
                     size={16}
-                    className="h-4 w-4 text-gray-600"
+                    className="h-4 w-4 text-zinc-600"
                   />
                 </Button>
               ) : null}
@@ -172,16 +171,16 @@ export function ActivityDropdown({
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
-            <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-bgLightGrey p-6">
+            <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-zinc-100 p-6">
               <Icon icon={BellIcon} className="h-6 w-6 text-zinc-300" />
             </div>
             <div className="flex flex-col items-center justify-center">
-              <Text variant="body-medium" className="!text-black">
+              <Text variant="body-medium">
                 {searchQuery
                   ? "No matching agents found"
                   : "No recent runs to show yet"}
               </Text>
-              <Text variant="body" className="!text-zinc-500">
+              <Text variant="body" tone="muted">
                 {searchQuery
                   ? "Try another search term"
                   : "Start an agent to get updates"}

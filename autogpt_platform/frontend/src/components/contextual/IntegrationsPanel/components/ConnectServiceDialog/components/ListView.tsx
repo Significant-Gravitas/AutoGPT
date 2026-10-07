@@ -25,7 +25,7 @@ export function ListView({
 }: Props) {
   return (
     <div className="flex flex-col gap-4">
-      <Text variant="body" className="text-[#505057]">
+      <Text variant="body" tone="secondary">
         {description}
       </Text>
 
@@ -33,7 +33,7 @@ export function ListView({
         <Icon
           icon={Search01Icon}
           size={20}
-          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#83838C]"
+          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500"
         />
         <input
           type="text"
@@ -41,14 +41,14 @@ export function ListView({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search services..."
           aria-label="Search services"
-          className="h-[46px] w-full rounded-3xl border border-[#DADADC] bg-white pl-12 pr-4 text-sm leading-[22px] text-[#1F1F20] placeholder:text-[#83838C] focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
+          className="h-[46px] w-full rounded-3xl border border-zinc-200 bg-white pl-12 pr-4 text-sm leading-[22px] text-black placeholder:text-zinc-500 focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
         />
       </div>
 
       {providers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#DADADC] py-10 text-center">
-          <Icon icon={Plug01Icon} size={24} className="text-[#83838C]" />
-          <Text variant="body" className="text-[#505057]">
+        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-200 py-10 text-center">
+          <Icon icon={Plug01Icon} size={24} className="text-zinc-500" />
+          <Text variant="body" tone="secondary" unmask={false}>
             {query.trim()
               ? `No services match "${query.trim()}"`
               : "No services available"}

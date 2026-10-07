@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Form,
   FormDescription,
@@ -57,7 +58,9 @@ export function APIKeyCredentialsModal({
     >
       <Dialog.Content>
         {schemaDescription && (
-          <p className="mb-4 text-sm text-zinc-600">{schemaDescription}</p>
+          <Text variant="body" tone="secondary" className="mb-4" unmask={false}>
+            {schemaDescription}
+          </Text>
         )}
 
         <Form {...form}>

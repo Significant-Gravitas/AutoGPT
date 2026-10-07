@@ -176,14 +176,14 @@ describe("Wallet", () => {
 
   it("flashes the balance when the credit total changes", () => {
     const { container, rerender } = render(<Wallet />);
-    const overlay = container.querySelector(".bg-violet-400");
+    const overlay = container.querySelector(".bg-purple-400");
 
     expect(overlay?.className).toContain("opacity-0");
 
     creditsState.credits = 1479;
     rerender(<Wallet />);
 
-    expect(container.querySelector(".bg-violet-400")?.className).toContain(
+    expect(container.querySelector(".bg-purple-400")?.className).toContain(
       "opacity-50",
     );
     expect(screen.getByText("$14.79")).toBeDefined();
@@ -235,13 +235,13 @@ describe("Wallet timer cleanup", () => {
     creditsState.credits = 1479;
     rerender(<Wallet compact />);
 
-    expect(container.querySelector(".bg-violet-400")?.className).toContain(
+    expect(container.querySelector(".bg-purple-400")?.className).toContain(
       "opacity-50",
     );
 
     act(() => vi.advanceTimersByTime(300));
 
-    expect(container.querySelector(".bg-violet-400")?.className).toContain(
+    expect(container.querySelector(".bg-purple-400")?.className).toContain(
       "opacity-0",
     );
   });

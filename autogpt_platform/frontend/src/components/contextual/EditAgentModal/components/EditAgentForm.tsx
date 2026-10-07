@@ -93,16 +93,16 @@ export function EditAgentForm({
           onSubmit={form.handleSubmit(handleFormSubmit)}
           className="flex flex-col gap-5 pb-5"
         >
-          <section className="rounded-[18px] border border-amber-200 bg-amber-50 p-4">
+          <section className="rounded-[18px] border border-yellow-200 bg-yellow-50 p-4">
             <div className="mb-4 flex items-start gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-700 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-yellow-700 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
                 <Icon icon={InformationCircleIcon} size={18} />
               </div>
               <div className="flex min-w-0 flex-col gap-1">
-                <Text variant="body-medium" as="h3" className="text-amber-950">
+                <Text variant="body-medium" as="h3" className="text-yellow-950">
                   Update note
                 </Text>
-                <Text variant="small" className="text-amber-800">
+                <Text variant="small" className="text-yellow-800">
                   Reviewers use this to understand why this submission was
                   edited.
                 </Text>
@@ -126,7 +126,7 @@ export function EditAgentForm({
                     placeholder="Briefly describe what you changed"
                     error={form.formState.errors.changes_summary?.message}
                     required
-                    wrapperClassName="!mb-0"
+                    wrapperClassName="mb-0"
                     {...field}
                   />
                 </CharCountedTextarea>
@@ -143,7 +143,7 @@ export function EditAgentForm({
           >
             <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <span className="flex items-center gap-2 text-sm font-medium text-black">
                   <Icon
                     icon={Store01Icon}
                     size={18}
@@ -154,7 +154,7 @@ export function EditAgentForm({
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
-                      className="text-rose-500"
+                      className="text-red-500"
                     />
                   ) : basicsComplete ? (
                     <Icon
@@ -231,7 +231,7 @@ export function EditAgentForm({
 
             <AccordionItem value="thumbnails" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <span className="flex items-center gap-2 text-sm font-medium text-black">
                   <Icon
                     icon={Album01Icon}
                     size={18}
@@ -242,7 +242,7 @@ export function EditAgentForm({
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
-                      className="text-rose-500"
+                      className="text-red-500"
                     />
                   ) : thumbnailsComplete ? (
                     <Icon
@@ -268,7 +268,7 @@ export function EditAgentForm({
 
             <AccordionItem value="experience" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <span className="flex items-center gap-2 text-sm font-medium text-black">
                   <Icon
                     icon={SparklesIcon}
                     size={18}
@@ -279,7 +279,7 @@ export function EditAgentForm({
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
-                      className="text-rose-500"
+                      className="text-red-500"
                     />
                   ) : experienceComplete ? (
                     <Icon

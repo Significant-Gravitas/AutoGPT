@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { DeleteChatDialog } from "@/app/(platform)/copilot/components/DeleteChatDialog/DeleteChatDialog";
 import { ShareChatDialog } from "@/app/(platform)/copilot/sharing/ShareChatDialog";
 import { groupSessionsByExpert } from "@/app/(platform)/copilot/useSessionList";
@@ -46,14 +47,16 @@ export function RecentChats() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-4">
-        <LoadingSpinner size="small" className="text-neutral-500" />
+        <LoadingSpinner size="small" className="text-zinc-500" />
       </div>
     );
   }
 
   if (!sessions.length) {
     return (
-      <p className="px-2 py-2 text-sm text-neutral-500">No conversations yet</p>
+      <Text variant="body" tone="muted" className="p-2">
+        No conversations yet
+      </Text>
     );
   }
 

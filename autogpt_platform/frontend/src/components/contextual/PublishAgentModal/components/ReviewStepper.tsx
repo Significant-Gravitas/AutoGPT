@@ -44,8 +44,8 @@ const STEPS: Step[] = [
 ];
 
 const NODE_CLASS: Record<StepState, string> = {
-  done: "bg-emerald-500 text-white",
-  current: "bg-amber-50 text-amber-700 ring-2 ring-amber-300",
+  done: "bg-green-500 text-white",
+  current: "bg-yellow-50 text-yellow-700 ring-2 ring-yellow-300",
   upcoming: "bg-zinc-100 text-zinc-400",
 };
 
@@ -61,7 +61,7 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
       transition={{ duration: 0.24, ease: "easeOut", delay: 0.24 }}
       className="mt-6 flex w-full max-w-md flex-col gap-3 px-2"
     >
-      <Text variant="body-medium" as="span" className="text-textBlack">
+      <Text variant="body-medium" as="span">
         What happens next
       </Text>
       <ol className="flex flex-col">
@@ -81,8 +81,8 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
                 {!isLast ? (
                   <span
                     className={cn(
-                      "mt-1 min-h-[18px] w-px flex-1",
-                      step.state === "done" ? "bg-emerald-300" : "bg-zinc-200",
+                      "mt-1 min-h-4.5 w-px flex-1",
+                      step.state === "done" ? "bg-green-300" : "bg-zinc-200",
                     )}
                   />
                 ) : null}
@@ -91,26 +91,19 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
                 <Text
                   variant="small-medium"
                   as="span"
-                  className={
-                    step.state === "upcoming"
-                      ? "text-zinc-400"
-                      : "text-textBlack"
-                  }
+                  className={cn(step.state === "upcoming" && "text-zinc-400")}
                 >
                   {step.title}
                 </Text>
                 <Text
                   variant="small"
-                  className={
-                    step.state === "upcoming"
-                      ? "text-zinc-400"
-                      : "text-zinc-500"
-                  }
+                  tone="muted"
+                  className={cn(step.state === "upcoming" && "text-zinc-400")}
                 >
                   {step.description}
                 </Text>
                 {step.note ? (
-                  <Text variant="small" className="mt-1 text-amber-700">
+                  <Text variant="small" className="mt-1 text-yellow-700">
                     {step.note}
                   </Text>
                 ) : null}

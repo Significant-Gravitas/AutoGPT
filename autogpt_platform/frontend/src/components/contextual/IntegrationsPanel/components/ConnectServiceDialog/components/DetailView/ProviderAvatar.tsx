@@ -16,7 +16,7 @@ export function ProviderAvatar({ id, name }: Props) {
     return (
       <div
         aria-hidden
-        className="flex size-10 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-[16px] font-semibold uppercase text-zinc-600"
+        className="flex size-10 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-base font-semibold uppercase text-zinc-600"
       >
         {name?.charAt(0) ?? id.charAt(0)}
       </div>

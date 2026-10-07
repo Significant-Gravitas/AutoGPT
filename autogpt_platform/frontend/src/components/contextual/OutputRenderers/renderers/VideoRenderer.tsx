@@ -107,7 +107,7 @@ function renderVideo(
     return (
       <div className="group relative aspect-video w-full">
         <iframe
-          className="h-full w-full rounded-md border border-gray-200"
+          className="h-full w-full rounded-md border border-zinc-200"
           src={`https://www.youtube.com/embed/${youtubeID}`}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
@@ -123,7 +123,7 @@ function renderVideo(
     return (
       <div className="group relative aspect-video w-full">
         <iframe
-          className="h-full w-full rounded-md border border-gray-200"
+          className="h-full w-full rounded-md border border-zinc-200"
           src={`https://player.vimeo.com/video/${vimeoID}`}
           allow="autoplay; fullscreen; picture-in-picture"
           allowFullScreen
@@ -138,7 +138,7 @@ function renderVideo(
     <div className="group relative">
       <video
         controls
-        className="h-auto max-w-full rounded-md border border-gray-200"
+        className="h-auto max-w-full rounded-md border border-zinc-200"
         preload="metadata"
       >
         <source src={videoUrl} type={metadata?.mimeType || "video/mp4"} />

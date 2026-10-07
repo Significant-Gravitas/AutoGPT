@@ -42,7 +42,7 @@ export function IntegrationsListSkeleton() {
         <motion.div
           key={i}
           data-testid="integration-skeleton-item"
-          className="w-full overflow-hidden rounded-lg border border-[#DADADC] bg-white"
+          className="w-full overflow-hidden rounded-lg border border-zinc-200 bg-white"
           variants={
             reduceMotion ? REDUCED_MOTION_ITEM_VARIANTS : SKELETON_ITEM_VARIANTS
           }
@@ -57,13 +57,13 @@ export function IntegrationsListSkeleton() {
             <Skeleton className="size-4 rounded" />
           </div>
           {/* Mirrors first credential row inside accordion content */}
-          <div className="flex items-center justify-between border-t border-[#DADADC] py-3 pl-3 pr-5">
+          <div className="flex items-center justify-between border-t border-zinc-200 py-3 pl-3 pr-5">
             <div className="flex items-center gap-3">
               <Skeleton className="size-5 rounded" />
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-3">
                   <Skeleton className="h-[22px] w-40" />
-                  <Skeleton className="h-[20px] w-14 rounded-[10px]" />
+                  <Skeleton className="h-5 w-14 rounded-[10px]" />
                 </div>
                 <Skeleton className="h-3 w-28" />
               </div>

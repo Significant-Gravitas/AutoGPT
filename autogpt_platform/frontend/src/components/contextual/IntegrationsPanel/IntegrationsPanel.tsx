@@ -38,7 +38,8 @@ export function IntegrationsPanel({ withHeading = true }: Props) {
           variant="small-medium"
           as="h2"
           id="tool-connections-heading"
-          className="pb-3 pl-4 uppercase tracking-[0.06em] text-[#505057]"
+          tone="secondary"
+          className="pb-3 pl-4 uppercase tracking-[0.06em]"
         >
           Tools your agents use
         </Text>

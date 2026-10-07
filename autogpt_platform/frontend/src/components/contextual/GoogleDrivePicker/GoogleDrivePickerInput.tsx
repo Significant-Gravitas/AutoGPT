@@ -1,7 +1,8 @@
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import type { GoogleDrivePickerConfig } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
-import { Cross2Icon } from "@radix-ui/react-icons";
 import React, { useCallback } from "react";
 import { GoogleDrivePicker } from "./GoogleDrivePicker";
 import { isValidFile } from "./helpers";
@@ -115,8 +116,8 @@ export function GoogleDrivePickerInput({
               className={cn(
                 "flex items-center gap-2",
                 showRemoveButton
-                  ? "justify-between rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-                  : "text-sm text-gray-600 dark:text-gray-400",
+                  ? "justify-between rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm"
+                  : "text-sm text-zinc-600",
               )}
             >
               <div className="flex items-center gap-2 overflow-hidden">
@@ -138,9 +139,10 @@ export function GoogleDrivePickerInput({
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6 flex-shrink-0"
+                  aria-label="Remove file"
                   onClick={() => handleRemoveFile(idx)}
                 >
-                  <Cross2Icon className="h-3 w-3" />
+                  <Icon icon={Cancel01Icon} size={12} />
                 </Button>
               )}
             </div>

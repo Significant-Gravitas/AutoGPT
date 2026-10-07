@@ -1,7 +1,6 @@
-import { IconType } from "@/components/__legacy__/ui/icons";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { getAccountMenuOptionIcon } from "../../../helpers";
+import { getAccountMenuOptionIcon, IconType } from "../../../helpers";
 
 interface Props {
   icon: IconType;
@@ -19,19 +18,19 @@ export function MobileNavbarMenuItem({
   onClick,
 }: Props) {
   const content = (
-    <div className="inline-flex w-full items-center justify-start gap-4 py-2 hover:rounded hover:bg-[#e0e0e0]">
+    <div className="inline-flex w-full items-center justify-start gap-4 py-2 hover:rounded hover:bg-zinc-200">
       {getAccountMenuOptionIcon(icon)}
       <div className="relative">
         <div
           className={cn(
             "font-sans text-base font-normal leading-7",
-            isActive ? "font-semibold text-[#272727]" : "text-[#474747]",
+            isActive ? "font-semibold text-zinc-900" : "text-zinc-800",
           )}
         >
           {text}
         </div>
         {isActive && (
-          <div className="absolute bottom-[-4px] left-0 h-[2px] w-full bg-[#272727]"></div>
+          <div className="absolute -bottom-1 left-0 h-0.5 w-full bg-zinc-900"></div>
         )}
       </div>
     </div>

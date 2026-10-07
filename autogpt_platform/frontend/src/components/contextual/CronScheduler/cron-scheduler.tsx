@@ -1,14 +1,10 @@
 import React, { useEffect, useState } from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/__legacy__/ui/select";
 import { Label } from "@/components/__legacy__/ui/label";
-import { Input } from "@/components/__legacy__/ui/input";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Input as LegacyInput } from "@/components/__legacy__/ui/input";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Select } from "@/components/atoms/Select/Select";
+import { Text } from "@/components/atoms/Text/Text";
 import { CronFrequency, makeCronExpression } from "@/lib/cron-expression-utils";
 
 const weekDays = [
@@ -20,6 +16,28 @@ const weekDays = [
   { label: "Fr", value: 5 },
   { label: "Sa", value: 6 },
 ];
+
+const frequencyOptions = [
+  { value: "hourly", label: "Every Hour" },
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
+  { value: "yearly", label: "Yearly" },
+  { value: "custom", label: "Custom" },
+];
+
+const minuteOptions = [0, 15, 30, 45].map((min) => ({
+  value: min.toString(),
+  label: min.toString(),
+}));
+
+const intervalUnitOptions = [
+  { value: "minutes", label: "Minutes" },
+  { value: "hours", label: "Hours" },
+  { value: "days", label: "Days" },
+];
+
+type IntervalUnit = "minutes" | "hours" | "days";
 
 const months = [
   { label: "Jan", value: "January" },
@@ -53,7 +71,7 @@ export function CronScheduler({
   const [selectedMonths, setSelectedMonths] = useState<number[]>([]);
   const [customInterval, setCustomInterval] = useState<{
     value: number;
-    unit: "minutes" | "hours" | "days";
+    unit: IntervalUnit;
   }>({ value: 1, unit: "minutes" });
 
   // Parse initial cron expression and set state
@@ -228,37 +246,32 @@ export function CronScheduler({
         <Label className="text-base font-medium">Repeat</Label>
 
         <Select
+          id="cron-frequency"
+          label="Repeat"
+          hideLabel
+          size="small"
+          wrapperClassName="mb-0"
+          placeholder="Select frequency"
           value={frequency}
-          onValueChange={(value: CronFrequency) => setFrequency(value)}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select frequency" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="hourly">Every Hour</SelectItem>
-            <SelectItem value="daily">Daily</SelectItem>
-            <SelectItem value="weekly">Weekly</SelectItem>
-            <SelectItem value="monthly">Monthly</SelectItem>
-            <SelectItem value="yearly">Yearly</SelectItem>
-            <SelectItem value="custom">Custom</SelectItem>
-          </SelectContent>
-        </Select>
+          onValueChange={(value) => setFrequency(value as CronFrequency)}
+          options={frequencyOptions}
+        />
 
         {frequency === "hourly" && (
           <div className="flex items-center gap-2">
             <Label>At minute</Label>
-            <Select value={selectedMinute} onValueChange={setSelectedMinute}>
-              <SelectTrigger className="w-24">
-                <SelectValue placeholder="Select minute" />
-              </SelectTrigger>
-              <SelectContent>
-                {[0, 15, 30, 45].map((min) => (
-                  <SelectItem key={min} value={min.toString()}>
-                    {min}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Select
+              id="cron-minute"
+              label="At minute"
+              hideLabel
+              size="small"
+              className="w-24"
+              wrapperClassName="mb-0"
+              placeholder="Select minute"
+              value={selectedMinute}
+              onValueChange={setSelectedMinute}
+              options={minuteOptions}
+            />
           </div>
         )}
 
@@ -266,9 +279,14 @@ export function CronScheduler({
           <div className="flex items-center gap-2">
             <Label>Every</Label>
             <Input
+              id="cron-custom-interval"
+              label="Every"
+              hideLabel
               type="number"
+              size="small"
               min="1"
               className="w-20"
+              wrapperClassName="mb-0 w-20"
               value={customInterval.value}
               onChange={(e) =>
                 setCustomInterval({
@@ -278,20 +296,21 @@ export function CronScheduler({
               }
             />
             <Select
+              id="cron-custom-interval-unit"
+              label="Interval unit"
+              hideLabel
+              size="small"
+              className="w-32"
+              wrapperClassName="mb-0"
               value={customInterval.unit}
-              onValueChange={(value: any) =>
-                setCustomInterval({ ...customInterval, unit: value })
+              onValueChange={(value) =>
+                setCustomInterval({
+                  ...customInterval,
+                  unit: value as IntervalUnit,
+                })
               }
-            >
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="minutes">Minutes</SelectItem>
-                <SelectItem value="hours">Hours</SelectItem>
-                <SelectItem value="days">Days</SelectItem>
-              </SelectContent>
-            </Select>
+              options={intervalUnitOptions}
+            />
           </div>
         )}
       </div>
@@ -301,8 +320,8 @@ export function CronScheduler({
           <div className="flex items-center gap-2">
             <Label>On</Label>
             <Button
-              variant="outline"
-              className="h-8 px-2 py-1 text-xs"
+              variant="secondary"
+              size="xs"
               onClick={() => {
                 if (selectedWeekDays.length === weekDays.length) {
                   setSelectedWeekDays([]);
@@ -316,15 +335,15 @@ export function CronScheduler({
                 : "Select All"}
             </Button>
             <Button
-              variant="outline"
-              className="h-8 px-2 py-1 text-xs"
+              variant="secondary"
+              size="xs"
               onClick={() => setSelectedWeekDays([1, 2, 3, 4, 5])}
             >
               Weekdays
             </Button>
             <Button
-              variant="outline"
-              className="h-8 px-2 py-1 text-xs"
+              variant="secondary"
+              size="xs"
               onClick={() => setSelectedWeekDays([0, 6])}
             >
               Weekends
@@ -335,9 +354,10 @@ export function CronScheduler({
               <Button
                 key={day.value}
                 variant={
-                  selectedWeekDays.includes(day.value) ? "default" : "outline"
+                  selectedWeekDays.includes(day.value) ? "primary" : "secondary"
                 }
-                className="h-10 w-10 p-0"
+                size="small"
+                className="h-10 w-10 min-w-0 p-0"
                 onClick={() => {
                   setSelectedWeekDays((prev) =>
                     prev.includes(day.value)
@@ -351,9 +371,9 @@ export function CronScheduler({
             ))}
           </div>
           {selectedWeekDays.length === 0 && (
-            <p className="text-sm text-red-500">
+            <Text variant="body" tone="danger">
               Please select at least one day of the week
-            </p>
+            </Text>
           )}
         </div>
       )}
@@ -362,7 +382,10 @@ export function CronScheduler({
           <Label>Days of Month</Label>
           <div className="flex gap-2">
             <Button
-              variant={selectedMonthDays.length === 31 ? "default" : "outline"}
+              variant={
+                selectedMonthDays.length === 31 ? "primary" : "secondary"
+              }
+              size="small"
               onClick={() => {
                 setSelectedMonthDays(
                   Array.from({ length: 31 }, (_, i) => i + 1),
@@ -374,9 +397,10 @@ export function CronScheduler({
             <Button
               variant={
                 selectedMonthDays.length < 31 && selectedMonthDays.length > 0
-                  ? "default"
-                  : "outline"
+                  ? "primary"
+                  : "secondary"
               }
+              size="small"
               onClick={() => {
                 setSelectedMonthDays([]);
               }}
@@ -384,13 +408,15 @@ export function CronScheduler({
               Customize
             </Button>
             <Button
-              variant="outline"
+              variant="secondary"
+              size="small"
               onClick={() => setSelectedMonthDays([15])}
             >
               15th
             </Button>
             <Button
-              variant="outline"
+              variant="secondary"
+              size="small"
               onClick={() => setSelectedMonthDays([31])}
             >
               Last Day
@@ -402,9 +428,10 @@ export function CronScheduler({
                 <Button
                   key={i + 1}
                   variant={
-                    selectedMonthDays.includes(i + 1) ? "default" : "outline"
+                    selectedMonthDays.includes(i + 1) ? "primary" : "secondary"
                   }
-                  className="h-10 w-10 p-0"
+                  size="small"
+                  className="h-10 w-10 min-w-0 p-0"
                   onClick={() => {
                     setSelectedMonthDays((prev) =>
                       prev.includes(i + 1)
@@ -419,9 +446,9 @@ export function CronScheduler({
             </div>
           )}
           {selectedMonthDays.length === 0 && (
-            <p className="text-sm text-red-500">
+            <Text variant="body" tone="danger">
               Please select at least one day of the month
-            </p>
+            </Text>
           )}
         </div>
       )}
@@ -430,8 +457,8 @@ export function CronScheduler({
           <Label>Months</Label>
           <div className="flex gap-2">
             <Button
-              variant="outline"
-              className="h-8 px-2 py-1 text-xs"
+              variant="secondary"
+              size="xs"
               onClick={() => {
                 if (selectedMonths.length === months.length) {
                   setSelectedMonths([]);
@@ -454,9 +481,12 @@ export function CronScheduler({
                 <Button
                   key={i}
                   variant={
-                    selectedMonths.includes(monthNumber) ? "default" : "outline"
+                    selectedMonths.includes(monthNumber)
+                      ? "primary"
+                      : "secondary"
                   }
-                  className="px-2 py-1"
+                  size="small"
+                  className="min-w-0 px-2 py-1"
                   onClick={() => {
                     setSelectedMonths((prev) =>
                       prev.includes(monthNumber)
@@ -471,9 +501,9 @@ export function CronScheduler({
             })}
           </div>
           {selectedMonths.length === 0 && (
-            <p className="text-sm text-red-500">
+            <Text variant="body" tone="danger">
               Please select at least one month
-            </p>
+            </Text>
           )}
         </div>
       )}
@@ -482,7 +512,7 @@ export function CronScheduler({
         !(frequency === "custom" && customInterval.unit !== "days") && (
           <div className="flex items-center gap-4 space-y-2">
             <Label className="pt-2">At</Label>
-            <Input
+            <LegacyInput
               type="time"
               value={selectedTime}
               onChange={(e) => setSelectedTime(e.target.value)}

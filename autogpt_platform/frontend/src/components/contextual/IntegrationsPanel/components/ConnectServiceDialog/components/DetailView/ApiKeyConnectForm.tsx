@@ -44,7 +44,7 @@ export function ApiKeyConnectForm({
                 autoComplete="off"
                 label="Name"
                 placeholder={`My ${providerName} key`}
-                wrapperClassName="!mb-0"
+                wrapperClassName="mb-0"
               />
             </FormControl>
             <FormMessage />
@@ -66,7 +66,7 @@ export function ApiKeyConnectForm({
                 spellCheck={false}
                 label="API key"
                 placeholder="sk-..."
-                wrapperClassName="!mb-0"
+                wrapperClassName="mb-0"
               />
             </FormControl>
             <FormMessage />
@@ -87,7 +87,7 @@ export function ApiKeyConnectForm({
                 type="date"
                 label="Expires (optional)"
                 hint="Leave blank to keep the key indefinitely"
-                wrapperClassName="!mb-0"
+                wrapperClassName="mb-0"
               />
             </FormControl>
             <FormMessage />

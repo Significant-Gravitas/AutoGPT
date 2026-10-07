@@ -1,5 +1,5 @@
-import { IconAutoGPTLogo } from "@/components/__legacy__/ui/icons";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 
 export function NavbarLoading() {
   return (
@@ -10,7 +10,7 @@ export function NavbarLoading() {
         <Skeleton className="h-6 w-16 bg-zinc-200/60" />
       </div>
       <div className="absolute left-1/2 top-1/2 h-10 w-[88.87px] -translate-x-1/2 -translate-y-1/2">
-        <IconAutoGPTLogo className="h-full w-full" />
+        <AutoGPTLogo className="h-full w-full" />
       </div>
       <div className="flex flex-1 items-center justify-end gap-4">
         <Skeleton className="h-8 w-8 rounded-full bg-zinc-200/60" />

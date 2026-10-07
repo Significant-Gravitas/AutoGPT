@@ -2,7 +2,6 @@
 
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
-import { IconType } from "@/components/__legacy__/ui/icons";
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { PreviewBanner } from "@/components/layout/Navbar/components/PreviewBanner/PreviewBanner";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
@@ -19,7 +18,12 @@ import { MobileNavBar } from "./components/MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./components/NavbarLink";
 import { NavbarLoading } from "./components/NavbarLoading";
 import { Wallet } from "./components/Wallet/Wallet";
-import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "./helpers";
+import {
+  getAccountMenuItems,
+  IconType,
+  loggedInLinks,
+  loggedOutLinks,
+} from "./helpers";
 
 const MOBILE_NAV_ICONS: Readonly<Record<string, IconType>> = {
   "/marketplace": IconType.Marketplace,
@@ -80,7 +84,7 @@ export function Navbar() {
           <PreviewBanner branchName={previewBranchName} />
         ) : null}
         <nav
-          className="inline-flex w-full items-center border-b border-[#f1f1f1] bg-[#FAFAFA]/80 p-3 backdrop-blur-xl"
+          className="inline-flex w-full items-center border-b border-zinc-100 bg-background/80 p-3 backdrop-blur-xl"
           style={{ height: NAVBAR_HEIGHT_PX }}
         >
           {/* Left section */}
@@ -106,7 +110,7 @@ export function Navbar() {
 
           {/* Centered logo */}
           <div className="static md:absolute md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2">
-            <AutoGPTLogo className="h-auto w-[4.5rem] md:w-[5.5rem]" />
+            <AutoGPTLogo className="h-auto w-18 md:w-[5.5rem]" />
           </div>
 
           {/* Right section */}

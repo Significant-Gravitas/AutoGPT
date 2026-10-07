@@ -117,7 +117,7 @@ export function ConnectMethodView({
             {Array.from({ length: 9 }, (_, dot) => (
               <span
                 key={dot}
-                className="h-1 w-1 rounded-full bg-[#5b21b6]/30"
+                className="h-1 w-1 rounded-full bg-purple-700/30"
               />
             ))}
           </span>
@@ -127,15 +127,15 @@ export function ConnectMethodView({
         </div>
 
         <div className="flex flex-col gap-1.5 text-center">
-          <Text variant="h3" className="!text-[1.25rem] text-zinc-900">
+          <Text variant="h3" tone="primary" className="text-xl leading-10">
             Connect AutoGPT to {provider.name}
           </Text>
-          <Text variant="body" className="!text-zinc-500">
+          <Text variant="body" tone="muted">
             Choose how you&apos;d like to connect your {provider.name} account.
           </Text>
         </div>
 
-        <div className="flex flex-col gap-1 rounded-2xl bg-neutral-100 p-1.5">
+        <div className="flex flex-col gap-1 rounded-2xl bg-zinc-100 p-1.5">
           {methods.map((method) => {
             const copy = METHOD_COPY[method];
             const isSelected = selectedMethod === method;
@@ -167,7 +167,7 @@ export function ConnectMethodView({
                         {copy.label}
                       </span>
                       {copy.recommended && (
-                        <span className="rounded-md bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-violet-700">
+                        <span className="rounded-md bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-purple-700">
                           RECOMMENDED
                         </span>
                       )}
@@ -180,12 +180,12 @@ export function ConnectMethodView({
                     aria-hidden
                     className={
                       isSelected
-                        ? "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-violet-600"
+                        ? "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-purple-600"
                         : "h-5 w-5 shrink-0 rounded-full border-2 border-zinc-200"
                     }
                   >
                     {isSelected && (
-                      <span className="h-2.5 w-2.5 rounded-full bg-violet-600" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-purple-600" />
                     )}
                   </span>
                 </button>

@@ -1,4 +1,5 @@
 import React from "react";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   OutputRenderer,
   OutputMetadata,
@@ -21,9 +22,14 @@ function renderText(
   const textValue = String(value);
 
   return (
-    <p className="resize-none overflow-x-auto whitespace-pre-wrap break-words border-none text-sm text-neutral-700">
+    <Text
+      variant="body"
+      tone="secondary"
+      unmask={false}
+      className="resize-none overflow-x-auto whitespace-pre-wrap break-words border-none"
+    >
       {textValue}
-    </p>
+    </Text>
   );
 }
 

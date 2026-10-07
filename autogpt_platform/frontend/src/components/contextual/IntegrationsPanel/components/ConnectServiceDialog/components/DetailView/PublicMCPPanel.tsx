@@ -21,7 +21,7 @@ export function PublicMCPPanel({ serverURL }: Props) {
         value={serverURL}
         readOnly
       />
-      <Text variant="small" className="text-zinc-600">
+      <Text variant="small" tone="secondary">
         This server can be used without connecting an account.
       </Text>
       {toolCount !== null && (
@@ -32,7 +32,7 @@ export function PublicMCPPanel({ serverURL }: Props) {
         </Text>
       )}
       {toolCount !== null && (
-        <Text variant="small" className="text-zinc-600">
+        <Text variant="small" tone="secondary">
           No connection was saved. Use this server URL when adding MCP tools to
           an agent.
         </Text>

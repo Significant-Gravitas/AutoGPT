@@ -1,4 +1,4 @@
-import { IconType } from "@/components/__legacy__/ui/icons";
+import { IconType } from "@/components/layout/Navbar/helpers";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { describe, expect, test, vi } from "vitest";
 import { AccountMenu } from "../AccountMenu";

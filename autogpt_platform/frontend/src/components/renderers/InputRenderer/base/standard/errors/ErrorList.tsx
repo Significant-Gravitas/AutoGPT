@@ -1,5 +1,7 @@
 import { ErrorListProps, TranslatableString } from "@rjsf/utils";
-import { AlertCircle } from "lucide-react";
+import { AlertCircleIcon } from "@hugeicons/core-free-icons";
+
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 import {
   Alert,
@@ -12,7 +14,7 @@ export default function ErrorList(props: ErrorListProps) {
   const { translateString } = registry;
   return (
     <Alert variant="error" className="mb-2">
-      <AlertCircle className="h-4 w-4" />
+      <Icon icon={AlertCircleIcon} className="h-4 w-4" />
       <AlertTitle>{translateString(TranslatableString.ErrorsLabel)}</AlertTitle>
       <AlertDescription className="flex flex-col gap-1">
         {errors.map((error, i: number) => {

@@ -111,10 +111,10 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
                 size="small"
                 readOnly={Boolean(host)}
                 placeholder="api.example.com"
-                wrapperClassName="!mb-0"
+                wrapperClassName="mb-0"
               />
             </FormControl>
-            <Text variant="small" className="!text-zinc-500">
+            <Text variant="small" tone="muted">
               {host
                 ? "Taken from the URL this block calls."
                 : "The host of the URL this block will call."}
@@ -125,10 +125,10 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
       />
 
       <div className="space-y-2">
-        <Text variant="small-medium" className="text-zinc-900">
+        <Text variant="small-medium" tone="primary">
           Headers
         </Text>
-        <Text variant="small" className="!text-zinc-500">
+        <Text variant="small" tone="muted">
           Sent with every request to this host, such as Authorization.
         </Text>
 
@@ -140,7 +140,7 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
               hideLabel
               size="small"
               className="flex-1"
-              wrapperClassName="!mb-0 flex-1"
+              wrapperClassName="mb-0 flex-1"
               placeholder="Authorization"
               value={pair.key}
               onChange={(event) =>
@@ -155,7 +155,7 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
               autoComplete="new-password"
               size="small"
               className="flex-1"
-              wrapperClassName="!mb-0 flex-1"
+              wrapperClassName="mb-0 flex-1"
               placeholder="Bearer …"
               value={pair.value}
               onChange={(event) =>

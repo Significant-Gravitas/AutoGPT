@@ -25,7 +25,7 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-2">
           {withHeading && <Text variant="h2">Scheduled</Text>}
-          <Text variant="body" className="!text-zinc-500">
+          <Text variant="body" tone="muted">
             Every automated job in one place — your experts&apos; scheduled
             follow-ups and recurring agent runs from the builder. Open an item
             to view its chat or agent, or cancel one you no longer need.
@@ -47,7 +47,7 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
       {partialError && (
         <Text
           variant="body"
-          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 !text-amber-700"
+          className="rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-yellow-700"
           data-testid="schedules-partial-error"
         >
           Some scheduled items couldn&apos;t be loaded — showing the ones that

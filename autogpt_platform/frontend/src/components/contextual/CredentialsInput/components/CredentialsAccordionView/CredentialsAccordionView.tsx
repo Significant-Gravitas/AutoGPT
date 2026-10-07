@@ -1,4 +1,5 @@
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   Accordion,
@@ -11,7 +12,7 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
-import { SlidersHorizontalIcon } from "lucide-react";
+import { SlidersHorizontalIcon } from "@hugeicons/core-free-icons";
 import { CredentialRow } from "../CredentialRow/CredentialRow";
 import { CredentialsSelect } from "../CredentialsSelect/CredentialsSelect";
 
@@ -77,7 +78,7 @@ export function CredentialsAccordionView({
           <Text variant="large-medium">
             {displayName} credentials
             {isOptional && (
-              <span className="ml-1 text-sm font-normal text-gray-500">
+              <span className="ml-1 text-sm font-normal text-zinc-500">
                 (optional)
               </span>
             )}
@@ -138,7 +139,8 @@ export function CredentialsAccordionView({
           <AccordionItem value="system-credentials" className="border-none">
             <AccordionTrigger className="py-2 text-sm text-muted-foreground hover:no-underline">
               <div className="flex items-center gap-1">
-                <SlidersHorizontalIcon className="size-4" /> System credentials
+                <Icon icon={SlidersHorizontalIcon} className="size-4" /> System
+                credentials
               </div>
             </AccordionTrigger>
             <AccordionContent>
@@ -148,7 +150,7 @@ export function CredentialsAccordionView({
                     <Text variant="large-medium">
                       {displayName} credentials
                       {isOptional && (
-                        <span className="ml-1 text-sm font-normal text-gray-500">
+                        <span className="ml-1 text-sm font-normal text-zinc-500">
                           (optional)
                         </span>
                       )}

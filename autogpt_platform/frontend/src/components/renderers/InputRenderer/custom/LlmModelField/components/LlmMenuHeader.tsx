@@ -16,7 +16,7 @@ export function LlmMenuHeader({ label, onBack }: Props) {
       className="flex w-full items-center gap-2 px-2 py-2 text-left hover:bg-zinc-100"
     >
       <Icon icon={ArrowLeft02Icon} className="h-4 w-4 text-zinc-800" />
-      <Text variant="body" className="text-zinc-900">
+      <Text variant="body" tone="primary">
         {label}
       </Text>
     </button>

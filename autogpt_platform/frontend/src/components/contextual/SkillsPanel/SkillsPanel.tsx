@@ -31,7 +31,7 @@ export function SkillsPanel({ onGuidedPrompt, withHeading = true }: Props) {
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-2">
           {withHeading && <Text variant="h2">Skills</Text>}
-          <Text variant="body" className="!text-zinc-500">
+          <Text variant="body" tone="muted">
             Reusable playbooks your experts follow. Review your skills, import a
             new one, or delete one you no longer need.
           </Text>

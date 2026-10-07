@@ -10,7 +10,7 @@ export function MarketingFooter({ footerText }: Props) {
     <div className="relative z-10 mt-12 flex flex-col gap-3">
       <Text
         variant="small-medium"
-        className="uppercase tracking-[0.14em] !text-slate-400"
+        className="uppercase tracking-[0.14em] text-slate-400"
       >
         {footerText}
       </Text>

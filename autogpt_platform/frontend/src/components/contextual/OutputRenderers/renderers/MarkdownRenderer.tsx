@@ -164,7 +164,7 @@ function renderMarkdown(
   return (
     <div className="markdown-output">
       <ReactMarkdown
-        className="prose prose-sm dark:prose-invert max-w-none"
+        className="prose prose-sm max-w-none"
         remarkPlugins={[
           remarkGfm, // GitHub Flavored Markdown (tables, task lists, strikethrough)
           [remarkMath, { singleDollarTextMath: true }], // Math support for LaTeX
@@ -179,7 +179,7 @@ function renderMarkdown(
           // Custom components for better rendering
           pre: ({ children, ...props }) => (
             <pre
-              className="my-4 overflow-x-auto rounded-md bg-gray-900 p-4 dark:bg-gray-950"
+              className="my-4 overflow-x-auto rounded-md bg-zinc-900 p-4"
               {...props}
             >
               {children}
@@ -191,7 +191,7 @@ function renderMarkdown(
             if (isInline) {
               return (
                 <code
-                  className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+                  className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-sm text-zinc-800"
                   {...props}
                 >
                   {children}
@@ -200,7 +200,7 @@ function renderMarkdown(
             }
             // Block code is handled by rehype-highlight
             return (
-              <code className="font-mono text-sm text-gray-100" {...props}>
+              <code className="font-mono text-sm text-zinc-100" {...props}>
                 {children}
               </code>
             );
@@ -218,7 +218,7 @@ function renderMarkdown(
           ),
           blockquote: ({ children, ...props }) => (
             <blockquote
-              className="my-4 border-l-4 border-blue-500 pl-4 italic text-gray-700 dark:border-blue-400 dark:text-gray-300"
+              className="my-4 border-l-4 border-blue-500 pl-4 italic text-zinc-700"
               {...props}
             >
               {children}
@@ -227,7 +227,7 @@ function renderMarkdown(
           table: ({ children, ...props }) => (
             <div className="my-4 overflow-x-auto">
               <table
-                className="min-w-full divide-y divide-gray-200 border-y border-gray-200 dark:divide-gray-700 dark:border-gray-700"
+                className="min-w-full divide-y divide-zinc-200 border-y border-zinc-200"
                 {...props}
               >
                 {children}
@@ -236,7 +236,7 @@ function renderMarkdown(
           ),
           th: ({ children, ...props }) => (
             <th
-              className="bg-gray-50 px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+              className="bg-zinc-50 px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-zinc-700"
               {...props}
             >
               {children}
@@ -244,7 +244,7 @@ function renderMarkdown(
           ),
           td: ({ children, ...props }) => (
             <td
-              className="border-t border-gray-200 px-4 py-3.5 text-sm text-gray-600 dark:border-gray-700 dark:text-gray-400"
+              className="border-t border-zinc-200 px-4 py-3.5 text-sm text-zinc-600"
               {...props}
             >
               {children}
@@ -256,7 +256,7 @@ function renderMarkdown(
               return (
                 <input
                   type="checkbox"
-                  className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
+                  className="mr-2 h-4 w-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
                   disabled
                   {...props}
                 />
@@ -284,7 +284,7 @@ function renderMarkdown(
           ),
           li: ({ children, ...props }: any) => (
             <li
-              className={`text-gray-700 dark:text-gray-300 ${
+              className={`text-zinc-700 ${
                 props.className?.includes("task-list-item")
                   ? "flex items-start"
                   : ""
@@ -296,66 +296,45 @@ function renderMarkdown(
           ),
           // Better heading styles
           h1: ({ children, ...props }) => (
-            <h1
-              className="my-6 text-3xl font-bold text-gray-900 dark:text-gray-100"
-              {...props}
-            >
+            <h1 className="my-6 text-3xl font-bold text-zinc-900" {...props}>
               {children}
             </h1>
           ),
           h2: ({ children, ...props }) => (
             <h2
-              className="my-5 text-2xl font-semibold text-gray-800 dark:text-gray-200"
+              className="my-5 text-2xl font-semibold text-zinc-800"
               {...props}
             >
               {children}
             </h2>
           ),
           h3: ({ children, ...props }) => (
-            <h3
-              className="my-4 text-xl font-semibold text-gray-800 dark:text-gray-200"
-              {...props}
-            >
+            <h3 className="my-4 text-xl font-semibold text-zinc-800" {...props}>
               {children}
             </h3>
           ),
           h4: ({ children, ...props }) => (
-            <h4
-              className="my-3 text-lg font-medium text-gray-700 dark:text-gray-300"
-              {...props}
-            >
+            <h4 className="my-3 text-lg font-medium text-zinc-700" {...props}>
               {children}
             </h4>
           ),
           h5: ({ children, ...props }) => (
-            <h5
-              className="my-2 text-base font-medium text-gray-700 dark:text-gray-300"
-              {...props}
-            >
+            <h5 className="my-2 text-base font-medium text-zinc-700" {...props}>
               {children}
             </h5>
           ),
           h6: ({ children, ...props }) => (
-            <h6
-              className="my-2 text-sm font-medium text-gray-600 dark:text-gray-400"
-              {...props}
-            >
+            <h6 className="my-2 text-sm font-medium text-zinc-600" {...props}>
               {children}
             </h6>
           ),
           // Horizontal rule
           hr: ({ ...props }) => (
-            <hr
-              className="my-6 border-gray-300 dark:border-gray-700"
-              {...props}
-            />
+            <hr className="my-6 border-zinc-300" {...props} />
           ),
           // Strikethrough (GFM)
           del: ({ children, ...props }) => (
-            <del
-              className="text-gray-500 line-through dark:text-gray-500"
-              {...props}
-            >
+            <del className="text-zinc-500 line-through" {...props}>
               {children}
             </del>
           ),
@@ -396,10 +375,7 @@ function renderMarkdown(
             }
 
             return (
-              <p
-                className="my-3 leading-relaxed text-gray-700 dark:text-gray-300"
-                {...props}
-              >
+              <p className="my-3 leading-relaxed text-zinc-700" {...props}>
                 {children}
               </p>
             );

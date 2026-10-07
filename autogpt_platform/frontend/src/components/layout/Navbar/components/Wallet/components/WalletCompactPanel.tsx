@@ -53,7 +53,7 @@ export function WalletCompactPanel({
       <div className="px-3 pb-1.5 pt-2">
         <Text variant="body-medium">Earn credits</Text>
       </div>
-      <div className="max-h-[20rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+      <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
         {earnGroups.map((group) => (
           // `defaultOpen` is part of the key so finishing the last task in a
           // group remounts its section and re-seeds it collapsed, instead of
@@ -122,7 +122,7 @@ function StatusIcon({ done }: { done: boolean }) {
         <Icon
           icon={CheckmarkBadge01Icon}
           size={18}
-          className="text-[#00a656]"
+          className="text-green-500"
           aria-label="completed"
         />
       ) : (

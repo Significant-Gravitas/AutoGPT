@@ -1,3 +1,4 @@
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   DropdownMenu,
@@ -86,7 +87,7 @@ export function CredentialRow({
     <div
       ref={containerRef}
       className={cn(
-        "flex min-w-[20rem] items-center gap-3 rounded-medium border border-zinc-200 bg-white p-3 transition-colors",
+        "flex min-w-80 items-center gap-3 rounded-medium border border-zinc-200 bg-white p-3 transition-colors",
         asSelectTrigger && isNodeVariant
           ? "min-w-0 flex-1 overflow-hidden border-0 bg-transparent"
           : asSelectTrigger
@@ -102,7 +103,7 @@ export function CredentialRow({
           : undefined
       }
     >
-      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-900">
+      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-900">
         <ProviderIcon className="h-3 w-3 text-white" />
       </div>
       <TypeIcon className="h-5 w-5 shrink-0 text-zinc-800" />
@@ -143,18 +144,22 @@ export function CredentialRow({
       {(showCaret || (asSelectTrigger && !readOnly)) && (
         <Icon
           icon={ArrowDown01Icon}
-          className="h-4 w-4 shrink-0 text-gray-400"
+          className="h-4 w-4 shrink-0 text-zinc-400"
         />
       )}
       {!readOnly && !showCaret && !asSelectTrigger && onDelete && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
-              className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Credential actions"
+              withTooltip={false}
+              className="ml-auto shrink-0 rounded hover:border-transparent hover:bg-zinc-100"
               onClick={(e) => e.stopPropagation()}
             >
-              <Icon icon={MoreVerticalIcon} className="h-5 w-5 text-gray-400" />
-            </button>
+              <Icon icon={MoreVerticalIcon} className="h-5 w-5 text-zinc-400" />
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem

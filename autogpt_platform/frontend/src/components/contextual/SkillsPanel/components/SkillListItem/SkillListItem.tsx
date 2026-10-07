@@ -51,8 +51,8 @@ export function SkillListItem({ skill, isNew = false }: Props) {
       data-skill-name={skill.name}
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-violet-50">
-          <Icon icon={BookOpen01Icon} size={18} className="text-violet-700" />
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-purple-50">
+          <Icon icon={BookOpen01Icon} size={18} className="text-purple-700" />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
@@ -67,7 +67,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
               </span>
             )}
           </div>
-          <Text variant="small" className="!text-zinc-500">
+          <Text variant="small" tone="muted">
             {descriptionPreview}
           </Text>
           {triggers.length > 0 ? (
@@ -129,7 +129,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
       >
         <Dialog.Content>
           <div className="flex flex-col gap-3">
-            <Text variant="small" className="!text-zinc-500">
+            <Text variant="small" tone="muted">
               {detail?.description ?? descriptionPreview}
             </Text>
             {triggers.length > 0 ? (
@@ -158,8 +158,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
             ) : (
               <>
                 <pre
-                  className="max-h-[60vh] overflow-auto rounded-medium bg-zinc-50 p-3 text-sm text-zinc-800"
-                  style={{ whiteSpace: "pre-wrap" }}
+                  className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-medium bg-zinc-50 p-3 text-sm text-zinc-800"
                   data-testid="skill-view-body"
                 >
                   {detail?.body || "(no body)"}
@@ -169,7 +168,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
                     className="flex flex-col gap-1"
                     data-testid="skill-view-files"
                   >
-                    <Text variant="small" className="!text-zinc-500">
+                    <Text variant="small" tone="muted">
                       Package files ({detail?.files?.length ?? 0}):
                     </Text>
                     <ul className="flex flex-col gap-0.5 text-xs text-zinc-600">
