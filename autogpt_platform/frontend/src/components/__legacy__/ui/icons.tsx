@@ -50,43 +50,6 @@ const createIcon = <P extends React.SVGProps<SVGSVGElement>>(
 };
 
 /**
- * Toy brick icon component.
- *
- * @component IconToyBrick
- * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The toy brick icon.
- *
- * @example
- * // Default usage this is the standard usage
- * <IconToyBrick />
- *
- * @example
- * // With custom color and size these should be used sparingly and only when necessary
- * <IconToyBrick className="text-primary" size="lg" />
- *
- * @example
- * // With custom size and onClick handler
- * <IconToyBrick size="sm" onClick={handleOnClick} />
- */
-export const IconToyBrick = createIcon((props) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-label="Toy Brick Icon"
-    {...props}
-  >
-    <rect width="18" height="12" x="3" y="8" rx="1" />
-    <path d="M10 8V5c0-.6-.4-1-1-1H6a1 1 0 0 0-1 1v3" />
-    <path d="M19 8V5c0-.6-.4-1-1-1h-3a1 1 0 0 0-1 1v3" />
-  </svg>
-));
-
-/**
  * Dashboard Layout icon component.
  *
  * @component IconDashboardLayout
