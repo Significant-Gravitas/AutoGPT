@@ -25,6 +25,8 @@
   "ignoreFiles": [
     // Type sidecar for eslint.design-system.mjs; consumed by TypeScript, not imported.
     "eslint.design-system.d.mts",
+    // Ambient `declare global` Window types for the Google Drive picker.
+    "src/types/types.ts",
     // Loaded by URL or path string, or run by hand; never imported.
     "public/gtag.js",
     "public/push-sw.js",
