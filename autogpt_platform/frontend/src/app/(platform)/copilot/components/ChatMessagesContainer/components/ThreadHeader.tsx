@@ -72,7 +72,7 @@ export function ThreadHeader({
                 {isResolving ? (
                   <Skeleton className="h-3.5 w-16 rounded" />
                 ) : (
-                  <span className="min-w-0 max-w-[10rem]">
+                  <span className="min-w-0 max-w-40">
                     <ExpertIdentityDetails
                       isOtto={!expertIdentity}
                       name={name}

@@ -19,6 +19,7 @@ import {
   LinkSquare01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import Link from "next/link";
 import { folderSummary } from "@/app/(platform)/artifacts/components/WorkspaceFolders/folderTree";
 import type { WorkspaceFolderPartData } from "../../../helpers/workspaceAttachments";
@@ -130,12 +131,24 @@ export function MessageAttachments({
                   className="h-5 w-5 shrink-0 text-zinc-400"
                 />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-zinc-800">
+                  <Text
+                    variant="body-medium"
+                    as="p"
+                    tone="primary"
+                    unmask={false}
+                    className="truncate"
+                  >
                     {file.filename || "file"}
-                  </p>
-                  <p className="mt-0.5 truncate font-mono text-xs text-zinc-800">
+                  </Text>
+                  <Text
+                    variant="small"
+                    as="p"
+                    tone="primary"
+                    unmask={false}
+                    className="mt-0.5 truncate font-mono"
+                  >
                     {file.mediaType || "file"}
-                  </p>
+                  </Text>
                 </div>
               </div>
               {file.url && (

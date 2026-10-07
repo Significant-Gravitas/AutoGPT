@@ -86,10 +86,11 @@ export function WorkspaceFolderRows({
                   variant="body-medium"
                   className="truncate text-zinc-900"
                   title={folder.name}
+                  unmask={false}
                 >
                   {folder.name}
                 </Text>
-                <Text variant="small" className="text-zinc-500">
+                <Text variant="small" className="text-zinc-500" unmask={false}>
                   {folderSummary(folder.file_count ?? 0, subfolderCount)}
                 </Text>
               </div>

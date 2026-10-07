@@ -3,8 +3,9 @@
 import {
   Tooltip,
   TooltipContent,
+  TooltipPortal,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
@@ -42,7 +43,9 @@ export function DryRunToggleButton({ isDryRun, onToggle }: Props) {
           <Icon icon={FlaskConicalIcon} size={16} />
         </button>
       </TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
+      <TooltipPortal>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </TooltipPortal>
     </Tooltip>
   );
 }

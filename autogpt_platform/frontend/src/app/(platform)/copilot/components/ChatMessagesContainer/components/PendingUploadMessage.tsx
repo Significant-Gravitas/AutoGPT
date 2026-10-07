@@ -2,6 +2,7 @@
 
 import { CredentialMentionText } from "../../CredentialMention/CredentialMentionText";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
@@ -53,15 +54,21 @@ function PendingArtifactCard({ attachment }: CardProps) {
         className="shrink-0 text-zinc-400"
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-zinc-900">
+        <Text
+          variant="body-medium"
+          as="p"
+          tone="primary"
+          unmask={false}
+          className="truncate"
+        >
           {attachment.name}
-        </p>
-        <p className="text-xs text-zinc-400">
+        </Text>
+        <Text variant="small" as="p" tone="muted" unmask={false}>
           <span className="inline-block rounded-full bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-500">
             {classification.label}
           </span>
           {attachment.sizeBytes ? ` • ${formatSize(attachment.sizeBytes)}` : ""}
-        </p>
+        </Text>
       </div>
       {attachment.isUploading && (
         <Icon
@@ -97,7 +104,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
             className={cn(
               isCompact
                 ? "text-sm leading-6 group-[.is-user]:rounded-xl"
-                : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
+                : "text-base leading-relaxed group-[.is-user]:rounded-3xl",
               "group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900",
             )}
           >
@@ -121,7 +128,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
         from="assistant"
         className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
       >
-        <MessageContent className="text-[1rem] leading-relaxed">
+        <MessageContent className="text-base leading-relaxed">
           {/* Announce the status on its own: the indicator's elapsed timer
               ticks every second, so a live region around the whole thing
               would re-read the upload state on every tick. */}

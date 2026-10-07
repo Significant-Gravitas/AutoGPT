@@ -654,7 +654,7 @@ export function ChatMessagesContainer({
                   className={cn(
                     isCompact
                       ? "text-sm leading-6 group-[.is-user]:rounded-xl"
-                      : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
+                      : "text-base leading-relaxed group-[.is-user]:rounded-3xl",
                     "group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900",
                     "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold",
                     // Chain hover pills use negative margins that the base
@@ -793,14 +793,14 @@ export function ChatMessagesContainer({
               from="assistant"
               className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
             >
-              <MessageContent className="text-[1rem] leading-relaxed">
+              <MessageContent className="text-base leading-relaxed">
                 {indicator}
               </MessageContent>
             </Message>
           )}
           {!readOnly && isRestoringActiveSession && (
             <Message from="assistant">
-              <MessageContent className="text-[1rem] leading-relaxed text-slate-900">
+              <MessageContent className="text-base leading-relaxed text-slate-900">
                 {showRestoreFallback ? (
                   <div className="flex flex-col gap-1 text-sm text-slate-500">
                     <ThinkingIndicator
@@ -845,7 +845,7 @@ export function ChatMessagesContainer({
                     "flex flex-col gap-1 border border-dashed border-zinc-300 bg-zinc-100 px-4 py-2.5 text-zinc-900 opacity-60",
                     isCompact
                       ? "rounded-xl text-sm leading-6"
-                      : "rounded-3xl text-[1rem] leading-relaxed",
+                      : "rounded-3xl text-base leading-relaxed",
                   )}
                 >
                   <span>

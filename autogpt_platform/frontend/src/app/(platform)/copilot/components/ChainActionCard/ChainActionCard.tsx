@@ -106,13 +106,14 @@ export function ChainActionCard({
           <div className="border-t border-zinc-100 px-4 py-3">
             <span className="text-sm text-zinc-500">
               Looking for something else?{" "}
-              <button
+              <Button
                 type="button"
+                variant="link"
                 onClick={() => openModal("integrations")}
-                className="font-medium text-zinc-900 underline underline-offset-2"
+                className="h-auto min-w-0 p-0 text-zinc-900 underline-offset-2"
               >
                 Browse all connectors
-              </button>
+              </Button>
             </span>
           </div>
         </div>

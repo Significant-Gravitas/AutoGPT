@@ -1,3 +1,4 @@
+import { Button } from "@/components/atoms/Button/Button";
 import { useLayoutEffect, useRef, useState } from "react";
 
 interface Props {
@@ -26,13 +27,14 @@ export function UserMessageClamp({ children, trailing }: Props) {
       {(showToggle || trailing) && (
         <div className="mt-1 flex flex-wrap items-center gap-2">
           {showToggle && (
-            <button
+            <Button
               type="button"
-              className="text-xs font-medium text-purple-700 hover:underline"
+              variant="link"
+              className="h-auto min-w-0 p-0 text-xs text-purple-700 no-underline hover:underline"
               onClick={() => setExpanded(!expanded)}
             >
               {expanded ? "Show less" : "Read more"}
-            </button>
+            </Button>
           )}
           {trailing}
         </div>

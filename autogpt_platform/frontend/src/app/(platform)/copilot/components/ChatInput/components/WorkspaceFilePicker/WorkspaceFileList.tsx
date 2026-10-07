@@ -94,7 +94,15 @@ export function WorkspaceFileList({
   if (files.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-8">
-        <p className="text-center text-sm text-zinc-500">{emptyMessage}</p>
+        <Text
+          variant="body"
+          as="p"
+          tone="muted"
+          unmask={false}
+          className="text-center"
+        >
+          {emptyMessage}
+        </Text>
         {emptyAction}
       </div>
     );
@@ -113,7 +121,7 @@ export function WorkspaceFileList({
       <div
         ref={scrollRef}
         onScroll={updateEdges}
-        className="max-h-[24rem] overflow-y-auto py-1"
+        className="max-h-96 overflow-y-auto py-1"
       >
         <div className="grid grid-cols-2 gap-2">
           {files.map((file, index) => {
@@ -148,10 +156,15 @@ export function WorkspaceFileList({
                     variant="body-medium"
                     className="truncate text-zinc-900"
                     title={file.name}
+                    unmask={false}
                   >
                     {file.name}
                   </Text>
-                  <Text variant="small" className="truncate text-zinc-500">
+                  <Text
+                    variant="small"
+                    className="truncate text-zinc-500"
+                    unmask={false}
+                  >
                     {getFileTypeLabel(file.mime_type)} ·{" "}
                     {formatFileSize(file.size_bytes)} ·{" "}
                     {formatRelativeDate(file.created_at)}

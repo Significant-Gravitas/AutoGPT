@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { ProviderAvatar } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/ProviderAvatar";
 import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
 import {
@@ -108,9 +109,9 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
             labelClassName="text-xs font-medium text-zinc-700"
             selectClassName="rounded-xl bg-zinc-50 px-3 py-2 text-sm text-zinc-800 ring-1 ring-zinc-100"
           />
-          <p id={hintId} className="text-xs text-zinc-500">
+          <Text variant="small" as="p" tone="muted" unmask={false} id={hintId}>
             {mcpAuthTokenHint(authScheme)}
-          </p>
+          </Text>
           <div className="flex gap-2">
             <input
               type="password"
@@ -144,14 +145,17 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
             </Button>
           </div>
           {validationError && (
-            <p
+            <Text
+              variant="small"
+              as="p"
+              unmask={false}
               id={errorId}
               role="alert"
               aria-live="polite"
-              className="text-xs text-red-700"
+              className="text-red-700"
             >
               {validationError}
-            </p>
+            </Text>
           )}
         </div>
       )}
