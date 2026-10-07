@@ -31,7 +31,7 @@ export function LowCreditBanner({ className }: Props) {
           onClick={dismiss}
           aria-label="Dismiss"
           title="Dismiss"
-          className="hover:border-[#FFE4BF] hover:bg-[#FFE4BF]"
+          className="hover:border-orange-100 hover:bg-orange-100"
         >
           <Icon icon={Cancel01Icon} className="h-4 w-4" />
         </Button>

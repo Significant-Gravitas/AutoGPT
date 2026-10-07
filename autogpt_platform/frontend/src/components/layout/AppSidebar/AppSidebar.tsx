@@ -267,7 +267,7 @@ export function AppSidebar(props: Props) {
     <Sidebar
       collapsible="icon"
       {...props}
-      className="[&_[data-sidebar=sidebar]]:bg-[#fafafa]"
+      className="[&_[data-sidebar=sidebar]]:bg-background"
     >
       <AppSidebarHeader />
 

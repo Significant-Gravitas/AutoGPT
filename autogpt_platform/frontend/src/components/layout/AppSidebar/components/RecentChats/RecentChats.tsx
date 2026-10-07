@@ -46,14 +46,14 @@ export function RecentChats() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-4">
-        <LoadingSpinner size="small" className="text-neutral-500" />
+        <LoadingSpinner size="small" className="text-zinc-500" />
       </div>
     );
   }
 
   if (!sessions.length) {
     return (
-      <p className="px-2 py-2 text-sm text-neutral-500">No conversations yet</p>
+      <p className="px-2 py-2 text-sm text-zinc-500">No conversations yet</p>
     );
   }
 

@@ -77,7 +77,7 @@ export function ExpertChatGroup({
             <AutopilotAvatar
               size={32}
               transparent
-              className="rounded-full border border-[#e3e3e3]"
+              className="rounded-full border border-zinc-200"
             />
           ) : (
             <ExpertAvatar
@@ -85,7 +85,7 @@ export function ExpertChatGroup({
               avatarUrl={avatarUrl}
               color={color}
               size={32}
-              className="rounded-full border border-[#e3e3e3]"
+              className="rounded-full border border-zinc-200"
             />
           )}
           <ExpertIdentityDetails
@@ -181,7 +181,7 @@ function NewChatIcon() {
 
 function GroupBody({ children }: { children: ReactNode }) {
   return (
-    <div className="relative ml-[24px] pl-1.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gradient-to-b before:from-zinc-200/70 before:to-transparent">
+    <div className="relative ml-6 pl-1.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gradient-to-b before:from-zinc-200/70 before:to-transparent">
       {children}
     </div>
   );
