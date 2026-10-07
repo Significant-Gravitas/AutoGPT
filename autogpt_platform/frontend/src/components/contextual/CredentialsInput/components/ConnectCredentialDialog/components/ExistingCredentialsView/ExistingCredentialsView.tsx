@@ -62,7 +62,7 @@ export function ExistingCredentialsView({
       </div>
 
       <div className="flex flex-col gap-1.5 text-center">
-        <Text variant="h3" className="!text-[1.25rem] text-zinc-900">
+        <Text variant="h3" tone="primary" className="!text-[1.25rem]">
           {TITLES[purpose](displayName)}
         </Text>
         <Text variant="body" className="!text-zinc-500">

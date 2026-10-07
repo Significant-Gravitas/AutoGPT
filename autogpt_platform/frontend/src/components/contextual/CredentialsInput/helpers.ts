@@ -1,18 +1,15 @@
-import { NotionLogoIcon } from "@radix-ui/react-icons";
-import {
-  FaDiscord,
-  FaGithub,
-  FaGoogle,
-  FaHubspot,
-  FaMedium,
-  FaTwitter,
-} from "react-icons/fa";
 import { CredentialsType } from "@/lib/autogpt-server-api/types";
 import {
+  DiscordIcon,
+  Github01Icon,
   Globe02Icon,
+  GoogleIcon,
   Key01Icon,
   LockIcon,
   LockPasswordIcon,
+  MediumIcon,
+  Notion01Icon,
+  TwitterIcon,
 } from "@hugeicons/core-free-icons";
 import { createIconComponent } from "@/components/atoms/Icon/Icon";
 
@@ -20,6 +17,12 @@ export const fallbackIcon = createIconComponent(Key01Icon);
 const globeIcon = createIconComponent(Globe02Icon);
 const lockIcon = createIconComponent(LockIcon);
 const lockPasswordIcon = createIconComponent(LockPasswordIcon);
+const githubIcon = createIconComponent(Github01Icon);
+const googleIcon = createIconComponent(GoogleIcon);
+const notionIcon = createIconComponent(Notion01Icon);
+const discordIcon = createIconComponent(DiscordIcon);
+const mediumIcon = createIconComponent(MediumIcon);
+const twitterIcon = createIconComponent(TwitterIcon);
 
 export const providerIcons: Partial<
   Record<string, React.FC<{ className?: string }>>
@@ -29,20 +32,20 @@ export const providerIcons: Partial<
   apollo: fallbackIcon,
   database: fallbackIcon,
   e2b: fallbackIcon,
-  github: FaGithub,
-  google: FaGoogle,
+  github: githubIcon,
+  google: googleIcon,
   groq: fallbackIcon,
   http: fallbackIcon,
-  notion: NotionLogoIcon,
+  notion: notionIcon,
   nvidia: fallbackIcon,
-  discord: FaDiscord,
+  discord: discordIcon,
   d_id: fallbackIcon,
   elevenlabs: fallbackIcon,
-  google_maps: FaGoogle,
+  google_maps: googleIcon,
   jina: fallbackIcon,
   ideogram: fallbackIcon,
   linear: fallbackIcon,
-  medium: FaMedium,
+  medium: mediumIcon,
   mem0: fallbackIcon,
   ollama: fallbackIcon,
   openai: fallbackIcon,
@@ -58,10 +61,10 @@ export const providerIcons: Partial<
   reddit: fallbackIcon,
   fal: fallbackIcon,
   revid: fallbackIcon,
-  twitter: FaTwitter,
+  twitter: twitterIcon,
   unreal_speech: fallbackIcon,
   exa: fallbackIcon,
-  hubspot: FaHubspot,
+  hubspot: fallbackIcon,
   smartlead: fallbackIcon,
   todoist: fallbackIcon,
   zerobounce: fallbackIcon,
