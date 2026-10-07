@@ -1,20 +1,8 @@
 import {
-  useGetV2GetPendingReviews,
   useGetV2GetPendingReviewsForChatSession,
   useGetV2GetPendingReviewsForExecution,
 } from "@/app/api/__generated__/endpoints/executions/executions";
 import { okData } from "@/app/api/helpers";
-
-export function usePendingReviews() {
-  const query = useGetV2GetPendingReviews();
-
-  return {
-    pendingReviews: okData(query.data) || [],
-    isLoading: query.isLoading,
-    error: query.error,
-    refetch: query.refetch,
-  };
-}
 
 interface UsePendingReviewsForExecutionOptions {
   enabled?: boolean;

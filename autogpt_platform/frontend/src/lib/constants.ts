@@ -16,6 +16,3 @@ export const VERCEL_COUNTRY_HEADER_NAME = "x-vercel-ip-country";
 
 // Layout
 export const NAVBAR_HEIGHT_PX = 60;
-
-// Routes
-export const MARKETPLACE_EXPERTS_HREF = "/marketplace#experts";

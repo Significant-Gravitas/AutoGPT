@@ -136,7 +136,6 @@ export function Navbar() {
               <LoginButton />
             </div>
           ) : null}
-          {/* <ThemeToggle /> */}
         </nav>
       </div>
       {/* Mobile Navbar - Adjust positioning */}

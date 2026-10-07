@@ -2,7 +2,6 @@ import path from "path";
 
 export const SEEDED_TEST_PASSWORD =
   process.env.SEEDED_TEST_PASSWORD || "testpassword123";
-export const SEEDED_USER_POOL_VERSION = "2.0.0";
 
 export const SEEDED_TEST_ACCOUNTS = {
   primary: {
@@ -51,7 +50,6 @@ export type SeededTestAccountKey = keyof typeof SEEDED_TEST_ACCOUNTS;
 export type SeededTestAccount =
   (typeof SEEDED_TEST_ACCOUNTS)[SeededTestAccountKey];
 
-export const SEEDED_TEST_USERS = Object.values(SEEDED_TEST_ACCOUNTS);
 export const SEEDED_AUTH_STATE_ACCOUNT_KEYS = [
   "smokeBuilder",
   "smokeLibrary",
@@ -75,8 +73,6 @@ export const E2E_AUTH_STATES = {
   parallelA: getAuthStatePath("parallelA"),
   parallelB: getAuthStatePath("parallelB"),
 } as const;
-
-export const SMOKE_AUTH_STATES = E2E_AUTH_STATES;
 
 export function getSeededTestUser(
   accountKey: SeededTestAccountKey = "primary",

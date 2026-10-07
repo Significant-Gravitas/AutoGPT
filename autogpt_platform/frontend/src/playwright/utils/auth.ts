@@ -4,10 +4,8 @@ import { LoginPage } from "../pages/login.page";
 import {
   SEEDED_AUTH_STATE_ACCOUNT_KEYS,
   SEEDED_TEST_ACCOUNTS,
-  SEEDED_TEST_USERS,
   getAuthStatePath,
 } from "../credentials/accounts";
-import { signupTestUser } from "./signup";
 import { getBrowser } from "./get-browser";
 import { skipOnboardingIfPresent } from "./onboarding";
 
@@ -18,108 +16,7 @@ export interface TestUser {
   createdAt?: string;
 }
 
-export interface UserPool {
-  users: TestUser[];
-  createdAt: string;
-  version: string;
-}
-
 const AUTH_STATE_KEYS = [...SEEDED_AUTH_STATE_ACCOUNT_KEYS];
-
-export async function createTestUser(
-  email?: string,
-  password?: string,
-  ignoreOnboarding: boolean = true,
-): Promise<TestUser> {
-  const { faker } = await import("@faker-js/faker");
-  const userEmail = email || faker.internet.email();
-  const userPassword = password || faker.internet.password({ length: 12 });
-
-  try {
-    const browser = await getBrowser();
-    const context = await browser.newContext();
-    const page = await context.newPage();
-
-    try {
-      const testUser = await signupTestUser(
-        page,
-        userEmail,
-        userPassword,
-        ignoreOnboarding,
-        false,
-      );
-      return testUser;
-    } finally {
-      await page.close();
-      await context.close();
-      await browser.close();
-    }
-  } catch (error) {
-    console.error(`❌ Error creating test user ${userEmail}:`, error);
-    throw error;
-  }
-}
-
-export async function createTestUsers(count: number): Promise<TestUser[]> {
-  console.log(`👥 Creating ${count} test users...`);
-
-  const users: TestUser[] = [];
-  let consecutiveFailures = 0;
-
-  for (let i = 0; i < count; i++) {
-    try {
-      const user = await createTestUser();
-      users.push(user);
-      consecutiveFailures = 0; // Reset failure counter on success
-      console.log(`✅ Created user ${i + 1}/${count}: ${user.email}`);
-    } catch (error) {
-      consecutiveFailures++;
-      console.error(`❌ Failed to create user ${i + 1}/${count}:`, error);
-
-      // If we have too many consecutive failures, stop trying
-      if (consecutiveFailures >= 3) {
-        console.error(
-          `⚠️ Stopping after ${consecutiveFailures} consecutive failures`,
-        );
-        break;
-      }
-    }
-  }
-
-  console.log(`🎉 Successfully created ${users.length}/${count} test users`);
-  return users;
-}
-
-export async function getTestUser(accountKey?: string): Promise<TestUser> {
-  if (SEEDED_TEST_USERS.length === 0) {
-    throw new Error("No seeded E2E users are configured");
-  }
-
-  if (accountKey) {
-    const matchedUser = SEEDED_TEST_USERS.find(
-      (user) => user.key === accountKey || user.email === accountKey,
-    );
-
-    if (!matchedUser) {
-      throw new Error(
-        `No seeded E2E user found for account key or email: ${accountKey}`,
-      );
-    }
-
-    return { email: matchedUser.email, password: matchedUser.password };
-  }
-
-  const rawWorkerIndex = Number.parseInt(
-    process.env.TEST_WORKER_INDEX ?? process.env.PLAYWRIGHT_WORKER_INDEX ?? "0",
-    10,
-  );
-  const workerIndex = Number.isNaN(rawWorkerIndex) ? 0 : rawWorkerIndex;
-  const deterministicIndex =
-    ((workerIndex % SEEDED_TEST_USERS.length) + SEEDED_TEST_USERS.length) %
-    SEEDED_TEST_USERS.length;
-  const { email, password } = SEEDED_TEST_USERS[deterministicIndex];
-  return { email, password };
-}
 
 function hasStoredAuthState(accountKey: (typeof AUTH_STATE_KEYS)[number]) {
   return fs.existsSync(getAuthStatePath(accountKey));
@@ -145,15 +42,6 @@ function authStateMatchesOrigin(
   } catch {
     return false;
   }
-}
-
-export function hasSeededAuthStates(baseURL: string): boolean {
-  const origin = new URL(baseURL).origin;
-  return AUTH_STATE_KEYS.every(
-    (accountKey) =>
-      hasStoredAuthState(accountKey) &&
-      authStateMatchesOrigin(accountKey, origin),
-  );
 }
 
 async function authStateHasLiveSession(

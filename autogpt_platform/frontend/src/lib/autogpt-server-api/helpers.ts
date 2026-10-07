@@ -38,22 +38,6 @@ export class ApiError<R = any> extends Error {
   }
 }
 
-export function buildRequestUrl(
-  baseUrl: string,
-  path: string,
-  method: string,
-  payload?: Record<string, any>,
-): string {
-  const url = baseUrl + path;
-  const payloadAsQuery = ["GET", "DELETE"].includes(method);
-
-  if (payloadAsQuery && payload) {
-    return buildUrlWithQuery(url, payload);
-  }
-
-  return url;
-}
-
 export function buildClientUrl(path: string): string {
   return `/api/proxy/api${path}`;
 }

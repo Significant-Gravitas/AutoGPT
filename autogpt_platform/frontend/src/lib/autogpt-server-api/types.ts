@@ -39,8 +39,6 @@ export type BlockIOSubSchema =
   | BlockIOSimpleTypeSubSchema
   | BlockIOCombinedTypeSubSchema;
 
-export type BlockIOSubType = BlockIOSimpleTypeSubSchema["type"];
-
 export type BlockIOSimpleTypeSubSchema =
   | BlockIOObjectSubSchema
   | BlockIOCredentialsSubSchema
@@ -141,17 +139,6 @@ export type GoogleDrivePickerConfig = {
   };
 };
 
-/**
- * Schema for Google Drive Picker input fields.
- * When multiselect=false: type="object" (single GoogleDriveFile)
- * When multiselect=true: type="array" with items={ type="object" } (array of GoogleDriveFile)
- */
-export type GoogleDrivePickerSchema = BlockIOSubSchemaMeta & {
-  type: "object" | "array";
-  format: "google-drive-picker";
-  google_drive_picker_config?: GoogleDrivePickerConfig;
-};
-
 // Table cell values are typically primitives
 export type TableCellValue = string | number | boolean | null;
 
@@ -223,11 +210,6 @@ export type Credentials =
 // Provider names are now dynamic and fetched from the API
 // This allows for SDK-registered providers without hardcoding
 export type CredentialsProviderName = string;
-
-// For backward compatibility, we'll keep PROVIDER_NAMES but it should be
-// populated dynamically from the API. This is a placeholder that will be
-// replaced with actual values from the /api/integrations/providers endpoint
-export const PROVIDER_NAMES = {} as Record<string, string>;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
 export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
@@ -708,19 +690,6 @@ export type HostScopedCredentials = BaseCredentials & {
   headers: Record<string, string>;
 };
 
-// Mirror of backend/backend/data/notifications.py:NotificationType
-export type NotificationType =
-  | "BRIEFING"
-  | "ALERT"
-  | "VERDICT"
-  | "OPS"
-  | "SUBSCRIPTION_WELCOME"
-  | "PAYMENT_FAILED"
-  | "PAYMENT_FINAL_NOTICE"
-  | "SUBSCRIPTION_CANCELLED"
-  | "SUBSCRIPTION_RESUMED"
-  | "SUBSCRIPTION_ENDED";
-
 export type BriefingFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "OFF";
 
 // Mirror of backend/backend/data/notifications.py:NotificationPreferenceDTO.
@@ -774,9 +743,6 @@ export enum BlockUIType {
 
 export enum SpecialBlockID {
   AGENT = "e189baac-8c20-45a1-94a7-55177ea42565",
-  MCP_TOOL = "a0a4b1c2-d3e4-4f56-a7b8-c9d0e1f2a3b4",
-  TOOL_ORCHESTRATOR = "3b191d9f-356f-482d-8238-ba04b6d18381",
-  OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
 export type Pagination = {

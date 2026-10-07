@@ -445,33 +445,11 @@ export class LibraryPage extends BasePage {
 }
 
 // Locator functions
-export function getLibraryTab(page: Page): Locator {
-  return page.locator('a[href="/library"]');
-}
-
 export function getAgentCards(page: Page): Locator {
   return page.getByTestId("library-agent-card");
 }
 
-export function getNewRunButton(page: Page): Locator {
-  return page.getByRole("button", { name: "New run" });
-}
-
-export function getAgentTitle(page: Page): Locator {
-  return page.locator("h1").first();
-}
-
 // Action functions
-export async function navigateToLibrary(page: Page): Promise<void> {
-  await getLibraryTab(page).click();
-  await page.waitForURL(/.*\/library/);
-}
-
-export async function clickFirstAgent(page: Page): Promise<void> {
-  const firstAgent = getAgentCards(page).first();
-  await firstAgent.click();
-}
-
 export async function navigateToAgentByName(
   page: Page,
   agentName: string,
@@ -720,14 +698,6 @@ async function fillVisibleTaskInputs(container: Page | Locator): Promise<void> {
   }
 }
 
-export async function clickNewRunButton(page: Page): Promise<void> {
-  await getNewRunButton(page).click();
-}
-
-export async function runAgent(page: Page): Promise<void> {
-  await clickRunButton(page);
-}
-
 export async function waitForAgentPageLoad(
   page: Page,
   agentName?: string,
@@ -852,14 +822,6 @@ async function waitForAgentDetailShell(
     .not.toBe("pending");
 }
 
-export async function getAgentName(page: Page): Promise<string> {
-  return (await getAgentTitle(page).textContent()) || "";
-}
-
-export async function isLoaded(page: Page): Promise<boolean> {
-  return await page.locator("h1").isVisible();
-}
-
 const SUCCESS_RUN_STATUS = "completed";
 const FAILURE_RUN_STATUSES = new Set(["failed", "terminated", "incomplete"]);
 const RUN_ERROR_RECOVERY_GRACE_PERIOD_MS = 1500;
@@ -943,14 +905,6 @@ export async function assertRunOutputValue(
     outputValue,
     `run output value for "${outputName}" should be "${expectedValue}"`,
   ).toHaveText(expectedValue, { timeout });
-}
-
-export async function assertFirstRunOutputValue(
-  page: Page,
-  expectedValue: RegExp | string,
-  timeout = 15000,
-): Promise<void> {
-  await assertRunOutputContainsText(page, expectedValue, timeout);
 }
 
 export async function assertRunOutputContainsText(
