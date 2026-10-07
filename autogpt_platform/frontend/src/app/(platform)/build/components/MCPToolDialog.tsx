@@ -7,20 +7,13 @@ import React, {
   useEffect,
   useContext,
 } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
-import { Button } from "@/components/__legacy__/ui/button";
-import { Input } from "@/components/__legacy__/ui/input";
-import { Label } from "@/components/__legacy__/ui/label";
-import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
-import { Badge } from "@/components/__legacy__/ui/badge";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
+import { cn } from "@/lib/utils";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api";
 import type { MCPToolResponse } from "@/app/api/__generated__/models/mCPToolResponse";
 import {
@@ -378,63 +371,71 @@ export function MCPToolDialog({
   ]);
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>
-            {step === "url"
-              ? "Connect to MCP Server"
-              : `Select a Tool${serverName ? ` — ${serverName}` : ""}`}
-          </DialogTitle>
-          <DialogDescription>
-            {step === "url"
-              ? "Enter the URL of an MCP server to discover its available tools."
-              : `Found ${tools.length} tool${tools.length !== 1 ? "s" : ""}. Select one to add to your agent.`}
-          </DialogDescription>
-        </DialogHeader>
+    <Dialog
+      title={
+        step === "url"
+          ? "Connect to MCP Server"
+          : `Select a Tool${serverName ? ` — ${serverName}` : ""}`
+      }
+      controlled={{
+        isOpen: open,
+        set: (isOpen) => {
+          if (!isOpen) handleClose();
+        },
+      }}
+      styling={{ maxWidth: "32rem", minWidth: "32rem" }}
+    >
+      <Dialog.Content>
+        <Text variant="body" tone="secondary">
+          {step === "url"
+            ? "Enter the URL of an MCP server to discover its available tools."
+            : `Found ${tools.length} tool${tools.length !== 1 ? "s" : ""}. Select one to add to your agent.`}
+        </Text>
 
         {step === "url" && (
           <div className="flex flex-col gap-4 py-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="mcp-server-url">Server URL</Label>
-              <Input
-                id="mcp-server-url"
-                type="url"
-                placeholder="https://mcp.example.com/mcp"
-                value={serverUrl}
-                onChange={(e) => {
-                  const nextUrl = e.target.value;
-                  // Only a change of server identity discards the credential.
-                  const serverChanged =
-                    mcpServerIdentity(serverUrl) !== mcpServerIdentity(nextUrl);
-                  setServerUrl(nextUrl);
-                  if (!serverChanged) return;
+            <Input
+              id="mcp-server-url"
+              label="Server URL"
+              labelVariant="body-medium"
+              size="small"
+              wrapperClassName="mb-0"
+              type="url"
+              placeholder="https://mcp.example.com/mcp"
+              value={serverUrl}
+              onChange={(e) => {
+                const nextUrl = e.target.value;
+                // Only a change of server identity discards the credential.
+                const serverChanged =
+                  mcpServerIdentity(serverUrl) !== mcpServerIdentity(nextUrl);
+                setServerUrl(nextUrl);
+                if (!serverChanged) return;
 
-                  if (credentialServerUrl !== nextUrl.trim()) {
-                    setCredentials(null);
-                    setCredentialServerUrl(null);
-                  }
-                  setManualToken("");
-                  resetScheme();
-                  setAuthRequired(false);
-                  setShowManualToken(false);
-                  setError(null);
-                  startOAuthRef.current = false;
-                }}
-                onKeyDown={(e) => isKey(e, "Enter") && handleDiscoverTools()}
-                disabled={loading || oauthLoading}
-                autoFocus
-              />
-            </div>
+                if (credentialServerUrl !== nextUrl.trim()) {
+                  setCredentials(null);
+                  setCredentialServerUrl(null);
+                }
+                setManualToken("");
+                resetScheme();
+                setAuthRequired(false);
+                setShowManualToken(false);
+                setError(null);
+                startOAuthRef.current = false;
+              }}
+              onKeyDown={(e) => isKey(e, "Enter") && handleDiscoverTools()}
+              disabled={loading || oauthLoading}
+              autoFocus
+            />
 
             {/* Auth required: show manual token option */}
             {authRequired && !showManualToken && (
-              <button
+              <Button
+                variant="link"
                 onClick={() => setShowManualToken(true)}
-                className="text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                className="self-center text-xs font-normal text-zinc-500 hover:text-zinc-700"
               >
                 or enter an API credential manually
-              </button>
+              </Button>
             )}
 
             {/* Manual credential entry — only visible when expanded */}
@@ -449,11 +450,12 @@ export function MCPToolDialog({
                   selectClassName="h-10 rounded-md border border-input bg-background px-3 text-sm"
                 />
 
-                <Label htmlFor="mcp-auth-token" className="text-sm">
-                  {mcpAuthTokenLabel(manualAuthScheme)}
-                </Label>
                 <Input
                   id="mcp-auth-token"
+                  label={mcpAuthTokenLabel(manualAuthScheme)}
+                  labelVariant="body"
+                  size="small"
+                  wrapperClassName="mb-0"
                   aria-describedby="mcp-auth-token-hint"
                   type="password"
                   placeholder={mcpAuthTokenPlaceholder(manualAuthScheme)}
@@ -467,20 +469,22 @@ export function MCPToolDialog({
                   disabled={loading || oauthLoading}
                   autoFocus
                 />
-                <p id="mcp-auth-token-hint" className="text-xs text-gray-500">
+                <Text id="mcp-auth-token-hint" variant="small" tone="muted">
                   {mcpAuthTokenHint(manualAuthScheme)}
-                </p>
+                </Text>
               </div>
             )}
 
             {error && (
-              <p
+              <Text
+                variant="body"
                 role="alert"
                 aria-live="polite"
-                className="text-sm text-red-700 dark:text-red-400"
+                className="text-red-700"
+                unmask={false}
               >
                 {error}
-              </p>
+              </Text>
             )}
           </div>
         )}
@@ -500,10 +504,11 @@ export function MCPToolDialog({
           </ScrollArea>
         )}
 
-        <DialogFooter>
+        <Dialog.Footer className="gap-2">
           {step === "tool" && (
             <Button
               variant="outline"
+              size="small"
               onClick={() => {
                 setStep("url");
                 setSelectedTool(null);
@@ -512,11 +517,13 @@ export function MCPToolDialog({
               Back
             </Button>
           )}
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="outline" size="small" onClick={handleClose}>
             Cancel
           </Button>
           {step === "url" && (
             <Button
+              size="small"
+              loading={loading || oauthLoading}
               onClick={
                 authRequired && !showManualToken
                   ? handleOAuthSignIn
@@ -529,27 +536,28 @@ export function MCPToolDialog({
                 (showManualToken && !manualToken.trim())
               }
             >
-              {loading || oauthLoading ? (
-                <span className="flex items-center gap-2">
-                  <LoadingSpinner className="size-4" />
-                  {oauthLoading ? "Waiting for sign-in..." : "Connecting..."}
-                </span>
-              ) : authRequired && !showManualToken ? (
-                "Sign in & Connect"
-              ) : showManualToken ? (
-                "Connect & Discover"
-              ) : (
-                "Discover Tools"
-              )}
+              {loading || oauthLoading
+                ? oauthLoading
+                  ? "Waiting for sign-in..."
+                  : "Connecting..."
+                : authRequired && !showManualToken
+                  ? "Sign in & Connect"
+                  : showManualToken
+                    ? "Connect & Discover"
+                    : "Discover Tools"}
             </Button>
           )}
           {step === "tool" && (
-            <Button onClick={handleConfirm} disabled={!selectedTool}>
+            <Button
+              size="small"
+              onClick={handleConfirm}
+              disabled={!selectedTool}
+            >
               Add Block
             </Button>
           )}
-        </DialogFooter>
-      </DialogContent>
+        </Dialog.Footer>
+      </Dialog.Content>
     </Dialog>
   );
 }
@@ -600,19 +608,25 @@ function MCPToolCard({
   return (
     <button
       onClick={onSelect}
-      className={`group flex flex-col rounded-lg border text-left transition-colors ${
+      className={cn(
+        "group flex flex-col rounded-lg border text-left transition-colors",
         selected
-          ? "border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950"
-          : "border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800"
-      }`}
+          ? "border-blue-500 bg-blue-50"
+          : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50",
+      )}
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 pb-1 pt-3">
-        <span className="flex-1 text-sm font-semibold dark:text-white">
+        <Text
+          variant="body-medium"
+          as="span"
+          className="flex-1 font-semibold"
+          unmask={false}
+        >
           {tool.name}
-        </span>
+        </Text>
         {paramNames.length > 0 && (
-          <Badge variant="secondary" className="text-[10px]">
+          <Badge variant="info" size="small">
             {paramNames.length} param{paramNames.length !== 1 ? "s" : ""}
           </Badge>
         )}
@@ -620,28 +634,29 @@ function MCPToolCard({
 
       {/* Description (collapsed: truncated) */}
       {cleanDescription && (
-        <p className="px-3 pb-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+        <Text
+          variant="small"
+          tone="muted"
+          className="px-3 pb-1 leading-relaxed"
+          unmask={false}
+        >
           {expanded ? cleanDescription : truncateDescription(cleanDescription)}
-        </p>
+        </Text>
       )}
 
       {/* Parameter badges (collapsed view) */}
       {!expanded && paramNames.length > 0 && (
         <div className="flex flex-wrap gap-1 px-3 pb-2">
           {paramNames.slice(0, 6).map((name) => (
-            <Badge
-              key={name}
-              variant="outline"
-              className="text-[10px] font-normal"
-            >
+            <Badge key={name} variant="info" size="small">
               {name}
               {required.has(name) && (
-                <span className="ml-0.5 text-red-400">*</span>
+                <span className="-ml-1 text-red-400">*</span>
               )}
             </Badge>
           ))}
           {paramNames.length > 6 && (
-            <Badge variant="outline" className="text-[10px] font-normal">
+            <Badge variant="info" size="small">
               +{paramNames.length - 6} more
             </Badge>
           )}
@@ -650,17 +665,17 @@ function MCPToolCard({
 
       {/* Expanded: full parameter details */}
       {expanded && paramNames.length > 0 && (
-        <div className="mx-3 mb-2 rounded border border-gray-100 bg-gray-50/50 dark:border-slate-700 dark:bg-slate-800/50">
+        <div className="mx-3 mb-2 rounded border border-zinc-100 bg-zinc-50/50">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-gray-100 dark:border-slate-700">
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
+              <tr className="border-b border-zinc-100">
+                <th className="px-2 py-1 text-left font-medium text-zinc-500">
                   Parameter
                 </th>
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
+                <th className="px-2 py-1 text-left font-medium text-zinc-500">
                   Type
                 </th>
-                <th className="px-2 py-1 text-left font-medium text-gray-500 dark:text-gray-400">
+                <th className="px-2 py-1 text-left font-medium text-zinc-500">
                   Description
                 </th>
               </tr>
@@ -671,18 +686,18 @@ function MCPToolCard({
                 return (
                   <tr
                     key={name}
-                    className="border-b border-gray-50 last:border-0 dark:border-slate-700/50"
+                    className="border-b border-zinc-50 last:border-0"
                   >
-                    <td className="px-2 py-1 font-mono text-[11px] text-gray-700 dark:text-gray-300">
+                    <td className="px-2 py-1 font-mono text-[11px] text-zinc-700">
                       {name}
                       {required.has(name) && (
                         <span className="ml-0.5 text-red-400">*</span>
                       )}
                     </td>
-                    <td className="px-2 py-1 text-gray-500 dark:text-gray-400">
+                    <td className="px-2 py-1 text-zinc-500">
                       {schemaTypeLabel(prop)}
                     </td>
-                    <td className="max-w-[200px] truncate px-2 py-1 text-gray-500 dark:text-gray-400">
+                    <td className="max-w-[200px] truncate px-2 py-1 text-zinc-500">
                       {prop.description ?? "—"}
                     </td>
                   </tr>
@@ -695,20 +710,24 @@ function MCPToolCard({
 
       {/* Toggle details */}
       {(paramNames.length > 0 || cleanDescription.length > 120) && (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={(e) => {
             e.stopPropagation();
             setExpanded((prev) => !prev);
           }}
-          className="flex w-full items-center justify-center gap-1 border-t border-gray-100 py-1.5 text-[10px] text-gray-400 hover:text-gray-600 dark:border-slate-700 dark:text-gray-500 dark:hover:text-gray-300"
+          className="w-full gap-1 rounded-none border-0 border-t border-zinc-100 py-1.5 text-[10px] font-normal text-zinc-400 hover:border-zinc-100 hover:bg-transparent hover:text-zinc-600"
         >
           {expanded ? "Hide details" : "Show details"}
           <Icon
             icon={ArrowDown01Icon}
-            className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`}
+            className={cn(
+              "h-3 w-3 transition-transform",
+              expanded && "rotate-180",
+            )}
           />
-        </button>
+        </Button>
       )}
     </button>
   );
