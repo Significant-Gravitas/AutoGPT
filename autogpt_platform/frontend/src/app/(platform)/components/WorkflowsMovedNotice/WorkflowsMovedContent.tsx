@@ -1,5 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { ArrowRight02Icon } from "@hugeicons/core-free-icons";
 import * as Dialog from "@radix-ui/react-dialog";
 import { RefObject } from "react";
@@ -15,9 +16,13 @@ export function WorkflowsMovedContent({ titleRef, onDismiss }: Props) {
     <>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="px-6 pb-3 pt-5 sm:px-8">
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-widest text-violet-700">
+          <Text
+            variant="eyebrow"
+            as="p"
+            className="mb-1.5 tracking-widest text-purple-700"
+          >
             Workspace update
-          </p>
+          </Text>
           <Dialog.Title
             ref={titleRef}
             tabIndex={-1}
@@ -45,9 +50,9 @@ export function WorkflowsMovedContent({ titleRef, onDismiss }: Props) {
 function WorkflowsMovedActions({ onDismiss }: Pick<Props, "onDismiss">) {
   return (
     <div className="shrink-0 border-t border-zinc-100 bg-white px-6 py-2 sm:px-8">
-      <p className="mb-1.5 text-xs leading-none text-zinc-500">
+      <Text variant="small" tone="muted" className="mb-1.5 leading-none">
         Nothing to set up again.
-      </p>
+      </Text>
       <div className="flex flex-col gap-2 sm:flex-row-reverse">
         <Button
           as="NextLink"
@@ -82,7 +87,7 @@ function WorkflowLocation() {
             />
           )}
           <span
-            className={index === 2 ? "font-medium text-violet-700" : undefined}
+            className={index === 2 ? "font-medium text-purple-700" : undefined}
           >
             {label}
           </span>
