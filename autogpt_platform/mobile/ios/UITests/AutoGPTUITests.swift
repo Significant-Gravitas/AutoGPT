@@ -62,7 +62,10 @@ final class AutoGPTUITests: XCTestCase {
     app.buttons["Server settings"].tap()
     let scroll = app.scrollViews["Server settings content"]
     XCTAssertTrue(scroll.waitForExistence(timeout: 5))
-    XCTAssertTrue(app.staticTexts["Server settings title"].exists)
+    let heading = app.staticTexts["Server settings title"]
+    XCTAssertTrue(heading.exists)
+    XCTAssertGreaterThan(
+      heading.frame.height, 45, "Server settings must inherit the accessibility text size.")
     let field = app.textFields["Server address"]
     for _ in 0..<8 {
       if field.isHittable { break }

@@ -63,15 +63,6 @@ final class ChatViewController: UIViewController {
     installWebView()
     #if DEBUG
       if let screen = ProcessInfo.processInfo.environment["AUTOGPT_UI_TEST_SCREEN"] {
-        if screen == "large-status" {
-          let category = UIContentSizeCategory.accessibilityExtraExtraExtraLarge
-          if #available(iOS 17, *) {
-            traitOverrides.preferredContentSizeCategory = category
-          } else {
-            parent?.setOverrideTraitCollection(
-              UITraitCollection(preferredContentSizeCategory: category), forChild: self)
-          }
-        }
         showSignIn()
         if screen == "error" { showError("Check your connection and try again.") }
         return
