@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   columns: string[];
@@ -13,9 +14,9 @@ export function SimpleTable({
 }: Props) {
   if (rows.length === 0) {
     return (
-      <p className="py-6 text-center text-sm text-muted-foreground">
+      <Text variant="body" tone="muted" className="py-6 text-center">
         {emptyLabel}
-      </p>
+      </Text>
     );
   }
 

@@ -12,6 +12,7 @@ import {
 import type { BotServerCountPoint } from "@/app/api/__generated__/models/botServerCountPoint";
 
 import { formatDay, formatNumber, SHARDING_THRESHOLD } from "./helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   data: BotServerCountPoint[];
@@ -69,10 +70,10 @@ export function ServerGrowthChart({ data }: Props) {
           />
         </AreaChart>
       </ResponsiveContainer>
-      <p className="mt-2 text-xs text-muted-foreground">
+      <Text variant="small" tone="muted" className="mt-2">
         Sharding threshold: {formatNumber(SHARDING_THRESHOLD)} servers · current
         peak in range: {formatNumber(peak)}
-      </p>
+      </Text>
     </div>
   );
 }
