@@ -5,6 +5,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { UsageBar } from "../../components/UsageBar";
+import { Text } from "@/components/atoms/Text/Text";
 
 const TIERS = [
   "NO_TIER",
@@ -18,11 +19,11 @@ type Tier = (typeof TIERS)[number];
 
 const TIER_COLORS: Record<Tier, string> = {
   NO_TIER: "bg-red-100 text-red-700",
-  BASIC: "bg-gray-100 text-gray-700",
+  BASIC: "bg-zinc-100 text-zinc-700",
   PRO: "bg-blue-100 text-blue-700",
-  MAX: "bg-indigo-100 text-indigo-700",
+  MAX: "bg-purple-100 text-purple-700",
   BUSINESS: "bg-purple-100 text-purple-700",
-  ENTERPRISE: "bg-amber-100 text-amber-700",
+  ENTERPRISE: "bg-yellow-100 text-yellow-700",
 };
 
 // Derives the per-tier label from the live, LaunchDarkly-driven multiplier map.
@@ -126,22 +127,24 @@ export function RateLimitDisplay({
     <div className={className ?? "rounded-md border bg-white p-6"}>
       <div className="mb-4 flex items-start justify-between">
         <div>
-          <h2 className="mb-1 text-lg font-semibold">
+          <Text variant="h5" as="h2" className="mb-1">
             Rate Limits for {data.user_email ?? data.user_id}
-          </h2>
+          </Text>
           {data.user_email && (
-            <p className="text-xs text-gray-500">User ID: {data.user_id}</p>
+            <Text variant="small" tone="muted">
+              User ID: {data.user_id}
+            </Text>
           )}
         </div>
         <span
-          className={`rounded-full px-3 py-1 text-xs font-medium ${TIER_COLORS[currentTier] ?? "bg-gray-100 text-gray-700"}`}
+          className={`rounded-full px-3 py-1 text-xs font-medium ${TIER_COLORS[currentTier] ?? "bg-zinc-100 text-zinc-700"}`}
         >
           {currentTier}
         </span>
       </div>
 
       <div className="mb-4 flex items-center gap-3">
-        <label className="text-sm font-medium text-gray-700">
+        <label className="text-sm font-medium text-zinc-700">
           Subscription Tier
         </label>
         <select
@@ -158,20 +161,24 @@ export function RateLimitDisplay({
           ))}
         </select>
         {isChangingTier && (
-          <span className="text-xs text-gray-500">Updating...</span>
+          <span className="text-xs text-zinc-500">Updating...</span>
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-gray-700">Daily Spend</h3>
+          <Text variant="body-medium" as="h3" tone="secondary">
+            Daily Spend
+          </Text>
           <UsageBar
             used={data.daily_cost_used_microdollars}
             limit={data.daily_cost_limit_microdollars}
           />
         </div>
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-gray-700">Weekly Spend</h3>
+          <Text variant="body-medium" as="h3" tone="secondary">
+            Weekly Spend
+          </Text>
           <UsageBar
             used={data.weekly_cost_used_microdollars}
             limit={data.weekly_cost_limit_microdollars}

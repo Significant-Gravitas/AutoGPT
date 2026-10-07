@@ -1,15 +1,18 @@
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { RateLimitManager } from "./components/RateLimitManager";
+import { Text } from "@/components/atoms/Text/Text";
 
 function RateLimitsDashboard() {
   return (
     <div className="mx-auto p-6">
       <div className="flex flex-col gap-4">
         <div>
-          <h1 className="text-3xl font-bold">User Rate Limits</h1>
-          <p className="text-gray-500">
+          <Text variant="h3" as="h1">
+            User Rate Limits
+          </Text>
+          <Text variant="large" tone="muted">
             Check and manage CoPilot rate limits per user
-          </p>
+          </Text>
         </div>
         <RateLimitManager />
       </div>
