@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from backend.api.features.subscription_activation_routes import confirm_pro_activation
 from backend.data import subscription_activation_checkout as checkout
+from backend.data import subscription_activation_checkout_fixtures as fixtures
 from backend.data import subscription_activation_stripe as billing
 from backend.data.subscription_activation_models import (
     ActivationConfirmRequest,
@@ -20,10 +21,11 @@ from backend.data.subscription_activation_models import (
     PaidActivationResult,
 )
 
-pytest_plugins = (
-    "backend.data.subscription_trial_fixtures",
-    "backend.data.subscription_activation_checkout_fixtures",
-)
+pytest_plugins = ("backend.data.subscription_trial_fixtures",)
+
+attempt = fixtures.attempt
+boundaries = fixtures.boundaries
+live_subscription = fixtures.live_subscription
 
 
 @pytest.mark.parametrize("confirmation", [False, 1, "true", None])
