@@ -77,8 +77,8 @@ export function ChatSessionRow({
         isActive
           ? "rounded-lg bg-zinc-100"
           : cn(
-              "border-b border-b-[#8080800f] last:border-b-0 hover:bg-zinc-50",
-              isNextActive && "!border-b-0",
+              "border-b border-b-zinc-200/10 last:border-b-0 hover:bg-zinc-50",
+              isNextActive && "border-b-0",
             ),
       )}
     >
