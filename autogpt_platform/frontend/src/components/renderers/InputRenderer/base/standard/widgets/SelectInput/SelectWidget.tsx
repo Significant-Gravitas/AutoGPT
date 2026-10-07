@@ -181,7 +181,7 @@ export function SelectWidget(props: WidgetProps) {
           value: String(index),
           label: option.label,
         }))}
-        wrapperClassName="!mb-0 "
+        wrapperClassName="mb-0"
         className={className}
       />
     );

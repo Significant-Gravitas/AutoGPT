@@ -72,11 +72,11 @@ export const AnyOfFieldTitle = (props: customFieldProps) => {
       {shoudlShowType && (
         <Text
           variant="small"
+          tone="secondary"
           className={cn(
-            "text-zinc-700",
             isInputBroken && "line-through",
             colorClass,
-            inputMismatch && "rounded-md bg-red-100 px-1 !text-red-500",
+            inputMismatch && "rounded-md bg-red-100 px-1 text-red-500",
           )}
         >
           {isOptional ? `(${inputMismatch || displayType})` : "(any)"}
