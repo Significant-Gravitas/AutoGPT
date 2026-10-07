@@ -107,7 +107,9 @@ describe("design-system import boundaries", () => {
 
   it("exempts an allowlisted file from its own restriction only", async () => {
     const file = ALLOWLIST.imports["lucide-react"].find(
-      (path) => !ALLOWLIST.imports.legacy.includes(path),
+      (path) =>
+        !ALLOWLIST.imports.legacy.includes(path) &&
+        !path.startsWith("src/components/__legacy__/"),
     );
     expect(file).toBeDefined();
     const source = [
