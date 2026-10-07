@@ -12,13 +12,7 @@
     "@opentelemetry/instrumentation",
     "import-in-the-middle",
     "require-in-the-middle",
-    "postcss-load-config",
-    // Backlog: unused since their only importers in __legacy__ were deleted;
-    // remove them from package.json.
-    "@radix-ui/react-radio-group",
-    "@tanstack/react-table",
-    // Backlog: imported by .storybook/main.ts, not declared in package.json.
-    "webpack"
+    "postcss-load-config"
   ],
   // Backlog: called from package.json scripts but not installed.
   "ignoreBinaries": ["test-storybook", "wait-on"],

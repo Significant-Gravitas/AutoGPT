@@ -2,7 +2,7 @@
 import { cn } from "@/lib/utils";
 import { ReactNode, useRef } from "react";
 import { createNoise3D } from "simplex-noise";
-import { motion } from "motion/react";
+import { motion } from "framer-motion";
 import { useMountEffect } from "@/hooks/useMountEffect";
 
 interface VortexProps {

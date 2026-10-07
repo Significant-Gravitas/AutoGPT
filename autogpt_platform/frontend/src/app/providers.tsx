@@ -16,11 +16,17 @@ import { AdsConversionTracker } from "@/services/analytics/AdsConversionTracker"
 import { AttributionReporter } from "@/services/analytics/AttributionReporter";
 import { LaunchDarklyProvider } from "@/services/feature-flags/feature-flag-provider";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { ThemeProvider, ThemeProviderProps } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
-import { Suspense } from "react";
+import { ReactNode, Suspense } from "react";
 
-export function Providers({ children, ...props }: ThemeProviderProps) {
+interface Props {
+  children: ReactNode;
+}
+
+// Light is the only theme: nothing adds the `.dark` class that switches the
+// semantic variables in globals.css. Dark mode needs a class toggle here
+// (next-themes with attribute="class" fits) once its values are signed off.
+export function Providers({ children }: Props) {
   const queryClient = getQueryClient();
   return (
     <QueryClientProvider client={queryClient}>
@@ -40,9 +46,7 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
               <OrgTeamProvider>
                 <LaunchDarklyProvider>
                   <OnboardingProvider>
-                    <ThemeProvider forcedTheme="light" {...props}>
-                      <TooltipProvider>{children}</TooltipProvider>
-                    </ThemeProvider>
+                    <TooltipProvider>{children}</TooltipProvider>
                   </OnboardingProvider>
                 </LaunchDarklyProvider>
               </OrgTeamProvider>

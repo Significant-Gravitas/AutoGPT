@@ -101,13 +101,7 @@ export default async function RootLayout({
           </>
         ) : null}
         <ErrorBoundary context="application">
-          <Providers
-            attribute="class"
-            defaultTheme="light"
-            // Feel free to remove this line if you want to use the system theme by default
-            // enableSystem
-            disableTransitionOnChange
-          >
+          <Providers>
             <SetupAnalytics
               host={host}
               ga={{

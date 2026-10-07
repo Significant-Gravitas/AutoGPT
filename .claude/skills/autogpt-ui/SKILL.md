@@ -47,7 +47,7 @@ npx eslint --fix <changed files>
 npx prettier --write <changed files>
 ```
 
-In Claude Code the repo's `.claude/settings.json` hook already runs `npx eslint --fix` after each edit under `src/` and prints what is left; fix what it reports, do not suppress it. Never add a file to `eslint-allowlist.json`. If you removed the last violation from an allowlisted file, delete its entry (or run `npx tsx scripts/eslint-allowlist-regenerate.ts`); `scripts/eslint-allowlist.test.ts` fails on stale entries.
+In Claude Code the repo's `.claude/settings.json` hook already runs `npx eslint --fix` after each edit under `src/` and prints what is left; fix what it reports, do not suppress it. Never add a file to `eslint-allowlist.json`. If you removed the last violation from an allowlisted file, delete its entry (or run `pnpm lint:allowlist`); `scripts/eslint-allowlist.test.ts` fails on stale entries.
 
 ## 5. Add a story for design-system components
 

@@ -219,7 +219,7 @@ The success, warning and destructive pairs are below 4.5:1 as text (warning on i
 
 Interactive atoms share one focus treatment, the `focus-ring` utility (a 2px `ring` on `focus-visible`); add `focus-visible:ring-offset-2` where the ring needs air. Form fields share `fieldVariants` in `atoms/Input/fieldVariants.ts`.
 
-The `.dark` block holds inverted values for every variable. Nothing activates it: `providers.tsx` forces the light theme, and no `dark:` class exists.
+The `.dark` block holds inverted values for every variable. Nothing activates it: no code adds the `.dark` class (`providers.tsx` has no theme provider), and no `dark:` class exists.
 
 ### Spacing
 
@@ -376,7 +376,7 @@ One rule per line, with what enforces it. "Allowlisted" means existing violators
 `eslint-allowlist.json` lists files that broke a rule before the rule existed, per import restriction and per Tailwind rule. It only shrinks. When a file is fixed, delete its entry, or rebuild the whole list:
 
 ```bash
-npx tsx scripts/eslint-allowlist-regenerate.ts
+pnpm lint:allowlist
 ```
 
 The script lints everything with the allowlist removed, rewrites the file, and prints what it removed and added. Anything it adds is a new violation: fix it rather than committing the addition.

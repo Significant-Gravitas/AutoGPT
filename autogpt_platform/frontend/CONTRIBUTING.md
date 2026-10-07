@@ -863,7 +863,7 @@ Generated API client:
 
 When touching legacy code:
 
-- Replace usages of `src/components/__legacy__/*` with the modern design system components under `src/components` (`DESIGN.md` lists the replacement for each), then delete the file's entry from `eslint-allowlist.json` or run `npx tsx scripts/eslint-allowlist-regenerate.ts`
+- Replace usages of `src/components/__legacy__/*` with the modern design system components under `src/components` (`DESIGN.md` lists the replacement for each), then delete the file's entry from `eslint-allowlist.json` or run `pnpm lint:allowlist`
 - Replace `BackendAPI` or `src/lib/autogpt-server-api/*` with generated API hooks
 - Move presentational logic into render files and data/behavior into hooks
 - Keep one-off transformations in local `helpers.ts`; move reusable logic to `src/services/` or `src/lib/utils.ts`

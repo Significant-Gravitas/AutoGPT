@@ -7,8 +7,8 @@
 
 @source "../../node_modules/streamdown/dist/*.js";
 
-/* Same selector as the .dark block below and next-themes attribute="class".
-   providers.tsx forces light, so the dark theme never applies yet. */
+/* Same selector as the .dark block below. Nothing adds the class yet (see
+   providers.tsx), so the dark theme never applies. */
 @custom-variant dark (&:is(.dark *));
 
 /* Primitive palette. It replaces Tailwind's colours entirely, so only these
@@ -360,6 +360,7 @@
 }
 
 :root {
+  color-scheme: light;
   --radius: 0.75rem;
 
   --background: #fafafa;
@@ -401,9 +402,10 @@
   --smooth-ring-width: 1px;
 }
 
-/* Written now, not active: providers.tsx forces the light theme. Enabling
-   dark mode is removing forcedTheme, not touching components. */
+/* Written now, not active: nothing adds the .dark class yet. Enabling dark
+   mode is a class toggle in providers.tsx, not a change to components. */
 .dark {
+  color-scheme: dark;
   --background: var(--color-zinc-900);
   --foreground: var(--color-zinc-50);
   --card: #232326;
