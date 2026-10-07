@@ -30,29 +30,10 @@ const smoothShadowRing = plugin(function smoothShadowRing({
   });
 });
 
-// Fractal-noise tile, inlined so the grain costs no extra request. `#` and `%`
-// stay percent-encoded or the data URI terminates early.
-const GRAIN_TEXTURE = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E")`;
-
-// Lays grain over an element's own background. Deliberately sets no `position`,
-// so it never fights the positioning utilities already on the target — callers
-// must position the element themselves.
-const grainTexture = plugin(function grainTexture({ addUtilities }) {
-  addUtilities({
-    ".grain-overlay::after": {
-      content: '""',
-      position: "absolute",
-      inset: "0",
-      backgroundImage: GRAIN_TEXTURE,
-      opacity: "0.5",
-      mixBlendMode: "soft-light",
-      pointerEvents: "none",
-    },
-  });
-});
-
 const config = {
-  darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
+  // Same selector as the .dark variables in globals.css and next-themes
+  // attribute="class"; providers.tsx forces light, so dark: never applies yet.
+  darkMode: "class",
   content: ["./src/**/*.{ts,tsx}", "./node_modules/streamdown/dist/**/*.js"],
   prefix: "",
   theme: {
@@ -104,15 +85,6 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        customGray: {
-          "100": "#d9d9d9",
-          "200": "#a8a8a8",
-          "300": "#878787",
-          "400": "#646464",
-          "500": "#474747",
-          "600": "#282828",
-          "700": "#272727",
-        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -125,48 +97,11 @@ const config = {
         },
       },
       spacing: {
-        "0": "0rem",
-        "1": "0.25rem",
-        "2": "0.5rem",
-        "3": "0.75rem",
-        "4": "1rem",
-        "5": "1.25rem",
-        "6": "1.5rem",
-        "7": "1.75rem",
-        "8": "2rem",
-        "9": "2.25rem",
-        "10": "2.5rem",
-        "11": "2.75rem",
-        "12": "3rem",
-        "14": "3.5rem",
-        "16": "4rem",
-        "18": "4.5rem",
-        "20": "5rem",
-        "24": "6rem",
-        "28": "7rem",
-        "32": "8rem",
-        "36": "9rem",
-        "40": "10rem",
-        "44": "11rem",
-        "48": "12rem",
-        "52": "13rem",
-        "56": "14rem",
-        "60": "15rem",
-        "64": "16rem",
-        "68": "17rem",
-        "70": "17.5rem",
-        "71": "17.75rem",
-        "72": "18rem",
-        "76": "19rem",
-        "80": "20rem",
-        "96": "24rem",
-        "0.5": "0.125rem",
-        "1.5": "0.375rem",
-        "2.5": "0.625rem",
-        "3.5": "0.875rem",
         "4.5": "1.125rem",
-        "7.5": "1.875rem",
-        "8.5": "2.125rem",
+        "18": "4.5rem",
+        "68": "17rem",
+        "71": "17.75rem",
+        "76": "19rem",
       },
       borderRadius: {
         xsmall: "0.25rem",
@@ -246,14 +181,6 @@ const config = {
             backgroundPosition: "-200% 0",
           },
         },
-        loader: {
-          "0%": {
-            boxShadow: "0 0 0 0 rgba(0, 0, 0, 0.25)",
-          },
-          "100%": {
-            boxShadow: "0 0 0 30px rgba(0, 0, 0, 0)",
-          },
-        },
         shake: {
           "0%, 100%": { transform: "translateX(0)" },
           "20%": { transform: "translateX(-4px)" },
@@ -265,17 +192,9 @@ const config = {
           "0%": { backgroundPosition: "50% 50%, 50% 50%" },
           "100%": { backgroundPosition: "350% 50%, 350% 50%" },
         },
-        "marquee-x": {
-          "0%": { transform: "translateX(0)" },
-          "100%": { transform: "translateX(-50%)" },
-        },
         "progress-bar": {
           "0%": { transform: "translateX(-100%)" },
           "100%": { transform: "translateX(400%)" },
-        },
-        "caret-blink": {
-          "0%, 100%": { opacity: "1" },
-          "50%": { opacity: "0" },
         },
         "shimmer-text": {
           "0%": { backgroundPosition: "100% 0" },
@@ -301,13 +220,10 @@ const config = {
         "collapsible-up": "collapsible-up 0.2s cubic-bezier(0.33, 1, 0.68, 1)",
         "fade-in": "fade-in 0.2s ease-out",
         shimmer: "shimmer 4s ease-in-out infinite",
-        loader: "loader 1s infinite",
         shake: "shake 0.5s ease-in-out",
         aurora: "aurora 60s linear infinite",
-        "marquee-x": "marquee-x 40s linear infinite",
         "progress-bar":
           "progress-bar 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite",
-        "caret-blink": "caret-blink 1s step-end infinite",
         "shimmer-text": "shimmer-text 2s linear infinite",
         "fade-up": "fade-up 320ms cubic-bezier(0.23, 1, 0.32, 1) both",
         "grow-line": "grow-line 500ms cubic-bezier(0.23, 1, 0.32, 1) both",
@@ -326,7 +242,6 @@ const config = {
     tailwindcssAnimate,
     scrollbar({ nocompatible: true }),
     smoothShadowRing,
-    grainTexture,
   ],
 } satisfies Config;
 
