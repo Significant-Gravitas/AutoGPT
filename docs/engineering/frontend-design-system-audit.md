@@ -719,14 +719,16 @@ Each step is its own PR, lands green, and is independently revertable.
 7. **Feature-code migration** (Part 6 Step 6) directory by directory, with the lint allowlist shrinking in every PR and the ratchet (Part 6 Step 8) asserting the counts only go down.
 8. **Dark mode**, if wanted, is then a `.dark` block review plus removing `forcedTheme`, not a code change across 102 files.
 
-### 8.4 Decisions to make before step 4
+### 8.4 Design decisions (made 2026-10-07)
 
-These are design decisions, not engineering ones, and they block the token mapping:
+These were open questions blocking the token mapping; they are now decided and are the inputs to step 4.
 
-- Primary action colour: zinc (current Button) or purple (current brand usage)?
-- Which purple: `purple-500 #7733f5` (palette) or the violet `--accent` (`hsl(262 83% 58%)`)?
-- Page background: `#F6F7F8` (current body) or `#FAFAFA` (current `--background`)?
-- Base radius: 8, 12 or 16px, and do cards use `xl` or `2xl`?
-- Control heights: keep 36/46 or move to shadcn's 32/36/40?
-- Muted text: keep `zinc-500` (fails AA at body size) or lift to `zinc-600`?
-- Is dark mode a 2026 goal? If not, the `.dark` block still gets written (shadcn gives it for free) but stays unreachable, and nobody writes `dark:` classes.
+| Decision | Answer | Token consequence |
+|---|---|---|
+| Primary action colour | **Zinc.** The primary Button stays dark neutral. | `--primary` maps to `zinc-800`, `--primary-foreground` to white. Purple remains the brand accent only. |
+| Which purple for the accent | Palette `purple-500` (`#7733f5`). The violet `--accent` (`hsl(262 83% 58%)`) is retired. | `--accent` and the focus `--ring` map to the `purple` ramp; delete the violet value. (Assumption: zinc was chosen for primary and no purple was named; the palette purple is already used 217 times, so it wins. Flag if the violet was intended.) |
+| Page background | **`#FAFAFA`** (the current `--background`). | `body` drops `bg-[#F6F7F8]` and uses `bg-background`. Surfaces (cards, popovers) stay white. |
+| Base radius | **Cards use `xl`.** Under shadcn's model `xl = calc(var(--radius) + 4px)`, so `--radius: 0.75rem` gives 12px fields (`lg`) and 16px cards (`xl`), matching the current atoms. | `--radius: 0.75rem`. Delete `xsmall..2xlarge`. |
+| Control heights | **shadcn's 32 / 36 / 40.** | `h-8 / h-9 / h-10` for `sm / md / lg` on Button, Input, Select, SearchInput, Date and Time inputs, MultiToggle. The 46px `large` button and field go away. |
+| Muted text | **`zinc-600`** for contrast. | `--muted-foreground` maps to `zinc-600` (`#68686F`, about 5.2:1 on white). `Text tone="muted"` follows. `zinc-500` is reserved for placeholders and disabled text. |
+| Dark mode | **Near future, by swapping tokens only.** No `dark:` classes anywhere; the `.dark` block of semantic variables is the entire implementation. | Keep `forcedTheme="light"` until the semantic layer is complete. Delete every hand-placed `dark:` class now. Write the `.dark` block with the palette so enabling the theme is a one-line change later. |
