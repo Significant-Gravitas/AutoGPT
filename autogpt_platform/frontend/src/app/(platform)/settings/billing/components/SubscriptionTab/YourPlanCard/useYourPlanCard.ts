@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetV2GetCopilotUsageQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
 
 import {
   useGetSubscriptionStatus,
@@ -67,6 +70,9 @@ function getPreviousTier(current: string): SubscriptionTierRequestTier | null {
 }
 
 export function useYourPlanCard() {
+  const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const [handledUpgrade, setHandledUpgrade] = useState(false);
   const subscription = useGetSubscriptionStatus({
     query: {
       select: (res) =>
@@ -252,7 +258,12 @@ export function useYourPlanCard() {
         window.location.href = url;
         return;
       }
-      await subscription.refetch();
+      await Promise.all([
+        subscription.refetch(),
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetCopilotUsageQueryKey(),
+        }),
+      ]);
       return true;
     } catch (error) {
       // 422 fail-closed on a YEARLY request = LD missing the *_YEARLY price for
@@ -482,6 +493,24 @@ export function useYourPlanCard() {
     ].filter((line): line is { label?: string; text: string } => line !== null);
   }
 
+  useEffect(() => {
+    if (handledUpgrade || !subscription.data) return;
+    if (
+      searchParams.get("upgrade") === "MAX" &&
+      effectiveTier === "PRO" &&
+      !pendingTier
+    ) {
+      setPendingTierUpgrade("MAX");
+      setHandledUpgrade(true);
+    }
+  }, [
+    searchParams,
+    handledUpgrade,
+    subscription.data,
+    effectiveTier,
+    pendingTier,
+  ]);
+
   function getTierUpgradeDialogBody(): string {
     if (!pendingTierUpgrade) return "";
     const targetCents =
@@ -498,6 +527,7 @@ export function useYourPlanCard() {
     return [
       `You'll be charged the prorated difference immediately for the rest of your ${cycleNoun} period.`,
       renewLine,
+      "Your current usage carries over into the higher allowance.",
     ]
       .filter(Boolean)
       .join(" ");
@@ -548,6 +578,13 @@ export function useYourPlanCard() {
   return {
     plan,
     isLoading: subscription.isLoading,
+    isError: subscription.isError,
+    retry: () => void subscription.refetch(),
+    offerPriceCents: nextTierKey
+      ? serverCycle === "yearly"
+        ? tierCostsYearly[nextTierKey]
+        : tierCosts[nextTierKey]
+      : undefined,
     isUpdatingTier,
     // ENTERPRISE has no Stripe subscription to manage; the Payment method
     // card still exposes the portal for cards and invoices.
@@ -619,7 +656,10 @@ export function useYourPlanCard() {
       // success_url redirect — there's no immediate proration risk, so go
       // straight to changeTier without a confirm step. Only paid→paid
       // upgrades hit the always_invoice immediate-billing path.
-      if (!plan.isPaidPlan) {
+      if (
+        !plan.isPaidPlan &&
+        !subscription.data?.has_active_stripe_subscription
+      ) {
         void changeTier(plan.nextTier, selectedCycle);
         return;
       }

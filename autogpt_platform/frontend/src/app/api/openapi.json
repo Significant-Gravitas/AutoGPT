@@ -32449,6 +32449,13 @@
             "anyOf": [{ "type": "number" }, { "type": "null" }],
             "title": "Allowance Used Percent"
           },
+          "usage_policy": {
+            "anyOf": [
+              { "type": "string", "enum": ["lifetime", "rolling"] },
+              { "type": "null" }
+            ],
+            "title": "Usage Policy"
+          },
           "active": { "type": "boolean", "title": "Active", "default": false },
           "converted": {
             "type": "boolean",

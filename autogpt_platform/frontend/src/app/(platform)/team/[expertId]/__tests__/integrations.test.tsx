@@ -3,6 +3,10 @@ import {
   getListExpertCredentialsMockHandler,
   getListExpertRunsMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import {
+  getGetHomeDashboardMockHandler,
+  getGetHomeDashboardResponseMock200,
+} from "@/app/api/__generated__/endpoints/home/home.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { ExpertCredentialRef } from "@/app/api/__generated__/models/expertCredentialRef";
@@ -110,6 +114,9 @@ const linkedin: ExpertCredentialRef = {
 
 beforeEach(() => {
   server.use(
+    getGetHomeDashboardMockHandler(
+      getGetHomeDashboardResponseMock200({ attention: [] }),
+    ),
     getGetExpertMockHandler(maria),
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     getListExpertRunsMockHandler([]),

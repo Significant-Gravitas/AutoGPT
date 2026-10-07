@@ -78,16 +78,14 @@ export function TrialCardContent({
     return (
       <section
         aria-label="AutoGPT trial"
-        className="flex w-full flex-col gap-2"
+        className="flex w-full flex-col gap-2 py-4"
       >
-        <div className="flex items-center gap-2 px-4">
+        <div className="sr-only">
           <Text variant="body-medium" as="span" className="text-textBlack">
             {trial.eligible ? "Free trial" : "Your plan"}
           </Text>
         </div>
-        <div className="rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-          {body}
-        </div>
+        <div className="w-full">{body}</div>
       </section>
     );
   return (
