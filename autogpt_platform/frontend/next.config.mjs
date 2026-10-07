@@ -17,6 +17,10 @@ const nextConfig = {
   },
   // Suppress the "X-Powered-By: Next.js" header (framework fingerprinting).
   poweredByHeader: false,
+  // PostHog's endpoints end in a slash (`/e/`, `/flags/`), so requests on the
+  // PostHog proxy path must reach middleware untouched. Middleware redoes the
+  // trailing-slash redirect for every other path (see src/middleware.ts).
+  skipTrailingSlashRedirect: true,
   async rewrites() {
     return [
       {

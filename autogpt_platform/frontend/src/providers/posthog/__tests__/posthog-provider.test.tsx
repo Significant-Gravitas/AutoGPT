@@ -5,7 +5,10 @@ const posthog = vi.hoisted(() => ({
   init: vi.fn(),
   register: vi.fn(),
 }));
-const credentials = vi.hoisted(() => ({ key: "phc_test" as string }));
+const credentials = vi.hoisted(() => ({
+  key: "phc_test" as string,
+  host: "https://eu.i.posthog.com",
+}));
 
 vi.mock("posthog-js", () => ({ default: posthog }));
 
@@ -22,7 +25,7 @@ vi.mock("@/services/environment", () => ({
     isPostHogEnabled: () => true,
     getPostHogCredentials: () => ({
       key: credentials.key,
-      host: "https://eu.i.posthog.com",
+      host: credentials.host,
     }),
   },
 }));
@@ -48,6 +51,32 @@ describe("PostHogProvider", () => {
     posthog.init.mockClear();
     posthog.register.mockClear();
     credentials.key = "phc_test";
+    credentials.host = "https://eu.i.posthog.com";
+  });
+
+  it("sends PostHog Cloud traffic through our own domain", async () => {
+    const { PostHogProvider } = await import("../posthog-provider");
+
+    render(<PostHogProvider>app</PostHogProvider>);
+
+    expect(posthog.init).toHaveBeenCalledWith(
+      "phc_test",
+      expect.objectContaining({
+        api_host: "/relay",
+        ui_host: "https://eu.posthog.com",
+      }),
+    );
+  });
+
+  it("talks to a self-hosted PostHog directly", async () => {
+    credentials.host = "https://posthog.example.com";
+    const { PostHogProvider } = await import("../posthog-provider");
+
+    render(<PostHogProvider>app</PostHogProvider>);
+
+    const config = posthog.init.mock.calls[0][1];
+    expect(config.api_host).toBe("https://posthog.example.com");
+    expect(config).not.toHaveProperty("ui_host");
   });
 
   it("registers the base properties once PostHog is initialised", async () => {
