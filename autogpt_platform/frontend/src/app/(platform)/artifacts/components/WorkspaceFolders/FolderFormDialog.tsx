@@ -62,7 +62,7 @@ export function FolderFormDialog({
               if (isKey(e, "Enter")) handleSubmit();
             }}
             className="w-full"
-            wrapperClassName="!mb-0"
+            wrapperClassName="mb-0"
           />
           {location ? (
             <Text variant="small" className="text-zinc-500">

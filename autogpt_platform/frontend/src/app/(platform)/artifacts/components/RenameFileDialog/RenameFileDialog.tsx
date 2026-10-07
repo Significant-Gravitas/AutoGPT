@@ -36,7 +36,7 @@ export function RenameFileDialog({ file, isOpen, setIsOpen }: Props) {
               if (isKey(e, "Enter")) handleSubmit();
             }}
             className="w-full"
-            wrapperClassName="!mb-0"
+            wrapperClassName="mb-0"
           />
           <Button
             variant="primary"
