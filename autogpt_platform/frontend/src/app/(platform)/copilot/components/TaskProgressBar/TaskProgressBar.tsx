@@ -81,7 +81,7 @@ export function TaskProgressBar({
               <Icon
                 icon={CheckmarkBadge01Icon}
                 size={22}
-                className="flex-shrink-0 text-green-500"
+                className="shrink-0 text-green-500"
               />
               <Text
                 variant="body-medium"
@@ -118,7 +118,7 @@ export function TaskProgressBar({
               <Icon
                 icon={CheckListIcon}
                 size={16}
-                className="flex-shrink-0 text-zinc-500"
+                className="shrink-0 text-zinc-500"
               />
               <Text
                 variant="body-medium"
@@ -131,7 +131,7 @@ export function TaskProgressBar({
           )}
         </div>
 
-        <span className="flex-shrink-0 text-sm tabular-nums text-zinc-900">
+        <span className="shrink-0 text-sm text-zinc-900 tabular-nums">
           {allDone ? todos.length : currentIndex + 1}/{todos.length}
         </span>
         <motion.span
@@ -139,7 +139,7 @@ export function TaskProgressBar({
           transition={
             reduceMotion ? { duration: 0 } : { duration: 0.2, ease: EASE_OUT }
           }
-          className="flex-shrink-0 text-zinc-400"
+          className="shrink-0 text-zinc-400"
         >
           <Icon icon={ArrowDown01Icon} size={14} />
         </motion.span>

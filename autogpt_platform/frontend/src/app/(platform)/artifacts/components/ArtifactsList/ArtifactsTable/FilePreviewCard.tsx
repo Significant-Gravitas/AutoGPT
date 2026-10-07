@@ -24,7 +24,7 @@ export function FilePreviewCard({ file }: Props) {
 
   return (
     <div className="w-80 overflow-hidden" data-testid="artifacts-preview-card">
-      <div className="relative aspect-[16/10] overflow-hidden border-b border-zinc-200 bg-zinc-50">
+      <div className="relative aspect-16/10 overflow-hidden border-b border-zinc-200 bg-zinc-50">
         <PreviewBody file={file} kind={kind} imageWidth={PREVIEW_IMAGE_WIDTH} />
       </div>
       <div className="flex items-center gap-3 p-3">

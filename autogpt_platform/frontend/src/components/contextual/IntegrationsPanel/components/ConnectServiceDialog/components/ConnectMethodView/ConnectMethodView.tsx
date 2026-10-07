@@ -110,7 +110,7 @@ export function ConnectMethodView({
           <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-[0_8px_24px_rgba(0,0,0,0.08)] ring-1 ring-zinc-100">
             <AutoGPTLogo
               hideText
-              className="absolute left-1/2 top-1/2 h-8 w-[4.4rem] -translate-x-[77%] -translate-y-1/2"
+              className="absolute top-1/2 left-1/2 h-8 w-[4.4rem] translate-x-[-77%] -translate-y-1/2"
             />
           </span>
           <span aria-hidden className="grid grid-cols-3 gap-1.5">
@@ -143,7 +143,7 @@ export function ConnectMethodView({
             return (
               <div
                 key={method}
-                className={isSelected ? "rounded-xl bg-white shadow-sm" : ""}
+                className={isSelected ? "rounded-xl bg-white shadow-xs" : ""}
               >
                 <button
                   type="button"
@@ -154,7 +154,7 @@ export function ConnectMethodView({
                       : "flex w-full items-center gap-3 rounded-xl p-3 text-left transition-colors hover:bg-white/60"
                   }
                 >
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white shadow-xs">
                     <Icon
                       icon={copy.icon}
                       size={22}

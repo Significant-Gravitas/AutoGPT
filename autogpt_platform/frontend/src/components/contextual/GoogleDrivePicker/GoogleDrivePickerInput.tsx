@@ -123,11 +123,7 @@ export function GoogleDrivePickerInput({
               <div className="flex items-center gap-2 overflow-hidden">
                 {file.iconUrl && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={file.iconUrl}
-                    alt=""
-                    className="h-4 w-4 flex-shrink-0"
-                  />
+                  <img src={file.iconUrl} alt="" className="h-4 w-4 shrink-0" />
                 )}
                 <span className="truncate" title={file.name}>
                   {file.name || file.id}
@@ -138,7 +134,7 @@ export function GoogleDrivePickerInput({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 flex-shrink-0"
+                  className="h-6 w-6 shrink-0"
                   aria-label="Remove file"
                   onClick={() => handleRemoveFile(idx)}
                 >

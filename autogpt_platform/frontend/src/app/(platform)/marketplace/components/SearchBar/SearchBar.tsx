@@ -13,7 +13,7 @@ interface SearchBarProps {
 
 export function SearchBar({
   placeholder = 'Search for tasks like "optimise SEO"',
-  width = "w-full lg:w-[56.25rem]",
+  width = "w-full lg:w-225",
   height = "h-[3.8rem]",
   defaultValue,
   onSubmit,
@@ -41,7 +41,7 @@ export function SearchBar({
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder={placeholder}
-        className="flex-grow border-none bg-transparent text-base font-normal text-black placeholder:text-base placeholder:font-normal placeholder:text-zinc-400 focus:outline-none md:text-lg md:placeholder:text-lg"
+        className="grow border-none bg-transparent text-base font-normal text-black placeholder:text-base placeholder:font-normal placeholder:text-zinc-400 focus:outline-hidden md:text-lg md:placeholder:text-lg"
         data-testid="store-search-input"
       />
     </form>

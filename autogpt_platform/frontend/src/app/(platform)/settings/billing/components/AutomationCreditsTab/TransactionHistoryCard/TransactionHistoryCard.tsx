@@ -36,7 +36,7 @@ export function TransactionHistoryCard({ index = 0 }: Props) {
             as="h2"
             id={headingID}
             tabIndex={-1}
-            className="focus:outline-none"
+            className="focus:outline-hidden"
           >
             Transaction history
           </Text>

@@ -124,7 +124,7 @@ export function CredentialRow({
             {getCredentialDisplayName(credential, displayName)}
           </Text>
           {isRealCredentialType && (
-            <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-[0.625rem] font-medium leading-tight text-zinc-500">
+            <span className="shrink-0 rounded-sm bg-zinc-100 px-1.5 py-0.5 text-[0.625rem] leading-tight font-medium text-zinc-500">
               {getCredentialTypeLabel(credType)}
             </span>
           )}
@@ -133,7 +133,7 @@ export function CredentialRow({
           <Text
             variant="large"
             className={cn(
-              "absolute top-[65%] -translate-y-1/2 overflow-hidden whitespace-nowrap font-mono tracking-tight",
+              "absolute top-[65%] -translate-y-1/2 overflow-hidden font-mono tracking-tight whitespace-nowrap",
               asSelectTrigger ? "right-0" : "right-6",
             )}
           >
@@ -155,7 +155,7 @@ export function CredentialRow({
               size="icon-xs"
               aria-label="Credential actions"
               withTooltip={false}
-              className="ml-auto shrink-0 rounded hover:border-transparent hover:bg-zinc-100"
+              className="ml-auto shrink-0 rounded-sm hover:border-transparent hover:bg-zinc-100"
               onClick={(e) => e.stopPropagation()}
             >
               <Icon icon={MoreVerticalIcon} className="h-5 w-5 text-zinc-400" />

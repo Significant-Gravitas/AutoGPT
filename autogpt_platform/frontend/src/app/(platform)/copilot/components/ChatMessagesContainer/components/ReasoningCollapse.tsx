@@ -38,7 +38,7 @@ export function ReasoningCollapse({ children, isActive = false }: Props) {
         <AccordionPrimitive.Header className="flex">
           <AccordionPrimitive.Trigger
             className={cn(
-              "group flex items-center gap-1.5 py-1 font-sans text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-700 focus-visible:outline-none",
+              "group flex items-center gap-1.5 py-1 font-sans text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-700 focus-visible:outline-hidden",
               isActive && "animate-pulse",
             )}
           >
@@ -56,7 +56,7 @@ export function ReasoningCollapse({ children, isActive = false }: Props) {
             Reasoning
           </AccordionPrimitive.Trigger>
         </AccordionPrimitive.Header>
-        <AccordionContent className="pb-1 pt-0 font-sans text-sm text-zinc-500 [&_pre]:m-0 [&_pre]:whitespace-pre-wrap [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:font-sans [&_pre]:text-sm [&_pre]:text-zinc-500">
+        <AccordionContent className="pt-0 pb-1 font-sans text-sm text-zinc-500 [&_pre]:m-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:font-sans [&_pre]:text-sm [&_pre]:whitespace-pre-wrap [&_pre]:text-zinc-500">
           {children}
           <Button
             variant="secondary"

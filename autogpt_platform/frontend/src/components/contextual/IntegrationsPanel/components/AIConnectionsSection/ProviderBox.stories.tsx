@@ -13,7 +13,7 @@ const meta = {
   },
   decorators: [
     (Story, context) => (
-      <div className={context.parameters.providerGrid ? "w-[40rem]" : "w-48"}>
+      <div className={context.parameters.providerGrid ? "w-160" : "w-48"}>
         <Story />
       </div>
     ),

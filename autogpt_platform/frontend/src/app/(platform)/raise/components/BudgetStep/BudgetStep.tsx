@@ -51,7 +51,7 @@ export function BudgetStep({
             variant="primary"
             size="small"
             onClick={budget.submitCustom}
-            className="h-[2.625rem] rounded-xl py-3"
+            className="h-10.5 rounded-xl py-3"
           >
             {"That's it"}
           </Button>
@@ -61,7 +61,7 @@ export function BudgetStep({
           variant="ghost"
           size="small"
           onClick={onSkip}
-          className="h-[2.625rem] rounded-xl py-3"
+          className="h-10.5 rounded-xl py-3"
         >
           Skip
         </Button>

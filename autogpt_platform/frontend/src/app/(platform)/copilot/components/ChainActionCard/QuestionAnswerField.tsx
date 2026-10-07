@@ -63,7 +63,7 @@ export function QuestionAnswerField({
           ? `e.g. ${question.example}`
           : "Type your answer"
       }
-      className="resize-none rounded-2xl bg-zinc-50 px-4 py-3 text-base leading-relaxed text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-300"
+      className="resize-none rounded-2xl bg-zinc-50 px-4 py-3 text-base leading-relaxed text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:ring-zinc-300 focus:outline-hidden"
     />
   );
 

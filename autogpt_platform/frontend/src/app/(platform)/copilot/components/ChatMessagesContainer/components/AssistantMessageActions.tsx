@@ -70,7 +70,7 @@ export function AssistantMessageActions({
           disabled={!canRate || feedback === "downvote"}
           className={cn(
             feedback === "upvote" && "text-green-300 hover:text-green-300",
-            feedback === "downvote" && "!opacity-20",
+            feedback === "downvote" && "opacity-20!",
           )}
         >
           <Icon icon={ThumbsUpIcon} size={16} />
@@ -84,7 +84,7 @@ export function AssistantMessageActions({
           disabled={!canRate || feedback === "upvote"}
           className={cn(
             feedback === "downvote" && "text-red-300 hover:text-red-300",
-            feedback === "upvote" && "!opacity-20",
+            feedback === "upvote" && "opacity-20!",
           )}
         >
           <Icon icon={ThumbsDownIcon} size={16} />

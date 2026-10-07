@@ -239,8 +239,8 @@ export function NewAgentLibraryView() {
               // panels own their scroll on desktop (h-svh + minmax rows)
               // instead of assuming a top-navbar page. Children's mb-3 (from
               // the classic layout) would overflow the viewport-sized rows.
-              "grid h-full w-full min-w-0 grid-cols-1 gap-4 px-4 pb-3 pt-3 lg:h-svh lg:grid-cols-[minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)] lg:[&>*]:mb-0"
-            : "mx-4 grid h-full w-full grid-cols-1 gap-0 pt-3 md:ml-4 md:mr-0 md:gap-4 lg:grid-cols-[25%_70%]",
+              "grid h-full w-full min-w-0 grid-cols-1 gap-4 px-4 pt-3 pb-3 lg:h-svh lg:grid-cols-[minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)] lg:[&>*]:mb-0"
+            : "mx-4 grid h-full w-full grid-cols-1 gap-0 pt-3 md:mr-0 md:ml-4 md:gap-4 lg:grid-cols-[25%_70%]",
         )}
       >
         <SectionWrap

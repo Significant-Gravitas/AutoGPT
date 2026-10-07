@@ -21,7 +21,7 @@ export function AutoGPTLogo({
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-label="AutoGPT Logo"
-      className={className ?? "h-10 w-[5.5rem]"}
+      className={className ?? "h-10 w-22"}
       {...props}
     >
       <g clipPath={`url(#${clipId})`}>

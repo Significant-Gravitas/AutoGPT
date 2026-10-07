@@ -10,12 +10,12 @@ interface Props {
   item: HomeActiveTask;
 }
 
-const ROW_CLASS = "relative flex items-center gap-3 py-2 pl-[3.75rem] pr-4";
+const ROW_CLASS = "relative flex items-center gap-3 py-2 pl-15 pr-4";
 
 export function ActiveRow({ item }: Props) {
   const content = (
     <>
-      <span className="absolute left-4 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white">
+      <span className="absolute top-1/2 left-4 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white">
         {item.expert ? (
           <ExpertAvatar
             name={item.expert.name}
@@ -54,7 +54,7 @@ export function ActiveRow({ item }: Props) {
       href={item.link}
       className={cn(
         ROW_CLASS,
-        "outline-none transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50",
+        "outline-hidden transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50",
       )}
     >
       {content}

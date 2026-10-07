@@ -24,7 +24,7 @@ export function TourHero() {
         <Text
           as="h1"
           variant="h1"
-          className="text-balance text-[4rem] font-[600] leading-none"
+          className="text-[4rem] leading-none font-semibold text-balance"
         >
           Build AI agents by just chatting
         </Text>

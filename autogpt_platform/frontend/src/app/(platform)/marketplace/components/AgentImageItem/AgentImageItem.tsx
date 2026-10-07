@@ -39,7 +39,7 @@ export function AgentImageItem({
 
   return (
     <div className="relative">
-      <div className="h-60 overflow-hidden rounded-xl border border-zinc-100 bg-[#a8a8a8] sm:h-80 sm:w-full md:h-[25rem] lg:h-[30rem]">
+      <div className="h-60 overflow-hidden rounded-xl border border-zinc-100 bg-[#a8a8a8] sm:h-80 sm:w-full md:h-100 lg:h-120">
         {isValidVideoUrl(image) ? (
           getYouTubeVideoId(image) ? (
             <iframe

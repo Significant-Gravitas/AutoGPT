@@ -21,7 +21,7 @@ export function TrialStatus({ trial, isCanceling, onCancel }: Props) {
       <TrialTitle>
         {trial.active ? "Your trial" : "Your trial has ended"}
       </TrialTitle>
-      <Text variant="body" unmask={false} className="!text-zinc-800">
+      <Text variant="body" unmask={false} className="text-zinc-800!">
         {trial.status === "canceled"
           ? "Cancellation confirmed. Trial access has ended and your trial will not convert to a paid plan."
           : trial.cancel_at_period_end
@@ -31,7 +31,7 @@ export function TrialStatus({ trial, isCanceling, onCancel }: Props) {
               : "Paid access requires a successful payment. Review your payment method and plan below."}
       </Text>
       {trial.active ? (
-        <Text variant="small" className="!text-zinc-500">
+        <Text variant="small" className="text-zinc-500!">
           Canceling ends trial access immediately.
         </Text>
       ) : null}

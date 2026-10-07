@@ -43,7 +43,7 @@ export function HomeEmptyIllustration() {
             ease: EASE_OUT_QUINT,
             delay: shouldReduceMotion ? 0 : index * 0.08,
           }}
-          className="origin-[120px_52px] [transform-box:fill-box]"
+          className="origin-[120px_52px] transform-fill"
         >
           <Card x={card.x} y={card.y} width={card.width} />
         </motion.g>

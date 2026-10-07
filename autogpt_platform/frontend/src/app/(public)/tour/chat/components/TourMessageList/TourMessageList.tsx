@@ -17,7 +17,7 @@ import { TourStreamingText } from "./TourStreamingText";
 // 1rem text) so the tour chat reads exactly like the product.
 const MESSAGE_CONTENT_CLASSES =
   "text-base leading-relaxed " +
-  "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] " +
+  "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:rounded-br-none " +
   "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900";
 
 const CARD_ANIMATION_CLASSES =
@@ -38,12 +38,12 @@ export function TourMessageList({ messages, isStreaming, footer }: Props) {
 
   return (
     <Conversation className="min-h-0 flex-1">
-      <ConversationContent className="gap-6 px-3 pb-6 pt-4">
+      <ConversationContent className="gap-6 px-3 pt-4 pb-6">
         {messages.map((message) => (
           <Message
             key={message.id}
             from={message.role}
-            className="duration-300 animate-in fade-in slide-in-from-bottom-2"
+            className="animate-in duration-300 fade-in slide-in-from-bottom-2"
           >
             <MessageContent className={MESSAGE_CONTENT_CLASSES}>
               {message.parts.map((part, index) => (

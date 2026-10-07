@@ -228,7 +228,7 @@ function ArtifactRenderer({
   // Source view: always show raw text
   if (isSourceView) {
     return (
-      <pre className="whitespace-pre-wrap break-words p-4 font-mono text-sm text-zinc-800">
+      <pre className="p-4 font-mono text-sm wrap-break-word whitespace-pre-wrap text-zinc-800">
         {content}
       </pre>
     );
@@ -319,7 +319,7 @@ function ArtifactRenderer({
 
   // Fallback: plain text
   return (
-    <pre className="whitespace-pre-wrap break-words p-4 font-mono text-sm text-zinc-800">
+    <pre className="p-4 font-mono text-sm wrap-break-word whitespace-pre-wrap text-zinc-800">
       {content}
     </pre>
   );

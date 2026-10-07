@@ -40,7 +40,7 @@ export function AutopilotModeSelector({ sessionId, persistedMode }: Props) {
             aria-label={`Approval mode: ${current.label}. Change mode`}
             title={`Approval mode: ${current.label}`}
             className={cn(
-              "inline-flex h-8 items-center justify-center gap-1 rounded-full text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400",
+              "inline-flex h-8 items-center justify-center gap-1 rounded-full text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-hidden",
               isDefault
                 ? "w-8 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
                 : "px-2.5",

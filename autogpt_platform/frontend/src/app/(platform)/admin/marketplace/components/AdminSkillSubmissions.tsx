@@ -57,7 +57,7 @@ export function AdminSkillSubmissions() {
                 : ""}
             </Text>
           </div>
-          <div className="flex flex-shrink-0 gap-2">
+          <div className="flex shrink-0 gap-2">
             <Button
               variant="secondary"
               size="small"

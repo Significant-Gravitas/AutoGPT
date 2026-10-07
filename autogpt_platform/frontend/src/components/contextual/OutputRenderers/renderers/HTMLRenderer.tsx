@@ -22,7 +22,7 @@ function HTMLPreview({ value }: { value: string }) {
     <iframe
       sandbox="allow-scripts"
       srcDoc={srcDoc}
-      className="h-96 w-full rounded border border-zinc-200"
+      className="h-96 w-full rounded-sm border border-zinc-200"
       title="HTML preview"
     />
   );

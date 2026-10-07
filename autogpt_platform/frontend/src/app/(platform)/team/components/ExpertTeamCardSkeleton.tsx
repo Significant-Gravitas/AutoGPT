@@ -9,7 +9,7 @@ export function ExpertTeamCardSkeleton() {
       <div className="flex flex-col items-start p-2 pb-4">
         <div className="h-28 w-full rounded-lg bg-zinc-100" />
         <div className="flex w-full items-start gap-3 px-2">
-          <Skeleton className="-mt-11 ml-1 size-[5.75rem] shrink-0 rounded-full" />
+          <Skeleton className="-mt-11 ml-1 size-23 shrink-0 rounded-full" />
           <div className="mt-2 flex flex-1 flex-col gap-1">
             <div className="flex items-baseline justify-between gap-2">
               <Skeleton className="h-3 w-12 rounded-full" />
@@ -18,12 +18,12 @@ export function ExpertTeamCardSkeleton() {
             <Skeleton className="h-4 w-full rounded-sm" />
           </div>
         </div>
-        <div className="mt-2 flex w-full flex-col items-start gap-2 pl-5 pr-2">
+        <div className="mt-2 flex w-full flex-col items-start gap-2 pr-2 pl-5">
           <Skeleton className="h-5 w-2/5 rounded-full" />
           <Skeleton className="h-4 w-1/2 rounded-full" />
         </div>
 
-        <div className="mx-2 mt-3 flex rounded-lg bg-zinc-50 px-2 py-2 ring-1 ring-inset ring-zinc-100">
+        <div className="mx-2 mt-3 flex rounded-lg bg-zinc-50 px-2 py-2 ring-1 ring-zinc-100 ring-inset">
           {[0, 1, 2, 3].map((stat) => (
             <div
               key={stat}

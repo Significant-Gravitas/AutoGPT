@@ -54,17 +54,15 @@ function resetCopilotStore() {
 
 function mockShareState(state: Partial<ChatShareStateResponse>) {
   server.use(
-    getGetV2GetChatShareStateMockHandler200(
-      (): ChatShareStateResponse => ({
-        is_shared: false,
-        share_token: null,
-        auto_share_executions: false,
-        message_count: 0,
-        linked_run_count: 0,
-        file_count: 0,
-        ...state,
-      }),
-    ),
+    getGetV2GetChatShareStateMockHandler200((): ChatShareStateResponse => ({
+      is_shared: false,
+      share_token: null,
+      auto_share_executions: false,
+      message_count: 0,
+      linked_run_count: 0,
+      file_count: 0,
+      ...state,
+    })),
   );
 }
 
@@ -253,7 +251,7 @@ describe("ChatContainer", () => {
 
     expect(screen.getByRole("alert")).toBeDefined();
     expect(backdrop.className).toContain("backdrop-blur-lg");
-    expect(backdrop.className).toContain("[mask-image:linear-gradient");
+    expect(backdrop.className).toContain("mask-[linear-gradient");
     expect(backdrop.className).toContain("radial-gradient");
   });
 

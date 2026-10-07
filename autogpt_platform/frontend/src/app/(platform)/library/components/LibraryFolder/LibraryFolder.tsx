@@ -63,10 +63,10 @@ export function LibraryFolder({
     <div
       data-testid="library-folder"
       data-folder-id={id}
-      className={`group relative inline-flex h-[10.625rem] w-full max-w-[25rem] cursor-pointer flex-col items-start justify-between gap-2.5 rounded-medium border p-4 shadow-sm backdrop-blur-md transition-all duration-200 hover:shadow-md ${
+      className={`group relative inline-flex h-42.5 w-full max-w-100 cursor-pointer flex-col items-start justify-between gap-2.5 rounded-medium border p-4 shadow-xs backdrop-blur-md transition-all duration-200 hover:shadow-md ${
         isDragOver
           ? "border-blue-400 bg-blue-50 ring-2 ring-blue-200"
-          : "border-purple-200/40 bg-gradient-to-br from-purple-50/40 via-white/70 to-purple-50/30"
+          : "border-purple-200/40 bg-linear-to-br from-purple-50/40 via-white/70 to-purple-50/30"
       }`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -82,7 +82,7 @@ export function LibraryFolder({
             variant="h5"
             unmask={false}
             data-testid="library-folder-name"
-            className="line-clamp-2 hyphens-auto break-words"
+            className="line-clamp-2 wrap-break-word hyphens-auto"
           >
             {name}
           </Text>
@@ -101,7 +101,7 @@ export function LibraryFolder({
         </div>
 
         {/* Right side - Custom folder icon */}
-        <div className="relative top-5 flex flex-shrink-0 items-center">
+        <div className="relative top-5 flex shrink-0 items-center">
           <FolderIcon isOpen={isHovered} color={color} icon={icon} />
         </div>
       </div>

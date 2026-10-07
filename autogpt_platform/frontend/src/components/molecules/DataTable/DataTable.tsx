@@ -112,7 +112,7 @@ function DataTableInner<T>(
         className={cn(
           "border-b border-zinc-100 transition-colors last:border-0",
           onRowClick &&
-            "cursor-pointer hover:bg-zinc-50 focus-visible:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-400",
+            "cursor-pointer hover:bg-zinc-50 focus-visible:bg-zinc-50 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-hidden focus-visible:ring-inset",
         )}
       >
         {columns.map((column) => (

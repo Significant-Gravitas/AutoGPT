@@ -30,7 +30,7 @@ export function WorkflowsMovedWalkthrough() {
             ref={player.fallbackRef}
             role="status"
             tabIndex={-1}
-            className="max-w-sm text-center text-sm leading-relaxed text-zinc-600 outline-none"
+            className="max-w-sm text-center text-sm leading-relaxed text-zinc-600 outline-hidden"
           >
             The walkthrough couldn&apos;t load. Open Team, select Otto, then
             choose Workflows.
@@ -87,7 +87,7 @@ function WalkthroughControl({ player }: { player: Player }) {
       {!player.hasStarted && (
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-14 top-0 bg-black/15"
+          className="pointer-events-none absolute inset-x-0 top-0 bottom-14 bg-black/15"
         />
       )}
       <div className="flex min-h-14 items-center border-t border-zinc-200/80 bg-white px-4 py-2">
@@ -116,8 +116,8 @@ function WalkthroughControl({ player }: { player: Player }) {
         onClick={player.togglePlayback}
         className={
           player.hasStarted
-            ? "absolute bottom-2.5 right-3"
-            : "absolute left-1/2 top-[calc(50%-1.75rem)] size-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-white/20 bg-purple-600 text-white shadow-xl hover:border-white/30 hover:bg-purple-700 focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-4"
+            ? "absolute right-3 bottom-2.5"
+            : "absolute top-[calc(50%-1.75rem)] left-1/2 size-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-white/20 bg-purple-600 text-white shadow-xl hover:border-white/30 hover:bg-purple-700 focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-4"
         }
       >
         <Icon icon={icon} size={player.hasStarted ? 14 : 26} aria-hidden />

@@ -25,12 +25,12 @@ export function TrialOffer({ trial, isStarting, onStart }: Props) {
             No charge today
           </span>
         </div>
-        <Text variant="body" unmask={false} className="!text-zinc-800">
+        <Text variant="body" unmask={false} className="text-zinc-800!">
           Card required. No subscription charge today. Then{" "}
           {formatTrialPrice(offer)}, plus applicable tax, unless you cancel
           before the trial ends.
         </Text>
-        <Text variant="small" className="!text-zinc-500">
+        <Text variant="small" className="text-zinc-500!">
           Trial usage is limited. Canceling ends trial access immediately. You
           can manage your plan in billing.
         </Text>
@@ -41,7 +41,7 @@ export function TrialOffer({ trial, isStarting, onStart }: Props) {
         onClick={onStart}
         loading={isStarting}
         disabled={isStarting}
-        className="w-full shrink-0 md:w-auto md:min-w-[11rem]"
+        className="w-full shrink-0 md:w-auto md:min-w-44"
       >
         Start {offer.duration_days}-day trial
       </Button>

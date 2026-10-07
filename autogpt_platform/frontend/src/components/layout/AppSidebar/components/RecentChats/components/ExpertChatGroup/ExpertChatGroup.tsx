@@ -108,7 +108,7 @@ export function ExpertChatGroup({
           <Icon
             icon={ArrowDown01Icon}
             className={cn(
-              "ease-[cubic-bezier(0.33,1,0.68,1)] shrink-0 text-zinc-400 transition-[opacity,transform] duration-200 group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none md:opacity-0",
+              "shrink-0 text-zinc-400 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none md:opacity-0",
               CHEVRON_SIZE_CLASS,
               !newChatHref && "ml-auto",
             )}
@@ -154,7 +154,7 @@ function NewChatLink({ href, label }: { href: string; label: string }) {
           href={href}
           aria-label={name}
           className={cn(
-            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-zinc-200 hover:text-zinc-900 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 md:opacity-0",
+            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-zinc-200 hover:text-zinc-900 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-hidden md:opacity-0",
             CHEVRON_SIZE_CLASS,
             NEW_CHAT_LINK_OFFSET_CLASS,
           )}
@@ -173,7 +173,7 @@ function NewChatIcon() {
   const { pending } = useLinkStatus();
 
   if (pending) {
-    return <LoadingSpinner size="small" className="!size-4 text-zinc-500" />;
+    return <LoadingSpinner size="small" className="size-4! text-zinc-500" />;
   }
 
   return <Icon icon={PlusSignIcon} className="size-4" />;
@@ -181,7 +181,7 @@ function NewChatIcon() {
 
 function GroupBody({ children }: { children: ReactNode }) {
   return (
-    <div className="relative ml-6 pl-1.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gradient-to-b before:from-zinc-200/70 before:to-transparent">
+    <div className="relative ml-6 pl-1.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-linear-to-b before:from-zinc-200/70 before:to-transparent">
       {children}
     </div>
   );

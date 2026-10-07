@@ -51,7 +51,7 @@ export function StoreCard({
 
   return (
     <div
-      className="group relative flex h-[26rem] w-full max-w-md cursor-pointer flex-col items-start rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
+      className="group relative flex h-104 w-full max-w-md cursor-pointer flex-col items-start rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
       onClick={handleClick}
       data-testid="store-card"
       role="button"
@@ -140,7 +140,7 @@ export function StoreCard({
         </span>
       </div>
       {creatorSlug && agentSlug && agentGraphID && (
-        <div className="absolute bottom-4 right-4">
+        <div className="absolute right-4 bottom-4">
           <AddToLibraryButton
             creatorSlug={creatorSlug}
             agentSlug={agentSlug}

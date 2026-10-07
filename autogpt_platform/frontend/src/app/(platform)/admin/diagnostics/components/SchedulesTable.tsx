@@ -340,7 +340,7 @@ export function SchedulesTable({
                             <TableCell>
                               {schedule.cron ? (
                                 <>
-                                  <code className="rounded bg-zinc-100 px-2 py-1 text-xs">
+                                  <code className="rounded-sm bg-zinc-100 px-2 py-1 text-xs">
                                     {schedule.cron}
                                   </code>
                                   <div className="text-xs text-zinc-500">

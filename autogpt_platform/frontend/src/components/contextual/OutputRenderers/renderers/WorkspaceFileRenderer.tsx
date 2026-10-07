@@ -149,11 +149,7 @@ function renderWorkspaceFile(
   const label = getFileTypeLabel(mimeType);
   return (
     <div className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-      <Icon
-        icon={File02Icon}
-        size={28}
-        className="flex-shrink-0 text-zinc-500"
-      />
+      <Icon icon={File02Icon} size={28} className="shrink-0 text-zinc-500" />
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm font-medium text-zinc-900">
           {metadata?.filename || label}
@@ -163,7 +159,7 @@ function renderWorkspaceFile(
       <a
         href={downloadURL}
         download
-        className="flex-shrink-0 rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-700"
+        className="shrink-0 rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-700"
       >
         <Icon icon={Download04Icon} size={18} />
       </a>

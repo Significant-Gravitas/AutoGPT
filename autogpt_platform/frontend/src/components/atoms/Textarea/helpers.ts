@@ -2,9 +2,9 @@ import { cva } from "class-variance-authority";
 
 export const textareaVariants = cva(
   [
-    "block w-full resize-y rounded-xl border bg-white font-sans text-sm font-normal leading-snug text-black shadow-none transition-colors",
+    "block w-full resize-y rounded-xl border bg-white font-sans text-sm leading-snug font-normal text-black shadow-none transition-colors",
     "placeholder:font-normal placeholder:text-zinc-500",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2",
+    "focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:outline-hidden",
     "disabled:cursor-not-allowed disabled:opacity-50",
   ],
   {

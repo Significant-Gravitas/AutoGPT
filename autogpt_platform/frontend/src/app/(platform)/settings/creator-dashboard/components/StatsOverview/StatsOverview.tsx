@@ -77,9 +77,9 @@ export function StatsOverview({ stats, index = 0 }: Props) {
       ))}
 
       {stats.averageRating !== null ? (
-        <div className="col-span-2 flex items-center justify-between gap-3 rounded-[18px] border border-zinc-200 bg-gradient-to-br from-yellow-50/60 to-white px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)] lg:col-span-4">
+        <div className="col-span-2 flex items-center justify-between gap-3 rounded-[18px] border border-zinc-200 bg-linear-to-br from-yellow-50/60 to-white px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)] lg:col-span-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-yellow-100 text-yellow-700 ring-1 ring-inset ring-yellow-200">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-yellow-100 text-yellow-700 ring-1 ring-yellow-200 ring-inset">
               <UIIcon icon={StarIcon} size={18} />
             </div>
             <div className="flex flex-col">
@@ -106,7 +106,7 @@ function StatTileCard({ tile }: { tile: StatTile }) {
   return (
     <div className="relative flex min-h-[120px] flex-col justify-between gap-2 rounded-[18px] border border-zinc-200 bg-white px-4 py-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
       <div
-        className={`absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full ring-1 ring-inset ${iconClass}`}
+        className={`absolute top-3 right-3 flex h-7 w-7 items-center justify-center rounded-full ring-1 ring-inset ${iconClass}`}
       >
         <UIIcon icon={tile.Icon} size={14} />
       </div>

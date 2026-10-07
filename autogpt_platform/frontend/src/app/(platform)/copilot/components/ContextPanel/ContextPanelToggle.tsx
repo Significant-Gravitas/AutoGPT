@@ -74,7 +74,7 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
     <div
       className={cn(
         "m-1 flex shrink-0 items-center gap-1 rounded-xl border border-transparent bg-white p-1 transition-shadow duration-150",
-        isPanelOpen && "border-zinc-200/70 shadow-sm",
+        isPanelOpen && "border-zinc-200/70 shadow-xs",
       )}
     >
       {expert && <IntegrationsToggle expert={expert} className={toggleClass} />}
@@ -119,7 +119,7 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
           className="size-4 text-sidebar-foreground/90"
         />
         {documentCount > 0 && (
-          <span className="text-xs font-medium tabular-nums text-sidebar-foreground/90">
+          <span className="text-xs font-medium text-sidebar-foreground/90 tabular-nums">
             {documentCount}
           </span>
         )}

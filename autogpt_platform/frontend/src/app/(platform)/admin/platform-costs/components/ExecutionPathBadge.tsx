@@ -23,7 +23,7 @@ function ExecutionPathBadge({
   return (
     <span
       title={executionPath}
-      className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${colors[executionPath] || colors.sync}`}
+      className={`inline-block rounded-sm px-1.5 py-0.5 text-[10px] font-medium ${colors[executionPath] || colors.sync}`}
     >
       {display}
     </span>

@@ -40,7 +40,7 @@ export default function AuthFeedback({
     <div className="mt-4 w-full space-y-4">
       {/* Message feedback */}
       {displayMessage && (
-        <div className="text-center text-sm font-medium leading-normal">
+        <div className="text-center text-sm leading-normal font-medium">
           {isError ? (
             <div className="flex items-center justify-center space-x-2 text-red-500">
               <Icon icon={AlertCircleIcon} className="h-4 w-4" />
@@ -58,7 +58,7 @@ export default function AuthFeedback({
       {/* Cloud-specific help */}
       {showCloudHelp &&
         (isSignupFlow ? (
-          <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white p-px shadow-sm">
+          <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white p-px shadow-xs">
             <div className="divide-y divide-slate-100">
               <span className="my-3 block text-center text-sm font-medium text-red-500">
                 The provided email may not be allowed to sign up.
@@ -79,7 +79,7 @@ export default function AuthFeedback({
             </div>
           </Card>
         ) : (
-          <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white p-px shadow-sm">
+          <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white p-px shadow-xs">
             <div className="divide-y divide-slate-100">
               <HelpItem
                 title="Having trouble logging in?"
@@ -93,7 +93,7 @@ export default function AuthFeedback({
 
       {/* Local-specific help */}
       {showLocalHelp && (
-        <Card className="w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-px shadow-sm">
+        <Card className="w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-px shadow-xs">
           <div className="w-full divide-y divide-slate-100">
             <HelpItem
               title="Having trouble getting AutoGPT running locally?"

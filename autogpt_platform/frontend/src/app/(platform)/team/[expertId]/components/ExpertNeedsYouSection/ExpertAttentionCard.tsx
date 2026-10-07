@@ -76,7 +76,7 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
               <Text
                 variant="small-medium"
                 as="span"
-                className="rounded bg-yellow-50 px-1.5 py-px text-yellow-700 ring-1 ring-inset ring-yellow-600/10"
+                className="rounded bg-yellow-50 px-1.5 py-px text-yellow-700 ring-1 ring-yellow-600/10 ring-inset"
               >
                 Waiting
               </Text>

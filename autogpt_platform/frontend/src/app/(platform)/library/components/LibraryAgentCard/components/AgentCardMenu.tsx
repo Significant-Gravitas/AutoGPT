@@ -155,7 +155,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="absolute right-2 top-1 rounded p-1.5 transition-opacity hover:bg-zinc-100"
+            className="absolute top-1 right-2 rounded-sm p-1.5 transition-opacity hover:bg-zinc-100"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >

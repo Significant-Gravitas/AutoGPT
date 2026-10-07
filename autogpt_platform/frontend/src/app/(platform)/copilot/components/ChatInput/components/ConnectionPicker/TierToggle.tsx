@@ -102,7 +102,7 @@ export function TierToggle({
             onClick={() => onSelect(segment.tier)}
             className={cn(
               "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-              "focus-visible:bg-zinc-50 focus-visible:outline-none",
+              "focus-visible:bg-zinc-50 focus-visible:outline-hidden",
             )}
           >
             <Icon
@@ -185,7 +185,7 @@ function LockedSegment({ segment }: { segment: Segment }) {
           href={segment.lock.href}
           // Indented past the lock glyph so it lines up under the reason it
           // answers, the way it reads when it follows that sentence inline.
-          className="ml-6 mt-1 w-fit text-[11px] font-medium text-zinc-900 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+          className="mt-1 ml-6 w-fit text-[11px] font-medium text-zinc-900 underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:outline-hidden"
         >
           See plans
         </Link>

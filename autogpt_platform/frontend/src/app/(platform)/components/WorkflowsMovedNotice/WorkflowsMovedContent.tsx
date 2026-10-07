@@ -15,7 +15,7 @@ export function WorkflowsMovedContent({ titleRef, onDismiss }: Props) {
   return (
     <>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="px-6 pb-3 pt-5 sm:px-8">
+        <div className="px-6 pt-5 pb-3 sm:px-8">
           <Text
             variant="eyebrow"
             as="p"
@@ -26,7 +26,7 @@ export function WorkflowsMovedContent({ titleRef, onDismiss }: Props) {
           <Dialog.Title
             ref={titleRef}
             tabIndex={-1}
-            className="pr-7 text-2xl font-semibold leading-tight tracking-tight text-zinc-900 outline-none sm:text-[1.625rem]"
+            className="pr-7 text-2xl leading-tight font-semibold tracking-tight text-zinc-900 outline-hidden sm:text-[1.625rem]"
           >
             Your agents have moved
           </Dialog.Title>

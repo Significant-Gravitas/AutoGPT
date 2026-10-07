@@ -16,7 +16,7 @@ interface PreviewProps {
 }
 
 const preClass =
-  "h-full w-full overflow-hidden whitespace-pre-wrap break-words bg-white p-3 font-mono text-[10px] leading-[1.35] text-zinc-700";
+  "h-full w-full overflow-hidden whitespace-pre-wrap wrap-break-word bg-white p-3 font-mono text-[10px] leading-[1.35] text-zinc-700";
 
 // Fetch a larger slice and show more rows than the default so the card table
 // fills the preview area; the container clips overflow under the bottom fade.
@@ -98,12 +98,12 @@ const MARKDOWN_COMPONENTS: Components = {
   li: ({ children }) => <li className="mb-0.5">{children}</li>,
   a: ({ children }) => <span className="text-purple-600">{children}</span>,
   code: ({ children }) => (
-    <code className="rounded bg-zinc-100 px-1 font-mono text-[9px]">
+    <code className="rounded-sm bg-zinc-100 px-1 font-mono text-[9px]">
       {children}
     </code>
   ),
   pre: ({ children }) => (
-    <pre className="mb-1 overflow-hidden rounded bg-zinc-100 p-1.5 font-mono text-[9px] text-zinc-700">
+    <pre className="mb-1 overflow-hidden rounded-sm bg-zinc-100 p-1.5 font-mono text-[9px] text-zinc-700">
       {children}
     </pre>
   ),
@@ -134,7 +134,7 @@ export function MarkdownPreview({ file, onError }: PreviewProps) {
           {text.slice(0, TEXT_SNIPPET_CHARS)}
         </ReactMarkdown>
       </div>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-white to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-linear-to-t from-white to-transparent" />
     </div>
   );
 }
@@ -169,7 +169,7 @@ function CsvTable({ preview }: { preview: CsvPreview }) {
           ))}
         </tbody>
       </table>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-white to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-linear-to-t from-white to-transparent" />
     </div>
   );
 }

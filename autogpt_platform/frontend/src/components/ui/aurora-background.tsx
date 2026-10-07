@@ -35,9 +35,9 @@ export function AuroraBackground({
       >
         <div
           className={cn(
-            `pointer-events-none absolute -inset-[10px] opacity-10 blur-[10px] invert filter will-change-transform [background-image:var(--white-gradient),var(--aurora)] [background-position:50%_50%,50%_50%] [background-size:300%,_200%] after:absolute after:inset-0 after:animate-aurora after:mix-blend-difference after:content-[""] after:[background-attachment:fixed] after:[background-image:var(--white-gradient),var(--aurora)] after:[background-size:200%,_100%]`,
+            `pointer-events-none absolute inset-[-10px] [background-image:var(--white-gradient),var(--aurora)] bg-size-[300%,200%] bg-position-[50%_50%,50%_50%] opacity-10 blur-[10px] invert filter will-change-transform after:absolute after:inset-0 after:animate-aurora after:[background-image:var(--white-gradient),var(--aurora)] after:bg-size-[200%,100%] after:bg-fixed after:mix-blend-difference after:content-[""]`,
             showRadialGradient &&
-              `[mask-image:radial-gradient(ellipse_at_100%_0%,black_10%,transparent_70%)]`,
+              `mask-[radial-gradient(ellipse_at_100%_0%,black_10%,transparent_70%)]`,
           )}
         />
       </div>

@@ -50,7 +50,7 @@ function DisabledMenuItem({
       <SidebarMenuButton
         aria-disabled="true"
         tooltip={label}
-        className="cursor-not-allowed font-normal opacity-50 group-data-[collapsible=icon]:!p-1.5 hover:bg-transparent [&>svg]:size-5"
+        className="cursor-not-allowed font-normal opacity-50 group-data-[collapsible=icon]:p-1.5! hover:bg-transparent [&>svg]:size-5"
       >
         <Icon icon={icon} className="size-5" />
         <span className="truncate">{label}</span>
@@ -73,7 +73,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
   return (
     <Sidebar
       collapsible="icon"
-      className="[&_[data-sidebar=sidebar]]:bg-zinc-100"
+      className="**:data-[sidebar=sidebar]:bg-zinc-100"
     >
       <TourSidebarHeader />
 
@@ -113,7 +113,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
                     <SidebarMenuButton
                       asChild
                       tooltip="Marketplace"
-                      className="font-normal group-data-[collapsible=icon]:!p-1.5 hover:bg-zinc-200 [&>svg]:size-5"
+                      className="font-normal group-data-[collapsible=icon]:p-1.5! hover:bg-zinc-200 [&>svg]:size-5"
                     >
                       <Link href="/marketplace">
                         <Icon icon={Store01Icon} className="size-5" />
@@ -135,7 +135,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
                     Workspace
                     <Icon
                       icon={ArrowDown01Icon}
-                      className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
+                      className="ml-auto size-4 transition-transform duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
                     />
                   </CollapsibleTrigger>
                 </SidebarGroupLabel>

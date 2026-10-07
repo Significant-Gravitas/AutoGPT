@@ -144,7 +144,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
                 placeholder={
                   q.example ? `e.g. ${q.example}` : "Type your answer"
                 }
-                className="rounded-xl bg-zinc-50 px-2.5 py-1.5 text-[13px] text-zinc-800 ring-1 ring-zinc-200/70 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-400"
+                className="rounded-xl bg-zinc-50 px-2.5 py-1.5 text-[13px] text-zinc-800 ring-1 ring-zinc-200/70 transition-shadow placeholder:text-zinc-400 focus:ring-zinc-400 focus:outline-hidden"
               />
             </label>
           ),
@@ -156,7 +156,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
             type="button"
             onClick={handleSubmit}
             aria-disabled={!allAnswered}
-            className="rounded-full bg-zinc-900 px-3.5 py-1.5 text-xs font-medium text-white transition-opacity aria-disabled:opacity-40 hover:bg-zinc-700"
+            className="rounded-full bg-zinc-900 px-3.5 py-1.5 text-xs font-medium text-white transition-opacity hover:bg-zinc-700 aria-disabled:opacity-40"
           >
             Answer
           </button>

@@ -28,13 +28,13 @@ export const Integration: IntegrationComponent = ({
     <Button
       variant="ghost"
       className={cn(
-        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-xl bg-zinc-50 px-3.5 py-2.5 text-start shadow-none",
+        "group flex h-16 w-full min-w-30 items-center justify-start gap-3 rounded-xl bg-zinc-50 px-3.5 py-2.5 text-start whitespace-normal shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-50 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none disabled:opacity-50",
         className,
       )}
       {...rest}
     >
-      <div className="relative h-[2.625rem] w-[2.625rem] overflow-hidden rounded-lg bg-white">
+      <div className="relative h-10.5 w-10.5 overflow-hidden rounded-lg bg-white">
         {icon_url && (
           <Image
             src={icon_url}
@@ -56,11 +56,11 @@ export const Integration: IntegrationComponent = ({
               {beautifyString(title)}
             </Text>
           )}
-          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-zinc-100 p-1.5 font-sans text-sm leading-[1.375rem] text-zinc-500 group-disabled:text-zinc-400">
+          <span className="flex h-5.5 w-6.75 items-center justify-center rounded-xlarge bg-zinc-100 p-1.5 font-sans text-sm leading-5.5 text-zinc-500 group-disabled:text-zinc-400">
             {number_of_blocks}
           </span>
         </div>
-        <span className="line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400">
+        <span className="line-clamp-1 font-sans text-xs leading-5 font-normal text-zinc-500 group-disabled:text-zinc-400">
           {description}
         </span>
       </div>
@@ -74,17 +74,17 @@ const IntegrationSkeleton: React.FC<{ className?: string }> = ({
   return (
     <Skeleton
       className={cn(
-        "flex h-16 w-full min-w-[7.5rem] animate-pulse items-center justify-start space-x-3 rounded-xl bg-zinc-100 px-3.5 py-2.5",
+        "flex h-16 w-full min-w-30 animate-pulse items-center justify-start space-x-3 rounded-xl bg-zinc-100 px-3.5 py-2.5",
         className,
       )}
     >
-      <Skeleton className="h-[2.625rem] w-[2.625rem] rounded-lg bg-zinc-200" />
+      <Skeleton className="h-10.5 w-10.5 rounded-lg bg-zinc-200" />
       <div className="flex flex-1 flex-col items-start gap-0.5">
         <div className="flex w-full items-center justify-between">
-          <Skeleton className="h-[1.375rem] w-24 rounded bg-zinc-200" />
-          <Skeleton className="h-[1.375rem] w-[1.6875rem] rounded-[1.25rem] bg-zinc-200" />
+          <Skeleton className="h-5.5 w-24 rounded-sm bg-zinc-200" />
+          <Skeleton className="h-5.5 w-6.75 rounded-xlarge bg-zinc-200" />
         </div>
-        <Skeleton className="h-5 w-4/5 rounded bg-zinc-200" />
+        <Skeleton className="h-5 w-4/5 rounded-sm bg-zinc-200" />
       </div>
     </Skeleton>
   );

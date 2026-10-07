@@ -19,7 +19,7 @@ function TestDataDashboard() {
           </div>
         </div>
 
-        <div className="rounded-lg border bg-white p-6 shadow-sm">
+        <div className="rounded-lg border bg-white p-6 shadow-xs">
           <Text variant="h4" as="h2" className="mb-4">
             Generate Test Data
           </Text>

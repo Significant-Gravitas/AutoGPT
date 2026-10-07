@@ -89,7 +89,7 @@ export function ReviewHero({
               : { type: "spring", stiffness: 280, damping: 20, delay: 0.05 }
           }
           className={cn(
-            "relative flex size-20 items-center justify-center rounded-full bg-gradient-to-br shadow-[0_8px_24px_-8px_rgba(119,51,245,0.45)]",
+            "relative flex size-20 items-center justify-center rounded-full bg-linear-to-br shadow-[0_8px_24px_-8px_rgba(119,51,245,0.45)]",
             hero.gradient,
           )}
         >

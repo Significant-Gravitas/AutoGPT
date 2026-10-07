@@ -17,7 +17,7 @@ export function TourChatHeader({ scenarioLabel, scenarioIcon }: Props) {
   const { isCopied, handleShare } = useTourChatHeader();
 
   return (
-    <header className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-200/70 bg-white/70 px-3 py-2 backdrop-blur-sm md:px-4">
+    <header className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-200/70 bg-white/70 px-3 py-2 backdrop-blur-xs md:px-4">
       <div className="flex min-w-0 items-center gap-1.5">
         {/* On mobile this is the only way to reach the sidebar. */}
         <div className="md:hidden">
@@ -26,7 +26,7 @@ export function TourChatHeader({ scenarioLabel, scenarioIcon }: Props) {
         <Icon icon={scenarioIcon} className="size-4 shrink-0 text-purple-600" />
         <Text
           variant="body-medium"
-          className="truncate bg-gradient-to-r from-purple-600 to-purple-400 bg-clip-text text-transparent"
+          className="truncate bg-linear-to-r from-purple-600 to-purple-400 bg-clip-text text-transparent"
         >
           {scenarioLabel}
         </Text>

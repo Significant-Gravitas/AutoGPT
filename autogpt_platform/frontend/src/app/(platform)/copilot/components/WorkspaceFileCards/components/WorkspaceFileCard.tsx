@@ -32,7 +32,7 @@ export function WorkspaceFileCard({
         <Icon icon={fileIcon} size={18} className="shrink-0 text-zinc-700" />
         {/* Long names fade out rather than ellipsing, so the row keeps a clean
             edge next to the hover actions. */}
-        <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[15px] text-zinc-800 [mask-image:linear-gradient(to_right,black_calc(100%_-_2rem),transparent)]">
+        <span className="min-w-0 flex-1 overflow-hidden mask-[linear-gradient(to_right,black_calc(100%-2rem),transparent)] text-[15px] whitespace-nowrap text-zinc-800">
           {item.name}
         </span>
       </button>

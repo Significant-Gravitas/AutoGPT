@@ -144,7 +144,7 @@ function ProfileForm({
                 id={field.name}
                 label="Name"
                 placeholder="Ada Lovelace"
-                wrapperClassName="!mb-0"
+                wrapperClassName="mb-0!"
               />
             </FormControl>
             <FormDescription>Shown on agents you publish.</FormDescription>
@@ -164,7 +164,7 @@ function ProfileForm({
                 type="email"
                 label="Email"
                 placeholder="you@example.com"
-                wrapperClassName="!mb-0"
+                wrapperClassName="mb-0!"
               />
             </FormControl>
             <FormDescription>Where run notifications are sent.</FormDescription>

@@ -33,7 +33,7 @@ export function FieldValue({ name, value, clipped }: Props) {
       return (
         <pre
           translate="no"
-          className="overflow-auto whitespace-pre-wrap rounded-lg bg-zinc-900 px-3 py-2 font-mono text-[0.8125rem] leading-5 text-zinc-100"
+          className="overflow-auto rounded-lg bg-zinc-900 px-3 py-2 font-mono text-[0.8125rem] leading-5 whitespace-pre-wrap text-zinc-100"
           style={{ maxHeight: `${CODE_MAX_LINES * 1.25 + 1}rem` }}
         >
           {String(value)}
@@ -103,7 +103,7 @@ function LongText({ text, shortened }: LongTextProps) {
         className={cn(
           "w-full rounded-lg bg-zinc-50 px-3 py-2",
           open &&
-            "max-h-96 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300",
+            "max-h-96 overflow-y-auto focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:outline-hidden",
         )}
       >
         <p

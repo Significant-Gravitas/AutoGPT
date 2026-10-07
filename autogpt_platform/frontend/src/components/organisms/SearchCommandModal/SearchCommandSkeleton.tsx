@@ -14,7 +14,7 @@ export function SearchCommandSkeleton({ rows = 4 }: Props) {
       data-testid="search-command-skeleton"
       className="flex flex-col gap-1 px-2"
     >
-      <div className="px-3 pb-1 pt-2">
+      <div className="px-3 pt-2 pb-1">
         <Skeleton className="h-3 w-16" />
       </div>
       <div className="flex flex-col">
@@ -23,7 +23,7 @@ export function SearchCommandSkeleton({ rows = 4 }: Props) {
             key={idx}
             className="flex items-center gap-2.5 rounded-md px-3 py-2"
           >
-            <Skeleton className="h-4 w-4 rounded" />
+            <Skeleton className="h-4 w-4 rounded-sm" />
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <Skeleton className="h-3.5 w-[55%]" />
               <Skeleton className="h-3 w-[35%]" />

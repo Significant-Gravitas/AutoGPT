@@ -9,7 +9,7 @@ export function TrialTitle({ children }: Props) {
     <Text
       variant="h5"
       as="h2"
-      className="font-poppins !text-[17px] !font-semibold !text-zinc-800"
+      className="font-poppins text-[17px]! font-semibold! text-zinc-800!"
     >
       {children}
     </Text>

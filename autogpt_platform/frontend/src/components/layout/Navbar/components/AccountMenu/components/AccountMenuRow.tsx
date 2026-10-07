@@ -18,7 +18,7 @@ interface Props {
 }
 
 const baseRowClasses =
-  "group relative flex w-full items-center gap-3 rounded-lg pl-3 pr-2 py-2 text-left text-sm outline-none transition-colors duration-200 ease-out focus-visible:outline-none";
+  "group relative flex w-full items-center gap-3 rounded-lg pl-3 pr-2 py-2 text-left text-sm outline-hidden transition-colors duration-200 ease-out focus-visible:outline-hidden";
 
 function RowBody({
   icon,

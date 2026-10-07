@@ -155,7 +155,7 @@ export function AgentSelectStep({
             </div>
           </div>
 
-          <div className="mt-1 flex-grow overflow-hidden pb-3">
+          <div className="mt-1 grow overflow-hidden pb-3">
             <Text variant="body-medium" as="h3" className="sr-only">
               List of agents
             </Text>
@@ -251,7 +251,7 @@ export function AgentSelectStep({
                           key={agent.id}
                           data-testid="agent-card"
                           className={cn(
-                            "group flex w-full cursor-pointer select-none items-center gap-3 rounded-xl border bg-white p-3 text-left transition-[border-color,box-shadow] duration-150 hover:border-purple-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2",
+                            "group flex w-full cursor-pointer items-center gap-3 rounded-xl border bg-white p-3 text-left transition-[border-color,box-shadow] duration-150 select-none hover:border-purple-300 focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:outline-hidden",
                             isSelected
                               ? "border-purple-500 bg-purple-50/40 shadow-[0_0_0_3px_rgba(119,51,245,0.12)]"
                               : "border-zinc-200",
@@ -368,7 +368,7 @@ function PaginationBar({
   const pages = buildPageRange(page, totalPages);
 
   return (
-    <div className="flex flex-col items-center justify-between gap-3 pb-3 pt-1 text-zinc-500 sm:flex-row">
+    <div className="flex flex-col items-center justify-between gap-3 pt-1 pb-3 text-zinc-500 sm:flex-row">
       <Text variant="small" tone="muted">
         {start}–{end} of {totalItems}
       </Text>

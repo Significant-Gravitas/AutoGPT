@@ -51,7 +51,7 @@ export function GlassSurface({ params, showRim = true }: Props) {
         }}
       />
       <div
-        className="pointer-events-none absolute inset-0 rounded-full [mask-image:radial-gradient(closest-side,transparent_50%,black_80%)]"
+        className="pointer-events-none absolute inset-0 rounded-full mask-[radial-gradient(closest-side,transparent_50%,black_80%)]"
         style={{
           backdropFilter: `blur(${frost * 2.5}px)`,
           WebkitBackdropFilter: `blur(${frost * 2.5}px)`,

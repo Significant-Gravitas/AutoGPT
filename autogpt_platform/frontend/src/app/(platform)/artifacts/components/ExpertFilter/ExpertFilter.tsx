@@ -90,8 +90,8 @@ function ExpertTab({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative flex h-auto min-w-0 max-w-48 items-center gap-2 rounded-full border-0 py-1.5 text-sm font-medium outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-zinc-400",
-        hasAvatar ? "pl-1.5 pr-3.5" : "px-4",
+        "relative flex h-auto max-w-48 min-w-0 items-center gap-2 rounded-full border-0 py-1.5 text-sm font-medium outline-hidden hover:bg-transparent focus-visible:ring-2 focus-visible:ring-zinc-400",
+        hasAvatar ? "pr-3.5 pl-1.5" : "px-4",
         active ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-900",
       )}
       data-testid={testId}

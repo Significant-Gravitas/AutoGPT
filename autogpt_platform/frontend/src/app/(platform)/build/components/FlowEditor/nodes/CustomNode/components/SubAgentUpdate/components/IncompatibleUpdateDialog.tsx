@@ -200,13 +200,13 @@ function TwoColumnSection({
             {leftItems.length > 0 ? (
               leftItems.map((item) => (
                 <li key={item} className="text-sm text-zinc-700">
-                  <code className="rounded bg-red-50 px-1 py-0.5 font-mono text-xs text-red-700">
+                  <code className="rounded-sm bg-red-50 px-1 py-0.5 font-mono text-xs text-red-700">
                     {item}
                   </code>
                 </li>
               ))
             ) : (
-              <li className="text-sm italic text-zinc-400">None</li>
+              <li className="text-sm text-zinc-400 italic">None</li>
             )}
           </ul>
         </div>
@@ -221,13 +221,13 @@ function TwoColumnSection({
             {rightItems.length > 0 ? (
               rightItems.map((item) => (
                 <li key={item} className="text-sm text-zinc-700">
-                  <code className="rounded bg-green-50 px-1 py-0.5 font-mono text-xs text-green-700">
+                  <code className="rounded-sm bg-green-50 px-1 py-0.5 font-mono text-xs text-green-700">
                     {item}
                   </code>
                 </li>
               ))
             ) : (
-              <li className="text-sm italic text-zinc-400">None</li>
+              <li className="text-sm text-zinc-400 italic">None</li>
             )}
           </ul>
         </div>
@@ -261,7 +261,7 @@ function SingleColumnSection({
       <ul className="mt-2 space-y-1">
         {items.map((item) => (
           <li key={item} className="ml-4 list-disc text-sm text-zinc-700">
-            <code className="rounded bg-zinc-100 px-1 py-0.5 font-mono text-xs">
+            <code className="rounded-sm bg-zinc-100 px-1 py-0.5 font-mono text-xs">
               {item}
             </code>
           </li>

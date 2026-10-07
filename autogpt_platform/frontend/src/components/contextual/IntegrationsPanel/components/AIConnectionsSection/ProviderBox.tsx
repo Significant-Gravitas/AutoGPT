@@ -46,7 +46,7 @@ export function ProviderBox({
           <Icon
             icon={Loading03Icon}
             size={20}
-            className="absolute -bottom-1 -right-1 rounded-full bg-white text-zinc-500 motion-safe:animate-spin"
+            className="absolute -right-1 -bottom-1 rounded-full bg-white text-zinc-500 motion-safe:animate-spin"
           />
         )}
       </span>
@@ -60,13 +60,13 @@ export function ProviderBox({
           {name}
         </Text>
         {state === "connected" && (
-          <span className="inline-flex items-center gap-1 rounded-[10px] bg-green-50 px-2 py-0.5 text-[13px] font-medium leading-5 text-green-700">
+          <span className="inline-flex items-center gap-1 rounded-[10px] bg-green-50 px-2 py-0.5 text-[13px] leading-5 font-medium text-green-700">
             <Icon icon={CheckmarkCircle02Icon} size={13} />
             Connected
           </span>
         )}
         {state === "coming-soon" && (
-          <span className="inline-flex items-center rounded-[10px] bg-zinc-100 px-2 py-0.5 text-[13px] font-medium leading-5 text-zinc-500">
+          <span className="inline-flex items-center rounded-[10px] bg-zinc-100 px-2 py-0.5 text-[13px] leading-5 font-medium text-zinc-500">
             Coming soon
           </span>
         )}
@@ -98,7 +98,7 @@ export function ProviderBox({
       className={cn(
         FRAME,
         "border-zinc-200 transition-colors hover:border-zinc-300 hover:bg-zinc-50",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
+        "focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-hidden",
         isBusy && "cursor-progress",
       )}
     >

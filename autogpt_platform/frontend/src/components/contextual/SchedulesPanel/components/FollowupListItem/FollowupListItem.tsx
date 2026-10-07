@@ -47,7 +47,7 @@ export function FollowupListItem({ followup }: Props) {
 
   const detailContent = (
     <>
-      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-yellow-50">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-large border border-slate-50 bg-yellow-50">
         <Icon icon={Comment01Icon} size={18} className="text-yellow-700" />
       </div>
       <div className="flex min-w-0 flex-col gap-1">
@@ -95,7 +95,7 @@ export function FollowupListItem({ followup }: Props) {
         </div>
       )}
 
-      <div className="flex flex-shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <Button
           variant="secondary"
           size="small"
@@ -137,7 +137,7 @@ export function FollowupListItem({ followup }: Props) {
               {kindBadge}
             </div>
             <pre
-              className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-medium bg-zinc-50 p-3 text-sm text-zinc-800"
+              className="max-h-[60vh] overflow-auto rounded-medium bg-zinc-50 p-3 text-sm whitespace-pre-wrap text-zinc-800"
               data-testid="followup-view-body"
             >
               {fullMessage}

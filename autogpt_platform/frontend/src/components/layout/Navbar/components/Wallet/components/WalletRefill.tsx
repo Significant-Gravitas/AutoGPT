@@ -92,27 +92,27 @@ export function WalletRefill() {
       </Text>
       <Tabs
         defaultValue="top-up"
-        className="mb-6 mt-4 flex w-full flex-col items-center"
+        className="mt-4 mb-6 flex w-full flex-col items-center"
       >
         <TabsList className="mx-auto">
           <TabsTrigger value="top-up">One-time top up</TabsTrigger>
           <TabsTrigger value="auto-refill">Auto-refill</TabsTrigger>
         </TabsList>
-        <div className="mt-4 w-full rounded-lg px-5 outline outline-1 outline-offset-2 outline-zinc-200">
+        <div className="mt-4 w-full rounded-lg px-5 outline-1 outline-offset-2 outline-zinc-200 outline-solid">
           <TabsContent value="top-up" className="flex flex-col">
-            <div className="mt-2 justify-start font-sans text-sm font-medium leading-snug text-zinc-900">
+            <div className="mt-2 justify-start font-sans text-sm leading-snug font-medium text-zinc-900">
               One-time top-up
             </div>
-            <div className="mt-1 justify-start font-sans text-xs font-normal leading-tight text-zinc-500">
+            <div className="mt-1 justify-start font-sans text-xs leading-tight font-normal text-zinc-500">
               Enter an amount (min. $5) and add credits instantly.
             </div>
             <TopUpForm submitLabel="Top up" size="small" />
           </TabsContent>
           <TabsContent value="auto-refill" className="flex flex-col">
-            <div className="justify-start font-sans text-sm font-medium leading-snug text-zinc-900">
+            <div className="justify-start font-sans text-sm leading-snug font-medium text-zinc-900">
               Auto-refill
             </div>
-            <div className="mt-1 justify-start font-sans text-xs font-normal leading-tight text-zinc-500">
+            <div className="mt-1 justify-start font-sans text-xs leading-tight font-normal text-zinc-500">
               Choose a one-time top-up or set up automatic refills.
             </div>
 
@@ -166,7 +166,7 @@ export function WalletRefill() {
               </form>
             </Form>
           </TabsContent>
-          <div className="mb-3 justify-start font-sans text-xs font-normal leading-tight">
+          <div className="mb-3 justify-start font-sans text-xs leading-tight font-normal">
             <span className="text-zinc-500">
               To update your billing details, head to{" "}
             </span>

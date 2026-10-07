@@ -214,24 +214,24 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
       {isPreview ? (
         <div
           className={cn(
-            "min-h-[8.75rem] w-full rounded-3xl border border-zinc-200 bg-white px-4 py-2.5",
+            "min-h-35 w-full rounded-3xl border border-zinc-200 bg-white px-4 py-2.5",
             "text-sm leading-[22px] text-black",
           )}
         >
           {formState.description.trim() ? (
             <div
               className={cn(
-                "max-w-none break-words text-sm leading-[22px] text-black",
-                "[&_p]:my-2 first:[&_p]:mt-0 last:[&_p]:mb-0",
+                "max-w-none text-sm leading-[22px] wrap-break-word text-black",
+                "[&_p]:my-2 [&_p]:first:mt-0 [&_p]:last:mb-0",
                 "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5",
                 "[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5",
                 "[&_li]:my-1 [&_li]:pl-1",
                 "[&_li>p]:my-0",
-                "[&_a]:text-purple-600 [&_a]:underline hover:[&_a]:text-purple-700",
+                "[&_a]:text-purple-600 [&_a]:underline [&_a]:hover:text-purple-700",
                 "[&_strong]:font-semibold",
                 "[&_em]:italic",
                 "[&_del]:text-zinc-500 [&_del]:line-through",
-                "[&_code]:rounded [&_code]:bg-zinc-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em]",
+                "[&_code]:rounded-sm [&_code]:bg-zinc-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em]",
                 "[&_blockquote]:border-l-2 [&_blockquote]:border-zinc-300 [&_blockquote]:pl-3 [&_blockquote]:text-zinc-600",
                 "[&_h1]:my-2 [&_h1]:text-base [&_h1]:font-semibold",
                 "[&_h2]:my-2 [&_h2]:text-base [&_h2]:font-semibold",
@@ -260,7 +260,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           value={formState.description}
           error={errors.description}
           onChange={(e) => onChange("description", e.target.value)}
-          className="rounded-3xl rounded-tr-md scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200 hover:scrollbar-thumb-zinc-300"
+          className="scrollbar-thin scrollbar-thumb-zinc-200 scrollbar-track-transparent rounded-3xl rounded-tr-md hover:scrollbar-thumb-zinc-300"
         />
       )}
     </motion.div>

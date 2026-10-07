@@ -109,7 +109,7 @@ export function AgentInfo({
               Version {versionInfo.version}.0
             </Text>
             {versionInfo.isCurrentVersion && (
-              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800">
+              <span className="rounded-sm bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800">
                 Current
               </span>
             )}
@@ -139,7 +139,7 @@ export function AgentInfo({
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-0">
-      <div className="mb-8 rounded-2xl bg-gradient-to-r from-blue-200 to-purple-200 p-px">
+      <div className="mb-8 rounded-2xl bg-linear-to-r from-blue-200 to-purple-200 p-px">
         <div className="flex flex-col rounded-[calc(1rem-2px)] bg-zinc-50 p-4">
           {/* Title */}
           <Text variant="h2" data-testid="agent-title" className="mb-3 w-full">
@@ -193,7 +193,7 @@ export function AgentInfo({
                     <Icon
                       icon={PlusSignIcon}
                       size={16}
-                      className="transition-transform duration-300 group-hover/add:rotate-90 group-hover/add:scale-125"
+                      className="transition-transform duration-300 group-hover/add:scale-125 group-hover/add:rotate-90"
                     />
                   ) : undefined
                 }

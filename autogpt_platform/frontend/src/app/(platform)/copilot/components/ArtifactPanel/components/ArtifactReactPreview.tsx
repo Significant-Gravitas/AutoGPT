@@ -51,7 +51,7 @@ export function ArtifactReactPreview({ source, title }: Props) {
         <Text variant="body-medium" as="p" tone="danger">
           Failed to render React preview
         </Text>
-        <pre className="whitespace-pre-wrap break-words rounded-md bg-red-50 p-3 font-mono text-xs text-red-900">
+        <pre className="rounded-md bg-red-50 p-3 font-mono text-xs wrap-break-word whitespace-pre-wrap text-red-900">
           {error}
         </pre>
       </div>

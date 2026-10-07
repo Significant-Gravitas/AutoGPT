@@ -52,7 +52,7 @@ export function TimezoneCard({ value, onChange, index = 0 }: Props) {
                 <button
                   type="button"
                   aria-label="Time zone info"
-                  className="flex items-center text-zinc-400 transition-colors hover:text-zinc-600 focus-visible:text-zinc-600 focus-visible:outline-none"
+                  className="flex items-center text-zinc-400 transition-colors hover:text-zinc-600 focus-visible:text-zinc-600 focus-visible:outline-hidden"
                 >
                   <Icon icon={InformationCircleIcon} size={16} />
                 </button>

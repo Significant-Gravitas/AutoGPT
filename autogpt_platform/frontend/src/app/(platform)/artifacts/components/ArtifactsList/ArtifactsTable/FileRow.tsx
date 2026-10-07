@@ -69,7 +69,7 @@ export function FileRow({
       animate="show"
       className={cn(
         ROW_GRID_CLASS,
-        "group cursor-pointer px-2 transition-colors has-[[data-state=open]]:bg-zinc-50 hover:bg-zinc-50",
+        "group cursor-pointer px-2 transition-colors hover:bg-zinc-50 has-data-[state=open]:bg-zinc-50",
         isSelected && "bg-zinc-100 hover:bg-zinc-100",
       )}
       data-testid="artifacts-list-item"
@@ -89,7 +89,7 @@ export function FileRow({
           variant="ghost"
           aria-label={`Select ${file.name}`}
           aria-pressed={isSelected}
-          className="group/select relative my-2.5 mr-3 h-auto min-w-0 shrink-0 rounded-xl border-0 p-0 outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-zinc-400"
+          className="group/select relative my-2.5 mr-3 h-auto min-w-0 shrink-0 rounded-xl border-0 p-0 outline-hidden hover:bg-transparent focus-visible:ring-2 focus-visible:ring-zinc-400"
           onClick={(e) => {
             e.stopPropagation();
             onToggleSelect(file);
@@ -137,7 +137,7 @@ export function FileRow({
               align="center"
               sideOffset={16}
               collisionPadding={16}
-              className="max-w-none rounded-2xl border border-zinc-200 bg-white p-0 text-sm shadow-xl shadow-black/10 outline-none"
+              className="max-w-none rounded-2xl border border-zinc-200 bg-white p-0 text-sm shadow-xl shadow-black/10 outline-hidden"
             >
               <FilePreviewCard file={file} />
             </TooltipContent>
@@ -177,7 +177,7 @@ export function FileRow({
       <div
         className={cn(
           ACTIONS_CELL_CLASS,
-          "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100",
+          "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 has-data-[state=open]:opacity-100",
         )}
         onClick={(e) => e.stopPropagation()}
       >

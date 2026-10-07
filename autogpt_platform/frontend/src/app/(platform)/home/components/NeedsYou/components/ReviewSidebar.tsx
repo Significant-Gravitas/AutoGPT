@@ -30,7 +30,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
       aria-label={sheet ? "All held calls" : "Held calls"}
       className="flex min-h-0 w-full flex-col"
     >
-      <div className="flex items-baseline gap-2 px-4 pb-2 pt-4">
+      <div className="flex items-baseline gap-2 px-4 pt-4 pb-2">
         <Text variant="body-medium" as="h2">
           To review
         </Text>
@@ -54,7 +54,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
                 aria-current={isCurrent ? "true" : undefined}
                 onClick={() => carousel.jump(item.id)}
                 className={cn(
-                  "flex w-full items-start gap-2.5 border-l-2 py-2 pl-3.5 pr-4 text-left text-sm hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-300",
+                  "flex w-full items-start gap-2.5 border-l-2 py-2 pr-4 pl-3.5 text-left text-sm hover:bg-white focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:outline-hidden focus-visible:ring-inset",
                   isCurrent ? "border-zinc-900 bg-white" : "border-transparent",
                   receipt ? "text-zinc-400" : "text-zinc-800",
                 )}
@@ -82,7 +82,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
                   </span>
                 </span>
                 {carousel.isNew(item.id) ? (
-                  <span className="shrink-0 rounded bg-blue-50 px-1.5 text-xs font-medium text-blue-700">
+                  <span className="shrink-0 rounded-sm bg-blue-50 px-1.5 text-xs font-medium text-blue-700">
                     new
                   </span>
                 ) : null}

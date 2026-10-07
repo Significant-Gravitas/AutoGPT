@@ -58,14 +58,14 @@ export function LibraryAgentCard({
     <div
       draggable={draggable}
       onDragStart={handleDragStart}
-      className="[@media(pointer:fine)]:cursor-grab [@media(pointer:fine)]:active:cursor-grabbing"
+      className="pointer-fine:cursor-grab pointer-fine:active:cursor-grabbing"
     >
       <motion.div
         layoutId={`agent-card-${id}`}
         data-testid="library-agent-card"
         data-agent-id={id}
         className={cn(
-          "group relative inline-flex h-auto min-h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border bg-white hover:shadow-md",
+          "group relative inline-flex h-auto min-h-42.5 w-full max-w-100 flex-col items-start justify-start gap-2.5 rounded-medium border bg-white hover:shadow-md",
           hasError ? "border-red-400" : "border-zinc-100",
         )}
         transition={{
@@ -75,8 +75,8 @@ export function LibraryAgentCard({
         }}
         style={{ willChange: "transform" }}
       >
-        <NextLink href={`/library/agents/${id}`} className="flex-shrink-0">
-          <div className="relative flex items-center gap-3 pl-2 pr-4 pt-3">
+        <NextLink href={`/library/agents/${id}`} className="shrink-0">
+          <div className="relative flex items-center gap-3 pt-3 pr-4 pl-2">
             <StatusBadge status={statusInfo.status} />
             <Text variant="small" tone="muted">
               {statusInfo.totalRuns} tasks
@@ -86,7 +86,7 @@ export function LibraryAgentCard({
         <FavoriteButton
           isFavorite={isFavorite}
           onClick={handleToggleFavorite}
-          className="absolute right-10 top-0"
+          className="absolute top-0 right-10"
         />
         <AgentCardMenu agent={agent} />
 
@@ -99,20 +99,20 @@ export function LibraryAgentCard({
               variant="h5"
               unmask={false}
               data-testid="library-agent-card-name"
-              className="line-clamp-3 hyphens-auto break-words no-underline hover:no-underline"
+              className="line-clamp-3 wrap-break-word hyphens-auto no-underline hover:no-underline"
             >
               {name}
             </Text>
 
             {!showImage || !image_url ? (
               <div
-                className={`h-[3.64rem] w-[6.70rem] flex-shrink-0 rounded-small ${
+                className={`h-[3.64rem] w-[6.70rem] shrink-0 rounded-small ${
                   [
-                    "bg-gradient-to-r from-green-200 to-blue-200",
-                    "bg-gradient-to-r from-pink-200 to-purple-200",
-                    "bg-gradient-to-r from-yellow-200 to-orange-200",
-                    "bg-gradient-to-r from-blue-200 to-cyan-200",
-                    "bg-gradient-to-r from-purple-100 to-purple-200",
+                    "bg-linear-to-r from-green-200 to-blue-200",
+                    "bg-linear-to-r from-pink-200 to-purple-200",
+                    "bg-linear-to-r from-yellow-200 to-orange-200",
+                    "bg-linear-to-r from-blue-200 to-cyan-200",
+                    "bg-linear-to-r from-purple-100 to-purple-200",
                   ][parseInt(id.slice(0, 8), 16) % 5]
                 }`}
                 style={{
@@ -127,13 +127,13 @@ export function LibraryAgentCard({
                 alt={`${name} preview image`}
                 width={107}
                 height={58}
-                className="flex-shrink-0 rounded-small object-cover"
+                className="shrink-0 rounded-small object-cover"
                 onError={handleImageError}
               />
             )}
           </NextLink>
 
-          <div className="mt-4 flex w-full items-center justify-end gap-1 border-t border-zinc-100 pb-0 pt-2">
+          <div className="mt-4 flex w-full items-center justify-end gap-1 border-t border-zinc-100 pt-2 pb-0">
             <Button
               type="button"
               variant="ghost"

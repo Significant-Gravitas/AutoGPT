@@ -32,7 +32,7 @@ export function ExpertDayOne({ name, items, accent }: Props) {
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3">
               <div className="min-w-0 flex-1">
-                <div className="break-words text-base font-semibold leading-6 text-zinc-900">
+                <div className="text-base leading-6 font-semibold break-words text-zinc-900">
                   {item.title}
                 </div>
                 {item.description ? (
@@ -40,14 +40,14 @@ export function ExpertDayOne({ name, items, accent }: Props) {
                     variant="body"
                     tone="muted"
                     unmask={false}
-                    className="break-words leading-6"
+                    className="leading-6 break-words"
                   >
                     {item.description}
                   </Text>
                 ) : null}
               </div>
               {item.timing ? (
-                <span className="shrink-0 self-start whitespace-nowrap rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium leading-5 text-zinc-600">
+                <span className="shrink-0 self-start rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs leading-5 font-medium whitespace-nowrap text-zinc-600">
                   {item.timing}
                 </span>
               ) : null}

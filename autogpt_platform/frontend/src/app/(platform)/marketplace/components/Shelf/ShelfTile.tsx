@@ -15,7 +15,7 @@ interface Props {
 }
 
 const TILE =
-  "flex w-full items-center gap-3 rounded-xl border border-zinc-200/80 bg-white p-2.5 text-left outline-none transition-colors hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-purple-600";
+  "flex w-full items-center gap-3 rounded-xl border border-zinc-200/80 bg-white p-2.5 text-left outline-hidden transition-colors hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-purple-600";
 
 export function ShelfTile({
   media,

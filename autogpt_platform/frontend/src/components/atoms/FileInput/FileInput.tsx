@@ -34,7 +34,7 @@ function PreviewButton({
         <Button
           variant="outline"
           size="small"
-          className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-blue-600"
+          className="h-7 w-7 min-w-0 shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-blue-600"
           type="button"
           aria-label="Preview file"
         >
@@ -42,7 +42,7 @@ function PreviewButton({
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
-        <div className="overflow-hidden [&>*]:rounded-xlarge">
+        <div className="overflow-hidden *:rounded-xlarge">
           {renderer.render(value, metadata)}
         </div>
       </Dialog.Content>
@@ -339,7 +339,7 @@ export function FileInput(props: Props) {
               <div className="flex flex-1 items-center gap-2 rounded-xlarge border border-gray-300 bg-gray-50 p-2">
                 <Icon
                   icon={File02Icon}
-                  className="h-4 w-4 flex-shrink-0 text-gray-600"
+                  className="h-4 w-4 shrink-0 text-gray-600"
                 />
 
                 <Text variant="small-medium" className="truncate text-gray-900">
@@ -367,7 +367,7 @@ export function FileInput(props: Props) {
               <Button
                 variant="outline"
                 size="small"
-                className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600"
+                className="h-7 w-7 min-w-0 shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600"
                 onClick={handleClear}
                 type="button"
                 aria-label="Clear file"
@@ -454,7 +454,7 @@ export function FileInput(props: Props) {
                   type="button"
                   onClick={handleClear}
                   aria-label="Clear file"
-                  className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600"
+                  className="h-7 w-7 min-w-0 shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600"
                 >
                   <Icon icon={Delete02Icon} className="h-5 w-5" />
                 </Button>

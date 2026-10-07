@@ -14,8 +14,8 @@ export const createRunSteps = (tour: any): StepOptions[] => [
     id: "press-run",
     title: "Run Your Agent",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Your agent is saved and ready! Now let's <strong>run it</strong> to see it in action.</p>
+      <div class="text-sm leading-5.5 text-zinc-800">
+        <p class="text-sm font-normal leading-5.5 text-zinc-800 m-0">Your agent is saved and ready! Now let's <strong>run it</strong> to see it in action.</p>
         ${banner(ICONS.ClickIcon, "Click the Run button", "action")}
       </div>
     `,
@@ -47,8 +47,8 @@ export const createRunSteps = (tour: any): StepOptions[] => [
     id: "show-output",
     title: "View the Output",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Here's the <strong>output</strong> of your block!</p>
+      <div class="text-sm leading-5.5 text-zinc-800">
+        <p class="text-sm font-normal leading-5.5 text-zinc-800 m-0">Here's the <strong>output</strong> of your block!</p>
         
         <div class="mt-3 p-3 bg-blue-50 ring-1 ring-blue-200 rounded-2xl">
           <p class="text-sm font-medium text-blue-600 m-0">Latest Output:</p>

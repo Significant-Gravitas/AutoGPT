@@ -114,16 +114,16 @@ function SearchCommandModalDemo({
     // ancestor with a ``transform`` (or ``filter`` / ``contain: paint``)
     // anchors fixed children to itself instead of the viewport, which
     // lets the full dialog render inside the docs iframe without
-    // overflow or scrollbars. ``[&_.fixed]:!absolute`` also retargets
+    // overflow or scrollbars. ``[&_.fixed]:absolute!`` also retargets
     // the backdrop's positioning so it sits inside this box.
     <div
-      className="relative h-[720px] w-full overflow-hidden rounded-md bg-zinc-100 [&_.fixed]:!absolute [&_.pt-\[18vh\]]:!pt-12"
+      className="relative h-[720px] w-full overflow-hidden rounded-md bg-zinc-100 [&_.fixed]:absolute! [&_.pt-\[18vh\]]:pt-12!"
       style={{ transform: "translateZ(0)" }}
     >
       {!isOpen && (
         <button
           type="button"
-          className="m-4 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm"
+          className="m-4 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm shadow-xs"
           onClick={() => setIsOpen(true)}
         >
           Open search

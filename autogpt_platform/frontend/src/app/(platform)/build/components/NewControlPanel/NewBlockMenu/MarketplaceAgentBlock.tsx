@@ -46,13 +46,13 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
       variant="ghost"
       unmask={false}
       className={cn(
-        "group flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-xl bg-zinc-50 p-2.5 pr-3.5 text-start shadow-none",
+        "group flex h-17.5 w-full min-w-30 items-center justify-start gap-3 rounded-xl bg-zinc-50 p-2.5 pr-3.5 text-start whitespace-normal shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none disabled:opacity-50",
         className,
       )}
       {...rest}
     >
-      <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-md bg-white">
+      <div className="relative h-12.5 w-22.5 overflow-hidden rounded-md bg-white">
         {showImage && image_url && (
           <Image
             src={image_url}
@@ -69,7 +69,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         {title && (
           <span
             className={cn(
-              "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
+              "line-clamp-1 font-sans text-sm leading-5.5 font-medium text-zinc-800 group-disabled:text-zinc-400",
             )}
           >
             {highlightText(title, highlightedText)}
@@ -78,7 +78,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         <div className="flex items-center space-x-2.5">
           <span
             className={cn(
-              "truncate font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
+              "truncate font-sans text-xs leading-5 font-normal text-zinc-500 group-disabled:text-zinc-400",
             )}
           >
             By {creator_name}
@@ -88,7 +88,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
 
           <span
             className={cn(
-              "truncate font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
+              "truncate font-sans text-xs leading-5 font-normal text-zinc-500 group-disabled:text-zinc-400",
             )}
           >
             {number_of_runs} runs
@@ -135,17 +135,17 @@ const MarketplaceAgentBlockSkeleton: React.FC<{ className?: string }> = ({
   return (
     <Skeleton
       className={cn(
-        "flex h-[4.375rem] w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-xl bg-zinc-100 p-2.5 pr-3.5",
+        "flex h-17.5 w-full min-w-30 animate-pulse items-center justify-start gap-3 rounded-xl bg-zinc-100 p-2.5 pr-3.5",
         className,
       )}
     >
-      <Skeleton className="h-[3.125rem] w-[5.625rem] rounded-md bg-zinc-200" />
+      <Skeleton className="h-12.5 w-22.5 rounded-md bg-zinc-200" />
       <div className="flex flex-1 flex-col items-start gap-0.5">
-        <Skeleton className="h-[1.375rem] w-24 rounded bg-zinc-200" />
+        <Skeleton className="h-5.5 w-24 rounded-sm bg-zinc-200" />
         <div className="flex items-center gap-1">
-          <Skeleton className="h-5 w-16 rounded bg-zinc-200" />
+          <Skeleton className="h-5 w-16 rounded-sm bg-zinc-200" />
 
-          <Skeleton className="h-5 w-16 rounded bg-zinc-200" />
+          <Skeleton className="h-5 w-16 rounded-sm bg-zinc-200" />
         </div>
       </div>
       <Skeleton className="h-7 w-7 rounded-lg bg-zinc-200" />

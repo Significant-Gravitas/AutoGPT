@@ -77,7 +77,7 @@ export function AttachmentStep({
           onClick={picker.submit}
           disabled={isSubmitting}
           loading={isSubmitting}
-          className="h-[2.625rem] rounded-xl py-3"
+          className="h-10.5 rounded-xl py-3"
         >
           {primaryLabel}
         </Button>
@@ -87,7 +87,7 @@ export function AttachmentStep({
           size="small"
           onClick={picker.skip}
           disabled={isSubmitting}
-          className="h-[2.625rem] rounded-xl py-3"
+          className="h-10.5 rounded-xl py-3"
         >
           Skip
         </Button>

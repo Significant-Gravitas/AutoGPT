@@ -32,7 +32,7 @@ export function BillingToggle({
           className={cn(
             "rounded-full px-4 text-xs",
             billing === cycle
-              ? "bg-white text-zinc-900 shadow-sm hover:bg-white"
+              ? "bg-white text-zinc-900 shadow-xs hover:bg-white"
               : "text-zinc-500",
           )}
         >

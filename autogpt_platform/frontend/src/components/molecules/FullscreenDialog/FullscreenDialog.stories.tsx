@@ -99,7 +99,7 @@ function DialogBody({ title, onClose, sectionCount = 1 }: DialogBodyProps) {
               id={`identity-${section}`}
               label={sectionCount > 1 ? `Identity ${section}` : "Identity"}
               placeholder="A patient research assistant"
-              wrapperClassName="!mb-0"
+              wrapperClassName="mb-0!"
             />
             <Text variant="small" tone="muted">
               Describe who this expert is and how they speak.

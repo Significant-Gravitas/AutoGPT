@@ -226,8 +226,8 @@ function OverviewComponent() {
           </Text>
         </div>
 
-        <div className="relative rounded-xl bg-gradient-to-r from-blue-50 via-purple-50 to-pink-50 p-6">
-          <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 p-[2px]">
+        <div className="relative rounded-xl bg-linear-to-r from-blue-50 via-purple-50 to-pink-50 p-6">
+          <div className="absolute inset-0 rounded-xl bg-linear-to-r from-blue-500 via-purple-500 to-pink-500 p-[2px]">
             <div className="h-full w-full rounded-xl bg-white"></div>
           </div>
           <div className="relative space-y-6">
@@ -235,7 +235,7 @@ function OverviewComponent() {
               <Text
                 variant="lead-semibold"
                 as="h3"
-                className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent"
+                className="bg-linear-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent"
               >
                 ⚠️ Design System Guidelines
               </Text>

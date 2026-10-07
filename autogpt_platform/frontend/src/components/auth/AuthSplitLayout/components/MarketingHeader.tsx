@@ -25,7 +25,7 @@ export function MarketingHeader({ headingLines, description }: Props) {
         <Text
           variant="h1"
           as="h1"
-          className="w-full text-[3rem] font-semibold leading-[1.05] tracking-[-0.025em] text-white"
+          className="w-full text-[3rem] leading-[1.05] font-semibold tracking-tight text-white"
         >
           <AnimatedHeading lines={headingLines} />
         </Text>

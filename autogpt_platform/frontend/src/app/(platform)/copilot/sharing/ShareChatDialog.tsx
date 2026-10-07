@@ -73,7 +73,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
               run in this chat — past and future — is included in the
               share automatically.  Locked while shared so the toggle
               state always matches what the viewer sees. */}
-          <div className="flex items-center justify-between gap-3 rounded border border-zinc-200 px-3 py-2.5">
+          <div className="flex items-center justify-between gap-3 rounded-sm border border-zinc-200 px-3 py-2.5">
             <div className="min-w-0">
               <Text variant="body-medium" as="p">
                 Share agent runs in this chat
@@ -100,7 +100,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
                 <input
                   readOnly
                   value={state.shareUrl}
-                  className="flex-1 rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 font-mono text-xs"
+                  className="flex-1 rounded-sm border border-zinc-200 bg-zinc-50 px-2 py-1.5 font-mono text-xs"
                 />
                 <Button
                   size="small"

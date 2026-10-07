@@ -474,11 +474,11 @@ export function ExecutionAnalyticsForm() {
                 />
                 <Text variant="body" tone="secondary">
                   Customize the analysis instructions. Use{" "}
-                  <code className="rounded bg-zinc-100 px-1">
+                  <code className="rounded-sm bg-zinc-100 px-1">
                     {"{{GRAPH_NAME}}"}
                   </code>{" "}
                   and{" "}
-                  <code className="rounded bg-zinc-100 px-1">
+                  <code className="rounded-sm bg-zinc-100 px-1">
                     {"{{EXECUTION_DATA}}"}
                   </code>{" "}
                   as placeholders. Leave empty to use the default template shown
@@ -577,7 +577,7 @@ export function ExecutionAnalyticsForm() {
                       {trendsData.alert.drop_percent.toFixed(1)}% accuracy drop
                     </strong>{" "}
                     detected for agent{" "}
-                    <code className="rounded bg-red-100 px-1 text-sm">
+                    <code className="rounded-sm bg-red-100 px-1 text-sm">
                       {formData.graph_id}
                     </code>
                   </Text>

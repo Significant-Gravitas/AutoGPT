@@ -98,7 +98,7 @@ export function ChatSessionRow({
               }
             }}
             onBlur={onRenameBlur}
-            className="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+            className="w-full rounded-sm border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-hidden focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
           />
         </div>
       ) : (
@@ -137,7 +137,7 @@ export function ChatSessionRow({
       )}
       {isExporting && (
         <div
-          className="pointer-events-none absolute right-9 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white text-zinc-600 shadow-sm"
+          className="pointer-events-none absolute top-1/2 right-9 z-10 -translate-y-1/2 rounded-full bg-white text-zinc-600 shadow-xs"
           aria-label="Exporting chat"
           title="Exporting chat…"
         >
@@ -155,7 +155,7 @@ export function ChatSessionRow({
           <DropdownMenuTrigger asChild>
             <button
               onClick={(e) => e.stopPropagation()}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-zinc-100"
+              className="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-zinc-100"
               aria-label="More actions"
             >
               <Icon icon={MoreHorizontalIcon} className="h-4 w-4" />

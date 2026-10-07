@@ -98,8 +98,8 @@ export function MobileDrawer() {
         direction="left"
       >
         <Drawer.Portal>
-          <Drawer.Overlay className="fixed inset-0 z-[60] bg-black/10 backdrop-blur-sm" />
-          <Drawer.Content className="fixed left-0 top-0 z-[70] flex h-full w-80 flex-col border-r border-zinc-200 bg-zinc-50">
+          <Drawer.Overlay className="fixed inset-0 z-60 bg-black/10 backdrop-blur-xs" />
+          <Drawer.Content className="fixed top-0 left-0 z-70 flex h-full w-80 flex-col border-r border-zinc-200 bg-zinc-50">
             <div className="shrink-0 border-b border-zinc-200 px-4 py-2">
               <div className="flex items-center justify-between">
                 <Drawer.Title className="text-lg font-semibold text-zinc-800">
@@ -166,7 +166,7 @@ export function MobileDrawer() {
                     <div className="relative">
                       <Icon
                         icon={Search01Icon}
-                        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
+                        className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-400"
                       />
                       <Input
                         ref={searchInputRef}
@@ -180,7 +180,7 @@ export function MobileDrawer() {
                     </div>
                   </div>
                   <Separator className="mb-2" />
-                  <div className="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
+                  <div className="px-1 pb-2 text-xs font-medium tracking-wide text-zinc-400 uppercase">
                     {debouncedQuery.trim() ? "Results" : "Recent chats"}
                   </div>
                   {results.length > 0 ? (

@@ -165,8 +165,8 @@ export function DialogWrap({
               onClick={handleClose}
               aria-label="Close"
               className={cn(
-                "absolute right-4 top-4 z-50 bg-white",
-                isCompact ? compactStyles.close : "size-[2.5rem]",
+                "absolute top-4 right-4 z-50 bg-white",
+                isCompact ? compactStyles.close : "size-10",
               )}
               withTooltip={false}
             >
@@ -178,11 +178,11 @@ export function DialogWrap({
           <div
             ref={scrollRef}
             className={cn(
-              "flex-1 overflow-y-auto overflow-x-hidden px-2",
+              "flex-1 overflow-x-hidden overflow-y-auto px-2",
               scrollbarStyles,
               hasVerticalScrollbar
-                ? "-mr-6 [scrollbar-gutter:stable]"
-                : "mr-0 [scrollbar-gutter:auto]",
+                ? "-mr-6 scrollbar-gutter-stable"
+                : "mr-0 scrollbar-gutter-auto",
             )}
           >
             {children}

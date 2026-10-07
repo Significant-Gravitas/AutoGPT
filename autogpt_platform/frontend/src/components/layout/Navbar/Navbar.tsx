@@ -109,8 +109,8 @@ export function Navbar() {
           ) : null}
 
           {/* Centered logo */}
-          <div className="static md:absolute md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2">
-            <AutoGPTLogo className="h-auto w-18 md:w-[5.5rem]" />
+          <div className="static md:absolute md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2">
+            <AutoGPTLogo className="h-auto w-18 md:w-22" />
           </div>
 
           {/* Right section */}
@@ -141,7 +141,7 @@ export function Navbar() {
       {/* Mobile Navbar - Adjust positioning */}
       <>
         {isLoggedIn && isSmallScreen ? (
-          <div className="fixed right-0 top-2 z-50 flex items-center gap-0">
+          <div className="fixed top-2 right-0 z-50 flex items-center gap-0">
             <Wallet />
             <MobileNavBar
               userName={profile?.username}

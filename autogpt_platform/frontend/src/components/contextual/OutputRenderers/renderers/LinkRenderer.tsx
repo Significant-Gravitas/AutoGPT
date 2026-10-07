@@ -40,7 +40,7 @@ function renderLink(
       className="inline-flex items-center gap-1.5 rounded-md text-sm text-blue-600 underline decoration-blue-300 underline-offset-2 transition-colors hover:text-blue-800 hover:decoration-blue-500"
     >
       <span className="break-all">{displayText}</span>
-      <Icon icon={LinkSquare01Icon} size={14} className="flex-shrink-0" />
+      <Icon icon={LinkSquare01Icon} size={14} className="shrink-0" />
     </a>
   );
 }

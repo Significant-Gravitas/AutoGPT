@@ -27,7 +27,7 @@ export function TaskRow({ todo, isStreaming, reduceMotion }: Props) {
 
   return (
     <li className="flex items-start gap-2 text-sm">
-      <span className="mt-0.5 flex-shrink-0">
+      <span className="mt-0.5 shrink-0">
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
             key={status}

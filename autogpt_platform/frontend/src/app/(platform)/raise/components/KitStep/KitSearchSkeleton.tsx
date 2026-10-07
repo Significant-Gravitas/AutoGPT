@@ -10,7 +10,7 @@ export function KitSearchSkeleton() {
     <div
       role="status"
       aria-label="Searching"
-      className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-background duration-200 animate-in fade-in motion-reduce:animate-none"
+      className="w-full max-w-2xl animate-in overflow-hidden rounded-2xl border border-border bg-background duration-200 fade-in motion-reduce:animate-none"
     >
       {Array.from({ length: MAX_SEARCH_RESULTS }, (_, index) => (
         <div
@@ -43,7 +43,7 @@ function ShimmerBar({ delay, className }: ShimmerBarProps) {
       aria-hidden
       style={{ animationDelay: `${delay * 140}ms` }}
       className={cn(
-        "block animate-shimmer bg-[linear-gradient(90deg,theme(colors.zinc.100)_25%,theme(colors.zinc.50)_50%,theme(colors.zinc.100)_75%)] bg-[length:200%_100%] [animation-duration:1.4s] [animation-timing-function:linear] motion-reduce:animate-none motion-reduce:bg-zinc-100",
+        "block animate-shimmer bg-[linear-gradient(90deg,var(--color-zinc-100)_25%,var(--color-zinc-50)_50%,var(--color-zinc-100)_75%)] bg-size-[200%_100%] [animation-duration:1.4s] [animation-timing-function:linear] motion-reduce:animate-none motion-reduce:bg-zinc-100",
         className,
       )}
     />

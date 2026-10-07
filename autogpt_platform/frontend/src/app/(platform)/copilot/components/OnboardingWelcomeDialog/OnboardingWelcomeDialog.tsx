@@ -169,7 +169,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-white/30 px-4 backdrop-blur-sm"
+          className="fixed inset-0 z-100 flex items-center justify-center bg-white/30 px-4 backdrop-blur-xs"
           data-testid="onboarding-welcome-overlay"
           role="dialog"
           aria-modal="true"
@@ -184,7 +184,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
               maxWidth: isConnectOpen ? "30rem" : "20rem",
             }}
             transition={{ duration: 0.45, ease: [0, 0, 0.2, 1] }}
-            className="w-full max-w-[20rem] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg outline-none"
+            className="w-full max-w-[20rem] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg outline-hidden"
             ref={dialogRef}
             tabIndex={-1}
           >
@@ -222,7 +222,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                       transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
                     >
                       {/* Stage: the card's icon floats here. */}
-                      <div className="relative h-36 bg-gradient-to-br from-purple-100 via-purple-200 to-purple-300">
+                      <div className="relative h-36 bg-linear-to-br from-purple-100 via-purple-200 to-purple-300">
                         <GlassPixelBackdrop />
                         {cardIndex > 0 && (
                           <Button
@@ -232,7 +232,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                             withTooltip={false}
                             aria-label="Previous card"
                             onClick={() => setCardIndex(cardIndex - 1)}
-                            className="absolute left-3 top-3 z-10 size-5 rounded-full text-purple-800/70 hover:border-transparent hover:bg-white/50"
+                            className="absolute top-3 left-3 z-10 size-5 rounded-full text-purple-800/70 hover:border-transparent hover:bg-white/50"
                           >
                             <Icon icon={ArrowLeft01Icon} size={13} />
                           </Button>
@@ -263,7 +263,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                       </div>
 
                       {/* Copy + controls, reference-style white lower half. */}
-                      <div className="flex flex-col gap-2 px-5 pb-5 pt-4 text-left">
+                      <div className="flex flex-col gap-2 px-5 pt-4 pb-5 text-left">
                         <Text variant="h5" tone="primary">
                           {card.title}
                         </Text>

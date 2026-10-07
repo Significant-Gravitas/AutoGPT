@@ -13,7 +13,7 @@ export function AutoGPTLogoWhite({
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-label="AutoGPT Logo"
-      className={className ?? "h-[3.375rem] w-auto"}
+      className={className ?? "h-13.5 w-auto"}
       {...props}
     >
       <path

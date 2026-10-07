@@ -102,7 +102,7 @@ function ErrorList({ errors }: ErrorListProps) {
             size={14}
             className="mt-px shrink-0 text-red-400"
           />
-          <span className="min-w-0 break-words">{error}</span>
+          <span className="min-w-0 wrap-break-word">{error}</span>
         </div>
       ))}
     </div>
@@ -313,7 +313,7 @@ export function TriggerSetupCard({ output }: OutputProps) {
       </Text>
       {url && (
         <div className="flex items-center gap-2 rounded-lg bg-zinc-50 p-2 ring-1 ring-zinc-200/70">
-          <code className="ph-no-capture min-w-0 flex-1 break-all text-xs text-zinc-600">
+          <code className="ph-no-capture min-w-0 flex-1 text-xs break-all text-zinc-600">
             {url}
           </code>
           <Button

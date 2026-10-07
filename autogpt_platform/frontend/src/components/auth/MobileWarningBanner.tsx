@@ -18,7 +18,7 @@ export function MobileWarningBanner() {
       <div className="flex items-start gap-3">
         <Icon
           icon={SmartPhone01Icon}
-          className="mt-0.5 h-5 w-5 flex-shrink-0 text-yellow-600"
+          className="mt-0.5 h-5 w-5 shrink-0 text-yellow-600"
         />
         <div className="flex flex-col gap-1">
           <Text variant="body-medium" className="text-yellow-900">

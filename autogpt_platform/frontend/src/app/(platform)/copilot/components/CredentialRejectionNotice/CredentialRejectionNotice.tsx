@@ -19,7 +19,7 @@ export function CredentialRejectionNotice({ rejection }: Props) {
         variant="small"
         as="p"
         unmask={false}
-        className="mt-1 break-words text-inherit opacity-80"
+        className="mt-1 wrap-break-word text-inherit opacity-80"
       >
         {rejection.detail}
       </Text>

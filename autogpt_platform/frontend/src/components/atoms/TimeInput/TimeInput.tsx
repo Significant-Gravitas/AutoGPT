@@ -47,12 +47,12 @@ export const TimeInput: React.FC<TimeInputProps> = ({
     "font-normal text-black",
     "placeholder:font-normal placeholder:text-zinc-500",
     // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    "focus:border-zinc-400 focus:shadow-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0 focus:outline-hidden",
     className,
   );
 
   const errorStyles =
-    error && "!border !border-red-500 focus:border-red-500 focus:ring-red-500";
+    error && "border! border-red-500! focus:border-red-500 focus:ring-red-500";
 
   const input = (
     <div className={cn("relative", wrapperClassName)}>
@@ -65,13 +65,13 @@ export const TimeInput: React.FC<TimeInputProps> = ({
           errorStyles,
           // Size variants
           size === "small" && [
-            "h-[2.25rem]", // 36px
+            "h-9", // 36px
             "py-2",
             "text-sm leading-[22px]", // 14px font, 22px line height
             "placeholder:text-sm placeholder:leading-[22px]",
           ],
           size === "medium" && [
-            "h-[2.875rem]", // 46px (current default)
+            "h-11.5", // 46px (current default)
             "py-2.5",
           ],
         )}
@@ -92,7 +92,7 @@ export const TimeInput: React.FC<TimeInputProps> = ({
         variant="small-medium"
         as="span"
         className={cn(
-          "absolute left-0 top-full mt-1 !text-red-500 transition-opacity duration-200",
+          "absolute top-full left-0 mt-1 text-red-500! transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
@@ -111,7 +111,7 @@ export const TimeInput: React.FC<TimeInputProps> = ({
           {label}
         </Text>
         {hint ? (
-          <Text variant="small" as="span" className="!text-zinc-400">
+          <Text variant="small" as="span" className="text-zinc-400!">
             {hint}
           </Text>
         ) : null}

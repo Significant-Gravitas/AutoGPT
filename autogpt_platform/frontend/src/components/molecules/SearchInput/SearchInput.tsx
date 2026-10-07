@@ -69,7 +69,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
           disabled={disabled}
           maxLength={maxLength}
           className={cn(
-            "w-full rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
+            "w-full rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-60",
             sizeStyles[size],
             "[&::-webkit-search-cancel-button]:appearance-none",
           )}
@@ -95,7 +95,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
             onClick={() => onChange("")}
             aria-label="Clear search"
             className={cn(
-              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
               iconOffset[size].right,
             )}
           >

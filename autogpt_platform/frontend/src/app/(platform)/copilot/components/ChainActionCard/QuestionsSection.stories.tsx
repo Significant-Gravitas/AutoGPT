@@ -24,7 +24,7 @@ function QuestionsCard({ questions, answers: initial = {} }: CardProps) {
     questions.every((q) => isAnswered(answers[q.keyword]));
   return (
     <LazyMotion features={domAnimation} strict>
-      <div className="w-[34rem] overflow-hidden rounded-3xl border border-zinc-100 bg-white">
+      <div className="w-136 overflow-hidden rounded-3xl border border-zinc-100 bg-white">
         <QuestionsSection
           requests={[
             {

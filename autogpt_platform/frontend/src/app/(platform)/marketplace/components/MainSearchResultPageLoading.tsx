@@ -10,7 +10,7 @@ export function MainSearchResultPageLoading() {
     >
       <div className="mx-auto min-h-screen w-full max-w-[1440px] px-6 md:px-10">
         {/* Go back button */}
-        <div className="mb-4 mt-5">
+        <div className="mt-5 mb-4">
           <Skeleton className="h-9 w-24 rounded-full" />
         </div>
 
@@ -39,13 +39,13 @@ export function MainSearchResultPageLoading() {
         <div className="space-y-8 py-8">
           <div className="hidden grid-cols-1 place-items-center gap-6 md:grid md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-[25rem] w-full rounded-2xl" />
+              <Skeleton key={i} className="h-100 w-full rounded-2xl" />
             ))}
           </div>
           {/* Mobile carousel placeholder */}
           <div className="flex gap-4 overflow-hidden md:hidden">
-            <Skeleton className="h-[25rem] min-w-64 rounded-2xl" />
-            <Skeleton className="h-[25rem] min-w-64 rounded-2xl" />
+            <Skeleton className="h-100 min-w-64 rounded-2xl" />
+            <Skeleton className="h-100 min-w-64 rounded-2xl" />
           </div>
 
           {/* Separator */}

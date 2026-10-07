@@ -37,7 +37,7 @@ const ACCENTS: Record<string, ExpertAccent> = {
       "bg-[linear-gradient(180deg,rgba(119,51,245,0.10),rgba(119,51,245,0.03)_60%,transparent)]",
     pill: "bg-purple-50 text-purple-700 ring-1 ring-inset ring-purple-600/10",
     band: "bg-purple-50/60",
-    chip: "bg-gradient-to-b from-white to-purple-50 text-purple-800 ring-1 ring-inset ring-purple-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(119,51,245,0.12),0_0_18px_-4px_rgba(119,51,245,0.45)]",
+    chip: "bg-linear-to-b from-white to-purple-50 text-purple-800 ring-1 ring-inset ring-purple-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(119,51,245,0.12),0_0_18px_-4px_rgba(119,51,245,0.45)]",
     icon: "text-purple-500",
     roleIcon: Megaphone01Icon,
   },
@@ -47,7 +47,7 @@ const ACCENTS: Record<string, ExpertAccent> = {
       "bg-[linear-gradient(180deg,rgba(245,192,0,0.10),rgba(245,192,0,0.03)_60%,transparent)]",
     pill: "bg-yellow-50 text-yellow-700 ring-1 ring-inset ring-yellow-600/10",
     band: "bg-yellow-50/60",
-    chip: "bg-gradient-to-b from-white to-yellow-50 text-yellow-800 ring-1 ring-inset ring-yellow-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(245,192,0,0.12),0_0_18px_-4px_rgba(245,192,0,0.45)]",
+    chip: "bg-linear-to-b from-white to-yellow-50 text-yellow-800 ring-1 ring-inset ring-yellow-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(245,192,0,0.12),0_0_18px_-4px_rgba(245,192,0,0.45)]",
     icon: "text-yellow-500",
     roleIcon: ChartIncreaseIcon,
   },
@@ -57,7 +57,7 @@ const ACCENTS: Record<string, ExpertAccent> = {
       "bg-[linear-gradient(180deg,rgba(14,165,233,0.10),rgba(14,165,233,0.03)_60%,transparent)]",
     pill: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-600/10",
     band: "bg-sky-50/60",
-    chip: "bg-gradient-to-b from-white to-sky-50 text-sky-800 ring-1 ring-inset ring-sky-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(14,165,233,0.12),0_0_18px_-4px_rgba(14,165,233,0.45)]",
+    chip: "bg-linear-to-b from-white to-sky-50 text-sky-800 ring-1 ring-inset ring-sky-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(14,165,233,0.12),0_0_18px_-4px_rgba(14,165,233,0.45)]",
     icon: "text-sky-500",
     roleIcon: Settings01Icon,
   },
@@ -67,7 +67,7 @@ const ACCENTS: Record<string, ExpertAccent> = {
       "bg-[linear-gradient(180deg,rgba(113,113,122,0.08),rgba(113,113,122,0.02)_60%,transparent)]",
     pill: "bg-zinc-100 text-zinc-600 ring-1 ring-inset ring-zinc-500/10",
     band: "bg-zinc-100/60",
-    chip: "bg-gradient-to-b from-white to-zinc-50 text-zinc-700 ring-1 ring-inset ring-zinc-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(113,113,122,0.12),0_0_18px_-4px_rgba(113,113,122,0.45)]",
+    chip: "bg-linear-to-b from-white to-zinc-50 text-zinc-700 ring-1 ring-inset ring-zinc-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(113,113,122,0.12),0_0_18px_-4px_rgba(113,113,122,0.45)]",
     icon: "text-zinc-500",
     roleIcon: Briefcase01Icon,
   },
@@ -124,7 +124,7 @@ export function getRaisedExpertAccent(
   const option = findColorOption(color ?? null);
   if (!option) return roleAccent;
 
-  const wash = cn("bg-gradient-to-b to-transparent", option.washFromClassName);
+  const wash = cn("bg-linear-to-b to-transparent", option.washFromClassName);
   return {
     ...roleAccent,
     wash,

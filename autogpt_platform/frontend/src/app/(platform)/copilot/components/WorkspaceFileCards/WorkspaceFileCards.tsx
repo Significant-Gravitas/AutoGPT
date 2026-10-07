@@ -51,7 +51,7 @@ export function WorkspaceFileCards({ sessionId, expert = null }: Props) {
   return (
     <div className="flex flex-col gap-3">
       {!showFilesCard && !hasActivity && !hasExpertSection && (
-        <div className="rounded-3xl bg-white/90 px-4 py-3 backdrop-blur smooth-shadow-ring-sm">
+        <div className="rounded-3xl bg-white/90 px-4 py-3 smooth-shadow-ring-sm backdrop-blur-sm">
           <Text variant="body" as="p" tone="muted" className="py-2 text-center">
             Nothing here yet.
           </Text>

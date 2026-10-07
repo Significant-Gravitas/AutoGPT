@@ -114,7 +114,7 @@ function renderVideoEmbed(url: string): React.ReactNode {
         <iframe
           src={embedUrl}
           title="Embedded video player"
-          className="absolute left-0 top-0 h-full w-full rounded-lg shadow-md"
+          className="absolute top-0 left-0 h-full w-full rounded-lg shadow-md"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
         />
@@ -191,7 +191,7 @@ function renderMarkdown(
             if (isInline) {
               return (
                 <code
-                  className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-sm text-zinc-800"
+                  className="rounded-sm bg-zinc-100 px-1.5 py-0.5 font-mono text-sm text-zinc-800"
                   {...props}
                 >
                   {children}
@@ -218,7 +218,7 @@ function renderMarkdown(
           ),
           blockquote: ({ children, ...props }) => (
             <blockquote
-              className="my-4 border-l-4 border-blue-500 pl-4 italic text-zinc-700"
+              className="my-4 border-l-4 border-blue-500 pl-4 text-zinc-700 italic"
               {...props}
             >
               {children}
@@ -236,7 +236,7 @@ function renderMarkdown(
           ),
           th: ({ children, ...props }) => (
             <th
-              className="bg-zinc-50 px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-zinc-700"
+              className="bg-zinc-50 px-4 py-3.5 text-left text-xs font-semibold tracking-wider text-zinc-700 uppercase"
               {...props}
             >
               {children}
@@ -256,7 +256,7 @@ function renderMarkdown(
               return (
                 <input
                   type="checkbox"
-                  className="mr-2 h-4 w-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
+                  className="mr-2 h-4 w-4 rounded-sm border-zinc-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
                   disabled
                   {...props}
                 />

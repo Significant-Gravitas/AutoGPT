@@ -56,7 +56,7 @@ export function NameStep({
       {selectedName ? null : (
         <span
           aria-hidden
-          className="mr-4 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
+          className="mr-4 text-xs font-medium tracking-[0.12em] text-muted-foreground uppercase"
         >
           or
         </span>
@@ -72,14 +72,14 @@ export function NameStep({
             onChange={(event) => setCustom(event.target.value)}
             placeholder="Type a name…"
             maxLength={100}
-            wrapperClassName="mb-0 w-full max-w-64 [&_input]:h-[2.625rem] [&_input]:py-3"
+            wrapperClassName="mb-0 w-full max-w-64 [&_input]:h-10.5 [&_input]:py-3"
           />
           <Button
             type="submit"
             variant="primary"
             size="small"
             disabled={!trimmed}
-            className="h-[2.625rem] rounded-xl py-3"
+            className="h-10.5 rounded-xl py-3"
           >
             Name me
           </Button>

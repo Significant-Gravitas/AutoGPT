@@ -20,7 +20,7 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="border-b text-xs uppercase text-muted-foreground">
+        <thead className="border-b text-xs text-muted-foreground uppercase">
           <tr>
             <th scope="col" className="px-4 py-3">
               Provider
@@ -122,7 +122,7 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
                         step="0.0001"
                         min="0"
                         aria-label={`Rate for ${row.provider} (${tt})`}
-                        className="w-24 rounded border px-2 py-1 text-right text-xs"
+                        className="w-24 rounded-sm border px-2 py-1 text-right text-xs"
                         placeholder={fallback !== null ? String(fallback) : "0"}
                         value={currentRate ?? ""}
                         onChange={(e) => {

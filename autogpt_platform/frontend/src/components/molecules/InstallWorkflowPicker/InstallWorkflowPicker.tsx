@@ -93,7 +93,7 @@ export function InstallWorkflowPicker({
                     <Text variant="body-medium" className="truncate">
                       {expert.name}
                     </Text>
-                    <Text variant="small" className="!text-zinc-500">
+                    <Text variant="small" className="text-zinc-500!">
                       {expert.role}
                     </Text>
                   </div>
@@ -141,14 +141,14 @@ export function InstallWorkflowPicker({
               }
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              wrapperClassName="!mb-0"
+              wrapperClassName="mb-0!"
             />
             {isSearching ? (
-              <Text variant="small" className="py-2 text-center !text-zinc-500">
+              <Text variant="small" className="py-2 text-center text-zinc-500!">
                 Searching…
               </Text>
             ) : isEmpty ? (
-              <Text variant="small" className="py-2 text-center !text-zinc-500">
+              <Text variant="small" className="py-2 text-center text-zinc-500!">
                 {source === "library"
                   ? "No workflows in your library."
                   : "No workflows found."}
@@ -169,7 +169,7 @@ export function InstallWorkflowPicker({
                           </Text>
                           <Text
                             variant="small"
-                            className="truncate !text-zinc-500"
+                            className="truncate text-zinc-500!"
                           >
                             {workflowSubtitle(agent.description)}
                           </Text>
@@ -195,7 +195,7 @@ export function InstallWorkflowPicker({
                           <Text variant="body-medium" className="truncate">
                             {agent.agent_name}
                           </Text>
-                          <Text variant="small" className="!text-zinc-500">
+                          <Text variant="small" className="text-zinc-500!">
                             by {agent.creator}
                           </Text>
                         </div>

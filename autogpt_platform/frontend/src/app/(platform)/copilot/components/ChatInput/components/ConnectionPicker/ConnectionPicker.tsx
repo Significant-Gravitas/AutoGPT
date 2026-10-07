@@ -231,7 +231,7 @@ export function ConnectionPicker({
       <PopoverContent
         align="end"
         className={cn(
-          "max-h-[var(--radix-popover-content-available-height)] w-96 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-zinc-200 bg-zinc-50 p-3 pt-4 text-zinc-900 shadow-lg",
+          "max-h-(--radix-popover-content-available-height) w-96 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-zinc-200 bg-zinc-50 p-3 pt-4 text-zinc-900 shadow-lg",
           showMaxUpgrade && "bg-white",
         )}
       >
@@ -374,7 +374,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
       as="p"
       tone="muted"
       unmask={false}
-      className="px-3 pb-1.5 pt-3 text-[11px] uppercase tracking-[0.06em] first:pt-0"
+      className="px-3 pt-3 pb-1.5 text-[11px] tracking-[0.06em] uppercase first:pt-0"
     >
       {children}
     </Text>

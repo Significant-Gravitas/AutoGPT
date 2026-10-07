@@ -102,13 +102,13 @@ export function EmptySession({
       />
       {/* Which connection the new chat runs on, kept out of the composer and
           in the page corner, level with the inset header's controls. */}
-      <div className="absolute right-3 top-3 z-30 empty:hidden">
+      <div className="absolute top-3 right-3 z-30 empty:hidden">
         <ConnectionPicker className="ml-0" />
       </div>
       <motion.div
         className={cn(
           "relative z-10 w-full text-center",
-          isExpertsEnabled ? "max-w-[1120px]" : "max-w-[52rem]",
+          isExpertsEnabled ? "max-w-[1120px]" : "max-w-208",
           // The whole greeting flow reads top-down like a letter, so it
           // anchors to the top from its first visible frame; the regular
           // hero centers itself. `my-auto` rather than the parent's
@@ -121,7 +121,7 @@ export function EmptySession({
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="mx-auto max-w-[52rem] pt-6">
+        <div className="mx-auto max-w-208 pt-6">
           {intro.isVisible ? (
             <OnboardingIntroCard
               name={greetingName}
@@ -163,7 +163,7 @@ export function EmptySession({
                   // centered.
                   isBrainDumpEnabled &&
                     (intro.isVisible
-                      ? "-mx-5 max-w-[50.5rem]"
+                      ? "-mx-5 max-w-202"
                       : "mx-auto w-full max-w-2xl"),
                 )}
               >

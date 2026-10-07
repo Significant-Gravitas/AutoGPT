@@ -35,7 +35,7 @@ export const SearchHistoryChip: SearchHistoryChipComponent = ({
         className="h-6 w-6 text-zinc-500"
         strokeWidth={1.25}
       />
-      <span className="font-sans text-sm font-normal leading-[1.375rem] text-zinc-800">
+      <span className="font-sans text-sm leading-5.5 font-normal text-zinc-800">
         {content}
       </span>
     </Button>

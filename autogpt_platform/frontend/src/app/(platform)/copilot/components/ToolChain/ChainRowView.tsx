@@ -36,15 +36,15 @@ function ReasoningStream({ text, live }: ReasoningStreamProps) {
       className={cn(
         "text-[13px] leading-5 text-zinc-400",
         live
-          ? "max-h-24 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_0,black_16px,black_100%)]"
-          : "max-h-64 overflow-y-auto scrollbar-none",
+          ? "max-h-24 overflow-hidden mask-[linear-gradient(to_bottom,transparent_0,black_16px,black_100%)]"
+          : "scrollbar-none max-h-64 overflow-y-auto",
       )}
     >
       <Text
         variant="body"
         as="p"
         unmask={false}
-        className="whitespace-pre-wrap text-[13px] leading-5 text-inherit"
+        className="text-[13px] leading-5 whitespace-pre-wrap text-inherit"
       >
         {text}
       </Text>
@@ -223,7 +223,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
             className="min-h-0 overflow-hidden"
           >
             <div
-              className={cn("px-px pb-px pt-1.5", showContent && PANEL_REVEAL)}
+              className={cn("px-px pt-1.5 pb-px", showContent && PANEL_REVEAL)}
             >
               {isReasoning ? (
                 <ReasoningStream

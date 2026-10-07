@@ -2,8 +2,8 @@ import { cva } from "class-variance-authority";
 
 export const sheetVariants = cva(
   [
-    "fixed z-50 flex flex-col bg-white shadow-lg focus:outline-none",
-    "transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out",
+    "fixed z-50 flex flex-col bg-white shadow-lg focus:outline-hidden",
+    "transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500",
   ],
   {
     variants: {
@@ -23,4 +23,4 @@ export const sheetVariants = cva(
 );
 
 export const overlayClassName =
-  "fixed inset-0 z-50 bg-black/20 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0";
+  "fixed inset-0 z-50 bg-black/20 backdrop-blur-xs data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0";

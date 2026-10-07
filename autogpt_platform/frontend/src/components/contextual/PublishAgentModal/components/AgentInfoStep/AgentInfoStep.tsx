@@ -201,7 +201,7 @@ export function AgentInfoStep({
                   ) : null}
                 </span>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <div className="grid gap-x-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}
@@ -306,7 +306,7 @@ export function AgentInfoStep({
                   ) : null}
                 </span>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <ThumbnailImages
                   agentId={agentId}
                   onImagesChange={handleImagesChange}
@@ -341,7 +341,7 @@ export function AgentInfoStep({
                   ) : null}
                 </span>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <FormField
                   control={form.control}
                   name="description"
@@ -443,7 +443,7 @@ export function AgentInfoStep({
                       <button
                         type="button"
                         onClick={() => setCronScheduleDialogOpen(true)}
-                        className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-left text-sm font-normal text-black shadow-none transition-colors hover:border-zinc-300 focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                        className="flex h-11.5 w-full items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-left text-sm font-normal text-black shadow-none transition-colors hover:border-zinc-300 focus:border-purple-400 focus:ring-1 focus:ring-purple-400 focus:outline-hidden"
                       >
                         <Icon
                           icon={Calendar03Icon}

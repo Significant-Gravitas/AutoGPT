@@ -24,7 +24,7 @@ export function SettingsMobileNav() {
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex w-fit items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
+            className="flex w-fit items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-2 outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-800"
             aria-label={`Settings navigation, current: ${current.label}`}
           >
             <span className="flex items-center gap-2">

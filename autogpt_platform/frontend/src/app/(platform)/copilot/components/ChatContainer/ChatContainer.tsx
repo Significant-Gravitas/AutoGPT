@@ -342,7 +342,7 @@ export const ChatContainer = ({
               <SessionNotFound />
             ) : sessionId ? (
               <div className="relative flex h-full min-h-0 w-full flex-col bg-white">
-                <div className="absolute right-0 top-0 z-30">
+                <div className="absolute top-0 right-0 z-30">
                   <ContextPanelToggle
                     sessionId={sessionId}
                     expert={
@@ -396,17 +396,17 @@ export const ChatContainer = ({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.3 }}
-                    className="relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2"
+                    className="relative mx-auto w-full max-w-3xl px-3 pt-2 pb-6"
                   >
                     {isLimitReached && (
                       <div
                         ref={usageCardRef}
-                        className="pointer-events-none absolute bottom-full left-0 right-0 z-20 mb-2.5 pb-2"
+                        className="pointer-events-none absolute right-0 bottom-full left-0 z-20 mb-2.5 pb-2"
                       >
                         <div
                           aria-hidden="true"
                           data-testid="usage-limit-backdrop"
-                          className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.9)_42%,rgba(255,255,255,0.58)_68%,rgba(255,255,255,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
+                          className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-4xl bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.9)_42%,rgba(255,255,255,0.58)_68%,rgba(255,255,255,0)_100%)] mask-[linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)] backdrop-blur-lg"
                         >
                           <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-white/80 blur-2xl" />
                           <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />

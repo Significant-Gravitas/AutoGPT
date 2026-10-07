@@ -94,7 +94,7 @@ export const Sheet = forwardRef<HTMLDivElement, Props>(function Sheet(
                   variant="large-semibold"
                   as="h2"
                   tone="primary"
-                  className={cn("break-words", hideTitle && "sr-only")}
+                  className={cn("wrap-break-word", hideTitle && "sr-only")}
                 >
                   {title}
                 </Text>

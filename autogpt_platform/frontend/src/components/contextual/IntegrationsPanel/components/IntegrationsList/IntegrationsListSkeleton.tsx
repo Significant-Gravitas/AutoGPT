@@ -54,12 +54,12 @@ export function IntegrationsListSkeleton() {
               <Skeleton className="h-[22px] w-32" />
               <Skeleton className="h-[22px] w-8 rounded-[10px]" />
             </div>
-            <Skeleton className="size-4 rounded" />
+            <Skeleton className="size-4 rounded-sm" />
           </div>
           {/* Mirrors first credential row inside accordion content */}
-          <div className="flex items-center justify-between border-t border-zinc-200 py-3 pl-3 pr-5">
+          <div className="flex items-center justify-between border-t border-zinc-200 py-3 pr-5 pl-3">
             <div className="flex items-center gap-3">
-              <Skeleton className="size-5 rounded" />
+              <Skeleton className="size-5 rounded-sm" />
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-3">
                   <Skeleton className="h-[22px] w-40" />
@@ -68,7 +68,7 @@ export function IntegrationsListSkeleton() {
                 <Skeleton className="h-3 w-28" />
               </div>
             </div>
-            <Skeleton className="size-5 rounded" />
+            <Skeleton className="size-5 rounded-sm" />
           </div>
         </motion.div>
       ))}

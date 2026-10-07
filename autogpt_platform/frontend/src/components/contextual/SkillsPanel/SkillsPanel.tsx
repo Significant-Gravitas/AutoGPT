@@ -36,7 +36,7 @@ export function SkillsPanel({ onGuidedPrompt, withHeading = true }: Props) {
             new one, or delete one you no longer need.
           </Text>
         </div>
-        <div className="flex flex-shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <UploadSkillButton onUploaded={handleSkillUploaded} />
           <Tooltip>
             <TooltipTrigger asChild>

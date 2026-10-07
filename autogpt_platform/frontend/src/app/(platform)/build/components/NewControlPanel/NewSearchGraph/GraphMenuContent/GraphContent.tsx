@@ -93,7 +93,7 @@ export function GraphSearchContent({
                   >
                     <div className="flex flex-1 flex-col items-start gap-0.5 overflow-hidden">
                       <div className="flex items-center gap-2">
-                        <span className="line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+                        <span className="line-clamp-1 font-sans text-sm leading-5.5 font-medium text-zinc-800">
                           {nodeTitle}
                         </span>
                         {hasCustomName && (
@@ -103,7 +103,7 @@ export function GraphSearchContent({
                         )}
                       </div>
                       {description && (
-                        <span className="line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500">
+                        <span className="line-clamp-1 font-sans text-xs leading-5 font-normal text-zinc-500">
                           {description}
                         </span>
                       )}

@@ -58,7 +58,7 @@ export function AIConnectionsSection() {
         as="h2"
         id="ai-connections-heading"
         tone="secondary"
-        className="uppercase tracking-[0.06em]"
+        className="tracking-[0.06em] uppercase"
       >
         AI subscriptions
       </Text>
@@ -189,18 +189,18 @@ function ConnectionRow({
           {connection.auth_method !== "deployment" &&
             connection.credential_id &&
             isSelectable(connection) && (
-              <span className="inline-flex items-center gap-1 rounded-[10px] bg-green-50 px-2 py-0.5 text-[13px] font-medium leading-5 text-green-600">
+              <span className="inline-flex items-center gap-1 rounded-[10px] bg-green-50 px-2 py-0.5 text-[13px] leading-5 font-medium text-green-600">
                 <Icon icon={CheckmarkCircle02Icon} size={13} />
                 Connected
               </span>
             )}
           {account && (
-            <span className="max-w-full truncate rounded-[10px] bg-slate-100 px-2 py-0.5 text-[13px] font-medium leading-5 text-zinc-700">
+            <span className="max-w-full truncate rounded-[10px] bg-slate-100 px-2 py-0.5 text-[13px] leading-5 font-medium text-zinc-700">
               {account}
             </span>
           )}
           {isSelected && (
-            <span className="inline-flex items-center gap-1 rounded-[10px] bg-purple-50 px-2 py-0.5 text-[13px] font-medium leading-5 text-purple-800">
+            <span className="inline-flex items-center gap-1 rounded-[10px] bg-purple-50 px-2 py-0.5 text-[13px] leading-5 font-medium text-purple-800">
               <Icon icon={SparklesIcon} size={13} />
               Used for new chats
             </span>
@@ -260,7 +260,7 @@ function ConnectionRow({
         onClick={onSelect}
         className={cn(
           "flex min-w-0 flex-1 items-start gap-3 rounded-2xl p-4 text-left",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500",
+          "focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:outline-hidden",
           isSaving && "cursor-progress opacity-70",
         )}
       >

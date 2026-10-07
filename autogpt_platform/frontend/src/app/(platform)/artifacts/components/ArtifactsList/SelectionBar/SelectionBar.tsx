@@ -37,7 +37,7 @@ export function SelectionBar({
 
   return (
     <div
-      className="flex h-[1.875rem] items-center justify-between gap-3 px-2 pb-2"
+      className="flex h-7.5 items-center justify-between gap-3 px-2 pb-2"
       data-testid="artifacts-selection-bar"
     >
       <div className="flex items-center gap-3">

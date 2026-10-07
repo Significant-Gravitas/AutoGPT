@@ -38,7 +38,7 @@ function AccountMentionComposer({ expertId }: Props) {
         <div className="mb-8 flex justify-end">
           <div
             data-testid="sent-message"
-            className="max-w-full whitespace-pre-wrap rounded-3xl bg-zinc-100 px-4 py-2.5 text-base leading-8 text-zinc-900"
+            className="max-w-full rounded-3xl bg-zinc-100 px-4 py-2.5 text-base leading-8 whitespace-pre-wrap text-zinc-900"
           >
             <CredentialMentionMarkdown>{sent}</CredentialMentionMarkdown>
           </div>
@@ -59,7 +59,7 @@ function AccountMentionComposer({ expertId }: Props) {
             onHighlight={mentions.setHighlightedIndex}
           />
         )}
-        <InputGroup className="flex-col gap-3 !rounded-3xl border-zinc-200 px-3.5 pb-3.5 pt-3 shadow-sm has-[[data-slot=input-group-control]:focus-visible]:ring-0">
+        <InputGroup className="flex-col gap-3 rounded-3xl! border-zinc-200 px-3.5 pt-3 pb-3.5 shadow-xs has-[[data-slot=input-group-control]:focus-visible]:ring-0">
           {attachments.map((name) => (
             <span
               key={name}

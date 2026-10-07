@@ -56,18 +56,18 @@ export function NotificationToggle() {
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" aria-label="Notification settings">
           {!isNotificationsEnabled ? (
-            <Icon icon={BellOffIcon} className="!size-5" />
+            <Icon icon={BellOffIcon} className="size-5!" />
           ) : isSoundEnabled ? (
-            <Icon icon={BellRingIcon} className="!size-5" />
+            <Icon icon={BellRingIcon} className="size-5!" />
           ) : (
-            <Icon icon={BellIcon} className="!size-5" />
+            <Icon icon={BellIcon} className="size-5!" />
           )}
         </Button>
       </PopoverTrigger>
-      {/* z-[80]: must layer above the Otto mobile drawer
-          (overlay z-[60], content z-[70] in MobileDrawer.tsx) so the
+      {/* z-80: must layer above the Otto mobile drawer
+          (overlay z-[60], content z-70 in MobileDrawer.tsx) so the
           popover doesn't render under the drawer's blur. */}
-      <PopoverContent align="start" className="z-[80] w-56 p-3">
+      <PopoverContent align="start" className="z-80 w-56 p-3">
         <div className="flex flex-col gap-3">
           <label className="flex items-center justify-between">
             <span className="text-sm text-zinc-700">Notifications</span>

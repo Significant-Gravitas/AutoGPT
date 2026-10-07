@@ -45,7 +45,7 @@ export const MessageContent = ({
 }: MessageContentProps) => (
   <div
     className={cn(
-      "is-user:dark flex w-full min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
+      "is-user:dark flex w-full max-w-full min-w-0 flex-col gap-2 overflow-hidden text-sm",
       "group-[.is-user]:w-fit",
       "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-zinc-950",
       "group-[.is-assistant]:text-zinc-950",
@@ -137,7 +137,7 @@ function ExternalLinkModal({
         </Text>
         <Text
           variant="small"
-          className="mt-2 break-all rounded-md bg-zinc-100 p-3 font-mono"
+          className="mt-2 rounded-md bg-zinc-100 p-3 font-mono break-all"
           unmask={false}
         >
           {url}
@@ -163,8 +163,8 @@ export const MessageResponse = memo(
   ({ className, children, components, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn(
-        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:!bg-white",
-        "[&_a]:text-blue-500 [&_a]:no-underline hover:[&_a]:underline",
+        "size-full [&_pre]:bg-white! [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        "[&_a]:text-blue-500 [&_a]:no-underline [&_a]:hover:underline",
         // Raycast/Linear-style markdown tables — clean borders, subtle row
         // separators, light header, no outer-corner artifacts.
         "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border [&_table]:border-zinc-200 [&_table]:text-sm",

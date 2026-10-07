@@ -45,7 +45,7 @@ export function PaywallModal() {
               away when the plan cards overflow on short screens. The negative
               margin collapses the row's layout space so the title keeps its
               position. */}
-          <div className="sticky top-0 z-10 -mb-[3.25rem] flex w-full justify-end">
+          <div className="sticky top-0 z-10 -mb-13 flex w-full justify-end">
             <Button
               variant="floating"
               size="small"
@@ -61,9 +61,9 @@ export function PaywallModal() {
           <div className="relative mt-2 w-full">
             {isLoading ? (
               <div className="grid w-full grid-cols-1 gap-4 px-4 md:grid-cols-3 md:px-0">
-                <Skeleton className="h-[26rem] rounded-2xl" />
-                <Skeleton className="h-[26rem] rounded-2xl" />
-                <Skeleton className="h-[26rem] rounded-2xl" />
+                <Skeleton className="h-104 rounded-2xl" />
+                <Skeleton className="h-104 rounded-2xl" />
+                <Skeleton className="h-104 rounded-2xl" />
               </div>
             ) : plans.length === 0 ? (
               <div className="flex flex-col items-center gap-3">

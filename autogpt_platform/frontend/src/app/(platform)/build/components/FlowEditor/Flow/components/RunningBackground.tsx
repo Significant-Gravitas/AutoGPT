@@ -43,7 +43,7 @@ export const RunningBackground = () => {
         }}
       ></div>
       <div
-        className="animate-pulse-border absolute inset-0 bg-transparent blur-sm"
+        className="animate-pulse-border absolute inset-0 bg-transparent blur-xs"
         style={{
           borderWidth: "6px",
           borderStyle: "solid",

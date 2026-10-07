@@ -120,7 +120,7 @@ export default function TextWidget(props: WidgetProps) {
         size="small"
         wrapperClassName="mb-0"
         value={displayValue}
-        className="!h-[230px] resize-none rounded-none border-none bg-transparent p-0 placeholder:text-black/60 focus:ring-0"
+        className="h-[230px]! resize-none rounded-none border-none bg-transparent p-0 placeholder:text-black/60 focus:ring-0"
         onChange={handleChange}
         placeholder={"Write your note here..."}
         required={props.required}

@@ -43,7 +43,7 @@ export function StackSection({
       {plain ? (
         <div className="px-3">{children}</div>
       ) : (
-        <div className="rounded-lg bg-white/90 px-3 py-1 backdrop-blur smooth-shadow-ring-sm">
+        <div className="rounded-lg bg-white/90 px-3 py-1 smooth-shadow-ring-sm backdrop-blur-sm">
           {children}
         </div>
       )}

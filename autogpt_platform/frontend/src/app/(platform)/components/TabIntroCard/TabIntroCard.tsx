@@ -120,7 +120,7 @@ export function TabIntroCard({
           onClick={(event) => {
             if (event.target === event.currentTarget) onDismiss();
           }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-white/30 px-4 backdrop-blur-sm"
+          className="fixed inset-0 z-100 flex items-center justify-center bg-white/30 px-4 backdrop-blur-xs"
           data-testid="tab-intro-overlay"
           role="dialog"
           aria-modal="true"
@@ -130,12 +130,12 @@ export function TabIntroCard({
             initial={{ opacity: 0, y: 16, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.45, ease: [0, 0, 0.2, 1] }}
-            className="w-full max-w-[26rem] overflow-hidden rounded-3xl bg-white shadow-[0_24px_80px_-24px_rgba(0,0,0,0.3)] outline-none"
+            className="w-full max-w-104 overflow-hidden rounded-3xl bg-white shadow-[0_24px_80px_-24px_rgba(0,0,0,0.3)] outline-hidden"
             ref={dialogRef}
             tabIndex={-1}
           >
             {/* Tinted stage: the card's icon floats here. */}
-            <div className="relative h-44 bg-gradient-to-br from-purple-100 to-purple-200">
+            <div className="relative h-44 bg-linear-to-br from-purple-100 to-purple-200">
               <GlassPixelBackdrop />
               <div className="flex h-full items-center justify-center">
                 <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white shadow-lg">
@@ -144,7 +144,7 @@ export function TabIntroCard({
               </div>
             </div>
 
-            <div className="flex flex-col gap-3 px-7 pb-7 pt-6 text-left">
+            <div className="flex flex-col gap-3 px-7 pt-6 pb-7 text-left">
               <Text variant="lead-semibold" as="h3" tone="primary">
                 {title}
               </Text>

@@ -69,7 +69,7 @@ export function AgentsSection({
         ) : null}
         {children}
         {!displayedAgents || displayedAgents.length === 0 ? (
-          <Text variant="body" tone="muted" className="ml-4 mt-8">
+          <Text variant="body" tone="muted" className="mt-8 ml-4">
             No workflows found
           </Text>
         ) : (
@@ -84,7 +84,7 @@ export function AgentsSection({
               <div className="relative">
                 <CarouselContent className="px-4 pb-2">
                   {displayedAgents.map((agent, index) => (
-                    <CarouselItem key={index} className="min-w-64 max-w-71">
+                    <CarouselItem key={index} className="max-w-71 min-w-64">
                       <StoreCard
                         agentName={agent.agent_name}
                         agentImage={agent.agent_image}
@@ -104,8 +104,8 @@ export function AgentsSection({
                     </CarouselItem>
                   ))}
                 </CarouselContent>
-                <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background to-transparent" />
-                <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent" />
+                <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-linear-to-r from-background to-transparent" />
+                <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-linear-to-l from-background to-transparent" />
               </div>
             </Carousel>
 

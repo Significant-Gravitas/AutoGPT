@@ -47,7 +47,7 @@ export function DrawerWrap({
       size="icon-sm"
       aria-label="Close"
       onClick={handleClose}
-      className="focus-visible:!ring-0"
+      className="focus-visible:ring-0!"
       withTooltip={false}
     >
       <Icon icon={Cancel01Icon} width={isCompact ? "1.25rem" : "1.5rem"} />
@@ -117,7 +117,7 @@ export function DrawerWrap({
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div
             className={cn(
-              "flex-1 overflow-y-auto overflow-x-hidden",
+              "flex-1 overflow-x-hidden overflow-y-auto",
               scrollbarStyles,
             )}
           >

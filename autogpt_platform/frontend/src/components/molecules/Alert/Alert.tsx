@@ -34,7 +34,8 @@ const variantIcons = {
 } as const;
 
 interface AlertProps
-  extends React.HTMLAttributes<HTMLDivElement>,
+  extends
+    React.HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof alertVariants> {
   children: React.ReactNode;
   /** Override the default variant icon (e.g. a domain-specific icon). */
@@ -47,7 +48,7 @@ const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
     ref,
   ) => {
     const currentVariant = variant || "default";
-    const iconClassName = "h-[1.125rem] w-[1.125rem]";
+    const iconClassName = "h-4.5 w-4.5";
 
     return (
       <div
@@ -74,7 +75,7 @@ const AlertTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h5
     ref={ref}
-    className={cn("mb-1 font-medium leading-none tracking-tight", className)}
+    className={cn("mb-1 leading-none font-medium tracking-tight", className)}
     {...props}
   />
 ));

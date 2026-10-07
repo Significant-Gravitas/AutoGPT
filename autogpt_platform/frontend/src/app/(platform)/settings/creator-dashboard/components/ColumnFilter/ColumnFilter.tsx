@@ -31,7 +31,7 @@ export function ColumnFilter({
           aria-label={`Filter ${label}`}
           className={cn(
             "inline-flex h-6 w-6 items-center justify-center rounded-full",
-            "ease-[cubic-bezier(0.16,1,0.3,1)] transition-[transform,background-color,color] duration-150",
+            "transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
             "active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100",
             active
               ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
@@ -46,11 +46,11 @@ export function ColumnFilter({
         sideOffset={6}
         className={cn(
           "w-64 p-3 will-change-transform",
-          "origin-[var(--radix-popover-content-transform-origin)]",
+          "origin-(--radix-popover-content-transform-origin)",
           "data-[state=closed]:duration-150 data-[state=open]:duration-200",
           "data-[state=open]:ease-[cubic-bezier(0.16,1,0.3,1)]",
-          "data-[state=closed]:ease-[cubic-bezier(0.4,0,1,1)]",
-          "motion-reduce:!animate-none motion-reduce:!duration-100",
+          "data-[state=closed]:ease-in",
+          "motion-reduce:animate-none! motion-reduce:duration-100!",
         )}
         onClick={(e) => e.stopPropagation()}
       >

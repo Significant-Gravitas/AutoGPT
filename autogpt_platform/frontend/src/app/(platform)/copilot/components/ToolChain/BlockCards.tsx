@@ -163,7 +163,7 @@ export function BlockOutputCard({ output }: BlockOutputCardProps) {
                   as="p"
                   tone="muted"
                   unmask={false}
-                  className="text-[11px] uppercase tracking-wide"
+                  className="text-[11px] tracking-wide uppercase"
                 >
                   {key.replace(/_/g, " ")}
                 </Text>
@@ -172,7 +172,7 @@ export function BlockOutputCard({ output }: BlockOutputCardProps) {
                   as="p"
                   tone="secondary"
                   unmask={false}
-                  className="mt-0.5 line-clamp-3 whitespace-pre-wrap break-words text-[13px]"
+                  className="mt-0.5 line-clamp-3 text-[13px] wrap-break-word whitespace-pre-wrap"
                 >
                   {inline(flat)}
                 </Text>

@@ -176,7 +176,7 @@ function renderWithForm() {
             id="agent-name"
             label="Agent name"
             defaultValue="Weekly report agent"
-            wrapperClassName="!mb-0"
+            wrapperClassName="mb-0!"
           />
           <div className="flex justify-end gap-2">
             <Button variant="secondary" size="small">
@@ -235,7 +235,7 @@ function renderWithAnchor() {
               id="search-agents"
               label="Search agents"
               placeholder="Search agents"
-              wrapperClassName="!mb-0"
+              wrapperClassName="mb-0!"
             />
           </div>
         </PopoverAnchor>

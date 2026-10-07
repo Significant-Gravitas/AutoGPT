@@ -259,7 +259,7 @@ export function PlatformCostContent({ searchParams }: Props) {
           </label>
           <select
             id="execution-path-filter"
-            className="rounded border px-3 py-1.5 text-sm"
+            className="rounded-sm border px-3 py-1.5 text-sm"
             value={executionPathInput}
             onChange={(e) => setExecutionPathInput(e.target.value)}
           >
@@ -280,7 +280,7 @@ export function PlatformCostContent({ searchParams }: Props) {
           </label>
           <select
             id="source-filter"
-            className="rounded border px-3 py-1.5 text-sm"
+            className="rounded-sm border px-3 py-1.5 text-sm"
             value={sourceInput}
             onChange={(e) => setSourceInput(e.target.value)}
           >
@@ -340,7 +340,7 @@ export function PlatformCostContent({ searchParams }: Props) {
             ))}
           </div>
           <Skeleton className="h-32 rounded-lg" />
-          <Skeleton className="h-8 w-48 rounded" />
+          <Skeleton className="h-8 w-48 rounded-sm" />
           <Skeleton className="h-64 rounded-lg" />
         </div>
       ) : (
@@ -367,7 +367,7 @@ export function PlatformCostContent({ searchParams }: Props) {
                     {dashboard.cost_buckets.map((b: CostBucket) => (
                       <div
                         key={b.bucket}
-                        className="flex flex-col items-center rounded border p-2 text-center"
+                        className="flex flex-col items-center rounded-sm border p-2 text-center"
                       >
                         <span className="text-xs text-muted-foreground">
                           {b.bucket}

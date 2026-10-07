@@ -63,7 +63,7 @@ export function HireStep() {
             aria-hidden
             className={cn(
               EDGE_FADE_CLASS,
-              "top-0 bg-gradient-to-b",
+              "top-0 bg-linear-to-b",
               hiddenAbove ? "opacity-100" : "opacity-0",
             )}
           />
@@ -71,13 +71,13 @@ export function HireStep() {
             aria-hidden
             className={cn(
               EDGE_FADE_CLASS,
-              "bottom-0 bg-gradient-to-t",
+              "bottom-0 bg-linear-to-t",
               hiddenBelow ? "opacity-100" : "opacity-0",
             )}
           />
           <div
             ref={gridRef}
-            className="flex max-h-[26rem] w-full flex-wrap justify-center gap-3 overflow-y-auto scrollbar-none"
+            className="scrollbar-none flex max-h-104 w-full flex-wrap justify-center gap-3 overflow-y-auto"
             data-testid="hire-step-grid"
           >
             {step.isPending

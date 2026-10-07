@@ -362,13 +362,13 @@ export function ChatInput({
           keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
         className={cn(
-          "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          "relative z-10 flex-col overflow-hidden rounded-4xl! border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
           // Card composer: a hairline border and a shallow drop instead of
           // the pill's deep shadow, so it reads as a surface the text sits on.
           stacked &&
-            "gap-3 !rounded-3xl border-zinc-200 px-3.5 pb-3.5 pt-3 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300",
+            "gap-3 rounded-3xl! border-zinc-200 px-3.5 pt-3 pb-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300",
           isCompact &&
-            "!rounded-xl border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400",
+            "rounded-xl! border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400",
           isRecording &&
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
@@ -409,7 +409,7 @@ export function ChatInput({
           <InputGroupAddon
             align="inline-start"
             className={cn(
-              "order-none gap-1 py-1 pl-1.5",
+              "order-0 gap-1 py-1 pl-1.5",
               stacked && "gap-1.5 p-0",
               isCompact && "gap-0.5 py-1 pl-1",
             )}
@@ -424,7 +424,7 @@ export function ChatInput({
                 stacked
                   ? cn(
                       CARD_ICON_BUTTON_CLASS,
-                      "[&[aria-expanded=true]_svg]:rotate-45 [&_svg]:transition-transform [&_svg]:duration-200",
+                      "[&_svg]:transition-transform [&_svg]:duration-200 [&[aria-expanded=true]_svg]:rotate-45",
                     )
                   : iconButtonClass
               }
@@ -467,7 +467,7 @@ export function ChatInput({
           <InputGroupAddon
             align="inline-end"
             className={cn(
-              "order-none ml-auto gap-1 py-1 pr-1.5",
+              "order-0 ml-auto gap-1 py-1 pr-1.5",
               stacked && "gap-1.5 p-0",
               isCompact && "gap-0.5 py-1 pr-1",
             )}
@@ -511,7 +511,7 @@ export function ChatInput({
                 disabled={isEnqueueing}
                 onClick={() => void handleEnqueue()}
                 className={cn(
-                  "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
+                  "size-10.5 rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
                   sendButtonClass,
                 )}
               >

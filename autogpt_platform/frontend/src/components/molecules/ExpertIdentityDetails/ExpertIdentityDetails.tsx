@@ -56,8 +56,8 @@ export function ExpertIdentityDetails({
           unmask={false}
           className={cn(
             "min-w-0",
-            size === "page" ? "max-w-full break-words" : "truncate",
-            compact && "leading-[1.125rem]",
+            size === "page" ? "max-w-full wrap-break-word" : "truncate",
+            compact && "leading-4.5",
             size === "page" && "text-2xl leading-8",
           )}
         >
@@ -71,7 +71,7 @@ export function ExpertIdentityDetails({
             unmask={false}
             className={cn(
               "min-w-0",
-              size === "page" ? "max-w-full break-words" : "truncate",
+              size === "page" ? "max-w-full wrap-break-word" : "truncate",
               size === "card" && "text-[13px]",
               areaClassName,
             )}

@@ -49,7 +49,7 @@ export function TransactionHistoryTable({
         </colgroup>
         <thead className="border-b border-zinc-200 bg-zinc-50">
           <tr>
-            <th scope="col" className="py-3 pl-3 pr-2 sm:pl-5">
+            <th scope="col" className="py-3 pr-2 pl-3 sm:pl-5">
               <Text variant="small-medium" as="span" className="text-zinc-600">
                 Activity
               </Text>
@@ -106,7 +106,7 @@ export function TransactionHistoryTable({
             variant="small"
             id={endID}
             tabIndex={-1}
-            className="text-zinc-600 focus:outline-none"
+            className="text-zinc-600 focus:outline-hidden"
           >
             End of history
           </Text>

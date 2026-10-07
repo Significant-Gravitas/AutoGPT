@@ -312,7 +312,7 @@ const CarouselIndicator = React.forwardRef<
           onClick={() => scrollTo(index)}
           className={cn(
             selectedIndex === index
-              ? "h-2 w-[1.5rem] rounded-[39px] bg-neutral-800 transition-all duration-500"
+              ? "h-2 w-6 rounded-[39px] bg-neutral-800 transition-all duration-500"
               : "h-2 w-2 rounded-full bg-neutral-300 transition-all duration-500",
             "cursor-pointer",
           )}

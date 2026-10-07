@@ -71,7 +71,7 @@ export function GraphScheduleListItem({
       >
         <div
           className={cn(
-            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-slate-50 bg-green-50",
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-50 bg-green-50",
             iconClassName,
           )}
         >
@@ -107,7 +107,7 @@ export function GraphScheduleListItem({
         </div>
       </Link>
 
-      <div className="flex flex-shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         {editAction}
         <Button
           variant="secondary"
@@ -141,7 +141,7 @@ export function GraphScheduleListItem({
         <Dialog.Content>
           <div className="flex flex-col gap-5">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-green-100 bg-green-50">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-green-100 bg-green-50">
                 <Icon
                   icon={Calendar03Icon}
                   size={20}
@@ -223,7 +223,7 @@ function ScheduleMetaRow({
 }) {
   return (
     <div className="flex items-baseline justify-between gap-6 px-4 py-2.5">
-      <dt className="flex-shrink-0 text-[13px] text-zinc-500">{label}</dt>
+      <dt className="shrink-0 text-[13px] text-zinc-500">{label}</dt>
       <dd
         className={cn(
           "min-w-0 truncate text-right text-[13px] font-medium text-zinc-800",

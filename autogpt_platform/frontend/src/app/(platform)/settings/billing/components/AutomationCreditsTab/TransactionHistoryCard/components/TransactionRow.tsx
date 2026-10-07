@@ -42,7 +42,7 @@ export function TransactionRow({
   return (
     <>
       <tr className="border-b border-zinc-100">
-        <td className="py-4 pl-3 pr-2 sm:pl-5">
+        <td className="py-4 pr-2 pl-3 sm:pl-5">
           <TransactionActivity transaction={transaction} />
         </td>
         <td className="p-0 sm:px-2 sm:py-4">
@@ -118,12 +118,16 @@ function TransactionActivity({ transaction }: { transaction: Transaction }) {
         {href ? (
           <Link
             href={href}
-            className="inline-flex min-h-6 items-center break-words text-purple-700"
+            className="inline-flex min-h-6 items-center wrap-break-word text-purple-700"
           >
             {name}
           </Link>
         ) : (
-          <Text variant="body-medium" unmask={false} className="break-words">
+          <Text
+            variant="body-medium"
+            unmask={false}
+            className="wrap-break-word"
+          >
             {name}
           </Text>
         )}

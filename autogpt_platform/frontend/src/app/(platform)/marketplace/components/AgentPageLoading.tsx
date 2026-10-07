@@ -20,7 +20,7 @@ export function AgentPageLoading() {
         <div className="mt-0 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 lg:mt-8 lg:flex-row lg:gap-12">
           {/* Left: Agent info panel */}
           <div className="w-full lg:w-2/5">
-            <div className="rounded-2xl bg-gradient-to-r from-blue-100/50 to-purple-100/50 p-px">
+            <div className="rounded-2xl bg-linear-to-r from-blue-100/50 to-purple-100/50 p-px">
               <div className="flex flex-col rounded-[calc(1rem-2px)] bg-zinc-50 p-4">
                 {/* Title */}
                 <Skeleton className="mb-3 h-9 w-3/4" />
@@ -65,7 +65,7 @@ export function AgentPageLoading() {
 
           {/* Right: Image preview */}
           <div className="w-full px-2 lg:w-3/5 lg:flex-1">
-            <Skeleton className="h-60 w-full rounded-xl sm:h-80 md:h-[25rem] lg:h-[30rem]" />
+            <Skeleton className="h-60 w-full rounded-xl sm:h-80 md:h-100 lg:h-120" />
 
             {/* Thumbnails */}
             <div className="mt-3 flex gap-2 sm:mt-4 sm:gap-3">
@@ -85,7 +85,7 @@ export function AgentPageLoading() {
           </div>
           <div className="hidden grid-cols-1 gap-6 md:grid md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-[25rem] w-full rounded-2xl" />
+              <Skeleton key={i} className="h-100 w-full rounded-2xl" />
             ))}
           </div>
         </div>

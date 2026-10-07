@@ -96,14 +96,14 @@ function GhostIntegrationCard({
       className={cn(
         "flex h-[58px] w-[180px] shrink-0 items-center gap-3 rounded-xl border px-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)]",
         isDark
-          ? "border-white/10 bg-white/[0.04]"
+          ? "border-white/10 bg-white/4"
           : "border-zinc-200/50 bg-white/50 opacity-70",
       )}
     >
       <div
         className={cn(
           "flex size-8 shrink-0 items-center justify-center rounded-lg",
-          isDark ? "bg-white/[0.06]" : "bg-zinc-50/60",
+          isDark ? "bg-white/6" : "bg-zinc-50/60",
         )}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- decorative tiny logo, no LCP candidate */}

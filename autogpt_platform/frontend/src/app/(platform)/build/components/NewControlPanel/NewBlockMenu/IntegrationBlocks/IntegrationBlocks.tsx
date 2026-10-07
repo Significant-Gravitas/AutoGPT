@@ -68,7 +68,7 @@ export const IntegrationBlocks = () => {
           <div className="flex items-center gap-1">
             <Button
               variant="link"
-              className="h-auto min-w-0 p-0 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 no-underline underline-offset-4 hover:underline"
+              className="h-auto min-w-0 p-0 font-sans text-sm leading-5.5 font-medium text-zinc-800 no-underline underline-offset-4 hover:underline"
               onClick={() => {
                 setIntegration(undefined);
               }}
@@ -82,7 +82,7 @@ export const IntegrationBlocks = () => {
               {integration}
             </Text>
           </div>
-          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-zinc-100 p-1.5 font-sans text-sm leading-[1.375rem] text-zinc-500 group-disabled:text-zinc-400">
+          <span className="flex h-5.5 w-6.75 items-center justify-center rounded-xlarge bg-zinc-100 p-1.5 font-sans text-sm leading-5.5 text-zinc-500 group-disabled:text-zinc-400">
             {totalBlocks}
           </span>
         </div>

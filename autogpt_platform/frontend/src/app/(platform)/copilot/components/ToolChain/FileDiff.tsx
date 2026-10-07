@@ -16,8 +16,8 @@ export function FileDiff({ file, diff }: Props) {
   const { rows, added, removed, truncated } = parseUnifiedDiff(diff);
 
   return (
-    <div className="overflow-hidden rounded-xl bg-white font-mono shadow-sm ring-1 ring-zinc-200/70">
-      <div className="flex items-center gap-2 border-b border-zinc-200 py-2.5 pl-4 pr-3 text-[12.5px]">
+    <div className="overflow-hidden rounded-xl bg-white font-mono shadow-xs ring-1 ring-zinc-200/70">
+      <div className="flex items-center gap-2 border-b border-zinc-200 py-2.5 pr-3 pl-4 text-[12.5px]">
         <span className="inline-flex items-center gap-[7px]">
           <Icon icon={CodeIcon} size={15} className="shrink-0 text-zinc-400" />
           <span className="leading-none text-zinc-900">{file ?? "file"}</span>
@@ -27,7 +27,7 @@ export function FileDiff({ file, diff }: Props) {
           <span className="text-red-600">-{removed}</span>
         </span>
       </div>
-      <div className="relative max-h-64 overflow-y-auto py-1 text-[12.5px] leading-5 scrollbar-none before:absolute before:bottom-0 before:left-16 before:top-0 before:z-10 before:w-px before:bg-zinc-200 before:content-['']">
+      <div className="relative scrollbar-none max-h-64 overflow-y-auto py-1 text-[12.5px] leading-5 before:absolute before:top-0 before:bottom-0 before:left-16 before:z-10 before:w-px before:bg-zinc-200 before:content-['']">
         {rows.map((row) => (
           <div
             key={`${row.type}:${row.old ?? ""}:${row.cur ?? ""}`}
@@ -64,7 +64,7 @@ export function FileDiff({ file, diff }: Props) {
             </span>
             <span
               className={
-                "select-none text-center text-[11px] leading-5 " +
+                "text-center text-[11px] leading-5 select-none " +
                 (row.type === "add"
                   ? "text-green-600"
                   : row.type === "del"
@@ -76,7 +76,7 @@ export function FileDiff({ file, diff }: Props) {
             </span>
             <code
               className={
-                "whitespace-pre pl-2 pr-3 " +
+                "pr-3 pl-2 whitespace-pre " +
                 (row.type === "ctx" ? "text-zinc-400" : "text-zinc-900")
               }
             >

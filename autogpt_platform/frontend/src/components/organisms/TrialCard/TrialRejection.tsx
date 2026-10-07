@@ -16,12 +16,12 @@ export function TrialRejection({ reason }: Props) {
           ? "This introductory offer has already been used"
           : "We couldn’t verify your card for this trial"}
       </TrialTitle>
-      <Text variant="body" className="!text-zinc-800">
+      <Text variant="body" className="text-zinc-800!">
         {alreadyUsed
           ? "This card or account has already redeemed an introductory offer. Each card and account can use one introductory offer."
           : "Your card could not be verified for trial eligibility, so this trial was not activated."}
       </Text>
-      <Text variant="body" className="!text-zinc-800">
+      <Text variant="body" className="text-zinc-800!">
         This trial will not convert to a paid subscription. You can choose a
         paid plan below. If you think this is a mistake, contact support.
       </Text>

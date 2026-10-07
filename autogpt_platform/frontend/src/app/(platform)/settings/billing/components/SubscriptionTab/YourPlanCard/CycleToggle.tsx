@@ -30,7 +30,7 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
             className={cn(
               "rounded-full border-none px-3 py-1 text-xs font-medium transition-all",
               selected
-                ? "bg-white text-zinc-900 shadow-sm"
+                ? "bg-white text-zinc-900 shadow-xs"
                 : "bg-transparent text-zinc-500 hover:text-zinc-700",
               disabled && "cursor-not-allowed opacity-60",
             )}
@@ -40,7 +40,7 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
             ) : (
               <>
                 Yearly{" "}
-                <span className="ml-1 bg-gradient-to-r from-green-500 via-green-500 to-teal-500 bg-clip-text text-[11px] font-semibold text-transparent">
+                <span className="ml-1 bg-linear-to-r from-green-500 via-green-500 to-teal-500 bg-clip-text text-[11px] font-semibold text-transparent">
                   Save 15%
                 </span>
               </>

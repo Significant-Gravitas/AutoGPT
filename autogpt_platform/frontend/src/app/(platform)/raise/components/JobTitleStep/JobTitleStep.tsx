@@ -76,7 +76,7 @@ export function JobTitleStep({
       {selectedTitle || chips.length === 0 ? null : (
         <span
           aria-hidden
-          className="mr-4 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
+          className="mr-4 text-xs font-medium tracking-[0.12em] text-muted-foreground uppercase"
         >
           or
         </span>
@@ -95,14 +95,14 @@ export function JobTitleStep({
             onChange={(event) => setCustom(event.target.value)}
             placeholder="Type a job title…"
             maxLength={JOB_TITLE_MAX_LENGTH}
-            wrapperClassName="mb-0 w-full max-w-64 [&_input]:h-[2.625rem] [&_input]:py-3"
+            wrapperClassName="mb-0 w-full max-w-64 [&_input]:h-10.5 [&_input]:py-3"
           />
           <Button
             type="submit"
             variant="primary"
             size="small"
             disabled={!trimmed}
-            className="h-[2.625rem] rounded-xl py-3"
+            className="h-10.5 rounded-xl py-3"
           >
             Add title
           </Button>
@@ -111,7 +111,7 @@ export function JobTitleStep({
             variant="ghost"
             size="small"
             onClick={onSkip}
-            className="h-[2.625rem] rounded-xl py-3"
+            className="h-10.5 rounded-xl py-3"
           >
             Skip
           </Button>

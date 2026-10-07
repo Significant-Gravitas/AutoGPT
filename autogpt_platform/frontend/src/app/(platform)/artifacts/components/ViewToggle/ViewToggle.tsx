@@ -44,7 +44,7 @@ export function ViewToggle({ value, onChange }: Props) {
             aria-pressed={active}
             onClick={() => onChange(option.value)}
             className={cn(
-              "size-9 rounded-full border-0 outline-none focus-visible:ring-2 focus-visible:ring-zinc-400",
+              "size-9 rounded-full border-0 outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-400",
               active
                 ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-100"
                 : "text-zinc-500 hover:bg-zinc-100/70 hover:text-zinc-900",

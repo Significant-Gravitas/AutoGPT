@@ -19,7 +19,7 @@ export function SkillPackageFileList({ files, onOpenFile }: Props) {
           <button
             type="button"
             onClick={() => onOpenFile(file.path)}
-            className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:-outline-offset-2 focus-visible:ring-2 focus-visible:ring-zinc-300"
+            className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-zinc-50 focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:outline-hidden focus-visible:-outline-offset-2"
           >
             <Icon
               icon={File01Icon}
@@ -35,7 +35,7 @@ export function SkillPackageFileList({ files, onOpenFile }: Props) {
                 executable
               </span>
             ) : null}
-            <span className="shrink-0 text-xs tabular-nums text-zinc-400">
+            <span className="shrink-0 text-xs text-zinc-400 tabular-nums">
               {formatFileSize(file.size_bytes)}
             </span>
           </button>

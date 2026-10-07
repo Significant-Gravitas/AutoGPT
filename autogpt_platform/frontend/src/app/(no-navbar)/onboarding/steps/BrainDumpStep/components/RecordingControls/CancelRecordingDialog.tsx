@@ -18,7 +18,7 @@ export function CancelRecordingDialog({
   return (
     <Dialog
       title="Discard recording?"
-      className="min-w-0 max-w-[30rem] rounded-2xl"
+      className="max-w-120 min-w-0 rounded-2xl"
       controlled={{ isOpen, set: onOpenChange }}
     >
       <Dialog.Content>

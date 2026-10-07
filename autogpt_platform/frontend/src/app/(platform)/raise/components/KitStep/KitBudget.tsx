@@ -56,7 +56,7 @@ export function KitBudget({
         value={customAmount}
         onChange={(event) => onCustomChange(event.target.value)}
         placeholder="Custom amount, e.g. $7.50…"
-        wrapperClassName="mb-0 w-full max-w-64 [&_input]:h-[2.625rem] [&_input]:py-3"
+        wrapperClassName="mb-0 w-full max-w-64 [&_input]:h-10.5 [&_input]:py-3"
       />
     </div>
   );

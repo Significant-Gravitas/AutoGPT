@@ -56,7 +56,7 @@ export function ApprovalFields({
         {shown.map((field) => (
           <div key={field.key} className="contents">
             <dt className="text-zinc-500 sm:pt-px">{field.label}</dt>
-            <dd className="mb-1.5 min-w-0 text-zinc-900 [overflow-wrap:anywhere] sm:mb-0">
+            <dd className="mb-1.5 min-w-0 wrap-anywhere text-zinc-900 sm:mb-0">
               <FieldOrReference
                 name={field.key}
                 value={values[field.key]}

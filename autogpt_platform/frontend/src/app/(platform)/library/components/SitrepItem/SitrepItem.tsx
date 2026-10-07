@@ -95,13 +95,13 @@ export function SitrepItem({ item }: Props) {
           <img
             src={item.agentImageUrl}
             alt={item.agentName}
-            className="h-6 w-6 flex-shrink-0 rounded-full object-cover"
+            className="h-6 w-6 shrink-0 rounded-full object-cover"
             onError={handleImageError}
           />
         ) : (
           <div
             className={cn(
-              "flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full",
+              "flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
               config.bg,
             )}
           >
@@ -137,7 +137,7 @@ export function SitrepItem({ item }: Props) {
         </div>
       </div>
 
-      <div className="flex flex-shrink-0 flex-wrap items-center justify-center gap-1.5 sm:flex-nowrap sm:justify-end">
+      <div className="flex shrink-0 flex-wrap items-center justify-center gap-1.5 sm:flex-nowrap sm:justify-end">
         {item.priority === "success" ? (
           <Button
             as="NextLink"

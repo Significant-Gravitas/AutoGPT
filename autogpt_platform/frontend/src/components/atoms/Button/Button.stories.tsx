@@ -353,7 +353,7 @@ function renderIconButtons() {
           aria-label="More actions"
         />
       </div>
-      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-gradient-to-r from-violet-200 to-sky-200 p-4">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-linear-to-r from-violet-200 to-sky-200 p-4">
         <Button
           variant="floating"
           size="icon-xs"
@@ -395,7 +395,7 @@ function renderToggleButtons() {
         <Button
           variant="toggle"
           size="icon-xs"
-          className="size-6 rounded"
+          className="size-6 rounded-sm"
           leadingIcon={ListViewIcon}
           aria-label="List view"
           aria-pressed
@@ -403,7 +403,7 @@ function renderToggleButtons() {
         <Button
           variant="toggle"
           size="icon-xs"
-          className="size-6 rounded"
+          className="size-6 rounded-sm"
           leadingIcon={GridViewIcon}
           aria-label="Grid view"
           aria-pressed={false}

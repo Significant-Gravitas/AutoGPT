@@ -37,7 +37,7 @@ export function FeaturedSection({ featuredAgents }: FeaturedSectionProps) {
         }}
       >
         <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-purple-600">
+          <div className="flex items-center gap-2 text-xs font-medium tracking-[0.14em] text-purple-600 uppercase">
             <Icon icon={SparklesIcon} size={16} />
             Hand-picked
           </div>
@@ -47,7 +47,7 @@ export function FeaturedSection({ featuredAgents }: FeaturedSectionProps) {
           </div>
         </div>
         <div className="relative -mx-4">
-          <CarouselContent className="px-4 pb-3 pt-1">
+          <CarouselContent className="px-4 pt-1 pb-3">
             {featuredAgents.map((agent, index) => (
               <CarouselItem
                 key={index}
@@ -67,8 +67,8 @@ export function FeaturedSection({ featuredAgents }: FeaturedSectionProps) {
               </CarouselItem>
             ))}
           </CarouselContent>
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background to-transparent" />
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent" />
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-linear-to-r from-background to-transparent" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-linear-to-l from-background to-transparent" />
         </div>
       </Carousel>
     </section>

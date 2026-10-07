@@ -80,7 +80,7 @@ function ClampedAnswer({ answer }: { answer: string }) {
         {answer}
       </p>
       {clamped && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-white to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-linear-to-t from-white to-transparent" />
       )}
     </div>
   );
@@ -145,14 +145,14 @@ export function Terminal({ row }: RowProps) {
           variant="small"
           as="p"
           unmask={false}
-          className="whitespace-pre-wrap break-words font-mono text-[11px] leading-4 text-zinc-400"
+          className="font-mono text-[11px] leading-4 wrap-break-word whitespace-pre-wrap text-zinc-400"
         >
-          <span className="select-none text-zinc-500">$ </span>
+          <span className="text-zinc-500 select-none">$ </span>
           {command}
         </Text>
       )}
       {stdout && (
-        <pre className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-zinc-100 scrollbar-none">
+        <pre className="mt-1.5 scrollbar-none max-h-40 overflow-y-auto wrap-break-word whitespace-pre-wrap text-zinc-100">
           {stdout}
         </pre>
       )}
@@ -255,7 +255,7 @@ export function FileCard({ row }: RowProps) {
           as="p"
           tone="muted"
           unmask={false}
-          className="mt-1.5 line-clamp-2 whitespace-pre-wrap pl-9"
+          className="mt-1.5 line-clamp-2 pl-9 whitespace-pre-wrap"
         >
           {preview}
         </Text>
@@ -274,7 +274,7 @@ export function OutputList({ items }: ItemsProps) {
             as="p"
             tone="muted"
             unmask={false}
-            className="text-[11px] uppercase tracking-wide"
+            className="text-[11px] tracking-wide uppercase"
           >
             {str(item, "name", "key", "label") ?? `Output ${i + 1}`}
           </Text>
@@ -283,7 +283,7 @@ export function OutputList({ items }: ItemsProps) {
             as="p"
             tone="primary"
             unmask={false}
-            className="mt-0.5 whitespace-pre-wrap break-words text-[13px]"
+            className="mt-0.5 text-[13px] wrap-break-word whitespace-pre-wrap"
           >
             {inline(item.value ?? item)}
           </Text>
@@ -306,12 +306,12 @@ export function KeyValueList({ value }: ValueProps) {
             as="p"
             tone="secondary"
             unmask={false}
-            className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-relaxed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200"
+            className="scrollbar-thin max-h-40 scrollbar-thumb-zinc-200 scrollbar-track-transparent overflow-y-auto text-[13px] leading-relaxed wrap-break-word whitespace-pre-wrap"
           >
             {truncated?.preview ?? value}
           </Text>
           {truncated && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-linear-to-t from-white to-transparent" />
           )}
         </div>
         {truncated && (
@@ -337,7 +337,7 @@ export function KeyValueList({ value }: ValueProps) {
           className="flex items-baseline gap-3 py-1 text-xs first:pt-0 last:pb-0"
         >
           <span className="shrink-0 text-zinc-400">{humanizeKey(key)}</span>
-          <span className="ml-auto min-w-0 break-words text-right font-medium text-zinc-700">
+          <span className="ml-auto min-w-0 text-right font-medium wrap-break-word text-zinc-700">
             {inline(entryValue)}
           </span>
         </div>

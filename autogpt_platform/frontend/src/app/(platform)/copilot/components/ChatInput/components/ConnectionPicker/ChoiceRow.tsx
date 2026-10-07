@@ -63,7 +63,7 @@ export function ChoiceRow({
     <div
       className={cn(
         "flex w-full items-center gap-3 px-3 py-2.5 transition-colors",
-        "has-[button:focus-visible]:bg-zinc-50 hover:bg-zinc-50",
+        "hover:bg-zinc-50 has-[button:focus-visible]:bg-zinc-50",
       )}
     >
       <button
@@ -74,7 +74,7 @@ export function ChoiceRow({
         data-offer={offerId}
         tabIndex={tabIndex}
         onClick={onSelect}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none"
+        className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-hidden"
       >
         {leading && (
           <span aria-hidden className="flex-none">
@@ -91,7 +91,7 @@ export function ChoiceRow({
             )}
           </span>
           {subtitle && (
-            <span className="break-words text-sm leading-snug text-zinc-500">
+            <span className="text-sm leading-snug wrap-break-word text-zinc-500">
               {subtitle}
             </span>
           )}
@@ -143,7 +143,7 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
       <span className="flex min-w-0 flex-col">
         <span className="text-sm font-medium text-zinc-500">{title}</span>
         {subtitle && (
-          <span className="break-words text-sm leading-snug text-zinc-400">
+          <span className="text-sm leading-snug wrap-break-word text-zinc-400">
             {subtitle}
           </span>
         )}
@@ -161,7 +161,7 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
         {lock.href && (
           <Link
             href={lock.href}
-            className="mt-1 w-fit text-[11px] font-medium text-zinc-900 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+            className="mt-1 w-fit text-[11px] font-medium text-zinc-900 underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:outline-hidden"
           >
             See plans
           </Link>

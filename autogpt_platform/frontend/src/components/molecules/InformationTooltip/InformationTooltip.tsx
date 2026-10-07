@@ -28,7 +28,7 @@ export function InformationTooltip({ description, iconSize = 24 }: Props) {
             type="button"
             aria-label="More information"
             onClick={(event) => event.preventDefault()}
-            className="inline-flex flex-none items-center justify-center rounded-full p-1 text-current hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+            className="inline-flex flex-none items-center justify-center rounded-full p-1 text-current hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:outline-hidden"
           >
             <Info aria-hidden size={iconSize} />
           </button>

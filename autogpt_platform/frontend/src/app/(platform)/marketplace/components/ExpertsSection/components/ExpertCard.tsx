@@ -60,7 +60,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
       />
       <Link
         href={`/marketplace/experts/${expert.id}`}
-        className="relative flex flex-1 flex-col gap-4 rounded-2xl p-6 outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+        className="relative flex flex-1 flex-col gap-4 rounded-2xl p-6 outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-400"
       >
         <ExpertAvatar
           name={expert.name}
@@ -112,7 +112,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
                       className={cn(
                         CHIP_SHAPE,
                         CHIP_SIZE.small,
-                        "h-6 cursor-default border-transparent px-0 text-zinc-500 outline-none focus-visible:ring-2 focus-visible:ring-purple-600",
+                        "h-6 cursor-default border-transparent px-0 text-zinc-500 outline-hidden focus-visible:ring-2 focus-visible:ring-purple-600",
                       )}
                     >
                       +{restSkills.length} skills
@@ -145,7 +145,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
           </span>
         </div>
       </Link>
-      <div className="absolute right-5 top-5 z-10">
+      <div className="absolute top-5 right-5 z-10">
         <ExpertHireControl expert={expert} isHired={isHired} />
       </div>
     </div>

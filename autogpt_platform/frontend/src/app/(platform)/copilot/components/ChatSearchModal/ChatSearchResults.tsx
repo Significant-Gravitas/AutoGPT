@@ -78,7 +78,7 @@ export function ChatSearchResults({
                 <motion.div
                   layoutId="chat-search-highlight-bar"
                   aria-hidden="true"
-                  className="absolute inset-y-0 left-0 z-[1] my-auto h-5 w-[3px] rounded-full bg-zinc-900"
+                  className="absolute inset-y-0 left-0 z-1 my-auto h-5 w-[3px] rounded-full bg-zinc-900"
                   transition={
                     reduceMotion ? { duration: 0 } : indicatorTransition
                   }

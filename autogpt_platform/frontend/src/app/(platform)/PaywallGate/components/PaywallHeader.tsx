@@ -8,10 +8,10 @@ export function PaywallHeader() {
     <div className="flex flex-col items-center gap-1 text-center">
       <Text
         variant="h3"
-        className="text-[1.375rem] leading-[1.6rem] md:text-[1.75rem] md:leading-[2.5rem]"
+        className="text-[1.375rem] leading-[1.6rem] md:text-[1.75rem] md:leading-10"
       >
         Choose the plan that&apos;s right for{" "}
-        <span className="bg-gradient-to-r from-purple-500 to-purple-400 bg-clip-text text-transparent">
+        <span className="bg-linear-to-r from-purple-500 to-purple-400 bg-clip-text text-transparent">
           you
         </span>
       </Text>

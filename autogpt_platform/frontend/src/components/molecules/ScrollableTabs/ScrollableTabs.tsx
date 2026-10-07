@@ -47,7 +47,7 @@ export function ScrollableTabs({ children, className, defaultValue }: Props) {
               contentContainerRef.current = node;
             }
           }}
-          className="max-h-[64rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300"
+          className="scrollbar-thin max-h-256 scrollbar-thumb-zinc-300 scrollbar-track-transparent overflow-y-auto"
         >
           <div className="min-h-full pb-[200px]">{contentElements}</div>
         </div>

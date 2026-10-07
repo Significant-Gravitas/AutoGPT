@@ -37,7 +37,7 @@ export const FilterChip: React.FC<Props> = ({
       >
         <span
           className={cn(
-            "font-sans text-sm font-medium leading-[1.375rem] text-zinc-600 group-hover:text-zinc-600 group-disabled:text-zinc-400",
+            "font-sans text-sm leading-5.5 font-medium text-zinc-600 group-hover:text-zinc-600 group-disabled:text-zinc-400",
             selected && "text-zinc-50",
           )}
         >
@@ -60,7 +60,7 @@ export const FilterChip: React.FC<Props> = ({
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
             exit={{ opacity: 0.5, scale: 0.5, filter: "blur(10px)" }}
             transition={{ duration: 0.3, type: "spring", bounce: 0.2 }}
-            className="flex h-[1.375rem] items-center rounded-[1.25rem] bg-purple-700 p-1.5 text-zinc-50"
+            className="flex h-5.5 items-center rounded-xlarge bg-purple-700 p-1.5 text-zinc-50"
           >
             {number > 100 ? "100+" : number}
           </motion.span>

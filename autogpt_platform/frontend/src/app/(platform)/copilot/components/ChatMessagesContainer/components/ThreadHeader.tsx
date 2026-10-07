@@ -59,7 +59,7 @@ export function ThreadHeader({
                 aria-label={
                   isResolving ? "Loading expert" : `${name} — ${roleLabel}`
                 }
-                className="pointer-events-auto flex min-w-0 items-center gap-2 whitespace-nowrap rounded-full border border-zinc-200/70 bg-white/75 py-1 pl-1.5 pr-5 shadow-sm backdrop-blur-md"
+                className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-full border border-zinc-200/70 bg-white/75 py-1 pr-5 pl-1.5 whitespace-nowrap shadow-xs backdrop-blur-md"
               >
                 <ExpertAvatar
                   name={name}
@@ -70,9 +70,9 @@ export function ThreadHeader({
                   size="md"
                 />
                 {isResolving ? (
-                  <Skeleton className="h-3.5 w-16 rounded" />
+                  <Skeleton className="h-3.5 w-16 rounded-sm" />
                 ) : (
-                  <span className="min-w-0 max-w-40">
+                  <span className="max-w-40 min-w-0">
                     <ExpertIdentityDetails
                       isOtto={!expertIdentity}
                       name={name}
@@ -87,7 +87,7 @@ export function ThreadHeader({
             {isResolving ? null : (
               <TooltipContent
                 side="bottom"
-                className="bg-zinc-900 text-zinc-50 outline-none"
+                className="bg-zinc-900 text-zinc-50 outline-hidden"
               >
                 {roleLabel}
               </TooltipContent>

@@ -22,7 +22,7 @@ export function SkillBody({ body, title, packagePaths, onOpenFile }: Props) {
   };
 
   return (
-    <div className="text-[15px] leading-6 text-zinc-700 [overflow-wrap:anywhere]">
+    <div className="text-[15px] leading-6 [overflow-wrap:anywhere] text-zinc-700">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={withFileLinks}>
         {prepareSkillBody(body, title)}
       </ReactMarkdown>
@@ -108,7 +108,7 @@ const components: Components = {
   ),
   td: ({ children }) => <td className="py-1.5 pr-4 align-top">{children}</td>,
   code: ({ children }) => (
-    <code className="break-words rounded bg-zinc-100 px-1 py-0.5 font-mono text-xs">
+    <code className="rounded bg-zinc-100 px-1 py-0.5 font-mono text-xs break-words">
       {children}
     </code>
   ),

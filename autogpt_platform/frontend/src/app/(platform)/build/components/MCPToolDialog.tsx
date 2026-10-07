@@ -616,7 +616,7 @@ function MCPToolCard({
       )}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 pb-1 pt-3">
+      <div className="flex items-center gap-2 px-3 pt-3 pb-1">
         <Text
           variant="body-medium"
           as="span"
@@ -665,7 +665,7 @@ function MCPToolCard({
 
       {/* Expanded: full parameter details */}
       {expanded && paramNames.length > 0 && (
-        <div className="mx-3 mb-2 rounded border border-zinc-100 bg-zinc-50/50">
+        <div className="mx-3 mb-2 rounded-sm border border-zinc-100 bg-zinc-50/50">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-zinc-100">

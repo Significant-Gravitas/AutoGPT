@@ -13,7 +13,7 @@ export const ACTIONS_CELL_CLASS = "flex justify-end";
 // Sized to its content (its wrapper is not stretched across the column) so
 // the hover preview, which anchors to this button, opens beside the name.
 export const NAME_BUTTON_CLASS =
-  "flex h-auto min-w-0 items-center justify-start gap-4 rounded-xl border-0 px-0 py-2.5 text-left font-normal outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-zinc-400";
+  "flex h-auto min-w-0 items-center justify-start gap-4 rounded-xl border-0 px-0 py-2.5 text-left font-normal outline-hidden hover:bg-transparent focus-visible:ring-2 focus-visible:ring-zinc-400";
 
 // Rows animate on their own mount (not via the list's orchestration) so a row
 // added by an upload or a refetch is never left in its hidden start state.

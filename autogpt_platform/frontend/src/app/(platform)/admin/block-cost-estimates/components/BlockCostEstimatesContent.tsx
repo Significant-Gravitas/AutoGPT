@@ -36,7 +36,7 @@ export function BlockCostEstimatesContent() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end gap-3 rounded border p-4">
+      <div className="flex flex-wrap items-end gap-3 rounded-sm border p-4">
         <div className="flex flex-col gap-1">
           <Input
             id="bce-start"
@@ -106,7 +106,7 @@ export function BlockCostEstimatesContent() {
               ? data.generated_at.toISOString()
               : String(data.generated_at)}
           </Text>
-          <div className="overflow-x-auto rounded border">
+          <div className="overflow-x-auto rounded-sm border">
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>

@@ -29,7 +29,7 @@ export function SortableHeader({ children, direction, align, onSort }: Props) {
       onClick={onSort}
       className={cn(
         "-mx-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-sans text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2",
+        "focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:outline-hidden",
         direction && "text-zinc-900",
         align === "right" && "flex-row-reverse",
       )}

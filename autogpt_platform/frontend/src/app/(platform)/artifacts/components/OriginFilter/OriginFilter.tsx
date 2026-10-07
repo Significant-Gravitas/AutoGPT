@@ -71,7 +71,7 @@ function OriginTab({ option, active, onClick }: OriginTabProps) {
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative h-auto min-w-0 rounded-full border-0 px-4 py-2 text-sm font-medium outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-zinc-400",
+        "relative h-auto min-w-0 rounded-full border-0 px-4 py-2 text-sm font-medium outline-hidden hover:bg-transparent focus-visible:ring-2 focus-visible:ring-zinc-400",
         active ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-900",
       )}
       data-testid={`artifacts-origin-filter-${option.value}`}

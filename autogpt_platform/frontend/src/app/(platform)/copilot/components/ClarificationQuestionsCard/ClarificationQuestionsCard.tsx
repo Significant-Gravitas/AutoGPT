@@ -109,7 +109,7 @@ export function ClarificationQuestionsCard({
         )}
       >
         <div className="flex w-full max-w-3xl gap-3">
-          <div className="flex-shrink-0">
+          <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-green-500">
               <Icon
                 icon={CheckmarkCircle02Icon}
@@ -191,7 +191,7 @@ export function ClarificationQuestionsCard({
                         {q.example && (
                           <Text
                             variant="body"
-                            className="mb-2 italic text-slate-500"
+                            className="mb-2 text-slate-500 italic"
                             unmask={false}
                           >
                             Example: {q.example}
@@ -216,7 +216,7 @@ export function ClarificationQuestionsCard({
               })}
             </div>
 
-            <div className="flex max-w-[25rem] gap-2">
+            <div className="flex max-w-100 gap-2">
               <Button
                 onClick={handleSubmit}
                 disabled={!allAnswered}

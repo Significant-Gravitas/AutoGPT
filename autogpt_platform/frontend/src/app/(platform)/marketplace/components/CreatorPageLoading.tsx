@@ -19,7 +19,7 @@ export function CreatorPageLoading() {
           {/* Left: Creator info card */}
           <div className="w-full lg:w-2/5">
             <div className="w-full px-4 sm:px-6 lg:px-0">
-              <div className="rounded-2xl bg-gradient-to-r from-blue-100/50 to-purple-100/50 p-px">
+              <div className="rounded-2xl bg-linear-to-r from-blue-100/50 to-purple-100/50 p-px">
                 <div className="flex flex-col rounded-[calc(1rem-2px)] bg-zinc-50 p-4">
                   {/* Avatar */}
                   <Skeleton className="mb-4 h-20 w-20 rounded-full sm:h-24 sm:w-24" />
@@ -71,13 +71,13 @@ export function CreatorPageLoading() {
           </div>
           <div className="hidden grid-cols-1 gap-6 md:grid md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-[25rem] w-full rounded-2xl" />
+              <Skeleton key={i} className="h-100 w-full rounded-2xl" />
             ))}
           </div>
           {/* Mobile carousel placeholder */}
           <div className="flex gap-4 overflow-hidden md:hidden">
-            <Skeleton className="h-[25rem] min-w-64 rounded-2xl" />
-            <Skeleton className="h-[25rem] min-w-64 rounded-2xl" />
+            <Skeleton className="h-100 min-w-64 rounded-2xl" />
+            <Skeleton className="h-100 min-w-64 rounded-2xl" />
           </div>
         </div>
       </main>

@@ -72,7 +72,7 @@ export function DesktopStreamPreview({
         <div className="flex items-center gap-2 text-sm text-zinc-700">
           <Icon icon={ComputerIcon} size={16} />
           <span className="font-medium">Interactive Desktop</span>
-          <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs uppercase text-zinc-600">
+          <span className="rounded-sm bg-zinc-200 px-1.5 py-0.5 text-xs text-zinc-600 uppercase">
             {value.provider}
           </span>
         </div>

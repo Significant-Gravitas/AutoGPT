@@ -35,12 +35,12 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
             {name}
           </span>
           {model && (
-            <span className="mt-0.5 block break-words text-xs text-zinc-600">
+            <span className="mt-0.5 block text-xs wrap-break-word text-zinc-600">
               {model}
             </span>
           )}
         </span>
-        <span className="inline-flex items-center gap-1 rounded bg-white px-1.5 py-1 text-[10px] font-semibold tracking-wide text-purple-700">
+        <span className="inline-flex items-center gap-1 rounded-sm bg-white px-1.5 py-1 text-[10px] font-semibold tracking-wide text-purple-700">
           <Icon icon={LockIcon} size={10} aria-hidden />
           MAX
         </span>
@@ -50,7 +50,7 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
         as="p"
         tone="primary"
         unmask={false}
-        className="mb-2 mt-5 text-lg leading-snug tracking-tight"
+        className="mt-5 mb-2 text-lg leading-snug tracking-tight"
       >
         Unlock {name} with Max.
       </Text>

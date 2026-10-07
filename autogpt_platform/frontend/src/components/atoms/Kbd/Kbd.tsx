@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { forwardRef } from "react";
 
 const kbdVariants = cva(
-  "inline-flex shrink-0 items-center justify-center rounded-md border border-zinc-200 border-b-zinc-300 bg-white font-sans text-xs font-normal text-zinc-800 shadow-sm",
+  "inline-flex shrink-0 items-center justify-center rounded-md border border-zinc-200 border-b-zinc-300 bg-white font-sans text-xs font-normal text-zinc-800 shadow-xs",
   {
     variants: {
       size: {
@@ -18,8 +18,7 @@ const kbdVariants = cva(
 );
 
 interface Props
-  extends React.HTMLAttributes<HTMLElement>,
-    VariantProps<typeof kbdVariants> {}
+  extends React.HTMLAttributes<HTMLElement>, VariantProps<typeof kbdVariants> {}
 
 export const Kbd = forwardRef<HTMLElement, Props>(function Kbd(
   { className, size, ...props },

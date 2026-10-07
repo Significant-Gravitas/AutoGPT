@@ -20,7 +20,7 @@ export function AdminImpersonationBanner() {
           </strong>
           <span>
             You are currently acting as user:{" "}
-            <code className="rounded bg-yellow-100 px-1 font-mono text-sm">
+            <code className="rounded-sm bg-yellow-100 px-1 font-mono text-sm">
               {impersonatedUserId}
             </code>
           </span>

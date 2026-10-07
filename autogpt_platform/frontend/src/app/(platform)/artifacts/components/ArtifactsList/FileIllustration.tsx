@@ -23,7 +23,7 @@ interface FileTypeConfig {
 }
 
 const cardBase =
-  "relative h-28 overflow-hidden rounded-md rounded-tr-[15%] bg-white shadow-md shadow-black/[0.065] ring-1 ring-zinc-200";
+  "relative h-28 overflow-hidden rounded-md rounded-tr-[15%] bg-white shadow-md shadow-black/6.5 ring-1 ring-zinc-200";
 
 const DEFAULT_BADGE_POSITION = "bottom-5 -right-2";
 
@@ -150,11 +150,11 @@ function VideoContent() {
   return (
     <div className="relative h-16 overflow-hidden rounded-sm bg-zinc-900/10">
       {/* Play triangle */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
         <div className="h-0 w-0 border-y-[5px] border-l-[7px] border-y-transparent border-l-zinc-900/55" />
       </div>
       {/* Timeline at the bottom */}
-      <div className="absolute bottom-1 left-1 right-1 h-1 rounded-full bg-zinc-900/10">
+      <div className="absolute right-1 bottom-1 left-1 h-1 rounded-full bg-zinc-900/10">
         <div className="h-full w-1/3 rounded-full bg-zinc-900/40" />
       </div>
     </div>
@@ -164,10 +164,10 @@ function VideoContent() {
 function ImgContent() {
   return (
     <div className="relative h-16">
-      <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-zinc-900/20 to-transparent" />
+      <div className="absolute right-0 bottom-0 left-0 h-4 bg-linear-to-t from-zinc-900/20 to-transparent" />
       <div className="absolute bottom-1 left-1 h-3 w-5 rounded-t-full bg-zinc-900/25" />
-      <div className="absolute bottom-1 right-2 h-5 w-4 rounded-t-full bg-zinc-900/30" />
-      <div className="absolute right-1.5 top-1.5 size-2 rounded-full bg-zinc-900/40" />
+      <div className="absolute right-2 bottom-1 h-5 w-4 rounded-t-full bg-zinc-900/30" />
+      <div className="absolute top-1.5 right-1.5 size-2 rounded-full bg-zinc-900/40" />
     </div>
   );
 }
@@ -346,7 +346,7 @@ export function FileIllustration({
       <div className={cn(cardBase, config.cardClass)}>{config.content}</div>
       <span
         className={cn(
-          "absolute rounded-md bg-zinc-700 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white shadow-md shadow-black/10",
+          "absolute rounded-md bg-zinc-700 px-2 py-1 text-[11px] font-semibold tracking-wide text-white uppercase shadow-md shadow-black/10",
           config.badgePositionClass ?? DEFAULT_BADGE_POSITION,
           badgeClassName,
         )}

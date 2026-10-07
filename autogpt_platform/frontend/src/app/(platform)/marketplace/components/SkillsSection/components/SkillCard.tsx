@@ -33,7 +33,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
     <Link
       href={`/marketplace/skills/${skill.slug}`}
       data-testid="skill-card"
-      className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-[transform,box-shadow,border-color] duration-200 ease-out [touch-action:manipulation] hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:transform-none"
+      className="group relative flex h-full touch-manipulation flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-hidden transition-[transform,box-shadow,border-color] duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:transform-none"
     >
       <div
         className={cn(
@@ -43,7 +43,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
       />
       <div className="relative flex flex-1 flex-col gap-4 p-6">
         <div className="flex items-start justify-between gap-3">
-          <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-white ring-1 ring-inset ring-zinc-200/70">
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-white ring-1 ring-zinc-200/70 ring-inset">
             <Icon
               icon={BookOpen01Icon}
               size={24}

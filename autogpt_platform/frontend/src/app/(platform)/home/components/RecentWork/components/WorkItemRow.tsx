@@ -50,7 +50,7 @@ export function WorkItemRow({ item, timezone }: Props) {
       title={item.session_title ?? undefined}
       className={cn(
         ROW_CLASS,
-        "-mx-1 rounded px-1 outline-none transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50",
+        "-mx-1 rounded-sm px-1 outline-hidden transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50",
       )}
     >
       {content}

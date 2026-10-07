@@ -26,7 +26,7 @@ function renderText(
       variant="body"
       tone="secondary"
       unmask={false}
-      className="resize-none overflow-x-auto whitespace-pre-wrap break-words border-none"
+      className="resize-none overflow-x-auto border-none wrap-break-word whitespace-pre-wrap"
     >
       {textValue}
     </Text>

@@ -101,7 +101,7 @@ export function RaiseFlow() {
             aria-live="polite"
             aria-relevant="additions text"
             aria-label="Expert creation conversation"
-            className="flex flex-col gap-4 px-4 pb-16 pt-6 scrollbar-none sm:px-6 lg:h-full lg:overflow-y-auto lg:px-8"
+            className="scrollbar-none flex flex-col gap-4 px-4 pt-6 pb-16 sm:px-6 lg:h-full lg:overflow-y-auto lg:px-8"
           >
             {items.map(renderItem)}
           </div>
@@ -114,7 +114,7 @@ export function RaiseFlow() {
             className="absolute inset-0"
             colors={ditherColorsFor(color)}
           />
-          <div className="absolute left-4 top-4 z-10 flex gap-2 sm:left-6 sm:top-6">
+          <div className="absolute top-4 left-4 z-10 flex gap-2 sm:top-6 sm:left-6">
             <Button
               variant="icon"
               size="small"
@@ -184,8 +184,8 @@ function ScrollFade({
       className={cn(
         "pointer-events-none absolute inset-x-0 h-16 transition-opacity duration-200",
         edge === "top"
-          ? "top-0 bg-gradient-to-b from-background to-transparent"
-          : "bottom-0 bg-gradient-to-t from-background to-transparent",
+          ? "top-0 bg-linear-to-b from-background to-transparent"
+          : "bottom-0 bg-linear-to-t from-background to-transparent",
         isVisible ? "opacity-100" : "opacity-0",
       )}
     />

@@ -61,7 +61,7 @@ export function AccountMenu({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex cursor-pointer items-center space-x-3 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+          className="flex cursor-pointer items-center space-x-3 rounded-full outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-300"
           aria-label="Open profile menu"
           aria-controls={popupId}
           aria-haspopup="true"
@@ -97,7 +97,7 @@ export function AccountMenu({
               </>
             ) : (
               <>
-                <span className="truncate text-sm font-semibold leading-tight text-zinc-900">
+                <span className="truncate text-sm leading-tight font-semibold text-zinc-900">
                   {userName}
                 </span>
                 <span

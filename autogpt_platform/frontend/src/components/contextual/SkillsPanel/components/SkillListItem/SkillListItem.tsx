@@ -51,12 +51,12 @@ export function SkillListItem({ skill, isNew = false }: Props) {
       data-skill-name={skill.name}
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-purple-50">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-large border border-slate-50 bg-purple-50">
           <Icon icon={BookOpen01Icon} size={18} className="text-purple-700" />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
-            <Text variant="body-medium" className="break-words">
+            <Text variant="body-medium" className="wrap-break-word">
               {skill.name}
             </Text>
             {isNew && (
@@ -88,7 +88,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
         </div>
       </div>
 
-      <div className="flex flex-shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <Button
           variant="icon"
           size="icon"
@@ -158,7 +158,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
             ) : (
               <>
                 <pre
-                  className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-medium bg-zinc-50 p-3 text-sm text-zinc-800"
+                  className="max-h-[60vh] overflow-auto rounded-medium bg-zinc-50 p-3 text-sm whitespace-pre-wrap text-zinc-800"
                   data-testid="skill-view-body"
                 >
                   {detail?.body || "(no body)"}
@@ -179,7 +179,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
                         >
                           <span className="break-all">{row.label}</span>
                           {row.sizeLabel ? (
-                            <span className="flex-shrink-0 tabular-nums text-zinc-400">
+                            <span className="shrink-0 text-zinc-400 tabular-nums">
                               {row.sizeLabel}
                             </span>
                           ) : null}

@@ -99,7 +99,7 @@ export function FolderTree({
             onClick={() => !isDisabled && onSelect(row.id)}
             style={{ paddingLeft: `${(row.level - 1) * 20 + 8}px` }}
             className={cn(
-              "flex items-center gap-2 rounded-lg py-2 pr-2 outline-none",
+              "flex items-center gap-2 rounded-lg py-2 pr-2 outline-hidden",
               isDisabled
                 ? "cursor-not-allowed text-zinc-400"
                 : "cursor-pointer text-zinc-800 hover:bg-zinc-50",
@@ -118,7 +118,7 @@ export function FolderTree({
                   e.stopPropagation();
                   onToggleExpanded(row.id as string);
                 }}
-                className="h-4.5 w-[22px] min-w-0 shrink-0 rounded border-0 p-0 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600"
+                className="h-4.5 w-[22px] min-w-0 shrink-0 rounded-sm border-0 p-0 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600"
               >
                 <Icon
                   icon={ArrowRight01Icon}

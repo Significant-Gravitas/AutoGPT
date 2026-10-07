@@ -39,7 +39,7 @@ export function AgentRow({ agent }: Props) {
           </Text>
           <StatusBadge status={agent.status} />
         </div>
-        <Text variant="small" tone="secondary" className="break-words">
+        <Text variant="small" tone="secondary" className="wrap-break-word">
           {agent.detail || "No status details available."}{" "}
           {agent.status === "failed"
             ? "Open Manage to inspect recent work."
@@ -53,7 +53,7 @@ export function AgentRow({ agent }: Props) {
           <Text
             variant="small"
             tone="muted"
-            className="truncate tabular-nums leading-4"
+            className="truncate leading-4 tabular-nums"
             unmask={false}
           >
             {secondLine}

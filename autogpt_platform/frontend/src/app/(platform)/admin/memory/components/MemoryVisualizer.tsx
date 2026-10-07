@@ -246,7 +246,7 @@ function OverviewStrip({ loading, error, data }: OverviewStripProps) {
           className="rounded-md border bg-white p-3 text-center"
         >
           <div className="text-xl font-bold">{stat.value}</div>
-          <div className="text-xs uppercase tracking-wide text-zinc-500">
+          <div className="text-xs tracking-wide text-zinc-500 uppercase">
             {stat.label}
           </div>
         </div>
@@ -308,7 +308,7 @@ function ControlBar({
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-md border bg-white p-3 text-sm">
       {readOnly ? (
-        <span className="rounded bg-zinc-100 px-2 py-1 text-xs text-zinc-600">
+        <span className="rounded-sm bg-zinc-100 px-2 py-1 text-xs text-zinc-600">
           Read-only
         </span>
       ) : (
@@ -347,7 +347,7 @@ function ControlBar({
       <span className="ml-auto text-xs text-zinc-500">
         {nodeCount} nodes · {edgeCount} edges
         {truncated && (
-          <span className="ml-2 rounded bg-yellow-100 px-2 py-0.5 text-yellow-800">
+          <span className="ml-2 rounded-sm bg-yellow-100 px-2 py-0.5 text-yellow-800">
             truncated
           </span>
         )}
@@ -499,11 +499,9 @@ function DreamResultPanel({ status }: DreamResultPanelProps) {
   // (pass_id + stats), so we just hide the panel — the graph itself
   // refreshes via cache invalidation when the job completes.
   const operations = result.operations as
-    | Parameters<typeof DreamOperationsView>[0]["operations"]
-    | undefined;
+    Parameters<typeof DreamOperationsView>[0]["operations"] | undefined;
   const usage = result.usage as
-    | Parameters<typeof DreamUsageSummary>[0]["usage"]
-    | undefined;
+    Parameters<typeof DreamUsageSummary>[0]["usage"] | undefined;
   if (!operations || !usage) return null;
   return (
     <div
@@ -548,7 +546,7 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
               {node.uuid}
             </div>
             {node.summary && (
-              <div className="mt-3 whitespace-pre-wrap text-xs text-zinc-700">
+              <div className="mt-3 text-xs whitespace-pre-wrap text-zinc-700">
                 {node.summary}
               </div>
             )}

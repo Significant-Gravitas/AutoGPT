@@ -37,7 +37,7 @@ function RunList({ detailed = false }: { detailed?: boolean }) {
         <li key={run} className="border-b border-zinc-100">
           <a
             href={`#run-${run}`}
-            className="block whitespace-nowrap px-4 py-2 hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-400"
+            className="block px-4 py-2 whitespace-nowrap hover:bg-zinc-50 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-hidden focus-visible:ring-inset"
           >
             <Text variant="body" as="span">
               Run #{run}
@@ -78,7 +78,7 @@ export const Horizontal: Story = {
             <a
               key={index}
               href={`#integration-${index + 1}`}
-              className="flex h-20 w-28 shrink-0 items-center justify-center rounded-lg bg-zinc-100 hover:bg-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2"
+              className="flex h-20 w-28 shrink-0 items-center justify-center rounded-lg bg-zinc-100 hover:bg-zinc-200 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:outline-hidden"
             >
               <Text variant="small" as="span" tone="secondary">
                 Integration {index + 1}

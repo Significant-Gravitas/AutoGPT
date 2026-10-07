@@ -29,7 +29,7 @@ export function WorkGroup({ group, timezone }: Props) {
         variant="small-medium"
         as="span"
         className={cn(
-          "shrink-0 rounded-full border px-1.5 capitalize leading-4",
+          "shrink-0 rounded-full border px-1.5 leading-4 capitalize",
           chip.className,
         )}
       >
@@ -60,7 +60,7 @@ export function WorkGroup({ group, timezone }: Props) {
         {actor.link ? (
           <Link
             href={actor.link}
-            className="group block rounded outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+            className="group block rounded-sm outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-300"
           >
             {header}
           </Link>

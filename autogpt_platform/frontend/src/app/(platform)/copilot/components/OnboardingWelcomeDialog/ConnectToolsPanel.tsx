@@ -79,7 +79,7 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
   }, [selectedProvider, handleBackToList, onBack]);
 
   return (
-    <div className="flex flex-col gap-4 px-5 pb-5 pt-4">
+    <div className="flex flex-col gap-4 px-5 pt-4 pb-5">
       <Text variant="h5" tone="primary">
         Connect your tools
       </Text>
@@ -141,7 +141,7 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                     <Icon
                       icon={Search01Icon}
                       size={16}
-                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
+                      className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-zinc-400"
                     />
                     <input
                       type="text"
@@ -149,7 +149,7 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="Search services..."
                       aria-label="Search services"
-                      className="h-9 w-full rounded-md border border-zinc-200 bg-white pl-9 pr-3 text-sm leading-[22px] text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
+                      className="h-9 w-full rounded-md border border-zinc-200 bg-white pr-3 pl-9 text-sm leading-[22px] text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-hidden"
                     />
                   </div>
 
@@ -166,7 +166,7 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                         </Text>
                       </div>
                     ) : (
-                      <ul className="grid max-h-[13.5rem] grid-cols-2 gap-2 overflow-y-auto pr-1">
+                      <ul className="grid max-h-54 grid-cols-2 gap-2 overflow-y-auto pr-1">
                         {providers.map((provider) => (
                           <li key={provider.id}>
                             <ConnectProviderRow

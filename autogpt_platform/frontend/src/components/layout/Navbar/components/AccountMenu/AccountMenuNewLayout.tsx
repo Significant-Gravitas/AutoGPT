@@ -40,7 +40,7 @@ export function AccountMenuNewLayout({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex cursor-pointer items-center space-x-3 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+          className="flex cursor-pointer items-center space-x-3 rounded-full outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-300"
           aria-label="Open profile menu"
           aria-controls={popupId}
           aria-haspopup="true"

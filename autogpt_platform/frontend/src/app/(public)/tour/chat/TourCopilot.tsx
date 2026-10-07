@@ -17,9 +17,9 @@ import { trackTourScenarioComplete, trackTourStart } from "./tracking";
 
 const ArtifactPanel = dynamic(
   () =>
-    import(
-      "@/app/(platform)/copilot/components/ArtifactPanel/ArtifactPanel"
-    ).then((m) => m.ArtifactPanel),
+    import("@/app/(platform)/copilot/components/ArtifactPanel/ArtifactPanel").then(
+      (m) => m.ArtifactPanel,
+    ),
   { ssr: false },
 );
 
@@ -85,7 +85,7 @@ export function TourCopilot() {
   const artifactPanels = (
     <>
       {!isMobile && (
-        <div className="contents [&_[data-artifact-panel]]:!w-[500px]">
+        <div className="contents **:data-artifact-panel:w-[500px]!">
           <ArtifactPanel />
         </div>
       )}

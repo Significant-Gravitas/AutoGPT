@@ -12,7 +12,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "The full-colour AutoGPT logo for light surfaces. `hideText` drops the wordmark, `wordmarkColor` recolours it, and `className` replaces the default `h-10 w-[5.5rem]` sizing. Each instance scopes its gradient ids with `useId`, so several logos can share a page.",
+          "The full-colour AutoGPT logo for light surfaces. `hideText` drops the wordmark, `wordmarkColor` recolours it, and `className` replaces the default `h-10 w-22` sizing. Each instance scopes its gradient ids with `useId`, so several logos can share a page.",
       },
     },
   },

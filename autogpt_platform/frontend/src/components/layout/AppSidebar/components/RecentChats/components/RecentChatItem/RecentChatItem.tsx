@@ -66,7 +66,7 @@ function ChatLinkLoader() {
   return (
     <LoadingSpinner
       size="small"
-      className="ml-auto !size-4 shrink-0 text-zinc-500"
+      className="ml-auto size-4! shrink-0 text-zinc-500"
     />
   );
 }
@@ -124,7 +124,7 @@ export function RecentChatItem({
             }
             onSubmitRename(session.id);
           }}
-          className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+          className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-hidden focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
         />
       </SidebarMenuItem>
     );
@@ -136,7 +136,7 @@ export function RecentChatItem({
         asChild
         isActive={isActive}
         tooltip={title}
-        className="font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal hover:!bg-zinc-100"
+        className="font-normal hover:bg-zinc-100! data-[active=true]:bg-zinc-100! data-[active=true]:font-normal"
       >
         <Link href={`/home?sessionId=${session.id}`}>
           {session.is_processing ? (

@@ -12,8 +12,8 @@ interface Props {
 
 export function UpcomingRow({ item }: Props) {
   return (
-    <div className="relative flex items-center gap-3 py-2 pl-[3.75rem] pr-4">
-      <span className="absolute left-4 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white">
+    <div className="relative flex items-center gap-3 py-2 pr-4 pl-15">
+      <span className="absolute top-1/2 left-4 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white">
         <TaskMarker item={item} />
       </span>
       <div className="min-w-0 flex-1">

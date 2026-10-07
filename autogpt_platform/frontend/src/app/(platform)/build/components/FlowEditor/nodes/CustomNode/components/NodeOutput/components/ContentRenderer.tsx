@@ -14,7 +14,9 @@ export const TextRenderer: React.FC<{
       ? text.slice(0, truncateLengthLimit) + "..."
       : text;
 
-  return <div className="break-words bg-zinc-50 p-3 text-xs">{truncated}</div>;
+  return (
+    <div className="bg-zinc-50 p-3 text-xs wrap-break-word">{truncated}</div>
+  );
 };
 
 export const ContentRenderer: React.FC<{
@@ -40,14 +42,14 @@ export const ContentRenderer: React.FC<{
     !shortContent
   ) {
     return (
-      <div className="overflow-x-auto [&>*]:rounded-xlarge [&>*]:!text-xs [&_pre]:whitespace-pre-wrap [&_pre]:break-words">
+      <div className="overflow-x-auto *:rounded-xlarge *:text-xs! [&_pre]:wrap-break-word [&_pre]:whitespace-pre-wrap">
         {renderer?.render(value, metadata)}
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto [&>*]:rounded-xlarge [&>*]:!text-xs">
+    <div className="overflow-x-auto *:rounded-xlarge *:text-xs!">
       <TextRenderer value={value} truncateLengthLimit={200} />
     </div>
   );

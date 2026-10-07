@@ -74,7 +74,7 @@ function SoulPanelBody({ expert, onClose }: BodyProps) {
         <div
           aria-hidden="true"
           className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sidebar to-transparent transition-opacity duration-200",
+            "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-linear-to-t from-sidebar to-transparent transition-opacity duration-200",
             hasMoreBelow ? "opacity-100" : "opacity-0",
           )}
         />

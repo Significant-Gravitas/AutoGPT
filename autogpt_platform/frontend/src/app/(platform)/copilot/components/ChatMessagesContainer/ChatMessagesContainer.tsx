@@ -495,7 +495,7 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
+            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pt-14 pb-4",
             isCompact && "gap-4 px-4 pt-4",
             !showThreadHeader && "pt-4",
           )}
@@ -541,7 +541,7 @@ export function ChatMessagesContainer({
                   from={message.role}
                   key={message.id}
                   data-message-id={message.id}
-                  className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+                  className="animate-in duration-300 fill-mode-both fade-in slide-in-from-bottom-2"
                 >
                   <MessageContent className="group-[.is-assistant]:bg-transparent">
                     <WorkCard metadata={runMetadata} preview={preview} />
@@ -648,7 +648,7 @@ export function ChatMessagesContainer({
                 from={message.role}
                 key={message.id}
                 data-message-id={message.id}
-                className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+                className="animate-in duration-300 fill-mode-both fade-in slide-in-from-bottom-2"
               >
                 <MessageContent
                   className={cn(
@@ -656,7 +656,7 @@ export function ChatMessagesContainer({
                       ? "text-sm leading-6 group-[.is-user]:rounded-xl"
                       : "text-base leading-relaxed group-[.is-user]:rounded-3xl",
                     "group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900",
-                    "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold",
+                    "[&_h1]:group-[.is-user]:text-lg [&_h1]:group-[.is-user]:font-semibold [&_h2]:group-[.is-user]:text-lg [&_h2]:group-[.is-user]:font-semibold [&_h3]:group-[.is-user]:text-lg [&_h3]:group-[.is-user]:font-semibold [&_h4]:group-[.is-user]:text-lg [&_h4]:group-[.is-user]:font-semibold [&_h5]:group-[.is-user]:text-lg [&_h5]:group-[.is-user]:font-semibold [&_h6]:group-[.is-user]:text-lg [&_h6]:group-[.is-user]:font-semibold",
                     // Chain hover pills use negative margins that the base
                     // overflow-hidden would clip.
                     "group-[.is-assistant]:overflow-visible group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900",
@@ -727,14 +727,14 @@ export function ChatMessagesContainer({
                     );
                   })()}
                 {message.role === "user" && textParts.length > 0 && (
-                  <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                     {(() => {
                       const createdAt = turnStats?.get(message.id)?.createdAt;
                       if (!createdAt) return null;
                       const date = new Date(createdAt);
                       if (Number.isNaN(date.getTime())) return null;
                       return (
-                        <span className="text-[11px] tabular-nums text-zinc-500">
+                        <span className="text-[11px] text-zinc-500 tabular-nums">
                           {date.toLocaleString(undefined, {
                             dateStyle: "medium",
                             timeStyle: "short",
@@ -762,7 +762,7 @@ export function ChatMessagesContainer({
                     sessionID={sessionID ?? null}
                     className={cn(
                       !isLastAssistant &&
-                        "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+                        "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
                     )}
                   />
                 )}
@@ -771,7 +771,7 @@ export function ChatMessagesContainer({
                     className={cn(
                       "mt-1 items-center justify-start gap-2",
                       !isLastAssistant &&
-                        "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+                        "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
                     )}
                   >
                     <CopyButton
@@ -791,7 +791,7 @@ export function ChatMessagesContainer({
           {showIndicator && lastMessage?.role !== "assistant" && (
             <Message
               from="assistant"
-              className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+              className="animate-in duration-300 fill-mode-both fade-in slide-in-from-bottom-2"
             >
               <MessageContent className="text-base leading-relaxed">
                 {indicator}
@@ -864,7 +864,7 @@ export function ChatMessagesContainer({
                 The assistant encountered an error. Please try sending your
                 message again.
               </summary>
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
+              <pre className="mt-2 max-h-40 overflow-auto text-xs wrap-break-word whitespace-pre-wrap text-red-600">
                 {error instanceof Error ? error.message : String(error)}
               </pre>
             </details>

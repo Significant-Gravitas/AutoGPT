@@ -433,7 +433,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
                 onKeyDown={(e) =>
                   isKey(e, "Enter") && !loading && handleManualToken()
                 }
-                className="flex-1 rounded border px-2 py-1 text-sm"
+                className="flex-1 rounded-sm border px-2 py-1 text-sm"
               />
               <Button
                 variant="secondary"

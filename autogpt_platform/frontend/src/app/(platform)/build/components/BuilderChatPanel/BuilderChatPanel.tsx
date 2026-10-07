@@ -51,7 +51,7 @@ export function BuilderChatPanel({ className }: Props) {
   return (
     <div
       className={cn(
-        "pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2",
+        "pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col items-end gap-2",
         className,
       )}
     >
@@ -61,7 +61,7 @@ export function BuilderChatPanel({ className }: Props) {
             ref={panelRef}
             role="complementary"
             aria-label="Builder chat panel"
-            className="pointer-events-auto flex h-[70vh] max-h-[calc(100vh-6rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:h-[75vh]"
+            className="pointer-events-auto flex h-[70vh] max-h-[calc(100vh-6rem)] w-104 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:h-[75vh]"
           >
             <PanelHeader
               onClose={handleToggle}
@@ -105,7 +105,7 @@ export function BuilderChatPanel({ className }: Props) {
                       queuedMessages={queuedMessages}
                     />
                   </div>
-                  <div className="relative shrink-0 border-t border-slate-100 bg-white px-3 pb-2 pt-2">
+                  <div className="relative shrink-0 border-t border-slate-100 bg-white px-3 pt-2 pb-2">
                     <ChatInput
                       inputId="builder-chat-input"
                       onSend={onSend}
@@ -136,7 +136,7 @@ export function BuilderChatPanel({ className }: Props) {
         aria-label={isOpen ? "Close chat" : "Chat with builder"}
         className={cn(
           "pointer-events-auto flex h-12 w-12 min-w-0 items-center justify-center rounded-full p-0 shadow-lg transition-colors",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2",
+          "focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:outline-hidden",
           isOpen
             ? "border-transparent bg-slate-800 text-white hover:border-transparent hover:bg-slate-700"
             : "border border-slate-200 bg-white text-slate-700 hover:border-slate-200 hover:bg-slate-50",

@@ -13,8 +13,8 @@ interface Props {
 
 export function FeatureListItem({ item }: Props) {
   return (
-    <li className="flex items-start gap-4 rounded-xl border border-white/5 bg-white/[0.03] p-4 backdrop-blur-sm">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500/30 to-purple-500/30 text-white ring-1 ring-white/10">
+    <li className="flex items-start gap-4 rounded-xl border border-white/5 bg-white/3 p-4 backdrop-blur-xs">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-purple-500/30 to-purple-500/30 text-white ring-1 ring-white/10">
         {item.icon}
       </span>
       <div className="flex flex-col gap-0.5">

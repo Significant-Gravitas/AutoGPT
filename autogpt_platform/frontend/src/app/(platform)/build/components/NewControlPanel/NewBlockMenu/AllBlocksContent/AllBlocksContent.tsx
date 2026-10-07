@@ -61,7 +61,7 @@ export const AllBlocksContent = () => {
               <Text variant="body-medium" className="text-zinc-800">
                 {category.name && beautifyString(category.name)}
               </Text>
-              <span className="rounded-full bg-zinc-100 px-1.5 font-sans text-sm leading-[1.375rem] text-zinc-600">
+              <span className="rounded-full bg-zinc-100 px-1.5 font-sans text-sm leading-5.5 text-zinc-600">
                 {category.total_blocks}
               </span>
             </div>
@@ -98,7 +98,7 @@ export const AllBlocksContent = () => {
               {category.total_blocks > category.blocks.length && (
                 <Button
                   variant="link"
-                  className="h-9 min-w-0 px-0 py-2 font-sans text-sm font-normal leading-[1.375rem] text-zinc-600 underline underline-offset-4 hover:text-zinc-800"
+                  className="h-9 min-w-0 px-0 py-2 font-sans text-sm leading-5.5 font-normal text-zinc-600 underline underline-offset-4 hover:text-zinc-800"
                   disabled={isLoadingMore(category.name)}
                   onClick={() => handleRefetchBlocks(category.name)}
                 >

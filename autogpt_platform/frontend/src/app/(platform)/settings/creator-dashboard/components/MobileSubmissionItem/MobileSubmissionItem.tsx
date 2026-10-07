@@ -94,7 +94,7 @@ export function MobileSubmissionItem({
       className="flex flex-col gap-3 border-b border-zinc-100 px-3 py-3 last:border-b-0"
     >
       <div className="flex items-start gap-3">
-        <div className="relative aspect-video w-16 shrink-0 select-none overflow-hidden rounded-lg bg-zinc-100">
+        <div className="relative aspect-video w-16 shrink-0 overflow-hidden rounded-lg bg-zinc-100 select-none">
           {thumbnail ? (
             <Image
               src={thumbnail}
@@ -150,7 +150,7 @@ export function MobileSubmissionItem({
             <Text
               variant="small"
               as="span"
-              className="mt-0.5 line-clamp-2 break-words text-zinc-500"
+              className="mt-0.5 line-clamp-2 wrap-break-word text-zinc-500"
             >
               {submission.description}
             </Text>
@@ -222,18 +222,18 @@ export function MobileSubmissionItem({
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <span
-          className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${visual.pillClass}`}
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${visual.pillClass}`}
         >
           <UIIcon icon={visual.Icon} size={10} />
           {visual.label}
         </span>
-        <span className="whitespace-nowrap text-xs text-zinc-500">
+        <span className="text-xs whitespace-nowrap text-zinc-500">
           {formatSubmittedAt(submission.submitted_at)}
         </span>
         <span aria-hidden className="text-xs text-zinc-300">
           ·
         </span>
-        <span className="whitespace-nowrap text-xs tabular-nums text-zinc-500">
+        <span className="text-xs whitespace-nowrap text-zinc-500 tabular-nums">
           {formatRuns(submission.run_count ?? 0)} runs
         </span>
         {hasRating ? (
@@ -241,7 +241,7 @@ export function MobileSubmissionItem({
             <span aria-hidden className="text-xs text-zinc-300">
               ·
             </span>
-            <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-zinc-500">
+            <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap text-zinc-500 tabular-nums">
               {submission.review_avg_rating!.toFixed(1)}
               <UIIcon icon={StarIcon} size={10} className="text-yellow-500" />
             </span>

@@ -50,7 +50,7 @@ export function HeldReviewDialog({ carousel, held }: Props) {
         isOpen: carousel.open,
         set: (isOpen) => (isOpen ? undefined : carousel.close()),
       }}
-      className="h-[90vh] p-0 lg:h-[min(720px,85vh)] lg:w-[960px] lg:min-w-0 lg:max-w-[95vw]"
+      className="h-[90vh] p-0 lg:h-[min(720px,85vh)] lg:w-[960px] lg:max-w-[95vw] lg:min-w-0"
     >
       <Dialog.Content>
         <div
@@ -64,7 +64,7 @@ export function HeldReviewDialog({ carousel, held }: Props) {
             aria-label="Held call"
             className="flex min-w-0 flex-1 flex-col"
           >
-            <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-zinc-100 py-3 pl-4 pr-16">
+            <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-zinc-100 py-3 pr-16 pl-4">
               <Button
                 variant="secondary"
                 size="icon-sm"
@@ -171,7 +171,7 @@ export function HeldReviewDialog({ carousel, held }: Props) {
                   aside={
                     <Link
                       href={current.item.primary_action.href}
-                      className="rounded-sm text-sm font-medium text-zinc-800 underline underline-offset-4 hover:text-zinc-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+                      className="rounded-sm text-sm font-medium text-zinc-800 underline underline-offset-4 hover:text-zinc-950 focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:outline-hidden"
                     >
                       Open chat
                     </Link>
@@ -181,7 +181,7 @@ export function HeldReviewDialog({ carousel, held }: Props) {
             ) : null}
           </section>
           {carousel.sheetOpen ? (
-            <div className="absolute inset-x-0 bottom-0 top-16 z-10 flex rounded-t-2xl border-t border-zinc-200 bg-white shadow-lg lg:hidden">
+            <div className="absolute inset-x-0 top-16 bottom-0 z-10 flex rounded-t-2xl border-t border-zinc-200 bg-white shadow-lg lg:hidden">
               <ReviewSidebar carousel={carousel} sheet />
             </div>
           ) : null}

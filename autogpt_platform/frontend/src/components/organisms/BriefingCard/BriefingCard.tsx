@@ -54,13 +54,13 @@ export function BriefingCard({ briefing, className }: Props) {
             pixel still clears WCAG AA (4.5:1) against the white card. */}
         <Text
           variant="body"
-          className="bg-gradient-to-r from-purple-800 to-purple-600 bg-clip-text text-transparent"
+          className="bg-linear-to-r from-purple-800 to-purple-600 bg-clip-text text-transparent"
         >
           {formatBriefingDate(briefing.briefing_date)}
         </Text>
       </div>
 
-      <div className="overflow-hidden rounded-3xl bg-white shadow-zinc-950 smooth-shadow-ring-sm">
+      <div className="overflow-hidden rounded-3xl bg-white smooth-shadow-ring-sm shadow-zinc-950">
         <motion.div
           // Real height, not a layout transform: the page below has to reflow
           // with the card, and a transform would scale the rows' text.
@@ -74,7 +74,7 @@ export function BriefingCard({ briefing, className }: Props) {
             className={cn(
               "h-full divide-y divide-zinc-100",
               isShowingAll
-                ? "overflow-y-auto scrollbar-none"
+                ? "scrollbar-none overflow-y-auto"
                 : "overflow-hidden",
             )}
           >
@@ -148,8 +148,8 @@ function ScrollArrow({
       className={cn(
         "pointer-events-none absolute inset-x-0 flex h-12 items-center justify-center",
         isUp
-          ? "top-0 bg-gradient-to-b from-white via-white/85 to-transparent"
-          : "bottom-0 bg-gradient-to-t from-white via-white/85 to-transparent",
+          ? "top-0 bg-linear-to-b from-white via-white/85 to-transparent"
+          : "bottom-0 bg-linear-to-t from-white via-white/85 to-transparent",
       )}
     >
       <button
@@ -159,7 +159,7 @@ function ScrollArrow({
         aria-hidden={!isVisible}
         aria-label={isUp ? "Scroll up" : "Scroll down"}
         className={cn(
-          "flex size-8 items-center justify-center rounded-full bg-white text-zinc-500 shadow-zinc-950 transition-colors smooth-shadow-ring-sm hover:text-zinc-900",
+          "flex size-8 items-center justify-center rounded-full bg-white text-zinc-500 smooth-shadow-ring-sm shadow-zinc-950 transition-colors hover:text-zinc-900",
           isVisible && "pointer-events-auto",
         )}
       >

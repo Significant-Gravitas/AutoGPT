@@ -79,7 +79,7 @@ export function AboutStep({
           variant="primary"
           size="small"
           disabled={!trimmed}
-          className="h-[2.625rem] rounded-xl py-3"
+          className="h-10.5 rounded-xl py-3"
         >
           That&apos;s it
         </Button>
@@ -88,7 +88,7 @@ export function AboutStep({
           variant="ghost"
           size="small"
           onClick={onSkip}
-          className="h-[2.625rem] rounded-xl py-3"
+          className="h-10.5 rounded-xl py-3"
         >
           Skip
         </Button>

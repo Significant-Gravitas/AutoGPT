@@ -93,7 +93,7 @@ export function TrialCardContent({
   return (
     <section
       aria-label="AutoGPT trial"
-      className="w-full rounded-2xl bg-gradient-to-br from-zinc-300 via-zinc-400 to-zinc-500 p-px"
+      className="w-full rounded-2xl bg-linear-to-br from-zinc-300 via-zinc-400 to-zinc-500 p-px"
     >
       <div className="relative overflow-hidden rounded-[15px] bg-white p-5 md:p-6">
         <div

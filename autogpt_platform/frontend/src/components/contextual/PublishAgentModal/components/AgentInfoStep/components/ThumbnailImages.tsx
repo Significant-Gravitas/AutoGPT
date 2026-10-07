@@ -80,7 +80,7 @@ export function ThumbnailImages({
               aria-disabled={isUploading}
               data-testid="thumbnail-add-image-empty"
               className={cn(
-                "inline-flex h-9 min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950",
+                "inline-flex h-9 min-w-22 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm leading-snug font-medium whitespace-nowrap text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:ring-1 focus-visible:ring-zinc-950 focus-visible:outline-hidden",
                 isUploading && "pointer-events-none opacity-60",
               )}
             >
@@ -120,7 +120,7 @@ export function ThumbnailImages({
                     type="button"
                     onClick={() => handleImageSelect(src)}
                     className={cn(
-                      "relative aspect-video h-28 w-44 overflow-hidden rounded-[10px] border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2",
+                      "relative aspect-video h-28 w-44 overflow-hidden rounded-[10px] border-2 transition-colors focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 focus-visible:outline-hidden",
                       selectedImage === src
                         ? "border-zinc-900"
                         : "border-transparent hover:border-zinc-300",
@@ -143,7 +143,7 @@ export function ThumbnailImages({
                       e.stopPropagation();
                       handleRemoveImage(index);
                     }}
-                    className="absolute right-1.5 top-1.5 z-30 inline-flex size-7 cursor-pointer items-center justify-center rounded-full bg-zinc-900/85 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-zinc-900"
+                    className="absolute top-1.5 right-1.5 z-30 inline-flex size-7 cursor-pointer items-center justify-center rounded-full bg-zinc-900/85 text-white shadow-xs backdrop-blur-xs transition-colors hover:bg-zinc-900"
                     aria-label={`Remove image ${index + 1}`}
                     data-testid={`thumbnail-remove-${index}`}
                   >

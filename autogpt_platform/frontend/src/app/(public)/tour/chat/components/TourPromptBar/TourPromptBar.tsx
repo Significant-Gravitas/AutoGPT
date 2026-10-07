@@ -52,7 +52,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
       onKeyDown={handleKeyDown}
       onClick={send}
       className={cn(
-        "flex cursor-pointer items-center gap-3 rounded-xl border border-zinc-200 bg-white px-5 py-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] outline-none transition-shadow focus-visible:border-zinc-300 focus-visible:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_44px_-2px_rgba(99,102,241,0.55)]",
+        "flex cursor-pointer items-center gap-3 rounded-xl border border-zinc-200 bg-white px-5 py-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] outline-hidden transition-shadow focus-visible:border-zinc-300 focus-visible:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_44px_-2px_rgba(99,102,241,0.55)]",
         isDisabled && "cursor-default opacity-60",
       )}
     >
@@ -65,7 +65,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
       {!isDisabled && isTyped && (
         <span className="hidden shrink-0 items-center gap-1 text-xs text-zinc-400 sm:flex">
           Press
-          <kbd className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-sans text-[0.7rem] text-zinc-500">
+          <kbd className="rounded-sm border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-sans text-[0.7rem] text-zinc-500">
             Enter
           </kbd>
         </span>

@@ -40,9 +40,9 @@ export function PanelModeSwitch({ mode, hasArtifact, onChange }: Props) {
             disabled={disabled}
             onClick={() => onChange(option.value)}
             className={cn(
-              "flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors",
+              "flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium transition-colors",
               active
-                ? "bg-white text-zinc-900 shadow-sm"
+                ? "bg-white text-zinc-900 shadow-xs"
                 : "text-zinc-500 hover:text-zinc-800",
               disabled && "cursor-not-allowed opacity-40 hover:text-zinc-500",
             )}

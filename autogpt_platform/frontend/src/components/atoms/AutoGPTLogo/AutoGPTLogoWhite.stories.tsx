@@ -19,7 +19,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "The all-white AutoGPT logo for dark surfaces. `hideText` crops the viewBox to the mark only, and `className` replaces the default `h-[3.375rem] w-auto` sizing.",
+          "The all-white AutoGPT logo for dark surfaces. `hideText` crops the viewBox to the mark only, and `className` replaces the default `h-13.5 w-auto` sizing.",
       },
     },
   },

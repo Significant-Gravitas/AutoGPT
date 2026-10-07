@@ -142,7 +142,7 @@ export function LlmModelPicker({
           disabled={disabled}
           className={cn(
             "flex w-full min-w-60 items-center rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left",
-            "hover:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-200",
+            "hover:border-zinc-300 focus:ring-2 focus:ring-zinc-200 focus:outline-hidden",
             disabled && "cursor-not-allowed opacity-60",
           )}
         >
@@ -156,7 +156,7 @@ export function LlmModelPicker({
       <PopoverContent
         align="start"
         sideOffset={4}
-        className="max-h-[45vh] w-[--radix-popover-trigger-width] min-w-64 overflow-y-auto rounded-md border border-zinc-200 bg-white p-0 shadow-[0px_1px_4px_rgba(12,12,13,0.12)]"
+        className="max-h-[45vh] w-(--radix-popover-trigger-width) min-w-64 overflow-y-auto rounded-md border border-zinc-200 bg-white p-0 shadow-[0px_1px_4px_rgba(12,12,13,0.12)]"
       >
         {view === "creator" && (
           <div className="flex flex-col">

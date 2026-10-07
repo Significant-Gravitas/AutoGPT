@@ -133,7 +133,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
                 token.trim() &&
                 submitCredential()
               }
-              className="flex-1 rounded-2xl bg-zinc-50 px-3 py-2 text-sm text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-300"
+              className="flex-1 rounded-2xl bg-zinc-50 px-3 py-2 text-sm text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:ring-zinc-300 focus:outline-hidden"
             />
             <Button
               variant="secondary"

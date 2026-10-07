@@ -82,13 +82,13 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
           as="p"
           tone="muted"
           unmask={false}
-          className="max-w-md break-words"
+          className="max-w-md wrap-break-word"
         >
           Something in{" "}
           <span className="font-mono">{this.props.artifactTitle}</span> threw an
           error while rendering. The chat and sidebar are still working.
         </Text>
-        <pre className="max-h-32 max-w-md overflow-auto whitespace-pre-wrap break-words rounded-md bg-zinc-100 px-3 py-2 text-left text-xs text-zinc-700">
+        <pre className="max-h-32 max-w-md overflow-auto rounded-md bg-zinc-100 px-3 py-2 text-left text-xs wrap-break-word whitespace-pre-wrap text-zinc-700">
           {message}
         </pre>
         <Button

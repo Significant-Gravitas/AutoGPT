@@ -25,7 +25,7 @@ export function KitSearchResults({
 
   if (picker.hits.length === 0) {
     return (
-      <div className="flex w-full max-w-2xl flex-col items-center gap-2 rounded-2xl border border-dashed border-border px-6 py-8 text-center duration-300 animate-in fade-in motion-reduce:animate-none">
+      <div className="flex w-full max-w-2xl animate-in flex-col items-center gap-2 rounded-2xl border border-dashed border-border px-6 py-8 text-center duration-300 fade-in motion-reduce:animate-none">
         <Icon
           icon={Search01Icon}
           size={20}
@@ -43,7 +43,7 @@ export function KitSearchResults({
     <div
       role="list"
       aria-label="Search results"
-      className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-background shadow-sm"
+      className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-background shadow-xs"
     >
       {picker.hits.map((hit, index) => (
         <KitResultRow

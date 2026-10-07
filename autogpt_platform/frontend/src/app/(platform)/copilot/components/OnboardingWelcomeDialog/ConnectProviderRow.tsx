@@ -36,14 +36,14 @@ export function ConnectProviderRow({
       type="button"
       onClick={() => onSelect(provider.id)}
       className={cn(
-        "group flex h-14 w-full items-center gap-2.5 rounded-md border border-zinc-200 bg-white px-3 text-left transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 active:bg-zinc-100",
+        "group flex h-14 w-full items-center gap-2.5 rounded-md border border-zinc-200 bg-white px-3 text-left transition-colors hover:bg-zinc-50 focus-visible:ring-1 focus-visible:ring-zinc-900 focus-visible:outline-hidden active:bg-zinc-100",
         className,
       )}
     >
       {broken ? (
         <div
           aria-hidden
-          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-xs font-semibold uppercase text-zinc-600"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-xs font-semibold text-zinc-600 uppercase"
         >
           {provider.name?.charAt(0) ?? provider.id.charAt(0)}
         </div>
@@ -60,7 +60,7 @@ export function ConnectProviderRow({
       )}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-sm font-medium leading-[22px] text-zinc-800">
+          <span className="truncate text-sm leading-[22px] font-medium text-zinc-800">
             {provider.name}
           </span>
           {/* Connected mark beside the title — the + stays because a

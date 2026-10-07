@@ -65,8 +65,8 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
     id: "enter-values",
     title: "Enter Values",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Now let's configure the block with actual values.</p>
+      <div class="text-sm leading-5.5 text-zinc-800">
+        <p class="text-sm font-normal leading-5.5 text-zinc-800 m-0">Now let's configure the block with actual values.</p>
         ${getRequirementsHtml()}
         ${banner(ICONS.ClickIcon, "Fill in all the required fields above", "action")}
       </div>

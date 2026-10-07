@@ -15,13 +15,13 @@ export function LibrarySearchBar({ setSearchTerm }: Props) {
   return (
     <div
       data-testid="search-bar"
-      className="relative z-[21] -mb-6 flex w-full items-center md:w-auto"
+      className="relative z-21 -mb-6 flex w-full items-center md:w-auto"
     >
       <Icon
         icon={Search01Icon}
         width={18}
         height={18}
-        className="absolute left-4 top-[34%] z-20 -translate-y-1/2 text-zinc-800"
+        className="absolute top-[34%] left-4 z-20 -translate-y-1/2 text-zinc-800"
       />
 
       <Input
@@ -29,7 +29,7 @@ export function LibrarySearchBar({ setSearchTerm }: Props) {
         id="library-search-bar"
         hideLabel
         onChange={handleSearchInput}
-        className="min-w-72 pl-12 lg:min-w-[30rem]"
+        className="min-w-72 pl-12 lg:min-w-120"
         type="text"
         data-testid="library-textbox"
         placeholder="Search agents"

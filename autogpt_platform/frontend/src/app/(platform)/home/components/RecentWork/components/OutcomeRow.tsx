@@ -17,7 +17,7 @@ interface Props {
 
 const ROW_CLASS = "flex items-center gap-2 py-2";
 const LINK_CLASS =
-  "-mx-1 rounded px-1 outline-none transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50";
+  "-mx-1 rounded px-1 outline-hidden transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50";
 
 /** One line per run: what it did, then how and when it ran. The AI summary
  *  only shows on hover; the row itself opens the run. */

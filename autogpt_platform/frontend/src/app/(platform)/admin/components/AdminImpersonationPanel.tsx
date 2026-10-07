@@ -90,7 +90,7 @@ export function AdminImpersonationPanel() {
           <Alert variant="warning">
             <AlertDescription>
               <strong>Currently impersonating:</strong>{" "}
-              <code className="rounded bg-yellow-100 px-1 font-mono text-sm">
+              <code className="rounded-sm bg-yellow-100 px-1 font-mono text-sm">
                 {impersonatedUserId}
               </code>
             </AlertDescription>

@@ -46,7 +46,7 @@ export const SuggestionContent = () => {
             </Text>
             <HorizontalScroll
               wrapperClassName="-mx-8"
-              scrollContainerClassName="flex gap-2 overflow-x-auto px-8 [scrollbar-width:none] [-ms-overflow-style:'none'] [&::-webkit-scrollbar]:hidden"
+              scrollContainerClassName="flex gap-2 overflow-x-auto px-8 scrollbar-none [-ms-overflow-style:'none'] [&::-webkit-scrollbar]:hidden"
               dependencyList={[
                 suggestions?.recent_searches?.length ?? 0,
                 isLoading,

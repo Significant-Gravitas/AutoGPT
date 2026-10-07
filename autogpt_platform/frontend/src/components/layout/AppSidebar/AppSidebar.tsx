@@ -73,7 +73,7 @@ function NavLinkLoader() {
   return (
     <LoadingSpinner
       size="small"
-      className="ml-auto !size-4 shrink-0 text-sidebar-foreground/90 group-data-[collapsible=icon]:!size-4.5"
+      className="ml-auto size-4! shrink-0 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5!"
     />
   );
 }
@@ -85,7 +85,7 @@ function HomeIcon() {
     return (
       <LoadingSpinner
         size="small"
-        className="!size-4 shrink-0 text-sidebar-foreground/90 group-data-[collapsible=icon]:!size-4.5"
+        className="size-4! shrink-0 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5!"
       />
     );
   }
@@ -102,10 +102,10 @@ function HomeIcon() {
 function useNavItemClassName() {
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   return cn(
-    "h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-4 group-data-[collapsible=icon]:[&>svg]:size-4.5",
+    "h-auto rounded-xl p-2 pl-3 font-normal group-data-[collapsible=icon]:p-1.5! hover:bg-zinc-100! data-[active=true]:font-normal [&>svg]:size-4 [&>svg]:group-data-[collapsible=icon]:size-4.5",
     isBrainDumpEnabled
-      ? "data-[active=true]:!bg-zinc-200 data-[active=true]:hover:!bg-zinc-200"
-      : "data-[active=true]:!bg-zinc-100",
+      ? "data-[active=true]:bg-zinc-200! data-[active=true]:hover:bg-zinc-200!"
+      : "data-[active=true]:bg-zinc-100!",
   );
 }
 
@@ -205,7 +205,7 @@ function CollapsibleNavGroup({
             {label}
             <Icon
               icon={ArrowDown01Icon}
-              className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
+              className="ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
             />
           </CollapsibleTrigger>
         </SidebarGroupLabel>
@@ -218,7 +218,7 @@ function CollapsibleNavGroup({
           <SidebarGroupContent
             className={
               scrollable
-                ? "min-h-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                ? "scrollbar-none min-h-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                 : undefined
             }
           >
@@ -267,7 +267,7 @@ export function AppSidebar(props: Props) {
     <Sidebar
       collapsible="icon"
       {...props}
-      className="[&_[data-sidebar=sidebar]]:bg-background"
+      className="**:data-[sidebar=sidebar]:bg-background"
     >
       <AppSidebarHeader />
 

@@ -34,7 +34,7 @@ export function ArtifactsTab({ sessionId }: Props) {
 
   if (isLoading) {
     return (
-      <div className="mx-auto flex w-full max-w-[17rem] flex-col gap-2 p-3">
+      <div className="mx-auto flex w-full max-w-68 flex-col gap-2 p-3">
         <Skeleton className="h-12 w-full rounded-2xl" />
         <Skeleton className="h-12 w-full rounded-2xl" />
         <Skeleton className="h-12 w-full rounded-2xl" />
@@ -61,7 +61,7 @@ export function ArtifactsTab({ sessionId }: Props) {
           variant="body"
           as="p"
           tone="muted"
-          className="max-w-[17rem] text-center"
+          className="max-w-68 text-center"
         >
           {files.length === 0
             ? "Nothing to preview yet."
@@ -77,7 +77,7 @@ export function ArtifactsTab({ sessionId }: Props) {
         </Button>
       </div>
       {files.length > 0 && (
-        <div className="flex w-full max-w-[17rem] flex-col gap-2">
+        <div className="flex w-full max-w-68 flex-col gap-2">
           {files.map((file) => (
             <ArtifactMiniCard
               key={file.item.id}

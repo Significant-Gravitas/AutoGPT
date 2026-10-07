@@ -10,7 +10,7 @@ export function DreamEntityInvalidationRow({ item }: Props) {
   const touched = item.edges_touched ?? [];
   return (
     <li className="border-l-2 border-red-200 py-1.5 pl-3">
-      <Text variant="small-medium" className="break-words">
+      <Text variant="small-medium" className="wrap-break-word">
         {item.reason}
       </Text>
       <div className="mt-1 flex flex-wrap items-center gap-2 text-zinc-500">
@@ -26,7 +26,7 @@ export function DreamEntityInvalidationRow({ item }: Props) {
           {touched.slice(0, 6).map((u) => (
             <code
               key={u}
-              className="rounded bg-zinc-50 px-1.5 py-0.5 font-mono text-[10px] text-zinc-600"
+              className="rounded-sm bg-zinc-50 px-1.5 py-0.5 font-mono text-[10px] text-zinc-600"
             >
               {shortenUuid(u)}
             </code>

@@ -61,7 +61,7 @@ export const InfiniteScroll: React.FC<InfiniteScrollProps> = ({
       {hasNextPage ? (
         <div
           ref={endOfListRef}
-          className={`flex items-center justify-center ${direction === "vertical" ? "w-full py-8" : "h-full flex-shrink-0 px-8"}`}
+          className={`flex items-center justify-center ${direction === "vertical" ? "w-full py-8" : "h-full shrink-0 px-8"}`}
         >
           {loader || defaultLoader}
         </div>

@@ -185,7 +185,7 @@ function RecordingControlButton({
         isInactive && "opacity-40",
       )}
     >
-      <span className="grid size-[22px] place-items-center [&>*]:[grid-area:1/1]">
+      <span className="grid size-[22px] place-items-center *:[grid-area:1/1]">
         <SwapFade
           swapKey={isLoading ? "loading" : "idle"}
           mode="sync"

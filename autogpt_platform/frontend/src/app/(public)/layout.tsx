@@ -5,5 +5,5 @@ interface Props {
 }
 
 export default function PublicLayout({ children }: Props) {
-  return <main className="flex h-[100dvh] w-full flex-col">{children}</main>;
+  return <main className="flex h-dvh w-full flex-col">{children}</main>;
 }

@@ -31,7 +31,7 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
             to view its chat or agent, or cancel one you no longer need.
           </Text>
         </div>
-        <div className="flex flex-shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Button
             variant="primary"
             size="small"

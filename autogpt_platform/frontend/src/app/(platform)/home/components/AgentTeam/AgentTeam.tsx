@@ -51,7 +51,7 @@ export function AgentTeam({ dashboard, className }: Props) {
       {team.total > 0 ? (
         <Link
           href="/team"
-          className="group flex items-center justify-between border-t border-zinc-100 px-4 py-2 outline-none transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50"
+          className="group flex items-center justify-between border-t border-zinc-100 px-4 py-2 outline-hidden transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50"
         >
           <Text
             variant="small-medium"

@@ -35,7 +35,7 @@ export function KitSearchField({
         icon={Search01Icon}
         size={16}
         aria-hidden
-        className="pointer-events-none absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-muted-foreground"
+        className="pointer-events-none absolute top-1/2 left-3.5 z-10 -translate-y-1/2 text-muted-foreground"
       />
       <Input
         id={`raise-${scope}-search`}
@@ -45,8 +45,8 @@ export function KitSearchField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="pl-10 pr-11"
-        wrapperClassName="mb-0 w-full [&_input]:h-[2.625rem] [&_input]:py-3"
+        className="pr-11 pl-10"
+        wrapperClassName="mb-0 w-full [&_input]:h-10.5 [&_input]:py-3"
       />
       {/* The spinner replaces the clear button rather than sitting beside it:
           while a query is in flight there is nothing settled to clear yet. */}
@@ -55,7 +55,7 @@ export function KitSearchField({
           icon={Loading03Icon}
           size={16}
           aria-hidden
-          className="absolute right-3.5 top-1/2 z-10 -translate-y-1/2 animate-spin text-muted-foreground motion-reduce:animate-none"
+          className="absolute top-1/2 right-3.5 z-10 -translate-y-1/2 animate-spin text-muted-foreground motion-reduce:animate-none"
         />
       ) : value ? (
         <Button
@@ -65,7 +65,7 @@ export function KitSearchField({
           withTooltip={false}
           onClick={() => onChange("")}
           aria-label="Clear search"
-          className="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-full border-0 text-muted-foreground duration-200 hover:bg-zinc-100 hover:text-foreground"
+          className="absolute top-1/2 right-2.5 z-10 -translate-y-1/2 rounded-full border-0 text-muted-foreground duration-200 hover:bg-zinc-100 hover:text-foreground"
         >
           <Icon icon={Cancel01Icon} size={14} aria-hidden />
         </Button>

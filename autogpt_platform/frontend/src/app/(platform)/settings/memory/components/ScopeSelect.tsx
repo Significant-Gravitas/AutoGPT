@@ -45,7 +45,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           aria-label="Memory scope"
           className={cn(
             "flex w-full items-center gap-2.5 rounded-[10px] border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-black",
-            "transition-colors hover:border-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
+            "transition-colors hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-hidden",
             "data-[state=open]:border-purple-500",
           )}
         >
@@ -89,7 +89,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
         {experts.length > 0 && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="px-2.5 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-400">
+            <DropdownMenuLabel className="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold tracking-[0.12em] text-zinc-400 uppercase">
               Your experts
             </DropdownMenuLabel>
             {experts.map((expert) => (

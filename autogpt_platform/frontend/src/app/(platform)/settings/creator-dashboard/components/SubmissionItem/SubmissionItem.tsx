@@ -93,11 +93,11 @@ export function SubmissionItem({
               delay: Math.min(rowIndex, ROW_STAGGER_CAP) * ROW_STAGGER,
             }
       }
-      className="ease-[cubic-bezier(0.16,1,0.3,1)] border-b border-zinc-100 transition-colors duration-150 last:border-b-0 hover:bg-zinc-50/60"
+      className="border-b border-zinc-100 transition-colors duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] last:border-b-0 hover:bg-zinc-50/60"
     >
       <td className="px-4 py-3 align-middle">
         <div className="flex items-center gap-3">
-          <div className="relative aspect-video w-20 shrink-0 select-none overflow-hidden rounded-lg bg-zinc-100">
+          <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-lg bg-zinc-100 select-none">
             {thumbnail ? (
               <Image
                 src={thumbnail}
@@ -165,18 +165,18 @@ export function SubmissionItem({
 
       <td className="px-4 py-3 align-middle">
         <span
-          className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${visual.pillClass}`}
+          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${visual.pillClass}`}
         >
           <UIIcon icon={visual.Icon} size={12} />
           {visual.label}
         </span>
       </td>
 
-      <td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-zinc-700">
+      <td className="px-4 py-3 align-middle text-sm whitespace-nowrap text-zinc-700">
         {formatSubmittedAt(submission.submitted_at)}
       </td>
 
-      <td className="whitespace-nowrap px-4 py-3 text-right align-middle text-sm tabular-nums text-zinc-700">
+      <td className="px-4 py-3 text-right align-middle text-sm whitespace-nowrap text-zinc-700 tabular-nums">
         {formatRuns(submission.run_count ?? 0)}
       </td>
 
@@ -187,7 +187,7 @@ export function SubmissionItem({
               type="button"
               aria-label="Submission actions"
               data-testid="submission-actions"
-              className="ease-[cubic-bezier(0.16,1,0.3,1)] inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-[background-color,color,transform] duration-150 hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
             >
               <UIIcon icon={MoreVerticalIcon} size={18} />
             </button>
@@ -195,7 +195,7 @@ export function SubmissionItem({
           <DropdownMenuContent
             align="end"
             sideOffset={6}
-            className="data-[state=open]:ease-[cubic-bezier(0.16,1,0.3,1)] data-[state=closed]:ease-[cubic-bezier(0.4,0,1,1)] min-w-[160px] origin-[var(--radix-dropdown-menu-content-transform-origin)] data-[state=closed]:duration-150 data-[state=open]:duration-200 motion-reduce:!duration-100"
+            className="min-w-[160px] origin-(--radix-dropdown-menu-content-transform-origin) data-[state=closed]:duration-150 data-[state=closed]:ease-in data-[state=open]:duration-200 data-[state=open]:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:duration-100!"
           >
             {canModify ? (
               <DropdownMenuItem

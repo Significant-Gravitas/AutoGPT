@@ -32,7 +32,7 @@ export function buildVoicePreferences(
 import { cn } from "@/lib/utils";
 
 const SELECTABLE_CARD_CLASS_NAME =
-  "border border-border bg-background transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring";
+  "border border-border bg-background transition-colors has-focus-visible:ring-2 has-focus-visible:ring-ring";
 const CARD_DENSITY = {
   regular: "rounded-2xl p-5",
   compact: "rounded-lg p-3",

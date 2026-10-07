@@ -84,7 +84,7 @@ export function SidebarRunsList({
     return (
       <div
         className={cn(
-          "ml-6 mt-8 w-[20vw] space-y-4",
+          "mt-8 ml-6 w-[20vw] space-y-4",
           AGENT_LIBRARY_SECTION_PADDING_X,
         )}
       >
@@ -122,7 +122,7 @@ export function SidebarRunsList({
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
       <div className="relative overflow-hidden">
-        <div className="pointer-events-none absolute right-0 top-0 z-10 h-[46px] w-12 bg-gradient-to-l from-zinc-50 to-transparent" />
+        <div className="pointer-events-none absolute top-0 right-0 z-10 h-[46px] w-12 bg-gradient-to-l from-zinc-50 to-transparent" />
         <div className="scrollbar-hide overflow-x-auto">
           <TabsLineList
             className={cn(AGENT_LIBRARY_SECTION_PADDING_X, "min-w-max")}
@@ -161,7 +161,7 @@ export function SidebarRunsList({
             hasMore={!!hasMoreRuns}
             isFetchingMore={isFetchingMoreRuns}
             onEndReached={fetchMoreRuns}
-            className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden"
+            className="scrollbar-thin flex min-h-0 flex-1 scrollbar-thumb-zinc-300 scrollbar-track-transparent flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pt-1 pb-4 lg:flex-col lg:gap-3 lg:overflow-x-hidden lg:overflow-y-auto"
             itemWrapperClassName="w-auto lg:w-full"
             renderItem={(run) => (
               <div className="w-[15rem] lg:w-full">
@@ -183,7 +183,7 @@ export function SidebarRunsList({
             AGENT_LIBRARY_SECTION_PADDING_X,
           )}
         >
-          <div className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
+          <div className="scrollbar-thin flex min-h-0 flex-1 scrollbar-thumb-zinc-300 scrollbar-track-transparent flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pt-1 pb-4 lg:flex-col lg:gap-3 lg:overflow-x-hidden lg:overflow-y-auto">
             {schedules.length > 0 ? (
               schedules.map((s: GraphExecutionJobInfo) => (
                 <div className="w-[15rem] lg:w-full" key={s.id}>
@@ -214,7 +214,7 @@ export function SidebarRunsList({
               AGENT_LIBRARY_SECTION_PADDING_X,
             )}
           >
-            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
+            <div className="scrollbar-thin flex min-h-0 flex-1 scrollbar-thumb-zinc-300 scrollbar-track-transparent flex-col gap-4 overflow-x-scroll px-1 pt-1 pb-4 lg:gap-3 lg:overflow-x-hidden lg:overflow-y-auto">
               {triggers.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <Text variant="body-medium" tone="muted" className="px-1">
@@ -290,7 +290,7 @@ export function SidebarRunsList({
             AGENT_LIBRARY_SECTION_PADDING_X,
           )}
         >
-          <div className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
+          <div className="scrollbar-thin flex min-h-0 flex-1 scrollbar-thumb-zinc-300 scrollbar-track-transparent flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pt-1 pb-4 lg:flex-col lg:gap-3 lg:overflow-x-hidden lg:overflow-y-auto">
             {templates.length > 0 ? (
               templates.map((template) => (
                 <div className="w-[15rem] lg:w-full" key={template.id}>

@@ -114,7 +114,7 @@ export function FindAgentsTool({ part }: Props) {
                         <ContentBadge>{agentSource}</ContentBadge>
                       )}
                     </div>
-                    <ContentCardDescription className="mt-1 line-clamp-2 break-words">
+                    <ContentCardDescription className="mt-1 line-clamp-2 wrap-break-word">
                       {agent.description}
                     </ContentCardDescription>
                   </ContentCardHeader>

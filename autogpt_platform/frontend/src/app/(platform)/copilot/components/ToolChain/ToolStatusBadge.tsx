@@ -22,12 +22,12 @@ export function ToolStatusBadge({ state, label, children }: Props) {
         aria-label={label}
         className="relative flex size-[22px] shrink-0 items-center justify-center"
       >
-        {/* -inset-[3px] lands the 1px ring exactly on the size-7 circle edge.
+        {/* inset-[-3px] lands the 1px ring exactly on the size-7 circle edge.
             Appearance is delayed so sub-150ms tools never flash the spinner;
             hiding is immediate. */}
         <m.span
           aria-hidden="true"
-          className="absolute -inset-[3px] rounded-full border border-zinc-200"
+          className="absolute inset-[-3px] rounded-full border border-zinc-200"
           initial={{ opacity: 0 }}
           animate={{ opacity: running ? 1 : 0 }}
           transition={{
@@ -38,7 +38,7 @@ export function ToolStatusBadge({ state, label, children }: Props) {
         <m.span
           aria-hidden="true"
           className={cn(
-            "absolute -inset-[3px] rounded-full border border-transparent border-t-zinc-500",
+            "absolute inset-[-3px] rounded-full border border-transparent border-t-zinc-500",
             running &&
               "animate-[spin_0.9s_linear_infinite] motion-reduce:animate-none",
           )}

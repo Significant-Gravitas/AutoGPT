@@ -26,8 +26,9 @@ function useTabsLine() {
   return context;
 }
 
-interface TabsLineProps
-  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root> {
+interface TabsLineProps extends React.ComponentPropsWithoutRef<
+  typeof TabsPrimitive.Root
+> {
   /**
    * `compact` is the dense neutral style: flush, zinc underline, 14px
    * triggers with tighter padding. `default` keeps the purple accent.
@@ -48,8 +49,9 @@ function TabsLine({ variant = "default", ...props }: TabsLineProps) {
   );
 }
 
-interface TabsLineListProps
-  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> {
+interface TabsLineListProps extends React.ComponentPropsWithoutRef<
+  typeof TabsPrimitive.List
+> {
   /**
    * When `true`, removes the left padding on the first tab trigger so it
    * aligns flush with the list's left edge. Defaults to `false`.
@@ -83,7 +85,7 @@ const TabsLineList = React.forwardRef<
         }}
         className={cn(
           "inline-flex w-full items-center justify-start border-b border-zinc-100",
-          isFlush && "[&>button:first-child]:!pl-0",
+          isFlush && "[&>button:first-child]:pl-0!",
           className,
         )}
         {...props}
@@ -107,8 +109,9 @@ const TabsLineList = React.forwardRef<
 });
 TabsLineList.displayName = "TabsLineList";
 
-interface TabsLineTriggerProps
-  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger> {
+interface TabsLineTriggerProps extends React.ComponentPropsWithoutRef<
+  typeof TabsPrimitive.Trigger
+> {
   /** Hugeicon shown before the label at 14px. */
   icon?: IconSvgElement;
 }
@@ -150,7 +153,7 @@ const TabsLineTrigger = React.forwardRef<
         elementRef.current = node;
       }}
       className={cn(
-        "relative inline-flex items-center justify-center whitespace-nowrap px-3 py-3 font-sans text-[0.875rem] font-medium leading-[1.5rem] text-zinc-700 transition-all data-[state=active]:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        "relative inline-flex items-center justify-center px-3 py-3 font-sans text-[0.875rem] leading-6 font-medium whitespace-nowrap text-zinc-700 transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-purple-600",
         icon && "gap-1.5",
         variant === "compact" &&
           "px-2.5 py-2 text-sm leading-5 text-zinc-600 data-[state=active]:text-zinc-900",
@@ -176,7 +179,7 @@ const TabsLineContent = React.forwardRef<
       // rule behind it is weaker than any author display utility — a panel
       // styled `flex`/`grid` stays laid out and keeps stealing space from the
       // active one. The data-state variant is specific enough to win.
-      "mt-4 data-[state=inactive]:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2",
+      "mt-4 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:outline-hidden data-[state=inactive]:hidden",
       className,
     )}
     {...props}

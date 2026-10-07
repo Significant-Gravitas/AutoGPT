@@ -65,7 +65,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
               <Text
                 variant="small-medium"
                 as="span"
-                className="rounded bg-yellow-50 px-1.5 py-px text-yellow-700 ring-1 ring-inset ring-yellow-600/10"
+                className="rounded-sm bg-yellow-50 px-1.5 py-px text-yellow-700 ring-1 ring-yellow-600/10 ring-inset"
               >
                 Waiting
               </Text>
@@ -74,7 +74,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
           <Text
             variant="body"
             tone="secondary"
-            className="text-pretty break-words"
+            className="text-pretty wrap-break-word"
           >
             {reason?.line ?? item.description}
           </Text>

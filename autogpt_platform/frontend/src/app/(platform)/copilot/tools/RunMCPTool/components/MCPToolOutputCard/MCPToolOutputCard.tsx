@@ -65,7 +65,7 @@ export function MCPToolOutputCard({ output }: Props) {
           <img
             src={`data:${result.mimeType};base64,${result.data}`}
             alt={`Result from ${output.tool_name}`}
-            className="mt-2 max-h-96 max-w-full rounded object-contain"
+            className="mt-2 max-h-96 max-w-full rounded-sm object-contain"
           />
         ) : isJson ? (
           <ContentCodeBlock className="mt-2 max-h-96 overflow-y-auto">
@@ -77,7 +77,7 @@ export function MCPToolOutputCard({ output }: Props) {
             as="p"
             tone="primary"
             unmask={false}
-            className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap break-words"
+            className="mt-2 max-h-96 overflow-y-auto wrap-break-word whitespace-pre-wrap"
           >
             {resultText}
           </Text>

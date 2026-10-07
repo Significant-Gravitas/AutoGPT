@@ -77,7 +77,7 @@ export function ProfileHeader({
         onMouseLeave={() => setIsHovered(false)}
         disabled={isUploading}
         aria-label="Change profile photo"
-        className="group relative size-28 shrink-0 cursor-pointer rounded-full outline-none transition-transform duration-150 ease-out focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-wait"
+        className="group relative size-28 shrink-0 cursor-pointer rounded-full outline-hidden transition-transform duration-150 ease-out focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-wait"
       >
         <Avatar className="size-28 shadow-[0_8px_28px_-12px_rgba(15,15,20,0.18)] ring-2 ring-white">
           <AvatarImage
@@ -86,7 +86,7 @@ export function ProfileHeader({
             width={224}
             height={224}
           />
-          <AvatarFallback className="bg-gradient-to-br from-zinc-100 to-zinc-200 text-zinc-500">
+          <AvatarFallback className="bg-linear-to-br from-zinc-100 to-zinc-200 text-zinc-500">
             <Icon icon={UserIcon} size={48} />
           </AvatarFallback>
         </Avatar>
@@ -124,7 +124,7 @@ export function ProfileHeader({
               duration: reduceMotion ? 0 : 0.32,
               ease: BADGE_ARC_EASE,
             }}
-            className="absolute bottom-1 right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_10px_-2px_rgba(15,15,20,0.25)]"
+            className="absolute right-1 bottom-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_10px_-2px_rgba(15,15,20,0.25)]"
             style={{ transformOrigin: "center" }}
           >
             <Icon icon={PencilIcon} size={16} />

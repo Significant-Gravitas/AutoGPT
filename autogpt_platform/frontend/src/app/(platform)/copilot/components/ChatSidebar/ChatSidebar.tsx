@@ -314,7 +314,7 @@ export function ChatSidebar() {
       <Sidebar
         variant="inset"
         collapsible="icon"
-        className="!top-[calc(50px+var(--preview-banner-height,0px))] !h-[calc(100vh-50px-var(--preview-banner-height,0px))] px-0 [&_[data-sidebar=sidebar]]:border-r [&_[data-sidebar=sidebar]]:border-r-zinc-200/10"
+        className="top-[calc(50px+var(--preview-banner-height,0px))]! h-[calc(100vh-50px-var(--preview-banner-height,0px))]! px-0 **:data-[sidebar=sidebar]:border-r **:data-[sidebar=sidebar]:border-r-zinc-200/10"
       >
         {isCollapsed && (
           <SidebarHeader
@@ -362,7 +362,7 @@ export function ChatSidebar() {
           </SidebarHeader>
         )}
         {!isCollapsed && (
-          <SidebarHeader className="shrink-0 px-4 pb-3 pt-3">
+          <SidebarHeader className="shrink-0 px-4 pt-3 pb-3">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -373,7 +373,7 @@ export function ChatSidebar() {
                 <Text variant="h3" size="body-medium">
                   Your chats
                 </Text>
-                <div className="flex items-center [&_button:hover]:!bg-zinc-100 [&_button]:!h-8 [&_button]:!w-8 [&_button]:!min-w-0 [&_button]:!rounded-full [&_button]:!p-0 [&_button]:!text-zinc-600 [&_svg]:!size-[1.125rem]">
+                <div className="flex items-center [&_button]:h-8! [&_button]:w-8! [&_button]:min-w-0! [&_button]:rounded-full! [&_button]:p-0! [&_button]:text-zinc-600! [&_button:hover]:bg-zinc-100! [&_svg]:size-4.5!">
                   {isChatSearchEnabled ? (
                     <HeaderAction label="Search chats">
                       <Button
@@ -428,7 +428,7 @@ export function ChatSidebar() {
           </SidebarHeader>
         )}
 
-        <SidebarContent className="gap-4 overflow-y-auto px-4 py-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <SidebarContent className="scrollbar-none gap-4 overflow-y-auto px-4 py-4 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {!isCollapsed && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -437,7 +437,7 @@ export function ChatSidebar() {
               className="flex flex-col gap-1"
             >
               {isLoadingSessions ? (
-                <div className="flex min-h-[30rem] items-center justify-center py-4">
+                <div className="flex min-h-120 items-center justify-center py-4">
                   <LoadingSpinner size="small" className="text-zinc-600" />
                 </div>
               ) : !sessions?.length ? (
