@@ -1,25 +1,16 @@
 import { useState } from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 
 import { CreditTransaction } from "@/lib/autogpt-server-api";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
-import { Button } from "@/components/__legacy__/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/__legacy__/ui/select";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
+import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Input } from "@/components/atoms/Input/Input";
+import { Select } from "@/components/atoms/Select/Select";
+import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 
-interface RefundModalProps {
+interface Props {
   isOpen: boolean;
   onClose: () => void;
   transactions: CreditTransaction[];
@@ -27,26 +18,26 @@ interface RefundModalProps {
   refundCredits: (transaction_key: string, reason: string) => Promise<void>;
 }
 
-export const RefundModal = ({
+export function RefundModal({
   isOpen,
   onClose,
   transactions,
   formatCredits,
   refundCredits,
-}: RefundModalProps) => {
+}: Props) {
   const [selectedTransactionId, setSelectedTransactionId] =
     useState<string>("");
   const [refundReason, setRefundReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const handleClose = () => {
+  function handleClose() {
     setSelectedTransactionId("");
     setRefundReason("");
     setError(null);
     onClose();
-  };
+  }
 
-  const handleRefundRequest = () => {
+  function handleRefundRequest() {
     setError(null);
 
     const selectedTransaction = transactions.find(
@@ -66,84 +57,79 @@ export const RefundModal = ({
     refundCredits(selectedTransactionId, refundReason).finally(() =>
       handleClose(),
     );
-  };
+  }
+
+  const transactionOptions = transactions.map((transaction) => ({
+    value: transaction.transaction_key,
+    label: `${new Date(transaction.transaction_time).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+    })} - ${formatCredits(transaction.amount)}`,
+  }));
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Request Refund</DialogTitle>
-        </DialogHeader>
+    <Dialog
+      title="Request Refund"
+      styling={{ maxWidth: "425px" }}
+      controlled={{
+        isOpen,
+        set: (open) => {
+          if (!open) handleClose();
+        },
+      }}
+    >
+      <Dialog.Content>
         <div className="py-4">
           <div className="space-y-4">
             {error && (
-              <div className="flex items-center gap-2 rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4" />
-                <p>{error}</p>
+              <div className="flex items-center gap-2 rounded-md border border-destructive bg-destructive/10 p-3 text-destructive">
+                <Icon icon={AlertCircleIcon} size={16} />
+                <Text variant="body" className="text-destructive">
+                  {error}
+                </Text>
               </div>
             )}
 
             {transactions.length === 0 ? (
-              <p className="text-sm text-gray-500">
+              <Text variant="body" tone="muted">
                 No eligible transactions found for refund.
-              </p>
+              </Text>
             ) : (
-              <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  Select Transaction
-                </label>
-                <Select
-                  value={selectedTransactionId}
-                  onValueChange={setSelectedTransactionId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a transaction" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {transactions.map((transaction) => (
-                      <SelectItem
-                        key={transaction.transaction_key}
-                        value={transaction.transaction_key}
-                      >
-                        {new Date(transaction.transaction_time).toLocaleString(
-                          undefined,
-                          {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                            hour: "numeric",
-                            minute: "numeric",
-                          },
-                        )}{" "}
-                        - {formatCredits(transaction.amount)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <Select
+                id="refundTransaction"
+                label="Select Transaction"
+                labelVariant="body-medium"
+                placeholder="Select a transaction"
+                value={selectedTransactionId}
+                onValueChange={setSelectedTransactionId}
+                options={transactionOptions}
+              />
             )}
 
-            <div className="space-y-2">
-              <label htmlFor="refundReason" className="text-sm font-medium">
-                Reason for Refund
-              </label>
-              <Textarea
-                id="refundReason"
-                placeholder="Please explain why you're requesting a refund..."
-                value={refundReason}
-                onChange={(e) => setRefundReason(e.target.value)}
-                className="min-h-[100px]"
-              />
-            </div>
+            <Input
+              id="refundReason"
+              type="textarea"
+              label="Reason for Refund"
+              labelVariant="body-medium"
+              placeholder="Please explain why you're requesting a refund..."
+              value={refundReason}
+              onChange={(e) => setRefundReason(e.target.value)}
+              className="min-h-[100px]"
+            />
           </div>
         </div>
-        <div className="flex justify-end space-x-4">
-          <Button variant="outline" onClick={handleClose}>
+        <Dialog.Footer>
+          <Button variant="secondary" size="small" onClick={handleClose}>
             Cancel
           </Button>
-          <Button onClick={handleRefundRequest}>Request Refund</Button>
-        </div>
-      </DialogContent>
+          <Button size="small" onClick={handleRefundRequest}>
+            Request Refund
+          </Button>
+        </Dialog.Footer>
+      </Dialog.Content>
     </Dialog>
   );
-};
+}
