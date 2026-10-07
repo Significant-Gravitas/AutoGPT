@@ -1,6 +1,10 @@
 import { HelpItem } from "@/components/auth/help-item";
-import { Card, CardContent } from "@/components/__legacy__/ui/card";
-import { AlertCircle, CheckCircle } from "lucide-react";
+import { Card } from "@/components/atoms/Card/Card";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  AlertCircleIcon,
+  CheckmarkCircle02Icon,
+} from "@hugeicons/core-free-icons";
 import { BehaveAs } from "@/services/environment";
 
 interface Props {
@@ -39,12 +43,12 @@ export default function AuthFeedback({
         <div className="text-center text-sm font-medium leading-normal">
           {isError ? (
             <div className="flex items-center justify-center space-x-2 text-red-500">
-              <AlertCircle className="h-4 w-4" />
+              <Icon icon={AlertCircleIcon} className="h-4 w-4" />
               <span>{displayMessage}</span>
             </div>
           ) : (
             <div className="flex items-center justify-center space-x-2 text-green-600">
-              <CheckCircle className="h-4 w-4" />
+              <Icon icon={CheckmarkCircle02Icon} className="h-4 w-4" />
               <span>{displayMessage}</span>
             </div>
           )}
@@ -54,46 +58,42 @@ export default function AuthFeedback({
       {/* Cloud-specific help */}
       {showCloudHelp &&
         (isSignupFlow ? (
-          <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-            <CardContent className="p-0">
-              <div className="divide-y divide-slate-100">
-                <span className="my-3 block text-center text-sm font-medium text-red-500">
-                  The provided email may not be allowed to sign up.
-                </span>
-                <HelpItem
-                  title="AutoGPT Platform is currently in closed beta. "
-                  description="You can join "
-                  linkText="the waitlist here"
-                  href="https://agpt.co/waitlist"
-                />
-                <HelpItem title="Make sure you use the same email address you used to sign up for the waitlist." />
-                <HelpItem
-                  title="You can self host the platform!"
-                  description="Visit our"
-                  linkText="GitHub repository"
-                  href="https://github.com/Significant-Gravitas/AutoGPT"
-                />
-              </div>
-            </CardContent>
+          <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white p-px shadow-sm">
+            <div className="divide-y divide-slate-100">
+              <span className="my-3 block text-center text-sm font-medium text-red-500">
+                The provided email may not be allowed to sign up.
+              </span>
+              <HelpItem
+                title="AutoGPT Platform is currently in closed beta. "
+                description="You can join "
+                linkText="the waitlist here"
+                href="https://agpt.co/waitlist"
+              />
+              <HelpItem title="Make sure you use the same email address you used to sign up for the waitlist." />
+              <HelpItem
+                title="You can self host the platform!"
+                description="Visit our"
+                linkText="GitHub repository"
+                href="https://github.com/Significant-Gravitas/AutoGPT"
+              />
+            </div>
           </Card>
         ) : (
-          <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-            <CardContent className="p-0">
-              <div className="divide-y divide-slate-100">
-                <HelpItem
-                  title="Having trouble logging in?"
-                  description="Make sure you've already "
-                  linkText="signed up"
-                  href="/signup"
-                />
-              </div>
-            </CardContent>
+          <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white p-px shadow-sm">
+            <div className="divide-y divide-slate-100">
+              <HelpItem
+                title="Having trouble logging in?"
+                description="Make sure you've already "
+                linkText="signed up"
+                href="/signup"
+              />
+            </div>
           </Card>
         ))}
 
       {/* Local-specific help */}
       {showLocalHelp && (
-        <Card className="w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        <Card className="w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-px shadow-sm">
           <div className="w-full divide-y divide-slate-100">
             <HelpItem
               title="Having trouble getting AutoGPT running locally?"

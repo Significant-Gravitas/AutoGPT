@@ -18,19 +18,19 @@ export function MarketingHeader({ headingLines, description }: Props) {
         />
         <AutoGPTLogoWhite
           hideText
-          className="h-auto w-[3.5rem] drop-shadow-[0_0_18px_rgba(167,139,250,0.45)]"
+          className="h-auto w-14 drop-shadow-[0_0_18px_rgba(167,139,250,0.45)]"
         />
       </div>
       <div className="flex flex-col gap-4">
         <Text
           variant="h1"
           as="h1"
-          className="!w-full !text-[3rem] !font-semibold !leading-[1.05] tracking-[-0.025em] !text-white"
+          className="w-full text-[3rem] font-semibold leading-[1.05] tracking-[-0.025em] text-white"
         >
           <AnimatedHeading lines={headingLines} />
         </Text>
         {description ? (
-          <Text variant="large" className="max-w-md !text-slate-300">
+          <Text variant="large" className="max-w-md text-slate-300">
             {description}
           </Text>
         ) : null}
