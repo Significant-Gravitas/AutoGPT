@@ -11,9 +11,12 @@ const config: StorybookConfig = {
     "../src/components/organisms/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/components/ai-elements/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/components/renderers/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/components/layout/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/components/contextual/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/app/[(]platform[)]/copilot/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/app/[(]platform[)]/components/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/app/[(]platform[)]/marketplace/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/app/[(]platform[)]/artifacts/**/*.stories.@(js|jsx|mjs|ts|tsx)",
   ],
   addons: [
     "@storybook/addon-a11y",
