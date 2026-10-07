@@ -5,7 +5,7 @@ export function CreatorPageLoading() {
     <div className="mx-auto w-full max-w-[1360px]">
       <main className="mt-5 px-4 pb-12">
         {/* Breadcrumbs */}
-        <div className="mb-4 flex items-center justify-between px-4 md:!-mb-3">
+        <div className="mb-4 flex items-center justify-between px-4 md:-mb-3">
           <Skeleton className="h-8 w-20 rounded-lg" />
           <div className="hidden items-center gap-2 md:flex">
             <Skeleton className="h-4 w-24" />
@@ -19,8 +19,8 @@ export function CreatorPageLoading() {
           {/* Left: Creator info card */}
           <div className="w-full lg:w-2/5">
             <div className="w-full px-4 sm:px-6 lg:px-0">
-              <div className="rounded-2xl bg-gradient-to-r from-blue-100/50 to-indigo-100/50 p-[1px]">
-                <div className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4">
+              <div className="rounded-2xl bg-gradient-to-r from-blue-100/50 to-purple-100/50 p-px">
+                <div className="flex flex-col rounded-[calc(1rem-2px)] bg-zinc-50 p-4">
                   {/* Avatar */}
                   <Skeleton className="mb-4 h-20 w-20 rounded-full sm:h-24 sm:w-24" />
 

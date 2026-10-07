@@ -39,7 +39,7 @@ export function AgentImageItem({
 
   return (
     <div className="relative">
-      <div className="h-[15rem] overflow-hidden rounded-xl border border-neutral-100 bg-[#a8a8a8] sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]">
+      <div className="h-60 overflow-hidden rounded-xl border border-zinc-100 bg-[#a8a8a8] sm:h-80 sm:w-full md:h-[25rem] lg:h-[30rem]">
         {isValidVideoUrl(image) ? (
           getYouTubeVideoId(image) ? (
             <iframe
@@ -99,7 +99,7 @@ export function AgentImageItem({
         )}
       </div>
       {isVideoFile && playingVideoIndex !== index && (
-        <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 md:bottom-4 md:left-4 lg:bottom-[1.25rem] lg:left-[1.25rem]">
+        <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 md:bottom-4 md:left-4 lg:bottom-5 lg:left-5">
           <Button
             variant="secondary"
             size="large"
@@ -112,7 +112,7 @@ export function AgentImageItem({
               <Icon
                 icon={PlayIcon}
                 size={20}
-                className="text-black dark:text-neutral-200 sm:h-6 sm:w-6 md:h-7 md:w-7"
+                className="text-black sm:h-6 sm:w-6 md:h-7 md:w-7"
               />
             }
           >

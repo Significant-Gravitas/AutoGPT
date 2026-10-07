@@ -80,13 +80,13 @@ export function MainAgentPage({ params }: Props) {
   return (
     <div className="mx-auto w-full max-w-[1360px]">
       <main className="mt-5 px-4 pb-12">
-        <div className="mb-4 flex items-center justify-between px-4 md:!-mb-3">
+        <div className="mb-4 flex items-center justify-between px-4 md:-mb-3">
           <Button
             variant="ghost"
             size="small"
             as="NextLink"
             href="/marketplace"
-            className="relative -left-2 lg:!-left-4"
+            className="relative -left-2 lg:-left-4"
             leftIcon={<Icon icon={ArrowLeft02Icon} size={16} />}
           >
             Go back

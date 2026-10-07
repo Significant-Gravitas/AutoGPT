@@ -36,7 +36,7 @@ function UndoActions({
         variant="primary"
         size="small"
         as="NextLink"
-        className="bg-neutral-200 text-zinc-900 hover:bg-neutral-300 hover:text-zinc-800"
+        className="bg-zinc-200 text-zinc-900 hover:bg-zinc-300 hover:text-zinc-800"
         href={libraryHref}
       >
         Open agent

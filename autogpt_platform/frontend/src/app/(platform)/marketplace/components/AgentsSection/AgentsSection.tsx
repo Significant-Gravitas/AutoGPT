@@ -57,13 +57,19 @@ export function AgentsSection({
             subtitle={subtitle}
           />
         ) : sectionTitle ? (
-          <h2 className="mb-7 text-2xl font-semibold tracking-[-0.02em] text-zinc-900">
+          <Text
+            variant="lead-semibold"
+            as="h2"
+            tone="primary"
+            unmask={false}
+            className="mb-7 text-2xl tracking-[-0.02em]"
+          >
             {sectionTitle}
-          </h2>
+          </Text>
         ) : null}
         {children}
         {!displayedAgents || displayedAgents.length === 0 ? (
-          <Text variant="body" className="ml-4 mt-8 text-gray-500">
+          <Text variant="body" tone="muted" className="ml-4 mt-8">
             No workflows found
           </Text>
         ) : (
@@ -98,8 +104,8 @@ export function AgentsSection({
                     </CarouselItem>
                   ))}
                 </CarouselContent>
-                <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-[rgb(246,247,248)] to-transparent" />
-                <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[rgb(246,247,248)] to-transparent" />
+                <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background to-transparent" />
+                <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent" />
               </div>
             </Carousel>
 

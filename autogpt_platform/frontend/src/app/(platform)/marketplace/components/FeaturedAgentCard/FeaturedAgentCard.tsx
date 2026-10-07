@@ -12,6 +12,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
@@ -26,18 +27,18 @@ interface Props {
 // Soft top wash per featured slot — same treatment as the expert cards so
 // the two families read as one system. Body stays white.
 const WASHES: Record<string, string> = {
-  violet:
-    "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(139,92,246,0.10),transparent_70%)]",
+  purple:
+    "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(119,51,245,0.10),transparent_70%)]",
   blue: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(59,130,246,0.10),transparent_70%)]",
   green:
     "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(34,197,94,0.10),transparent_70%)]",
 };
 
 function getWash(bg: string) {
-  if (bg.includes("violet")) return WASHES.violet;
+  if (bg.includes("purple")) return WASHES.purple;
   if (bg.includes("blue")) return WASHES.blue;
   if (bg.includes("green")) return WASHES.green;
-  return WASHES.violet;
+  return WASHES.purple;
 }
 
 export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
@@ -79,7 +80,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
             />
           </>
         ) : (
-          <div className="absolute inset-0 rounded-xl bg-violet-100" />
+          <div className="absolute inset-0 rounded-xl bg-purple-100" />
         )}
       </div>
 
@@ -118,9 +119,14 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
             </span>
           </div>
         )}
-        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-zinc-600">
+        <Text
+          variant="body"
+          tone="secondary"
+          unmask={false}
+          className="mt-3 line-clamp-3 leading-relaxed"
+        >
           {agent.description}
-        </p>
+        </Text>
       </div>
 
       <div className="relative mt-auto flex w-full items-center pt-3">

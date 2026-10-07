@@ -29,7 +29,7 @@ export function CreatorCard({
   return (
     <button
       type="button"
-      className={`relative flex h-[16rem] w-full cursor-pointer flex-col items-start rounded-2xl border p-4 text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] ${backgroundColor(index)}`}
+      className={`relative flex h-64 w-full cursor-pointer flex-col items-start rounded-2xl border p-4 text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] ${backgroundColor(index)}`}
       onClick={onClick}
       data-testid="creator-card"
     >
@@ -44,18 +44,22 @@ export function CreatorCard({
       </Avatar>
 
       <div className="mt-3 flex w-full flex-1 flex-col">
-        <Text variant="h4" className="leading-tight">
+        <Text variant="h4" unmask={false} className="leading-tight">
           {creatorName}
         </Text>
         <div className="mt-2 flex w-full flex-col">
-          <Text variant="body" className="line-clamp-3 leading-normal">
+          <Text
+            variant="body"
+            unmask={false}
+            className="line-clamp-3 leading-normal"
+          >
             {bio}
           </Text>
         </div>
       </div>
 
       {/* Stats */}
-      <Text variant="body" className="absolute bottom-4 left-4 text-zinc-500">
+      <Text variant="body" tone="muted" className="absolute bottom-4 left-4">
         {agentsUploaded} {agentsUploaded === 1 ? "agent" : "agents"}
       </Text>
     </button>
