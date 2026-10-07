@@ -107,17 +107,20 @@ export function ActivityDropdown({
                   autoComplete="off"
                   autoFocus
                 />
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   onClick={handleClearSearch}
-                  className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
+                  className="absolute right-1 top-1/2 size-6 -translate-y-1/2 hover:border-transparent hover:bg-transparent"
                   aria-label="Clear search"
+                  withTooltip={false}
                 >
                   <Icon
                     icon={Cancel01Icon}
                     size={16}
                     className="text-zinc-500"
                   />
-                </button>
+                </Button>
               </div>
             </div>
           ) : (

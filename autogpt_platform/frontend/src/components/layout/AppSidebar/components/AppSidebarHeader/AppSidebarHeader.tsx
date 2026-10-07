@@ -2,11 +2,13 @@
 
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { SidebarHeader, useSidebar } from "@/components/ui/sidebar";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
   TooltipContent,
+  TooltipPortal,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
@@ -20,12 +22,15 @@ export function AppSidebarHeader() {
   const toggleButton = (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          withTooltip={false}
           onClick={toggleSidebar}
           className={cn(
-            "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-zinc-200",
+            "shrink-0 rounded-md hover:border-transparent hover:bg-zinc-200",
             isCollapsed
               ? "absolute inset-0 hidden group-focus-within:flex group-hover:flex"
               : "flex",
@@ -35,11 +40,13 @@ export function AppSidebarHeader() {
             icon={SidebarLeftIcon}
             className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
           />
-        </button>
+        </Button>
       </TooltipTrigger>
-      <TooltipContent side="right">
-        {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-      </TooltipContent>
+      <TooltipPortal>
+        <TooltipContent side="right">
+          {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        </TooltipContent>
+      </TooltipPortal>
     </Tooltip>
   );
 
