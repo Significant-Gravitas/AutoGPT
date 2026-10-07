@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   agentGraphExportFilename,
+  cn,
   matchesRoute,
   setNestedProperty,
 } from "../utils";
@@ -183,4 +184,31 @@ describe("matchesRoute", () => {
       expect(matchesRoute(pathname, base)).toBe(expected);
     });
   }
+});
+
+describe("cn", () => {
+  test.each([
+    ["rounded-large", "rounded-md", "rounded-md"],
+    ["rounded-md", "rounded-large", "rounded-large"],
+    ["rounded-xsmall", "rounded-full", "rounded-full"],
+    ["rounded-small", "rounded-2xlarge", "rounded-2xlarge"],
+    ["rounded-medium", "rounded-[18px]", "rounded-[18px]"],
+    ["rounded-t-xlarge", "rounded-t-none", "rounded-t-none"],
+    ["shadow-subtle", "shadow-md", "shadow-md"],
+    ["shadow-none", "shadow-subtle", "shadow-subtle"],
+  ])("lets %s be overridden by %s", (base, override, expected) => {
+    expect(cn(base, override)).toBe(expected);
+  });
+
+  test("keeps custom tokens from different groups", () => {
+    expect(cn("rounded-large shadow-subtle", "rounded-t-none")).toBe(
+      "rounded-large shadow-subtle rounded-t-none",
+    );
+  });
+
+  test("does not treat a custom radius as a shadow or vice versa", () => {
+    expect(cn("rounded-large", "shadow-subtle")).toBe(
+      "rounded-large shadow-subtle",
+    );
+  });
 });

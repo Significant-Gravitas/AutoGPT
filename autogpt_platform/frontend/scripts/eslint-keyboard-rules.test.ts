@@ -21,7 +21,7 @@ async function keyboardRuleMessages(source: string, extension: string) {
 }
 
 // The three selectors, read back off the resolved config rather than scraped
-// out of .eslintrc.json, so the assertion does not depend on that file's
+// out of eslint.config.mjs, so the assertion does not depend on that file's
 // textual formatting or on the directory vitest happens to run from.
 async function keyboardSelectors(extension: string) {
   const config = await eslint.calculateConfigForFile(fixturePath(extension));

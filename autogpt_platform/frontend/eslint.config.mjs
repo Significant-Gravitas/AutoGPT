@@ -1,0 +1,103 @@
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { FlatCompat } from "@eslint/eslintrc";
+import pluginQuery from "@tanstack/eslint-plugin-query";
+import storybook from "eslint-plugin-storybook";
+import { importBlocks, tailwindBlocks } from "./eslint.design-system.mjs";
+
+const require = createRequire(import.meta.url);
+
+// eslint-config-next 15 ships legacy (eslintrc) presets only, so they load
+// through FlatCompat. Resolve their plugins from the preset's own directory:
+// pnpm does not hoist them, and the @rushstack/eslint-patch it relies on only
+// hooks the ESLint CLI, not the Node API used by scripts/*.test.ts.
+const compat = new FlatCompat({
+  baseDirectory: dirname(fileURLToPath(import.meta.url)),
+  resolvePluginsRelativeTo: dirname(
+    require.resolve("eslint-config-next/package.json"),
+  ),
+});
+
+// Keyboard handlers must go through `isKey()` from `@/lib/keyboard` so that
+// keydowns fired while an IME is composing (Japanese, Chinese, Korean input)
+// are ignored. See AGENTS.md "Keyboard handling".
+//
+// Scope: direct `.key` comparisons and switches against the IME key names
+// (or KEY_* / *_KEY constants). Modifier chords such as Cmd+K, which read
+// `.key.toLowerCase()` or `.code`, are out of scope by design: an IME never
+// owns them. Keep the key list in sync with KEY_NAMES in src/lib/keyboard.ts.
+//
+// The selectors match any receiver, so a domain object that happens to have
+// a `.key` field (e.g. `column.key === "Delete"`) trips them too. That is
+// the one case for `// eslint-disable-next-line no-restricted-syntax`.
+//
+// Both the key list and the selectors are covered by
+// scripts/eslint-keyboard-rules.test.ts.
+const KEYBOARD_RULES = [
+  {
+    selector:
+      "BinaryExpression[operator=/^[!=]==?$/]:matches([right.type='Literal'][right.value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|Home|End|Backspace|Delete| )$/], [right.type='Identifier'][right.name=/(^KEY_|_KEY$)/]) > MemberExpression.left[computed=false][property.name='key']",
+    message:
+      'Do not compare e.key directly; use isKey(e, "Enter") from @/lib/keyboard so IME composition is respected.',
+  },
+  {
+    selector:
+      "BinaryExpression[operator=/^[!=]==?$/]:matches([left.type='Literal'][left.value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|Home|End|Backspace|Delete| )$/], [left.type='Identifier'][left.name=/(^KEY_|_KEY$)/]) > MemberExpression.right[computed=false][property.name='key']",
+    message:
+      'Do not compare e.key directly; use isKey(e, "Enter") from @/lib/keyboard so IME composition is respected.',
+  },
+  {
+    selector:
+      "SwitchStatement[discriminant.type='MemberExpression'][discriminant.computed=false][discriminant.property.name='key'] > SwitchCase > :matches(Literal[value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|Home|End|Backspace|Delete| )$/], Identifier[name=/(^KEY_|_KEY$)/])",
+    message:
+      'Do not switch on e.key directly; use isKey(e, "Enter") from @/lib/keyboard so IME composition is respected.',
+  },
+];
+
+export default [
+  {
+    ignores: [
+      ".next/**",
+      "node_modules/**",
+      "public/**",
+      "coverage/**",
+      "storybook-static/**",
+      "playwright-report/**",
+      "test-results/**",
+      "src/app/api/__generated__/**",
+      "next-env.d.ts",
+    ],
+  },
+  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  ...storybook.configs["flat/recommended"],
+  ...pluginQuery.configs["flat/recommended"],
+  {
+    rules: {
+      // Disabling exhaustive-deps to avoid forcing unnecessary dependencies and useCallback proliferation.
+      // We rely on code review for proper dependency management instead of mechanical rule following.
+      // See: https://kentcdodds.com/blog/usememo-and-usecallback
+      "react-hooks/exhaustive-deps": "off",
+      // Disable temporarily as we have some `any` in the codebase and we need to got case by case
+      // and see if they can be fixed.
+      "@typescript-eslint/no-explicit-any": "off",
+      // Allow unused vars that start with underscore (convention for intentionally unused)
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+      "no-restricted-syntax": ["error", ...KEYBOARD_RULES],
+    },
+  },
+  {
+    // CommonJS config files at the package root.
+    files: ["*.config.js"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
+  ...importBlocks(),
+  ...tailwindBlocks(),
+];
