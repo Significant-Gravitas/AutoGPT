@@ -1,9 +1,10 @@
+import functools
 import json
 import logging
 import os
 import re
 from enum import Enum
-from typing import Any, Dict, Generic, List, Literal, Set, Tuple, Type, TypeVar
+from typing import Any, Dict, Generic, List, Literal, Self, Set, Tuple, Type, TypeVar
 
 from pydantic import (
     AliasChoices,
@@ -12,6 +13,7 @@ from pydantic import (
     PrivateAttr,
     ValidationInfo,
     field_validator,
+    model_validator,
 )
 from pydantic_settings import (
     BaseSettings,
@@ -23,6 +25,16 @@ from pydantic_settings import (
 from backend.util.data import get_data_path
 
 logger = logging.getLogger(__name__)
+
+
+@functools.cache
+def _warn_single_bucket() -> None:
+    logger.warning(
+        "Private user data and public media share the legacy "
+        "MEDIA_GCS_BUCKET_NAME bucket. Configure PRIVATE_USER_DATA_BUCKET and "
+        "PUBLIC_SITE_MEDIA_BUCKET to keep user data out of the public bucket."
+    )
+
 
 T = TypeVar("T", bound=BaseSettings)
 
@@ -481,8 +493,65 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     media_gcs_bucket_name: str = Field(
         default="",
-        description="The name of the Google Cloud Storage bucket for media files",
+        description="Legacy single GCS bucket for public media and private user "
+        "data. Split deployments should configure public_site_media_bucket and "
+        "private_user_data_bucket.",
     )
+
+    public_site_media_bucket: str = Field(
+        default="",
+        description="GCS bucket for approved marketplace media and OAuth app logos",
+    )
+
+    private_user_data_bucket: str = Field(
+        default="",
+        description="Private GCS bucket for user media, workspaces, transcripts, "
+        "and temporary uploads",
+    )
+
+    @property
+    def resolved_public_site_media_bucket(self) -> str:
+        return self.public_site_media_bucket or self.media_gcs_bucket_name
+
+    @property
+    def resolved_private_user_data_bucket(self) -> str:
+        return self.private_user_data_bucket or self.media_gcs_bucket_name
+
+    @model_validator(mode="after")
+    def validate_cloud_storage_bucket_separation(self) -> Self:
+        split_configured = bool(
+            self.public_site_media_bucket or self.private_user_data_bucket
+        )
+        if not split_configured:
+            if self.media_gcs_bucket_name:
+                _warn_single_bucket()
+            return self
+        if self.behave_as != BehaveAs.CLOUD:
+            return self
+        if not self.public_site_media_bucket or not self.private_user_data_bucket:
+            raise ValueError(
+                "Cloud deployments must configure both PUBLIC_SITE_MEDIA_BUCKET "
+                "and PRIVATE_USER_DATA_BUCKET"
+            )
+        if self.public_site_media_bucket == self.private_user_data_bucket:
+            raise ValueError(
+                "PUBLIC_SITE_MEDIA_BUCKET and PRIVATE_USER_DATA_BUCKET must be different"
+            )
+        if self.public_site_media_bucket == self.media_gcs_bucket_name:
+            raise ValueError(
+                "PUBLIC_SITE_MEDIA_BUCKET must not be the legacy "
+                "MEDIA_GCS_BUCKET_NAME bucket, which holds private user data"
+            )
+        if (
+            self.media_gcs_bucket_name
+            and self.private_user_data_bucket != self.media_gcs_bucket_name
+        ):
+            raise ValueError(
+                "PRIVATE_USER_DATA_BUCKET must remain the legacy "
+                "MEDIA_GCS_BUCKET_NAME bucket until stored bucket-qualified "
+                "paths are migrated; clear MEDIA_GCS_BUCKET_NAME after migration"
+            )
+        return self
 
     workspace_storage_dir: str = Field(
         default="",
