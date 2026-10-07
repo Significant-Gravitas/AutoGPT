@@ -5,6 +5,7 @@ const meta: Meta<typeof ErrorCard> = {
   title: "Molecules/ErrorCard",
   component: ErrorCard,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

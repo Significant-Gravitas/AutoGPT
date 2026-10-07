@@ -7,6 +7,7 @@ const meta: Meta<typeof Dialog> = {
   title: "Molecules/Dialog",
   component: Dialog,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

@@ -6,6 +6,7 @@ const meta: Meta<typeof Skeleton> = {
   tags: ["autodocs"],
   component: Skeleton,
   parameters: {
+    a11y: { test: "error" },
     layout: "padded",
     docs: {
       description: {

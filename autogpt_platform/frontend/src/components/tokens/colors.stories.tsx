@@ -8,6 +8,7 @@ const meta: Meta = {
   parameters: {
     layout: "fullscreen",
     controls: { disable: true },
+    a11y: { test: "error" },
   },
 };
 
@@ -124,7 +125,7 @@ export function AllVariants() {
               How to Use
             </Text>
             <div className="space-y-4">
-              <div className="rounded-lg border border-gray-200 p-4">
+              <div className="rounded-lg border border-zinc-200 p-4">
                 <Text variant="body" className="mb-2 text-zinc-600">
                   Use any of the approved colors combined with{" "}
                   <a
@@ -201,10 +202,10 @@ export function AllVariants() {
                 {category.colors.map((color) => (
                   <div
                     key={color.name}
-                    className="flex items-center gap-4 rounded-lg border border-gray-200 p-4"
+                    className="flex items-center gap-4 rounded-lg border border-zinc-200 p-4"
                   >
                     <div
-                      className="h-12 w-12 flex-shrink-0 rounded border border-gray-300"
+                      className="h-12 w-12 flex-shrink-0 rounded border border-zinc-300"
                       style={{ backgroundColor: color.hex }}
                     ></div>
                     <div className="flex-1 space-y-1">
@@ -253,10 +254,10 @@ export function AllVariants() {
               {category.colors.map((color) => (
                 <div
                   key={color.name}
-                  className="space-y-3 rounded-lg border border-gray-200 p-4"
+                  className="space-y-3 rounded-lg border border-zinc-200 p-4"
                 >
                   <div
-                    className="h-16 w-full rounded border border-gray-300"
+                    className="h-16 w-full rounded border border-zinc-300"
                     style={{ backgroundColor: color.hex }}
                   ></div>
                   <div className="space-y-1">

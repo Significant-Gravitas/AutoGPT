@@ -6,6 +6,7 @@ const meta: Meta<typeof OverflowText> = {
   component: OverflowText,
   tags: ["autodocs"],
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

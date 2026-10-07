@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import Image from "next/image";
 
@@ -21,22 +22,22 @@ function OverviewComponent() {
       {/* Header Section */}
       <div className="space-y-8">
         <div className="space-y-4">
-          <h1 className="text-4xl font-bold text-gray-900">
+          <Text variant="h1" tone="primary">
             AutoGPT Design System
-          </h1>
-          <p className="text-xl leading-relaxed text-gray-600">
+          </Text>
+          <Text variant="lead" tone="secondary">
             Welcome to the AutoGPT Design System - a comprehensive collection of
             reusable components, design tokens, and guidelines that power the
             AutoGPT Platform. This system ensures consistency, accessibility,
             and efficiency across all our user interfaces.
-          </p>
+          </Text>
           <div className="inline-flex items-center">
             <strong className="text-lg">
               <a
                 href="https://www.figma.com/design/nO9NFynNuicLtkiwvOxrbz/AutoGPT-Design-System?node-id=3-2083&m=dev"
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`${linkStyle} text-md`}
+                className={`${linkStyle} text-base`}
               >
                 📋 Figma Reference
               </a>
@@ -54,12 +55,14 @@ function OverviewComponent() {
               height={0}
               className="h-auto w-4/5 rounded-lg"
             />
-            <h4 className="text-lg font-bold text-gray-900">Design Tokens</h4>
-            <p className="text-sm leading-relaxed text-gray-600">
+            <Text variant="large-semibold" as="h3" tone="primary">
+              Design Tokens
+            </Text>
+            <Text variant="body" tone="secondary">
               The foundation of our design system. Tokens define colors,
               typography, spacing, shadows, and other visual properties that
               ensure consistency across all components and layouts.
-            </p>
+            </Text>
             <a
               href="?path=/docs/design-tokens--docs"
               className={`inline-flex items-center text-sm ${linkStyle}`}
@@ -77,12 +80,14 @@ function OverviewComponent() {
               height={0}
               className="h-auto w-4/5 rounded-lg"
             />
-            <h4 className="text-lg font-bold text-gray-900">Atoms</h4>
-            <p className="text-sm leading-relaxed text-gray-600">
+            <Text variant="large-semibold" as="h3" tone="primary">
+              Atoms
+            </Text>
+            <Text variant="body" tone="secondary">
               The smallest building blocks of our interface. Atoms include
               buttons, inputs, icons, labels, and other fundamental UI elements
               that cannot be broken down further.
-            </p>
+            </Text>
             <a
               href="?path=/docs/atoms--docs"
               className={`inline-flex items-center text-sm ${linkStyle}`}
@@ -100,12 +105,14 @@ function OverviewComponent() {
               height={0}
               className="h-auto w-4/5 rounded-lg"
             />
-            <h4 className="text-lg font-bold text-gray-900">Molecules</h4>
-            <p className="text-sm leading-relaxed text-gray-600">
+            <Text variant="large-semibold" as="h3" tone="primary">
+              Molecules
+            </Text>
+            <Text variant="body" tone="secondary">
               Combinations of atoms that work together as a unit. Examples
               include search bars, card components, dropdown menus, and other
               composite UI elements.
-            </p>
+            </Text>
             <a
               href="?path=/docs/molecules--docs"
               className={`inline-flex items-center text-sm ${linkStyle}`}
@@ -120,21 +127,21 @@ function OverviewComponent() {
       {/* Technical Foundation */}
       <div className="space-y-8">
         <div className="space-y-4">
-          <h2 className="text-3xl font-bold text-gray-900">
+          <Text variant="h2" tone="primary">
             Technical Foundation
-          </h2>
-          <p className="text-lg text-gray-600">
+          </Text>
+          <Text variant="large" tone="secondary">
             Our design system is built on proven technologies while maintaining
             strict design consistency through custom tokens and components.
-          </p>
+          </Text>
         </div>
 
         <div className="grid grid-cols-1 gap-12 md:grid-cols-3">
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-gray-900">
+            <Text variant="large-semibold" as="h3" tone="primary">
               🎨 Built with Tailwind & shadcn/ui
-            </h4>
-            <p className="text-sm leading-relaxed text-gray-600">
+            </Text>
+            <Text variant="body" tone="secondary">
               The AutoGPT Design System leverages{" "}
               <a
                 href="https://tailwindcss.com/"
@@ -154,14 +161,14 @@ function OverviewComponent() {
                 shadcn/ui
               </a>{" "}
               as a foundation for accessible, well-tested components.
-            </p>
+            </Text>
           </div>
 
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-gray-900">
+            <Text variant="large-semibold" as="h3" tone="primary">
               🔧 Why This Matters
-            </h4>
-            <ul className="space-y-2 text-sm text-gray-600">
+            </Text>
+            <ul className="space-y-2 text-sm text-zinc-600">
               <li>
                 <strong>Visual Consistency:</strong> All interfaces look and
                 feel cohesive
@@ -177,10 +184,10 @@ function OverviewComponent() {
             </ul>
           </div>
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-gray-900">
+            <Text variant="large-semibold" as="h3" tone="primary">
               📚 Getting Started
-            </h4>
-            <ol className="list-decimal space-y-2 text-sm text-gray-600">
+            </Text>
+            <ol className="list-decimal space-y-2 text-sm text-zinc-600">
               <li>
                 Review the Design Tokens, Atoms,Molecules and Contextual
                 Components for your use case
@@ -209,14 +216,14 @@ function OverviewComponent() {
       {/* Contributing Section */}
       <div className="space-y-8">
         <div className="space-y-4">
-          <h2 className="text-3xl font-bold text-gray-900">
+          <Text variant="h2" tone="primary">
             Contributing to the Design System
-          </h2>
-          <p className="text-lg text-gray-600">
+          </Text>
+          <Text variant="large" tone="secondary">
             Help us improve and expand the AutoGPT Design System. Whether
             you&apos;re fixing bugs, adding new components, or enhancing
             existing ones, your contributions are valuable to the community.
-          </p>
+          </Text>
         </div>
 
         <div className="relative rounded-xl bg-gradient-to-r from-blue-50 via-purple-50 to-pink-50 p-6">
@@ -225,34 +232,46 @@ function OverviewComponent() {
           </div>
           <div className="relative space-y-6">
             <div className="text-center">
-              <h4 className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-xl font-bold text-transparent">
+              <Text
+                variant="lead-semibold"
+                as="h3"
+                className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent"
+              >
                 ⚠️ Design System Guidelines
-              </h4>
-              <p className="mt-2 text-gray-700">
+              </Text>
+              <Text variant="large" tone="secondary" className="mt-2">
                 Contributors must <strong>ONLY</strong> use the design tokens
                 and components defined in this system
-              </p>
+              </Text>
             </div>
 
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-4">
-                <h5 className="text-lg font-semibold text-red-600">
+                <Text variant="large-semibold" as="h4" className="text-red-600">
                   ❌ Don&apos;t Do This
-                </h5>
+                </Text>
                 <div className="space-y-3">
                   <div>
-                    <p className="mb-2 text-sm font-medium text-gray-700">
+                    <Text
+                      variant="body-medium"
+                      tone="secondary"
+                      className="mb-2"
+                    >
                       Default Tailwind classes:
-                    </p>
-                    <pre className="overflow-x-auto rounded-md bg-gray-100 p-3 text-sm">
+                    </Text>
+                    <pre className="overflow-x-auto rounded-md bg-zinc-100 p-3 text-sm">
                       <code className="text-red-600">{`className="text-blue-500 p-4 bg-gray-200"`}</code>
                     </pre>
                   </div>
                   <div>
-                    <p className="mb-2 text-sm font-medium text-gray-700">
+                    <Text
+                      variant="body-medium"
+                      tone="secondary"
+                      className="mb-2"
+                    >
                       Arbitrary values:
-                    </p>
-                    <pre className="overflow-x-auto rounded-md bg-gray-100 p-3 text-sm">
+                    </Text>
+                    <pre className="overflow-x-auto rounded-md bg-zinc-100 p-3 text-sm">
                       <code className="text-red-600">{`className="text-[#1234ff] w-[420px]"`}</code>
                     </pre>
                   </div>
@@ -260,23 +279,35 @@ function OverviewComponent() {
               </div>
 
               <div className="space-y-4">
-                <h5 className="text-lg font-semibold text-green-600">
+                <Text
+                  variant="large-semibold"
+                  as="h4"
+                  className="text-green-600"
+                >
                   ✅ Do This Instead
-                </h5>
+                </Text>
                 <div className="space-y-3">
                   <div>
-                    <p className="mb-2 text-sm font-medium text-gray-700">
+                    <Text
+                      variant="body-medium"
+                      tone="secondary"
+                      className="mb-2"
+                    >
                       Design tokens:
-                    </p>
-                    <pre className="overflow-x-auto rounded-md bg-gray-100 p-3 text-sm">
+                    </Text>
+                    <pre className="overflow-x-auto rounded-md bg-zinc-100 p-3 text-sm">
                       <code className="text-green-600">{`className="text-primary bg-surface space-4"`}</code>
                     </pre>
                   </div>
                   <div>
-                    <p className="mb-2 text-sm font-medium text-gray-700">
+                    <Text
+                      variant="body-medium"
+                      tone="secondary"
+                      className="mb-2"
+                    >
                       System components:
-                    </p>
-                    <pre className="overflow-x-auto rounded-md bg-gray-100 p-3 text-sm">
+                    </Text>
+                    <pre className="overflow-x-auto rounded-md bg-zinc-100 p-3 text-sm">
                       <code className="text-green-600">{`<Button variant="primary" size="md">
   Click me
 </Button>`}</code>
@@ -290,19 +321,19 @@ function OverviewComponent() {
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-gray-900">
+            <Text variant="large-semibold" as="h3" tone="primary">
               🧢 Development Workflow
-            </h4>
-            <p className="text-md leading-relaxed text-gray-600">
+            </Text>
+            <Text variant="large" tone="secondary">
               All design system changes should follow our established workflow
               to ensure quality and consistency.
-            </p>
-            <div className="text-md space-y-4">
+            </Text>
+            <div className="space-y-4 text-base">
               <div>
-                <strong className="text-gray-900">
+                <strong className="text-zinc-900">
                   For External Contributors:
                 </strong>
-                <ol className="mt-2 list-decimal space-y-1 pl-4 text-gray-600">
+                <ol className="mt-2 list-decimal space-y-1 pl-4 text-zinc-600">
                   <li>
                     Create a GitHub issue first to discuss your proposed changes
                   </li>
@@ -315,10 +346,10 @@ function OverviewComponent() {
                 </ol>
               </div>
               <div>
-                <strong className="text-gray-900">
+                <strong className="text-zinc-900">
                   For Internal Team Members:
                 </strong>
-                <ol className="mt-2 list-decimal space-y-1 pl-4 text-gray-600">
+                <ol className="mt-2 list-decimal space-y-1 pl-4 text-zinc-600">
                   <li>Create a feature branch from main</li>
                   <li>Implement changes and update Storybook documentation</li>
                   <li>Test components across different scenarios</li>
@@ -329,15 +360,15 @@ function OverviewComponent() {
           </div>
 
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-gray-900">
+            <Text variant="large-semibold" as="h3" tone="primary">
               📋 Component Guidelines
-            </h4>
-            <p className="text-md leading-relaxed text-gray-600">
+            </Text>
+            <Text variant="large" tone="secondary">
               Follow these principles when creating or modifying components:
-            </p>
-            <ul className="text-md space-y-2 text-gray-600">
+            </Text>
+            <ul className="space-y-2 text-base text-zinc-600">
               <li>
-                <strong className="text-gray-900">Accessibility First</strong>
+                <strong className="text-zinc-900">Accessibility First</strong>
                 <ul>
                   <li>
                     All components must meet{" "}
@@ -353,25 +384,25 @@ function OverviewComponent() {
                 </ul>
               </li>
               <li>
-                <strong className="text-gray-900">Design Token Usage</strong>
+                <strong className="text-zinc-900">Design Token Usage</strong>
                 <ul>
                   <li>Use design tokens for all styling properties</li>
                 </ul>
               </li>
               <li>
-                <strong className="text-gray-900">Responsive Design</strong>
+                <strong className="text-zinc-900">Responsive Design</strong>
                 <ul>
                   <li>Components should work across all screen sizes</li>
                 </ul>
               </li>
               <li>
-                <strong className="text-gray-900">TypeScript</strong>
+                <strong className="text-zinc-900">TypeScript</strong>
                 <ul>
                   <li>All components must be fully typed</li>
                 </ul>
               </li>
               <li>
-                <strong className="text-gray-900">Documentation</strong>
+                <strong className="text-zinc-900">Documentation</strong>
                 <ul>
                   <li>
                     Include comprehensive Storybook stories and JSDoc comments
@@ -379,7 +410,7 @@ function OverviewComponent() {
                 </ul>
               </li>
               <li>
-                <strong className="text-gray-900">Testing</strong>
+                <strong className="text-zinc-900">Testing</strong>
                 <ul>
                   <li>Write unit tests for component logic and interactions</li>
                 </ul>
@@ -391,10 +422,12 @@ function OverviewComponent() {
 
       {/* Social Links */}
       <div className="space-y-8">
-        <h3 className="text-3xl font-bold text-gray-900">Get Involved</h3>
-        <p className="text-md leading-relaxed text-gray-600">
+        <Text variant="h2" tone="primary">
+          Get Involved
+        </Text>
+        <Text variant="large" tone="secondary">
           Join the AutoGPT community and help build the future of AI automation.
-        </p>
+        </Text>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
           {[
             {
@@ -431,9 +464,9 @@ function OverviewComponent() {
                 height={32}
                 className="h-8 w-8"
               />
-              <p className="text-sm leading-relaxed text-gray-600">
+              <Text variant="body" tone="secondary">
                 {item.title}
-              </p>
+              </Text>
               <a
                 href={item.link}
                 target="_blank"
@@ -456,6 +489,7 @@ const meta: Meta<typeof OverviewComponent> = {
   component: OverviewComponent,
   parameters: {
     layout: "fullscreen",
+    a11y: { test: "error" },
   },
 };
 

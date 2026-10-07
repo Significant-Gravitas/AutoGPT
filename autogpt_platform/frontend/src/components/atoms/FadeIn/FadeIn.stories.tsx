@@ -6,6 +6,7 @@ const meta: Meta<typeof FadeIn> = {
   tags: ["autodocs"],
   component: FadeIn,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

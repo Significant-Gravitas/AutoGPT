@@ -26,6 +26,7 @@ const meta: Meta<typeof Button> = {
     ),
   ],
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

@@ -17,6 +17,7 @@ const meta: Meta<typeof ToggleChip> = {
     ),
   ],
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

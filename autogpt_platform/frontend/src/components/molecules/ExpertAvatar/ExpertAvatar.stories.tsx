@@ -7,6 +7,7 @@ import { ExpertCover } from "@/app/(platform)/team/components/ExpertTeamCard/com
 const meta = {
   title: "Molecules/ExpertAvatar",
   component: ExpertAvatar,
+  parameters: { a11y: { test: "error" } },
   args: { name: "Expert", avatarUrl: null },
 } satisfies Meta<typeof ExpertAvatar>;
 export default meta;

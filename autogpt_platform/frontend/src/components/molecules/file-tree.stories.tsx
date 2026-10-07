@@ -6,6 +6,7 @@ const meta: Meta<typeof Tree> = {
   title: "Molecules/FileTree",
   component: Tree,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
   },
 };

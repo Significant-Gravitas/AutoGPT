@@ -4,6 +4,7 @@ import { TrialStatus } from "./TrialStatus";
 const meta = {
   title: "Organisms/TrialStatus",
   component: TrialStatus,
+  parameters: { a11y: { test: "error" } },
   args: {
     trial: {
       active: true,

@@ -154,6 +154,7 @@ const meta: Meta<typeof SearchCommandModalDemo> = {
   component: SearchCommandModalDemo,
   tags: ["autodocs"],
   parameters: {
+    a11y: { test: "error" },
     layout: "fullscreen",
     docs: {
       description: {

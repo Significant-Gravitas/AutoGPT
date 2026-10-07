@@ -12,6 +12,7 @@ import { Button } from "@/components/atoms/Button/Button";
 const meta: Meta = {
   title: "Molecules/DropdownMenu",
   component: DropdownMenuContent,
+  parameters: { a11y: { test: "error" } },
 };
 
 export default meta;

@@ -7,6 +7,7 @@ const meta: Meta<typeof SearchInput> = {
   title: "Molecules/SearchInput",
   component: SearchInput,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
   },
   args: {

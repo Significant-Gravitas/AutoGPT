@@ -20,7 +20,7 @@ const trialOffer = {
 const meta = {
   title: "Organisms/SubscriptionPlans",
   component: SubscriptionPlans,
-  parameters: { layout: "fullscreen" },
+  parameters: { a11y: { test: "error" }, layout: "fullscreen" },
   args: {
     plans: PLANS.map((plan) => ({
       ...plan,

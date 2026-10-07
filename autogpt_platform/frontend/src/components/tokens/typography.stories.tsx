@@ -1,3 +1,10 @@
+import {
+  tones,
+  variantElementMap,
+  variants,
+  type Tone,
+  type Variant,
+} from "@/components/atoms/Text/helpers";
 import { Text } from "@/components/atoms/Text/Text";
 import type { Meta } from "@storybook/nextjs";
 import { StoryCode } from "./helpers/StoryCode";
@@ -8,10 +15,48 @@ const meta: Meta<typeof Text> = {
   parameters: {
     layout: "fullscreen",
     controls: { disable: true },
+    a11y: { test: "error" },
   },
 };
 
 export default meta;
+
+const variantNames = Object.keys(variants) as Variant[];
+const toneNames = Object.keys(tones) as Tone[];
+
+function isHeading(variant: Variant) {
+  return variants[variant].includes("font-poppins");
+}
+
+const headingVariants = variantNames.filter(isHeading);
+const bodyVariants = variantNames.filter((variant) => !isHeading(variant));
+
+interface VariantRowProps {
+  variant: Variant;
+}
+
+function VariantRow({ variant }: VariantRowProps) {
+  return (
+    <div className="flex flex-col gap-4 border-b border-zinc-200 py-6 md:flex-row">
+      <div className="space-y-1 md:w-48 md:shrink-0">
+        <Text variant="body-medium" className="font-mono text-zinc-800">
+          {variant}
+        </Text>
+        <Text variant="small" className="font-mono text-zinc-500">
+          &lt;{variantElementMap[variant]}&gt;
+        </Text>
+      </div>
+      <div className="space-y-2">
+        <Text variant={variant} as="div">
+          The quick brown fox jumps over the lazy dog
+        </Text>
+        <Text variant="small" className="font-mono text-zinc-500">
+          {variants[variant]}
+        </Text>
+      </div>
+    </div>
+  );
+}
 
 export function AllVariants() {
   return (
@@ -19,23 +64,27 @@ export function AllVariants() {
       {/* Typography System Documentation */}
       <div className="space-y-8">
         <div>
-          <h1 className="mb-4 text-4xl font-bold text-zinc-800">
+          <Text variant="h1" className="mb-4 text-zinc-800">
             Typography System
-          </h1>
-          <p className="text-lg leading-relaxed text-zinc-600">
+          </Text>
+          <Text variant="large" className="text-zinc-600">
             Our typography system uses two carefully selected fonts to create a
             clear hierarchy and excellent readability across all interfaces.
-          </p>
+          </Text>
         </div>
 
         <div className="grid gap-8 md:grid-cols-2">
           <div>
-            <h2 className="mb-4 text-2xl font-semibold text-zinc-800">
+            <Text variant="h4" as="h2" className="mb-4 text-zinc-800">
               Font Families
-            </h2>
+            </Text>
             <div className="space-y-4">
-              <div className="rounded-lg border border-gray-200 p-4">
-                <h3 className="mb-2 font-semibold text-zinc-800">
+              <div className="rounded-lg border border-zinc-200 p-4">
+                <Text
+                  variant="large-semibold"
+                  as="h3"
+                  className="mb-2 text-zinc-800"
+                >
                   <a
                     href="https://fonts.google.com/specimen/Poppins"
                     target="_blank"
@@ -44,16 +93,20 @@ export function AllVariants() {
                   >
                     Poppins
                   </a>
-                </h3>
-                <p className="mb-2 text-sm text-zinc-600">
+                </Text>
+                <Text variant="body" className="mb-2 text-zinc-600">
                   Used for all headings and display text
-                </p>
+                </Text>
                 <div className="font-poppins text-2xl text-zinc-800">
                   The quick brown fox
                 </div>
               </div>
-              <div className="rounded-lg border border-gray-200 p-4">
-                <h3 className="mb-2 font-semibold text-zinc-800">
+              <div className="rounded-lg border border-zinc-200 p-4">
+                <Text
+                  variant="large-semibold"
+                  as="h3"
+                  className="mb-2 text-zinc-800"
+                >
                   <a
                     href="https://github.com/vercel/geist-font"
                     target="_blank"
@@ -62,10 +115,10 @@ export function AllVariants() {
                   >
                     Geist Sans
                   </a>
-                </h3>
-                <p className="mb-2 text-sm text-zinc-600">
+                </Text>
+                <Text variant="body" className="mb-2 text-zinc-600">
                   Used for all body text, labels, and UI elements
-                </p>
+                </Text>
                 <div className="font-sans text-base text-zinc-800">
                   The quick brown fox jumps over the lazy dog
                 </div>
@@ -74,32 +127,38 @@ export function AllVariants() {
           </div>
 
           <div>
-            <h2 className="mb-4 text-2xl font-semibold text-zinc-800">FAQ</h2>
+            <Text variant="h4" as="h2" className="mb-4 text-zinc-800">
+              FAQ
+            </Text>
             <div className="space-y-4">
-              <div className="rounded-lg border border-gray-200 p-4">
-                <h3 className="mb-2 font-semibold text-zinc-800">
+              <div className="rounded-lg border border-zinc-200 p-4">
+                <Text
+                  variant="large-semibold"
+                  as="h3"
+                  className="mb-2 text-zinc-800"
+                >
                   🤔 Why can&apos;t I use &lt;p&gt; tags directly?
-                </h3>
+                </Text>
                 <div className="space-y-3 text-zinc-600">
-                  <p className="text-sm">
+                  <Text variant="body" className="text-zinc-600">
                     Always use the{" "}
-                    <code className="rounded bg-gray-100 px-2 py-1 text-xs">
+                    <code className="rounded bg-zinc-100 px-2 py-1 text-xs">
                       &lt;Text /&gt;
                     </code>{" "}
                     component instead of plain HTML elements like{" "}
-                    <code className="rounded bg-gray-100 px-2 py-1 text-xs">
+                    <code className="rounded bg-zinc-100 px-2 py-1 text-xs">
                       &lt;h1&gt;
                     </code>
                     ,{" "}
-                    <code className="rounded bg-gray-100 px-2 py-1 text-xs">
+                    <code className="rounded bg-zinc-100 px-2 py-1 text-xs">
                       &lt;p&gt;
                     </code>
                     ,{" "}
-                    <code className="rounded bg-gray-100 px-2 py-1 text-xs">
+                    <code className="rounded bg-zinc-100 px-2 py-1 text-xs">
                       &lt;span&gt;
                     </code>
                     , etc... Reasons:
-                  </p>
+                  </Text>
                   <ul className="ml-4 list-inside list-disc space-y-1 text-sm">
                     <li>Ensures consistent typography across the entire app</li>
                     <li>
@@ -120,54 +179,60 @@ export function AllVariants() {
         </div>
       </div>
 
-      {/* Typography Examples */}
-      <div className="space-y-8">
-        <div className="mb-19 mb-20 space-y-6">
-          <h2 className="mb-4 border-b border-border pb-2 text-xl text-zinc-500">
+      {/* Typography Variants, read from atoms/Text/helpers.ts */}
+      <div className="space-y-12">
+        <div>
+          <Text
+            variant="h4"
+            as="h2"
+            className="border-b border-zinc-200 pb-2 text-zinc-500"
+          >
             Headings (Poppins)
-          </h2>
-          <Text variant="h1">Heading 1</Text>
-          <Text variant="h2">Heading 2</Text>
-          <Text variant="h3">Heading 3</Text>
-          <Text variant="h4">Heading 4</Text>
-          <StoryCode
-            code={`<Text variant="h1">Heading 1</Text>
-<Text variant="h2">Heading 2</Text>
-<Text variant="h3">Heading 3</Text>
-<Text variant="h4">Heading 4</Text>`}
-          />
+          </Text>
+          {headingVariants.map((variant) => (
+            <VariantRow key={variant} variant={variant} />
+          ))}
         </div>
 
-        <h2 className="mb-4 border-b border-border pb-2 text-xl text-zinc-500">
-          Body Text (Geist Sans)
-        </h2>
-        <Text variant="lead">Lead</Text>
-        <StoryCode code="<Text variant='lead'>Lead</Text>" />
-        <div className="flex flex-row gap-8">
-          <Text variant="large">Large</Text>
-          <Text variant="large-medium">Large Medium</Text>
-          <Text variant="large-semibold">Large Semibold</Text>
+        <div>
+          <Text
+            variant="h4"
+            as="h2"
+            className="border-b border-zinc-200 pb-2 text-zinc-500"
+          >
+            Body and Labels (Geist Sans)
+          </Text>
+          {bodyVariants.map((variant) => (
+            <VariantRow key={variant} variant={variant} />
+          ))}
         </div>
-        <StoryCode
-          code={`<Text variant="large">Large</Text>
-<Text variant="large-medium">Large Medium</Text>
-<Text variant="large-semibold">Large Semibold</Text>`}
-        />
-        <div className="flex flex-row gap-8">
-          <Text variant="body">Body</Text>
-          <Text variant="body-medium">Body Medium</Text>
+
+        <div className="space-y-4">
+          <Text
+            variant="h4"
+            as="h2"
+            className="border-b border-zinc-200 pb-2 text-zinc-500"
+          >
+            Tones
+          </Text>
+          <div className="flex flex-wrap gap-8">
+            {toneNames.map((tone) => (
+              <div key={tone} className="space-y-1">
+                <Text variant="body" tone={tone}>
+                  tone=&quot;{tone}&quot;
+                </Text>
+                <Text variant="small" className="font-mono text-zinc-500">
+                  {tones[tone]}
+                </Text>
+              </div>
+            ))}
+          </div>
         </div>
+
         <StoryCode
-          code={`<Text variant="body">Body</Text>
-<Text variant="body-medium">Body Medium</Text>`}
-        />
-        <div className="flex flex-row gap-8">
-          <Text variant="small">Small</Text>
-          <Text variant="small-medium">Small Medium</Text>
-        </div>
-        <StoryCode
-          code={`<Text variant="small">Small</Text>
-<Text variant="small-medium">Small Medium</Text>`}
+          code={variantNames
+            .map((variant) => `<Text variant="${variant}">${variant}</Text>`)
+            .join("\n")}
         />
       </div>
     </div>

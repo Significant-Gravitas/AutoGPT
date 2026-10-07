@@ -4,7 +4,7 @@ import { AutopilotAvatar } from "./AutopilotAvatar";
 const meta = {
   title: "Molecules/AutopilotAvatar",
   component: AutopilotAvatar,
-  parameters: { layout: "centered" },
+  parameters: { a11y: { test: "error" }, layout: "centered" },
   tags: ["autodocs"],
 } satisfies Meta<typeof AutopilotAvatar>;
 

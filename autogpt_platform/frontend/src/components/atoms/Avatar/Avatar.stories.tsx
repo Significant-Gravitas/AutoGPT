@@ -9,6 +9,7 @@ import {
 const meta: Meta<typeof Avatar> = {
   title: "Atoms/Avatar",
   component: Avatar,
+  parameters: { a11y: { test: "error" } },
 };
 
 export default meta;

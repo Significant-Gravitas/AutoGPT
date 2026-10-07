@@ -4,6 +4,7 @@ import { ExpertIdentityDetails } from "./ExpertIdentityDetails";
 const meta = {
   title: "Molecules/ExpertIdentityDetails",
   component: ExpertIdentityDetails,
+  parameters: { a11y: { test: "error" } },
   args: {
     name: "Jules",
     role: "Social & Content Repurposing",

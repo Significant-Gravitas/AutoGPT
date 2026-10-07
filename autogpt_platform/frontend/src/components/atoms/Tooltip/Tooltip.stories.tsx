@@ -12,6 +12,7 @@ const meta: Meta<typeof Tooltip> = {
   tags: ["autodocs"],
   component: Tooltip,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

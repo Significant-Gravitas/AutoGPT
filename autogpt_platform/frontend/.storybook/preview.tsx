@@ -11,18 +11,37 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { mswLoader } from "msw-storybook-addon/csf3";
 import React from "react";
 import "../src/app/globals.css";
-import "../src/components/styles/fonts.css";
+import { fonts } from "../src/components/styles/fonts";
 import { theme } from "./theme";
 
-// One QueryClient per browser session is fine for Storybook — retries
-// are off so failing MSW handlers surface immediately instead of being
-// hidden behind exponential backoff.
-const storyQueryClient = new QueryClient({
-  defaultOptions: {
-    queries: { retry: false, refetchOnWindowFocus: false },
-    mutations: { retry: false },
-  },
-});
+// Same next/font instances as src/app/layout.tsx. Storybook's next/font
+// shim builds the `variable` class name from the weight, so Geist's
+// "100 900" yields a class with a space in it and a selector that never
+// matches. Set the variables from each font's family instead, on <html> so
+// portalled content (dialogs, popovers, toasts) picks them up too.
+const rootStyle = document.documentElement.style;
+rootStyle.setProperty("--font-poppins", fonts.poppins.style.fontFamily);
+rootStyle.setProperty("--font-geist-sans", fonts.sans.style.fontFamily);
+rootStyle.setProperty("--font-geist-mono", fonts.mono.style.fontFamily);
+
+// One QueryClient per story, so a story's MSW handlers are never shadowed
+// by data another story cached under the same query key. Retries are off so
+// failing handlers surface immediately instead of hiding behind backoff.
+const storyQueryClients = new Map<string, QueryClient>();
+
+function getStoryQueryClient(storyId: string) {
+  let client = storyQueryClients.get(storyId);
+  if (!client) {
+    client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, refetchOnWindowFocus: false },
+        mutations: { retry: false },
+      },
+    });
+    storyQueryClients.set(storyId, client);
+  }
+  return client;
+}
 
 const preview: Preview = {
   parameters: {
@@ -46,8 +65,8 @@ const preview: Preview = {
   },
   loaders: [mswLoader()],
   decorators: [
-    (Story) => (
-      <QueryClientProvider client={storyQueryClient}>
+    (Story, context) => (
+      <QueryClientProvider client={getStoryQueryClient(context.id)}>
         <div className="bg-background p-8">
           <Story />
         </div>

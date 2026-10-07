@@ -5,6 +5,7 @@ const meta = {
   title: "Molecules/Alert",
   component: Alert,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
   },
   tags: ["autodocs"],

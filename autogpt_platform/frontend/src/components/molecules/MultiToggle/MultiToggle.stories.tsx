@@ -7,6 +7,7 @@ const meta: Meta<typeof MultiToggle> = {
   tags: ["autodocs"],
   component: MultiToggle,
   parameters: {
+    a11y: { test: "error" },
     layout: "centered",
     docs: {
       description: {

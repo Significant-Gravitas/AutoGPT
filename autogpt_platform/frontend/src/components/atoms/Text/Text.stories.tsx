@@ -7,6 +7,7 @@ const meta: Meta<typeof Text> = {
   component: Text,
   tags: ["autodocs"],
   parameters: {
+    a11y: { test: "error" },
     layout: "fullscreen",
     controls: { hideNoControlsWarning: true },
     docs: {
