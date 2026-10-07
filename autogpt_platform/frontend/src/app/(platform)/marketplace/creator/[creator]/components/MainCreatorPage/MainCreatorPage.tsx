@@ -75,8 +75,8 @@ export function MainCreatorPage({ params }: Props) {
           {/* Creator info - left side */}
           <div className="w-full lg:w-2/5">
             <div className="w-full px-4 sm:px-6 lg:px-0">
-              <div className="max-w-[45rem] rounded-2xl bg-gradient-to-r from-blue-200 to-indigo-200 p-[1px]">
-                <div className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4">
+              <div className="max-w-[45rem] rounded-2xl bg-gradient-to-r from-blue-200 to-purple-200 p-px">
+                <div className="flex flex-col rounded-[calc(1rem-2px)] bg-zinc-50 p-4">
                   {/* Avatar */}
                   <Avatar className="mb-4 h-20 w-20 sm:h-24 sm:w-24">
                     {creator.avatar_url && (
@@ -93,6 +93,7 @@ export function MainCreatorPage({ params }: Props) {
                   {/* Name */}
                   <Text
                     variant="h2"
+                    unmask={false}
                     className="mb-1"
                     data-testid="creator-title"
                   >
@@ -100,14 +101,21 @@ export function MainCreatorPage({ params }: Props) {
                   </Text>
 
                   {/* Handle */}
-                  <Text variant="body" className="mb-4 text-neutral-500">
+                  <Text
+                    variant="body"
+                    tone="muted"
+                    unmask={false}
+                    className="mb-4"
+                  >
                     @{creator.username}
                   </Text>
 
                   {/* Description */}
                   <Text
                     variant="body"
-                    className="mb-6 leading-relaxed text-neutral-600"
+                    tone="secondary"
+                    unmask={false}
+                    className="mb-6 leading-relaxed"
                     data-testid="creator-description"
                   >
                     {creator.description}

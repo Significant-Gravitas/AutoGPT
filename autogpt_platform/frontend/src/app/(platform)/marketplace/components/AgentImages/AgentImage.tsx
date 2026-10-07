@@ -31,7 +31,7 @@ export function AgentImages({ images }: AgentImagesProps) {
   if (images.length === 0) return null;
 
   return (
-    <div className="w-full px-2 dark:bg-transparent lg:w-3/5 lg:flex-1">
+    <div className="w-full px-2 lg:w-3/5 lg:flex-1">
       {/* Main preview */}
       <AgentImageItem
         image={images[selectedIndex]}
@@ -60,7 +60,7 @@ export function AgentImages({ images }: AgentImagesProps) {
                 className={cn(
                   "relative h-16 w-24 shrink-0 overflow-hidden rounded-lg border transition-all sm:h-20 sm:w-32",
                   selectedIndex === index
-                    ? "border-violet-500"
+                    ? "border-purple-500"
                     : "border-zinc-100 opacity-70 hover:opacity-100",
                 )}
               >
@@ -88,7 +88,7 @@ export function AgentImages({ images }: AgentImagesProps) {
                     onError={() => markThumbFailed(thumbnailUrl)}
                   />
                 ) : isVideo ? (
-                  <div className="flex h-full w-full items-center justify-center bg-neutral-200 text-xs text-neutral-500">
+                  <div className="flex h-full w-full items-center justify-center bg-zinc-200 text-xs text-zinc-500">
                     Video
                   </div>
                 ) : (

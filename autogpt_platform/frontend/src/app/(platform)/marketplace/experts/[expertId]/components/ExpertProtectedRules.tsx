@@ -29,7 +29,7 @@ export function ExpertProtectedRules({ rules }: Props) {
                 icon={CheckmarkCircle02Icon}
                 size={18}
                 aria-hidden="true"
-                className="mt-1 shrink-0 text-emerald-600"
+                className="mt-1 shrink-0 text-green-600"
               />
               <span>{rule}</span>
             </li>

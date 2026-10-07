@@ -14,7 +14,7 @@ export const SECTION_INSET_CLASS = "px-4";
 
 /** The Button atom's `xs` size for components that style a raw trigger instead
  *  of taking Button props (schedule rows, the edit-schedule modal trigger). */
-export const ACTION_BUTTON_CLASS = "h-7 min-w-0 !rounded-md px-2.5 text-xs";
+export const ACTION_BUTTON_CLASS = "h-7 min-w-0 rounded-md px-2.5 text-xs";
 
 interface PodGroup {
   pod: ExpertPod;

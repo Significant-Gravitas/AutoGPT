@@ -42,11 +42,11 @@ export function CardStat({ icon, label, singular, count }: StatProps) {
         variant="body-medium"
         as="dd"
         unmask={false}
-        className="tabular-nums !text-zinc-800"
+        className="tabular-nums text-zinc-800"
       >
         {count}
       </Text>
-      <Text variant="body-medium" as="dt" className="!text-inherit">
+      <Text variant="body-medium" as="dt" className="text-inherit">
         <span className="sr-only">{label}</span>
         <span aria-hidden="true">{word}</span>
       </Text>

@@ -30,7 +30,7 @@ export function ExpertSkillListItem({
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <div
           className={cn(
-            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-violet-50 text-violet-700",
+            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-purple-50 text-purple-700",
             accentClassName,
             "border-0",
           )}

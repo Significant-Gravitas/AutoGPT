@@ -5,7 +5,7 @@ export function AgentPageLoading() {
     <div className="mx-auto w-full max-w-[1360px]">
       <main className="mt-5 px-4 pb-12">
         {/* Breadcrumbs */}
-        <div className="mb-4 flex items-center justify-between px-4 md:!-mb-3">
+        <div className="mb-4 flex items-center justify-between px-4 md:-mb-3">
           <Skeleton className="h-8 w-20 rounded-lg" />
           <div className="hidden items-center gap-2 md:flex">
             <Skeleton className="h-4 w-24" />
@@ -20,8 +20,8 @@ export function AgentPageLoading() {
         <div className="mt-0 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 lg:mt-8 lg:flex-row lg:gap-12">
           {/* Left: Agent info panel */}
           <div className="w-full lg:w-2/5">
-            <div className="rounded-2xl bg-gradient-to-r from-blue-100/50 to-indigo-100/50 p-[1px]">
-              <div className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4">
+            <div className="rounded-2xl bg-gradient-to-r from-blue-100/50 to-purple-100/50 p-px">
+              <div className="flex flex-col rounded-[calc(1rem-2px)] bg-zinc-50 p-4">
                 {/* Title */}
                 <Skeleton className="mb-3 h-9 w-3/4" />
 
@@ -65,7 +65,7 @@ export function AgentPageLoading() {
 
           {/* Right: Image preview */}
           <div className="w-full px-2 lg:w-3/5 lg:flex-1">
-            <Skeleton className="h-[15rem] w-full rounded-xl sm:h-[20rem] md:h-[25rem] lg:h-[30rem]" />
+            <Skeleton className="h-60 w-full rounded-xl sm:h-80 md:h-[25rem] lg:h-[30rem]" />
 
             {/* Thumbnails */}
             <div className="mt-3 flex gap-2 sm:mt-4 sm:gap-3">

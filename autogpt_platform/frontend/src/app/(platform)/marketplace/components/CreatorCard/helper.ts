@@ -1,6 +1,6 @@
 const BACKGROUND_COLORS = [
-  "bg-amber-50 border-amber-100/70",
-  "bg-violet-50 border-violet-100/70",
+  "bg-yellow-50 border-yellow-100/70",
+  "bg-purple-50 border-purple-100/70",
   "bg-green-50 border-green-100/70",
   "bg-blue-50 border-blue-100/70",
 ];

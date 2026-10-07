@@ -50,7 +50,7 @@ export function NewPodDialog({ open, onClose, onCreate, isCreating }: Props) {
             value={name}
             maxLength={POD_NAME_MAX_LENGTH}
             onChange={(event) => setName(event.target.value)}
-            wrapperClassName="!mb-0"
+            wrapperClassName="mb-0"
           />
           <div className="flex justify-end gap-2">
             <Button

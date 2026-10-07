@@ -1,6 +1,7 @@
 "use client";
 
 import { ExpertCredentialRef } from "@/app/api/__generated__/models/expertCredentialRef";
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -186,23 +187,27 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
         </Text>
       </div>
       <div className="flex items-center gap-3">
-        <Text variant="eyebrow" className="text-emerald-600">
+        <Text variant="eyebrow" className="text-green-600">
           Ready
         </Text>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-xs"
+          withTooltip={false}
+          unmask={false}
           onClick={onRemove}
           disabled={isRemoving}
           aria-busy={isRemoving}
           aria-label={`Remove ${name}`}
-          className="inline-flex size-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-red-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="text-zinc-500 hover:border-transparent hover:bg-zinc-100 hover:text-red-500 focus-visible:ring-zinc-400 disabled:text-zinc-500 disabled:opacity-50"
         >
           {isRemoving ? (
             <Icon icon={Loading03Icon} size={16} className="animate-spin" />
           ) : (
             <Icon icon={Delete02Icon} size={16} />
           )}
-        </button>
+        </Button>
       </div>
     </div>
   );

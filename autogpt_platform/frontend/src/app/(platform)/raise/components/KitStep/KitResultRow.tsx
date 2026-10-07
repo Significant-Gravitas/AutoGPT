@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { FlowIcon, SparklesIcon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { MAX_ATTACHMENTS, type SearchHit } from "./helpers";
@@ -42,10 +43,16 @@ export function KitResultRow({
       </span>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">
+        <Text
+          variant="body-medium"
+          unmask={false}
+          className="truncate text-foreground"
+        >
           {hit.name}
-        </p>
-        <p className="truncate text-xs text-muted-foreground">{hit.subtitle}</p>
+        </Text>
+        <Text variant="small" tone="muted" unmask={false} className="truncate">
+          {hit.subtitle}
+        </Text>
       </div>
 
       <Button

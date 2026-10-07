@@ -5,6 +5,7 @@ import { ArtifactContent } from "@/app/(platform)/copilot/components/ArtifactPan
 import { classifyArtifact } from "@/app/(platform)/copilot/components/ArtifactPanel/helpers";
 import type { ArtifactRef } from "@/app/(platform)/copilot/store";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useState } from "react";
@@ -159,9 +160,9 @@ function DownloadOnly({
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-      <p className="text-sm text-zinc-500">
+      <Text variant="body" tone="muted">
         This file type can&apos;t be previewed.
-      </p>
+      </Text>
       <a
         href={downloadUrl}
         download={name}

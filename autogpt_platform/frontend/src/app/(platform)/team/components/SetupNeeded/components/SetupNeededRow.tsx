@@ -41,11 +41,11 @@ export function SetupNeededRow({
         <Text
           variant="body-medium"
           as="span"
-          className="truncate !text-zinc-800"
+          className="truncate text-zinc-800"
         >
           {title}
         </Text>
-        <Text variant="small" as="span" className="truncate !text-zinc-400">
+        <Text variant="small" as="span" className="truncate text-zinc-400">
           {detail}
         </Text>
       </div>
@@ -65,7 +65,7 @@ export function SetupNeededRow({
               Connect
             </Button>
           ) : (
-            <Text variant="small" as="span" className="!text-zinc-500">
+            <Text variant="small" as="span" tone="muted">
               Needs a platform key
             </Text>
           )

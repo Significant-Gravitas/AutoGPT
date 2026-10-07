@@ -3,6 +3,7 @@ import { ReactNode } from "react";
 import { ArrowRight02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -38,19 +39,25 @@ export function SectionHeader({
     <div className="mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
       <div>
         {eyebrow ? (
-          <div className="mb-2.5 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-violet-600">
+          <div className="mb-2.5 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-purple-600">
             {eyebrowIcon}
             {eyebrow}
           </div>
         ) : null}
-        <h2
+        <Text
+          variant="lead-semibold"
+          as="h2"
+          tone="primary"
+          unmask={false}
           id={titleId}
-          className="text-3xl font-semibold tracking-[-0.02em] text-zinc-900"
+          className="text-3xl tracking-[-0.02em]"
         >
           {title}
-        </h2>
+        </Text>
         {subtitle ? (
-          <p className="mt-2 text-lg text-zinc-500">{subtitle}</p>
+          <Text variant="large" tone="muted" className="mt-2 text-lg">
+            {subtitle}
+          </Text>
         ) : null}
       </div>
       {action || secondaryAction || filters || actions ? (

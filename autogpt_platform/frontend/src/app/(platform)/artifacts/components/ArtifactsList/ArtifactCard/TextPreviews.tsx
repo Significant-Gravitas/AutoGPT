@@ -1,6 +1,7 @@
 "use client";
 
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { Text } from "@/components/atoms/Text/Text";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getFilePreviewUrl } from "../helpers";
@@ -42,16 +43,47 @@ export function CsvPreview({ file, onError }: PreviewProps) {
 // (huge h1, etc.) would overflow without these overrides.
 const MARKDOWN_COMPONENTS: Components = {
   h1: ({ children }) => (
-    <p className="mb-1 text-[11px] font-semibold text-zinc-900">{children}</p>
+    <Text
+      variant="small"
+      as="p"
+      tone="primary"
+      unmask={false}
+      className="mb-1 text-[11px] font-semibold"
+    >
+      {children}
+    </Text>
   ),
   h2: ({ children }) => (
-    <p className="mb-1 text-[11px] font-semibold text-zinc-900">{children}</p>
+    <Text
+      variant="small"
+      as="p"
+      tone="primary"
+      unmask={false}
+      className="mb-1 text-[11px] font-semibold"
+    >
+      {children}
+    </Text>
   ),
   h3: ({ children }) => (
-    <p className="mb-0.5 text-[10px] font-semibold text-zinc-800">{children}</p>
+    <Text
+      variant="small"
+      as="p"
+      unmask={false}
+      className="mb-0.5 text-[10px] font-semibold text-zinc-800"
+    >
+      {children}
+    </Text>
   ),
   p: ({ children }) => (
-    <p className="mb-1 text-[10px] leading-[1.4] text-zinc-600">{children}</p>
+    <Text
+      variant="small"
+      as="p"
+      tone="secondary"
+      unmask={false}
+      className="mb-1 text-[10px] leading-[1.4]"
+    >
+      {children}
+    </Text>
   ),
   ul: ({ children }) => (
     <ul className="mb-1 ml-3 list-disc text-[10px] text-zinc-600">
@@ -64,7 +96,7 @@ const MARKDOWN_COMPONENTS: Components = {
     </ol>
   ),
   li: ({ children }) => <li className="mb-0.5">{children}</li>,
-  a: ({ children }) => <span className="text-violet-600">{children}</span>,
+  a: ({ children }) => <span className="text-purple-600">{children}</span>,
   code: ({ children }) => (
     <code className="rounded bg-zinc-100 px-1 font-mono text-[9px]">
       {children}
@@ -109,7 +141,7 @@ export function MarkdownPreview({ file, onError }: PreviewProps) {
 
 function CsvTable({ preview }: { preview: CsvPreview }) {
   const cellClass =
-    "max-w-[6rem] truncate border-b border-zinc-100 px-2 py-1 text-left";
+    "max-w-24 truncate border-b border-zinc-100 px-2 py-1 text-left";
   return (
     <div className="relative h-full w-full overflow-hidden bg-white">
       <table className="w-full table-fixed border-collapse text-[9px] text-zinc-700">

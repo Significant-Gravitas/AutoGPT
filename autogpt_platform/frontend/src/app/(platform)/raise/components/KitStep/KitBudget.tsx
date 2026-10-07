@@ -21,7 +21,7 @@ export function KitBudget({
   onCustomChange,
 }: Props) {
   return (
-    <div className="flex w-full max-w-[42rem] flex-col items-end gap-3">
+    <div className="flex w-full max-w-2xl flex-col items-end gap-3">
       <div
         role="group"
         aria-label="Weekly budget"
@@ -56,7 +56,7 @@ export function KitBudget({
         value={customAmount}
         onChange={(event) => onCustomChange(event.target.value)}
         placeholder="Custom amount, e.g. $7.50…"
-        wrapperClassName="mb-0 w-full max-w-[16rem] [&_input]:h-[2.625rem] [&_input]:py-3"
+        wrapperClassName="mb-0 w-full max-w-64 [&_input]:h-[2.625rem] [&_input]:py-3"
       />
     </div>
   );

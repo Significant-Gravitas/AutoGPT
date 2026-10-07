@@ -15,7 +15,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { FEATURED_SECTION_ID } from "../MarketplaceTabIntro/helpers";
 
 const FEATURED_COLORS = [
-  "bg-violet-50 border-violet-100/70",
+  "bg-purple-50 border-purple-100/70",
   "bg-blue-50 border-blue-100/70",
   "bg-green-50 border-green-100/70",
 ];
@@ -37,7 +37,7 @@ export function FeaturedSection({ featuredAgents }: FeaturedSectionProps) {
         }}
       >
         <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-violet-600">
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-purple-600">
             <Icon icon={SparklesIcon} size={16} />
             Hand-picked
           </div>
@@ -67,8 +67,8 @@ export function FeaturedSection({ featuredAgents }: FeaturedSectionProps) {
               </CarouselItem>
             ))}
           </CarouselContent>
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-[rgb(246,247,248)] to-transparent" />
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[rgb(246,247,248)] to-transparent" />
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background to-transparent" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent" />
         </div>
       </Carousel>
     </section>

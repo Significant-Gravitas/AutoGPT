@@ -1,15 +1,16 @@
 "use client";
 
-import { StarRatingIcons } from "@/components/__legacy__/ui/icons";
 import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Text } from "@/components/atoms/Text/Text";
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { useState } from "react";
 import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
+import { StarRating } from "../StarRating/StarRating";
 import { isKey } from "@/lib/keyboard";
 
 interface Props {
@@ -80,17 +81,21 @@ export function StoreCard({
             />
           </>
         ) : (
-          <div className="absolute inset-0 rounded-xl bg-violet-100" />
+          <div className="absolute inset-0 rounded-xl bg-purple-100" />
         )}
       </div>
 
       <div className="mt-4 flex w-full flex-1 flex-col">
-        <h3
-          className="line-clamp-1 font-sans text-lg font-semibold tracking-[-0.01em] text-zinc-900"
+        <Text
+          variant="large-semibold"
+          as="h3"
+          tone="primary"
+          unmask={false}
+          className="line-clamp-1 text-lg tracking-[-0.01em]"
           title={agentName}
         >
           {agentName}
-        </h3>
+        </Text>
         {!hideAvatar && creatorName && (
           <div className="mt-1.5 flex items-center gap-1.5">
             <Avatar className="h-5 w-5 shrink-0">
@@ -107,9 +112,14 @@ export function StoreCard({
             </span>
           </div>
         )}
-        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-zinc-600">
+        <Text
+          variant="body"
+          tone="secondary"
+          unmask={false}
+          className="mt-3 line-clamp-3 leading-relaxed"
+        >
           {description}
-        </p>
+        </Text>
       </div>
 
       <div className="mt-auto flex w-full items-center pt-3">
@@ -124,7 +134,7 @@ export function StoreCard({
               <span className="font-medium text-zinc-700">
                 {rating.toFixed(1)}
               </span>
-              {StarRatingIcons(rating)}
+              <StarRating rating={rating} />
             </span>
           )}
         </span>

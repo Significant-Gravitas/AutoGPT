@@ -54,7 +54,7 @@ export function InstallSkillButton({
         size="small"
         onClick={onAddToLibrary}
         loading={isAdding}
-        className="!rounded-r-none border-r-0 sm:w-auto"
+        className="rounded-r-none border-r-0 sm:w-auto"
         data-testid="skill-install-button"
       >
         Install skill
@@ -69,7 +69,7 @@ export function InstallSkillButton({
           size="small"
           aria-label={MENU_LABEL}
           disabled={isAdding}
-          className="!min-w-0 !rounded-l-none border-l border-l-white/25 px-2.5"
+          className="min-w-0 rounded-l-none border-l border-l-white/25 px-2.5"
         >
           <Icon icon={ArrowDown01Icon} size={16} aria-hidden />
         </Button>
@@ -94,7 +94,7 @@ export function ExpertInstallMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-[15rem]">
+      <DropdownMenuContent align="end" className="min-w-60">
         <DropdownMenuLabel className="text-xs font-normal text-zinc-500">
           {MENU_LABEL}
         </DropdownMenuLabel>

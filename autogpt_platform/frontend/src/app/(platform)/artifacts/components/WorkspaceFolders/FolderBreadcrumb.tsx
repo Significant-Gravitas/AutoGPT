@@ -1,4 +1,5 @@
 "use client";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   DropdownMenu,
@@ -53,8 +54,9 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
         )}
       >
         <li className="flex shrink-0 items-center">
-          <button
+          <Button
             type="button"
+            variant="ghost"
             onClick={() => onNavigate(null)}
             className={CRUMB_BUTTON_CLASS}
             data-testid="folder-breadcrumb-root"
@@ -63,15 +65,16 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
             <Text variant="small-medium" as="span">
               Files
             </Text>
-          </button>
+          </Button>
         </li>
         {hidden.length > 0 ? (
           <li className="flex shrink-0 items-center gap-1.5">
             {separator}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   aria-label="Show hidden folders"
                   className={CRUMB_BUTTON_CLASS}
                   data-testid="folder-breadcrumb-overflow"
@@ -79,7 +82,7 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
                   <Text variant="small-medium" as="span">
                     …
                   </Text>
-                </button>
+                </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-48">
                 {hidden.map((item) => (
@@ -110,14 +113,16 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
                   variant="small-medium"
                   as="span"
                   aria-current="page"
-                  className="max-w-[12rem] truncate text-zinc-800"
+                  className="max-w-48 truncate text-zinc-800"
                   title={item.name}
                 >
                   {item.name}
                 </Text>
               ) : (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  unmask={false}
                   onClick={() => onNavigate(item.id)}
                   className={CRUMB_BUTTON_CLASS}
                   title={item.name}
@@ -125,11 +130,11 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
                   <Text
                     variant="small-medium"
                     as="span"
-                    className="max-w-[12rem] truncate"
+                    className="max-w-48 truncate"
                   >
                     {item.name}
                   </Text>
-                </button>
+                </Button>
               )}
             </li>
           );
@@ -140,7 +145,7 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
 }
 
 const CRUMB_BUTTON_CLASS =
-  "inline-flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-zinc-100 hover:text-zinc-800";
+  "h-auto min-w-0 gap-1.5 rounded-md border-0 px-1.5 py-1 font-normal text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800";
 
 function splitForOverflow(items: BreadcrumbItem[]): {
   hidden: BreadcrumbItem[];

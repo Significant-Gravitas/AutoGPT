@@ -4,6 +4,7 @@ import type { ExpertAccent } from "@/app/(platform)/marketplace/components/Exper
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Text } from "@/components/atoms/Text/Text";
 import { Calendar03Icon, FlashIcon } from "@hugeicons/core-free-icons";
 import Image from "next/image";
 import { useImageFallback } from "@/hooks/useImageFallback";
@@ -49,12 +50,21 @@ export function ExpertWorkflowCard({ workflow, accent }: Props) {
       <div className="flex flex-1 flex-col border-t border-zinc-100 p-4">
         <div className="text-sm font-medium text-zinc-900">{name}</div>
         {workflow.description ? (
-          <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-zinc-500">
+          <Text
+            variant="small"
+            tone="muted"
+            unmask={false}
+            className="mt-1 line-clamp-2 text-[13px] leading-5"
+          >
             {workflow.description}
-          </p>
+          </Text>
         ) : null}
         {workflow.schedule_cron ? (
-          <p className="mt-2 flex items-center gap-1.5 text-[13px] leading-5 text-zinc-600">
+          <Text
+            variant="small"
+            tone="secondary"
+            className="mt-2 flex items-center gap-1.5 text-[13px] leading-5"
+          >
             <Icon
               icon={Calendar03Icon}
               size={14}
@@ -62,7 +72,7 @@ export function ExpertWorkflowCard({ workflow, accent }: Props) {
               aria-hidden="true"
             />
             {getCadenceLabel(workflow.schedule_cron)}
-          </p>
+          </Text>
         ) : null}
       </div>
     </li>

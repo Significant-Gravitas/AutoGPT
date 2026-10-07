@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
@@ -79,7 +80,7 @@ export function FolderTree({
       ref={listRef}
       role="tree"
       aria-label="Destination folders"
-      className="max-h-[20rem] overflow-y-auto py-1"
+      className="max-h-80 overflow-y-auto py-1"
     >
       {rows.map((row, index) => {
         const key = rowKey(row.id);
@@ -108,15 +109,16 @@ export function FolderTree({
             data-testid="move-to-folder-option"
           >
             {row.hasChildren && row.id ? (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 tabIndex={-1}
                 aria-label={`${row.isExpanded ? "Collapse" : "Expand"} ${row.name}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleExpanded(row.id as string);
                 }}
-                className="flex h-[18px] w-[22px] shrink-0 items-center justify-center rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600"
+                className="h-4.5 w-[22px] min-w-0 shrink-0 rounded border-0 p-0 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600"
               >
                 <Icon
                   icon={ArrowRight01Icon}
@@ -126,7 +128,7 @@ export function FolderTree({
                     row.isExpanded && "rotate-90",
                   )}
                 />
-              </button>
+              </Button>
             ) : (
               <span className="w-[22px] shrink-0" aria-hidden />
             )}

@@ -21,7 +21,7 @@ export function MainSearchResultPageLoading() {
             <Skeleton className="h-8 w-56" />
           </div>
           <div className="flex-none">
-            <Skeleton className="h-[2.75rem] w-full rounded-full md:w-[439px]" />
+            <Skeleton className="h-11 w-full rounded-full md:w-[439px]" />
           </div>
         </div>
 
@@ -56,7 +56,7 @@ export function MainSearchResultPageLoading() {
             <Skeleton className="h-6 w-24" />
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-[16rem] w-full rounded-2xl" />
+                <Skeleton key={i} className="h-64 w-full rounded-2xl" />
               ))}
             </div>
           </div>

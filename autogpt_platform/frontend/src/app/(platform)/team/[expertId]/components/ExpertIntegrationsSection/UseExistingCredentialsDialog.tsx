@@ -113,14 +113,15 @@ export function UseExistingCredentialsDialog({
         <div className="-mb-2 flex flex-col gap-3">
           {selected ? (
             <>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 onClick={() => setSelectedProvider(null)}
-                className="flex w-fit items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
+                className="h-auto w-fit min-w-0 gap-1 rounded-none border-0 p-0 font-normal text-zinc-500 hover:border-transparent hover:bg-transparent hover:text-zinc-800"
               >
                 <Icon icon={ArrowLeft02Icon} size={14} />
                 All connections
-              </button>
+              </Button>
               <Text variant="body" tone="muted" className="leading-5">
                 You have {selected.credentials.length} {selected.provider.name}{" "}
                 connections. Choose which one {expertName} should use.
@@ -137,7 +138,7 @@ export function UseExistingCredentialsDialog({
                   return (
                     <li
                       key={credential.id}
-                      className="flex items-center gap-3 rounded-xl bg-neutral-100 px-3 py-2.5"
+                      className="flex items-center gap-3 rounded-xl bg-zinc-100 px-3 py-2.5"
                     >
                       <IntegrationLogo
                         provider={credential.provider}

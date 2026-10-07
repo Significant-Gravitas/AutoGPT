@@ -1,6 +1,7 @@
 "use client";
 
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { motion, useReducedMotion } from "framer-motion";
@@ -67,11 +68,13 @@ export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
       {/* Full-card click target: opening the file is the primary action.
           Sits behind the content (z-0); the content is pointer-events-none so
           clicks fall through, except the kebab menu which re-enables them. */}
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        unmask={false}
         onClick={() => onOpen(file)}
         aria-label={`Open ${file.name}`}
-        className="absolute inset-0 z-0 cursor-pointer"
+        className="absolute inset-0 z-0 h-auto min-w-0 cursor-pointer rounded-none border-0 p-0 hover:bg-transparent"
         data-testid="artifacts-card-open"
       />
       <div className="pointer-events-none relative z-10">

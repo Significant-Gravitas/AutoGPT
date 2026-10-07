@@ -5,6 +5,7 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { cn } from "@/lib/utils";
@@ -32,7 +33,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
     <Link
       href={`/marketplace/skills/${skill.slug}`}
       data-testid="skill-card"
-      className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-[transform,box-shadow,border-color] duration-200 ease-out [touch-action:manipulation] hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:transform-none"
+      className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-[transform,box-shadow,border-color] duration-200 ease-out [touch-action:manipulation] hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:transform-none"
     >
       <div
         className={cn(
@@ -64,12 +65,16 @@ export function SkillCard({ skill, isInstalled }: Props) {
         </div>
 
         <div className="min-w-0">
-          <h3
+          <Text
+            variant="large-semibold"
+            as="h3"
+            tone="primary"
+            unmask={false}
             title={title}
-            className="line-clamp-1 text-lg font-semibold tracking-[-0.01em] text-zinc-900"
+            className="line-clamp-1 text-lg tracking-[-0.01em]"
           >
             {title}
-          </h3>
+          </Text>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-zinc-500">
             <span className="inline-flex items-center gap-1.5">
               <Avatar className="h-5 w-5">
@@ -98,9 +103,14 @@ export function SkillCard({ skill, isInstalled }: Props) {
               </span>
             ) : null}
           </div>
-          <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-zinc-600">
+          <Text
+            variant="body"
+            tone="secondary"
+            unmask={false}
+            className="mt-2 line-clamp-3 leading-relaxed"
+          >
             {skill.description}
-          </p>
+          </Text>
         </div>
 
         <div className="mt-auto flex items-center justify-between pt-2">
@@ -117,7 +127,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
               : `${skill.install_count.toLocaleString()} installed`}
           </span>
           {isInstalled ? (
-            <span className="flex items-center gap-1.5 text-base font-medium text-emerald-600">
+            <span className="flex items-center gap-1.5 text-base font-medium text-green-600">
               <Icon icon={CheckmarkCircle02Icon} size={18} aria-hidden />
               Added
             </span>

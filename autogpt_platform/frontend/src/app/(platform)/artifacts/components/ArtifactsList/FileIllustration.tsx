@@ -137,7 +137,7 @@ function HtmlContent() {
       <Tag color="bg-zinc-900/30" w="w-3" />
       <Tag color="bg-zinc-900/25" w="w-2.5" pl="pl-1.5" />
       <div className="pl-3">
-        <div className="h-[2px] w-6 rounded-full bg-zinc-900/10" />
+        <div className="h-0.5 w-6 rounded-full bg-zinc-900/10" />
       </div>
       <Tag color="bg-zinc-900/25" w="w-2.5" pl="pl-1.5" closing />
       <Tag color="bg-zinc-900/20" w="w-2" pl="pl-1.5" selfClosing />
@@ -151,14 +151,7 @@ function VideoContent() {
     <div className="relative h-16 overflow-hidden rounded-sm bg-zinc-900/10">
       {/* Play triangle */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-        <div
-          className="h-0 w-0"
-          style={{
-            borderTop: "5px solid transparent",
-            borderBottom: "5px solid transparent",
-            borderLeft: "7px solid rgb(24 24 27 / 0.55)",
-          }}
-        />
+        <div className="h-0 w-0 border-y-[5px] border-l-[7px] border-y-transparent border-l-zinc-900/55" />
       </div>
       {/* Timeline at the bottom */}
       <div className="absolute bottom-1 left-1 right-1 h-1 rounded-full bg-zinc-900/10">

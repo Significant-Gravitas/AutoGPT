@@ -77,13 +77,15 @@ export function SkillsList({ category }: Props) {
       ) : isError ? (
         <div className="flex items-center gap-2 text-sm text-zinc-600">
           <span>Couldn&apos;t load skills right now.</span>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="small"
             onClick={() => refetch()}
-            className="font-medium text-accent underline-offset-2 transition-colors hover:underline"
+            className="h-auto min-w-0 rounded-none border-0 p-0 font-medium leading-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
           >
             Retry
-          </button>
+          </Button>
         </div>
       ) : isEmpty ? (
         <div className="flex items-center gap-2 text-sm text-zinc-600">
@@ -93,13 +95,15 @@ export function SkillsList({ category }: Props) {
               : "No skills yet."}
           </span>
           {topic ? (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="small"
               onClick={() => selectTopic(null)}
-              className="font-medium text-accent underline-offset-2 transition-colors hover:underline"
+              className="h-auto min-w-0 rounded-none border-0 p-0 font-medium leading-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
             >
               Show all
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : (

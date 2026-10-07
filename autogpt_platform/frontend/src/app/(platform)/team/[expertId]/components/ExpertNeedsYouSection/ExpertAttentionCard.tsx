@@ -68,7 +68,7 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
             <Text
               variant="body-medium"
               as="span"
-              className="break-words !text-zinc-800"
+              className="break-words text-zinc-800"
             >
               {item.title}
             </Text>
@@ -76,17 +76,13 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
               <Text
                 variant="small-medium"
                 as="span"
-                className="rounded bg-amber-50 px-1.5 py-px text-amber-700 ring-1 ring-inset ring-amber-600/10"
+                className="rounded bg-yellow-50 px-1.5 py-px text-yellow-700 ring-1 ring-inset ring-yellow-600/10"
               >
                 Waiting
               </Text>
             ) : null}
           </div>
-          <Text
-            variant="small"
-            as="span"
-            className="break-words !text-zinc-400"
-          >
+          <Text variant="small" as="span" className="break-words text-zinc-400">
             {reason?.line ?? item.description}
           </Text>
           {reason?.passage ? (

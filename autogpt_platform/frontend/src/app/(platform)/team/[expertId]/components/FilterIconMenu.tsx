@@ -45,7 +45,7 @@ export function FilterIconMenu<T extends string>({
           )}
         />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-[11rem]">
+      <DropdownMenuContent align="end" className="min-w-44">
         <DropdownMenuRadioGroup
           value={value}
           onValueChange={(next) => onChange(next as T)}

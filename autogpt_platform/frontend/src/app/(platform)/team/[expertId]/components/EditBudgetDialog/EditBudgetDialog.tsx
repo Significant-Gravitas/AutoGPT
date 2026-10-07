@@ -46,7 +46,7 @@ export function EditBudgetDialog({ expert, open, onClose }: Props) {
                 isInvalid ? "Enter a dollar amount like 25 or 12.50" : undefined
               }
               onChange={(event) => setValue(event.target.value)}
-              wrapperClassName="!mb-0"
+              wrapperClassName="mb-0"
             />
             <Text variant="small" tone="muted">
               What {expert.name} may spend each week, in dollars. Leave empty

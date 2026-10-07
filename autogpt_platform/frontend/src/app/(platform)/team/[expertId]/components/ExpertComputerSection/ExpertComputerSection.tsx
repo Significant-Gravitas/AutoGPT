@@ -85,8 +85,8 @@ export function ExpertComputerSection({
       </div>
 
       {!computer.e2b_active ? (
-        <div className="rounded-lg bg-amber-50 px-4 py-2.5 ring-1 ring-inset ring-amber-200">
-          <Text variant="small" className="text-amber-700">
+        <div className="rounded-lg bg-yellow-50 px-4 py-2.5 ring-1 ring-inset ring-yellow-200">
+          <Text variant="small" className="text-yellow-700">
             Cloud sandboxes are not configured on this deployment.
           </Text>
         </div>
@@ -106,7 +106,7 @@ export function ExpertComputerSection({
             className={cn(
               "rounded-full px-2 py-0.5 text-xs font-medium",
               running
-                ? "bg-emerald-50 text-emerald-700"
+                ? "bg-green-50 text-green-700"
                 : box
                   ? "bg-zinc-100 text-zinc-600"
                   : "bg-zinc-50 text-zinc-500",

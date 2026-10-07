@@ -112,7 +112,7 @@ function ActivityStatus({ isActive }: ActivityStatusProps) {
         aria-hidden
         className={cn(
           "size-2 rounded-full",
-          isActive ? "bg-emerald-500" : "bg-zinc-300",
+          isActive ? "bg-green-500" : "bg-zinc-300",
         )}
       />
       <Text variant="small" tone="muted">

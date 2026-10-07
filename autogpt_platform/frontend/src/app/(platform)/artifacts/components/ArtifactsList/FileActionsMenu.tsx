@@ -1,6 +1,7 @@
 "use client";
 
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   DropdownMenu,
@@ -47,17 +48,20 @@ export function FileActionsMenu({ file, className }: Props) {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
+            withTooltip={false}
             aria-label={`Actions for ${file.name}`}
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900",
+              "shrink-0 rounded-full border-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900",
               className,
             )}
             data-testid="artifacts-card-menu"
           >
             <Icon icon={MoreHorizontalIcon} size={20} />
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
           <DropdownMenuItem

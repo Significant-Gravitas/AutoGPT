@@ -1,3 +1,4 @@
+import { Text, type TextProps } from "@/components/atoms/Text/Text";
 import { resolvePackagePath } from "@/components/contextual/SkillPackage/helpers";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -66,7 +67,7 @@ function BodyLink({ href, packagePaths, onOpenFile, children }: BodyLinkProps) {
 }
 
 const LINK_CLASS =
-  "rounded-sm text-zinc-900 underline underline-offset-2 transition-colors hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2";
+  "rounded-sm text-zinc-900 underline underline-offset-2 transition-colors hover:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2";
 
 const components: Components = {
   h1: ({ children }) => <Heading level={3}>{children}</Heading>,
@@ -119,10 +120,16 @@ const components: Components = {
   ),
 };
 
-const HEADING_CLASS: Record<number, string> = {
-  3: "mb-2 mt-6 text-base font-semibold text-zinc-900 first:mt-0",
-  4: "mb-2 mt-5 text-[15px] font-semibold text-zinc-900 first:mt-0",
-  5: "mb-1.5 mt-4 text-sm font-medium text-zinc-800 first:mt-0",
+const HEADING_VARIANT: Record<3 | 4 | 5, TextProps["variant"]> = {
+  3: "large-semibold",
+  4: "large-semibold",
+  5: "body-medium",
+};
+
+const HEADING_CLASS: Record<3 | 4 | 5, string> = {
+  3: "mb-2 mt-6 leading-6 text-zinc-900 first:mt-0",
+  4: "mb-2 mt-5 text-[15px] leading-6 text-zinc-900 first:mt-0",
+  5: "mb-1.5 mt-4 leading-5 text-zinc-800 first:mt-0",
 };
 
 function Heading({
@@ -132,6 +139,14 @@ function Heading({
   level: 3 | 4 | 5;
   children: React.ReactNode;
 }) {
-  const Tag = `h${level}` as "h3" | "h4" | "h5";
-  return <Tag className={HEADING_CLASS[level]}>{children}</Tag>;
+  return (
+    <Text
+      variant={HEADING_VARIANT[level]}
+      as={`h${level}`}
+      unmask={false}
+      className={HEADING_CLASS[level]}
+    >
+      {children}
+    </Text>
+  );
 }

@@ -35,8 +35,8 @@ export function ArtifactsSearchBar({ searchTerm, setSearchTerm }: Props) {
         value={searchTerm}
         onChange={handleChange}
         placeholder="Search"
-        className="min-w-[16rem] rounded-full pl-10 lg:min-w-[20rem]"
-        wrapperClassName="!mb-0"
+        className="min-w-64 rounded-full pl-10 lg:min-w-80"
+        wrapperClassName="mb-0"
         data-testid="artifacts-search-input"
       />
     </div>

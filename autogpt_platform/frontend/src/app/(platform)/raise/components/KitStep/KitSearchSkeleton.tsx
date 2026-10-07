@@ -10,7 +10,7 @@ export function KitSearchSkeleton() {
     <div
       role="status"
       aria-label="Searching"
-      className="w-full max-w-[42rem] overflow-hidden rounded-2xl border border-border bg-background duration-200 animate-in fade-in motion-reduce:animate-none"
+      className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-background duration-200 animate-in fade-in motion-reduce:animate-none"
     >
       {Array.from({ length: MAX_SEARCH_RESULTS }, (_, index) => (
         <div

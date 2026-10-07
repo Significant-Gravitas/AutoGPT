@@ -21,7 +21,7 @@ import { useAgentInfo } from "./useAgentInfo";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-interface AgentInfoProps {
+interface Props {
   user: User | null;
   agentId: string;
   name: string;
@@ -39,7 +39,7 @@ interface AgentInfoProps {
   agentSlug?: string;
 }
 
-export const AgentInfo = ({
+export function AgentInfo({
   user,
   agentId,
   name,
@@ -55,7 +55,7 @@ export const AgentInfo = ({
   isAgentAddedToLibrary,
   creatorSlug,
   agentSlug,
-}: AgentInfoProps) => {
+}: Props) {
   const {
     handleDownload,
     isDownloadingAgent,
@@ -105,23 +105,17 @@ export const AgentInfo = ({
         {/* Version Header */}
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Text
-              variant="body"
-              className="font-semibold text-neutral-900 dark:text-neutral-100"
-            >
+            <Text variant="body" tone="primary" className="font-semibold">
               Version {versionInfo.version}.0
             </Text>
             {versionInfo.isCurrentVersion && (
-              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800">
                 Current
               </span>
             )}
           </div>
           {changelogEntry && (
-            <Text
-              variant="small"
-              className="text-neutral-500 dark:text-neutral-400"
-            >
+            <Text variant="small" tone="muted">
               {new Date(changelogEntry.date).toLocaleDateString("en-US", {
                 year: "numeric",
                 month: "long",
@@ -134,10 +128,7 @@ export const AgentInfo = ({
         {/* Real Changelog Content */}
         {changelogEntry && (
           <div className="space-y-2">
-            <Text
-              variant="body"
-              className="text-neutral-700 dark:text-neutral-300"
-            >
+            <Text variant="body" unmask={false} className="text-zinc-700">
               {changelogEntry.changes_summary}
             </Text>
           </div>
@@ -148,8 +139,8 @@ export const AgentInfo = ({
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-0">
-      <div className="mb-8 rounded-2xl bg-gradient-to-r from-blue-200 to-indigo-200 p-[1px]">
-        <div className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4">
+      <div className="mb-8 rounded-2xl bg-gradient-to-r from-blue-200 to-purple-200 p-px">
+        <div className="flex flex-col rounded-[calc(1rem-2px)] bg-zinc-50 p-4">
           {/* Title */}
           <Text variant="h2" data-testid="agent-title" className="mb-3 w-full">
             {name}
@@ -178,16 +169,22 @@ export const AgentInfo = ({
           </div>
 
           {/* Short Description */}
-          <div className="mb-4 line-clamp-2 w-full text-base font-normal leading-normal text-neutral-600 dark:text-neutral-300 sm:text-lg lg:mb-5 lg:text-xl lg:leading-7">
+          <Text
+            variant="large"
+            as="div"
+            tone="secondary"
+            unmask={false}
+            className="mb-4 line-clamp-2 w-full leading-normal sm:text-lg lg:mb-5 lg:text-xl lg:leading-7"
+          >
             {shortDescription}
-          </div>
+          </Text>
 
           {/* Buttons */}
           <div className="mt-6 flex w-full items-center gap-2 lg:mt-8">
             {user && (
               <Button
                 variant="primary"
-                className="group/add min-w-36 border-violet-600 bg-violet-600 transition-shadow duration-300 hover:border-violet-500 hover:bg-violet-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.4)]"
+                className="group/add min-w-36 border-purple-600 bg-purple-600 transition-shadow duration-300 hover:border-purple-500 hover:bg-purple-500 hover:shadow-[0_0_20px_rgba(119,51,245,0.4)]"
                 data-testid="agent-add-library-button"
                 disabled={isAddingAgentToLibrary}
                 loading={isAddingAgentToLibrary}
@@ -221,7 +218,7 @@ export const AgentInfo = ({
           {/* Download */}
           <div className="mt-3 flex w-full items-center justify-between gap-2">
             <div className="flex items-center gap-0">
-              <Text variant="body" className="text-neutral-500">
+              <Text variant="body" tone="muted">
                 Want to use this agent locally?
               </Text>
               <Button
@@ -254,7 +251,9 @@ export const AgentInfo = ({
             <Text
               variant="body"
               data-testid={"agent-description"}
-              className="text-md whitespace-pre-line text-neutral-600"
+              tone="secondary"
+              unmask={false}
+              className="text-md whitespace-pre-line"
             >
               {longDescription}
             </Text>
@@ -280,7 +279,7 @@ export const AgentInfo = ({
                   ))}
               </div>
             ) : (
-              <Text variant="body" className="text-neutral-400">
+              <Text variant="body" className="text-zinc-400">
                 None
               </Text>
             )}
@@ -303,7 +302,7 @@ export const AgentInfo = ({
                     <Button
                       variant="ghost"
                       size="small"
-                      className="text-violet-600 hover:text-violet-500"
+                      className="text-purple-600 hover:text-purple-500"
                     >
                       (Changelog)
                     </Button>
@@ -317,10 +316,10 @@ export const AgentInfo = ({
               )}
             </div>
             <div className="flex w-full items-center justify-start gap-8">
-              <Text variant="body" className="text-neutral-600">
+              <Text variant="body" tone="secondary">
                 {version}.0
               </Text>
-              <Text variant="body" className="text-neutral-600">
+              <Text variant="body" tone="secondary">
                 Last updated {formatTimeAgo(lastUpdated)}
               </Text>
             </div>
@@ -329,4 +328,4 @@ export const AgentInfo = ({
       </div>
     </div>
   );
-};
+}

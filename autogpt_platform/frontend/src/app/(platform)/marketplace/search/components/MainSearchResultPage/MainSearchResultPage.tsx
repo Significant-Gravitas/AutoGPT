@@ -13,6 +13,7 @@ import { ExpertCard } from "../../../components/ExpertsSection/components/Expert
 import { useMainSearchResultPage } from "./useMainSearchResultPage";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 type MarketplaceSearchSort = GetV2ListStoreAgentsParams["sorted_by"];
 
@@ -87,21 +88,30 @@ export const MainSearchResultPage = ({
         </div>
         <div className="flex flex-col gap-4 md:flex-row md:items-center">
           <div className="flex-1">
-            <h2 className="text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+            <Text
+              variant="large-medium"
+              as="h2"
+              className="leading-normal text-zinc-800"
+            >
               Showing results for:
-            </h2>
-            <h1 className="font-poppins text-2xl font-semibold leading-[32px] text-neutral-800 dark:text-neutral-100">
+            </Text>
+            <Text
+              variant="h4"
+              as="h1"
+              unmask={false}
+              className="text-2xl font-semibold leading-8 text-zinc-800"
+            >
               &quot;{searchTerm}&quot;
-            </h1>
+            </Text>
           </div>
           <div className="flex-none">
-            <SearchBar width="w-full md:w-[439px]" height="h-[2.75rem]" />
+            <SearchBar width="w-full md:w-[439px]" height="h-11" />
           </div>
         </div>
 
         {totalCount > 0 ? (
           <>
-            <div className="mt-6 flex flex-col gap-3 md:mt-[36px] md:flex-row md:items-center md:justify-between">
+            <div className="mt-6 flex flex-col gap-3 md:mt-9 md:flex-row md:items-center md:justify-between">
               <SearchFilterChips
                 totalCount={totalCount}
                 agentsCount={agentsCount}
@@ -110,7 +120,7 @@ export const MainSearchResultPage = ({
                 expertsCount={isExpertsVisible ? expertsCount : undefined}
                 onFilterChange={handleFilterChange}
               />
-              <div className="mt-4 md:!mt-0">
+              <div className="mt-4 md:mt-0">
                 <SortDropdown onSort={handleSortChange} />
               </div>
             </div>
@@ -153,7 +163,7 @@ export const MainSearchResultPage = ({
                   </div>
                 </section>
               ) : null}
-              <div className="h-[1rem] w-full" />
+              <div className="h-4 w-full" />
               {showCreators && creatorsCount > 0 && creators && (
                 <FeaturedCreators featuredCreators={creators} />
               )}
@@ -161,12 +171,17 @@ export const MainSearchResultPage = ({
           </>
         ) : (
           <div className="flex min-h-[60vh] flex-col items-center justify-center">
-            <h3 className="mb-2 text-xl font-medium text-neutral-600 dark:text-neutral-300">
+            <Text
+              variant="lead-medium"
+              as="h3"
+              tone="secondary"
+              className="mb-2"
+            >
               No results found
-            </h3>
-            <p className="text-neutral-500 dark:text-neutral-400">
+            </Text>
+            <Text variant="large" tone="muted">
               Try adjusting your search terms or filters
-            </p>
+            </Text>
           </div>
         )}
       </div>

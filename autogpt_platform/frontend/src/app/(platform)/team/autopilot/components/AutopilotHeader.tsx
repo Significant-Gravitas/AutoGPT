@@ -29,9 +29,14 @@ export function AutopilotHeader() {
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-[-0.02em] text-zinc-900">
+            <Text
+              variant="lead-semibold"
+              as="h1"
+              tone="primary"
+              className="text-2xl tracking-[-0.02em]"
+            >
               {AUTOPILOT_NAME}
-            </h1>
+            </Text>
             <Text
               variant="small-medium"
               as="span"

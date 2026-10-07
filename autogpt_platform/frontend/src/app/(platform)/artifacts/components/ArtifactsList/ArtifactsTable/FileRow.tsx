@@ -1,6 +1,7 @@
 "use client";
 
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   Tooltip,
@@ -83,11 +84,12 @@ export function FileRow({
           the row, and hovering (or focusing) it opens the large preview. The
           rename pencil sits beside it, outside the preview trigger. */}
       <div className="flex min-w-0 items-center gap-1 justify-self-start">
-        <button
+        <Button
           type="button"
+          variant="ghost"
           aria-label={`Select ${file.name}`}
           aria-pressed={isSelected}
-          className="group/select relative my-2.5 mr-3 shrink-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+          className="group/select relative my-2.5 mr-3 h-auto min-w-0 shrink-0 rounded-xl border-0 p-0 outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-zinc-400"
           onClick={(e) => {
             e.stopPropagation();
             onToggleSelect(file);
@@ -106,11 +108,13 @@ export function FileRow({
           >
             <Icon icon={Tick02Icon} size={20} />
           </span>
-        </button>
+        </Button>
         <Tooltip delayDuration={PREVIEW_DELAY_MS}>
           <TooltipTrigger asChild>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              unmask={false}
               className={NAME_BUTTON_CLASS}
               data-testid="artifacts-card-open"
             >
@@ -122,7 +126,7 @@ export function FileRow({
                 {file.name}
               </Text>
               <ExpertBadge expertId={file.expert_id} className="shrink-0" />
-            </button>
+            </Button>
           </TooltipTrigger>
           <TooltipPortal>
             {/* aria-label keeps Radix from mirroring the whole card into its
@@ -139,10 +143,13 @@ export function FileRow({
             </TooltipContent>
           </TooltipPortal>
         </Tooltip>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-xs"
+          withTooltip={false}
           aria-label={`Rename ${file.name}`}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:opacity-100"
+          className="shrink-0 rounded-full border-0 text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
             setIsRenameOpen(true);
@@ -150,7 +157,7 @@ export function FileRow({
           data-testid="artifacts-rename"
         >
           <Icon icon={PencilEdit02Icon} size={16} />
-        </button>
+        </Button>
       </div>
       <Text
         variant="body"

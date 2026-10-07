@@ -31,24 +31,24 @@ export interface ExpertAccent {
 }
 
 const ACCENTS: Record<string, ExpertAccent> = {
-  violet: {
-    wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(139,92,246,0.10),transparent_70%)]",
+  purple: {
+    wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(119,51,245,0.10),transparent_70%)]",
     washWide:
-      "bg-[linear-gradient(180deg,rgba(139,92,246,0.10),rgba(139,92,246,0.03)_60%,transparent)]",
-    pill: "bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-600/10",
-    band: "bg-violet-50/60",
-    chip: "bg-gradient-to-b from-white to-violet-50 text-violet-800 ring-1 ring-inset ring-violet-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(139,92,246,0.12),0_0_18px_-4px_rgba(139,92,246,0.45)]",
-    icon: "text-violet-500",
+      "bg-[linear-gradient(180deg,rgba(119,51,245,0.10),rgba(119,51,245,0.03)_60%,transparent)]",
+    pill: "bg-purple-50 text-purple-700 ring-1 ring-inset ring-purple-600/10",
+    band: "bg-purple-50/60",
+    chip: "bg-gradient-to-b from-white to-purple-50 text-purple-800 ring-1 ring-inset ring-purple-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(119,51,245,0.12),0_0_18px_-4px_rgba(119,51,245,0.45)]",
+    icon: "text-purple-500",
     roleIcon: Megaphone01Icon,
   },
-  amber: {
-    wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(245,158,11,0.10),transparent_70%)]",
+  yellow: {
+    wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(245,192,0,0.10),transparent_70%)]",
     washWide:
-      "bg-[linear-gradient(180deg,rgba(245,158,11,0.10),rgba(245,158,11,0.03)_60%,transparent)]",
-    pill: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/10",
-    band: "bg-amber-50/60",
-    chip: "bg-gradient-to-b from-white to-amber-50 text-amber-800 ring-1 ring-inset ring-amber-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(245,158,11,0.12),0_0_18px_-4px_rgba(245,158,11,0.45)]",
-    icon: "text-amber-500",
+      "bg-[linear-gradient(180deg,rgba(245,192,0,0.10),rgba(245,192,0,0.03)_60%,transparent)]",
+    pill: "bg-yellow-50 text-yellow-700 ring-1 ring-inset ring-yellow-600/10",
+    band: "bg-yellow-50/60",
+    chip: "bg-gradient-to-b from-white to-yellow-50 text-yellow-800 ring-1 ring-inset ring-yellow-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(245,192,0,0.12),0_0_18px_-4px_rgba(245,192,0,0.45)]",
+    icon: "text-yellow-500",
     roleIcon: ChartIncreaseIcon,
   },
   sky: {
@@ -76,15 +76,15 @@ const ACCENTS: Record<string, ExpertAccent> = {
 const ROLE_ACCENTS: Array<[RegExp, string]> = [
   [
     /marketing|growth|brand|seo|content|social|market|competitor|email|lifecycle/i,
-    "violet",
+    "purple",
   ],
-  [/sales|revenue/i, "amber"],
+  [/sales|revenue/i, "yellow"],
   [/ops|operations|support/i, "sky"],
 ];
 
 /** A skill's category is its identity mark, the way an expert's role is:
  *  the eight canonical categories fold onto the same four accents, so
- *  "Outreach playbook · Sales" carries the amber a Sales expert already has.
+ *  "Outreach playbook · Sales" carries the yellow a Sales expert already has.
  *  An unknown or missing category keeps the neutral wash and shows no pill. */
 export function getCategoryAccent(category: string | undefined): {
   accent: ExpertAccent;
@@ -96,10 +96,10 @@ export function getCategoryAccent(category: string | undefined): {
 }
 
 const CATEGORY_ACCENTS: Record<string, [string, IconSvgElement]> = {
-  marketing: ["violet", Megaphone01Icon],
-  content: ["violet", QuillWrite01Icon],
-  sales: ["amber", ChartIncreaseIcon],
-  finance: ["amber", Coins01Icon],
+  marketing: ["purple", Megaphone01Icon],
+  content: ["purple", QuillWrite01Icon],
+  sales: ["yellow", ChartIncreaseIcon],
+  finance: ["yellow", Coins01Icon],
   operations: ["sky", Settings01Icon],
   support: ["sky", HeadsetIcon],
   research: ["zinc", Search01Icon],

@@ -45,14 +45,15 @@ export function SelectionBar({
           {count} selected
         </Text>
         {count < totalCount ? (
-          <button
+          <Button
             type="button"
-            className="text-sm text-zinc-500 underline-offset-2 hover:text-zinc-900 hover:underline"
+            variant="ghost"
+            className="h-auto min-w-0 rounded-none border-0 p-0 text-sm font-normal text-zinc-500 underline-offset-2 hover:bg-transparent hover:text-zinc-900 hover:underline"
             onClick={onSelectAll}
             data-testid="artifacts-select-all"
           >
             Select all {totalCount}
-          </button>
+          </Button>
         ) : null}
       </div>
       <div className="flex items-center gap-2">
@@ -76,15 +77,18 @@ export function SelectionBar({
           <Icon icon={Delete02Icon} size={14} />
           {isDeleting ? "Deleting…" : "Delete"}
         </Button>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-xs"
+          withTooltip={false}
           aria-label="Clear selection"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+          className="rounded-full border-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
           onClick={onClear}
           data-testid="artifacts-selection-clear"
         >
           <Icon icon={Cancel01Icon} size={16} />
-        </button>
+        </Button>
       </div>
       {isMoveOpen && (
         <MoveToFolderDialog

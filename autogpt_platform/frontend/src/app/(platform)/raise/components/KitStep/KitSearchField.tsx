@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Input } from "@/components/atoms/Input/Input";
 import {
@@ -29,7 +30,7 @@ export function KitSearchField({
   return (
     // The Input atom wraps itself in two positioned divs that follow these
     // adornments in the DOM, so without z-10 the opaque field paints over them.
-    <div className="relative w-full max-w-[42rem]">
+    <div className="relative w-full max-w-2xl">
       <Icon
         icon={Search01Icon}
         size={16}
@@ -57,14 +58,17 @@ export function KitSearchField({
           className="absolute right-3.5 top-1/2 z-10 -translate-y-1/2 animate-spin text-muted-foreground motion-reduce:animate-none"
         />
       ) : value ? (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-xs"
+          withTooltip={false}
           onClick={() => onChange("")}
           aria-label="Clear search"
-          className="absolute right-2.5 top-1/2 z-10 grid size-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors duration-200 hover:bg-zinc-100 hover:text-foreground"
+          className="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-full border-0 text-muted-foreground duration-200 hover:bg-zinc-100 hover:text-foreground"
         >
           <Icon icon={Cancel01Icon} size={14} aria-hidden />
-        </button>
+        </Button>
       ) : null}
     </div>
   );

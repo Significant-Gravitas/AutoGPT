@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { creditsToUsdLabel } from "@/lib/credits";
 import { Coins01Icon } from "@hugeicons/core-free-icons";
 import { ExpertNoteCard } from "./ExpertNoteCard";
@@ -12,12 +13,17 @@ export function ExpertPlanNote({ name, weeklyBudget }: Props) {
   return (
     <ExpertSection title="Included with your plan">
       <ExpertNoteCard icon={Coins01Icon}>
-        <p className="text-base leading-7 text-zinc-600">
+        <Text
+          variant="large"
+          tone="secondary"
+          unmask={false}
+          className="leading-7"
+        >
           {`Hiring ${name} costs nothing extra. Their work draws on your existing balance`}
           {weeklyBudget
             ? `, capped at ${creditsToUsdLabel(weeklyBudget)} a week — a limit you can change once they are on your team.`
             : "."}
-        </p>
+        </Text>
       </ExpertNoteCard>
     </ExpertSection>
   );
