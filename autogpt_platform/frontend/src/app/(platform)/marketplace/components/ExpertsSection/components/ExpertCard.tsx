@@ -55,7 +55,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-[4.5rem]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-18"
         style={{ backgroundColor: expertPastel(topicColor) }}
       />
       <Link
@@ -112,7 +112,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
                       className={cn(
                         CHIP_SHAPE,
                         CHIP_SIZE.small,
-                        "h-6 cursor-default border-transparent px-0 text-zinc-500 outline-none focus-visible:ring-2 focus-visible:ring-violet-600",
+                        "h-6 cursor-default border-transparent px-0 text-zinc-500 outline-none focus-visible:ring-2 focus-visible:ring-purple-600",
                       )}
                     >
                       +{restSkills.length} skills

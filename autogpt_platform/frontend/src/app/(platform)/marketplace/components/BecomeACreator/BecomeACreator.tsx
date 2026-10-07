@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 
 interface BecomeACreatorProps {
@@ -15,20 +17,32 @@ export function BecomeACreator({
   return (
     <div className="relative mx-auto w-full max-w-[1360px] py-24">
       <div className="mx-auto w-full max-w-2xl px-4 text-center">
-        <h2 className="mb-4 text-3xl font-semibold tracking-[-0.02em] text-zinc-900 md:text-4xl">
+        <Text
+          variant="lead-semibold"
+          as="h2"
+          tone="primary"
+          className="mb-4 text-3xl tracking-[-0.02em] md:text-4xl"
+        >
           Build AI workflows and share{" "}
-          <span className="text-violet-600">your</span> vision
-        </h2>
+          <span className="text-purple-600">your</span> vision
+        </Text>
 
-        <p className="mx-auto mb-8 max-w-xl text-[15px] leading-relaxed text-zinc-500 md:text-lg">
+        <Text
+          variant="large"
+          tone="muted"
+          className="mx-auto mb-8 max-w-xl text-[15px] leading-relaxed md:text-lg"
+        >
           {description}
-        </p>
+        </Text>
 
         <PublishAgentModal
           trigger={
-            <button className="inline-flex h-12 cursor-pointer items-center justify-center rounded-full bg-zinc-900 px-8 text-[15px] font-medium text-white shadow-[0_1px_2px_rgba(16,24,40,0.1)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-zinc-800 hover:shadow-[0_10px_24px_-10px_rgba(16,24,40,0.4)]">
+            <Button
+              variant="primary"
+              className="h-12 cursor-pointer border-0 bg-zinc-900 px-8 text-[15px] shadow-[0_1px_2px_rgba(16,24,40,0.1)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-zinc-800 hover:shadow-[0_10px_24px_-10px_rgba(16,24,40,0.4)]"
+            >
               {buttonText}
-            </button>
+            </Button>
           }
         />
       </div>

@@ -1,6 +1,8 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Text } from "@/components/atoms/Text/Text";
 import { SkillFileViewer } from "@/components/contextual/SkillPackage/SkillFileViewer";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { SkillActions } from "../../../skills/[slug]/components/SkillActions";
@@ -54,20 +56,27 @@ export function SkillDialog({ slug, onClose }: Props) {
             ) : isError || !skill ? (
               <div className="flex items-center gap-2 text-sm text-zinc-600">
                 <span>Couldn&apos;t load this skill right now.</span>
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="small"
                   onClick={() => refetch()}
-                  className="font-medium text-accent underline-offset-2 transition-colors hover:underline"
+                  className="h-auto min-w-0 rounded-none border-0 p-0 font-medium leading-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
                 >
                   Retry
-                </button>
+                </Button>
               </div>
             ) : (
               <>
                 <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-zinc-200 pb-5">
-                  <p className="min-w-0 max-w-[52ch] flex-1 text-[15px] leading-6 text-zinc-600">
+                  <Text
+                    variant="body"
+                    tone="secondary"
+                    unmask={false}
+                    className="min-w-0 max-w-[52ch] flex-1 text-[15px] leading-6"
+                  >
                     {skill.description}
-                  </p>
+                  </Text>
                   <SkillActions
                     slug={slug}
                     isLoggedIn={isLoggedIn}
@@ -87,9 +96,9 @@ export function SkillDialog({ slug, onClose }: Props) {
                     onOpenFile={openFile}
                   />
                 ) : (
-                  <p className="text-sm text-zinc-500">
+                  <Text variant="body" tone="muted">
                     This skill has no instructions yet.
-                  </p>
+                  </Text>
                 )}
               </>
             )}

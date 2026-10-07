@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
@@ -60,7 +61,7 @@ export function SkillsSection({ category }: Props) {
           className="grid grid-cols-1 gap-5 md:grid-cols-2"
         >
           {[0, 1].map((i) => (
-            <Skeleton key={i} className="h-[18rem] w-full rounded-2xl" />
+            <Skeleton key={i} className="h-72 w-full rounded-2xl" />
           ))}
         </div>
       ) : isError ? (
@@ -101,13 +102,15 @@ function ShelfError({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="flex items-center gap-2 text-sm text-zinc-600">
       <span>Couldn&apos;t load skills right now.</span>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="small"
         onClick={onRetry}
-        className="font-medium text-accent underline-offset-2 transition-colors hover:underline"
+        className="h-auto min-w-0 rounded-none border-0 p-0 font-medium leading-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
       >
         Retry
-      </button>
+      </Button>
     </div>
   );
 }
@@ -118,18 +121,18 @@ function EmptyShelf() {
       className="flex flex-col items-center justify-center gap-3 rounded-large border border-dashed border-zinc-200 px-6 py-16 text-center"
       data-testid="skills-shelf-empty"
     >
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-50">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-50">
         <Icon
           icon={BookOpen01Icon}
           size={24}
-          className="text-violet-700"
+          className="text-purple-700"
           aria-hidden
         />
       </div>
-      <Text variant="h4" className="text-zinc-900">
+      <Text variant="h4" tone="primary">
         Nothing published yet
       </Text>
-      <Text variant="body" className="max-w-md !text-zinc-600">
+      <Text variant="body" tone="secondary" className="max-w-md">
         Skills from the community will show up here. In the meantime, teach your
         experts a skill of your own.
       </Text>
