@@ -2,12 +2,10 @@ import { cva } from "class-variance-authority";
 
 export const checkboxVariants = cva(
   [
-    "group peer inline-flex shrink-0 items-center justify-center border bg-white text-white transition-colors",
-    "hover:border-zinc-400",
-    "focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:outline-hidden",
-    "data-[state=checked]:border-zinc-800 data-[state=checked]:bg-zinc-800",
-    "data-[state=indeterminate]:border-zinc-800 data-[state=indeterminate]:bg-zinc-800",
-    "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-zinc-300",
+    "group peer inline-flex shrink-0 items-center justify-center border bg-background text-primary-foreground focus-ring transition-colors focus-visible:ring-offset-2",
+    "data-[state=checked]:border-primary data-[state=checked]:bg-primary",
+    "data-[state=indeterminate]:border-primary data-[state=indeterminate]:bg-primary",
+    "disabled:cursor-not-allowed disabled:opacity-50",
   ],
   {
     variants: {
@@ -16,8 +14,8 @@ export const checkboxVariants = cva(
         md: "size-5 rounded-md",
       },
       invalid: {
-        true: "border-red-500 hover:border-red-500",
-        false: "border-zinc-300",
+        true: "border-destructive",
+        false: "border-input hover:border-ring",
       },
     },
     defaultVariants: {
