@@ -249,13 +249,13 @@ class ReadExpertChatTool(BaseTool):
         if user_id is None:
             return ErrorResponse(
                 message="Authentication required", session_id=session.session_id
-            )
+            ).from_outside()
         chat_id = (session_id or "").strip()
         if not chat_id:
             return ErrorResponse(
                 message="session_id is required",
                 session_id=session.session_id,
-            )
+            ).from_outside()
 
         try:
             page = await chat_db().get_chat_messages_paginated(
@@ -272,7 +272,7 @@ class ReadExpertChatTool(BaseTool):
             return ErrorResponse(
                 message="Could not load that chat right now. Try again.",
                 session_id=session.session_id,
-            )
+            ).from_outside()
 
         # Both are excluded from list_expert_chats, so reject them here too —
         # otherwise fetch-by-id is a way around the listing's scope.
@@ -284,7 +284,7 @@ class ReadExpertChatTool(BaseTool):
             return ErrorResponse(
                 message=_NOT_FOUND.format(session_id=chat_id),
                 session_id=session.session_id,
-            )
+            ).from_outside()
 
         rendered = [
             message
@@ -326,7 +326,7 @@ class ReadExpertChatTool(BaseTool):
             messages=kept,
             has_more=has_more,
             next_before_sequence=next_cursor,
-        )
+        ).from_outside(kept, page.session.title)
 
 
 def _clamp(value: int | None, default: int) -> int:
