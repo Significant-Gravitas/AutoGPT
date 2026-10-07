@@ -30,7 +30,7 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
       className="flex w-full flex-col gap-2"
     >
       <div className="flex items-center gap-1 px-4">
-        <Text variant="body-medium" as="span" className="text-textBlack">
+        <Text variant="body-medium" as="span">
           Expert usage
         </Text>
         <InformationTooltip description={USAGE_EXPLAINER} iconSize={22} />
@@ -54,14 +54,14 @@ function UsageBar({ window }: { window: UsageWindowView }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <Text variant="body-medium" className="text-neutral-700">
+        <Text variant="body-medium" className="text-zinc-700">
           {window.label}
         </Text>
-        <Text variant="body" className="tabular-nums text-neutral-500">
+        <Text variant="body" tone="muted" className="tabular-nums">
           {percentLabel}
         </Text>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200">
         <motion.div
           role="progressbar"
           aria-label={`${window.label} usage`}
@@ -80,8 +80,8 @@ function UsageBar({ window }: { window: UsageWindowView }) {
           }`}
         />
       </div>
-      <Text variant="small" className="text-neutral-400">
-        {window.prefix} <span className="text-neutral-700">{window.value}</span>
+      <Text variant="small" className="text-zinc-400">
+        {window.prefix} <span className="text-zinc-700">{window.value}</span>
       </Text>
     </div>
   );

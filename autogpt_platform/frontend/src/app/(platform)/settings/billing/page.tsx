@@ -136,7 +136,7 @@ export default function SettingsBillingPage() {
 
   return (
     <div className="flex flex-col gap-4 pb-8 sm:gap-6">
-      <Text variant="h4" as="h1" className="pl-4 leading-[28px] text-textBlack">
+      <Text variant="h4" as="h1" className="pl-4 leading-[28px]">
         Billing
       </Text>
 

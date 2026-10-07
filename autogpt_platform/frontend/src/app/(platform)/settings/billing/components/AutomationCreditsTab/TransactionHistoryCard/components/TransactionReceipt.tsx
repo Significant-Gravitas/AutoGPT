@@ -5,12 +5,12 @@ import { ReceiptEntries } from "./ReceiptEntries";
 import { ReceiptMetadata } from "./ReceiptMetadata";
 import { ReceiptRelations } from "./ReceiptRelations";
 
-type Props = {
+interface Props {
   transaction: Transaction;
   receiptID: string;
   loadedTransactions: Transaction[];
   onSelectRelated: (executionID: string) => void;
-};
+}
 
 export function TransactionReceipt({
   transaction,

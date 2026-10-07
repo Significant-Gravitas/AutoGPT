@@ -6,7 +6,9 @@ import { Text } from "@/components/atoms/Text/Text";
 import { chargeLabel, formatActivityDate, type Transaction } from "../helpers";
 import { TransactionAmount } from "./TransactionAmount";
 
-type Props = { transaction: Transaction };
+interface Props {
+  transaction: Transaction;
+}
 
 export function ReceiptEntries({ transaction }: Props) {
   const [entriesOpen, setEntriesOpen] = useState(false);

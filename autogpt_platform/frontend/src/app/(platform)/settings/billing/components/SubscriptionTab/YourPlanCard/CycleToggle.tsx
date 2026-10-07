@@ -15,7 +15,7 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
     <div
       role="radiogroup"
       aria-label="Billing cycle"
-      className="inline-flex rounded-full border border-[#d8d8d8] bg-zinc-100 p-[3px]"
+      className="inline-flex rounded-full border border-zinc-200 bg-zinc-100 p-[3px]"
     >
       {CYCLES.map((cycle) => {
         const selected = value === cycle;
@@ -40,7 +40,7 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
             ) : (
               <>
                 Yearly{" "}
-                <span className="ml-1 bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 bg-clip-text text-[11px] font-semibold text-transparent">
+                <span className="ml-1 bg-gradient-to-r from-green-500 via-green-500 to-teal-500 bg-clip-text text-[11px] font-semibold text-transparent">
                   Save 15%
                 </span>
               </>

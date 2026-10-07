@@ -71,7 +71,7 @@ export function YourPlanCard({ index = 0 }: Props) {
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
       <div className="flex items-center gap-2 px-4">
-        <Text variant="body-medium" as="span" className="text-textBlack">
+        <Text variant="body-medium" as="span">
           Your plan
         </Text>
       </div>
@@ -79,7 +79,7 @@ export function YourPlanCard({ index = 0 }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         <div className="flex min-w-0 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Text variant="large-medium" as="span" className="text-textBlack">
+            <Text variant="large-medium" as="span">
               {plan.label}
             </Text>
             <Badge
@@ -89,8 +89,8 @@ export function YourPlanCard({ index = 0 }: Props) {
                 plan.isPendingCancel ||
                 plan.isPendingDowngrade ||
                 plan.isPendingCycleSwitch
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-violet-100 text-violet-800"
+                  ? "bg-yellow-100 text-yellow-800"
+                  : "bg-purple-100 text-purple-800"
               }
             >
               {!plan.isPaidPlan

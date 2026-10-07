@@ -5,13 +5,13 @@ import type { Transaction } from "../helpers";
 import { useReceiptSelection } from "../useReceiptSelection";
 import { TransactionRow } from "./TransactionRow";
 
-type Props = {
+interface Props {
   transactions: Transaction[];
   hasMore: boolean;
   isLoadingMore: boolean;
   isLoadMoreError: boolean;
   onLoadMore: () => Promise<unknown>;
-};
+}
 
 export function TransactionHistoryTable({
   transactions,

@@ -54,7 +54,7 @@ export function InvoicesCard({ index = 0 }: Props) {
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
       <div className="px-4">
-        <Text variant="body-medium" as="span" className="text-textBlack">
+        <Text variant="body-medium" as="span">
           Invoices
         </Text>
       </div>
@@ -100,7 +100,7 @@ export function InvoicesCard({ index = 0 }: Props) {
                       <Text
                         variant="body-medium"
                         as="span"
-                        className="tabular-nums text-textBlack"
+                        className="tabular-nums"
                       >
                         {invoice.number}
                       </Text>
@@ -119,7 +119,7 @@ export function InvoicesCard({ index = 0 }: Props) {
                       <Text
                         variant="body-medium"
                         as="span"
-                        className="tabular-nums text-textBlack"
+                        className="tabular-nums"
                       >
                         {invoice.amount}
                       </Text>

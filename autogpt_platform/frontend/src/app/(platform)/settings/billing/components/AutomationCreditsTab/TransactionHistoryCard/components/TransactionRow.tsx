@@ -22,13 +22,13 @@ import {
 import { TransactionAmount } from "./TransactionAmount";
 import { TransactionReceipt } from "./TransactionReceipt";
 
-type Props = {
+interface Props {
   transaction: Transaction;
   open: boolean;
   onToggle: (id: string) => void;
   loadedTransactions: Transaction[];
   onSelectRelated: (executionID: string) => void;
-};
+}
 
 export function TransactionRow({
   transaction,

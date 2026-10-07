@@ -10,7 +10,9 @@ import {
   type Transaction,
 } from "../helpers";
 
-type Props = { transaction: Transaction };
+interface Props {
+  transaction: Transaction;
+}
 
 export function ReceiptMetadata({ transaction }: Props) {
   const started = formatActivityDate(transaction.execution_started_at);
