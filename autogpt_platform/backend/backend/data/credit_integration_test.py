@@ -22,7 +22,7 @@ from backend.util.json import SafeJson
 
 
 @pytest.fixture
-async def cleanup_test_user():
+async def cleanup_test_user(server):
     """Clean up test user data before and after tests."""
     import uuid
 
