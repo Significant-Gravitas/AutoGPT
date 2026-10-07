@@ -46,7 +46,7 @@ export function McpConnectPanel({
   return (
     <div className="flex flex-col gap-4">
       {!lockServerURL && (
-        <Text variant="body" className="text-zinc-600">
+        <Text variant="body" tone="secondary">
           Enter the server URL from the service&apos;s setup instructions.
         </Text>
       )}
@@ -72,7 +72,7 @@ export function McpConnectPanel({
       )}
       {state.phase === "manual-token" && (
         <>
-          <Text variant="small" className="text-zinc-600">
+          <Text variant="small" tone="secondary">
             {allowedAuthMethods
               ? "Use the credential described in the setup instructions above."
               : "Use an API credential only if this server supports it. Follow the server's documentation for the correct authentication type."}

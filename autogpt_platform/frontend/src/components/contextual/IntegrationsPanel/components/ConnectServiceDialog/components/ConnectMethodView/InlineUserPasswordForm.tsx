@@ -83,7 +83,7 @@ export function InlineUserPasswordForm({
                 labelVariant="small-medium"
                 size="small"
                 placeholder={`My ${providerName} account`}
-                wrapperClassName="!mb-0"
+                wrapperClassName="mb-0"
               />
             </FormControl>
             <FormMessage />
@@ -105,7 +105,7 @@ export function InlineUserPasswordForm({
                 label="Username"
                 labelVariant="small-medium"
                 size="small"
-                wrapperClassName="!mb-0"
+                wrapperClassName="mb-0"
               />
             </FormControl>
             <FormMessage />
@@ -127,7 +127,7 @@ export function InlineUserPasswordForm({
                 label="Password"
                 labelVariant="small-medium"
                 size="small"
-                wrapperClassName="!mb-0"
+                wrapperClassName="mb-0"
               />
             </FormControl>
             <FormMessage />
