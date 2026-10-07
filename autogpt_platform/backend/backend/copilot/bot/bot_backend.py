@@ -544,7 +544,7 @@ class BotBackend:
         try:
             while True:
                 try:
-                    chunk = await asyncio.wait_for(
+                    _, chunk = await asyncio.wait_for(
                         queue.get(), timeout=STREAM_CHUNK_TIMEOUT_SECONDS
                     )
                 except asyncio.TimeoutError:

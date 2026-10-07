@@ -48,7 +48,7 @@ async def plan_from_subscription(subscription: dict) -> SubscriptionPlan:
         name=name,
         cycle=cycle,
         cycle_noun="month" if cycle == "monthly" else "year",
-        label=f"{name} — {cycle}",
+        label=f"{name} · {cycle}",
         price_display=f"{format_amount(price.get('unit_amount'), price.get('currency', 'usd'))} / {'month' if cycle == 'monthly' else 'year'}",
     )
 
@@ -63,7 +63,7 @@ async def plan_from_invoice(invoice: dict) -> SubscriptionPlan:
         name=name,
         cycle=cycle,
         cycle_noun="month" if cycle == "monthly" else "year",
-        label=f"{name} — {cycle}",
+        label=f"{name} · {cycle}",
         price_display=f"{format_amount(price.get('unit_amount'), price.get('currency', 'usd'))} / {'month' if cycle == 'monthly' else 'year'}",
     )
 
@@ -95,7 +95,7 @@ def format_amount(minor_units: int | None, currency: str) -> str:
     """Stripe amounts are in the currency's minor unit, except where they
     aren't."""
     if minor_units is None:
-        return "—"
+        return "Not available"
     symbol = {"usd": "$", "eur": "€", "gbp": "£"}.get(currency.lower(), "")
     if currency.lower() in _ZERO_DECIMAL_CURRENCIES:
         return f"{symbol}{minor_units:,}"
@@ -105,7 +105,7 @@ def format_amount(minor_units: int | None, currency: str) -> str:
 def format_date(timestamp: int | None) -> str:
     """The one fact these emails exist to state, so it is never relative."""
     if not timestamp:
-        return "—"
+        return "Not available"
     moment = datetime.fromtimestamp(timestamp, tz=timezone.utc)
     return f"{moment.day} {moment.strftime('%b %Y')}"
 

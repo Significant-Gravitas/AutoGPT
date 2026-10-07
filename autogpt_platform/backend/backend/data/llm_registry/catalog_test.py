@@ -622,3 +622,23 @@ def test_routing_cells_use_transport_ready_spellings():
                         f"{where}: dash-form anthropic/ cells exist on no "
                         "transport — use the dot form (anthropic/claude-…4.6)"
                     )
+
+
+def test_mistral_large_4_bills_at_authored_rates():
+    """Mistral Large 4 (OpenRouter live rate $0.68/$2.09 per 1M, $0.07/1M
+    cached input as of 2026-10-06) — flat tier and per-1M projections must
+    match the authored catalog entry."""
+    large = LLMModel("mistralai/mistral-large-4-0")
+    assert MODEL_COST[large] == 2
+    assert TOKEN_COST[large].model_dump() == {
+        "input": 102.0,
+        "output": 313.5,
+        "cache_read": 10.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[large].max_output_tokens == 262144
+    large_entry = next(
+        m for m in CATALOG.models if m.slug == "mistralai/mistral-large-4-0"
+    )
+    assert large_entry.price_tier == 2
+    assert large_entry.context_window == 524288

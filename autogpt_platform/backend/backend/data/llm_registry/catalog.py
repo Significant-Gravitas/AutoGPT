@@ -864,6 +864,23 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="mistralai/mistral-large-4-0",
+                display_name="Mistral Large 4",
+                provider="open_router",
+                creator="mistral-ai",
+                context_window=524288,
+                max_output_tokens=262144,
+                price_tier=2,
+                # Live OpenRouter rate as of 2026-10-06: $0.68/$2.09 per 1M
+                # (cache read $0.07); 150 credits per USD.
+                cost=CatalogModelCost(
+                    run_credits=2,
+                    input_credits_per_1m=102.0,
+                    output_credits_per_1m=313.5,
+                    cache_read_credits_per_1m=10.5,
+                ),
+            ),
+            CatalogModel(
                 slug="mistralai/mistral-medium-3.1",
                 display_name="Mistral Medium 3.1",
                 provider="open_router",
