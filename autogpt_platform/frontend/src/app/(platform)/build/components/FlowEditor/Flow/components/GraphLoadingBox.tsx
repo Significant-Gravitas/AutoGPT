@@ -24,10 +24,10 @@ export const GraphLoadingBox = ({
   }
 
   return (
-    <div className="absolute left-[50%] top-[50%] z-[99] -translate-x-1/2 -translate-y-1/2">
-      <div className="flex flex-col items-center gap-4 rounded-xlarge border border-gray-200 bg-white p-8 shadow-lg dark:border-gray-700 dark:bg-slate-800">
+    <div className="absolute left-1/2 top-1/2 z-[99] -translate-x-1/2 -translate-y-1/2">
+      <div className="flex flex-col items-center gap-4 rounded-xlarge border border-zinc-200 bg-white p-8 shadow-lg">
         <div className="relative h-12 w-12">
-          <div className="absolute inset-0 animate-spin rounded-full border-4 border-zinc-100 border-t-zinc-400 dark:border-gray-700 dark:border-t-blue-400"></div>
+          <div className="absolute inset-0 animate-spin rounded-full border-4 border-zinc-100 border-t-zinc-400"></div>
         </div>
         <div className="flex flex-col items-center gap-2">
           {isSaving && <Text variant="h4">Saving Graph</Text>}

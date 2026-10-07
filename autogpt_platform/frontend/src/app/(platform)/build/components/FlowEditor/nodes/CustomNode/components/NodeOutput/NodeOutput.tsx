@@ -37,7 +37,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
           <AccordionTrigger className="py-2 hover:no-underline">
             <Text
               variant="body-medium"
-              className="!font-semibold text-slate-700"
+              className="font-semibold text-slate-700"
             >
               Node Output
             </Text>
@@ -87,7 +87,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                       <div className="flex items-center gap-2">
                         <Text
                           variant="small-medium"
-                          className="!font-semibold text-slate-600"
+                          className="font-semibold text-slate-600"
                         >
                           Pin:
                         </Text>
@@ -98,7 +98,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                       <div className="w-full space-y-2">
                         <Text
                           variant="small"
-                          className="!font-semibold text-slate-600"
+                          className="font-semibold text-slate-600"
                         >
                           Data:
                         </Text>

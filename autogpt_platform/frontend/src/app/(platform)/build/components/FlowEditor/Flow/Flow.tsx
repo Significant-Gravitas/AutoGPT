@@ -103,7 +103,7 @@ export const Flow = () => {
   );
 
   return (
-    <div className="flex h-full w-full dark:bg-slate-900">
+    <div className="flex h-full w-full">
       <div className="relative flex-1">
         <ReactFlow
           nodes={nodes}

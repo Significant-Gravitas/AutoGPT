@@ -129,7 +129,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
               total
             </div>
           </div>
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-zinc-600">
             {shouldGroupExecutions ? (
               <div>
                 Pin:{" "}
@@ -143,7 +143,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                   </Text>
                   <Text
                     variant="body-medium"
-                    className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-xs"
+                    className="rounded-full border border-zinc-300 bg-zinc-50 px-2 py-1 font-mono text-xs"
                   >
                     {execId}
                   </Text>
@@ -182,7 +182,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                       </Text>
                       <Text
                         variant="body-medium"
-                        className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-xs"
+                        className="rounded-full border border-zinc-300 bg-zinc-50 px-2 py-1 font-mono text-xs"
                       >
                         {execution.execId}
                       </Text>
@@ -239,7 +239,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                           </div>
                         ))
                       ) : (
-                        <div className="py-4 text-center text-gray-500">
+                        <div className="py-4 text-center text-zinc-500">
                           No data available
                         </div>
                       )}
@@ -293,7 +293,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                 ))}
               </div>
             ) : (
-              <div className="py-8 text-center text-gray-500">
+              <div className="py-8 text-center text-zinc-500">
                 No data available
               </div>
             )}

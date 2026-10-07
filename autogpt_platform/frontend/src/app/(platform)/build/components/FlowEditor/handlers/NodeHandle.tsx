@@ -35,7 +35,7 @@ const InputNodeHandle = ({
           size={16}
           fill={isInputConnected ? "currentColor" : "none"}
           className={cn(
-            "text-gray-400 opacity-100",
+            "text-zinc-400 opacity-100",
             isInputBroken && "text-red-500",
           )}
         />
@@ -73,7 +73,7 @@ const OutputNodeHandle = ({
           size={16}
           color={isOutputConnected ? hexColor : "gray"}
           className={cn(
-            "text-gray-400 opacity-100",
+            "text-zinc-400 opacity-100",
             isBroken && "text-red-500",
           )}
         />

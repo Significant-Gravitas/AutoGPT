@@ -103,9 +103,11 @@ export const OutputHandler = ({
           >
             <div className="relative flex items-center gap-2">
               {hasNestedProperties && (
-                <button
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={() => toggleObjectExpanded(fullKey)}
-                  className="flex items-center text-slate-500 hover:text-slate-700"
+                  className="h-auto border-0 p-0 text-slate-500 hover:bg-transparent hover:text-slate-700"
                   aria-label={isExpanded ? "Collapse" : "Expand"}
                 >
                   {isExpanded ? (
@@ -113,14 +115,14 @@ export const OutputHandler = ({
                   ) : (
                     <Icon icon={ArrowRight01Icon} size={12} />
                   )}
-                </button>
+                </Button>
               )}
               {fieldSchema?.description && (
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span
-                        style={{ marginLeft: 6, cursor: "pointer" }}
+                        className="ml-1.5 cursor-pointer"
                         aria-label="info"
                         tabIndex={0}
                       >
@@ -145,7 +147,7 @@ export const OutputHandler = ({
                 as="span"
                 className={cn(
                   colorClass,
-                  isBroken && "!text-red-500 line-through",
+                  isBroken && "text-red-500 line-through",
                 )}
               >
                 ({displayType})
@@ -185,7 +187,7 @@ export const OutputHandler = ({
       >
         <Text
           variant="body"
-          className="flex items-center gap-2 !font-semibold text-slate-700"
+          className="flex items-center gap-2 font-semibold text-slate-700"
         >
           Output{" "}
           <Icon

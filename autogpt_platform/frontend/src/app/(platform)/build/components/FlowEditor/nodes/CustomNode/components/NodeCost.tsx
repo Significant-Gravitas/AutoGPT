@@ -130,9 +130,7 @@ export const NodeCost = ({
     return (
       <div className="mr-3 flex items-center gap-1 text-base font-light">
         <Icon icon={Coins02Icon} className="h-3 w-3" />
-        <Text variant="small" className="!font-medium">
-          Free
-        </Text>
+        <Text variant="small-medium">Free</Text>
       </div>
     );
   }
@@ -144,7 +142,7 @@ export const NodeCost = ({
         title={tokenRateTooltip(display)}
       >
         <Icon icon={Coins02Icon} className="h-3 w-3" />
-        <Text variant="small" className="!font-medium">
+        <Text variant="small-medium">
           {`${formatUsd(display.input)} in / ${formatUsd(display.output)} out`}
         </Text>
         <Text variant="small">{" per 1M tokens"}</Text>
@@ -170,9 +168,7 @@ export const NodeCost = ({
       title={display.note}
     >
       <Icon icon={Coins02Icon} className="h-3 w-3" />
-      <Text variant="small" className="!font-medium">
-        {display.amountText}
-      </Text>
+      <Text variant="small-medium">{display.amountText}</Text>
       <Text variant="small">{` ${display.suffix}`}</Text>
     </div>
   );

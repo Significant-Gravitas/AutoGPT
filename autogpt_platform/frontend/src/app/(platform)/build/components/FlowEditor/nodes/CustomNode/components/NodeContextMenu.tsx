@@ -49,12 +49,8 @@ export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
       </DropdownMenuTrigger>
       <SecondaryDropdownMenuContent side="right" align="start">
         <SecondaryDropdownMenuItem onClick={handleCopy}>
-          <Icon
-            icon={Copy01Icon}
-            size={20}
-            className="mr-2 dark:text-gray-100"
-          />
-          <span className="dark:text-gray-100">Copy</span>
+          <Icon icon={Copy01Icon} size={20} className="mr-2" />
+          <span>Copy</span>
         </SecondaryDropdownMenuItem>
         <SecondaryDropdownMenuSeparator />
 
@@ -63,24 +59,16 @@ export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
             <SecondaryDropdownMenuItem
               onClick={() => window.open(`/build?flowID=${subGraphID}`)}
             >
-              <Icon
-                icon={LinkSquare01Icon}
-                size={20}
-                className="mr-2 dark:text-gray-100"
-              />
-              <span className="dark:text-gray-100">Open agent</span>
+              <Icon icon={LinkSquare01Icon} size={20} className="mr-2" />
+              <span>Open agent</span>
             </SecondaryDropdownMenuItem>
             <SecondaryDropdownMenuSeparator />
           </>
         )}
 
         <SecondaryDropdownMenuItem variant="destructive" onClick={handleDelete}>
-          <Icon
-            icon={Delete02Icon}
-            size={20}
-            className="mr-2 text-red-500 dark:text-red-400"
-          />
-          <span className="dark:text-red-400">Delete</span>
+          <Icon icon={Delete02Icon} size={20} className="mr-2 text-red-500" />
+          <span>Delete</span>
         </SecondaryDropdownMenuItem>
       </SecondaryDropdownMenuContent>
     </DropdownMenu>

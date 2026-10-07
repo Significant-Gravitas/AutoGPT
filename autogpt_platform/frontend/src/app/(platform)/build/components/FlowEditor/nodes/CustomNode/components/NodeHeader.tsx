@@ -69,7 +69,7 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
                 autoFocus
                 className={cn(
                   "m-0 h-fit w-full border-none bg-transparent p-0 focus:outline-none focus:ring-0",
-                  "font-sans text-[1rem] font-semibold leading-[1.5rem] text-zinc-800",
+                  "font-sans text-base font-semibold leading-6 text-zinc-800",
                 )}
                 onBlur={handleTitleEdit}
                 onKeyDown={handleTitleKeyDown}
@@ -98,7 +98,7 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
           <div className="flex items-center gap-2">
             <Text
               variant="small"
-              className="shrink-0 !font-medium !text-slate-500"
+              className="shrink-0 font-medium text-slate-500"
             >
               #{nodeId.split("-")[0]}
             </Text>

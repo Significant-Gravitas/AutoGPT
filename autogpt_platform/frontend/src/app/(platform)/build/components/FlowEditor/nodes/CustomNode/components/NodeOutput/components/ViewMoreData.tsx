@@ -60,7 +60,7 @@ export const ViewMoreData = ({
         <Button
           variant="secondary"
           size="small"
-          className="h-fit w-fit min-w-0 !text-xs"
+          className="h-fit w-fit min-w-0 text-xs"
         >
           View More
         </Button>
@@ -84,7 +84,7 @@ export const ViewMoreData = ({
                     </Text>
                     <Text
                       variant="body-medium"
-                      className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-xs"
+                      className="rounded-full border border-zinc-300 bg-zinc-50 px-2 py-1 font-mono text-xs"
                     >
                       {result.node_exec_id}
                     </Text>
@@ -107,7 +107,7 @@ export const ViewMoreData = ({
                             <div className="flex items-center gap-2">
                               <Text
                                 variant="body-medium"
-                                className="!font-semibold text-slate-600"
+                                className="font-semibold text-slate-600"
                               >
                                 Pin:
                               </Text>
@@ -121,7 +121,7 @@ export const ViewMoreData = ({
                             <div className="w-full space-y-2">
                               <Text
                                 variant="body-medium"
-                                className="!font-semibold text-slate-600"
+                                className="font-semibold text-slate-600"
                               >
                                 Data:
                               </Text>

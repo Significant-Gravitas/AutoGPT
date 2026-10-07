@@ -5,7 +5,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { LockIcon, LockOpenIcon } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
@@ -13,9 +12,11 @@ import { startTutorial, setTutorialLoadingCallback } from "../../tutorial";
 import {
   FullScreenIcon,
   Loading03Icon,
+  LockIcon,
   MinusSignIcon,
   PlusSignIcon,
   Presentation01Icon,
+  SquareUnlock02Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -93,9 +94,9 @@ export const CustomControls = memo(
       {
         id: "lock-button",
         icon: !isLocked ? (
-          <LockOpenIcon className="size-3.5 text-zinc-600" />
+          <Icon icon={SquareUnlock02Icon} className="size-3.5 text-zinc-600" />
         ) : (
-          <LockIcon className="size-3.5 text-zinc-600" />
+          <Icon icon={LockIcon} className="size-3.5 text-zinc-600" />
         ),
         label: isReadOnly
           ? "Canvas is locked because this is a read-only graph"
@@ -116,7 +117,7 @@ export const CustomControls = memo(
             <TooltipTrigger asChild>
               <Button
                 variant="icon"
-                size={"small"}
+                size="small"
                 onClick={control.onClick}
                 className={control.className}
                 data-id={control.id}
