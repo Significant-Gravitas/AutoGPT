@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 import stripe
 from autogpt_libs.auth import get_user_id
 from fastapi import APIRouter, Depends, Header, HTTPException, Security
+from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, Field
 
 from backend.api.features.billing.client_country import (  # noqa: F401 -- re-exported
@@ -95,6 +96,8 @@ async def get_trial_status(
                 and (offer := await get_trial_offer(user_id, country=country))
                 is not None
                 and await trial_seat_available(offer, trial_id=trial.id)
+                and (await get_user_by_id(user_id)).subscription_tier
+                == SubscriptionTier.NO_TIER
             ),
             offer=TrialOfferResponse.from_offer(trial.offer),
             status=trial.status,
