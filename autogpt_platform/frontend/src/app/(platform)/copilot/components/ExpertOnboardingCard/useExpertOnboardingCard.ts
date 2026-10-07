@@ -1,5 +1,6 @@
 "use client";
 
+import { useMountEffect } from "@/hooks/useMountEffect";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import {
@@ -35,6 +36,10 @@ export function useExpertOnboardingCard({ callId, steps, isLive }: Args) {
   );
   const [isSent, setIsSent] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  // The step a tapped option is about to move to. Saved in place of ``step``
+  // so a remount inside the auto-advance beat still lands on the next
+  // question instead of stranding the user on the one they just answered.
+  const [advancingTo, setAdvancingTo] = useState<number | null>(null);
   const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const current = Math.min(step, steps.length - 1);
@@ -48,12 +53,17 @@ export function useExpertOnboardingCard({ callId, steps, isLive }: Args) {
 
   useEffect(() => {
     if (isDone) return;
-    writeOnboardingProgress(callId, { step, answers });
-  }, [callId, step, answers, isDone]);
+    writeOnboardingProgress(callId, { step: advancingTo ?? step, answers });
+  }, [callId, step, advancingTo, answers, isDone]);
+
+  useMountEffect(() => () => {
+    if (advanceTimer.current) clearTimeout(advanceTimer.current);
+  });
 
   function cancelAutoAdvance() {
     if (advanceTimer.current) clearTimeout(advanceTimer.current);
     advanceTimer.current = null;
+    setAdvancingTo(null);
   }
 
   function setAnswer(next: string) {
@@ -66,10 +76,13 @@ export function useExpertOnboardingCard({ callId, steps, isLive }: Args) {
   function choose(option: string) {
     setAnswer(option);
     if (isLast) return;
-    advanceTimer.current = setTimeout(
-      () => setStep(current + 1),
-      AUTO_ADVANCE_MS,
-    );
+    const next = current + 1;
+    setAdvancingTo(next);
+    advanceTimer.current = setTimeout(() => {
+      advanceTimer.current = null;
+      setAdvancingTo(null);
+      setStep(next);
+    }, AUTO_ADVANCE_MS);
   }
 
   function goBack() {

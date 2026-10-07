@@ -122,7 +122,7 @@ describe("ExpertOnboardingCard", () => {
     renderCard(onboardingPart());
 
     expect(screen.getByText("Ada")).toBeDefined();
-    expect(screen.queryByText("Social Media Manager")).toBeNull();
+    expect(screen.queryByText("Social & Content Repurposing")).toBeNull();
     expect(
       screen.getByText("Hi, I'm Ada — good to be working with you."),
     ).toBeDefined();
@@ -269,6 +269,20 @@ describe("ExpertOnboardingCard", () => {
     const { rekeyRow } = renderCard(onboardingPart());
     await answerFirstStep();
 
+    rekeyRow();
+
+    expect(questionNumber()).toBe("Question 2 of 2");
+    expect(
+      screen.getByText("Which service should I be connected to?"),
+    ).toBeDefined();
+    fireEvent.click(actionButton("Previous question"));
+    expect(isChecked(/Social listening/)).toBe("true");
+  });
+
+  it("still moves on when the row re-keys during the auto-advance beat", () => {
+    const { rekeyRow } = renderCard(onboardingPart());
+
+    fireEvent.click(screen.getByRole("radio", { name: /Social listening/ }));
     rekeyRow();
 
     expect(questionNumber()).toBe("Question 2 of 2");
