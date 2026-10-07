@@ -120,6 +120,10 @@ def _context(user, claim=True, audience_ok=True):
             AsyncMock(return_value=("PRO", "monthly")),
         ),
         patch("backend.notifications.lifecycle.track_subscription_ended"),
+        patch(
+            "backend.notifications.lifecycle.is_feature_enabled",
+            AsyncMock(return_value=False),
+        ),
     ]
 
 
@@ -650,3 +654,41 @@ async def test_an_ended_subscription_sets_stripes_end_date_on_the_churn(fields_o
         SubscriberField.STATUS: SubscriptionStatus.SUBSCRIPTION_ENDED.value,
         SubscriberField.SUBSCRIPTION_ENDED: _day(1789200000),
     }
+
+
+@pytest.mark.parametrize(
+    "enabled,error",
+    [
+        (False, None),
+        (True, None),
+        (False, RuntimeError("Flag lookup failed for sam@example.com")),
+    ],
+)
+async def test_welcome_matches_the_recipients_expert_access(enabled, error, caplog):
+    patches = _context(_User())
+    patches.append(
+        patch.object(lifecycle, "_claim_welcome", AsyncMock(return_value=True))
+    )
+    for item in patches:
+        item.start()
+    try:
+        with patch.object(
+            lifecycle,
+            "is_feature_enabled",
+            AsyncMock(return_value=enabled, side_effect=error),
+        ) as flag, patch.object(lifecycle, "_release_welcome", AsyncMock()) as released:
+            await lifecycle.on_checkout_completed(
+                {"customer": CUSTOMER}, _subscription()
+            )
+            event = lifecycle.queue_notification_async.call_args.args[0]
+            assert event.data.experts_enabled is enabled
+            flag.assert_awaited_once_with(lifecycle.Flag.HIRE_EXPERTS, "user-1")
+            released.assert_not_awaited()
+            lifecycle.queue_audience_change.assert_awaited_once()
+            if error:
+                assert "Could not check Expert access" in caplog.text
+                assert "sam@example.com" not in caplog.text
+                assert "user-1" not in caplog.text
+    finally:
+        for item in reversed(patches):
+            item.stop()
