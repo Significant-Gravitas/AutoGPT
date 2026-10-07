@@ -96,11 +96,7 @@ export function useExpertConnectServiceDialog({
   const showNative =
     nativeOverride ??
     (selectedProvider
-      ? opensOnNativeMethods(
-          selectedProvider,
-          true,
-          selectedProvider.supportedAuthTypes.length,
-        )
+      ? opensOnNativeMethods(true, selectedProvider.supportedAuthTypes.length)
       : false);
   const isMcpStep = Boolean(selectedProvider?.mcpServer) && !showNative;
 

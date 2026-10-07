@@ -50,11 +50,17 @@ def test_openseo_catalog_entry_defaults_to_cloud_and_allows_self_hosting():
     assert entry.mcp_server.documentation_url == "https://openseo.so/docs/mcp"
 
 
-def test_only_read_only_servers_carry_the_read_only_flag():
-    entries = {entry.name: entry for entry in get_mcp_catalog()}
+def test_no_catalogued_server_is_limited_to_read_access():
+    for entry in get_mcp_catalog():
+        server = entry.mcp_server
+        assert not server.oauth_write_scopes, entry.name
+        assert "readonly" not in (server.server_url or ""), entry.name
 
-    assert entries["mcp_github"].mcp_server.read_only is True
-    assert entries["mcp_linear"].mcp_server.read_only is False
+
+def test_a_connection_saved_against_an_old_address_still_finds_its_server():
+    entry = get_mcp_catalog_entry_for_url("https://api.githubcopilot.com/mcp/readonly")
+    assert entry is not None and entry.name == "mcp_github"
+    assert "legacy_server_urls" not in entry.mcp_server.model_dump()
 
 
 @pytest.mark.parametrize(
@@ -240,15 +246,15 @@ def test_a_tool_cannot_carry_two_effects():
 @pytest.mark.parametrize(
     "url, tool, effect",
     [
-        ("https://api.githubcopilot.com/mcp/readonly", "issue_read", "read"),
-        ("https://api.githubcopilot.com/mcp/readonly", "create_branch", "external"),
-        ("https://api.githubcopilot.com/mcp/readonly", "issue_write", "irreversible"),
+        ("https://api.githubcopilot.com/mcp/", "issue_read", "read"),
+        ("https://api.githubcopilot.com/mcp/", "create_branch", "external"),
+        ("https://api.githubcopilot.com/mcp/", "issue_write", "irreversible"),
         (
-            "https://api.githubcopilot.com/mcp/readonly",
+            "https://api.githubcopilot.com/mcp/",
             "merge_pull_request",
             "irreversible",
         ),
-        ("https://api.githubcopilot.com/mcp/readonly", "not_published", None),
+        ("https://api.githubcopilot.com/mcp/", "not_published", None),
         ("https://mcp.example.com/mcp", "get_things", None),
     ],
 )

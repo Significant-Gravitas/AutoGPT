@@ -31,12 +31,11 @@ function normalizeAuthTypes(
 }
 
 export function opensOnNativeMethods(
-  provider: ConnectableProvider,
   preferMcp: boolean,
   nativeMethodCount: number,
 ): boolean {
   if (nativeMethodCount === 0) return false;
-  return !preferMcp || Boolean(provider.mcpServer?.read_only);
+  return !preferMcp;
 }
 
 // A vendor's MCP token and its block API key are the same key, so when the

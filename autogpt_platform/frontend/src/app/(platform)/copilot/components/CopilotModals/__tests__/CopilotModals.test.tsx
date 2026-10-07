@@ -298,59 +298,6 @@ describe("CopilotModals", () => {
     ).toBeDefined();
   });
 
-  test("a vendor whose sign-in is read-only opens on its own methods, with the token one click away", async () => {
-    server.use(
-      getGetV1ListProvidersMockHandler([
-        {
-          name: "github",
-          description: "Issues and PRs",
-          supported_auth_types: ["oauth2", "api_key"],
-          service: "github",
-          service_name: null,
-          service_icon: "github",
-        },
-        {
-          name: "mcp_github",
-          display_name: "GitHub",
-          supported_auth_types: [],
-          service: "github",
-          service_name: "GitHub",
-          service_icon: "github",
-          mcp_server: {
-            server_url: "https://api.githubcopilot.com/mcp/readonly",
-            documentation_url: "https://github.com/github/github-mcp-server",
-            setup_instructions: "Paste a read-only GitHub token.",
-            connection_mode: "hosted",
-            auth_methods: ["bearer"],
-            read_only: true,
-          },
-        },
-      ]),
-    );
-    render(<Harness />);
-    fireEvent.click(screen.getByText("open-connect"));
-
-    const dialog = await screen.findByRole("dialog");
-    await userEvent.click(
-      await within(dialog).findByRole("button", { name: /GitHub/ }),
-    );
-    expect(
-      await within(dialog).findByRole("tab", { name: /API key/i }),
-    ).toBeDefined();
-    expect(
-      within(dialog).queryByText("Paste a read-only GitHub token."),
-    ).toBeNull();
-
-    await userEvent.click(
-      within(dialog).getByRole("button", {
-        name: "Use a GitHub token instead",
-      }),
-    );
-    expect(
-      await within(dialog).findByText("Paste a read-only GitHub token."),
-    ).toBeDefined();
-  });
-
   test("renders the connect dialog from a ?modal=connect deep link", async () => {
     render(
       <NuqsTestingAdapter searchParams="?modal=connect">

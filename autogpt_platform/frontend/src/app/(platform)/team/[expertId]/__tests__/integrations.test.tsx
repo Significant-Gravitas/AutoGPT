@@ -557,65 +557,6 @@ describe("managing an expert's integrations", () => {
     ).toBeDefined();
   });
 
-  it("opens a vendor with a read-only sign-in on its own methods", async () => {
-    server.use(
-      getListExpertCredentialsMockHandler([]),
-      http.get("*/api/integrations/providers", () =>
-        HttpResponse.json([
-          {
-            name: "github",
-            description: "Issues and PRs",
-            supported_auth_types: ["oauth2", "api_key"],
-            service: "github",
-            service_name: null,
-            service_icon: "github",
-          },
-          {
-            name: "mcp_github",
-            display_name: "GitHub",
-            supported_auth_types: [],
-            service: "github",
-            service_name: "GitHub",
-            service_icon: "github",
-            mcp_server: {
-              server_url: "https://api.githubcopilot.com/mcp/readonly",
-              documentation_url: "https://github.com/github/github-mcp-server",
-              setup_instructions: "Paste a read-only GitHub token.",
-              connection_mode: "hosted",
-              auth_methods: ["bearer"],
-              read_only: true,
-            },
-          },
-        ]),
-      ),
-    );
-
-    render(<ExpertDetailPage />);
-    await openIntegrationsTab();
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
-    );
-    const dialog = await screen.findByRole("dialog");
-    const list = await within(dialog).findByRole("list", { name: "Services" });
-    await userEvent.click(within(list).getByRole("button", { name: /GitHub/ }));
-
-    expect(
-      await within(dialog).findByRole("button", { name: /API Key/ }),
-    ).toBeDefined();
-    expect(
-      within(dialog).queryByText("Paste a read-only GitHub token."),
-    ).toBeNull();
-
-    await userEvent.click(
-      within(dialog).getByRole("button", {
-        name: "Use a GitHub token instead",
-      }),
-    );
-    expect(
-      await within(dialog).findByText("Paste a read-only GitHub token."),
-    ).toBeDefined();
-  });
-
   it("grants a credential connected through the service sign-in", async () => {
     let granted: string[] = [];
     server.use(

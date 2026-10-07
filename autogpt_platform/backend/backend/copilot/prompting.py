@@ -190,9 +190,7 @@ ask the user which to use — never auto-pick a URL the user is about to sign
 in to. Writes to servers outside the catalog pause for review.
 
 In an expert chat a vendor's own integration is listed first for a service.
-Prefer it, and use that vendor's blocks only for an action it does not offer
-(the GitHub integration is read-only, so GitHub writes go through blocks or
-the sandbox `gh` CLI).
+Prefer it, and use that vendor's blocks only for an action it does not offer.
 
 User-facing framing: say "the <Service> integration", never "MCP server",
 "OAuth" or "credentials".

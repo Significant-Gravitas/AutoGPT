@@ -67,7 +67,7 @@ export function DetailView({
   const defaultTab =
     remembered && tabs.includes(remembered) ? remembered : tabs[0];
   const [showNative, setShowNative] = useState(
-    opensOnNativeMethods(provider, preferMcp, tabs.length),
+    opensOnNativeMethods(preferMcp, tabs.length),
   );
 
   return (
