@@ -121,22 +121,27 @@ jobs:
 
   chromatic:
     runs-on: ubuntu-latest
-    # Disabled. Re-enable only for github.ref == 'refs/heads/dev' || github.base_ref == 'dev'
-    # and a paths-filter match on autogpt_platform/frontend/src/components/**.
-    if: ${{ false }}
+    # Secrets cannot be read in a job-level `if`, so every step checks the
+    # token instead: without a CHROMATIC_PROJECT_TOKEN repository secret
+    # (forks, or before the secret is added) the job passes as a no-op.
+    env:
+      CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
 
     steps:
       - name: Checkout repository
+        if: env.CHROMATIC_PROJECT_TOKEN != ''
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up pnpm
+        if: env.CHROMATIC_PROJECT_TOKEN != ''
         uses: pnpm/action-setup@v4
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Node
+        if: env.CHROMATIC_PROJECT_TOKEN != ''
         uses: actions/setup-node@v6
         with:
           node-version: "24.18.0"
@@ -144,16 +149,80 @@ jobs:
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
       - name: Install dependencies
+        if: env.CHROMATIC_PROJECT_TOKEN != ''
         run: pnpm install --frozen-lockfile
 
+      # Stories import the generated MSW handlers, which are gitignored.
+      - name: Generate API client
+        if: env.CHROMATIC_PROJECT_TOKEN != ''
+        run: pnpm generate:api
+
       - name: Run Chromatic
+        if: env.CHROMATIC_PROJECT_TOKEN != ''
         uses: chromaui/action@latest
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
         with:
-          projectToken: chpt_9e7c1a76478c9c8
+          projectToken: ${{ env.CHROMATIC_PROJECT_TOKEN }}
           onlyChanged: true
           workingDir: autogpt_platform/frontend
           token: ${{ secrets.GITHUB_TOKEN }}
           exitOnceUploaded: true
+
+  build-storybook:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Only pull requests that touch the design system pay for a build.
+      - name: Check for design-system changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git diff --quiet "$BASE_SHA" HEAD -- src/components; then
+            echo "components=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "components=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up pnpm
+        if: steps.changes.outputs.components == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
+
+      - name: Set up Node
+        if: steps.changes.outputs.components == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.18.0"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        if: steps.changes.outputs.components == 'true'
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      # Stories import the generated MSW handlers, which are gitignored.
+      - name: Generate API client
+        if: steps.changes.outputs.components == 'true'
+        run: pnpm generate:api
+
+      # Minifying the full Storybook needs more than Node's default heap.
+      - name: Build Storybook
+        if: steps.changes.outputs.components == 'true'
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: pnpm build-storybook --quiet
 
   integration_test:
     name: integration_test (shard ${{ matrix.shard }}/4)
