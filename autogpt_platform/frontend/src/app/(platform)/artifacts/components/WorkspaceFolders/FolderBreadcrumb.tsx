@@ -49,7 +49,7 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
     >
       <ol
         className={cn(
-          "flex min-w-0 items-center gap-1.5 text-zinc-500",
+          "flex min-w-0 items-center gap-1.5 text-muted-foreground",
           compact && "gap-1",
         )}
       >
@@ -145,7 +145,7 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
 }
 
 const CRUMB_BUTTON_CLASS =
-  "h-auto min-w-0 gap-1.5 rounded-md border-0 px-1.5 py-1 font-normal text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800";
+  "h-auto min-w-0 gap-1.5 rounded-md border-0 px-1.5 py-1 font-normal text-muted-foreground hover:bg-zinc-100 hover:text-zinc-800";
 
 function splitForOverflow(items: BreadcrumbItem[]): {
   hidden: BreadcrumbItem[];

@@ -52,7 +52,7 @@ export function ProfileInfoForm({ profile }: Props) {
                 icon={UserIcon}
                 size={72}
                 aria-label="Person Fill Icon"
-                className="absolute inset-0 m-auto text-zinc-500"
+                className="absolute inset-0 m-auto text-muted-foreground"
               />
             )}
           </div>

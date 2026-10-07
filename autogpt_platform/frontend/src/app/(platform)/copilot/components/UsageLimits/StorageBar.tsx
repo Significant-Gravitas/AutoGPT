@@ -20,7 +20,7 @@ export function StorageBar() {
         <Text variant="body-medium" className="text-zinc-700">
           File storage
         </Text>
-        <Text variant="body" className="text-zinc-500 tabular-nums">
+        <Text variant="body" className="text-muted-foreground tabular-nums">
           {percentLabel}
         </Text>
       </div>

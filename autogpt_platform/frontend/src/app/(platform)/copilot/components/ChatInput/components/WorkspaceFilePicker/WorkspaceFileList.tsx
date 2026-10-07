@@ -149,7 +149,7 @@ export function WorkspaceFileList({
                 <Icon
                   icon={fileIcon}
                   size={20}
-                  className="shrink-0 text-zinc-500"
+                  className="shrink-0 text-muted-foreground"
                 />
                 <div className="flex min-w-0 flex-1 flex-col">
                   <Text
@@ -162,7 +162,7 @@ export function WorkspaceFileList({
                   </Text>
                   <Text
                     variant="small"
-                    className="truncate text-zinc-500"
+                    className="truncate text-muted-foreground"
                     unmask={false}
                   >
                     {getFileTypeLabel(file.mime_type)} ·{" "}

@@ -109,14 +109,14 @@ export function TierToggle({
               icon={tierIcon(segment.tier)}
               size={18}
               aria-hidden
-              className="flex-none text-zinc-500"
+              className="flex-none text-muted-foreground"
             />
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-sm font-medium text-zinc-900">
                 {segment.name ?? segment.label}
               </span>
               {segment.model && (
-                <span className="text-sm leading-snug text-zinc-500">
+                <span className="text-sm leading-snug text-muted-foreground">
                   <Swap className="max-w-full truncate">{segment.model}</Swap>
                 </span>
               )}
@@ -164,7 +164,7 @@ function LockedSegment({ segment }: { segment: Segment }) {
           className="mt-[3px] flex-none text-zinc-400"
         />
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-medium text-zinc-500">
+          <span className="truncate text-sm font-medium text-muted-foreground">
             {segment.name ?? segment.label}
           </span>
           {segment.model && (

@@ -30,7 +30,7 @@ export function TourEndCard() {
           <br />
           Yours will too.
         </Text>
-        <Text variant="body" className="text-zinc-500">
+        <Text variant="body" className="text-muted-foreground">
           Same chat, your real tasks — hosted and running for you.
         </Text>
       </div>
@@ -63,7 +63,7 @@ export function TourEndCard() {
           target="_blank"
           rel="noopener noreferrer"
           onClick={handleSelfHostClick}
-          className="mt-1 text-center text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-700"
+          className="mt-1 text-center text-sm text-muted-foreground underline underline-offset-2 hover:text-zinc-700"
         >
           or self-host free
         </a>

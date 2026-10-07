@@ -88,7 +88,7 @@ function SubSection({
 }) {
   return (
     <div className="rounded-lg border border-dashed border-blue-200 p-3">
-      <p className="mb-2 text-xs font-medium tracking-wide text-zinc-500 uppercase">
+      <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
         {label}
       </p>
       {children}
@@ -196,7 +196,7 @@ export default function StyleguidePage() {
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-4 py-10">
             <Text variant="h1">Copilot Styleguide</Text>
-            <p className="mb-8 text-sm text-zinc-500">
+            <p className="mb-8 text-sm text-muted-foreground">
               Static showcase of all chat message types, tool states &amp;
               variants.
             </p>

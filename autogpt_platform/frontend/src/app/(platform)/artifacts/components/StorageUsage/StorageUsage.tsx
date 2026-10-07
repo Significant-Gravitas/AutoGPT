@@ -37,7 +37,7 @@ export function StorageUsage() {
       title={usedLabel}
       data-testid="storage-usage"
     >
-      <Text variant="small" as="span" className="text-zinc-500">
+      <Text variant="small" as="span" className="text-muted-foreground">
         Storage
       </Text>
       <Progress
@@ -52,7 +52,7 @@ export function StorageUsage() {
           percent > 95 ? "[&>div]:bg-red-400" : "[&>div]:bg-zinc-400",
         )}
       />
-      <Text variant="small" as="span" className="text-zinc-500">
+      <Text variant="small" as="span" className="text-muted-foreground">
         <span className="font-medium text-zinc-700">
           {formatFileSize(data.used_bytes)}
         </span>{" "}

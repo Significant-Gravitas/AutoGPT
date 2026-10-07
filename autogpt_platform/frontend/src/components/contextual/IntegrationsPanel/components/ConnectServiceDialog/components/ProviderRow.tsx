@@ -58,7 +58,7 @@ export function ProviderRow({ provider, onSelect }: Props) {
               </Badge>
             )}
         </span>
-        <span className="truncate text-xs leading-5 text-zinc-500">
+        <span className="truncate text-xs leading-5 text-muted-foreground">
           {provider.description ?? provider.id}
         </span>
       </span>

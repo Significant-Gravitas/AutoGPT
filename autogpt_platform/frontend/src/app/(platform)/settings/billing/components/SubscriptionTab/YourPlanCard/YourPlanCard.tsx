@@ -145,7 +145,7 @@ export function YourPlanCard({ index = 0 }: Props) {
           plan.isPendingCycleSwitch &&
           plan.pendingEffectiveAt &&
           plan.pendingCycle ? (
-            <Text variant="small" as="span" className="text-zinc-500">
+            <Text variant="small" as="span" className="text-muted-foreground">
               Switching to {plan.pendingCycle} {plan.label} on{" "}
               {formatShortDate(plan.pendingEffectiveAt)} · No charge today
             </Text>

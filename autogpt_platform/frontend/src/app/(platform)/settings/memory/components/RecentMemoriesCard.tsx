@@ -26,7 +26,7 @@ export function RecentMemoriesCard({
       <Text variant="body-medium" as="span">
         Recent memories
       </Text>
-      <Text variant="small" as="span" className="text-zinc-500">
+      <Text variant="small" as="span" className="text-muted-foreground">
         The latest things this memory has learned. Forget any of them.
       </Text>
 
@@ -38,7 +38,7 @@ export function RecentMemoriesCard({
             <Skeleton className="h-5 w-4/5" />
           </div>
         ) : facts.length === 0 ? (
-          <Text variant="small" as="p" className="py-3 text-zinc-500">
+          <Text variant="small" as="p" className="py-3 text-muted-foreground">
             Nothing remembered yet. Memories show up here as you chat.
           </Text>
         ) : (

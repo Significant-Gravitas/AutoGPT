@@ -28,7 +28,9 @@ export function OutcomeRow({ outcome, timezone, showAgentName }: Props) {
       <span
         className={cn(
           "flex size-[18px] shrink-0 items-center justify-center rounded-md",
-          failed ? "bg-red-50 text-red-600" : "bg-zinc-100 text-zinc-500",
+          failed
+            ? "bg-red-50 text-red-600"
+            : "bg-zinc-100 text-muted-foreground",
         )}
       >
         <Icon
@@ -81,7 +83,10 @@ function RunMeta({ outcome, timezone, showAgentName }: Props) {
       </span>
     ) : null,
     showAgentName ? (
-      <span key="agent" className="max-w-40 truncate font-medium text-zinc-500">
+      <span
+        key="agent"
+        className="max-w-40 truncate font-medium text-muted-foreground"
+      >
         {outcome.agent_name}
       </span>
     ) : null,

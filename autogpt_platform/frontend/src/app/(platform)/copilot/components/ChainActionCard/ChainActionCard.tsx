@@ -98,13 +98,13 @@ export function ChainActionCard({
           ))}
           {remaining.length > 0 && rows.length + mcpRows.length > 1 && (
             <div className="border-t border-zinc-100 px-4 py-2.5">
-              <span className="text-sm text-zinc-500">
+              <span className="text-sm text-muted-foreground">
                 Still to connect: {remaining.join(", ")}
               </span>
             </div>
           )}
           <div className="border-t border-zinc-100 px-4 py-3">
-            <span className="text-sm text-zinc-500">
+            <span className="text-sm text-muted-foreground">
               Looking for something else?{" "}
               <Button
                 type="button"

@@ -70,12 +70,14 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
             {request.service}
           </span>
           {host && (
-            <span className="truncate text-sm text-zinc-500">{host}</span>
+            <span className="truncate text-sm text-muted-foreground">
+              {host}
+            </span>
           )}
         </div>
 
         {request.connected ? (
-          <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-zinc-500">
+          <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-muted-foreground">
             <Icon icon={CheckmarkCircle02Icon} size={16} />
             Connected
           </span>

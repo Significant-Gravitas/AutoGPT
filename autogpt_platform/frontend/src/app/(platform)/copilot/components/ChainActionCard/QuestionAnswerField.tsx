@@ -108,7 +108,7 @@ export function QuestionAnswerField({
             setToggled(true);
             setTyping(true);
           }}
-          className="flex items-center gap-2.5 rounded-2xl border border-dashed border-zinc-200 px-4 py-3 text-left text-base text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-700"
+          className="flex items-center gap-2.5 rounded-2xl border border-dashed border-zinc-200 px-4 py-3 text-left text-base text-muted-foreground transition-colors hover:border-zinc-300 hover:text-zinc-700"
         >
           <Icon icon={PencilEdit02Icon} size={16} className="shrink-0" />
           Type something…

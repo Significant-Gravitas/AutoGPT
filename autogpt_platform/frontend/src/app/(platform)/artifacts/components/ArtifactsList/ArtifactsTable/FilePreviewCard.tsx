@@ -31,7 +31,7 @@ export function FilePreviewCard({ file }: Props) {
         <Icon
           icon={getFileTypeIcon(file.mime_type, file.name)}
           size={20}
-          className="shrink-0 text-zinc-500"
+          className="shrink-0 text-muted-foreground"
         />
         <div className="flex min-w-0 flex-1 flex-col">
           <Text
@@ -41,7 +41,11 @@ export function FilePreviewCard({ file }: Props) {
           >
             {file.name}
           </Text>
-          <Text variant="small" as="span" className="truncate text-zinc-500">
+          <Text
+            variant="small"
+            as="span"
+            className="truncate text-muted-foreground"
+          >
             {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
             {formatFileSize(file.size_bytes)} ·{" "}
             {formatDayLabel(file.created_at)}

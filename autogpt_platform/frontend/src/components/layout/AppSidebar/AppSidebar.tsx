@@ -199,7 +199,7 @@ function CollapsibleNavGroup({
       >
         <SidebarGroupLabel
           asChild
-          className="text-[13px] font-medium text-zinc-500 group-data-[collapsible=icon]:hidden"
+          className="text-[13px] font-medium text-muted-foreground group-data-[collapsible=icon]:hidden"
         >
           <CollapsibleTrigger>
             {label}

@@ -124,7 +124,7 @@ export function CredentialRow({
             {getCredentialDisplayName(credential, displayName)}
           </Text>
           {isRealCredentialType && (
-            <span className="shrink-0 rounded-sm bg-zinc-100 px-1.5 py-0.5 text-[0.625rem] leading-tight font-medium text-zinc-500">
+            <span className="shrink-0 rounded-sm bg-zinc-100 px-1.5 py-0.5 text-[0.625rem] leading-tight font-medium text-muted-foreground">
               {getCredentialTypeLabel(credType)}
             </span>
           )}

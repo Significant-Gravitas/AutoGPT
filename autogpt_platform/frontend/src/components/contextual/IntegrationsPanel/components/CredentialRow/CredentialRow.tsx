@@ -52,7 +52,7 @@ export function CredentialRow({
             className={`shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-800 ${
               selected
                 ? "text-zinc-800 hover:text-zinc-900"
-                : "text-zinc-500 hover:text-zinc-700"
+                : "text-muted-foreground hover:text-zinc-700"
             }`}
           >
             {selected ? (

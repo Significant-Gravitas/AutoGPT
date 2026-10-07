@@ -41,7 +41,7 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
 
           <Section label="Scopes">
             {apiKey.scopes.length === 0 ? (
-              <Text variant="body" className="text-zinc-500">
+              <Text variant="body" className="text-muted-foreground">
                 No scopes
               </Text>
             ) : (
@@ -80,7 +80,7 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
 function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <Text variant="small-medium" as="span" className="text-zinc-500">
+      <Text variant="small-medium" as="span" className="text-muted-foreground">
         {label}
       </Text>
       {children}

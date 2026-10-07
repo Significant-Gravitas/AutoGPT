@@ -106,7 +106,7 @@ const DialogContent = React.forwardRef<
             Dialog
           </DialogPrimitive.Description>
         ) : null}
-        <DialogPrimitive.Close className="absolute top-4 right-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:ring-2 focus:ring-black focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-zinc-100 data-[state=open]:text-zinc-500">
+        <DialogPrimitive.Close className="absolute top-4 right-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:ring-2 focus:ring-black focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-zinc-100 data-[state=open]:text-muted-foreground">
           <Cross2Icon className="h-4 w-4" />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>
@@ -165,7 +165,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-zinc-500", className)}
+    className={cn("text-sm text-muted-foreground", className)}
     {...props}
   />
 ));

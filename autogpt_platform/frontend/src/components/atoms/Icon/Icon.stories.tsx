@@ -99,7 +99,7 @@ const STROKE_WIDTHS = [1, 1.5, 2, 2.5];
 
 const COLORS = [
   { name: "zinc-900", className: "text-zinc-900" },
-  { name: "zinc-500", className: "text-zinc-500" },
+  { name: "zinc-500", className: "text-muted-foreground" },
   { name: "red-600", className: "text-red-600" },
   { name: "green-600", className: "text-green-600" },
   { name: "yellow-600", className: "text-yellow-600" },

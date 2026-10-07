@@ -31,7 +31,7 @@ export function SkillPackageFileList({ files, onOpenFile }: Props) {
               {file.path}
             </span>
             {file.is_executable ? (
-              <span className="shrink-0 rounded-md bg-zinc-100 px-1.5 py-0.5 text-[11px] font-medium text-zinc-500">
+              <span className="shrink-0 rounded-md bg-zinc-100 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                 executable
               </span>
             ) : null}

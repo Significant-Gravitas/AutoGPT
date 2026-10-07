@@ -62,7 +62,7 @@ export function InvoicesCard({ index = 0 }: Props) {
       <div className="overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         {invoices.length === 0 ? (
           <div className="px-4 py-6">
-            <Text variant="small" as="span" className="text-zinc-500">
+            <Text variant="small" as="span" className="text-muted-foreground">
               No invoices yet.
             </Text>
           </div>
@@ -178,7 +178,7 @@ function Th({ children, align = "left", className = "" }: ThProps) {
       <Text
         variant="small-medium"
         as="span"
-        className="tracking-[0.04em] text-zinc-500 uppercase"
+        className="tracking-[0.04em] text-muted-foreground uppercase"
       >
         {children}
       </Text>

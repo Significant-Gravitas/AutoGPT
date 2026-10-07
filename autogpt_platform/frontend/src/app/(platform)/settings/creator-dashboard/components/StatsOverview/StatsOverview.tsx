@@ -86,7 +86,7 @@ export function StatsOverview({ stats, index = 0 }: Props) {
               <Text variant="body-medium" as="span">
                 Average rating
               </Text>
-              <Text variant="small" className="text-zinc-500">
+              <Text variant="small" className="text-muted-foreground">
                 Across all submissions with reviews.
               </Text>
             </div>

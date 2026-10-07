@@ -151,7 +151,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                   </div>
                 ))
               ) : (
-                <div className="flex h-full items-center justify-center text-zinc-500">
+                <div className="flex h-full items-center justify-center text-muted-foreground">
                   <p>No output blocks available.</p>
                 </div>
               )}

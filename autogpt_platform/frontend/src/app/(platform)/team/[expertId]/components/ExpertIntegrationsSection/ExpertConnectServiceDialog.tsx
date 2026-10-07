@@ -191,7 +191,7 @@ export function ExpertConnectServiceDialog({
                             <Icon
                               icon={Plug01Icon}
                               size={24}
-                              className="text-zinc-500"
+                              className="text-muted-foreground"
                             />
                             <Text variant="body" tone="secondary">
                               {query.trim()

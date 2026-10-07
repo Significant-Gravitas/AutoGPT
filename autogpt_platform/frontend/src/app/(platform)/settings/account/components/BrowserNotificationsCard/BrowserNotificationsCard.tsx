@@ -32,7 +32,7 @@ export function BrowserNotificationsCard({ index = 0 }: Props) {
           </Text>
           {/* Unlike the email settings above, these live in this browser's
               local storage — they don't follow the account to another device. */}
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" className="text-muted-foreground">
             Set per device. Turning these on here won&apos;t carry over to your
             phone or another browser.
           </Text>

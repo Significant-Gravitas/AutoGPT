@@ -48,7 +48,7 @@ export function TranscriptPanel({ finalizeResponse }: Props) {
       </Alert>
 
       <div className="mt-6">
-        <Text variant="label" className="text-zinc-500">
+        <Text variant="label" className="text-muted-foreground">
           transcript_preview (from finalize)
         </Text>
         {preview ? (

@@ -72,7 +72,7 @@ export function ConsultVerdictCard({ output }: Props) {
           <Text variant="body-medium" className="truncate text-zinc-800">
             {str(reviewer, "name") ?? "A teammate"}
           </Text>
-          <Text variant="small" className="truncate text-zinc-500">
+          <Text variant="small" className="truncate text-muted-foreground">
             {str(reviewer, "role") ?? "checked this"}
           </Text>
         </div>
@@ -96,9 +96,9 @@ export function ConsultVerdictCard({ output }: Props) {
           {quotes.map((quote, index) => (
             <li
               key={`${index}-${quote}`}
-              className="border-l-2 border-zinc-200 pl-2 text-zinc-500"
+              className="border-l-2 border-zinc-200 pl-2 text-muted-foreground"
             >
-              <Text variant="small" className="text-zinc-500">
+              <Text variant="small" className="text-muted-foreground">
                 {quote}
               </Text>
             </li>

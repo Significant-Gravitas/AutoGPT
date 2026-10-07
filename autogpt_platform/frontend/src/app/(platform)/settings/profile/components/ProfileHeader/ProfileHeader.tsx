@@ -86,7 +86,7 @@ export function ProfileHeader({
             width={224}
             height={224}
           />
-          <AvatarFallback className="bg-linear-to-br from-zinc-100 to-zinc-200 text-zinc-500">
+          <AvatarFallback className="bg-linear-to-br from-zinc-100 to-zinc-200 text-muted-foreground">
             <Icon icon={UserIcon} size={48} />
           </AvatarFallback>
         </Avatar>

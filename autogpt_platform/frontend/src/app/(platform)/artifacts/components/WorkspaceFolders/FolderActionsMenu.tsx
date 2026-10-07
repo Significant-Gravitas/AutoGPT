@@ -43,7 +43,7 @@ export function FolderActionsMenu({
           aria-label={`Actions for ${folderName}`}
           onClick={(e) => e.stopPropagation()}
           className={cn(
-            "shrink-0 rounded-full border-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900",
+            "shrink-0 rounded-full border-0 text-muted-foreground hover:bg-zinc-100 hover:text-zinc-900",
             className,
           )}
           data-testid="folder-actions-menu"

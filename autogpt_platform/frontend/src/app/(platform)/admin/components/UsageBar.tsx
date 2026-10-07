@@ -4,7 +4,7 @@ import { formatMicrodollarsAsUsd } from "@/app/(platform)/copilot/components/usa
 
 export function UsageBar({ used, limit }: { used: number; limit: number }) {
   if (limit === 0) {
-    return <span className="text-sm text-zinc-500">Unlimited</span>;
+    return <span className="text-sm text-muted-foreground">Unlimited</span>;
   }
   const pct = Math.min(Math.max(0, (used / limit) * 100), 100);
   const color =
@@ -22,7 +22,7 @@ export function UsageBar({ used, limit }: { used: number; limit: number }) {
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="text-right text-xs text-zinc-500">
+      <div className="text-right text-xs text-muted-foreground">
         {pct.toFixed(1)}% used
       </div>
     </div>

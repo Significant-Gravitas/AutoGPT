@@ -51,7 +51,7 @@ export function PaywallModal() {
               size="md"
               onClick={handleLogout}
               leftIcon={<Icon icon={Logout03Icon} size={16} />}
-              className="rounded-full text-zinc-500 hover:text-zinc-700"
+              className="rounded-full text-muted-foreground hover:text-zinc-700"
             >
               Log out
             </Button>

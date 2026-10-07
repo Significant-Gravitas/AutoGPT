@@ -569,7 +569,7 @@ export function ExecutionsTable({
                   </Button>
                 )}
                 {activeTab === "failed" && selectedIds.size === 0 && (
-                  <div className="px-3 text-sm text-zinc-500">
+                  <div className="px-3 text-sm text-muted-foreground">
                     View-only (select to delete)
                   </div>
                 )}
@@ -642,7 +642,7 @@ export function ExecutionsTable({
                   />
                 </div>
               ) : executions.length === 0 ? (
-                <div className="py-8 text-center text-zinc-500">
+                <div className="py-8 text-center text-muted-foreground">
                   No running executions
                 </div>
               ) : (
@@ -734,7 +734,7 @@ export function ExecutionsTable({
                                 )}
                               </div>
                               <div
-                                className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-zinc-500 hover:text-zinc-700"
+                                className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-muted-foreground hover:text-zinc-700"
                                 onClick={() => {
                                   navigator.clipboard.writeText(
                                     execution.user_id,

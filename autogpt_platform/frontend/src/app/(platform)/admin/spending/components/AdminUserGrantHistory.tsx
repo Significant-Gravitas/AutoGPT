@@ -104,7 +104,7 @@ export async function AdminUserGrantHistory({
               <TableRow>
                 <TableCell
                   colSpan={9}
-                  className="py-10 text-center text-zinc-500"
+                  className="py-10 text-center text-muted-foreground"
                 >
                   No transactions found
                 </TableCell>

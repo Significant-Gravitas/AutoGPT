@@ -270,7 +270,7 @@ export function MobileDrawer() {
                   onClick={() => loadMore()}
                   loading={isLoadingMore}
                   disabled={isLoadingMore}
-                  className="mt-2 w-full justify-center text-zinc-500"
+                  className="mt-2 w-full justify-center text-muted-foreground"
                 >
                   {isLoadingMore ? "Loading…" : "Load older chats"}
                 </Button>

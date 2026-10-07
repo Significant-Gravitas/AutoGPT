@@ -46,7 +46,7 @@ export function NotificationsCard({
           <Text variant="body-medium" as="span">
             Email
           </Text>
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" className="text-muted-foreground">
             Billing and account messages are always sent — they are about your
             account, not a promotion.
           </Text>
@@ -65,7 +65,7 @@ export function NotificationsCard({
               onBriefingFrequencyChange(value as BriefingFrequency)
             }
           />
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" className="text-muted-foreground">
             What your agents got done, at around 07:30 your time. Never sent
             when nothing ran.
           </Text>
@@ -76,7 +76,7 @@ export function NotificationsCard({
             <Text variant="body-medium" as="span">
               Alerts
             </Text>
-            <Text variant="small" as="span" className="text-zinc-500">
+            <Text variant="small" as="span" className="text-muted-foreground">
               Only when something is waiting on you — never for a successful
               run. At most two a day.
             </Text>
@@ -93,7 +93,7 @@ export function NotificationsCard({
             <Text variant="body-medium" as="span">
               Marketplace reviews
             </Text>
-            <Text variant="small" as="span" className="text-zinc-500">
+            <Text variant="small" as="span" className="text-muted-foreground">
               When an agent you submitted is approved or needs changes.
             </Text>
           </div>

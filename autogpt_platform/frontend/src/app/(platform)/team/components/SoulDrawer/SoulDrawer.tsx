@@ -161,7 +161,7 @@ function ProtectedRules({ rules }: { rules: string[] }) {
   return (
     <section className="border-t border-zinc-200 pt-6">
       <div className="mb-3 flex items-center gap-2">
-        <Icon icon={LockIcon} size={16} className="text-zinc-500" />
+        <Icon icon={LockIcon} size={16} className="text-muted-foreground" />
         <SoulSectionTitle>Protected rules</SoulSectionTitle>
       </div>
       <div className="space-y-2 rounded-xl bg-zinc-50 p-4">

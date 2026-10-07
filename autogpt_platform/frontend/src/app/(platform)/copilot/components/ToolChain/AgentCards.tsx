@@ -148,7 +148,7 @@ export function AgentSavedCard({ output }: OutputCardProps) {
         {name}
       </Text>
       {typeof version === "number" && (
-        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-muted-foreground">
           v{version}
         </span>
       )}
@@ -198,7 +198,7 @@ export function AgentPreviewCard({ output }: OutputCardProps) {
         )}
       </div>
       {count !== null && (
-        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-muted-foreground">
           {count} block{count === 1 ? "" : "s"}
         </span>
       )}

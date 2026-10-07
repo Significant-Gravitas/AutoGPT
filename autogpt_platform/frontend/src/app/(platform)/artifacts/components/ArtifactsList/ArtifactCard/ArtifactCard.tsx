@@ -80,7 +80,11 @@ export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
       <div className="pointer-events-none relative z-10">
         <CardPreview file={file} />
         <div className="flex items-center gap-3 p-3">
-          <Icon icon={typeIcon} size={20} className="shrink-0 text-zinc-500" />
+          <Icon
+            icon={typeIcon}
+            size={20}
+            className="shrink-0 text-muted-foreground"
+          />
           <div className="flex min-w-0 flex-1 flex-col">
             <Text
               variant="body-medium"
@@ -90,7 +94,7 @@ export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
               {file.name}
             </Text>
             <div className="flex min-w-0 items-center gap-2">
-              <Text variant="small" className="truncate text-zinc-500">
+              <Text variant="small" className="truncate text-muted-foreground">
                 {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
                 {formatFileSize(file.size_bytes)} ·{" "}
                 {formatRelativeDate(file.created_at)}

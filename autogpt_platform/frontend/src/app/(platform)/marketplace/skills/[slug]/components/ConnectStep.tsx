@@ -24,7 +24,7 @@ export function ConnectStep({ names, onConnect }: Props) {
       <Icon
         icon={PlugSocketIcon}
         size={18}
-        className="text-zinc-500"
+        className="text-muted-foreground"
         aria-hidden
       />
       <Text variant="small" tone="secondary">

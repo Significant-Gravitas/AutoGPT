@@ -61,7 +61,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
               >
                 <HeldAvatar item={item} size={20} />
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-xs text-zinc-500">
+                  <span className="text-xs text-muted-foreground">
                     {item.expert?.name ?? AUTOPILOT_NAME}
                   </span>
                   <span className="flex min-w-0 items-center gap-1.5">

@@ -52,7 +52,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
             size={48}
           />
         ) : (
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-500">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-muted-foreground">
             <Icon icon={ICONS[item.kind]} size={22} aria-hidden="true" />
           </span>
         )}

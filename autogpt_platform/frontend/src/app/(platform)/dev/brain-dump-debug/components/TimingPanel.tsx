@@ -64,7 +64,7 @@ function StageRow({ stage }: { stage: WaterfallStage }) {
             <Badge variant="info">unmeasured</Badge>
           )}
         </div>
-        <Text variant="small" className="max-w-prose text-zinc-500">
+        <Text variant="small" className="max-w-prose text-muted-foreground">
           {stage.source}
         </Text>
       </div>
@@ -72,7 +72,7 @@ function StageRow({ stage }: { stage: WaterfallStage }) {
         <Text variant="large-semibold" className="font-mono">
           {formatMs(stage.durationMs)}
         </Text>
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-muted-foreground">
           {stage.budgetMs === null
             ? "no budget"
             : `budget ${formatMs(stage.budgetMs)}`}

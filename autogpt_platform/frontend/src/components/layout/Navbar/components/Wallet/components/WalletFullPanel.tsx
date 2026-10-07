@@ -27,7 +27,7 @@ export function WalletFullPanel({ groups, formattedCredits }: Props) {
           <span className="font-poppins text-base font-semibold text-zinc-900">
             Automation Credits
           </span>
-          <span className="font-sans text-xs text-zinc-500">
+          <span className="font-sans text-xs text-muted-foreground">
             Platform-only credits for automations. This is separate from your
             subscription and is not usable for plan fees.
           </span>

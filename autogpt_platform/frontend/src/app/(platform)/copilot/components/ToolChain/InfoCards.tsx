@@ -78,7 +78,7 @@ export function PlanSteps({ steps }: ItemsProps) {
               {str(step, "description") ?? inline(step)}
             </span>
             {blockName && (
-              <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+              <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-muted-foreground">
                 {blockName}
               </span>
             )}
@@ -242,7 +242,7 @@ export function SkillCard({ output }: OutputProps) {
         )}
       </div>
       {triggers[0] && (
-        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-muted-foreground">
           {triggers[0]}
         </span>
       )}

@@ -90,7 +90,11 @@ export function WorkspaceFolderRows({
                 >
                   {folder.name}
                 </Text>
-                <Text variant="small" className="text-zinc-500" unmask={false}>
+                <Text
+                  variant="small"
+                  className="text-muted-foreground"
+                  unmask={false}
+                >
                   {folderSummary(folder.file_count ?? 0, subfolderCount)}
                 </Text>
               </div>
@@ -108,7 +112,7 @@ export function WorkspaceFolderRows({
                 "focus-visible:ring-2 focus-visible:ring-purple-300 focus-visible:outline-hidden",
                 isSelected
                   ? "text-purple-600"
-                  : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700",
+                  : "text-muted-foreground hover:bg-zinc-100 hover:text-zinc-700",
               )}
             >
               Attach

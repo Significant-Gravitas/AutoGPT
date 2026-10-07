@@ -37,7 +37,7 @@ export function CookieSettingsCard({ index = 0 }: Props) {
           <Text variant="body-medium" as="span">
             Cookies
           </Text>
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" className="text-muted-foreground">
             Choose which optional cookies AutoGPT may use.
           </Text>
         </div>
@@ -47,7 +47,7 @@ export function CookieSettingsCard({ index = 0 }: Props) {
             variant="small"
             as="span"
             role="status"
-            className="max-w-64 text-right text-zinc-500"
+            className="max-w-64 text-right text-muted-foreground"
           >
             Cookie settings couldn&apos;t load. A content blocker may be
             stopping them.

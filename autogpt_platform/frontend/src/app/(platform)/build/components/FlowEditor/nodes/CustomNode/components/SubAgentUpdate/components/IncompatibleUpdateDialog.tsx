@@ -192,7 +192,7 @@ function TwoColumnSection({
       <div className="mt-2 grid grid-cols-2 items-start gap-4">
         {/* Left column - Breaking changes */}
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-sm text-zinc-500">
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
             {leftIcon}
             <span>{leftTitle}</span>
           </div>
@@ -213,7 +213,7 @@ function TwoColumnSection({
 
         {/* Right column - Possible solutions */}
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-sm text-zinc-500">
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
             {rightIcon}
             <span>{rightTitle}</span>
           </div>

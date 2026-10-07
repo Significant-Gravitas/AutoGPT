@@ -42,13 +42,13 @@ export function BotCardDmTile({
         <Icon
           icon={Chatting01Icon}
           size={20}
-          className="shrink-0 text-zinc-500"
+          className="shrink-0 text-muted-foreground"
         />
         <div className="flex min-w-0 flex-col">
           <Text variant="body-medium" as="span" unmask={false}>
             {title}
           </Text>
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" className="text-muted-foreground">
             {subtitle}
           </Text>
         </div>
@@ -65,7 +65,7 @@ export function BotCardDmTile({
           Unlink
         </Button>
       ) : (
-        <span className="inline-flex items-center gap-1 text-xs text-zinc-500">
+        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
           <Icon icon={Link01Icon} size={14} /> Not linked
         </span>
       )}

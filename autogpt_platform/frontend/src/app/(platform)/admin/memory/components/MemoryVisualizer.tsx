@@ -166,7 +166,7 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
         />
         <div className="col-span-12 rounded-md border bg-white md:col-span-7">
           {graph.isLoading ? (
-            <div className="flex h-[70vh] items-center justify-center text-sm text-zinc-500">
+            <div className="flex h-[70vh] items-center justify-center text-sm text-muted-foreground">
               Loading graph…
             </div>
           ) : graph.error || scopeMismatchError ? (
@@ -174,7 +174,7 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
               Failed to load graph: {String(graph.error ?? scopeMismatchError)}
             </div>
           ) : nodes.length === 0 ? (
-            <div className="flex h-[70vh] flex-col items-center justify-center text-sm text-zinc-500">
+            <div className="flex h-[70vh] flex-col items-center justify-center text-sm text-muted-foreground">
               No memory yet. Start a chat session to populate it.
             </div>
           ) : (
@@ -219,7 +219,7 @@ interface OverviewStripProps {
 function OverviewStrip({ loading, error, data }: OverviewStripProps) {
   if (loading) {
     return (
-      <div className="rounded-md border bg-white p-3 text-sm text-zinc-500">
+      <div className="rounded-md border bg-white p-3 text-sm text-muted-foreground">
         Loading overview…
       </div>
     );
@@ -246,7 +246,7 @@ function OverviewStrip({ loading, error, data }: OverviewStripProps) {
           className="rounded-md border bg-white p-3 text-center"
         >
           <div className="text-xl font-bold">{stat.value}</div>
-          <div className="text-xs tracking-wide text-zinc-500 uppercase">
+          <div className="text-xs tracking-wide text-muted-foreground uppercase">
             {stat.label}
           </div>
         </div>
@@ -344,7 +344,7 @@ function ControlBar({
         />
         Episodes (noisy)
       </label>
-      <span className="ml-auto text-xs text-zinc-500">
+      <span className="ml-auto text-xs text-muted-foreground">
         {nodeCount} nodes · {edgeCount} edges
         {truncated && (
           <span className="ml-2 rounded-sm bg-yellow-100 px-2 py-0.5 text-yellow-800">
@@ -519,7 +519,7 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
     <div className="col-span-12 md:col-span-2">
       <div className="rounded-md border bg-white p-3 text-sm">
         {!node ? (
-          <div className="text-zinc-500">Click a node to inspect.</div>
+          <div className="text-muted-foreground">Click a node to inspect.</div>
         ) : (
           <>
             <div className="flex items-start justify-between gap-2">
@@ -527,7 +527,7 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
                 <div className="truncate text-base font-semibold">
                   {node.name ?? node.uuid.slice(0, 12)}
                 </div>
-                <div className="text-xs text-zinc-500">
+                <div className="text-xs text-muted-foreground">
                   {node.type ?? node.label}
                 </div>
               </div>
@@ -559,7 +559,10 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
                   <div className="text-zinc-700">
                     <span className="font-medium">{edge.label}</span>
                     {edge.name && (
-                      <span className="text-zinc-500"> · {edge.name}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {edge.name}
+                      </span>
                     )}
                   </div>
                   {edge.fact && (

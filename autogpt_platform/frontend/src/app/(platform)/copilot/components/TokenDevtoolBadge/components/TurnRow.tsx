@@ -12,7 +12,7 @@ interface Props {
 export function TurnRow({ index, turn }: Props) {
   return (
     <div className="flex items-baseline gap-2 font-mono text-xs">
-      <span className="w-6 shrink-0 text-zinc-500">#{index + 1}</span>
+      <span className="w-6 shrink-0 text-muted-foreground">#{index + 1}</span>
       {turn.compacted && (
         <span className="text-yellow-500">
           <span aria-hidden>⟲</span>
@@ -22,7 +22,7 @@ export function TurnRow({ index, turn }: Props) {
       <span className="text-zinc-800">
         in {formatTokenCount(turnInputTokens(turn))}
       </span>
-      <span className="text-zinc-500">
+      <span className="text-muted-foreground">
         out {formatTokenCount(turn.completionTokens)}
       </span>
       <span className="ml-auto text-zinc-400">

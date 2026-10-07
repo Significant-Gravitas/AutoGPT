@@ -15,7 +15,7 @@ export const createWelcomeSteps = (tour: any): StepOptions[] => [
           <li>- Save and run your agent</li>
           <li>- and much more...</li>
         </ul>
-        <p class="text-xs font-normal leading-4.5 text-zinc-500 m-0 mt-3">Estimated time: 3-4 minutes</p>
+        <p class="text-xs font-normal leading-4.5 text-muted-foreground m-0 mt-3">Estimated time: 3-4 minutes</p>
       </div>
     `,
     buttons: [

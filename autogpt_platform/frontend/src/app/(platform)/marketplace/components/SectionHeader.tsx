@@ -85,7 +85,7 @@ export function SectionHeader({
           {action ? (
             <Link
               href={action.href}
-              className="group flex items-center gap-1 pb-1 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
+              className="group flex items-center gap-1 pb-1 text-sm font-medium text-muted-foreground transition-colors hover:text-zinc-900"
             >
               {action.label}
               <Icon

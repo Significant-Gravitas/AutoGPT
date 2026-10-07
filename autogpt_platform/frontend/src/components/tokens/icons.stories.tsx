@@ -346,25 +346,25 @@ export function AllVariants() {
         <div className="flex items-center gap-8 rounded-lg border border-zinc-200 p-6">
           <div className="flex items-center gap-4">
             <Icon icon={Alien01Icon} size={16} className="text-zinc-600" />
-            <Text variant="small" className="font-mono text-zinc-500">
+            <Text variant="small" className="font-mono text-muted-foreground">
               16px
             </Text>
           </div>
           <div className="flex items-center gap-4">
             <Icon icon={Alien01Icon} size={20} className="text-zinc-600" />
-            <Text variant="small" className="font-mono text-zinc-500">
+            <Text variant="small" className="font-mono text-muted-foreground">
               20px
             </Text>
           </div>
           <div className="flex items-center gap-4">
             <Icon icon={Alien01Icon} size={24} className="text-zinc-600" />
-            <Text variant="small" className="font-mono text-zinc-500">
+            <Text variant="small" className="font-mono text-muted-foreground">
               24px
             </Text>
           </div>
           <div className="flex items-center gap-4">
             <Icon icon={Alien01Icon} size={32} className="text-zinc-600" />
-            <Text variant="small" className="font-mono text-zinc-500">
+            <Text variant="small" className="font-mono text-muted-foreground">
               32px
             </Text>
           </div>
@@ -408,7 +408,7 @@ export function AllVariants() {
                   <Icon icon={entry.icon} size={24} className="text-zinc-600" />
                   <Text
                     variant="small"
-                    className="text-center font-mono text-zinc-500"
+                    className="text-center font-mono text-muted-foreground"
                   >
                     {entry.hugeiconsName}
                   </Text>

@@ -43,8 +43,9 @@ export function PanelModeSwitch({ mode, hasArtifact, onChange }: Props) {
               "flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium transition-colors",
               active
                 ? "bg-white text-zinc-900 shadow-xs"
-                : "text-zinc-500 hover:text-zinc-800",
-              disabled && "cursor-not-allowed opacity-40 hover:text-zinc-500",
+                : "text-muted-foreground hover:text-zinc-800",
+              disabled &&
+                "cursor-not-allowed opacity-40 hover:text-muted-foreground",
             )}
           >
             <Icon icon={option.icon} size={14} />

@@ -39,7 +39,7 @@ export function FileThumbnail({ file }: Props) {
         <Icon
           icon={getFileTypeIcon(file.mime_type, file.name)}
           size={18}
-          className="text-zinc-500"
+          className="text-muted-foreground"
         />
       )}
     </div>

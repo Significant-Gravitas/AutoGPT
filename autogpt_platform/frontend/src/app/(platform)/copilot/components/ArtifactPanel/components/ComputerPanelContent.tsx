@@ -32,7 +32,7 @@ function Pill({ tone, label }: PillProps) {
           ? "bg-green-50 text-green-700"
           : tone === "off"
             ? "bg-zinc-100 text-zinc-600"
-            : "bg-zinc-50 text-zinc-500",
+            : "bg-zinc-50 text-muted-foreground",
       )}
     >
       {label}
@@ -101,11 +101,11 @@ export function ComputerPanelContent({ sessionId }: Props) {
       <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2">
         <div className="flex items-center gap-3 text-sm">
           <span className="flex items-center gap-1.5">
-            <span className="text-zinc-500">Machine</span>
+            <span className="text-muted-foreground">Machine</span>
             <Pill tone={machineTone} label={machineLabel} />
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="text-zinc-500">Screen</span>
+            <span className="text-muted-foreground">Screen</span>
             <Pill
               tone={!box ? "none" : screenOn ? "on" : "off"}
               label={!box ? "None" : screenOn ? "On" : "Off"}

@@ -43,7 +43,7 @@ export function GraphSearchContent({
 
       <div className="flex-1 overflow-hidden">
         {trimmedQuery && (
-          <div className="px-4 pt-3 text-xs text-zinc-500">
+          <div className="px-4 pt-3 text-xs text-muted-foreground">
             Found {filteredNodes.length} node
             {filteredNodes.length !== 1 ? "s" : ""}
           </div>
@@ -51,7 +51,7 @@ export function GraphSearchContent({
         <ScrollArea className="h-full w-full">
           <div role="listbox" className="space-y-3 px-4 py-4">
             {filteredNodes.length === 0 ? (
-              <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
+              <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
                 {trimmedQuery
                   ? "No nodes found matching your search"
                   : "Start typing to search nodes"}
@@ -97,13 +97,13 @@ export function GraphSearchContent({
                           {nodeTitle}
                         </span>
                         {hasCustomName && (
-                          <span className="shrink-0 rounded-xl bg-zinc-200 px-2 font-sans text-xs leading-5 text-zinc-500">
+                          <span className="shrink-0 rounded-xl bg-zinc-200 px-2 font-sans text-xs leading-5 text-muted-foreground">
                             {nodeType}
                           </span>
                         )}
                       </div>
                       {description && (
-                        <span className="line-clamp-1 font-sans text-xs leading-5 font-normal text-zinc-500">
+                        <span className="line-clamp-1 font-sans text-xs leading-5 font-normal text-muted-foreground">
                           {description}
                         </span>
                       )}

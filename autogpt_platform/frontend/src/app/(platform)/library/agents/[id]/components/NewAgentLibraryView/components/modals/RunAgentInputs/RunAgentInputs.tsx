@@ -119,7 +119,7 @@ export function RunAgentInputs({
     case DataType.BOOLEAN:
       innerInputElement = (
         <>
-          <span className="text-sm text-zinc-500">
+          <span className="text-sm text-muted-foreground">
             {placeholder || (value ? "Enabled" : "Disabled")}
           </span>
           <Switch

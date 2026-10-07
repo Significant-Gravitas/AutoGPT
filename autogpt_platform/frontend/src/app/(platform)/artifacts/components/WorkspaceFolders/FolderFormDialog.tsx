@@ -65,7 +65,7 @@ export function FolderFormDialog({
             wrapperClassName="mb-0"
           />
           {location ? (
-            <Text variant="small" className="text-zinc-500">
+            <Text variant="small" className="text-muted-foreground">
               Inside &ldquo;{location}&rdquo;
             </Text>
           ) : null}

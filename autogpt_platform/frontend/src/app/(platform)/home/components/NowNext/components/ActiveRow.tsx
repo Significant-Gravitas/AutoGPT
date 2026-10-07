@@ -37,7 +37,7 @@ export function ActiveRow({ item }: Props) {
           className="truncate leading-5"
         >
           <span>{item.title}</span>
-          <span className="font-normal text-zinc-500"> workflow</span>
+          <span className="font-normal text-muted-foreground"> workflow</span>
         </Text>
         <Text variant="small" tone="muted" className="truncate">
           {item.status === "queued"

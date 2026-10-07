@@ -189,7 +189,7 @@ export function LibraryAgentList({
               size="md"
               onClick={() => onFolderSelect(null)}
               leftIcon={<Icon icon={ArrowLeft02Icon} size={16} />}
-              className="h-auto min-w-0 gap-1 px-0 py-0 font-normal text-zinc-500 no-underline hover:text-zinc-900"
+              className="h-auto min-w-0 gap-1 px-0 py-0 font-normal text-muted-foreground no-underline hover:text-zinc-900"
             >
               My Library
             </Button>
@@ -210,7 +210,7 @@ export function LibraryAgentList({
             <LoadingSpinner size="large" />
           </div>
         ) : isFavoritesTab && agents.length === 0 ? (
-          <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-zinc-500">
+          <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-muted-foreground">
             <Icon icon={FavouriteIcon} className="h-10 w-10" />
             <Text variant="body">No favorite agents yet</Text>
           </div>

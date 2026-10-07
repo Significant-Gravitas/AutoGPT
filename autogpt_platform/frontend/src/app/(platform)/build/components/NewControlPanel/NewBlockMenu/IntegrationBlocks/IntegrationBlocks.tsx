@@ -82,7 +82,7 @@ export const IntegrationBlocks = () => {
               {integration}
             </Text>
           </div>
-          <span className="flex h-5.5 w-6.75 items-center justify-center rounded-2xl bg-zinc-100 p-1.5 font-sans text-sm leading-5.5 text-zinc-500 group-disabled:text-zinc-400">
+          <span className="flex h-5.5 w-6.75 items-center justify-center rounded-2xl bg-zinc-100 p-1.5 font-sans text-sm leading-5.5 text-muted-foreground group-disabled:text-zinc-400">
             {totalBlocks}
           </span>
         </div>

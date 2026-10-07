@@ -13,7 +13,7 @@ export function DreamEntityInvalidationRow({ item }: Props) {
       <Text variant="small-medium" className="wrap-break-word">
         {item.reason}
       </Text>
-      <div className="mt-1 flex flex-wrap items-center gap-2 text-zinc-500">
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-muted-foreground">
         <code className="font-mono text-[10px]">
           entity: {shortenUuid(item.entity_uuid)}
         </code>

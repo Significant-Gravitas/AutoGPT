@@ -150,7 +150,7 @@ export function ThumbnailImages({
                     <Icon icon={Cancel01Icon} size={14} />
                   </button>
                   {index === 0 ? (
-                    <span className="mt-1 block text-center text-[11px] font-medium text-zinc-500">
+                    <span className="mt-1 block text-center text-[11px] font-medium text-muted-foreground">
                       Thumbnail
                     </span>
                   ) : null}

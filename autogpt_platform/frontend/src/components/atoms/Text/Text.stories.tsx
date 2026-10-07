@@ -54,7 +54,7 @@ export function AllVariants() {
     <div className="space-y-8">
       {/* Headings */}
       <div className="mb-20 space-y-6">
-        <h2 className="mb-4 border-b border-border pb-2 text-xl text-zinc-500">
+        <h2 className="mb-4 border-b border-border pb-2 text-xl text-muted-foreground">
           Headings
         </h2>
         <Text variant="h1">Heading 1</Text>
@@ -71,7 +71,7 @@ export function AllVariants() {
         />
       </div>
       {/* Body Text */}
-      <h2 className="mb-4 border-b border-border pb-2 text-xl text-zinc-500">
+      <h2 className="mb-4 border-b border-border pb-2 text-xl text-muted-foreground">
         Body Text
       </h2>
       <div className="flex flex-row gap-8">

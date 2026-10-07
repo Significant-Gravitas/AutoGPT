@@ -239,7 +239,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                           </div>
                         ))
                       ) : (
-                        <div className="py-4 text-center text-zinc-500">
+                        <div className="py-4 text-center text-muted-foreground">
                           No data available
                         </div>
                       )}
@@ -293,7 +293,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                 ))}
               </div>
             ) : (
-              <div className="py-8 text-center text-zinc-500">
+              <div className="py-8 text-center text-muted-foreground">
                 No data available
               </div>
             )}

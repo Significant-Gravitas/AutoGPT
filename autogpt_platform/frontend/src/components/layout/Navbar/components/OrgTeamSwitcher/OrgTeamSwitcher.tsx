@@ -122,7 +122,7 @@ export function OrgTeamSwitcher() {
               ))}
               <Link
                 href="/org/teams"
-                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100"
+                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-zinc-100"
               >
                 <Icon icon={Settings02Icon} size={14} />
                 <span>Manage teams</span>

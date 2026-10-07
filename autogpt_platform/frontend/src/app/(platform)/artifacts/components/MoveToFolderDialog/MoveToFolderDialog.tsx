@@ -56,7 +56,7 @@ export function MoveToFolderDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-1">
-          <Text variant="small" className="mb-1 text-zinc-500">
+          <Text variant="small" className="mb-1 text-muted-foreground">
             Move {subject} to:
           </Text>
           {rows.length === 0 ? (

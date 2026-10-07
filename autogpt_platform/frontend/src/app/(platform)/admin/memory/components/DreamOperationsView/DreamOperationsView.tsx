@@ -28,7 +28,7 @@ export function DreamOperationsView({ operations }: Props) {
   if (!operations) {
     return (
       <div
-        className="rounded-md border border-dashed bg-white p-4 text-center text-sm text-zinc-500"
+        className="rounded-md border border-dashed bg-white p-4 text-center text-sm text-muted-foreground"
         data-testid="dream-operations-empty"
       >
         No per-edge operations were returned for this dream pass.
@@ -167,5 +167,5 @@ function SectionLabel({ icon, label, count }: SectionLabelProps) {
 }
 
 function EmptyRow({ text }: { text: string }) {
-  return <div className="px-1 py-2 text-xs text-zinc-500">{text}</div>;
+  return <div className="px-1 py-2 text-xs text-muted-foreground">{text}</div>;
 }

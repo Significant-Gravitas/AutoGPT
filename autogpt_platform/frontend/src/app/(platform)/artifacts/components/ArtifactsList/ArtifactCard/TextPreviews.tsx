@@ -108,7 +108,7 @@ const MARKDOWN_COMPONENTS: Components = {
     </pre>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="mb-1 border-l-2 border-zinc-200 pl-2 text-[10px] text-zinc-500">
+    <blockquote className="mb-1 border-l-2 border-zinc-200 pl-2 text-[10px] text-muted-foreground">
       {children}
     </blockquote>
   ),

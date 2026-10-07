@@ -42,7 +42,7 @@ export function AutopilotModeSelector({ sessionId, persistedMode }: Props) {
             className={cn(
               "inline-flex h-8 items-center justify-center gap-1 rounded-full text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-hidden",
               isDefault
-                ? "w-8 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+                ? "w-8 text-muted-foreground hover:bg-zinc-100 hover:text-zinc-700"
                 : "px-2.5",
               mode === "ask_first" &&
                 "bg-zinc-100 text-zinc-700 hover:bg-zinc-200",
@@ -55,7 +55,7 @@ export function AutopilotModeSelector({ sessionId, persistedMode }: Props) {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">
-          <DropdownMenuLabel className="text-xs font-medium text-zinc-500">
+          <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
             Approvals in this chat
           </DropdownMenuLabel>
           <DropdownMenuRadioGroup value={mode} onValueChange={selectMode}>
@@ -69,7 +69,7 @@ export function AutopilotModeSelector({ sessionId, persistedMode }: Props) {
                   <span className="font-medium text-zinc-900">
                     {option.label}
                   </span>
-                  <span className="text-xs text-zinc-500">
+                  <span className="text-xs text-muted-foreground">
                     {option.description}
                   </span>
                 </span>

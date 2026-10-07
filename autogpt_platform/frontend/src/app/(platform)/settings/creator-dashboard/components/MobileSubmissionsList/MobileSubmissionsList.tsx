@@ -91,7 +91,7 @@ export function MobileSubmissionsList({
             Submissions
           </Text>
         </div>
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-muted-foreground">
           {submissions.length} of {totalCount}
         </Text>
       </div>

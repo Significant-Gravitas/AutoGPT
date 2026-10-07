@@ -95,7 +95,7 @@ function SortOption({
     >
       <span
         className={cn(
-          "flex h-5 w-5 items-center justify-center rounded-sm text-zinc-500",
+          "flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground",
           active && "text-purple-700",
         )}
       >

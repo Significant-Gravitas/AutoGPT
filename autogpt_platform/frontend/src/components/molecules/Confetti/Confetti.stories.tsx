@@ -32,7 +32,7 @@ function BasicCannonDemo() {
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-6 bg-zinc-50">
       <Confetti ref={confettiRef} manualstart />
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-muted-foreground">
         Single burst from center of viewport
       </p>
       <button
@@ -66,7 +66,7 @@ function RandomDirectionDemo() {
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-6 bg-zinc-50">
       <Confetti ref={confettiRef} manualstart />
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-muted-foreground">
         Random position and angle each click
       </p>
       <button
@@ -108,7 +108,9 @@ function SideCannonsDemo() {
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-6 bg-zinc-50">
       <Confetti ref={confettiRef} manualstart />
-      <p className="text-sm text-zinc-500">Dual cannons from left and right</p>
+      <p className="text-sm text-muted-foreground">
+        Dual cannons from left and right
+      </p>
       <button
         onClick={fireSideCannons}
         className="rounded-lg bg-purple-500 px-8 py-3 text-base font-medium text-white shadow-md transition-colors hover:bg-purple-600 active:scale-95"
@@ -336,7 +338,7 @@ function FullScreenShowerDemo() {
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-6 bg-zinc-50">
       <Confetti ref={confettiRef} manualstart />
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-muted-foreground">
         Confetti rain across the full viewport
       </p>
       <button

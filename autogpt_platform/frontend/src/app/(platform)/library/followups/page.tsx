@@ -22,7 +22,7 @@ export default function FollowupsPage() {
     <main className="container min-h-screen space-y-6 pt-16 pb-20 sm:px-8 md:px-12">
       <Link
         href="/library"
-        className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-zinc-800"
         data-testid="followups-back-to-library"
       >
         <Icon icon={ArrowLeft02Icon} size={14} />

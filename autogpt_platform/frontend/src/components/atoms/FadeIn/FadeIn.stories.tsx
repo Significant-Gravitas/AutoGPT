@@ -25,7 +25,7 @@ export const Default: Story = {
     <FadeIn>
       <div className="rounded-lg border border-zinc-200 bg-white p-8 text-center">
         <p className="text-lg font-medium">This content fades in</p>
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-muted-foreground">
           With a subtle upward slide animation
         </p>
       </div>

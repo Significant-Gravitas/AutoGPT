@@ -119,7 +119,7 @@ function renderAllSizes() {
         <div key={size} className="flex flex-col items-center gap-2">
           <IntegrationLogo provider="github" size={size} />
           <IntegrationLogo provider="acme_crm" alt="Acme CRM" size={size} />
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" className="text-muted-foreground">
             {size}px
           </Text>
         </div>

@@ -57,7 +57,7 @@ export function HomeTile({
           {badge}
         </div>
         {meta ? (
-          <div className="flex shrink-0 items-center gap-2 text-xs text-zinc-500">
+          <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
             {meta}
           </div>
         ) : null}

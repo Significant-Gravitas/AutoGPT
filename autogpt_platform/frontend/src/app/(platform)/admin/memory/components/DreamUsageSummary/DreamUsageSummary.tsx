@@ -15,7 +15,7 @@ export function DreamUsageSummary({ usage }: Props) {
   if (!usage) {
     return (
       <div
-        className="rounded-md border border-dashed bg-white p-4 text-center text-sm text-zinc-500"
+        className="rounded-md border border-dashed bg-white p-4 text-center text-sm text-muted-foreground"
         data-testid="dream-usage-empty"
       >
         No token usage was recorded for this dream pass.
@@ -36,7 +36,11 @@ export function DreamUsageSummary({ usage }: Props) {
           Token usage
         </Text>
         <div className="inline-flex items-center gap-2">
-          <Icon icon={Coins01Icon} size={14} className="text-zinc-500" />
+          <Icon
+            icon={Coins01Icon}
+            size={14}
+            className="text-muted-foreground"
+          />
           <Text variant="small-medium" as="span">
             total: {formatCost(usage.total_cost_usd)}
           </Text>
@@ -50,7 +54,7 @@ export function DreamUsageSummary({ usage }: Props) {
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs">
-          <thead className="text-zinc-500">
+          <thead className="text-muted-foreground">
             <tr>
               <th className="px-2 py-1 font-medium">Phase</th>
               <th className="px-2 py-1 font-medium">Model</th>
@@ -66,7 +70,7 @@ export function DreamUsageSummary({ usage }: Props) {
               <tr>
                 <td
                   colSpan={7}
-                  className="px-2 py-2 text-center text-zinc-500 italic"
+                  className="px-2 py-2 text-center text-muted-foreground italic"
                 >
                   No per-phase data recorded.
                 </td>

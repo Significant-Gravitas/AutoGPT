@@ -276,14 +276,14 @@ export function ConnectorRow({ row }: Props) {
         {grantError && !isDialogOpen ? (
           <span className="truncate text-xs text-red-600">{grantError}</span>
         ) : expertGrant && !isSatisfied ? (
-          <span className="truncate text-xs text-zinc-500">
+          <span className="truncate text-xs text-muted-foreground">
             {grantableOptions.length > 0
               ? "Needs this expert's access"
               : "This expert needs its own access"}
           </span>
         ) : (
           row.description && (
-            <span className="truncate text-xs text-zinc-500">
+            <span className="truncate text-xs text-muted-foreground">
               {row.description}
             </span>
           )
@@ -291,7 +291,7 @@ export function ConnectorRow({ row }: Props) {
       </div>
 
       {isSatisfied ? (
-        <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-zinc-500">
+        <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-muted-foreground">
           <Icon icon={CheckmarkCircle02Icon} size={16} />
           {expertGrant ? "Granted" : "Connected"}
         </span>

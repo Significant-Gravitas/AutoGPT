@@ -72,7 +72,7 @@ export function FeatureRequestList({ results }: ResultsProps) {
             )}
           </div>
           {str(request, "identifier") && (
-            <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+            <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-muted-foreground">
               {str(request, "identifier")}
             </span>
           )}
@@ -120,7 +120,7 @@ export function ScheduleList({ schedules }: SchedulesProps) {
               )}
             </div>
             {str(schedule, "kind") && (
-              <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+              <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-muted-foreground">
                 {str(schedule, "kind") === "copilot_turn" ? "chat" : "agent"}
               </span>
             )}

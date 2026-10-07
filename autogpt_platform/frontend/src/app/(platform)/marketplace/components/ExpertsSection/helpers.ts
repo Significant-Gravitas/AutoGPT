@@ -68,7 +68,7 @@ const ACCENTS: Record<string, ExpertAccent> = {
     pill: "bg-zinc-100 text-zinc-600 ring-1 ring-inset ring-zinc-500/10",
     band: "bg-zinc-100/60",
     chip: "bg-linear-to-b from-white to-zinc-50 text-zinc-700 ring-1 ring-inset ring-zinc-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(113,113,122,0.12),0_0_18px_-4px_rgba(113,113,122,0.45)]",
-    icon: "text-zinc-500",
+    icon: "text-muted-foreground",
     roleIcon: Briefcase01Icon,
   },
 };

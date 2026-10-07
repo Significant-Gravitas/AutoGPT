@@ -107,7 +107,7 @@ export function StoreCard({
               )}
               <AvatarFallback size={20}>{creatorName}</AvatarFallback>
             </Avatar>
-            <span className="truncate text-[13px] text-zinc-500">
+            <span className="truncate text-[13px] text-muted-foreground">
               by {creatorName}
             </span>
           </div>
@@ -123,7 +123,7 @@ export function StoreCard({
       </div>
 
       <div className="mt-auto flex w-full items-center pt-3">
-        <span className="flex items-center gap-2 text-xs text-zinc-500">
+        <span className="flex items-center gap-2 text-xs text-muted-foreground">
           {runs === 0 ? "No runs" : `${runs.toLocaleString()} runs`}
           {rating >= 1 && (
             <span

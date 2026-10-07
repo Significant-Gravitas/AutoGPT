@@ -36,7 +36,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
         <Text variant="body-medium" as="span" className="text-black">
           Your links
         </Text>
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-muted-foreground">
           Add up to {MAX_LINKS} links. Site, GitHub, X, anything you want
           visible.
         </Text>

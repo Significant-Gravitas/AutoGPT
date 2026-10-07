@@ -223,7 +223,7 @@ function ScheduleMetaRow({
 }) {
   return (
     <div className="flex items-baseline justify-between gap-6 px-4 py-2.5">
-      <dt className="shrink-0 text-[13px] text-zinc-500">{label}</dt>
+      <dt className="shrink-0 text-[13px] text-muted-foreground">{label}</dt>
       <dd
         className={cn(
           "min-w-0 truncate text-right text-[13px] font-medium text-zinc-800",

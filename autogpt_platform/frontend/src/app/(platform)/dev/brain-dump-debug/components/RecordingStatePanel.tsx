@@ -80,7 +80,7 @@ export function RecordingStatePanel({ snapshot, onRefresh }: Props) {
               <tr>
                 {["partIndex", "bytes", "savedAt", "uploaded"].map((column) => (
                   <th key={column} className="px-4 py-2">
-                    <Text variant="label" className="text-zinc-500">
+                    <Text variant="label" className="text-muted-foreground">
                       {column}
                     </Text>
                   </th>

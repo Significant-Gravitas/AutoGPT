@@ -334,7 +334,7 @@ function renderMarkdown(
           ),
           // Strikethrough (GFM)
           del: ({ children, ...props }) => (
-            <del className="text-zinc-500 line-through" {...props}>
+            <del className="text-muted-foreground line-through" {...props}>
               {children}
             </del>
           ),

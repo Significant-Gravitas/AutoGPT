@@ -119,7 +119,7 @@ export function LibraryFolder({
             e.stopPropagation();
             onEdit?.();
           }}
-          className="border-zinc-200 bg-white/80 text-zinc-500 hover:bg-white hover:text-zinc-700"
+          className="border-zinc-200 bg-white/80 text-muted-foreground hover:bg-white hover:text-zinc-700"
         >
           <Icon icon={PencilIcon} className="h-4 w-4" />
         </Button>
@@ -131,7 +131,7 @@ export function LibraryFolder({
             e.stopPropagation();
             onDelete?.();
           }}
-          className="border-zinc-200 bg-white/80 text-zinc-500 hover:bg-white hover:text-zinc-700"
+          className="border-zinc-200 bg-white/80 text-muted-foreground hover:bg-white hover:text-zinc-700"
         >
           <Icon icon={Delete02Icon} className="h-4 w-4" />
         </Button>

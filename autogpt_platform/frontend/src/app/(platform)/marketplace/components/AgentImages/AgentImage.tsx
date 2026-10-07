@@ -88,7 +88,7 @@ export function AgentImages({ images }: AgentImagesProps) {
                     onError={() => markThumbFailed(thumbnailUrl)}
                   />
                 ) : isVideo ? (
-                  <div className="flex h-full w-full items-center justify-center bg-zinc-200 text-xs text-zinc-500">
+                  <div className="flex h-full w-full items-center justify-center bg-zinc-200 text-xs text-muted-foreground">
                     Video
                   </div>
                 ) : (

@@ -125,7 +125,7 @@ export function ComposerPlusMenu({
 
 function CapLabel() {
   return (
-    <span className="ml-auto pl-3 text-xs text-zinc-500">
+    <span className="ml-auto pl-3 text-xs text-muted-foreground">
       {MAX_ATTACHMENTS} max
     </span>
   );

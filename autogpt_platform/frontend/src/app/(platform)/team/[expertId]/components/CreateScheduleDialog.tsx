@@ -96,7 +96,7 @@ function ScheduleWorkflowRow({ workflow, onScheduleCreated }: RowProps) {
       <Icon
         icon={Calendar03Icon}
         size={18}
-        className="shrink-0 text-zinc-500"
+        className="shrink-0 text-muted-foreground"
       />
       <span className="min-w-0 flex-1">
         <Text

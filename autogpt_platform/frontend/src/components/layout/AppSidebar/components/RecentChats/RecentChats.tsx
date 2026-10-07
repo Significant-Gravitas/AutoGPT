@@ -47,7 +47,7 @@ export function RecentChats() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-4">
-        <LoadingSpinner size="small" className="text-zinc-500" />
+        <LoadingSpinner size="small" className="text-muted-foreground" />
       </div>
     );
   }
@@ -96,7 +96,7 @@ export function RecentChats() {
       <div className="mt-2 flex flex-col gap-4">
         {pinnedSessions.length > 0 && (
           <div>
-            <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs font-medium text-zinc-500">
+            <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs font-medium text-muted-foreground">
               <Icon icon={PinIcon} className="size-3.5" />
               <span className="truncate">Pinned</span>
             </div>
@@ -130,7 +130,7 @@ export function RecentChats() {
             })
           : groupSessionsByDate(unpinnedSessions).map((group) => (
               <div key={group.label}>
-                <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs font-medium text-zinc-500">
+                <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs font-medium text-muted-foreground">
                   <span className="truncate">{group.label}</span>
                 </div>
                 <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
@@ -146,7 +146,10 @@ export function RecentChats() {
           className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-zinc-200 px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-300 disabled:opacity-60"
         >
           {isLoadingMore && (
-            <LoadingSpinner size="small" className="size-4 text-zinc-500" />
+            <LoadingSpinner
+              size="small"
+              className="size-4 text-muted-foreground"
+            />
           )}
           {isLoadingMore ? "Loading…" : "Load more"}
         </button>

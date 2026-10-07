@@ -37,7 +37,7 @@ export function PaymentMethodCard({ index = 0 }: Props) {
             <Text variant="body-medium" as="span">
               Manage payment method
             </Text>
-            <Text variant="small" as="span" className="text-zinc-500">
+            <Text variant="small" as="span" className="text-muted-foreground">
               Open the Stripe portal to update your card or download invoices.
             </Text>
           </div>

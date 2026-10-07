@@ -126,7 +126,7 @@ export const JsonTextField = (props: FieldProps) => {
         </Tooltip>
       </div>
       {schema.description && (
-        <span id={descriptionId} className="text-xs text-zinc-500">
+        <span id={descriptionId} className="text-xs text-muted-foreground">
           {schema.description}
         </span>
       )}

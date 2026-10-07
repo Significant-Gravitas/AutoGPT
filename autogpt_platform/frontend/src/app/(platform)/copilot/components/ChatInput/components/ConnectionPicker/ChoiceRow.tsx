@@ -91,7 +91,7 @@ export function ChoiceRow({
             )}
           </span>
           {subtitle && (
-            <span className="text-sm leading-snug wrap-break-word text-zinc-500">
+            <span className="text-sm leading-snug wrap-break-word text-muted-foreground">
               {subtitle}
             </span>
           )}
@@ -141,7 +141,9 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
         className="mt-[3px] flex-none text-zinc-400"
       />
       <span className="flex min-w-0 flex-col">
-        <span className="text-sm font-medium text-zinc-500">{title}</span>
+        <span className="text-sm font-medium text-muted-foreground">
+          {title}
+        </span>
         {subtitle && (
           <span className="text-sm leading-snug wrap-break-word text-zinc-400">
             {subtitle}

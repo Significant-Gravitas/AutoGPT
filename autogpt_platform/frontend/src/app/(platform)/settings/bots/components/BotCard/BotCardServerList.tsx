@@ -31,7 +31,7 @@ export function BotCardServerList({
   if (serverLinks.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-zinc-200 px-4 py-3">
-        <Text variant="small" as="span" className="text-zinc-500">
+        <Text variant="small" as="span" className="text-muted-foreground">
           No {serverNoun}s linked yet. Use &quot;Add bot to {platformName}&quot;{" "}
           to invite the bot — already added it? Run <code>/setup</code> there to
           finish connecting.
@@ -80,7 +80,7 @@ function BotCardServerRow({
         <Icon
           icon={UserMultipleIcon}
           size={20}
-          className="shrink-0 text-zinc-500"
+          className="shrink-0 text-muted-foreground"
         />
         <div className="flex min-w-0 flex-col">
           <Text
@@ -104,7 +104,7 @@ function BotCardServerRow({
               </TooltipContent>
             </Tooltip>
           ) : (
-            <Text variant="small" as="span" className="text-zinc-500">
+            <Text variant="small" as="span" className="text-muted-foreground">
               Linked by you
             </Text>
           )}

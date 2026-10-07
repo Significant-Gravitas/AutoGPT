@@ -55,7 +55,7 @@ export function WorkspaceFilesContent({
               onClick={onDownloadAll}
               loading={isZipping}
               aria-label="Download all"
-              className="rounded-lg text-zinc-500"
+              className="rounded-lg text-muted-foreground"
             >
               <Icon icon={Download01Icon} size={15} />
             </Button>
@@ -169,7 +169,7 @@ function Body({
         <button
           type="button"
           onClick={() => setShowAll(!showAll)}
-          className="w-full pt-1.5 pb-0.5 text-left text-[13px] text-zinc-500 transition-colors hover:text-zinc-800"
+          className="w-full pt-1.5 pb-0.5 text-left text-[13px] text-muted-foreground transition-colors hover:text-zinc-800"
         >
           {showAll ? "Show less" : `View more (${hiddenCount})`}
         </button>

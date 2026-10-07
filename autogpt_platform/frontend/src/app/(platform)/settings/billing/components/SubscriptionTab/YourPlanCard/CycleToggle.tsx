@@ -31,7 +31,7 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
               "rounded-full border-none px-3 py-1 text-xs font-medium transition-all",
               selected
                 ? "bg-white text-zinc-900 shadow-xs"
-                : "bg-transparent text-zinc-500 hover:text-zinc-700",
+                : "bg-transparent text-muted-foreground hover:text-zinc-700",
               disabled && "cursor-not-allowed opacity-60",
             )}
           >

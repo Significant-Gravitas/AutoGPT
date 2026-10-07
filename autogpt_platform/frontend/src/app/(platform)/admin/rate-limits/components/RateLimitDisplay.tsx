@@ -161,7 +161,7 @@ export function RateLimitDisplay({
           ))}
         </select>
         {isChangingTier && (
-          <span className="text-xs text-zinc-500">Updating...</span>
+          <span className="text-xs text-muted-foreground">Updating...</span>
         )}
       </div>
 

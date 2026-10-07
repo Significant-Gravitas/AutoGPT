@@ -118,7 +118,7 @@ export function TaskProgressBar({
               <Icon
                 icon={CheckListIcon}
                 size={16}
-                className="shrink-0 text-zinc-500"
+                className="shrink-0 text-muted-foreground"
               />
               <Text
                 variant="body-medium"

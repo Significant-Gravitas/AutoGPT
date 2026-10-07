@@ -78,7 +78,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         <div className="flex items-center space-x-2.5">
           <span
             className={cn(
-              "truncate font-sans text-xs leading-5 font-normal text-zinc-500 group-disabled:text-zinc-400",
+              "truncate font-sans text-xs leading-5 font-normal text-muted-foreground group-disabled:text-zinc-400",
             )}
           >
             By {creator_name}
@@ -88,7 +88,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
 
           <span
             className={cn(
-              "truncate font-sans text-xs leading-5 font-normal text-zinc-500 group-disabled:text-zinc-400",
+              "truncate font-sans text-xs leading-5 font-normal text-muted-foreground group-disabled:text-zinc-400",
             )}
           >
             {number_of_runs} runs

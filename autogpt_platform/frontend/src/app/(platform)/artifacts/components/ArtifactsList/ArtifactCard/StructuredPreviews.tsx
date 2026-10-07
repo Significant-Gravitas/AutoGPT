@@ -154,18 +154,18 @@ function ContactCard({ contact }: { contact: VcardData }) {
         {contact.name}
       </span>
       {contact.title || contact.org ? (
-        <span className="truncate text-xs text-zinc-500">
+        <span className="truncate text-xs text-muted-foreground">
           {[contact.title, contact.org].filter(Boolean).join(" · ")}
         </span>
       ) : null}
       {contact.tel ? (
-        <span className="flex items-center gap-1 text-xs text-zinc-500">
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <Icon icon={CallIcon} size={12} className="shrink-0" />
           <span className="truncate">{contact.tel}</span>
         </span>
       ) : null}
       {contact.email ? (
-        <span className="flex items-center gap-1 text-xs text-zinc-500">
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <Icon icon={Mail02Icon} size={12} className="shrink-0" />
           <span className="truncate">{contact.email}</span>
         </span>

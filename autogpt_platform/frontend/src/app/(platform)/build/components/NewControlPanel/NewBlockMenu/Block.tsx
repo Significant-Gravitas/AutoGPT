@@ -150,7 +150,7 @@ export const Block: BlockComponent = ({
           {description && (
             <span
               className={cn(
-                "line-clamp-1 font-sans text-xs leading-5 font-normal text-zinc-500 group-disabled:text-zinc-400",
+                "line-clamp-1 font-sans text-xs leading-5 font-normal text-muted-foreground group-disabled:text-zinc-400",
               )}
             >
               {highlightText(description, highlightedText)}

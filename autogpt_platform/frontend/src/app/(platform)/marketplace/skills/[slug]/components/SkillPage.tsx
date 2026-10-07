@@ -294,7 +294,7 @@ function BackToMarketplaceLink() {
   return (
     <Link
       href="/marketplace#skills"
-      className="mb-6 inline-flex w-fit items-center gap-1.5 text-[13px] text-zinc-500 transition-colors hover:text-zinc-900"
+      className="mb-6 inline-flex w-fit items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-zinc-900"
       data-testid="skill-back-to-marketplace"
     >
       <Icon icon={ArrowLeft02Icon} size={14} aria-hidden />

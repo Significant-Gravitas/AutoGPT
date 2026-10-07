@@ -37,7 +37,7 @@ export function ExpertAbout({ text }: Props) {
           type="button"
           variant="ghost"
           onClick={() => setIsExpanded((value) => !value)}
-          className="mt-2 h-auto min-w-0 gap-1 rounded-none border-0 p-0 text-sm font-medium text-zinc-500 hover:bg-transparent hover:text-zinc-900"
+          className="mt-2 h-auto min-w-0 gap-1 rounded-none border-0 p-0 text-sm font-medium text-muted-foreground hover:bg-transparent hover:text-zinc-900"
         >
           {isExpanded ? "Show less" : "Read more"}
           <Icon

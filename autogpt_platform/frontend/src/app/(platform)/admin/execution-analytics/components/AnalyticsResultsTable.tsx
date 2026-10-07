@@ -23,7 +23,7 @@ export function AnalyticsResultsTable({ results }: Props) {
 
   const createCopyableId = (value: string, label: string) => (
     <div
-      className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-zinc-500 hover:text-zinc-700"
+      className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-muted-foreground hover:text-zinc-700"
       onClick={() => {
         navigator.clipboard.writeText(value);
         toast({

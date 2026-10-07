@@ -66,7 +66,7 @@ function ChatLinkLoader() {
   return (
     <LoadingSpinner
       size="small"
-      className="ml-auto size-4! shrink-0 text-zinc-500"
+      className="ml-auto size-4! shrink-0 text-muted-foreground"
     />
   );
 }

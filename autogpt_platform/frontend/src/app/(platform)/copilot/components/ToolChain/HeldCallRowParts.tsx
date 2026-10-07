@@ -11,10 +11,16 @@ const TAGS: Record<HeldState, { text: string; className: string }> = {
     text: "Waiting for you",
     className: "bg-yellow-50 text-yellow-700",
   },
-  approved: { text: "Approved", className: "bg-zinc-100 text-zinc-500" },
-  rejected: { text: "Rejected", className: "bg-zinc-100 text-zinc-500" },
-  expired: { text: "Expired", className: "bg-zinc-100 text-zinc-500" },
-  closed: { text: "Not run", className: "bg-zinc-100 text-zinc-500" },
+  approved: {
+    text: "Approved",
+    className: "bg-zinc-100 text-muted-foreground",
+  },
+  rejected: {
+    text: "Rejected",
+    className: "bg-zinc-100 text-muted-foreground",
+  },
+  expired: { text: "Expired", className: "bg-zinc-100 text-muted-foreground" },
+  closed: { text: "Not run", className: "bg-zinc-100 text-muted-foreground" },
   unknown: { text: "Unclear", className: "bg-yellow-50 text-yellow-700" },
   "not-run": { text: "Not run", className: "bg-red-50 text-red-700" },
 };

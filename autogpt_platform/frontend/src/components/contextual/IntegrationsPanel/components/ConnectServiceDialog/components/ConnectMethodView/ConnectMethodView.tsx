@@ -172,7 +172,7 @@ export function ConnectMethodView({
                         </span>
                       )}
                     </span>
-                    <span className="text-xs text-zinc-500">
+                    <span className="text-xs text-muted-foreground">
                       {copy.description}
                     </span>
                   </span>

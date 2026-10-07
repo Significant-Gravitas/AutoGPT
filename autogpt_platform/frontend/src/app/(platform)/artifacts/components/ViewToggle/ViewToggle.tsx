@@ -47,7 +47,7 @@ export function ViewToggle({ value, onChange }: Props) {
               "size-9 rounded-full border-0 outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-400",
               active
                 ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-100"
-                : "text-zinc-500 hover:bg-zinc-100/70 hover:text-zinc-900",
+                : "text-muted-foreground hover:bg-zinc-100/70 hover:text-zinc-900",
             )}
             data-testid={`artifacts-view-${option.value}`}
           >

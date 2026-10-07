@@ -17,7 +17,7 @@ export function SourceToggle({ isSourceView, onToggle }: Props) {
           "rounded-sm px-2 py-1 transition-colors",
           !isSourceView
             ? "bg-white text-zinc-900 shadow-xs"
-            : "text-zinc-500 hover:text-zinc-700",
+            : "text-muted-foreground hover:text-zinc-700",
         )}
         onClick={() => onToggle(false)}
       >
@@ -30,7 +30,7 @@ export function SourceToggle({ isSourceView, onToggle }: Props) {
           "rounded-sm px-2 py-1 transition-colors",
           isSourceView
             ? "bg-white text-zinc-900 shadow-xs"
-            : "text-zinc-500 hover:text-zinc-700",
+            : "text-muted-foreground hover:text-zinc-700",
         )}
         onClick={() => onToggle(true)}
       >

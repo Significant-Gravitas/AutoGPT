@@ -38,7 +38,7 @@ export function DeviceAuthConnectButton({
         <Text variant="body" tone="secondary">
           Requesting a code from {providerName}…
         </Text>
-        <div className="flex items-center gap-2 text-zinc-500">
+        <div className="flex items-center gap-2 text-muted-foreground">
           <Icon icon={Loading03Icon} size={16} className="animate-spin" />
           <Text variant="small" tone="muted">
             Starting device authorization…
@@ -100,7 +100,7 @@ export function DeviceAuthConnectButton({
       </div>
 
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-zinc-500">
+        <div className="flex items-center gap-2 text-muted-foreground">
           <Icon icon={Loading03Icon} size={16} className="animate-spin" />
           <Text variant="small" tone="muted">
             Waiting for approval…

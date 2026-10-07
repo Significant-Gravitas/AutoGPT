@@ -46,7 +46,7 @@ export function ProviderBox({
           <Icon
             icon={Loading03Icon}
             size={20}
-            className="absolute -right-1 -bottom-1 rounded-full bg-white text-zinc-500 motion-safe:animate-spin"
+            className="absolute -right-1 -bottom-1 rounded-full bg-white text-muted-foreground motion-safe:animate-spin"
           />
         )}
       </span>
@@ -66,7 +66,7 @@ export function ProviderBox({
           </span>
         )}
         {state === "coming-soon" && (
-          <span className="inline-flex items-center rounded-[10px] bg-zinc-100 px-2 py-0.5 text-[13px] leading-5 font-medium text-zinc-500">
+          <span className="inline-flex items-center rounded-[10px] bg-zinc-100 px-2 py-0.5 text-[13px] leading-5 font-medium text-muted-foreground">
             Coming soon
           </span>
         )}

@@ -99,7 +99,11 @@ export function AccountCard({ user, index = 0 }: Props) {
               <Dialog.Content>
                 <Form form={emailForm} onSubmit={handleEmailSubmit}>
                   <div className="flex flex-col gap-4">
-                    <Text variant="small" as="span" className="text-zinc-500">
+                    <Text
+                      variant="small"
+                      as="span"
+                      className="text-muted-foreground"
+                    >
                       We&apos;ll send a confirmation link to verify your new
                       address.
                     </Text>

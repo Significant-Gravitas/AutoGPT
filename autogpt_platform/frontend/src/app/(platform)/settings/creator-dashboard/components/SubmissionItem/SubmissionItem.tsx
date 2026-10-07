@@ -135,7 +135,7 @@ export function SubmissionItem({
                   <UIIcon
                     icon={LinkSquare01Icon}
                     size={14}
-                    className="shrink-0 text-zinc-500"
+                    className="shrink-0 text-muted-foreground"
                     aria-hidden
                   />
                 </Link>
@@ -155,7 +155,7 @@ export function SubmissionItem({
             <Text
               variant="small"
               as="span"
-              className="line-clamp-1 max-w-[420px] text-zinc-500"
+              className="line-clamp-1 max-w-[420px] text-muted-foreground"
             >
               {submission.description}
             </Text>
@@ -187,7 +187,7 @@ export function SubmissionItem({
               type="button"
               aria-label="Submission actions"
               data-testid="submission-actions"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
             >
               <UIIcon icon={MoreVerticalIcon} size={18} />
             </button>

@@ -122,7 +122,9 @@ export function CredentialsFlatView({
             <span className="inline-flex items-center gap-1 text-zinc-600">
               {displayName} credentials
               {isOptional && (
-                <span className="font-normal text-zinc-500">(optional)</span>
+                <span className="font-normal text-muted-foreground">
+                  (optional)
+                </span>
               )}
               {!isOptional && !selectedCredential && (
                 <span className="inline-flex items-center gap-1 text-red-600">

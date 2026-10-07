@@ -183,7 +183,7 @@ export function AgentInfoStep({
                   <Icon
                     icon={Store01Icon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-muted-foreground"
                   />
                   Listing basics
                   {basicsHasError ? (
@@ -288,7 +288,7 @@ export function AgentInfoStep({
                   <Icon
                     icon={Album01Icon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-muted-foreground"
                   />
                   Thumbnails
                   {thumbnailsHasError ? (
@@ -323,7 +323,7 @@ export function AgentInfoStep({
                   <Icon
                     icon={SparklesIcon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-muted-foreground"
                   />
                   Experience details
                   {experienceHasError ? (
@@ -448,7 +448,7 @@ export function AgentInfoStep({
                         <Icon
                           icon={Calendar03Icon}
                           size={16}
-                          className="shrink-0 text-zinc-500"
+                          className="shrink-0 text-muted-foreground"
                         />
                         <span
                           className={cn(

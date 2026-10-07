@@ -117,7 +117,7 @@ export function UseExistingCredentialsDialog({
                 type="button"
                 variant="ghost"
                 onClick={() => setSelectedProvider(null)}
-                className="h-auto w-fit min-w-0 gap-1 rounded-none border-0 p-0 font-normal text-zinc-500 hover:border-transparent hover:bg-transparent hover:text-zinc-800"
+                className="h-auto w-fit min-w-0 gap-1 rounded-none border-0 p-0 font-normal text-muted-foreground hover:border-transparent hover:bg-transparent hover:text-zinc-800"
               >
                 <Icon icon={ArrowLeft02Icon} size={14} />
                 All connections

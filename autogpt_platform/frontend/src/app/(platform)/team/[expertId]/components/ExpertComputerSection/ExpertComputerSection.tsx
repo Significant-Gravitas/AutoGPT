@@ -63,7 +63,10 @@ export function ExpertComputerSection({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Text variant="large-medium">{`${expertName}'s computer`}</Text>
-          <Text variant="small" className="mt-1 max-w-prose text-zinc-500">
+          <Text
+            variant="small"
+            className="mt-1 max-w-prose text-muted-foreground"
+          >
             One persistent cloud machine only {expertName} uses: the shell it
             runs commands in and, when needed, its screen. It is suspended
             between turns and costs nothing while suspended; installed tools and
@@ -98,7 +101,7 @@ export function ExpertComputerSection({
             <Icon
               icon={ComputerTerminalIcon}
               size={16}
-              className="text-zinc-500"
+              className="text-muted-foreground"
             />
             <Text variant="small-medium">Machine</Text>
           </div>
@@ -109,7 +112,7 @@ export function ExpertComputerSection({
                 ? "bg-green-50 text-green-700"
                 : box
                   ? "bg-zinc-100 text-zinc-600"
-                  : "bg-zinc-50 text-zinc-500",
+                  : "bg-zinc-50 text-muted-foreground",
             )}
           >
             {running ? "Running" : box ? "Suspended" : "None"}
@@ -121,13 +124,17 @@ export function ExpertComputerSection({
             : "Created on the first message that runs a command."}
         </Text>
         {resources ? (
-          <Text variant="small" className="mt-1 text-zinc-500">
+          <Text variant="small" className="mt-1 text-muted-foreground">
             {resources}
             {box?.mounts_attached === false ? " · no volumes attached" : ""}
           </Text>
         ) : null}
         <div className="mt-3 flex items-center gap-2 border-t border-zinc-100 pt-3">
-          <Icon icon={ComputerIcon} size={16} className="text-zinc-500" />
+          <Icon
+            icon={ComputerIcon}
+            size={16}
+            className="text-muted-foreground"
+          />
           <Text variant="small" className="text-zinc-600">
             {formatScreen(computer)}
           </Text>
@@ -141,7 +148,7 @@ export function ExpertComputerSection({
             {mounts.map(([path, name]) => (
               <li key={path} className="flex flex-col gap-0.5">
                 <code className="text-xs text-zinc-800">{path}</code>
-                <Text variant="small" className="text-zinc-500">
+                <Text variant="small" className="text-muted-foreground">
                   {describeMount(path, computer)}{" "}
                   <span className="font-mono text-xs text-zinc-400">
                     {name}

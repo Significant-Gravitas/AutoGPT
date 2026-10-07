@@ -114,7 +114,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
               )}
               <AvatarFallback size={20}>{agent.creator}</AvatarFallback>
             </Avatar>
-            <span className="truncate text-[13px] text-zinc-500">
+            <span className="truncate text-[13px] text-muted-foreground">
               by {agent.creator}
             </span>
           </div>
@@ -130,7 +130,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
       </div>
 
       <div className="relative mt-auto flex w-full items-center pt-3">
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-muted-foreground">
           {agent.runs === 0
             ? "No runs"
             : `${(agent.runs ?? 0).toLocaleString()} runs`}

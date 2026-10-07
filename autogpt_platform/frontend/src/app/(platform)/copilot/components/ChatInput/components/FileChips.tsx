@@ -123,7 +123,9 @@ export function FileChips({
                     />
                     <span className="max-w-40 truncate">{name}</span>
                     {count ? (
-                      <span className="shrink-0 text-zinc-500">· {count}</span>
+                      <span className="shrink-0 text-muted-foreground">
+                        · {count}
+                      </span>
                     ) : null}
                     {showSpinner ? (
                       <Icon

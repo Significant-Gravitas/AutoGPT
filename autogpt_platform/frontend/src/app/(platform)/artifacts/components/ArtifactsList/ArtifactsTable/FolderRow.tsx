@@ -122,7 +122,7 @@ export function FolderRow({
       <Text
         variant="body"
         as="span"
-        className={cn(DATE_CELL_CLASS, "text-zinc-500")}
+        className={cn(DATE_CELL_CLASS, "text-muted-foreground")}
         title={formatFullDate(updatedAt)}
       >
         {formatDayLabel(updatedAt)}
@@ -130,7 +130,7 @@ export function FolderRow({
       <Text
         variant="body"
         as="span"
-        className={cn(SIZE_CELL_CLASS, "text-zinc-500")}
+        className={cn(SIZE_CELL_CLASS, "text-muted-foreground")}
       >
         {folderSummary(fileCount, subfolderCount)}
       </Text>

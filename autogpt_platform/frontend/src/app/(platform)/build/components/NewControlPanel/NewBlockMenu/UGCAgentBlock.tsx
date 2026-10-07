@@ -73,7 +73,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
           {edited_time && (
             <span
               className={cn(
-                "line-clamp-1 font-sans text-xs leading-5 font-normal text-zinc-500 group-disabled:text-zinc-400",
+                "line-clamp-1 font-sans text-xs leading-5 font-normal text-muted-foreground group-disabled:text-zinc-400",
               )}
             >
               Edited {formatTimeAgo(edited_time.toISOString())}
@@ -84,7 +84,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
 
           <span
             className={cn(
-              "line-clamp-1 font-sans text-xs leading-5 font-normal text-zinc-500 group-disabled:text-zinc-400",
+              "line-clamp-1 font-sans text-xs leading-5 font-normal text-muted-foreground group-disabled:text-zinc-400",
             )}
           >
             Version {version}
@@ -92,7 +92,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
 
           <span
             className={cn(
-              "rounded-xl bg-zinc-200 px-2 font-sans text-xs leading-5 text-zinc-500",
+              "rounded-xl bg-zinc-200 px-2 font-sans text-xs leading-5 text-muted-foreground",
             )}
           >
             Your Agent

@@ -147,7 +147,7 @@ export function EditAgentForm({
                   <Icon
                     icon={Store01Icon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-muted-foreground"
                   />
                   Listing basics
                   {basicsHasError ? (
@@ -235,7 +235,7 @@ export function EditAgentForm({
                   <Icon
                     icon={Album01Icon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-muted-foreground"
                   />
                   Thumbnails
                   {thumbnailsHasError ? (
@@ -272,7 +272,7 @@ export function EditAgentForm({
                   <Icon
                     icon={SparklesIcon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-muted-foreground"
                   />
                   Experience details
                   {experienceHasError ? (

@@ -17,7 +17,7 @@ export function SharedChatErrorState({ onRetry }: Props) {
             <Icon
               icon={InformationCircleIcon}
               size={24}
-              className="text-zinc-500"
+              className="text-muted-foreground"
             />
           </div>
           <div className="space-y-2">

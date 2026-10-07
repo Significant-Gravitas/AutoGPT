@@ -46,7 +46,7 @@ export function ExpertSessionGroup({
       <CollapsibleTrigger
         id={headerId}
         data-testid={`expert-group-header-${groupKey}`}
-        className="flex items-center justify-between gap-2 px-3 pt-2 pb-1 text-zinc-500 hover:text-zinc-700"
+        className="flex items-center justify-between gap-2 px-3 pt-2 pb-1 text-muted-foreground hover:text-zinc-700"
       >
         {groupKey === "pinned" ? (
           <Text as="span" variant="body-medium">

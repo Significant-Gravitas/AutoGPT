@@ -19,7 +19,7 @@ export function EmptyState() {
     >
       <Icon icon={Rocket01Icon} size={28} className="text-zinc-400" />
       <Text variant="body-medium">No submissions yet</Text>
-      <Text variant="small" className="max-w-[460px] text-zinc-500">
+      <Text variant="small" className="max-w-[460px] text-muted-foreground">
         Once you submit an agent to the store, it&apos;ll show up here with its
         status, runs, and reviews.
       </Text>

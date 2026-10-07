@@ -432,7 +432,7 @@ export function MCPToolDialog({
               <Button
                 variant="link"
                 onClick={() => setShowManualToken(true)}
-                className="h-auto min-w-0 p-0 text-xs font-normal text-zinc-500 hover:text-zinc-700"
+                className="h-auto min-w-0 p-0 text-xs font-normal text-muted-foreground hover:text-zinc-700"
               >
                 or enter an API credential manually
               </Button>
@@ -665,13 +665,13 @@ function MCPToolCard({
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-zinc-100">
-                <th className="px-2 py-1 text-left font-medium text-zinc-500">
+                <th className="px-2 py-1 text-left font-medium text-muted-foreground">
                   Parameter
                 </th>
-                <th className="px-2 py-1 text-left font-medium text-zinc-500">
+                <th className="px-2 py-1 text-left font-medium text-muted-foreground">
                   Type
                 </th>
-                <th className="px-2 py-1 text-left font-medium text-zinc-500">
+                <th className="px-2 py-1 text-left font-medium text-muted-foreground">
                   Description
                 </th>
               </tr>
@@ -690,10 +690,10 @@ function MCPToolCard({
                         <span className="ml-0.5 text-red-400">*</span>
                       )}
                     </td>
-                    <td className="px-2 py-1 text-zinc-500">
+                    <td className="px-2 py-1 text-muted-foreground">
                       {schemaTypeLabel(prop)}
                     </td>
-                    <td className="max-w-[200px] truncate px-2 py-1 text-zinc-500">
+                    <td className="max-w-[200px] truncate px-2 py-1 text-muted-foreground">
                       {prop.description ?? "—"}
                     </td>
                   </tr>

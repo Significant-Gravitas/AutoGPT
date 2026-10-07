@@ -165,11 +165,11 @@ export const getTypeDisplayInfo = (schema: any) => {
     object: "text-purple-500",
     // Same hue as getTypeColor("array"); kept apart from object's purple.
     array: "text-[#6366f1]",
-    null: "text-zinc-500",
-    any: "text-zinc-500",
+    null: "text-muted-foreground",
+    any: "text-muted-foreground",
   };
 
-  const colorClass = colorMap[schema?.type] || "text-zinc-500";
+  const colorClass = colorMap[schema?.type] || "text-muted-foreground";
   const hexColor = getTypeColor(schema?.type);
 
   return {

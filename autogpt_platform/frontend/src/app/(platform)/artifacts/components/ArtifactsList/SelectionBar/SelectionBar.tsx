@@ -48,7 +48,7 @@ export function SelectionBar({
           <Button
             type="button"
             variant="ghost"
-            className="h-auto min-w-0 rounded-none border-0 p-0 text-sm font-normal text-zinc-500 underline-offset-2 hover:bg-transparent hover:text-zinc-900 hover:underline"
+            className="h-auto min-w-0 rounded-none border-0 p-0 text-sm font-normal text-muted-foreground underline-offset-2 hover:bg-transparent hover:text-zinc-900 hover:underline"
             onClick={onSelectAll}
             data-testid="artifacts-select-all"
           >
@@ -83,7 +83,7 @@ export function SelectionBar({
           size="icon-sm"
           withTooltip={false}
           aria-label="Clear selection"
-          className="rounded-full border-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+          className="rounded-full border-0 text-muted-foreground hover:bg-zinc-100 hover:text-zinc-900"
           onClick={onClear}
           data-testid="artifacts-selection-clear"
         >

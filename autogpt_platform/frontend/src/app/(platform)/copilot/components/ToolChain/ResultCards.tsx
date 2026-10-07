@@ -58,7 +58,7 @@ export function StatusPill({ status, className }: StatusPillProps) {
     <span
       className={cn(
         "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
-        STATUS_STYLES[normalized] ?? "bg-zinc-100 text-zinc-500",
+        STATUS_STYLES[normalized] ?? "bg-zinc-100 text-muted-foreground",
         className,
       )}
     >
@@ -105,7 +105,9 @@ export function StatCard({ value, label }: StatCardProps) {
       <span className="text-lg leading-none font-semibold text-zinc-800">
         {value.toLocaleString()}
       </span>
-      <span className="min-w-0 truncate text-xs text-zinc-500">{label}</span>
+      <span className="min-w-0 truncate text-xs text-muted-foreground">
+        {label}
+      </span>
     </div>
   );
 }

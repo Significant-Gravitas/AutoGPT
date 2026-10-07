@@ -84,7 +84,7 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
       <div class="text-sm leading-5.5 text-zinc-800">
         <p class="text-sm font-normal leading-5.5 text-zinc-800 m-0">Let's add a Calculator block to start.</p>
         ${banner(ICONS.Keyboard, "Type Calculator in the search bar", "action")}
-        <p class="text-xs font-normal leading-4.5 text-zinc-500 m-0 mt-2">The search will filter blocks as you type.</p>
+        <p class="text-xs font-normal leading-4.5 text-muted-foreground m-0 mt-2">The search will filter blocks as you type.</p>
       </div>
     `,
     attachTo: {

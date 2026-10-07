@@ -103,7 +103,7 @@ export function MessageAttachments({
             {rendered}
             <div
               className={`mt-1 flex items-center gap-1 px-0.5 text-xs ${
-                isUser ? "text-zinc-600" : "text-zinc-500"
+                isUser ? "text-zinc-600" : "text-muted-foreground"
               }`}
             >
               <span className="truncate">{file.filename || "file"}</span>
@@ -225,7 +225,7 @@ function FolderAttachmentCard({
         <Link
           href={`/artifacts?folder=${encodeURIComponent(folder.id)}`}
           aria-label={`Open folder ${folder.name} in Files`}
-          className="shrink-0 rounded-md p-1 text-zinc-500 transition-colors hover:bg-purple-200 hover:text-zinc-800"
+          className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-purple-200 hover:text-zinc-800"
         >
           <Icon icon={LinkSquare01Icon} size={16} />
         </Link>

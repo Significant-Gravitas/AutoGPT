@@ -368,7 +368,7 @@ function PaginationBar({
   const pages = buildPageRange(page, totalPages);
 
   return (
-    <div className="flex flex-col items-center justify-between gap-3 pt-1 pb-3 text-zinc-500 sm:flex-row">
+    <div className="flex flex-col items-center justify-between gap-3 pt-1 pb-3 text-muted-foreground sm:flex-row">
       <Text variant="small" tone="muted">
         {start}–{end} of {totalItems}
       </Text>
@@ -378,7 +378,7 @@ function PaginationBar({
           aria-label="Previous page"
           disabled={page <= 1}
           onClick={() => onChange(page - 1)}
-          className="flex size-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex size-9 items-center justify-center rounded-full border border-zinc-200 text-muted-foreground transition hover:border-zinc-300 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Icon icon={ArrowLeft01Icon} size={14} />
         </button>
@@ -421,7 +421,7 @@ function PaginationBar({
           aria-label="Next page"
           disabled={page >= totalPages}
           onClick={() => onChange(page + 1)}
-          className="flex size-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex size-9 items-center justify-center rounded-full border border-zinc-200 text-muted-foreground transition hover:border-zinc-300 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Icon icon={ArrowRight01Icon} size={14} />
         </button>

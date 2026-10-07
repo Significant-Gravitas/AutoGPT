@@ -162,7 +162,7 @@ export function FileRow({
       <Text
         variant="body"
         as="span"
-        className={cn(DATE_CELL_CLASS, "text-zinc-500")}
+        className={cn(DATE_CELL_CLASS, "text-muted-foreground")}
         title={formatFullDate(file.created_at)}
       >
         {formatDayLabel(file.created_at)}
@@ -170,7 +170,7 @@ export function FileRow({
       <Text
         variant="body"
         as="span"
-        className={cn(SIZE_CELL_CLASS, "text-zinc-500")}
+        className={cn(SIZE_CELL_CLASS, "text-muted-foreground")}
       >
         {formatFileSize(file.size_bytes)}
       </Text>

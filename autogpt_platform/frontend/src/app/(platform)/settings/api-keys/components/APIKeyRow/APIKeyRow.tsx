@@ -53,7 +53,7 @@ export function APIKeyRow({
           className={`shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-800 ${
             selected
               ? "text-zinc-800 hover:text-zinc-900"
-              : "text-zinc-500 hover:text-zinc-700"
+              : "text-muted-foreground hover:text-zinc-700"
           }`}
         >
           {selected ? (
@@ -74,7 +74,7 @@ export function APIKeyRow({
                     type="button"
                     aria-label={`View details for ${apiKey.name}`}
                     onClick={() => setInfoOpen(true)}
-                    className="shrink-0 rounded-sm text-zinc-500 transition-colors hover:text-zinc-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-800"
+                    className="shrink-0 rounded-sm text-muted-foreground transition-colors hover:text-zinc-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-800"
                   >
                     <Icon icon={InformationCircleIcon} size={16} />
                   </button>
@@ -90,7 +90,7 @@ export function APIKeyRow({
             <Text
               variant="small"
               as="span"
-              className="leading-[20px] text-zinc-500"
+              className="leading-[20px] text-muted-foreground"
             >
               {lastUsedLabel}
             </Text>
@@ -105,7 +105,7 @@ export function APIKeyRow({
         aria-label={`Delete ${apiKey.name}`}
         withTooltip={false}
         onClick={onDelete}
-        className="shrink-0 text-zinc-500 hover:text-zinc-700"
+        className="shrink-0 text-muted-foreground hover:text-zinc-700"
       >
         <Icon icon={Delete02Icon} size={20} />
       </Button>

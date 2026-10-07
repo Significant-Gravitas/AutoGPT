@@ -73,7 +73,7 @@ export default function OnboardingPage() {
           size="sm"
           onClick={prevStep}
           leadingIcon={ArrowLeft01Icon}
-          className="absolute top-6 left-6 text-zinc-500 hover:text-zinc-900"
+          className="absolute top-6 left-6 text-muted-foreground hover:text-zinc-900"
         >
           Back
         </Button>
@@ -124,7 +124,7 @@ export default function OnboardingPage() {
           variant="ghost"
           size="sm"
           leadingIcon={Logout03Icon}
-          className="absolute bottom-6 left-6 text-zinc-500 hover:text-zinc-900"
+          className="absolute bottom-6 left-6 text-muted-foreground hover:text-zinc-900"
         >
           Log out
         </Button>

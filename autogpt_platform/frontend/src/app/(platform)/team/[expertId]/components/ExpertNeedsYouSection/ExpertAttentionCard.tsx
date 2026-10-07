@@ -59,7 +59,7 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
           <Icon
             icon={ICONS[item.kind]}
             size={18}
-            className="shrink-0 text-zinc-500"
+            className="shrink-0 text-muted-foreground"
             aria-hidden="true"
           />
         )}

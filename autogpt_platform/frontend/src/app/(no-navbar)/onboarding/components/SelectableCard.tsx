@@ -36,7 +36,7 @@ export function SelectableCard({
           <Icon icon={Tick02Icon} size={10} className="text-white" />
         </span>
       )}
-      <span className="flex items-center justify-center text-zinc-500">
+      <span className="flex items-center justify-center text-muted-foreground">
         {icon}
       </span>
       <Text variant="body-medium" as="span" className="whitespace-nowrap">

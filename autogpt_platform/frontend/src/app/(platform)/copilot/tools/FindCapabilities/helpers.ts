@@ -103,7 +103,7 @@ export function connectionBadge(
   if (item.connected) {
     return { label: "connected", className: "bg-green-100 text-green-800" };
   }
-  return { label: "sign in", className: "bg-zinc-100 text-zinc-500" };
+  return { label: "sign in", className: "bg-zinc-100 text-muted-foreground" };
 }
 
 export function kindLabel(item: CapabilityListing): string {

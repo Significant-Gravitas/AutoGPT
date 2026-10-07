@@ -176,15 +176,24 @@ export function AllVariants() {
                 <Text variant="body-medium" className="font-mono text-zinc-800">
                   {space.name}
                 </Text>
-                <Text variant="small" className="font-mono text-zinc-500">
+                <Text
+                  variant="small"
+                  className="font-mono text-muted-foreground"
+                >
                   {utilityClass("m", space.name)}
                 </Text>
               </div>
               <div className="flex w-32 flex-col text-right">
-                <Text variant="small" className="font-mono text-zinc-500">
+                <Text
+                  variant="small"
+                  className="font-mono text-muted-foreground"
+                >
                   {space.value}
                 </Text>
-                <Text variant="small" className="font-mono text-zinc-500">
+                <Text
+                  variant="small"
+                  className="font-mono text-muted-foreground"
+                >
                   {formatPx(space.px)}
                 </Text>
               </div>

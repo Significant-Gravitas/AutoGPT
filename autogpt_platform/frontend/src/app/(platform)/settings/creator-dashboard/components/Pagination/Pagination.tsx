@@ -41,7 +41,7 @@ export function Pagination({ pagination, onPageChange, disabled }: Props) {
       className="flex items-center justify-between gap-3 px-4 py-3"
       data-testid="submissions-pagination"
     >
-      <Text variant="small" className="text-zinc-500">
+      <Text variant="small" className="text-muted-foreground">
         Showing {startItem}–{endItem} of {total_items}
       </Text>
       <div className="flex items-center gap-1.5">

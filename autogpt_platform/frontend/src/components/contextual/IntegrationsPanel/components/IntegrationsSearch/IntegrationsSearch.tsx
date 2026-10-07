@@ -15,7 +15,7 @@ export function IntegrationsSearch({ value, onChange, disabled }: Props) {
       <Icon
         icon={Search01Icon}
         size={20}
-        className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-zinc-500"
+        className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-muted-foreground"
       />
       <input
         type="text"

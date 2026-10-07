@@ -41,7 +41,7 @@ export function AutoRefillDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" className="text-muted-foreground">
             Top up your balance automatically when it dips below the threshold
             you set.
           </Text>

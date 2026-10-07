@@ -57,7 +57,7 @@ export const createRunSteps = (tour: any): StepOptions[] => [
         
         <div class="mt-2 p-2 bg-zinc-100 ring-1 ring-zinc-200 rounded-xl">
           <p class="text-[0.8125rem] text-zinc-600 m-0">The output shows:</p>
-          <ul class="text-[0.8125rem] text-zinc-500 m-0 mt-1 pl-4">
+          <ul class="text-[0.8125rem] text-muted-foreground m-0 mt-1 pl-4">
             <li>• The calculated result</li>
             <li>• Execution timestamp</li>
           </ul>

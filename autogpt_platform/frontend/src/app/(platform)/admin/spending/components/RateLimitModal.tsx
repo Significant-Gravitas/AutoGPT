@@ -110,7 +110,7 @@ export function RateLimitModal({
           </Text>
 
           {isLoading && (
-            <div className="py-8 text-center text-zinc-500">
+            <div className="py-8 text-center text-muted-foreground">
               Loading rate limits...
             </div>
           )}
@@ -124,7 +124,7 @@ export function RateLimitModal({
           )}
 
           {!isLoading && !rateLimitData && (
-            <div className="py-8 text-center text-zinc-500">
+            <div className="py-8 text-center text-muted-foreground">
               No rate limit data available for this user.
             </div>
           )}

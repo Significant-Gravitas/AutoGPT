@@ -33,9 +33,9 @@ const STATUS = {
   },
   manual: {
     label: "Manual",
-    className: "bg-white text-zinc-500",
+    className: "bg-white text-muted-foreground",
     icon: PlayIcon,
-    iconClassName: "bg-zinc-100 text-zinc-500",
+    iconClassName: "bg-zinc-100 text-muted-foreground",
   },
 } as const;
 

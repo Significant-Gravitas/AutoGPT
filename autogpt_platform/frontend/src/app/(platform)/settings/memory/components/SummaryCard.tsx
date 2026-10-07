@@ -21,7 +21,7 @@ export function SummaryCard({
         <Text variant="body-medium" as="span">
           Memory summary
         </Text>
-        <Text variant="small" as="span" className="text-zinc-500">
+        <Text variant="small" as="span" className="text-muted-foreground">
           {isAutoPilot
             ? "Ask Otto what it knows about you. Opens a chat — you can correct or forget anything from there."
             : `Ask ${scopeName} what they know about you and their work. Opens a chat.`}

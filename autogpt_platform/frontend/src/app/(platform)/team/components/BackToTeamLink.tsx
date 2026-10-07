@@ -7,7 +7,7 @@ export function BackToTeamLink() {
   return (
     <Link
       href="/team"
-      className="group inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-800"
+      className="group inline-flex items-center gap-1 text-muted-foreground hover:text-zinc-800"
       data-testid="expert-back-to-team"
     >
       <Icon icon={ArrowLeft02Icon} size={14} />

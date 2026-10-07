@@ -58,7 +58,7 @@ export function BreakdownSection({ breakdown }: Props) {
             {row.note && (
               <span className="text-[10px] text-zinc-400">{row.note}</span>
             )}
-            <span className="ml-auto text-zinc-500">
+            <span className="ml-auto text-muted-foreground">
               ~{formatTokenCount(row.tokens)}
             </span>
           </div>

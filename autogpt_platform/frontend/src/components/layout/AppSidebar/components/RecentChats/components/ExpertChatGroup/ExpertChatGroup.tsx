@@ -133,7 +133,7 @@ export function ExpertChatGroup({
               onClick={() =>
                 setVisibleCount((count) => count + EXPERT_CHAT_PAGE_SIZE)
               }
-              className="mt-0.5 w-full rounded-md px-2 py-1 text-left text-xs font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
+              className="mt-0.5 w-full rounded-md px-2 py-1 text-left text-xs font-medium text-muted-foreground hover:bg-zinc-100 hover:text-zinc-800"
             >
               Load more
             </button>
@@ -154,7 +154,7 @@ function NewChatLink({ href, label }: { href: string; label: string }) {
           href={href}
           aria-label={name}
           className={cn(
-            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-zinc-200 hover:text-zinc-900 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-hidden md:opacity-0",
+            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-zinc-200 hover:text-zinc-900 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-hidden md:opacity-0",
             CHEVRON_SIZE_CLASS,
             NEW_CHAT_LINK_OFFSET_CLASS,
           )}
@@ -173,7 +173,9 @@ function NewChatIcon() {
   const { pending } = useLinkStatus();
 
   if (pending) {
-    return <LoadingSpinner size="small" className="size-4! text-zinc-500" />;
+    return (
+      <LoadingSpinner size="small" className="size-4! text-muted-foreground" />
+    );
   }
 
   return <Icon icon={PlusSignIcon} className="size-4" />;

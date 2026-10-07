@@ -118,7 +118,7 @@ export function ActivityDropdown({
                   <Icon
                     icon={Cancel01Icon}
                     size={16}
-                    className="text-zinc-500"
+                    className="text-muted-foreground"
                   />
                 </Button>
               </div>
@@ -126,7 +126,7 @@ export function ActivityDropdown({
           ) : (
             <div className={cn(styles.headerContainer, newLayout && "py-0.5")}>
               {newLayout ? (
-                <span className="text-xs font-medium text-zinc-500 uppercase">
+                <span className="text-xs font-medium text-muted-foreground uppercase">
                   Agent Activity
                 </span>
               ) : (

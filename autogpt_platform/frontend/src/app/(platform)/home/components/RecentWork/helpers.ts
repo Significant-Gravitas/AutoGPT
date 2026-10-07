@@ -46,7 +46,7 @@ const ACTOR_CHIPS: Record<HomeWorkActorKind, ActorChip> = {
   },
   autopilot: {
     label: "Otto",
-    className: "border-zinc-200 bg-white text-zinc-500",
+    className: "border-zinc-200 bg-white text-muted-foreground",
   },
 };
 

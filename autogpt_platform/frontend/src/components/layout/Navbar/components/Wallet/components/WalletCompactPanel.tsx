@@ -91,7 +91,7 @@ function EarnGroupSection({ group }: { group: EarnGroup }) {
             )}
           />
         </span>
-        <span className="shrink-0 font-sans text-sm text-zinc-500">
+        <span className="shrink-0 font-sans text-sm text-muted-foreground">
           {group.done ? "Done" : `$${group.amount.toFixed(2)}`}
         </span>
       </button>
@@ -108,7 +108,7 @@ function EarnTaskRow({ row }: { row: EarnRow }) {
         <StatusIcon done={row.done} />
         <Text variant="body">{row.label}</Text>
       </div>
-      <span className="shrink-0 font-sans text-sm text-zinc-500">
+      <span className="shrink-0 font-sans text-sm text-muted-foreground">
         {row.done ? "Done" : `$${row.amount.toFixed(2)}`}
       </span>
     </div>

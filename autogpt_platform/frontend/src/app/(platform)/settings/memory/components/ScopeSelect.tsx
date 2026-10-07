@@ -64,7 +64,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           <Icon
             icon={ArrowDown01Icon}
             size={16}
-            className="ml-auto shrink-0 text-zinc-500"
+            className="ml-auto shrink-0 text-muted-foreground"
           />
         </button>
       </DropdownMenuTrigger>
@@ -79,7 +79,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           <AutopilotAvatar size={28} />
           <span className="flex min-w-0 flex-col leading-snug">
             <span className="text-sm font-medium text-black">Otto</span>
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-muted-foreground">
               Your account memory — everything you do together
             </span>
           </span>
@@ -108,7 +108,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
                     {expert.name}
                   </span>
                   {expert.role && (
-                    <span className="truncate text-xs text-zinc-500">
+                    <span className="truncate text-xs text-muted-foreground">
                       {expert.role}
                     </span>
                   )}

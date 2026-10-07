@@ -50,7 +50,7 @@ function TimeLabel({
 
   if (!localDate) {
     return (
-      <span className="text-[11px] text-zinc-500 tabular-nums">
+      <span className="text-[11px] text-muted-foreground tabular-nums">
         {labelText}
       </span>
     );
@@ -60,7 +60,7 @@ function TimeLabel({
     <span
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="cursor-default text-[11px] text-zinc-500 tabular-nums transition-colors hover:text-zinc-700"
+      className="cursor-default text-[11px] text-muted-foreground tabular-nums transition-colors hover:text-zinc-700"
     >
       <span
         key={hovered ? "date" : "label"}
@@ -93,7 +93,7 @@ export function TurnStatsBar({ turnMessages, elapsedSeconds, stats }: Props) {
             {needsDot && (
               <span className="text-xs text-zinc-300">&middot;</span>
             )}
-            <span className="text-[11px] text-zinc-500 tabular-nums">
+            <span className="text-[11px] text-muted-foreground tabular-nums">
               {counter.count} {counter.label}
             </span>
           </span>

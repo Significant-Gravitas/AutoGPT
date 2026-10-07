@@ -44,7 +44,7 @@ export function ShelfTile({
         >
           {title}
         </span>
-        <span className="block truncate text-[13px] text-zinc-500">
+        <span className="block truncate text-[13px] text-muted-foreground">
           {subtitle}
         </span>
       </span>

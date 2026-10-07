@@ -92,7 +92,7 @@ export function WorkspaceFolder({
         >
           {name}
         </Text>
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-muted-foreground">
           {folderSummary(fileCount, subfolderCount)}
         </Text>
       </div>

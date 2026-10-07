@@ -20,7 +20,7 @@ export function DreamWriteRow({ item }: Props) {
           </Badge>
         ) : null}
       </div>
-      <div className="mt-1 flex flex-wrap items-center gap-2 text-zinc-500">
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-muted-foreground">
         <code className="font-mono text-[10px]">
           edge: {shortenUuid(item.edge_uuid)}
         </code>

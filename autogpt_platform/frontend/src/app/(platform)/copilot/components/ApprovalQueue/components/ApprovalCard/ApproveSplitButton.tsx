@@ -80,12 +80,12 @@ export function ApproveSplitButton({
                 className="flex flex-col items-start gap-0.5 py-2"
               >
                 <span className="text-sm text-zinc-900">{title}</span>
-                <span className="text-xs text-zinc-500">{detail}</span>
+                <span className="text-xs text-muted-foreground">{detail}</span>
               </DropdownMenuItem>
             );
           })}
           <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-xs font-normal text-zinc-500">
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
             Applies to
           </DropdownMenuLabel>
           <DropdownMenuRadioGroup

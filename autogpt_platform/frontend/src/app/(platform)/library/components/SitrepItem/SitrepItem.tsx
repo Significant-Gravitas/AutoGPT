@@ -132,7 +132,7 @@ export function SitrepItem({ item }: Props) {
           <OverflowText
             value={item.message}
             variant="small"
-            className="leading-tight text-zinc-500"
+            className="leading-tight text-muted-foreground"
           />
         </div>
       </div>

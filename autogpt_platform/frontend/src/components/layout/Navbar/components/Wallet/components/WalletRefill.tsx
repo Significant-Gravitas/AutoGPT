@@ -103,7 +103,7 @@ export function WalletRefill() {
             <div className="mt-2 justify-start font-sans text-sm leading-snug font-medium text-zinc-900">
               One-time top-up
             </div>
-            <div className="mt-1 justify-start font-sans text-xs leading-tight font-normal text-zinc-500">
+            <div className="mt-1 justify-start font-sans text-xs leading-tight font-normal text-muted-foreground">
               Enter an amount (min. $5) and add credits instantly.
             </div>
             <TopUpForm submitLabel="Top up" size="small" />
@@ -112,7 +112,7 @@ export function WalletRefill() {
             <div className="justify-start font-sans text-sm leading-snug font-medium text-zinc-900">
               Auto-refill
             </div>
-            <div className="mt-1 justify-start font-sans text-xs leading-tight font-normal text-zinc-500">
+            <div className="mt-1 justify-start font-sans text-xs leading-tight font-normal text-muted-foreground">
               Choose a one-time top-up or set up automatic refills.
             </div>
 
@@ -167,7 +167,7 @@ export function WalletRefill() {
             </Form>
           </TabsContent>
           <div className="mb-3 justify-start font-sans text-xs leading-tight font-normal">
-            <span className="text-zinc-500">
+            <span className="text-muted-foreground">
               To update your billing details, head to{" "}
             </span>
             <Link

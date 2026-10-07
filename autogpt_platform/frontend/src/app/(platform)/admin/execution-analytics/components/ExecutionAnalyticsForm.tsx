@@ -296,7 +296,7 @@ export function ExecutionAnalyticsForm() {
   if (configLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="text-zinc-500">Loading configuration...</div>
+        <div className="text-muted-foreground">Loading configuration...</div>
       </div>
     );
   }

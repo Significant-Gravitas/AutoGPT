@@ -81,7 +81,7 @@ export function BalanceCard({ index = 0 }: Props) {
           </Dialog.Trigger>
           <Dialog.Content>
             <div className="flex flex-col gap-3">
-              <Text variant="small" as="span" className="text-zinc-500">
+              <Text variant="small" as="span" className="text-muted-foreground">
                 We&apos;ll redirect you to Stripe to complete your purchase.
               </Text>
               <Input

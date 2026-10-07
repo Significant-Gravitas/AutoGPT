@@ -32,7 +32,10 @@ export function TimezoneNotice() {
 
   return (
     <div className="mt-1 flex items-center gap-2 rounded-md bg-zinc-100/50 p-3">
-      <Icon icon={InformationCircleIcon} className="h-4 w-4 text-zinc-500" />
+      <Icon
+        icon={InformationCircleIcon}
+        className="h-4 w-4 text-muted-foreground"
+      />
       <Text variant="body" tone="muted">
         Schedule will run in your timezone:{" "}
         <span className="font-medium">{tzName}</span>

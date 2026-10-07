@@ -43,7 +43,7 @@ export function AccountMenuOrgList() {
   if (orgs.length === 0) {
     return (
       <div className="flex flex-col gap-2 p-2">
-        <div className="px-2 py-1 text-sm text-zinc-500">
+        <div className="px-2 py-1 text-sm text-muted-foreground">
           No organizations yet
         </div>
         {createOrgButton}
@@ -111,7 +111,7 @@ export function AccountMenuOrgList() {
             ))}
             <Link
               href="/org/teams"
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100"
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-zinc-100"
             >
               <Icon icon={Settings02Icon} size={14} />
               <span>Manage teams</span>

@@ -25,12 +25,15 @@ export function DebugPanel({
           <Icon
             icon={icon}
             size={22}
-            className="mt-0.5 shrink-0 text-zinc-500"
+            className="mt-0.5 shrink-0 text-muted-foreground"
           />
           <div className="flex flex-col gap-1">
             <Text variant="h5">{title}</Text>
             {description ? (
-              <Text variant="small" className="max-w-prose text-zinc-500">
+              <Text
+                variant="small"
+                className="max-w-prose text-muted-foreground"
+              >
                 {description}
               </Text>
             ) : null}
@@ -51,7 +54,7 @@ interface FieldProps {
 export function DebugField({ label, value }: FieldProps) {
   return (
     <div className="flex flex-col gap-1 rounded-xl bg-zinc-50 px-4 py-3">
-      <Text variant="label" className="text-zinc-500">
+      <Text variant="label" className="text-muted-foreground">
         {label}
       </Text>
       <Text variant="body" unmask={false} className="font-mono break-all">
@@ -63,7 +66,7 @@ export function DebugField({ label, value }: FieldProps) {
 
 export function DebugNote({ children }: { children: ReactNode }) {
   return (
-    <Text variant="small" className="max-w-prose text-zinc-500">
+    <Text variant="small" className="max-w-prose text-muted-foreground">
       {children}
     </Text>
   );

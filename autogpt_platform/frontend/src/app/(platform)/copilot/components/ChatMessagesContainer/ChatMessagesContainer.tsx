@@ -557,7 +557,7 @@ export function ChatMessagesContainer({
                 <Text
                   key={message.id}
                   variant="small"
-                  className="py-1 text-center text-zinc-500"
+                  className="py-1 text-center text-muted-foreground"
                 >
                   Approval answered
                 </Text>
@@ -734,7 +734,7 @@ export function ChatMessagesContainer({
                       const date = new Date(createdAt);
                       if (Number.isNaN(date.getTime())) return null;
                       return (
-                        <span className="text-[11px] text-zinc-500 tabular-nums">
+                        <span className="text-[11px] text-muted-foreground tabular-nums">
                           {date.toLocaleString(undefined, {
                             dateStyle: "medium",
                             timeStyle: "short",
@@ -816,7 +816,7 @@ export function ChatMessagesContainer({
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-sm text-slate-500">
-                    <LoadingSpinner className="h-4 w-4 text-zinc-500" />
+                    <LoadingSpinner className="h-4 w-4 text-muted-foreground" />
                     <span>Retrieving latest messages</span>
                   </div>
                 )}

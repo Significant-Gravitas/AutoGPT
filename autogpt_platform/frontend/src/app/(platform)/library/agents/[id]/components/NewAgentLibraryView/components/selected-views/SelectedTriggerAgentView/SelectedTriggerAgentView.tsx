@@ -120,8 +120,8 @@ export function SelectedTriggerAgentView({
                     <Text variant="large-medium">Recurrence</Text>
                     <Text variant="body" className="flex items-center gap-3">
                       {humanizeCronExpression(schedule.cron)}{" "}
-                      <span className="text-zinc-500">&middot;</span>{" "}
-                      <span className="text-zinc-500">
+                      <span className="text-muted-foreground">&middot;</span>{" "}
+                      <span className="text-muted-foreground">
                         {getTimezoneDisplayName(
                           displayTimezone || schedule.timezone || "UTC",
                         )}
@@ -143,8 +143,8 @@ export function SelectedTriggerAgentView({
                           hour12: false,
                         },
                       )}{" "}
-                      <span className="text-zinc-500">&middot;</span>{" "}
-                      <span className="text-zinc-500">
+                      <span className="text-muted-foreground">&middot;</span>{" "}
+                      <span className="text-muted-foreground">
                         {getTimezoneDisplayName(
                           displayTimezone || schedule.timezone || "UTC",
                         )}

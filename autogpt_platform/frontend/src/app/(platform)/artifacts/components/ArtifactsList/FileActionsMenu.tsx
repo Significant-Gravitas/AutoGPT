@@ -55,7 +55,7 @@ export function FileActionsMenu({ file, className }: Props) {
             withTooltip={false}
             aria-label={`Actions for ${file.name}`}
             className={cn(
-              "shrink-0 rounded-full border-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900",
+              "shrink-0 rounded-full border-0 text-muted-foreground hover:bg-zinc-100 hover:text-zinc-900",
               className,
             )}
             data-testid="artifacts-card-menu"

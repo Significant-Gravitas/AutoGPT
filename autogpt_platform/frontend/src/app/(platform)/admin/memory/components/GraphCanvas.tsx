@@ -10,7 +10,7 @@ import type { GraphEdge } from "@/app/api/__generated__/models/graphEdge";
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
       Loading graph engine…
     </div>
   ),

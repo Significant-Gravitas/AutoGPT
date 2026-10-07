@@ -26,7 +26,7 @@ export function EmptyState({ content, compact = false }: Props) {
     return (
       <Text
         variant="body"
-        className="px-2 py-6 text-zinc-500"
+        className="px-2 py-6 text-muted-foreground"
         data-testid="artifacts-empty"
       >
         {content.title}
@@ -67,7 +67,7 @@ export function EmptyState({ content, compact = false }: Props) {
           </Text>
         </motion.div>
         <motion.div {...fadeUp(0.36)}>
-          <Text variant="body" className="text-zinc-500">
+          <Text variant="body" className="text-muted-foreground">
             {content.description}
           </Text>
         </motion.div>

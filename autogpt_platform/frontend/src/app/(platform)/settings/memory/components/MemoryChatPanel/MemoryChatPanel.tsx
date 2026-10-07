@@ -84,7 +84,7 @@ export function MemoryChatPanel({
                 </Button>
               </div>
             ) : isStarting || !sessionId ? (
-              <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-zinc-500">
+              <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-muted-foreground">
                 Starting memory chat…
               </div>
             ) : (

@@ -114,7 +114,7 @@ export function ExpertIntegrationGroups({
             className="w-full overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm"
           >
             <AccordionItem value={group.id} className="border-b-0">
-              <AccordionTrigger className="px-3 py-2.5 pr-4 hover:no-underline [&>svg]:size-4 [&>svg]:text-zinc-500">
+              <AccordionTrigger className="px-3 py-2.5 pr-4 hover:no-underline [&>svg]:size-4 [&>svg]:text-muted-foreground">
                 <div className="flex items-center gap-2.5">
                   <IntegrationLogo
                     provider={group.id}
@@ -200,7 +200,7 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
           disabled={isRemoving}
           aria-busy={isRemoving}
           aria-label={`Remove ${name}`}
-          className="text-zinc-500 hover:border-transparent hover:bg-zinc-100 hover:text-red-500 focus-visible:ring-zinc-400 disabled:text-zinc-500 disabled:opacity-50"
+          className="text-muted-foreground hover:border-transparent hover:bg-zinc-100 hover:text-red-500 focus-visible:ring-zinc-400 disabled:text-zinc-500 disabled:opacity-50"
         >
           {isRemoving ? (
             <Icon icon={Loading03Icon} size={16} className="animate-spin" />

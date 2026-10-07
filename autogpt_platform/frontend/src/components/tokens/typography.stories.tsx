@@ -42,7 +42,7 @@ function VariantRow({ variant }: VariantRowProps) {
         <Text variant="body-medium" className="font-mono text-zinc-800">
           {variant}
         </Text>
-        <Text variant="small" className="font-mono text-zinc-500">
+        <Text variant="small" className="font-mono text-muted-foreground">
           &lt;{variantElementMap[variant]}&gt;
         </Text>
       </div>
@@ -50,7 +50,7 @@ function VariantRow({ variant }: VariantRowProps) {
         <Text variant={variant} as="div">
           The quick brown fox jumps over the lazy dog
         </Text>
-        <Text variant="small" className="font-mono text-zinc-500">
+        <Text variant="small" className="font-mono text-muted-foreground">
           {variants[variant]}
         </Text>
       </div>
@@ -185,7 +185,7 @@ export function AllVariants() {
           <Text
             variant="h4"
             as="h2"
-            className="border-b border-zinc-200 pb-2 text-zinc-500"
+            className="border-b border-zinc-200 pb-2 text-muted-foreground"
           >
             Headings (Poppins)
           </Text>
@@ -198,7 +198,7 @@ export function AllVariants() {
           <Text
             variant="h4"
             as="h2"
-            className="border-b border-zinc-200 pb-2 text-zinc-500"
+            className="border-b border-zinc-200 pb-2 text-muted-foreground"
           >
             Body and Labels (Geist Sans)
           </Text>
@@ -211,7 +211,7 @@ export function AllVariants() {
           <Text
             variant="h4"
             as="h2"
-            className="border-b border-zinc-200 pb-2 text-zinc-500"
+            className="border-b border-zinc-200 pb-2 text-muted-foreground"
           >
             Tones
           </Text>
@@ -221,7 +221,10 @@ export function AllVariants() {
                 <Text variant="body" tone={tone}>
                   tone=&quot;{tone}&quot;
                 </Text>
-                <Text variant="small" className="font-mono text-zinc-500">
+                <Text
+                  variant="small"
+                  className="font-mono text-muted-foreground"
+                >
                   {tones[tone]}
                 </Text>
               </div>

@@ -27,7 +27,7 @@ export function CategoryFilter({ selected, onSelect }: Props) {
       role="group"
       aria-label="Browse experts by category"
     >
-      <span className="text-sm font-medium text-zinc-500">
+      <span className="text-sm font-medium text-muted-foreground">
         Browse experts by category
       </span>
       {/* One flex item, so the whole list drops below the label before it

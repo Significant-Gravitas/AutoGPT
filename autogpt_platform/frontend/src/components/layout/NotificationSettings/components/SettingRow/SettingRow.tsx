@@ -41,7 +41,7 @@ export function SettingRow({
           id={descriptionId}
           variant="small"
           as="span"
-          className="text-zinc-500"
+          className="text-muted-foreground"
         >
           {description}
         </Text>

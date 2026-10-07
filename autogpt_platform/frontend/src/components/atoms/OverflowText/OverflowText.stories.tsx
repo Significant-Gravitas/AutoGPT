@@ -109,19 +109,19 @@ export const DifferentWidths: Story = {
     return (
       <div className="flex flex-col gap-8">
         <div className="flex flex-col gap-2">
-          <span className="text-xs text-zinc-500">Width: 200px</span>
+          <span className="text-xs text-muted-foreground">Width: 200px</span>
           <div className="w-[200px]">
             <OverflowText value={longText} variant="body" />
           </div>
         </div>
         <div className="flex flex-col gap-2">
-          <span className="text-xs text-zinc-500">Width: 300px</span>
+          <span className="text-xs text-muted-foreground">Width: 300px</span>
           <div className="w-[300px]">
             <OverflowText value={longText} variant="body" />
           </div>
         </div>
         <div className="flex flex-col gap-2">
-          <span className="text-xs text-zinc-500">Width: 400px</span>
+          <span className="text-xs text-muted-foreground">Width: 400px</span>
           <div className="w-[400px]">
             <OverflowText value={longText} variant="body" />
           </div>

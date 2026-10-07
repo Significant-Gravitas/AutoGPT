@@ -63,7 +63,7 @@ export function TokenDevtoolBadge({ sessionId, className }: Props) {
             context === null ? "unknown" : formatTokenCount(context)
           }`}
           className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700",
+            "flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-zinc-100 hover:text-zinc-700",
             className,
           )}
         >
@@ -84,7 +84,7 @@ export function TokenDevtoolBadge({ sessionId, className }: Props) {
           <span className="text-sm font-medium text-zinc-800">
             Context window
           </span>
-          <span className="font-mono text-xs text-zinc-500">
+          <span className="font-mono text-xs text-muted-foreground">
             {context === null ? "—" : `~${formatTokenCount(context)}`} /{" "}
             {formatTokenCount(MODEL_CONTEXT_WINDOW)}
           </span>

@@ -33,7 +33,7 @@ export function ListView({
         <Icon
           icon={Search01Icon}
           size={20}
-          className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-zinc-500"
+          className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-muted-foreground"
         />
         <input
           type="text"
@@ -47,7 +47,7 @@ export function ListView({
 
       {providers.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-200 py-10 text-center">
-          <Icon icon={Plug01Icon} size={24} className="text-zinc-500" />
+          <Icon icon={Plug01Icon} size={24} className="text-muted-foreground" />
           <Text variant="body" tone="secondary" unmask={false}>
             {query.trim()
               ? `No services match "${query.trim()}"`

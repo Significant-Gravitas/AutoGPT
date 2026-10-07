@@ -45,7 +45,7 @@ export function AutoRefillCard({ index = 0 }: Props) {
           <Text variant="body-medium" as="span">
             Auto-refill
           </Text>
-          <Text variant="body" as="span" className="text-zinc-500">
+          <Text variant="body" as="span" className="text-muted-foreground">
             {isEnabled && config
               ? `Refills $${(config.amount / 100).toFixed(0)} when balance drops below $${(config.threshold / 100).toFixed(0)}.`
               : "Top up automatically when your balance gets low."}

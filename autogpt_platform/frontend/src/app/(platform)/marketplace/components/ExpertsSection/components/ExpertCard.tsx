@@ -83,7 +83,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
 
         {skills.length > 0 ? (
           <div>
-            <div className="mb-1 text-sm text-zinc-500">Skills:</div>
+            <div className="mb-1 text-sm text-muted-foreground">Skills:</div>
             <div className="flex flex-col items-start">
               {named.map((skill) => (
                 <span
@@ -112,7 +112,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
                       className={cn(
                         CHIP_SHAPE,
                         CHIP_SIZE.small,
-                        "h-6 cursor-default border-transparent px-0 text-zinc-500 outline-hidden focus-visible:ring-2 focus-visible:ring-purple-600",
+                        "h-6 cursor-default border-transparent px-0 text-muted-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-purple-600",
                       )}
                     >
                       +{restSkills.length} skills

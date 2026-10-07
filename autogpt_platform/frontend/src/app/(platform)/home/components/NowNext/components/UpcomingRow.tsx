@@ -24,7 +24,7 @@ export function UpcomingRow({ item }: Props) {
         >
           <span>{item.title}</span>
           {item.kind === "agent" ? (
-            <span className="font-normal text-zinc-500"> workflow</span>
+            <span className="font-normal text-muted-foreground"> workflow</span>
           ) : null}
         </Text>
         <Text variant="body" tone="muted" className="truncate">
@@ -58,7 +58,7 @@ function TaskMarker({ item }: Props) {
     );
   }
   return (
-    <span className="flex size-9 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 ring-2 ring-white">
+    <span className="flex size-9 items-center justify-center rounded-full bg-zinc-100 text-muted-foreground ring-2 ring-white">
       <Icon icon={Calendar03Icon} size={15} aria-hidden="true" />
     </span>
   );

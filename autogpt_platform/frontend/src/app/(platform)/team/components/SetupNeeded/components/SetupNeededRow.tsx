@@ -33,7 +33,7 @@ export function SetupNeededRow({
         <Icon
           icon={Calendar03Icon}
           size={18}
-          className="shrink-0 text-zinc-500"
+          className="shrink-0 text-muted-foreground"
           aria-hidden="true"
         />
       )}

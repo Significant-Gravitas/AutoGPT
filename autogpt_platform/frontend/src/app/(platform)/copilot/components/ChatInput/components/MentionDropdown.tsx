@@ -184,7 +184,7 @@ function IntegrationOption({
         <span className="block truncate font-medium" title={integration.name}>
           {integration.name}
         </span>
-        <span className="block truncate text-xs text-zinc-500">
+        <span className="block truncate text-xs text-muted-foreground">
           {integration.providerName}
           {integration.username ? ` · ${integration.username}` : ""}
         </span>
@@ -204,7 +204,7 @@ function FolderOption({
     <>
       <Icon icon={Folder01Icon} className="h-4 w-4 shrink-0 text-zinc-900" />
       <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-      <span className="shrink-0 text-xs text-zinc-500">{count}</span>
+      <span className="shrink-0 text-xs text-muted-foreground">{count}</span>
     </>
   );
 }

@@ -258,7 +258,7 @@ export function SchedulesTable({
                   />
                 </div>
               ) : schedules.length === 0 ? (
-                <div className="py-8 text-center text-zinc-500">
+                <div className="py-8 text-center text-muted-foreground">
                   No schedules found
                 </div>
               ) : (
@@ -307,7 +307,7 @@ export function SchedulesTable({
                             <TableCell>{schedule.schedule_name}</TableCell>
                             <TableCell>
                               <div>{schedule.graph_name || "Unknown"}</div>
-                              <div className="font-mono text-xs text-zinc-500">
+                              <div className="font-mono text-xs text-muted-foreground">
                                 v{schedule.graph_version}
                               </div>
                             </TableCell>
@@ -318,7 +318,7 @@ export function SchedulesTable({
                                 )}
                               </div>
                               <div
-                                className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-zinc-500 hover:text-zinc-700"
+                                className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-muted-foreground hover:text-zinc-700"
                                 onClick={() => {
                                   navigator.clipboard.writeText(
                                     schedule.user_id,
@@ -343,7 +343,7 @@ export function SchedulesTable({
                                   <code className="rounded-sm bg-zinc-100 px-2 py-1 text-xs">
                                     {schedule.cron}
                                   </code>
-                                  <div className="text-xs text-zinc-500">
+                                  <div className="text-xs text-muted-foreground">
                                     {schedule.timezone}
                                   </div>
                                 </>

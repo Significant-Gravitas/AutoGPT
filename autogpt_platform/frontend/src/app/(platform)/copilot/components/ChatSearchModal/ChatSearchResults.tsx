@@ -91,7 +91,7 @@ export function ChatSearchResults({
                 aria-hidden="true"
                 className={cn(
                   "h-4 w-4 shrink-0 transition-colors duration-150",
-                  isHighlighted ? "text-zinc-900" : "text-zinc-500",
+                  isHighlighted ? "text-zinc-900" : "text-muted-foreground",
                 )}
               />
               <ChatOriginIcon sourcePlatform={session.source_platform} />

@@ -75,7 +75,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
           >
             {title}
           </Text>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-zinc-500">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
               <Avatar className="h-5 w-5">
                 {skill.creator_avatar ? (
@@ -132,7 +132,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
               Added
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-base font-medium text-zinc-500 transition-colors duration-200 group-hover:text-zinc-900">
+            <span className="flex items-center gap-1.5 text-base font-medium text-muted-foreground transition-colors duration-200 group-hover:text-zinc-900">
               View
               <Icon
                 icon={ArrowRight02Icon}

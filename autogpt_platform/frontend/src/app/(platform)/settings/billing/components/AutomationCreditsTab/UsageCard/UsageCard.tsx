@@ -61,7 +61,7 @@ export function UsageCard({ index = 0 }: Props) {
             <Text variant="large-medium" as="span" className="tabular-nums">
               ${totalSpent.toFixed(2)}
             </Text>
-            <Text variant="body" as="span" className="text-zinc-500">
+            <Text variant="body" as="span" className="text-muted-foreground">
               · {totalRuns} runs
             </Text>
           </div>
@@ -104,13 +104,25 @@ export function UsageCard({ index = 0 }: Props) {
               </div>
 
               <div className="flex justify-between pl-1">
-                <Text variant="small" as="span" className="text-zinc-500">
+                <Text
+                  variant="small"
+                  as="span"
+                  className="text-muted-foreground"
+                >
                   {firstDate}
                 </Text>
-                <Text variant="small" as="span" className="text-zinc-500">
+                <Text
+                  variant="small"
+                  as="span"
+                  className="text-muted-foreground"
+                >
                   {middleDate}
                 </Text>
-                <Text variant="small" as="span" className="text-zinc-500">
+                <Text
+                  variant="small"
+                  as="span"
+                  className="text-muted-foreground"
+                >
                   {lastDate}
                 </Text>
               </div>

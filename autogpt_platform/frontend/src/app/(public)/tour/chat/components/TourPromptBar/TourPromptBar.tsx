@@ -65,7 +65,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
       {!isDisabled && isTyped && (
         <span className="hidden shrink-0 items-center gap-1 text-xs text-zinc-400 sm:flex">
           Press
-          <kbd className="rounded-sm border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-sans text-[0.7rem] text-zinc-500">
+          <kbd className="rounded-sm border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-sans text-[0.7rem] text-muted-foreground">
             Enter
           </kbd>
         </span>

@@ -133,7 +133,7 @@ export function MobileSubmissionItem({
                 <UIIcon
                   icon={LinkSquare01Icon}
                   size={14}
-                  className="shrink-0 text-zinc-500"
+                  className="shrink-0 text-muted-foreground"
                   aria-hidden
                 />
               </Link>
@@ -150,7 +150,7 @@ export function MobileSubmissionItem({
             <Text
               variant="small"
               as="span"
-              className="mt-0.5 line-clamp-2 wrap-break-word text-zinc-500"
+              className="mt-0.5 line-clamp-2 wrap-break-word text-muted-foreground"
             >
               {submission.description}
             </Text>
@@ -163,7 +163,7 @@ export function MobileSubmissionItem({
               type="button"
               aria-label="Submission actions"
               data-testid="submission-actions"
-              className="-mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.92] motion-reduce:active:scale-100"
+              className="-mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.92] motion-reduce:active:scale-100"
             >
               <UIIcon icon={MoreVerticalIcon} size={18} />
             </button>
@@ -227,13 +227,13 @@ export function MobileSubmissionItem({
           <UIIcon icon={visual.Icon} size={10} />
           {visual.label}
         </span>
-        <span className="text-xs whitespace-nowrap text-zinc-500">
+        <span className="text-xs whitespace-nowrap text-muted-foreground">
           {formatSubmittedAt(submission.submitted_at)}
         </span>
         <span aria-hidden className="text-xs text-zinc-300">
           ·
         </span>
-        <span className="text-xs whitespace-nowrap text-zinc-500 tabular-nums">
+        <span className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
           {formatRuns(submission.run_count ?? 0)} runs
         </span>
         {hasRating ? (
@@ -241,7 +241,7 @@ export function MobileSubmissionItem({
             <span aria-hidden className="text-xs text-zinc-300">
               ·
             </span>
-            <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap text-zinc-500 tabular-nums">
+            <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
               {submission.review_avg_rating!.toFixed(1)}
               <UIIcon icon={StarIcon} size={10} className="text-yellow-500" />
             </span>

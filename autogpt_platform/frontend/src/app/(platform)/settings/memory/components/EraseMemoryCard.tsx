@@ -35,7 +35,7 @@ export function EraseMemoryCard({
         <Text variant="body-medium" as="span" className="text-red-700">
           Erase {scopeName}&apos;s memory
         </Text>
-        <Text variant="small" as="span" className="text-zinc-500">
+        <Text variant="small" as="span" className="text-muted-foreground">
           Permanently delete everything this memory holds. This can&apos;t be
           undone.
         </Text>

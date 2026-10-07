@@ -17,7 +17,7 @@ export function ScopeCard({ scopeExpertID, experts, onSelect }: Props) {
         <Text variant="body-medium" as="span">
           Memory scope
         </Text>
-        <Text variant="small" as="span" className="text-zinc-500">
+        <Text variant="small" as="span" className="text-muted-foreground">
           Choose whose memory you&apos;re looking at. Experts keep their own.
         </Text>
       </div>

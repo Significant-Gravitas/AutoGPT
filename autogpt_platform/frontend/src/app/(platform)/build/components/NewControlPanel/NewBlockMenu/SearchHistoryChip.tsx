@@ -32,7 +32,7 @@ export const SearchHistoryChip: SearchHistoryChipComponent = ({
     >
       <Icon
         icon={ArrowUpRight01Icon}
-        className="h-6 w-6 text-zinc-500"
+        className="h-6 w-6 text-muted-foreground"
         strokeWidth={1.25}
       />
       <span className="font-sans text-sm leading-5.5 font-normal text-zinc-800">

@@ -19,7 +19,7 @@ export function IntegrationsTab() {
       />
       <Link
         href={`/team/${expert.id}`}
-        className="px-1 text-xs text-zinc-500 underline hover:text-zinc-800"
+        className="px-1 text-xs text-muted-foreground underline hover:text-zinc-800"
       >
         Open {expert.name}&apos;s page
       </Link>

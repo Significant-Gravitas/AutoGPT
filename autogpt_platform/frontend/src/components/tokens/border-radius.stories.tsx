@@ -180,15 +180,24 @@ export function AllVariants() {
                 <Text variant="body-medium" className="font-mono text-zinc-800">
                   {radius.name}
                 </Text>
-                <Text variant="small" className="font-mono text-zinc-500">
+                <Text
+                  variant="small"
+                  className="font-mono text-muted-foreground"
+                >
                   {utilityClass("rounded", radius.name)}
                 </Text>
               </div>
               <div className="flex w-48 flex-col text-right">
-                <Text variant="small" className="font-mono text-zinc-500">
+                <Text
+                  variant="small"
+                  className="font-mono text-muted-foreground"
+                >
                   {radius.value}
                 </Text>
-                <Text variant="small" className="font-mono text-zinc-500">
+                <Text
+                  variant="small"
+                  className="font-mono text-muted-foreground"
+                >
                   {formatPx(radius.px) ?? (
                     <MeasuredRadius value={radius.value} />
                   )}

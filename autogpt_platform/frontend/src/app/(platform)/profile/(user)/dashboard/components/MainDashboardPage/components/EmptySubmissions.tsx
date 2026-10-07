@@ -7,7 +7,7 @@ export function EmptySubmissions() {
     <div className="flex min-h-[400px] flex-col items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50">
       <div className="flex flex-col items-center gap-4 text-center">
         <div className="rounded-full bg-zinc-100 p-3">
-          <Icon icon={InboxIcon} size={32} className="text-zinc-500" />
+          <Icon icon={InboxIcon} size={32} className="text-muted-foreground" />
         </div>
         <div className="space-y-2">
           <Text variant="large-medium" tone="primary">

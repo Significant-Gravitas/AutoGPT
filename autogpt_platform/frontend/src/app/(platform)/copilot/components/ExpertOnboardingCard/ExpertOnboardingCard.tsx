@@ -43,7 +43,7 @@ export function ExpertOnboardingCard({ part }: Props) {
       part.state === "output-error" || part.state === "output-available";
     if (isSettled) {
       return (
-        <div className="py-2 text-sm text-zinc-500">
+        <div className="py-2 text-sm text-muted-foreground">
           Couldn&apos;t open the setup questions.
         </div>
       );
@@ -99,7 +99,7 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
 
   if (isDone) {
     return (
-      <div className="flex items-center gap-2 py-2 text-sm text-zinc-500">
+      <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
         <Icon
           icon={CheckmarkCircle02Icon}
           size={16}
@@ -120,7 +120,7 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
               {name}
             </span>
             {expert?.role && (
-              <span className="truncate text-xs text-zinc-500">
+              <span className="truncate text-xs text-muted-foreground">
                 {getExpertRoleLabel(expert.role)}
               </span>
             )}

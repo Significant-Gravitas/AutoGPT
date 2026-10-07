@@ -74,14 +74,14 @@ export function ConnectProviderRow({
           )}
         </span>
         {description && (
-          <span className="truncate text-xs leading-4 text-zinc-500">
+          <span className="truncate text-xs leading-4 text-muted-foreground">
             {description}
           </span>
         )}
       </span>
       <span
         aria-hidden
-        className="flex size-6 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-zinc-500 transition-colors group-hover:bg-zinc-200 group-hover:text-zinc-700"
+        className="flex size-6 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-muted-foreground transition-colors group-hover:bg-zinc-200 group-hover:text-zinc-700"
       >
         <Icon icon={Add01Icon} size={14} />
       </span>

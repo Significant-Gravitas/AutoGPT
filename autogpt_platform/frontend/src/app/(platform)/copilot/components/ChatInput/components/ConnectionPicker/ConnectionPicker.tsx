@@ -183,7 +183,7 @@ export function ConnectionPicker({
         }
         className={cn(
           showsTier
-            ? "size-8 p-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+            ? "size-8 p-0 text-muted-foreground hover:bg-zinc-100 hover:text-zinc-700"
             : "h-9 min-w-0 gap-1.5 px-2.5 py-1 text-sm",
           className,
         )}
@@ -362,7 +362,13 @@ export function ConnectionPicker({
  */
 function OfferMark({ offer }: { offer: AIConnectionOffer }) {
   if (offer.auth_method === "deployment") {
-    return <Icon icon={CloudServerIcon} size={20} className="text-zinc-500" />;
+    return (
+      <Icon
+        icon={CloudServerIcon}
+        size={20}
+        className="text-muted-foreground"
+      />
+    );
   }
   return <IntegrationLogo provider={offer.provider_family} size={20} />;
 }

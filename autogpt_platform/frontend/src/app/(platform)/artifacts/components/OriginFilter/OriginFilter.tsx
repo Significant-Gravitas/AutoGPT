@@ -33,7 +33,7 @@ export function OriginFilter({ value, onChange }: Props) {
   return (
     <LayoutGroup id="artifacts-origin-filter">
       <div className="flex flex-col gap-1">
-        <Text variant="small" as="span" className="pl-4 text-zinc-500">
+        <Text variant="small" as="span" className="pl-4 text-muted-foreground">
           Type
         </Text>
         <div
@@ -72,7 +72,7 @@ function OriginTab({ option, active, onClick }: OriginTabProps) {
       onClick={onClick}
       className={cn(
         "relative h-auto min-w-0 rounded-full border-0 px-4 py-2 text-sm font-medium outline-hidden hover:bg-transparent focus-visible:ring-2 focus-visible:ring-zinc-400",
-        active ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-900",
+        active ? "text-zinc-900" : "text-muted-foreground hover:text-zinc-900",
       )}
       data-testid={`artifacts-origin-filter-${option.value}`}
     >

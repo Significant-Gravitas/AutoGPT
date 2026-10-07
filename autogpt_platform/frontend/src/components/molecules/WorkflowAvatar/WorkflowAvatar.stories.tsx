@@ -73,7 +73,7 @@ function renderAllSizes() {
     <div className="flex flex-col gap-4">
       {([18, 36] as const).map((size) => (
         <div key={size} className="flex items-center gap-3">
-          <Text variant="small" className="w-10 text-zinc-500">
+          <Text variant="small" className="w-10 text-muted-foreground">
             {size}px
           </Text>
           <WorkflowAvatar

@@ -28,7 +28,7 @@ export function ActorMark({ actor }: Props) {
     return <AutopilotAvatar size={18} />;
   }
   return (
-    <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
+    <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-zinc-100 text-muted-foreground">
       <Icon icon={Robot01Icon} size={11} aria-hidden="true" />
     </span>
   );

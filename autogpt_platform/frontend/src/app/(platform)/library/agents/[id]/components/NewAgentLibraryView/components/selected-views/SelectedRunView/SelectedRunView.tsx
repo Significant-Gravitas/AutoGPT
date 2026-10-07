@@ -175,7 +175,7 @@ export function SelectedRunView({
                   <div className="scroll-mt-4">
                     <RunDetailCard title="Output">
                       {isLoading ? (
-                        <div className="text-zinc-500">
+                        <div className="text-muted-foreground">
                           <LoadingSpinner />
                         </div>
                       ) : run && "outputs" in run ? (

@@ -34,7 +34,7 @@ const STATUS_CONFIG: Record<
   idle: {
     label: "Idle",
     bg: "",
-    text: "text-zinc-500",
+    text: "text-muted-foreground",
     pulse: false,
   },
 };

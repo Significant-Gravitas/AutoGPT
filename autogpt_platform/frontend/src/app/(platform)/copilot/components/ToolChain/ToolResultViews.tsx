@@ -147,7 +147,7 @@ export function Terminal({ row }: RowProps) {
           unmask={false}
           className="font-mono text-[11px] leading-4 wrap-break-word whitespace-pre-wrap text-zinc-400"
         >
-          <span className="text-zinc-500 select-none">$ </span>
+          <span className="text-muted-foreground select-none">$ </span>
           {command}
         </Text>
       )}

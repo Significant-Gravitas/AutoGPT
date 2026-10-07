@@ -192,7 +192,7 @@ export function ToolIcon({
         isError
           ? "text-red-500"
           : isStreaming
-            ? "text-zinc-500"
+            ? "text-muted-foreground"
             : "text-zinc-400"
       }
     />
