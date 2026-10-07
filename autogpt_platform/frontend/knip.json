@@ -174,11 +174,6 @@
     "src/lib/constants.ts": ["exports"],
     "src/lib/timezone-utils.ts": ["exports"],
     "src/lib/utils.ts": ["exports"],
-    "src/playwright/credentials/accounts.ts": ["exports", "duplicates"],
-    "src/playwright/pages/library.page.ts": ["exports"],
-    "src/playwright/utils/assertion.ts": ["exports"],
-    "src/playwright/utils/auth.ts": ["exports", "types"],
-    "src/playwright/utils/signup.ts": ["exports"],
     "src/types/google.ts": ["types"]
   },
   "ignoreExportsUsedInFile": true
