@@ -214,7 +214,7 @@ const CarouselPrevious = React.forwardRef<
         className={cn(
           "absolute h-[52px] w-[52px] rounded-full",
           orientation === "horizontal"
-            ? "right-20 top-0"
+            ? "top-0 right-20"
             : "-top-12 left-1/2 -translate-x-1/2 rotate-90",
           className,
         )}
@@ -260,7 +260,7 @@ const CarouselNext = React.forwardRef<
         className={cn(
           "absolute h-[52px] w-[52px] rounded-full",
           orientation === "horizontal"
-            ? "right-4 top-0"
+            ? "top-0 right-4"
             : "-bottom-12 left-1/2 -translate-x-1/2 rotate-90",
           className,
         )}
@@ -312,8 +312,8 @@ const CarouselIndicator = React.forwardRef<
           onClick={() => scrollTo(index)}
           className={cn(
             selectedIndex === index
-              ? "h-2 w-[1.5rem] rounded-[39px] bg-neutral-800 transition-all duration-500 dark:bg-neutral-200"
-              : "h-2 w-2 rounded-full bg-neutral-300 transition-all duration-500 dark:bg-neutral-600",
+              ? "h-2 w-[1.5rem] rounded-[39px] bg-neutral-800 transition-all duration-500"
+              : "h-2 w-2 rounded-full bg-neutral-300 transition-all duration-500",
             "cursor-pointer",
           )}
         />

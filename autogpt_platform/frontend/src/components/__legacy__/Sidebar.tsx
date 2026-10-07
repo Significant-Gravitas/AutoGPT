@@ -38,10 +38,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
       <Link
         key={`${link.href}-${index}`}
         href={link.href}
-        className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+        className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white"
       >
         {link.icon || getDefaultIconForLink()}
-        <div className="p-ui-medium text-base font-medium leading-normal">
+        <div className="p-ui-medium text-base leading-normal font-medium">
           {link.text}
         </div>
       </Link>
@@ -54,17 +54,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
         <SheetTrigger asChild>
           <button
             aria-label="Open sidebar menu"
-            className="fixed left-4 top-4 z-50 flex h-14 w-14 items-center justify-center overflow-hidden whitespace-nowrap rounded-lg border border-neutral-500 bg-neutral-200 px-4 py-2 font-sans text-sm font-medium tracking-tight text-neutral-800 transition-colors hover:bg-gray-200/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-gray-700/50 md:block lg:hidden"
+            className="fixed top-4 left-4 z-50 flex h-14 w-14 items-center justify-center overflow-hidden rounded-lg border border-neutral-500 bg-neutral-200 px-4 py-2 font-sans text-sm font-medium tracking-tight whitespace-nowrap text-neutral-800 transition-colors hover:bg-gray-200/50 focus-visible:ring-1 focus-visible:ring-neutral-950 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 md:block lg:hidden"
           >
-            <Menu className="h-8 w-8 stroke-black dark:stroke-white" />
+            <Menu className="h-8 w-8 stroke-black" />
             <span className="sr-only">Open sidebar menu</span>
           </button>
         </SheetTrigger>
         <SheetContent
           side="left"
-          className="z-50 w-[280px] border-none p-0 dark:bg-neutral-900 sm:w-[280px]"
+          className="z-50 w-[280px] border-none p-0 sm:w-[280px]"
         >
-          <div className="h-full w-full rounded-2xl bg-zinc-200 dark:bg-zinc-800">
+          <div className="h-full w-full rounded-2xl bg-zinc-200">
             <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
               {renderLinks()}
             </div>
@@ -73,7 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
       </Sheet>
 
       <div className="relative hidden h-[912px] w-[234px] border-none lg:block">
-        <div className="h-full w-full rounded-2xl bg-zinc-200 dark:bg-zinc-800">
+        <div className="h-full w-full rounded-2xl bg-zinc-200">
           <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
             {renderLinks()}
           </div>

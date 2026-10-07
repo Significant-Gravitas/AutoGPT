@@ -176,7 +176,7 @@ export const WithIcon: Story = {
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button className="rounded-full p-2 hover:bg-gray-100 dark:hover:bg-gray-800">
+            <button className="rounded-full p-2 hover:bg-gray-100">
               <svg
                 width="16"
                 height="16"

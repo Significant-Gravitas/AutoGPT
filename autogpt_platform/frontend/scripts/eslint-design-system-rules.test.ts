@@ -207,6 +207,14 @@ describe("default-palette ban", () => {
     ).toEqual([]);
   });
 
+  it.each(["dark:bg-zinc-900", "hover:dark:text-white", "md:dark:hidden"])(
+    "reports the dark: variant in %s",
+    async (className) => {
+      const [message] = await restrictedClasses(className);
+      expect(message.message).toContain("No `dark:` classes");
+    },
+  );
+
   it("exempts the files in the no-restricted-classes allowlist", async () => {
     const [file] = ALLOWLIST.tailwind["no-restricted-classes"];
     expect(file).toBeDefined();

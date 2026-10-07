@@ -231,6 +231,14 @@ function paletteRestriction([family, replacement]) {
   };
 }
 
+// Dark mode comes from the `.dark` block of semantic variables in
+// src/app/globals.css, never from per-class overrides.
+const DARK_VARIANT_RESTRICTION = {
+  pattern: "(?:^|:)dark:",
+  message:
+    "No `dark:` classes: dark mode will swap the semantic variables in the `.dark` block of src/app/globals.css. Use a semantic class instead. See autogpt_platform/frontend/DESIGN.md.",
+};
+
 export function tailwindBlocks({ allowlist = true } = {}) {
   return [
     {
@@ -268,8 +276,10 @@ export function tailwindBlocks({ allowlist = true } = {}) {
         "better-tailwindcss/no-restricted-classes": [
           "error",
           {
-            restrict:
-              Object.entries(RESTRICTED_PALETTE).map(paletteRestriction),
+            restrict: [
+              ...Object.entries(RESTRICTED_PALETTE).map(paletteRestriction),
+              DARK_VARIANT_RESTRICTION,
+            ],
           },
         ],
       },
