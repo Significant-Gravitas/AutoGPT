@@ -381,13 +381,19 @@ pnpm lint:allowlist
 
 The script lints everything with the allowlist removed, rewrites the file, and prints what it removed and added. Anything it adds is a new violation: fix it rather than committing the addition.
 
+### Story tests
+
+Every story runs as a Vitest test in headless Chromium (`@storybook/addon-vitest`, the `storybook` project in `vitest.config.mts`, part of `pnpm test:unit` and CI). A story fails if it throws, if its `play` function fails, or, with `parameters.a11y.test: "error"`, if axe finds a violation. Every story file declares `"error"` except the ones with known findings, which declare `"todo"` with a comment: the findings show in Storybook's accessibility panel without failing the run. That list only shrinks; set a file back to `"error"` when its findings are fixed.
+
+The known findings are colour contrast, nearly all from tokens: `text-destructive` and white on `bg-destructive` (red-500, 3.6 to 3.7:1), success text (green-600, 3.2 to 3.9:1), the undecided `blue`, `sky` and `yellow-500` text in the renderer stories, accent text on purple tints, and one ARIA value in the legacy multiselect. Moving `--destructive` to red-600 (4.6:1) would clear most of them; that is a design decision, not yet taken.
+
 ## Migration status
 
 Wave 1 (merged into `ds/integration`): lint enforcement, live atom fixes, dead code, Storybook coverage (every component folder has a story, `a11y.test: "error"` declared), and the `admin`, `copilot`, `library`, `profile` and `settings` migrations. Wave 2 (in progress): `build`, `marketplace` and the remaining app routes, `components/contextual` and `layout`, new atoms (Checkbox, Textarea, Separator and others), the dead-code backlog, and this document. Counts before and after are in the audit's "Wave 1 and 2 outcome".
 
 Wave 3 (`ds/20` to `ds/23`): Tailwind 4, the shadcn token rebuild with the decisions above, the 32/36/40 control heights, and the atoms on semantic tokens.
 
-Not done yet: a `test-storybook` runner, and visual regression in CI (the Chromatic job runs only when `CHROMATIC_PROJECT_TOKEN` is set).
+Not done yet: visual regression in CI (the Chromatic job runs only when `CHROMATIC_PROJECT_TOKEN` is set).
 
 ## Deprecated
 

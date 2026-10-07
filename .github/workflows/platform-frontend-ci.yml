@@ -257,7 +257,12 @@ jobs:
       - name: Generate API client
         run: pnpm generate:api
 
-      - name: Run Integration Tests
+      # The `storybook` Vitest project renders every story in headless
+      # Chromium and runs axe on it.
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run integration and story tests
         run: >-
           pnpm exec vitest run
           --coverage

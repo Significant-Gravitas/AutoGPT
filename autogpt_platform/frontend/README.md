@@ -133,7 +133,7 @@ Storybook is a powerful development environment for UI components. It allows you
    pnpm build-storybook
    ```
 
-3. **Storybook tests**: not available yet. `pnpm test-storybook` needs `@storybook/test-runner`, which is not installed; a runner comes with the Storybook 10 upgrade. CI builds Storybook on pull requests that touch `src/components`.
+3. **Storybook tests**: every story runs as a Vitest test in headless Chromium, with axe accessibility checks, as part of `pnpm test:unit` (or `npx vitest run --project storybook` for stories alone; run `pnpm exec playwright install chromium` once first). CI runs them with the integration tests and builds Storybook on pull requests that touch `src/components`.
 
 4. **Writing Stories**:
    Create `.stories.tsx` files alongside your components to define different states and variations of your components.

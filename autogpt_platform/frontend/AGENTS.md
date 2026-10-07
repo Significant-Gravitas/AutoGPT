@@ -68,7 +68,7 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 - **Icons**: Hugeicons (stroke-rounded) only, rendered through the `Icon` atom
 - **Feature Flags**: LaunchDarkly integration
 - **Error Handling**: ErrorCard for render errors, toast for mutations, Sentry for exceptions
-- **Testing**: Vitest + React Testing Library + MSW for integration tests (primary), Playwright for E2E, Storybook for component development (no visual-regression or story test runner in CI yet)
+- **Testing**: Vitest + React Testing Library + MSW for integration tests (primary), Playwright for E2E, Storybook for component development, and every story runs as a Vitest browser test with axe checks (`pnpm test:unit`; no visual regression in CI yet)
 
 ## Environment Configuration
 

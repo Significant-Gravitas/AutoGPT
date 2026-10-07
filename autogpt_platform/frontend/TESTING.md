@@ -168,11 +168,18 @@ If you reset the Docker DB and logins start failing:
 
 ## Storybook
 
-- `pnpm storybook` — run locally
+- `pnpm storybook` — run locally (Storybook 10, `@storybook/nextjs-vite`)
 - `pnpm build-storybook` — build static; CI runs it on pull requests that touch `src/components`
 - When changing components in `src/components`, update or add stories and check them in Storybook
 
-Not running yet: `pnpm test-storybook` points at `@storybook/test-runner`, which is not installed, so stories are not executed as tests and the `a11y: { test: "error" }` parameters are not enforced. Chromatic visual review runs only when the `CHROMATIC_PROJECT_TOKEN` secret is set on the repository. A story test runner (`@storybook/addon-vitest`) is planned with the Storybook 10 upgrade.
+Every story is also a test. `vitest.config.mts` has two projects: `unit` (the integration tests above, in happy-dom) and `storybook` (`@storybook/addon-vitest`), which renders each story in headless Chromium, runs its `play` function, and runs axe on the result. `pnpm test:unit` runs both, and CI runs both in the sharded integration job.
+
+- `npx vitest run --project storybook` — only the stories; `--project unit` for the rest
+- `pnpm exec playwright install chromium` once, locally, if the storybook project cannot find a browser
+- Stories declare `parameters: { a11y: { test: "error" } }`, so an axe violation fails the test. Files with known findings use `"todo"` instead (reported in Storybook's accessibility panel, not failing); see `DESIGN.md`, "Story tests". Never add a new `"todo"`; fix the finding.
+- In VS Code, the Vitest extension and Storybook's testing widget run the same tests.
+
+Chromatic visual review runs only when the `CHROMATIC_PROJECT_TOKEN` secret is set on the repository.
 
 ## TDD Workflow
 
