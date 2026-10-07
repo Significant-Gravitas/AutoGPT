@@ -68,7 +68,7 @@ function WorkspaceImage({ src, alt }: { src: string; alt: string }) {
       <img
         src={src}
         alt={alt}
-        className={`h-auto max-w-full rounded-md border border-gray-200 ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
+        className={`h-auto max-w-full rounded-md border border-zinc-200 ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
         loading="lazy"
         onLoad={() => setLoaded(true)}
         onError={() => setLoaded(true)}
@@ -87,7 +87,7 @@ function WorkspaceVideo({ src, mimeType }: { src: string; mimeType: string }) {
       )}
       <video
         controls
-        className={`h-auto max-w-full rounded-md border border-gray-200 ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
+        className={`h-auto max-w-full rounded-md border border-zinc-200 ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
         preload="metadata"
         onLoadedMetadata={() => setLoaded(true)}
         onError={() => setLoaded(true)}
@@ -148,26 +148,22 @@ function renderWorkspaceFile(
   // Generic file card with icon and download link
   const label = getFileTypeLabel(mimeType);
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
+    <div className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
       <Icon
         icon={File02Icon}
         size={28}
-        className="flex-shrink-0 text-gray-500"
+        className="flex-shrink-0 text-zinc-500"
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+        <span className="truncate text-sm font-medium text-zinc-900">
           {metadata?.filename || label}
         </span>
-        {mimeType && (
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {mimeType}
-          </span>
-        )}
+        {mimeType && <span className="text-xs text-zinc-500">{mimeType}</span>}
       </div>
       <a
         href={downloadURL}
         download
-        className="flex-shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+        className="flex-shrink-0 rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-700"
       >
         <Icon icon={Download04Icon} size={18} />
       </a>

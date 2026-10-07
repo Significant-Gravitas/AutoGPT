@@ -1,4 +1,6 @@
 import React, { useRef } from "react";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   ArrowExpandIcon,
   ArrowUpRight01Icon,
@@ -76,24 +78,29 @@ export function DesktopStreamPreview({
         </div>
         {!ownerOnly && (
           <div className="flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="xs"
               onClick={handleFullscreen}
-              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-200"
+              leadingIcon={ArrowExpandIcon}
+              className="text-zinc-600 hover:border-zinc-200 hover:bg-zinc-200"
               aria-label="Fullscreen"
             >
-              <Icon icon={ArrowExpandIcon} size={14} />
               Fullscreen
-            </button>
-            <a
+            </Button>
+            <Button
+              as="NextLink"
               href={value.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-200"
+              variant="ghost"
+              size="xs"
+              leadingIcon={ArrowUpRight01Icon}
+              className="text-zinc-600 hover:border-zinc-200 hover:bg-zinc-200"
             >
-              <Icon icon={ArrowUpRight01Icon} size={14} />
               Open in new tab
-            </a>
+            </Button>
           </div>
         )}
       </div>
@@ -111,13 +118,17 @@ export function DesktopStreamPreview({
           title={`Interactive desktop (${value.sandbox_id})`}
         />
       )}
-      <p className="border-t border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-700">
+      <Text
+        variant="small-medium"
+        tone="secondary"
+        className="border-t border-zinc-200 bg-zinc-50 px-3 py-2"
+      >
         {value.requires_auth
           ? "Only the owner of this chat can view the live desktop. "
           : ""}
         The AI works on this desktop with full access, so anything signed in
         here is visible to it. Do not sign into personal accounts.
-      </p>
+      </Text>
     </div>
   );
 }

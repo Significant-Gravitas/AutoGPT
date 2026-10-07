@@ -170,8 +170,8 @@ function HighlightedCodeBlock({
   }, [code, supportedLanguage]);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-900 bg-[#020617] shadow-sm">
-      <div className="flex items-center justify-between border-b border-zinc-800 bg-[#111827] px-3 py-2">
+    <div className="overflow-hidden rounded-lg border border-zinc-900 bg-zinc-950 shadow-sm">
+      <div className="flex items-center justify-between border-b border-zinc-800 bg-black px-3 py-2">
         <span className="truncate font-mono text-xs text-zinc-400">
           {filename || "code"}
         </span>

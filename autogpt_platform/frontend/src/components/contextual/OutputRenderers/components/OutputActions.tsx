@@ -83,10 +83,7 @@ export function OutputActions({
         ) : (
           <Icon
             icon={Copy01Icon}
-            className={cn(
-              "size-4",
-              isPrimary ? "text-white" : "text-neutral-500",
-            )}
+            className={cn("size-4", isPrimary ? "text-white" : "text-zinc-500")}
           />
         )}
         {isPrimary && <span>Copy All</span>}
@@ -101,10 +98,7 @@ export function OutputActions({
       >
         <Icon
           icon={Download04Icon}
-          className={cn(
-            "size-4",
-            isPrimary ? "text-white" : "text-neutral-500",
-          )}
+          className={cn("size-4", isPrimary ? "text-white" : "text-zinc-500")}
         />
         {isPrimary && <span>Download All</span>}
       </Button>

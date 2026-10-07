@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   OutputRenderer,
   OutputMetadata,
@@ -117,7 +118,11 @@ function CSVTable({
   }
 
   if (headers.length === 0) {
-    return <p className="p-4 text-sm text-zinc-500">Empty CSV</p>;
+    return (
+      <Text variant="body" tone="muted" className="p-4">
+        Empty CSV
+      </Text>
+    );
   }
 
   return (
