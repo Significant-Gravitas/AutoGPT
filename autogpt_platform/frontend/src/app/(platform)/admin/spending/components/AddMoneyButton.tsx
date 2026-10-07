@@ -5,8 +5,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Label } from "@/components/__legacy__/ui/label";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
+import { Textarea } from "@/components/atoms/Textarea/Textarea";
 import { useRouter } from "next/navigation";
 import { addDollars } from "@/app/(platform)/admin/spending/actions";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -113,9 +112,9 @@ export function AdminAddMoneyButton({
 
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label htmlFor="comments">Comments (Optional)</Label>
                 <Textarea
                   id="comments"
+                  label="Comments (Optional)"
                   name="comments"
                   placeholder="Why are you adding dollars?"
                   defaultValue={defaultComments || "We love you!"}

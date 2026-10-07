@@ -9,8 +9,7 @@ import {
   CancelCircleIcon,
   CheckmarkCircle02Icon,
 } from "@hugeicons/core-free-icons";
-import { Label } from "@/components/__legacy__/ui/label";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
+import { Textarea } from "@/components/atoms/Textarea/Textarea";
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import { useRouter } from "next/navigation";
 import {
@@ -102,9 +101,9 @@ export function ApproveRejectButtons({
 
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label htmlFor="comments">Comments (Optional)</Label>
                 <Textarea
                   id="comments"
+                  label="Comments (Optional)"
                   name="comments"
                   placeholder="Add any comments for the agent creator"
                   defaultValue="Meets all requirements"
