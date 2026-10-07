@@ -1,9 +1,11 @@
 "use client";
 import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
 import { buildEstimatesJson, downloadJson } from "../helpers";
 import { useBlockCostEstimates } from "./useBlockCostEstimates";
 import { Download04Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 export function BlockCostEstimatesContent() {
   const {
@@ -36,38 +38,39 @@ export function BlockCostEstimatesContent() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3 rounded border p-4">
         <div className="flex flex-col gap-1">
-          <label htmlFor="bce-start" className="text-sm">
-            Start date (UTC)
-          </label>
-          <input
+          <Input
             id="bce-start"
+            label="Start date (UTC)"
+            labelVariant="body"
+            size="small"
+            wrapperClassName="mb-0"
             type="date"
-            className="rounded border px-3 py-1.5 text-sm"
             value={start}
             onChange={(e) => setStart(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="bce-end" className="text-sm">
-            End date (UTC)
-          </label>
-          <input
+          <Input
             id="bce-end"
+            label="End date (UTC)"
+            labelVariant="body"
+            size="small"
+            wrapperClassName="mb-0"
             type="date"
-            className="rounded border px-3 py-1.5 text-sm"
             value={end}
             onChange={(e) => setEnd(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="bce-min-samples" className="text-sm">
-            Min samples
-          </label>
-          <input
+          <Input
             id="bce-min-samples"
+            label="Min samples"
+            labelVariant="body"
+            size="small"
+            wrapperClassName="mb-0"
             type="number"
             min={1}
-            className="w-28 rounded border px-3 py-1.5 text-sm"
+            className="w-28"
             value={minSamples}
             onChange={(e) =>
               setMinSamples(Math.max(1, Number(e.target.value) || 1))
@@ -95,14 +98,14 @@ export function BlockCostEstimatesContent() {
 
       {data ? (
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">
+          <Text variant="body" tone="muted">
             {data.total_rows} blocks · window {data.window_days}d (cap{" "}
             {data.max_window_days}d) · min samples {data.min_samples} ·
             generated{" "}
             {data.generated_at instanceof Date
               ? data.generated_at.toISOString()
               : String(data.generated_at)}
-          </p>
+          </Text>
           <div className="overflow-x-auto rounded border">
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
@@ -135,10 +138,10 @@ export function BlockCostEstimatesContent() {
           </div>
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">
+        <Text variant="body" tone="muted">
           Pick a window and click Aggregate to compute per-block average
           credits-per-execution.
-        </p>
+        </Text>
       )}
     </div>
   );
