@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Iterable, Litera
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot import woken_turns
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.model import ChatSession
 from backend.copilot.pending_messages import PendingMessage
@@ -270,11 +271,12 @@ async def wake(
                     is None
                 ):
                     return
+                turn_id = str(uuid.uuid4())
                 await dispatch_turn(
                     slot,
                     session_id=session_id,
                     user_id=user_id,
-                    turn_id=str(uuid.uuid4()),
+                    turn_id=turn_id,
                     message=WAKE_MESSAGE,
                     organization_id=info.organization_id,
                     team_id=info.team_id,
@@ -282,6 +284,10 @@ async def wake(
                     llm_credential_id=info.metadata.llm_credential_id,
                     permissions=permissions,
                     message_metadata=metadata,
+                )
+                # A channel that answered one of these follows this turn.
+                await woken_turns.record(
+                    session_id, [c.review_id for c in calls], turn_id
                 )
         except ConcurrentTurnLimitError:
             await try_enqueue_turn(
