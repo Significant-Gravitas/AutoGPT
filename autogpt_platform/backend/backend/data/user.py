@@ -32,10 +32,16 @@ from backend.data.model import (
     UserIntegrations,
     UserMetadata,
 )
-from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.notifications import (
+    AudienceAction,
+    NotificationPreference,
+    NotificationPreferenceDTO,
+)
 from backend.data.org_migration import ensure_personal_org
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.subscription_trial import get_subscription_trial
+from backend.notifications.queue import queue_audience_change
+from backend.notifications.subscriber_fields import audience_event
 from backend.util.cache import cached
 from backend.util.encryption import JSONCryptor
 from backend.util.exceptions import DatabaseError, NotFoundError
@@ -861,6 +867,9 @@ async def record_signup_consent(
     `marketing_opt_out=False` changes nothing: this can refuse marketing but
     never take a refusal back, which is a settings action.
 
+    A refusal this call records is passed on to MailerLite, so someone who is
+    already a subscriber there stops getting marketing email too.
+
     Returns the row as read after any write, so it shows whichever refusal won.
     """
     try:
@@ -878,16 +887,16 @@ async def record_signup_consent(
         if not stamp_terms and not opt_out:
             return User.from_db(current)
 
-        if await _write_signup_consent(
+        terms_stamped, opted_out = await _write_signup_consent(
             user_id, terms_version if stamp_terms else None, opt_out
-        ):
+        )
+        if terms_stamped or opted_out:
             # Same invalidation as update_user_timezone: the MailerLite gate
             # reads the opt-out through get_user_by_id, so a stale cached user
             # would let a checkout opened right after signup through.
-            get_user_by_id.cache_delete(user_id)
-            if current.email:
-                get_user_by_email.cache_delete(current.email)
-            get_or_create_user.cache_clear()
+            _invalidate_user_caches(user_id, current.email)
+        if opted_out and current.email:
+            await _unsubscribe_from_marketing(user_id, current.email)
 
         user = await PrismaUser.prisma().find_unique(where={"id": user_id})
         if user is None:
@@ -903,32 +912,62 @@ async def record_signup_consent(
 
 async def _write_signup_consent(
     user_id: str, terms_version: str | None, opt_out: bool
-) -> bool:
+) -> tuple[bool, bool]:
     """Stamp the terms (unless `terms_version` is None) and, when `opt_out`,
-    the opt-out, in one transaction. True when either reached the row.
+    the opt-out, in one transaction. Returns whether each reached the row.
 
     The opt-out is conditional on none being stored, so a refusal recorded
     since the caller read the row keeps its own date and source.
     """
     now = datetime.now(timezone.utc)
-    written = False
+    terms_stamped = opted_out = False
     async with transaction() as tx:
         if terms_version is not None:
             stamped = await PrismaUser.prisma(tx).update(
                 where={"id": user_id},
                 data={"termsAcceptedAt": now, "termsVersion": terms_version},
             )
-            written = stamped is not None
+            terms_stamped = stamped is not None
         if opt_out:
-            opted_out = await PrismaUser.prisma(tx).update_many(
-                where={"id": user_id, "marketingOptOutAt": None},
-                data={
-                    "marketingOptOutAt": now,
-                    "marketingOptOutSource": MARKETING_OPT_OUT_SOURCE_SIGNUP,
-                },
+            opted_out = (
+                await PrismaUser.prisma(tx).update_many(
+                    where={"id": user_id, "marketingOptOutAt": None},
+                    data={
+                        "marketingOptOutAt": now,
+                        "marketingOptOutSource": MARKETING_OPT_OUT_SOURCE_SIGNUP,
+                    },
+                )
+                > 0
             )
-            written = written or opted_out > 0
-    return written
+    return terms_stamped, opted_out
+
+
+async def _unsubscribe_from_marketing(user_id: str, email: str) -> None:
+    """Queue the change that marks an existing MailerLite subscriber
+    unsubscribed (it never creates one). The refusal is already stored, so a
+    failure here is logged rather than raised: the consumer re-reads it before
+    every other MailerLite write, so only the unsubscribe itself is lost."""
+    try:
+        event = audience_event(AudienceAction.UNSUBSCRIBE, email, user_id)
+        if event is None:
+            return
+        result = await queue_audience_change(event)
+        if not result.success:
+            logger.error(
+                f"Could not queue the MailerLite unsubscribe for user {user_id}: "
+                f"{result.message}"
+            )
+    except Exception:
+        logger.exception(
+            f"Could not queue the MailerLite unsubscribe for user {user_id}"
+        )
+
+
+def _invalidate_user_caches(user_id: str, email: str | None) -> None:
+    get_user_by_id.cache_delete(user_id)
+    if email:
+        get_user_by_email.cache_delete(email)
+    get_or_create_user.cache_clear()
 
 
 class BriefingCandidate(BaseModel):

@@ -401,6 +401,7 @@ class NotificationManager(AppService):
             AudienceAction.UPDATE_FIELDS: mailerlite.update_fields,
             AudienceAction.SIGNUP: mailerlite.record_signup,
             AudienceAction.CHECKOUT_OPENED: mailerlite.record_checkout_opened,
+            AudienceAction.UNSUBSCRIBE: mailerlite.unsubscribe,
         }[event.action]
         try:
             await handler(event.email, event.fields or None)

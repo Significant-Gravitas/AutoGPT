@@ -18,6 +18,7 @@ from pytest_snapshot.plugin import Snapshot
 from backend.api.model import RECOGNIZED_TERMS_VERSIONS, UserConsentResponse
 from backend.api.rest_api import app as real_app
 from backend.data.model import User
+from backend.data.notifications import AudienceAction, NotificationResult
 from backend.data.user import (
     get_or_create_user,
     get_user_by_email,
@@ -313,10 +314,15 @@ def _stored_consent(row: PrismaUser) -> UserConsentResponse:
 
 
 async def test_record_user_consent_route_is_idempotent_in_the_database(
-    consent_reset: str,
+    consent_reset: str, mocker: pytest_mock.MockFixture
 ) -> None:
     """A retried signup write keeps the first stamps, and a later call without
-    the opt-out never takes it back."""
+    the opt-out never takes it back. Only the first call, which recorded the
+    refusal, unsubscribes the account in MailerLite."""
+    queued = mocker.patch(
+        "backend.data.user.queue_audience_change",
+        new=AsyncMock(return_value=NotificationResult(success=True, message="")),
+    )
     consent = {"terms_version": "2026-10", "marketing_opt_out": True}
     where = {"id": consent_reset}
 
@@ -344,6 +350,9 @@ async def test_record_user_consent_route_is_idempotent_in_the_database(
     assert retried.json() == first.json()
     assert _stored_consent(after_decline) == stored
     assert declined.json() == first.json()
+    queued.assert_awaited_once()
+    assert queued.await_args.args[0].action is AudienceAction.UNSUBSCRIBE
+    assert queued.await_args.args[0].user_id == consent_reset
 
 
 async def test_a_failed_opt_out_write_leaves_neither_half(

@@ -11,6 +11,7 @@ import prisma.errors
 import pytest
 
 from backend.data import user as user_module
+from backend.data.notifications import AudienceAction, NotificationResult
 from backend.data.user import (
     get_billing_email_recipient,
     record_signup_consent,
@@ -356,6 +357,13 @@ class TestRecordSignupConsent:
         ):
             yield caches
 
+    @pytest.fixture(autouse=True)
+    def queued(self) -> Iterator[AsyncMock]:
+        """`queue_audience_change`: what reached the MailerLite queue."""
+        queued = AsyncMock(return_value=NotificationResult(success=True, message=""))
+        with patch.object(user_module, "queue_audience_change", queued):
+            yield queued
+
     @pytest.mark.asyncio
     async def test_first_call_stamps_the_terms_and_the_opt_out(self, db: MagicMock):
         fresh = _accepted(True)
@@ -584,6 +592,144 @@ class TestRecordSignupConsent:
         assert "user-1" in str(exc.value)
         assert "connection lost" in str(exc.value)
         assert caches.mock_calls == []
+
+
+class TestSignupRefusalReachesMailerLite:
+    """A refusal this call records unsubscribes an existing MailerLite
+    subscriber; nothing else ever queues a MailerLite change from here."""
+
+    @pytest.fixture
+    def db(self) -> Iterator[MagicMock]:
+        with (
+            patch.object(user_module, "PrismaUser") as mock_prisma_user,
+            patch.object(user_module.User, "from_db", side_effect=lambda row: row),
+            patch.object(user_module.get_user_by_id, "cache_delete"),
+            patch.object(user_module.get_user_by_email, "cache_delete"),
+            patch.object(user_module.get_or_create_user, "cache_clear"),
+        ):
+            db = mock_prisma_user.prisma.return_value
+            db.find_unique = AsyncMock(return_value=_consent_row())
+            db.update = AsyncMock(return_value=_consent_row())
+            db.update_many = AsyncMock(return_value=1)
+            yield db
+
+    @pytest.fixture(autouse=True)
+    def tx(self) -> Iterator[None]:
+        @asynccontextmanager
+        async def fake_transaction() -> AsyncIterator[MagicMock]:
+            yield MagicMock(name="tx")
+
+        with patch.object(user_module, "transaction", fake_transaction):
+            yield
+
+    @pytest.fixture
+    def queued(self) -> Iterator[AsyncMock]:
+        queued = AsyncMock(return_value=NotificationResult(success=True, message=""))
+        with patch.object(user_module, "queue_audience_change", queued):
+            yield queued
+
+    @pytest.mark.asyncio
+    async def test_a_new_refusal_queues_an_unsubscribe(
+        self, db: MagicMock, queued: AsyncMock
+    ):
+        await record_signup_consent("user-1", TERMS_VERSION, True)
+
+        queued.assert_awaited_once()
+        event = queued.await_args.args[0]
+        assert event.action is AudienceAction.UNSUBSCRIBE
+        assert event.email == "user@example.com"
+        assert event.user_id == "user-1"
+        assert event.fields == {}
+
+    @pytest.mark.asyncio
+    async def test_the_unsubscribe_is_queued_after_the_refusal_is_committed(
+        self, db: MagicMock, queued: AsyncMock
+    ):
+        """Queued before the commit, the consumer could find the account still
+        opted in, and a rolled-back refusal would still unsubscribe."""
+        order: list[str] = []
+        db.update_many.side_effect = lambda **_: order.append("write") or 1
+        queued.side_effect = lambda _: order.append("queue") or NotificationResult(
+            success=True, message=""
+        )
+
+        @asynccontextmanager
+        async def fake_transaction() -> AsyncIterator[MagicMock]:
+            yield MagicMock(name="tx")
+            order.append("commit")
+
+        with patch.object(user_module, "transaction", fake_transaction):
+            await record_signup_consent("user-1", TERMS_VERSION, True)
+
+        assert order == ["write", "commit", "queue"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "current,marketing_opt_out,written",
+        [
+            pytest.param(_accepted(True), True, 1, id="already-refused"),
+            pytest.param(_consent_row(), False, 1, id="no-refusal"),
+            pytest.param(
+                _accepted(False, EARLIER_TERMS_VERSION), False, 1, id="new-terms-only"
+            ),
+            pytest.param(_consent_row(), True, 0, id="refused-concurrently"),
+        ],
+    )
+    async def test_nothing_is_queued_without_a_new_refusal(
+        self,
+        db: MagicMock,
+        queued: AsyncMock,
+        current: MagicMock,
+        marketing_opt_out: bool,
+        written: int,
+    ):
+        db.find_unique.return_value = current
+        db.update_many.return_value = written
+
+        await record_signup_consent("user-1", TERMS_VERSION, marketing_opt_out)
+
+        queued.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_an_account_without_an_email_queues_nothing(
+        self, db: MagicMock, queued: AsyncMock
+    ):
+        db.find_unique.return_value = _consent_row(email=None)
+
+        await record_signup_consent("user-1", TERMS_VERSION, True)
+
+        queued.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            pytest.param(
+                {"return_value": NotificationResult(success=False, message="down")},
+                id="not-queued",
+            ),
+            pytest.param({"side_effect": RuntimeError("broker gone")}, id="raised"),
+        ],
+    )
+    async def test_a_queue_failure_still_returns_the_recorded_refusal(
+        self, db: MagicMock, failure: dict, caplog
+    ):
+        """The refusal is stored either way, and the consumer re-reads it
+        before every other MailerLite write, so the caller is not failed."""
+        fresh = _accepted(True)
+        db.find_unique.side_effect = [_consent_row(), fresh]
+
+        with (
+            patch.object(user_module, "queue_audience_change", AsyncMock(**failure)),
+            caplog.at_level("ERROR"),
+        ):
+            result = await record_signup_consent("user-1", TERMS_VERSION, True)
+
+        assert result is fresh
+        assert "Could not queue the MailerLite unsubscribe for user user-1" in (
+            caplog.text
+        )
+        assert "user@example.com" not in caplog.text
 
 
 class TestGetBillingEmailRecipient:
