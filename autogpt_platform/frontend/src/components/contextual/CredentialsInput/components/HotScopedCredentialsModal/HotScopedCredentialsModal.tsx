@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { useContext, useEffect, useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -195,7 +196,9 @@ export function HostScopedCredentialsModal({
     >
       <Dialog.Content>
         {schema.description && (
-          <p className="mb-4 text-sm text-zinc-600">{schema.description}</p>
+          <Text variant="body" tone="secondary" className="mb-4" unmask={false}>
+            {schema.description}
+          </Text>
         )}
 
         <Form {...form}>

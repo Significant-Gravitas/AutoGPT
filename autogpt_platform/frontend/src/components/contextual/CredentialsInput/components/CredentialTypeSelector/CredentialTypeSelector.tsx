@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Form,
   FormDescription,
@@ -146,9 +147,9 @@ type OAuthTabContentProps = {
 function OAuthTabContent({ providerName, onOAuthLogin }: OAuthTabContentProps) {
   return (
     <div className="space-y-4">
-      <p className="text-sm text-zinc-600">
+      <Text variant="body" tone="secondary">
         Sign in with your {providerName} account using OAuth.
-      </p>
+      </Text>
       <Button
         variant="primary"
         size="small"
@@ -202,7 +203,9 @@ function APIKeyTabContent({
   return (
     <div className="space-y-4">
       {schemaDescription && (
-        <p className="text-sm text-zinc-600">{schemaDescription}</p>
+        <Text variant="body" tone="secondary" unmask={false}>
+          {schemaDescription}
+        </Text>
       )}
 
       <Form {...form}>
@@ -289,7 +292,9 @@ function SimpleActionTab({
 }: SimpleActionTabProps) {
   return (
     <div className="space-y-4">
-      <p className="text-sm text-zinc-600">{description}</p>
+      <Text variant="body" tone="secondary">
+        {description}
+      </Text>
       <Button variant="primary" size="small" onClick={onClick} type="button">
         {buttonLabel}
       </Button>

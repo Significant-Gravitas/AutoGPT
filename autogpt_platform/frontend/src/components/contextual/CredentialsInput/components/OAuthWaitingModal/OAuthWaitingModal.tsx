@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 
 type Props = {
@@ -31,19 +32,19 @@ export function OAuthFlowWaitingModal({
     >
       <Dialog.Content>
         {popupBlocked ? (
-          <p className="text-sm text-zinc-600">
+          <Text variant="body" tone="secondary">
             Your browser blocked the sign-in window, so we opened it in a new
             tab. Switch to that tab and complete sign-in there.
             <br />
             If you don&apos;t see the tab, allow popups for this site, close
             this dialog, and try connecting again.
-          </p>
+          </Text>
         ) : (
-          <p className="text-sm text-zinc-600">
+          <Text variant="body" tone="secondary">
             Complete the sign-in process in the sign-in window.
             <br />
             Closing this dialog will cancel the sign-in process.
-          </p>
+          </Text>
         )}
       </Dialog.Content>
     </Dialog>
