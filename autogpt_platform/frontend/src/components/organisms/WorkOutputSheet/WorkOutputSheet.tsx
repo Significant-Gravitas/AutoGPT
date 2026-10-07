@@ -6,12 +6,7 @@ import { MessageResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet } from "@/components/molecules/Sheet/Sheet";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -66,23 +61,21 @@ export function WorkOutputSheet({
     : null;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-xl"
-      >
-        <SheetHeader className="text-left">
-          <SheetTitle className="truncate">{title}</SheetTitle>
-        </SheetHeader>
-        <WorkOutputBody
-          outputType={outputType}
-          title={title}
-          primary={primary}
-          isLoading={shouldFetch && detailsQuery.isLoading}
-          isError={detailsQuery.isError}
-          runLink={runLink}
-        />
-      </SheetContent>
+    <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title={title}
+      side="right"
+      className="w-full sm:max-w-xl"
+    >
+      <WorkOutputBody
+        outputType={outputType}
+        title={title}
+        primary={primary}
+        isLoading={shouldFetch && detailsQuery.isLoading}
+        isError={detailsQuery.isError}
+        runLink={runLink}
+      />
     </Sheet>
   );
 }
