@@ -35,7 +35,7 @@ export function UsagePopover({ trigger, align = "start" }: Props) {
       <PopoverTrigger asChild>
         {trigger ?? (
           <Button variant="ghost" size="icon" aria-label="Usage limits">
-            <Icon icon={GaugeIcon} className="!size-5" />
+            <Icon icon={GaugeIcon} className="size-5" />
           </Button>
         )}
       </PopoverTrigger>

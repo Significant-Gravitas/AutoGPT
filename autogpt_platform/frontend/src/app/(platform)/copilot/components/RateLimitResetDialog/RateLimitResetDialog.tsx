@@ -83,12 +83,12 @@ export function RateLimitResetDialog({
           {bodyTrailer}
         </Text>
         {canContinue && (
-          <Text variant="small" className="mt-3 !text-zinc-500">
+          <Text variant="small" tone="muted" unmask={false} className="mt-3">
             Or continue on {alternative.display_name}: the rest of this chat
             runs there instead, and everything already said stays as it is.
           </Text>
         )}
-        <Dialog.Footer className="!justify-center">
+        <Dialog.Footer className="justify-center">
           <Button variant="secondary" onClick={onClose}>
             Wait for reset
           </Button>

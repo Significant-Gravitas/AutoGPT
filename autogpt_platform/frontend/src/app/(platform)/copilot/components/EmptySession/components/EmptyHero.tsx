@@ -29,7 +29,7 @@ export function EmptyHero({
   return (
     <>
       <div className="mb-1 flex items-center justify-center gap-3">
-        <Text variant="h4" tone="primary">
+        <Text variant="h4" tone="primary" unmask={false}>
           Hey, <span className="text-zinc-900">{name}</span>
           <EditNameDialog currentName={name} />
         </Text>

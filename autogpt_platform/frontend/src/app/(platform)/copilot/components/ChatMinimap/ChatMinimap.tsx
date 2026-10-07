@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { motion, useReducedMotion } from "framer-motion";
@@ -58,7 +59,7 @@ export function ChatMinimap({ messages }: Props) {
           >
             <motion.div
               className={cn(
-                "h-[4px] w-[32px] origin-left rounded-full transition-colors duration-150",
+                "h-1 w-8 origin-left rounded-full transition-colors duration-150",
                 tickColor(hovered === null ? null : Math.abs(index - hovered)),
               )}
               initial={{ scale: 0.6 }}
@@ -74,15 +75,27 @@ export function ChatMinimap({ messages }: Props) {
                 }
                 animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                 transition={reducedMotion ? { duration: 0 } : CARD_TRANSITION}
-                className="absolute left-[40px] top-1/2 z-30 w-80 origin-left -translate-y-1/2 rounded-2xl bg-white p-3.5 smooth-shadow-ring-sm"
+                className="absolute left-10 top-1/2 z-30 w-80 origin-left -translate-y-1/2 rounded-2xl bg-white p-3.5 smooth-shadow-ring-sm"
               >
-                <p className="truncate text-[15px] text-zinc-900">
+                <Text
+                  variant="body"
+                  tone="primary"
+                  as="p"
+                  unmask={false}
+                  className="truncate text-[15px]"
+                >
                   {entry.title}
-                </p>
+                </Text>
                 {entry.body && (
-                  <p className="mt-1 line-clamp-3 text-[15px] leading-relaxed text-zinc-400">
+                  <Text
+                    variant="body"
+                    tone="muted"
+                    as="p"
+                    unmask={false}
+                    className="mt-1 line-clamp-3 text-[15px] leading-relaxed"
+                  >
                     {entry.body}
-                  </p>
+                  </Text>
                 )}
               </motion.div>
             )}

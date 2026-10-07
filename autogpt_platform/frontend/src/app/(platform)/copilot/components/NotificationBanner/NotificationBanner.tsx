@@ -78,7 +78,7 @@ export function NotificationBanner() {
   return (
     <Alert variant="warning" icon={BellRing} aria-live="polite">
       <div className="flex flex-wrap items-center gap-3">
-        <AlertDescription className="min-w-[12rem] flex-1">
+        <AlertDescription className="min-w-48 flex-1">
           Notifications are off. Turn them on in Settings to know when your
           experts finish working, even when you switch tabs.
         </AlertDescription>
@@ -97,7 +97,7 @@ export function NotificationBanner() {
           onClick={handleDismiss}
           aria-label="Dismiss"
           title="Dismiss"
-          className="hover:border-[#FFE4BF] hover:bg-[#FFE4BF]"
+          className="hover:border-orange-100 hover:bg-orange-100"
         >
           <Icon icon={Cancel01Icon} className="h-4 w-4" />
         </Button>

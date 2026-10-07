@@ -150,7 +150,7 @@ export function EmptySession({
           {/* Held back while the greeting is on its way — it enters with
               the greeting page instead of sitting under a bare hero. */}
           {!intro.isAwaitingGreeting && (
-            <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
+            <div className={cn("mb-6", intro.isVisible && "max-w-3xl")}>
               <div
                 className={cn(
                   isBrainDumpEnabled
@@ -164,7 +164,7 @@ export function EmptySession({
                   isBrainDumpEnabled &&
                     (intro.isVisible
                       ? "-mx-5 max-w-[50.5rem]"
-                      : "mx-auto w-full max-w-[42rem]"),
+                      : "mx-auto w-full max-w-2xl"),
                 )}
               >
                 <ChatInput
@@ -182,7 +182,7 @@ export function EmptySession({
                   }
                   className={
                     isBrainDumpEnabled
-                      ? "w-full [&_textarea]:min-h-[4.5rem]"
+                      ? "w-full [&_textarea]:min-h-18"
                       : "w-full"
                   }
                   droppedFiles={droppedFiles}

@@ -81,11 +81,12 @@ export function TaskProgressBar({
               <Icon
                 icon={CheckmarkBadge01Icon}
                 size={22}
-                className="flex-shrink-0 text-[#00a656]"
+                className="flex-shrink-0 text-green-500"
               />
               <Text
                 variant="body-medium"
-                className="min-w-0 flex-1 truncate text-sm text-zinc-800"
+                tone="primary"
+                className="min-w-0 flex-1 truncate text-sm"
               >
                 All tasks complete
               </Text>
@@ -102,7 +103,9 @@ export function TaskProgressBar({
                 />
                 <Text
                   variant="body-medium"
-                  className="min-w-0 flex-1 truncate text-sm text-zinc-800"
+                  tone="primary"
+                  unmask={false}
+                  className="min-w-0 flex-1 truncate text-sm"
                 >
                   {toDisplayStatus(current.status, isStreaming) === "stopped"
                     ? current.content
@@ -119,7 +122,8 @@ export function TaskProgressBar({
               />
               <Text
                 variant="body-medium"
-                className="min-w-0 flex-1 text-sm text-zinc-800"
+                tone="primary"
+                className="min-w-0 flex-1 text-sm"
               >
                 Task Progress
               </Text>

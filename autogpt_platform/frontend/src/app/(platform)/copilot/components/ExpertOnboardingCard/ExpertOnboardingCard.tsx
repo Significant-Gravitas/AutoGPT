@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import {
   ArrowLeft01Icon,
@@ -136,9 +137,15 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
       </div>
 
       {onboarding.greeting && (
-        <p className="border-b border-zinc-100 px-5 py-4 text-base leading-relaxed text-zinc-700">
+        <Text
+          variant="large"
+          tone="secondary"
+          as="p"
+          unmask={false}
+          className="border-b border-zinc-100 px-5 py-4 leading-relaxed"
+        >
           {onboarding.greeting}
-        </p>
+        </Text>
       )}
 
       {/* Wraps only the pager, not the whole card: ``strict`` rejects any

@@ -225,14 +225,17 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                       <div className="relative h-36 bg-gradient-to-br from-purple-100 via-purple-200 to-purple-300">
                         <GlassPixelBackdrop />
                         {cardIndex > 0 && (
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            withTooltip={false}
                             aria-label="Previous card"
                             onClick={() => setCardIndex(cardIndex - 1)}
-                            className="absolute left-3 top-3 z-10 flex size-5 items-center justify-center rounded-full text-purple-800/70 transition-colors hover:bg-white/50"
+                            className="absolute left-3 top-3 z-10 size-5 rounded-full text-purple-800/70 hover:border-transparent hover:bg-white/50"
                           >
                             <Icon icon={ArrowLeft01Icon} size={13} />
-                          </button>
+                          </Button>
                         )}
                         <AnimatePresence mode="wait">
                           <motion.div
