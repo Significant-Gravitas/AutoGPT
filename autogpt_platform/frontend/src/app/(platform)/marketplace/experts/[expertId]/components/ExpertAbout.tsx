@@ -1,6 +1,8 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
@@ -19,19 +21,23 @@ export function ExpertAbout({ text }: Props) {
 
   return (
     <ExpertSection title="About">
-      <p
+      <Text
+        variant="large"
+        tone="secondary"
+        unmask={false}
         className={cn(
-          "whitespace-pre-line text-base leading-7 text-zinc-600",
+          "whitespace-pre-line leading-7",
           isClampable && !isExpanded && "line-clamp-6",
         )}
       >
         {text}
-      </p>
+      </Text>
       {isClampable ? (
-        <button
+        <Button
           type="button"
+          variant="ghost"
           onClick={() => setIsExpanded((value) => !value)}
-          className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
+          className="mt-2 h-auto min-w-0 gap-1 rounded-none border-0 p-0 text-sm font-medium text-zinc-500 hover:bg-transparent hover:text-zinc-900"
         >
           {isExpanded ? "Show less" : "Read more"}
           <Icon
@@ -42,7 +48,7 @@ export function ExpertAbout({ text }: Props) {
               isExpanded && "rotate-180",
             )}
           />
-        </button>
+        </Button>
       ) : null}
     </ExpertSection>
   );

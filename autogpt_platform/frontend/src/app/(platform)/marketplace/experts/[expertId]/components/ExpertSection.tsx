@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { ReactNode, useId } from "react";
 
 interface Props {
@@ -12,9 +13,12 @@ export function ExpertSection({ title, count, description, children }: Props) {
 
   return (
     <section aria-labelledby={headingId}>
-      <h2
+      <Text
+        variant="lead-semibold"
+        as="h2"
+        tone="primary"
         id={headingId}
-        className="flex items-baseline gap-2 text-xl font-semibold tracking-[-0.02em] text-zinc-900"
+        className="flex items-baseline gap-2 tracking-[-0.02em]"
       >
         {title}
         {count !== undefined ? (
@@ -22,11 +26,11 @@ export function ExpertSection({ title, count, description, children }: Props) {
             {count}
           </span>
         ) : null}
-      </h2>
+      </Text>
       {description ? (
-        <p className="mt-1.5 text-base leading-6 text-zinc-500">
+        <Text variant="large" tone="muted" className="mt-1.5 leading-6">
           {description}
-        </p>
+        </Text>
       ) : null}
       <div className="mt-4">{children}</div>
     </section>

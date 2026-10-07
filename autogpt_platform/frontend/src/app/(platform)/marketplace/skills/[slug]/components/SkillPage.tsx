@@ -7,6 +7,7 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Text } from "@/components/atoms/Text/Text";
 import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -103,9 +104,15 @@ export function SkillPage({ slug }: Props) {
             />
           </span>
           <div className="min-w-0 flex-1">
-            <h1 className="text-[28px] font-semibold leading-8 tracking-[-0.02em] text-zinc-900">
+            <Text
+              variant="lead-semibold"
+              as="h1"
+              tone="primary"
+              unmask={false}
+              className="text-[28px] leading-8 tracking-[-0.02em]"
+            >
               {title}
-            </h1>
+            </Text>
             {icon && skill.categories[0] ? (
               <span
                 className={cn(
@@ -130,9 +137,14 @@ export function SkillPage({ slug }: Props) {
           />
         </div>
 
-        <p className="mt-5 max-w-[60ch] text-[17px] leading-7 text-zinc-600">
+        <Text
+          variant="large"
+          tone="secondary"
+          unmask={false}
+          className="mt-5 max-w-[60ch] text-[17px] leading-7"
+        >
           {skill.description}
-        </p>
+        </Text>
 
         <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-zinc-600">
           <span className="inline-flex items-center gap-1.5">

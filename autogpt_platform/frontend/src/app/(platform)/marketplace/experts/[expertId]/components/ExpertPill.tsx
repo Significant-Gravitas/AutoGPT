@@ -38,7 +38,7 @@ export function ExpertPill({ icon, label, href }: Props) {
         href={href}
         className={cn(
           PILL_CLASS,
-          "outline-none transition-colors hover:border-zinc-300 hover:text-zinc-900 focus-visible:ring-2 focus-visible:ring-violet-600",
+          "outline-none transition-colors hover:border-zinc-300 hover:text-zinc-900 focus-visible:ring-2 focus-visible:ring-purple-600",
         )}
       >
         {content}

@@ -1,4 +1,5 @@
 import { ExpertDayOneItem } from "@/app/api/__generated__/models/expertDayOneItem";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import type { ExpertAccent } from "../../../components/ExpertsSection/helpers";
 import { ExpertSection } from "./ExpertSection";
@@ -35,9 +36,14 @@ export function ExpertDayOne({ name, items, accent }: Props) {
                   {item.title}
                 </div>
                 {item.description ? (
-                  <p className="break-words text-sm leading-6 text-zinc-500">
+                  <Text
+                    variant="body"
+                    tone="muted"
+                    unmask={false}
+                    className="break-words leading-6"
+                  >
                     {item.description}
-                  </p>
+                  </Text>
                 ) : null}
               </div>
               {item.timing ? (

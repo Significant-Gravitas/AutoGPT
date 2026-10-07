@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
@@ -50,17 +51,22 @@ export function SkillsBrowsePage() {
 
       <div className="mb-7 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="flex items-center gap-2.5 text-3xl font-semibold tracking-[-0.02em] text-zinc-900">
+          <Text
+            variant="lead-semibold"
+            as="h1"
+            tone="primary"
+            className="flex items-center gap-2.5 text-3xl tracking-[-0.02em]"
+          >
             <Icon icon={BookOpen01Icon} size={30} aria-hidden />
             Skills
-          </h1>
-          <p className="mt-2 text-base text-zinc-500">
+          </Text>
+          <Text variant="large" tone="muted" className="mt-2">
             Playbooks your experts follow. Teach them your way of working.
-          </p>
+          </Text>
         </div>
         <SearchBar
           placeholder="Search skills"
-          height="h-[2.75rem]"
+          height="h-11"
           width="w-full md:w-[439px]"
           defaultValue={search}
           onSubmit={setSearch}
@@ -83,7 +89,7 @@ export function SkillsBrowsePage() {
           className={GRID_CLASS}
         >
           {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-            <Skeleton key={i} className="h-[18rem] w-full rounded-2xl" />
+            <Skeleton key={i} className="h-72 w-full rounded-2xl" />
           ))}
         </div>
       ) : isError ? (
@@ -104,9 +110,9 @@ export function SkillsBrowsePage() {
         />
       ) : (
         <>
-          <p className="mb-4 text-sm text-zinc-500">
+          <Text variant="body" tone="muted" className="mb-4">
             {total.toLocaleString()} {total === 1 ? "skill" : "skills"}
-          </p>
+          </Text>
           <InfiniteList
             items={skills}
             className={GRID_CLASS}
@@ -141,11 +147,11 @@ function EmptyResult({
       className="flex flex-col items-center justify-center gap-3 rounded-large border border-dashed border-zinc-200 px-6 py-16 text-center"
       data-testid="skills-browse-empty"
     >
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-50">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-50">
         <Icon
           icon={BookOpen01Icon}
           size={24}
-          className="text-violet-700"
+          className="text-purple-700"
           aria-hidden
         />
       </div>
@@ -155,13 +161,14 @@ function EmptyResult({
           : "Nothing published yet"}
       </Text>
       {category ? (
-        <button
+        <Button
           type="button"
+          variant="ghost"
           onClick={onShowAll}
-          className="text-sm font-medium text-accent transition-colors hover:text-accent/80"
+          className="h-auto min-w-0 rounded-none border-0 p-0 text-sm font-medium text-accent hover:bg-transparent hover:text-accent/80"
         >
           Show all
-        </button>
+        </Button>
       ) : (
         <Link
           href="/library/skills"

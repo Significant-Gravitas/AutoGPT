@@ -84,7 +84,7 @@ export function SkillActions({
                 size="small"
                 aria-label={MENU_LABEL}
                 disabled={isAdding}
-                className={`!min-w-0 px-2.5 ${SECONDARY_CLASS}`}
+                className={`min-w-0 px-2.5 ${SECONDARY_CLASS}`}
               >
                 <Icon icon={ArrowDown01Icon} size={16} aria-hidden />
               </Button>

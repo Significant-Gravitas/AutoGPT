@@ -27,7 +27,7 @@ export function ConnectStep({ names, onConnect }: Props) {
         className="text-zinc-500"
         aria-hidden
       />
-      <Text variant="small" className="!text-zinc-600">
+      <Text variant="small" tone="secondary">
         Its steps use {providers}. Connect when you first need it.
       </Text>
       <Button
