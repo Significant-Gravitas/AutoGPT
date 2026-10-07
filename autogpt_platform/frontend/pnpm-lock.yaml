@@ -163,6 +163,9 @@ importers:
       embla-carousel-react:
         specifier: 8.6.0
         version: 8.6.0(react@18.3.1)
+      eventsource-parser:
+        specifier: 3.0.6
+        version: 3.0.6
       flatbush:
         specifier: 4.5.0
         version: 4.5.0

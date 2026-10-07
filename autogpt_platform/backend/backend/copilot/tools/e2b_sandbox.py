@@ -100,6 +100,7 @@ from backend.util.e2b_template import (
     ensure_template,
     forget_template,
 )
+from backend.util.sandbox_login import run_internal, take_baseline
 from backend.util.sandbox_metadata import MountState, SandboxMetadata, owned_by_user
 
 logger = logging.getLogger(__name__)
@@ -756,6 +757,7 @@ async def get_or_create_owner_sandbox(
                 continue
             if sandbox:
                 logger.info("[E2B] Reconnected to %.12s for %s", value, owner)
+                await take_baseline(sandbox, only_if_missing=True)
                 if count_turn:
                     await _acquire_turn(owner)
                 return sandbox
@@ -858,10 +860,11 @@ async def get_or_create_owner_sandbox(
                 raise last_exc
 
             assert sandbox is not None  # guaranteed: last_exc is None iff break was hit
+            await take_baseline(sandbox)
             if mounts:
                 with contextlib.suppress(Exception):
-                    await sandbox.commands.run(
-                        "mkdir -p " + " ".join(f"'{path}'" for path in mounts)
+                    await run_internal(
+                        sandbox, "mkdir -p " + " ".join(f"'{path}'" for path in mounts)
                     )
             try:
                 await _set_stored_sandbox_id(owner, sandbox.sandbox_id)

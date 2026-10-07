@@ -14,6 +14,7 @@ OS-level isolation with a whitelist-only filesystem, no network, and resource
 limits.  Requires bubblewrap to be installed (Linux only).
 """
 
+import asyncio
 import logging
 import shlex
 from typing import Any
@@ -28,11 +29,21 @@ from backend.copilot.context import (
     sdk_tool_result_redirect_hint,
 )
 from backend.copilot.credential_selection import selected_credentials
+from backend.copilot.gate.executed_files import run_targets
+from backend.copilot.gate.policy import Effect
+from backend.copilot.gate.shell_write import workspace_write_target
+from backend.copilot.gate.subject import Subject
 from backend.copilot.integration_creds import (
     get_github_user_git_identity,
     get_integration_env_vars,
 )
 from backend.copilot.model import ChatSession
+from backend.util.sandbox_login import (
+    changed_login_files,
+    judged_text,
+    read_capped,
+    run_internal,
+)
 
 from .base import BaseTool
 from .connect_integration import requested_scopes
@@ -61,11 +72,13 @@ def _build_completion_response(
         exit_code=exit_code,
         timed_out=False,
         session_id=session_id,
-    )
+    ).from_outside(out, err)
 
 
 class BashExecTool(BaseTool):
     """Execute Bash commands on E2B or in a bubblewrap sandbox."""
+
+    has_gate_subject = True
 
     @property
     def name(self) -> str:
@@ -108,6 +121,37 @@ class BashExecTool(BaseTool):
         # users reach the token injection path.
         return True
 
+    async def gate_subject(
+        self, user_id: str, session: ChatSession, args: dict[str, Any]
+    ) -> Subject | None:
+        """A command that only writes one workspace file is judged as that write."""
+        command = args.get("command")
+        target = workspace_write_target(command) if isinstance(command, str) else None
+        if target is None or not await _lands_on(target):
+            return None
+        return Subject(key="write_workspace_file", name=target, effect=Effect.WORKSPACE)
+
+    async def gate_context(self, args: dict[str, Any]) -> dict[str, str | None] | None:
+        """What the scripts this command runs contain, and the login files changed
+        since the sandbox was made; None where one could not be read or told."""
+        command = args.get("command")
+        sandbox = get_current_sandbox()
+        if not isinstance(command, str) or sandbox is None:
+            return None
+        targets = run_targets(command)
+        reads = await asyncio.gather(
+            *(read_capped(sandbox, path) for path in targets.paths),
+            return_exceptions=True,
+        )
+        scripts: dict[str, str | None] = {run: None for run in targets.unclear}
+        for path, raw in zip(targets.paths, reads):
+            if isinstance(raw, BaseException):
+                scripts[path] = None
+            elif raw is not None:  # Absent: made by this command, or it fails.
+                scripts[path] = judged_text(raw)
+        # `bash -l` runs these before the command itself.
+        return {**await changed_login_files(sandbox), **scripts}
+
     async def _execute(
         self,
         user_id: str | None,
@@ -134,7 +178,7 @@ class BashExecTool(BaseTool):
                 message="No command provided.",
                 error="empty_command",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         # Pre-flight redirect: bash sandbox can't reach host-side SDK
         # tool-result paths. Without this the model burns turns retrying
@@ -144,7 +188,7 @@ class BashExecTool(BaseTool):
                 message=sdk_tool_result_redirect_hint(command),
                 error="sdk_tool_result_path_in_bash_command",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         sandbox = get_current_sandbox()
         if sandbox is not None:
@@ -163,7 +207,7 @@ class BashExecTool(BaseTool):
                 message="bash_exec requires bubblewrap sandbox (Linux only).",
                 error="sandbox_unavailable",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         workspace = get_workspace_dir(session_id or "default")
 
@@ -184,7 +228,7 @@ class BashExecTool(BaseTool):
             exit_code=exit_code,
             timed_out=timed_out,
             session_id=session_id,
-        )
+        ).from_outside(stdout, stderr)
 
     async def _execute_on_e2b(
         self,
@@ -248,11 +292,30 @@ class BashExecTool(BaseTool):
                 exit_code=-1,
                 timed_out=True,
                 session_id=session_id,
-            )
+            ).from_outside()
         except Exception as exc:
             logger.error("[E2B] bash_exec failed: %s", exc, exc_info=True)
             return ErrorResponse(
                 message=f"E2B execution failed: {exc}",
                 error="e2b_execution_error",
                 session_id=session_id,
-            )
+            ).from_outside(str(exc))
+
+
+async def _lands_on(path: str) -> bool:
+    """A shell write to ``path`` lands there: no symlink on it, and no changed login
+    file, which runs first and can redirect it (``CDPATH``, an exported ``cat``).
+    Same accepted race as ``_check_sandbox_symlink_escape``."""
+    sandbox = get_current_sandbox()
+    if sandbox is None:
+        return False
+    try:
+        if await changed_login_files(sandbox):
+            return False
+        result = await run_internal(
+            sandbox, f"readlink -m -- {shlex.quote(path)}", cwd=E2B_WORKDIR, timeout=5
+        )
+    except Exception:
+        logger.warning("Could not resolve a bash_exec write target", exc_info=True)
+        return False
+    return result.exit_code == 0 and (result.stdout or "").strip() == path
