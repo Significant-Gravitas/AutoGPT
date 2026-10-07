@@ -1,13 +1,15 @@
 "use client";
 
 import type { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
-import { IconCircleAlert } from "@/components/__legacy__/ui/icons";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
+import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 
 interface Props {
   run: GetV1GetExecutionDetails200;
@@ -20,18 +22,18 @@ export function RunSummary({ run }: Props) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm leading-relaxed text-neutral-700">
+      <Text variant="body" tone="secondary" unmask={false}>
         {run.stats.activity_status}
-      </p>
+      </Text>
 
       {typeof correctnessScore === "number" && (
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-neutral-600">
+            <Text variant="body-medium" as="span" tone="secondary">
               Success Estimate:
-            </span>
+            </Text>
             <div className="flex items-center gap-2">
-              <div className="relative h-2 w-16 overflow-hidden rounded-full bg-neutral-200">
+              <div className="relative h-2 w-16 overflow-hidden rounded-full bg-zinc-200">
                 <div
                   className={`h-full transition-all ${
                     correctnessScore >= 0.8
@@ -55,10 +57,12 @@ export function RunSummary({ run }: Props) {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <IconCircleAlert className="size-4 cursor-help text-neutral-400 hover:text-neutral-600" />
+                <span className="inline-flex cursor-help text-zinc-400 hover:text-zinc-600">
+                  <Icon icon={AlertCircleIcon} size={16} />
+                </span>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="max-w-xs">
+                <Text variant="small" tone="primary" className="max-w-xs">
                   AI-generated estimate of how well this execution achieved its
                   intended purpose. This score indicates
                   {correctnessScore >= 0.8
@@ -68,7 +72,7 @@ export function RunSummary({ run }: Props) {
                       : correctnessScore >= 0.4
                         ? " the agent was partially successful with some gaps."
                         : " the agent had limited success with significant issues."}
-                </p>
+                </Text>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

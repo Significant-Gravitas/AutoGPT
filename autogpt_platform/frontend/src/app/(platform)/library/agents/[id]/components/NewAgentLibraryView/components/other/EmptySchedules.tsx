@@ -312,10 +312,10 @@ export function EmptySchedules() {
         </svg>
       </div>
       <div className="flex flex-col items-center gap-2">
-        <Text variant="h4" className="text-center text-[1.375rem]">
+        <Text variant="h4" className="text-center">
           Nothing scheduled yet
         </Text>
-        <Text variant="large" className="text-zinc-700">
+        <Text variant="large" tone="secondary">
           Create a new run, and you&apos;ll have the option to schedule your
           agent to run automatically.
         </Text>

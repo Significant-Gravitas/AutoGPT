@@ -90,7 +90,7 @@ export function SelectedSettingsView({ agent, onClearSelectedRun }: Props) {
             </>
           ) : (
             <div className="rounded-xl border border-zinc-100 bg-white p-6">
-              <Text variant="body" className="text-muted-foreground">
+              <Text variant="body" tone="muted">
                 This agent doesn&apos;t have any configurable settings.
               </Text>
             </div>

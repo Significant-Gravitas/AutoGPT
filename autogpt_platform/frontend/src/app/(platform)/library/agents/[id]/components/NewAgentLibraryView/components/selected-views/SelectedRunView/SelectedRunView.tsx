@@ -175,13 +175,13 @@ export function SelectedRunView({
                   <div className="scroll-mt-4">
                     <RunDetailCard title="Output">
                       {isLoading ? (
-                        <div className="text-neutral-500">
+                        <div className="text-zinc-500">
                           <LoadingSpinner />
                         </div>
                       ) : run && "outputs" in run ? (
                         <RunOutputs outputs={run.outputs as any} />
                       ) : (
-                        <Text variant="body" className="text-neutral-600">
+                        <Text variant="body" tone="secondary">
                           No output from this run.
                         </Text>
                       )}

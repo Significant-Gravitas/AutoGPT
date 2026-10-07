@@ -103,7 +103,7 @@ export function SelectedScheduleView({
             <div id="schedule" className="scroll-mt-4">
               <RunDetailCard title="Schedule">
                 {isLoading || !schedule ? (
-                  <div className="text-neutral-500">
+                  <div className="text-zinc-500">
                     <LoadingSpinner />
                   </div>
                 ) : (

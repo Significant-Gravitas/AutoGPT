@@ -68,7 +68,7 @@ export function SelectedRunActions({
               <Icon
                 icon={CornerLeftUpIcon}
                 size={16}
-                className="relative bottom-[4px] z-0 rotate-90 text-zinc-700"
+                className="relative bottom-1 z-0 rotate-90 text-zinc-700"
               />
               <Icon
                 icon={CornerRightDownIcon}

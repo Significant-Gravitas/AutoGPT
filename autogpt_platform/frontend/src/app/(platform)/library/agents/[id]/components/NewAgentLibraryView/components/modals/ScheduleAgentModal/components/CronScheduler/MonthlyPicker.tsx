@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 
@@ -29,34 +30,33 @@ export function MonthlyPicker({
         Days of Month
       </Text>
       <div className="flex gap-2">
-        <button
-          type="button"
-          className={`h-[2.25rem] rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium leading-[16px] text-black hover:bg-zinc-100`}
-          onClick={allDays}
-        >
+        <Button type="button" variant="outline" size="small" onClick={allDays}>
           All Days
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className={`h-[2.25rem] rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium leading-[16px] text-black hover:bg-zinc-100`}
+          variant="outline"
+          size="small"
           onClick={customize}
         >
           Customize
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="h-[2.25rem] rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium leading-[16px] text-black hover:bg-zinc-100"
+          variant="outline"
+          size="small"
           onClick={() => onChange([15])}
         >
           15th
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="h-[2.25rem] rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium leading-[16px] text-black hover:bg-zinc-100"
+          variant="outline"
+          size="small"
           onClick={() => onChange([31])}
         >
           Last Day
-        </button>
+        </Button>
       </div>
 
       {values.length < 31 && (

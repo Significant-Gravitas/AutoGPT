@@ -247,7 +247,7 @@ export function RunAgentModal({
             <Dialog.Footer
               className={`sticky bottom-0 z-10 bg-white pt-4 ${
                 hasOverflow
-                  ? "border-t border-neutral-100 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]"
+                  ? "border-t border-zinc-100 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]"
                   : ""
               }`}
             >

@@ -35,7 +35,7 @@ export function RunActions({
           onClick={onSimulate}
           disabled={isExecuting || isSettingUpTrigger}
           loading={isExecuting}
-          className="gap-1.5 text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+          className="gap-1.5 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-700"
         >
           <Icon icon={FlaskConicalIcon} size={16} />
           Simulate

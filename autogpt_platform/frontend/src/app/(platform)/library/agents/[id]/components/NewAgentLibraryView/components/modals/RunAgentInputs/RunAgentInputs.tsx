@@ -119,7 +119,7 @@ export function RunAgentInputs({
     case DataType.BOOLEAN:
       innerInputElement = (
         <>
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-zinc-500">
             {placeholder || (value ? "Enabled" : "Disabled")}
           </span>
           <Switch
@@ -293,7 +293,7 @@ export function RunAgentInputs({
           <div className="overflow-hidden rounded-md border">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 dark:bg-gray-800">
+                <tr className="bg-zinc-50">
                   {headers.map((header) => (
                     <th
                       key={header}
@@ -307,16 +307,20 @@ export function RunAgentInputs({
               </thead>
               <tbody>
                 {tableData.map((row, rowIndex) => (
-                  <tr key={rowIndex} className="border-t dark:border-gray-700">
+                  <tr key={rowIndex} className="border-t">
                     {headers.map((header) => (
                       <td key={header} className="px-3 py-1">
-                        <input
+                        <DSInput
+                          id={`${baseId}-table-${rowIndex}-${header}`}
+                          label={header}
+                          hideLabel
+                          size="small"
+                          wrapperClassName="mb-0"
                           type="text"
                           value={String(row[header] || "")}
                           onChange={(e) =>
                             updateRow(rowIndex, header, e.target.value)
                           }
-                          className="w-full rounded border px-2 py-1 dark:border-gray-700 dark:bg-gray-900"
                           placeholder={`Enter ${header}`}
                         />
                       </td>

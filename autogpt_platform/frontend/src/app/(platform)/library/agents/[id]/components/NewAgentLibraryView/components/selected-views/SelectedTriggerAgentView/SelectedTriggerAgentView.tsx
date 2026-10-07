@@ -70,7 +70,7 @@ export function SelectedTriggerAgentView({
     return (
       <SelectedViewLayout agent={agent} banner={banner}>
         <RunDetailCard title="Trigger not found">
-          <Text variant="body" className="!text-zinc-500">
+          <Text variant="body" tone="muted">
             This trigger agent no longer exists.
           </Text>
         </RunDetailCard>
@@ -86,13 +86,15 @@ export function SelectedTriggerAgentView({
             <RunDetailCard title={triggerAgent.name}>
               <div className="flex flex-col gap-3">
                 {triggerAgent.description ? (
-                  <Text variant="body">{triggerAgent.description}</Text>
+                  <Text variant="body" unmask={false}>
+                    {triggerAgent.description}
+                  </Text>
                 ) : (
-                  <Text variant="body" className="!text-zinc-500">
+                  <Text variant="body" tone="muted">
                     No description.
                   </Text>
                 )}
-                <Text variant="small" className="!text-zinc-500">
+                <Text variant="small" tone="muted">
                   Trigger agents run on a schedule and execute this agent when
                   their conditions are met. Edit them in the builder to change
                   what they do.
@@ -106,7 +108,7 @@ export function SelectedTriggerAgentView({
                   {schedule.graph_version !== triggerAgent.graph_version && (
                     <Text
                       variant="small"
-                      className="rounded-md bg-amber-50 px-3 py-2 !text-amber-800"
+                      className="rounded-md bg-yellow-50 px-3 py-2 text-yellow-800"
                     >
                       This schedule is running version {schedule.graph_version}{" "}
                       of the trigger agent, but the latest version is{" "}
@@ -155,7 +157,7 @@ export function SelectedTriggerAgentView({
 
             {!schedule && !isSchedulesLoading && (
               <RunDetailCard title="Schedule">
-                <Text variant="body" className="!text-zinc-500">
+                <Text variant="body" tone="muted">
                   No schedule configured for this trigger agent.
                 </Text>
               </RunDetailCard>

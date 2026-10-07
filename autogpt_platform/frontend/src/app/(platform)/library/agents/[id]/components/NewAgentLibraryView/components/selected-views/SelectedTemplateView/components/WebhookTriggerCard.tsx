@@ -65,7 +65,7 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
             </Text>
             <div className="flex flex-col gap-1">
               <Text variant="body-medium">Webhook URL:</Text>
-              <div className="flex gap-2 rounded-md bg-gray-50 p-2">
+              <div className="flex gap-2 rounded-md bg-zinc-50 p-2">
                 <code className="ph-no-capture flex-1 select-all text-sm">
                   {webhook.url}
                 </code>
@@ -82,7 +82,7 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
             </div>
           </div>
         ) : (
-          <Text variant="body" className="text-muted-foreground">
+          <Text variant="body" tone="muted">
             This agent trigger is{" "}
             {template.is_active
               ? "ready. When a trigger is received, it will run with the provided settings."

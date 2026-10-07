@@ -1,3 +1,5 @@
+import { Text } from "@/components/atoms/Text/Text";
+
 export function WebhookTriggerBanner() {
   return (
     <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
@@ -16,7 +18,9 @@ export function WebhookTriggerBanner() {
           </svg>
         </div>
         <div className="ml-3">
-          <h3 className="text-sm font-medium text-blue-800">Webhook Trigger</h3>
+          <Text variant="body-medium" as="h3" className="text-blue-800">
+            Webhook Trigger
+          </Text>
           <div className="mt-2 text-sm text-blue-700">
             <p>
               This will create a webhook endpoint that automatically runs your
