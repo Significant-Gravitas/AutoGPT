@@ -8,7 +8,8 @@ import type { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgen
 import { previewAsAdmin, addToLibraryAsAdmin } from "../../actions";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 
 export default function AdminPreviewPage() {
   const params = useParams<{ id: string }>();
@@ -57,7 +58,9 @@ export default function AdminPreviewPage() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground">Loading preview...</p>
+        <Text variant="large" tone="muted">
+          Loading preview...
+        </Text>
       </div>
     );
   }
@@ -65,13 +68,12 @@ export default function AdminPreviewPage() {
   if (error || !data) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <p className="text-destructive">{error || "Preview not found"}</p>
-        <button
-          onClick={() => router.back()}
-          className="text-muted-foreground underline"
-        >
+        <Text variant="large" tone="danger">
+          {error || "Preview not found"}
+        </Text>
+        <Button variant="link" onClick={() => router.back()}>
           Go back
-        </button>
+        </Button>
       </div>
     );
   }
@@ -85,26 +87,28 @@ export default function AdminPreviewPage() {
   return (
     <div className="container mx-auto max-w-7xl px-4 py-6">
       <div className="mb-6 flex items-center justify-between">
-        <button
+        <Button
+          variant="ghost"
+          size="small"
           onClick={() => router.back()}
-          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+          leadingIcon={ArrowLeft02Icon}
         >
-          <Icon icon={ArrowLeft02Icon} size={16} />
           Back to Admin Marketplace
-        </button>
+        </Button>
 
         <div className="flex items-center gap-3">
-          <span className="rounded-md bg-amber-500/20 px-3 py-1 text-sm font-medium text-amber-600">
+          <span className="rounded-md bg-yellow-500/20 px-3 py-1 text-sm font-medium text-yellow-600">
             Admin Preview
             {!data.has_approved_version && " — Pending Approval"}
           </span>
-          <button
+          <Button
+            variant="primary"
+            size="small"
             onClick={handleAddToLibrary}
             disabled={isAddingToLibrary}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {isAddingToLibrary ? "Adding..." : "Add to My Library"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -131,9 +135,9 @@ export default function AdminPreviewPage() {
             <AgentImages images={allMedia} />
           ) : (
             <div className="flex h-64 items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25">
-              <p className="text-muted-foreground">
+              <Text variant="large" tone="muted">
                 No images or videos submitted
-              </p>
+              </Text>
             </div>
           )}
         </div>
@@ -143,26 +147,28 @@ export default function AdminPreviewPage() {
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {data.instructions && (
           <div className="rounded-lg border p-4">
-            <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+            <Text variant="body-medium" as="h3" tone="muted" className="mb-2">
               Instructions
-            </h3>
-            <p className="whitespace-pre-wrap text-sm">{data.instructions}</p>
+            </Text>
+            <Text variant="body" className="whitespace-pre-wrap">
+              {data.instructions}
+            </Text>
           </div>
         )}
         {data.recommended_schedule_cron && (
           <div className="rounded-lg border p-4">
-            <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+            <Text variant="body-medium" as="h3" tone="muted" className="mb-2">
               Recommended Schedule
-            </h3>
+            </Text>
             <code className="rounded bg-muted px-2 py-1 text-sm">
               {data.recommended_schedule_cron}
             </code>
           </div>
         )}
         <div className="rounded-lg border p-4">
-          <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+          <Text variant="body-medium" as="h3" tone="muted" className="mb-2">
             Slug
-          </h3>
+          </Text>
           <code className="rounded bg-muted px-2 py-1 text-sm">
             {data.slug}
           </code>

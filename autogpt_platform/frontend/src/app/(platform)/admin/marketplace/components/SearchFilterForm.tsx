@@ -2,16 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Input } from "@/components/__legacy__/ui/input";
-import { Button } from "@/components/__legacy__/ui/button";
-import { Search } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/__legacy__/ui/select";
+import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Input } from "@/components/atoms/Input/Input";
+import { Select } from "@/components/atoms/Select/Select";
+import { Search01Icon } from "@hugeicons/core-free-icons";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { isKey } from "@/lib/keyboard";
 
@@ -62,17 +57,33 @@ export function SearchAndFilterAdminMarketplace({
     <div className="flex items-center justify-between">
       <div className="flex w-full items-center gap-2">
         <Input
+          id="admin-marketplace-search"
+          label="Search agents by Name, Creator, or Description..."
+          hideLabel
+          size="small"
+          wrapperClassName="mb-0"
           placeholder="Search agents by Name, Creator, or Description..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={(e) => isKey(e, "Enter") && handleSearch()}
         />
-        <Button variant="outline" onClick={handleSearch}>
-          <Search className="h-4 w-4" />
+        <Button
+          variant="outline"
+          size="small"
+          onClick={handleSearch}
+          aria-label="Search"
+        >
+          <Icon icon={Search01Icon} size={16} />
         </Button>
       </div>
 
       <Select
+        id="admin-marketplace-status-filter"
+        label="Status"
+        hideLabel
+        size="small"
+        wrapperClassName="mb-0 w-[180px]"
+        placeholder="Select Status"
         value={selectedStatus}
         onValueChange={(value) => {
           setSelectedStatus(value);
@@ -85,17 +96,13 @@ export function SearchAndFilterAdminMarketplace({
           params.set("page", "1");
           router.push(`${pathname}?${params.toString()}`);
         }}
-      >
-        <SelectTrigger className="w-[180px]">
-          <SelectValue placeholder="Select Status" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">All</SelectItem>
-          <SelectItem value={SubmissionStatus.PENDING}>Pending</SelectItem>
-          <SelectItem value={SubmissionStatus.APPROVED}>Approved</SelectItem>
-          <SelectItem value={SubmissionStatus.REJECTED}>Rejected</SelectItem>
-        </SelectContent>
-      </Select>
+        options={[
+          { value: "ALL", label: "All" },
+          { value: SubmissionStatus.PENDING, label: "Pending" },
+          { value: SubmissionStatus.APPROVED, label: "Approved" },
+          { value: SubmissionStatus.REJECTED, label: "Rejected" },
+        ]}
+      />
     </div>
   );
 }

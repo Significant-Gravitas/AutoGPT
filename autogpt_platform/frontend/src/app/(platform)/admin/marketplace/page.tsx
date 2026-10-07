@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { AdminAgentsDataTable } from "./components/AdminAgentsDataTable";
 import { AdminSkillSubmissions } from "./components/AdminSkillSubmissions";
+import { Text } from "@/components/atoms/Text/Text";
 
 type MarketplaceAdminPageSearchParams = {
   page?: string;
@@ -24,10 +25,12 @@ async function AdminMarketplaceDashboard({
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Marketplace Management</h1>
-            <p className="text-gray-500">
+            <Text variant="h3" as="h1">
+              Marketplace Management
+            </Text>
+            <Text variant="large" tone="muted">
               Unified view for marketplace management and approval history
-            </p>
+            </Text>
           </div>
         </div>
 
@@ -44,7 +47,9 @@ async function AdminMarketplaceDashboard({
         </Suspense>
 
         <div className="mt-6 flex flex-col gap-3">
-          <h2 className="text-xl font-semibold">Skill submissions</h2>
+          <Text variant="h4" as="h2">
+            Skill submissions
+          </Text>
           <AdminSkillSubmissions />
         </div>
       </div>

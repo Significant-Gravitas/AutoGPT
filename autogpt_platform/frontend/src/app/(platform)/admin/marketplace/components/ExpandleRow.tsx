@@ -9,28 +9,33 @@ import {
   TableHead,
   TableBody,
 } from "@/components/__legacy__/ui/table";
-import { Badge } from "@/components/__legacy__/ui/badge";
-import { ChevronDown, ChevronRight, Eye } from "lucide-react";
-import Link from "next/link";
+import { Badge } from "@/components/atoms/Badge/Badge";
+import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  ArrowDown01Icon,
+  ArrowRight01Icon,
+  ViewIcon,
+} from "@hugeicons/core-free-icons";
 import { formatDistanceToNow } from "date-fns";
 import type { StoreListingWithVersionsAdminView } from "@/app/api/__generated__/models/storeListingWithVersionsAdminView";
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
-import { Button } from "@/components/__legacy__/ui/button";
 import { ApproveRejectButtons } from "./ApproveRejectButton";
 import { DownloadAgentAdminButton } from "./DownloadAgentButton";
+import { Text } from "@/components/atoms/Text/Text";
 
 // Moved the getStatusBadge function into the client component
 const getStatusBadge = (status: SubmissionStatus) => {
   switch (status) {
     case SubmissionStatus.PENDING:
-      return <Badge className="bg-amber-500">Pending</Badge>;
+      return <Badge variant="warning">Pending</Badge>;
     case SubmissionStatus.APPROVED:
-      return <Badge className="bg-green-500">Approved</Badge>;
+      return <Badge variant="success">Approved</Badge>;
     case SubmissionStatus.REJECTED:
-      return <Badge className="bg-red-500">Rejected</Badge>;
+      return <Badge variant="error">Rejected</Badge>;
     default:
-      return <Badge className="bg-gray-500">Draft</Badge>;
+      return <Badge variant="info">Draft</Badge>;
   }
 };
 
@@ -47,11 +52,10 @@ export function ExpandableRow({
     <>
       <TableRow className="cursor-pointer hover:bg-muted/50">
         <TableCell onClick={() => setExpanded(!expanded)}>
-          {expanded ? (
-            <ChevronDown className="h-4 w-4" />
-          ) : (
-            <ChevronRight className="h-4 w-4" />
-          )}
+          <Icon
+            icon={expanded ? ArrowDown01Icon : ArrowRight01Icon}
+            className="h-4 w-4"
+          />
         </TableCell>
         <TableCell
           className="font-medium"
@@ -79,14 +83,15 @@ export function ExpandableRow({
           <div className="flex justify-end gap-2">
             {latestVersion?.listing_version_id && (
               <>
-                <Link
+                <Button
+                  as="NextLink"
                   href={`/admin/marketplace/preview/${latestVersion.listing_version_id}`}
+                  variant="outline"
+                  size="small"
+                  leadingIcon={ViewIcon}
                 >
-                  <Button size="sm" variant="outline">
-                    <Eye className="mr-2 h-4 w-4" />
-                    Preview
-                  </Button>
-                </Link>
+                  Preview
+                </Button>
                 <DownloadAgentAdminButton
                   storeListingVersionId={latestVersion.listing_version_id}
                 />
@@ -106,7 +111,9 @@ export function ExpandableRow({
         <TableRow>
           <TableCell colSpan={7} className="border-t-0 p-0">
             <div className="bg-muted/30 px-4 py-3">
-              <h4 className="mb-2 text-sm font-semibold">Version History</h4>
+              <Text variant="body-medium" as="h4" className="mb-2">
+                Version History
+              </Text>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -136,7 +143,9 @@ export function ExpandableRow({
                           v{version.listing_version || "?"}
                           {version.listing_version_id ===
                             listing.active_listing_version_id && (
-                            <Badge className="ml-2 bg-blue-500">Active</Badge>
+                            <Badge variant="info" className="ml-2">
+                              Active
+                            </Badge>
                           )}
                         </TableCell>
                         <TableCell>{getStatusBadge(version.status)}</TableCell>
@@ -170,7 +179,7 @@ export function ExpandableRow({
                               {version.review_comments}
                             </div>
                           ) : (
-                            <span className="text-gray-400">
+                            <span className="text-zinc-400">
                               No external comments
                             </span>
                           )}
@@ -184,7 +193,7 @@ export function ExpandableRow({
                               {version.internal_comments}
                             </div>
                           ) : (
-                            <span className="text-gray-400">
+                            <span className="text-zinc-400">
                               No internal comments
                             </span>
                           )}
@@ -201,14 +210,15 @@ export function ExpandableRow({
                           <div className="flex justify-end gap-2">
                             {version.listing_version_id && (
                               <>
-                                <Link
+                                <Button
+                                  as="NextLink"
                                   href={`/admin/marketplace/preview/${version.listing_version_id}`}
+                                  variant="outline"
+                                  size="small"
+                                  leadingIcon={ViewIcon}
                                 >
-                                  <Button size="sm" variant="outline">
-                                    <Eye className="mr-2 h-4 w-4" />
-                                    Preview
-                                  </Button>
-                                </Link>
+                                  Preview
+                                </Button>
                                 <DownloadAgentAdminButton
                                   storeListingVersionId={
                                     version.listing_version_id
