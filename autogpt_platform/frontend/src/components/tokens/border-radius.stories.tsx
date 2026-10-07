@@ -1,78 +1,55 @@
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { LinkSquare02Icon } from "@hugeicons/core-free-icons";
 import type { Meta } from "@storybook/nextjs";
-import { SquareArrowOutUpRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { StoryCode } from "./helpers/StoryCode";
+import { formatPx, getBorderRadiusScale, utilityClass } from "./helpers/theme";
 
 const meta: Meta = {
   title: "Tokens /Border Radius",
   parameters: {
     layout: "fullscreen",
     controls: { disable: true },
+    a11y: { test: "error" },
   },
 };
 
 export default meta;
 
-// Border radius scale data based on Figma design tokens
-// Custom naming convention: xsmall, small, medium, large, xlarge, 2xlarge, full
-const borderRadiusScale = [
-  {
-    name: "xsmall",
-    value: "0.25rem",
-    rem: "0.25rem",
-    px: "4px",
-    class: "rounded-xsmall",
-    description: "Extra small - for subtle rounding",
-  },
-  {
-    name: "small",
-    value: "0.5rem",
-    rem: "0.5rem",
-    px: "8px",
-    class: "rounded-small",
-    description: "Small - for cards and containers",
-  },
-  {
-    name: "medium",
-    value: "0.75rem",
-    rem: "0.75rem",
-    px: "12px",
-    class: "rounded-medium",
-    description: "Medium - for buttons and inputs",
-  },
-  {
-    name: "large",
-    value: "1rem",
-    rem: "1rem",
-    px: "16px",
-    class: "rounded-large",
-    description: "Large - for panels and modals",
-  },
-  {
-    name: "xlarge",
-    value: "1.25rem",
-    rem: "1.25rem",
-    px: "20px",
-    class: "rounded-xlarge",
-    description: "Extra large - for hero sections",
-  },
-  {
-    name: "2xlarge",
-    value: "1.5rem",
-    rem: "1.5rem",
-    px: "24px",
-    class: "rounded-2xlarge",
-    description: "2X large - for major containers",
-  },
-  {
-    name: "full",
-    value: "9999px",
-    rem: "9999px",
-    px: "9999px",
-    class: "rounded-full",
-    description: "Full - for pill buttons and circular elements",
-  },
-];
+const borderRadiusScale = getBorderRadiusScale();
+
+interface MeasuredRadiusProps {
+  value: string;
+}
+
+function MeasuredRadius({ value }: MeasuredRadiusProps) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [px, setPx] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (ref.current) setPx(getComputedStyle(ref.current).borderTopLeftRadius);
+  }, [value]);
+
+  return (
+    <span ref={ref} style={{ borderRadius: value }}>
+      {px}
+    </span>
+  );
+}
+
+const radiusCode = [
+  "// Every radius token in the resolved theme",
+  ...borderRadiusScale.map(
+    (radius) =>
+      `<div className="${utilityClass("rounded", radius.name)}" /> // ${radius.value}`,
+  ),
+  "",
+  "// Directional rounding works with every token",
+  '<div className="rounded-t-xl">Top corners only</div>',
+  '<div className="rounded-r-xl">Right corners only</div>',
+  '<div className="rounded-tl-xl">Top-left corner only</div>',
+].join("\n");
 
 export function AllVariants() {
   return (
@@ -84,11 +61,10 @@ export function AllVariants() {
             Border Radius
           </Text>
           <Text variant="large" className="text-zinc-600">
-            Our border radius system uses a descriptive naming convention
-            (xsmall, small, medium, large, xlarge, 2xlarge, full) based on our
-            Figma design tokens. This creates visual hierarchy and maintains
-            design consistency across all components while avoiding conflicts
-            with Tailwind&apos;s built-in classes.
+            Border radius tokens create visual hierarchy and keep corner
+            rounding consistent across components. Every value on this page is
+            read from the resolved Tailwind theme in{" "}
+            <code>tailwind.config.ts</code>, so it always matches the config.
           </Text>
         </div>
 
@@ -101,7 +77,7 @@ export function AllVariants() {
               Tailwind utilities
             </Text>
             <div className="space-y-4">
-              <div className="rounded-lg border border-gray-200 p-4">
+              <div className="rounded-lg border border-zinc-200 p-4">
                 <a
                   href="https://tailwindcss.com/docs/border-radius"
                   target="_blank"
@@ -109,7 +85,7 @@ export function AllVariants() {
                   className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-blue-600 hover:underline"
                 >
                   Border Radius Classes{" "}
-                  <SquareArrowOutUpRight className="inline-block h-3 w-3" />
+                  <Icon icon={LinkSquare02Icon} size={12} aria-hidden />
                 </a>
                 <Text variant="body" className="mb-2 text-zinc-600">
                   Used to round the corners of elements
@@ -118,7 +94,7 @@ export function AllVariants() {
                   rounded-lg → border-radius: 0.5rem (8px)
                 </div>
               </div>
-              <div className="rounded-lg border border-gray-200 p-4">
+              <div className="rounded-lg border border-zinc-200 p-4">
                 <Text
                   variant="body-medium"
                   className="mb-2 font-semibold text-zinc-800"
@@ -130,18 +106,16 @@ export function AllVariants() {
                   tokens
                 </Text>
                 <div className="space-y-1 font-mono text-sm text-zinc-800">
-                  <div>rounded-t-m → top corners</div>
-                  <div>rounded-r-m → right corners</div>
-                  <div>rounded-b-m → bottom corners</div>
-                  <div>rounded-l-m → left corners</div>
+                  <div>rounded-t-xl → top corners</div>
+                  <div>rounded-r-xl → right corners</div>
+                  <div>rounded-b-xl → bottom corners</div>
+                  <div>rounded-l-xl → left corners</div>
                 </div>
               </div>
               <Text variant="body" className="mb-4 text-zinc-600">
-                We use a custom border radius system based on our Figma design
-                tokens, with descriptive naming (xsmall, small, medium, large,
-                xlarge, 2xlarge, full) that provides consistent radius values
-                optimized for our design system while avoiding conflicts with
-                Tailwind&apos;s built-in classes.
+                Use the tokens listed below rather than arbitrary values such as{" "}
+                <code>rounded-[18px]</code>. Tokens marked Custom are added or
+                changed by our config; the rest are Tailwind defaults.
               </Text>
             </div>
           </div>
@@ -185,13 +159,13 @@ export function AllVariants() {
             variant="h2"
             className="mb-2 text-xl font-semibold text-zinc-800"
           >
-            Design System Border Radius Tokens
+            Border Radius Tokens
           </Text>
           <Text variant="body" className="mb-6 text-zinc-600">
-            All border radius values from our Figma design tokens. Each value
-            can be applied to all corners or specific corners/sides using our
-            descriptive naming convention (xsmall, small, medium, large, xlarge,
-            2xlarge, full).
+            Every border radius value in the resolved Tailwind theme. Values
+            defined through <code>--radius</code> are measured in the browser.
+            Each token can be applied to all corners or to specific corners and
+            sides.
           </Text>
         </div>
 
@@ -199,19 +173,32 @@ export function AllVariants() {
           {borderRadiusScale.map((radius) => (
             <div
               key={radius.name}
-              className="flex items-center rounded-lg border border-gray-200 p-4"
+              className="flex items-center rounded-lg border border-zinc-200 p-4"
             >
               <div className="flex w-32 flex-col">
                 <Text variant="body-medium" className="font-mono text-zinc-800">
                   {radius.name}
                 </Text>
                 <Text variant="small" className="font-mono text-zinc-500">
-                  {radius.class}
+                  {utilityClass("rounded", radius.name)}
                 </Text>
               </div>
-              <div className="flex w-32 flex-col text-right">
-                <p className="font-mono text-xs text-zinc-500">{radius.rem}</p>
-                <p className="font-mono text-xs text-zinc-500">{radius.px}</p>
+              <div className="flex w-48 flex-col text-right">
+                <Text variant="small" className="font-mono text-zinc-500">
+                  {radius.value}
+                </Text>
+                <Text variant="small" className="font-mono text-zinc-500">
+                  {formatPx(radius.px) ?? (
+                    <MeasuredRadius value={radius.value} />
+                  )}
+                </Text>
+              </div>
+              <div className="flex w-24 justify-center">
+                {radius.isCustom ? (
+                  <Text variant="label" className="text-purple-600">
+                    Custom
+                  </Text>
+                ) : null}
               </div>
               <div className="ml-8 flex-1">
                 <div className="flex items-center gap-4">
@@ -233,33 +220,7 @@ export function AllVariants() {
           ))}
         </div>
 
-        <StoryCode
-          code={`// Border radius examples - Design System Tokens
-<div className="rounded-xsmall">Extra small rounding (4px)</div>
-<div className="rounded-small">Small rounding (8px)</div>
-<div className="rounded-medium">Medium rounding (12px)</div>
-<div className="rounded-large">Large rounding (16px)</div>
-<div className="rounded-xlarge">Extra large rounding (20px)</div>
-<div className="rounded-2xlarge">2X large rounding (24px)</div>
-<div className="rounded-full">Pill buttons (circular)</div>
-
-// Directional rounding (works with all sizes)
-<div className="rounded-t-medium">Top corners only</div>
-<div className="rounded-r-medium">Right corners only</div>
-<div className="rounded-b-medium">Bottom corners only</div>
-<div className="rounded-l-medium">Left corners only</div>
-
-// Individual corners
-<div className="rounded-tl-medium">Top-left corner</div>
-<div className="rounded-tr-medium">Top-right corner</div>
-<div className="rounded-bl-medium">Bottom-left corner</div>
-<div className="rounded-br-medium">Bottom-right corner</div>
-
-// Usage recommendations
-<button className="rounded-full">Pill Button</button>
-<div className="rounded-medium">Card Container</div>
-<input className="rounded-small">Input Field</input>`}
-        />
+        <StoryCode code={radiusCode} />
       </div>
     </div>
   );
