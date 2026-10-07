@@ -1,7 +1,7 @@
 # Initial paid Pro activation and usage
 
 This backend change is stacked on allowance PR #15184, tested parent
-`6f7ec74961c7ea365ad730b7497d074811e21a06`. It gives an initial settled Pro
+`223b3f1ac9937fb8ade0d87e792ae36a3357b204`. It gives an initial settled Pro
 subscription fresh daily and weekly consumption. Trial exhaustion never initiates
 a purchase. The trial's original accepted schedule can convert automatically;
 ending it early requires the separate explicit confirmation below.
@@ -32,6 +32,9 @@ Renewals, tier edits, upgrades from Pro, and returning paid subscriptions do not
 create another activation. The migration records the policy start in
 `PaidUsageActivationPolicy` at Stripe's whole-second precision; pre-policy
 payments are not retroactively reset.
+An established paid-plan change can reconcile from a settled proration invoice
+with owned recurring service at the current price and qualifying prior paid
+history. Prorations never establish the initial-payment evidence for a reset.
 Authoritative database reads bypass process-local tier caches for enforcement.
 If entitlement or accounting state cannot be established, execution fails closed.
 
@@ -59,8 +62,8 @@ in subscription metadata for `/current` recovery. Destinations exceeding Stripe'
 metadata length limit are recovered from the owned Checkout's success URL after
 checking the application origin.
 
-Every successful activation response has these fields; optional values are JSON
-`null`, except `return_to`, which always has a value:
+Every successful activation response has these fields. Optional values are JSON
+`null`; `return_to` always has a value and `usage_reset` defaults to false:
 
 | Field | Type / meaning |
 | --- | --- |
@@ -69,10 +72,12 @@ Every successful activation response has these fields; optional values are JSON
 | `terms` | The persisted commercial terms below, or null for the existing Checkout flow. |
 | `terms_token` | SHA-256 of the exact persisted terms, required by confirm; otherwise null. |
 | `return_to` | Validated application-relative return destination. |
-| `invoice_id` | Authoritative current invoice ID, when available. |
+| `invoice_id` | Authoritative current invoice ID, when available. A `ready` response uses the invoice verified during reconciliation, even if it changed after the initial status read. |
 | `hosted_invoice_url` | Stripe's hosted URL for the existing invoice when payment/action is required. |
 | `retry_after_seconds` | Suggested status polling delay, normally 3 while processing. |
 | `error_code` | Machine-readable diagnostic, otherwise null. |
+| `usage_reset` | True only for `ready` when this subscription's current invoice matches its completed initial activation. False for renewals, paid-plan changes, and returning/pre-policy subscribers, whose usage is preserved. |
+| `activation_id` | Stable completed initial activation ID when `usage_reset` is true; otherwise null. Repeated polling returns the same ID and never resets counters again. |
 
 Before showing confirmation, display the commercial `terms`: `plan` (`PRO`),
 `amount_due` formatted in `currency`, `billing_interval`
@@ -98,7 +103,8 @@ fixed future tax amount or an indefinitely recurring introductory discount.
 | `payment_required` | Open `hosted_invoice_url` to pay or update the payment method for this invoice. Retain the attempt and destination; poll status after return. Do not open another Checkout. |
 | `action_required` | Complete authentication using the same hosted invoice. Then poll status; authentication itself is not readiness. |
 | `processing` | Keep the activation recoverable and poll GET using the delay. Do not announce failure or fresh allowance. A settled payment can remain here while database/Redis reconciliation recovers. |
-| `ready` | Entitlement and reset completion are authoritative. Refetch the three data sets below, then continue to `return_to`. |
+| `ready` | Paid Pro entitlement and the applicable reset decision are authoritative. Refetch the three data sets below, then continue to `return_to`. Announce an initial fresh allowance only when `usage_reset=true`, once per `activation_id`. |
+| `not_applicable` | The owned live subscription is a known non-Pro plan (`not_pro_subscription`), including a conversion attempt followed by an upgrade. Stop activation polling, refetch subscription/usage, and continue to `return_to`. This is not a failed payment and grants no reset. |
 | `failed` | An authoritative canceled/expired subscription or void/uncollectible invoice has ended this attempt (`payment_canceled`). No fresh usage is granted. |
 
 401/403 require authentication; 404 means no owned attempt/subscription was found.
@@ -109,6 +115,11 @@ input. A preview/terms-validation Stripe failure can return 502 before payment i
 submitted. After durable consent, an uncertain mutation or reconciliation result
 returns `processing`, not a payment-failure claim. The current-status route also
 returns `processing` during database/Stripe outages.
+An unknown price or ambiguous subscription items remain `processing` with
+`error_code=plan_unavailable`; a stale local tier alone never makes paid Pro
+recovery fail. Accepted trial prices remain recognized after offer changes.
+`/current` skips known non-Pro subscriptions while looking for an applicable Pro
+subscription, returning `not_applicable` if no applicable subscription exists.
 
 On refresh/navigation, call `/current`; do not derive success from URL parameters,
 an old tier response, or a cached completed Checkout. If the original confirmation
@@ -123,6 +134,9 @@ outcome. Never create a replacement attempt or invoice to resolve that state.
 If accepted terms change after consent was persisted, the backend also stops
 submission (`processing`, `error_code=terms_changed`); establish the existing
 payment outcome before arranging any new consent.
+An unconfirmed trial whose live Pro price changed also returns `terms_changed`
+instead of offering confirmation against stale terms. Refresh the preview only
+after the subscription again matches its accepted offer; no payment was submitted.
 
 In the final five minutes before the live scheduled trial end, confirmation
 returns processing and lets the already accepted scheduled conversion happen.
@@ -132,11 +146,15 @@ After `ready`, invalidate and **await refetch** of queries for:
 
 - `GET /api/credits/trial` (active/converted state and preserved lifetime history).
 - `GET /api/credits/subscription` (entitlement and billing state).
-- `GET /api/chat/usage` (fresh Pro calendar allowance and current paid consumption).
+- `GET /api/chat/usage` (the applicable Pro allowance and current consumption).
 
 Use the generated query-key helpers for these exact endpoints; discard any old
 paywall/exhaustion decision derived from their previous results. Preserve
 `return_to` throughout hosted payment/authentication navigation.
+`usage_reset=true` describes the completed initial invoice, not an operation
+performed by this poll. Preserve the last announced `activation_id` across
+navigation. Later renewal or plan-change invoices return false and no activation
+ID; repeated recovery of the initial invoice must not repeat the fresh-usage claim.
 
 ## Rollout and recovery requirements
 
@@ -147,8 +165,9 @@ old workers can still admit paid work would allow a later reconciliation to
 exclude that work from the fresh allowance. Install the schema, roll out API,
 reconciliation services and every worker/producer together, then resume admission.
 Scheduled Stripe payments during this window reconcile after the new code starts.
-Legacy batch callbacks without a stored accounting context fail closed and must
-be drained before rollout. Mixed old/new usage writers must not account newly
+Legacy batch callbacks without a stored accounting context fail closed, mark the
+job errored, and release the original lock without billing under a new context.
+They must still be drained before rollout. Mixed old/new usage writers must not account newly
 admitted work after activation. Keep the
 generation-aware accounting code during rollback for accounts already activated;
 rolling back to readers of only the old Redis keys would lose correct enforcement.
@@ -167,7 +186,7 @@ conversion, SCA, declines, 100% discounts/customer credit, duplicate events, and
 lost mutation response. Local tests use Stripe boundary doubles and real
 disposable PostgreSQL/Redis for transaction/concurrency/accounting behavior; they
 do not exercise production billing. No rollout or production data change is part
-of this draft PR.
+of this PR.
 
 Stripe references: [subscription update and payment behavior](https://docs.stripe.com/api/subscriptions/update),
 [invoice previews](https://docs.stripe.com/api/invoices/create_preview), and

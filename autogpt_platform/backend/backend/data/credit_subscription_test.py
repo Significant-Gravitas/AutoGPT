@@ -1169,6 +1169,7 @@ async def test_sync_subscription_from_stripe_unknown_price_id_preserves_current_
     """Unknown price_id should preserve the current tier, not default to BASIC (no DB write)."""
     mock_user = _make_user(tier=SubscriptionTier.PRO)
     stripe_sub = {
+        "id": "sub_price_check",
         "customer": "cus_123",
         "status": "active",
         "items": {"data": [{"price": {"id": "price_unknown"}}]},
@@ -1194,6 +1195,7 @@ async def test_sync_subscription_from_stripe_unknown_price_id_preserves_current_
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
+        billing_boundaries.subscription.assert_awaited_once_with("sub_price_check")
         # Unknown price → preserve current tier (early return, no DB write)
         mock_set.assert_not_awaited()
 
@@ -1205,6 +1207,7 @@ async def test_sync_subscription_from_stripe_unconfigured_ld_price_preserves_cur
     """When LD flags are unconfigured (None price IDs), the current tier should be preserved, not defaulted to BASIC."""
     mock_user = _make_user(tier=SubscriptionTier.PRO)
     stripe_sub = {
+        "id": "sub_price_check",
         "customer": "cus_123",
         "status": "active",
         "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
@@ -1226,6 +1229,7 @@ async def test_sync_subscription_from_stripe_unconfigured_ld_price_preserves_cur
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
+        billing_boundaries.subscription.assert_awaited_once_with("sub_price_check")
         # None from LD → comparison guards prevent match → preserve current tier
         mock_set.assert_not_awaited()
 

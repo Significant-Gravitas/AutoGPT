@@ -62,6 +62,30 @@ def qualifying_invoice(
 
 
 def settled_recurring_invoice(invoice: dict) -> bool:
+    return _settled_subscription_invoice(invoice) and any(
+        _paid_recurring_line(line, invoice_subscription(invoice))
+        for line in invoice.get("lines", {}).get("data", [])
+    )
+
+
+def settled_proration_invoice(invoice: dict, price_id: str | None) -> bool:
+    """Current paid access evidence; never evidence of an initial usage reset."""
+    return bool(
+        price_id
+        and invoice.get("billing_reason") == "subscription_update"
+        and _settled_subscription_invoice(invoice)
+        and any(
+            _paid_recurring_line(
+                line, invoice_subscription(invoice), allow_proration=True
+            )
+            and line_price(line) == price_id
+            and line.get("quantity") == 1
+            for line in invoice.get("lines", {}).get("data", [])
+        )
+    )
+
+
+def _settled_subscription_invoice(invoice: dict) -> bool:
     return bool(
         invoice.get("status") == "paid"
         and invoice.get("amount_remaining") == 0
@@ -70,16 +94,12 @@ def settled_recurring_invoice(invoice: dict) -> bool:
         and invoice.get("billing_reason")
         in ("subscription_create", "subscription_cycle", "subscription_update")
         and not invoice.get("lines", {}).get("has_more", False)
-        # Trial setup invoices have no priced service; discounted invoices retain
-        # their pre-discount line amounts. No amount_paid > 0 requirement.
-        and any(
-            _paid_recurring_line(line, invoice_subscription(invoice))
-            for line in invoice.get("lines", {}).get("data", [])
-        )
     )
 
 
-def _paid_recurring_line(line: dict, subscription_id: str | None) -> bool:
+def _paid_recurring_line(
+    line: dict, subscription_id: str | None, *, allow_proration: bool = False
+) -> bool:
     parent = line.get("parent") or {}
     details = parent.get("subscription_item_details") or {}
     recurring = (
@@ -92,7 +112,10 @@ def _paid_recurring_line(line: dict, subscription_id: str | None) -> bool:
         recurring
         and owner == subscription_id
         and subscription_id
-        and not line.get("proration", details.get("proration", False))
+        and (
+            allow_proration
+            or not line.get("proration", details.get("proration", False))
+        )
         and period.get("end", 0) > period.get("start", 0)
         and _priced_service(line)
     )

@@ -12,6 +12,7 @@ ActivationStatus = Literal[
     "action_required",
     "processing",
     "ready",
+    "not_applicable",
     "failed",
 ]
 
@@ -92,6 +93,12 @@ class ActivationPreviewRequest(BaseModel):
         return value
 
 
+class PaidActivationResult(BaseModel):
+    invoice_id: str
+    usage_reset: bool
+    activation_id: str | None = None
+
+
 class ActivationResponse(BaseModel):
     id: str | None = None
     status: ActivationStatus
@@ -102,6 +109,8 @@ class ActivationResponse(BaseModel):
     hosted_invoice_url: str | None = None
     retry_after_seconds: int | None = None
     error_code: str | None = None
+    usage_reset: bool = False
+    activation_id: str | None = None
 
 
 class ActivationAttempt(BaseModel):

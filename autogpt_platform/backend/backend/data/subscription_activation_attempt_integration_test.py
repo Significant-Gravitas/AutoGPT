@@ -19,6 +19,7 @@ from backend.data.subscription_activation_models import (
     ActivationConfirmRequest,
     ActivationTerms,
     ActivationUnavailable,
+    PaidActivationResult,
 )
 from backend.data.subscription_activation_stripe import (
     BillingInvoice,
@@ -142,7 +143,15 @@ async def test_concurrent_confirmation_and_lost_stripe_response_do_not_charge_tw
     )
     monkeypatch.setattr(checkout, "quote_terms", AsyncMock(return_value=attempt.terms))
     monkeypatch.setattr(
-        checkout, "reconcile_paid_activation", AsyncMock(return_value=True)
+        checkout,
+        "reconcile_paid_activation",
+        AsyncMock(
+            return_value=PaidActivationResult(
+                invoice_id="in_confirmed",
+                usage_reset=True,
+                activation_id="generation-1",
+            )
+        ),
     )
 
     async def lost_response(*args, **kwargs):

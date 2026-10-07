@@ -2850,7 +2850,8 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
     owns_trial = enrollment is not None and (
         enrollment.subscription_id == new_sub_id
         or (
-            enrollment.converted_at is None
+            not enrollment.subscription_id
+            and enrollment.converted_at is None
             and stripe_subscription.get("trial_end") is not None
         )
     )
@@ -2873,6 +2874,15 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
             price_id = items[0].get("price", {}).get("id", "")
         price_to_tier = await build_price_to_tier_map()
         matched = price_to_tier.get(price_id) if price_id else None
+        if (
+            matched is None
+            and enrollment is not None
+            and enrollment.converted_at is not None
+            and enrollment.subscription_id == new_sub_id
+            and enrollment.offer.price_id == price_id
+            and enrollment.offer.tier == SubscriptionTier.PRO
+        ):
+            matched = SubscriptionTier.PRO
         if matched is not None:
             tier = matched
         else:

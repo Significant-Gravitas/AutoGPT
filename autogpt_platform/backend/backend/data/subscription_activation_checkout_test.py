@@ -1,7 +1,7 @@
 """Explicit confirmation and charge recovery contract."""
 
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -13,15 +13,17 @@ from backend.api.features.subscription_activation_routes import confirm_pro_acti
 from backend.data import subscription_activation_checkout as checkout
 from backend.data import subscription_activation_stripe as billing
 from backend.data.subscription_activation_models import (
-    ActivationAttempt,
     ActivationConfirmRequest,
     ActivationNotFound,
     ActivationPreviewRequest,
-    ActivationTerms,
     ActivationUnavailable,
+    PaidActivationResult,
 )
 
-pytest_plugins = ("backend.data.subscription_trial_fixtures",)
+pytest_plugins = (
+    "backend.data.subscription_trial_fixtures",
+    "backend.data.subscription_activation_checkout_fixtures",
+)
 
 
 @pytest.mark.parametrize("confirmation", [False, 1, "true", None])
@@ -36,77 +38,6 @@ def test_conversion_requires_explicit_true_confirmation(confirmation):
 def test_return_destination_stays_on_application_origin(path):
     with pytest.raises(ValidationError):
         ActivationPreviewRequest(return_to=path)
-
-
-@pytest.fixture
-def attempt():
-    return ActivationAttempt(
-        id="operation-1",
-        user_id="user-1",
-        subscription_id="sub_1",
-        customer_id="cus_1",
-        return_to="/chat/thread-123?resume=true",
-        confirmed_at=None,
-        terms=ActivationTerms(
-            price_id="price_pro",
-            accepted_offer_token="a" * 64,
-            amount_due=4200,
-            currency="usd",
-            billing_interval="month",
-            renewal_unit_amount=5000,
-            renewal_terms="Renews every month; cancel before renewal.",
-            expires_at=datetime.now(UTC) + timedelta(minutes=10),
-        ),
-    )
-
-
-@pytest.fixture
-def live_subscription():
-    return billing.BillingSubscription.model_validate(
-        {
-            "id": "sub_1",
-            "customer": "cus_1",
-            "status": "trialing",
-            "trial_end": int((datetime.now(UTC) + timedelta(days=1)).timestamp()),
-            "metadata": {"user_id": "user-1", "trial_enrollment_id": "trial-1"},
-            "items": {
-                "data": [
-                    {
-                        "price": {
-                            "id": "price_pro",
-                            "unit_amount": 5000,
-                            "currency": "usd",
-                            "recurring": {"interval": "month", "interval_count": 1},
-                        },
-                        "quantity": 1,
-                    }
-                ]
-            },
-        }
-    )
-
-
-@pytest.fixture
-def boundaries(monkeypatch, attempt, live_subscription, trial):
-    @asynccontextmanager
-    async def lock(user_id):
-        yield
-
-    confirmed = attempt.model_copy(update={"confirmed_at": datetime.now(UTC)})
-    mocks = {
-        "subscription_checkout_lock": lock,
-        "get_attempt": AsyncMock(return_value=attempt),
-        "save_confirmation": AsyncMock(return_value=confirmed),
-        "save_quote": AsyncMock(return_value=attempt),
-        "conversion_trial": AsyncMock(return_value=(trial, live_subscription)),
-        "quote_terms": AsyncMock(return_value=attempt.terms),
-        "owned_subscription": AsyncMock(return_value=live_subscription),
-        "reconcile_paid_activation": AsyncMock(return_value=False),
-        "stripe_call": AsyncMock(),
-    }
-    for name, value in mocks.items():
-        monkeypatch.setattr(checkout, name, value)
-    return SimpleNamespace(**mocks)
 
 
 @pytest.mark.asyncio
@@ -220,7 +151,13 @@ async def test_paid_invoice_requires_authoritative_reset_completion(
     live_subscription.latest_invoice = billing.BillingInvoice(
         id="in_paid", customer="cus_1", status="paid", amount_remaining=0
     )
-    boundaries.reconcile_paid_activation.return_value = ready
+    boundaries.reconcile_paid_activation.return_value = (
+        PaidActivationResult(
+            invoice_id="in_paid", usage_reset=True, activation_id="generation-1"
+        )
+        if ready
+        else None
+    )
     response = await checkout.get_activation(attempt.user_id, attempt.id)
     assert response.status == ("ready" if ready else "processing")
     boundaries.stripe_call.assert_not_awaited()
@@ -306,7 +243,9 @@ async def test_lock_exit_failure_after_charge_is_recoverable_processing(
 
     monkeypatch.setattr(checkout, "subscription_checkout_lock", failed_lock_exit)
     boundaries.stripe_call.side_effect = payment_succeeded
-    boundaries.reconcile_paid_activation.return_value = True
+    boundaries.reconcile_paid_activation.return_value = PaidActivationResult(
+        invoice_id="in_paid", usage_reset=True, activation_id="generation-1"
+    )
     response = await confirm_pro_activation(
         attempt.id,
         ActivationConfirmRequest(confirmed=True, terms_token=attempt.terms.token),
@@ -333,7 +272,9 @@ async def test_current_recovers_new_paid_signup_after_canceled_conversion(
     )
     boundaries.owned_subscription.side_effect = [canceled, paid]
     boundaries.stripe_call.return_value = SimpleNamespace(data=[paid], has_more=False)
-    boundaries.reconcile_paid_activation.return_value = True
+    boundaries.reconcile_paid_activation.return_value = PaidActivationResult(
+        invoice_id="in_new", usage_reset=True, activation_id="generation-1"
+    )
     monkeypatch.setattr(
         checkout.User,
         "prisma",
