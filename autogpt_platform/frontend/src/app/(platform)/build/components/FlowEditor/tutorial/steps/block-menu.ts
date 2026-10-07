@@ -50,7 +50,7 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
     text: `
       <div class="text-sm leading-[1.375rem] text-zinc-800">
         <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">This is the <strong>Block Menu</strong> — your toolbox for building agents.</p>
-        <p class="text-sm font-medium leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.5rem;">Here you'll find:</p>
+        <p class="text-sm font-medium leading-[1.375rem] text-zinc-800 m-0 mt-2">Here you'll find:</p>
         <ul>
           <li><strong>Input Blocks</strong> — Entry points for data</li>
           <li><strong>Action Blocks</strong> — Processing and AI operations</li>
@@ -84,7 +84,7 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
       <div class="text-sm leading-[1.375rem] text-zinc-800">
         <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Let's add a Calculator block to start.</p>
         ${banner(ICONS.Keyboard, "Type Calculator in the search bar", "action")}
-        <p class="text-xs font-normal leading-[1.125rem] text-zinc-500 m-0" style="margin-top: 0.5rem;">The search will filter blocks as you type.</p>
+        <p class="text-xs font-normal leading-[1.125rem] text-zinc-500 m-0 mt-2">The search will filter blocks as you type.</p>
       </div>
     `,
     attachTo: {

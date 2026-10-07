@@ -46,7 +46,7 @@ export const createSaveSteps = (): StepOptions[] => [
       <div class="text-sm leading-[1.375rem] text-zinc-800">
         <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Give your agent a <strong>name</strong> and optional description.</p>
         ${banner(ICONS.ClickIcon, 'Enter a name and click "Save Agent"', "action")}
-        <p class="text-xs font-normal leading-[1.125rem] text-zinc-500 m-0" style="margin-top: 0.5rem;">Example: "My Calculator Agent"</p>
+        <p class="text-xs font-normal leading-[1.125rem] text-zinc-500 m-0 mt-2">Example: "My Calculator Agent"</p>
       </div>
     `,
     attachTo: {

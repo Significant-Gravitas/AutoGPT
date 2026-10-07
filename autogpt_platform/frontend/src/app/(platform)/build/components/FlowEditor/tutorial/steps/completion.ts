@@ -20,7 +20,7 @@ export const createCompletionSteps = (tour: any): StepOptions[] => [
           </ul>
         </div>
         
-        <p class="text-sm font-medium leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.75rem;">Happy building! 🚀</p>
+        <p class="text-sm font-medium leading-[1.375rem] text-zinc-800 m-0 mt-3">Happy building! 🚀</p>
       </div>
     `,
     when: {

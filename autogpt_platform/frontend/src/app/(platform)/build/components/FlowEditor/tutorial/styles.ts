@@ -31,9 +31,9 @@ const bannerStyles: Record<
   { bg: string; ring: string; text: string }
 > = {
   action: {
-    bg: "bg-violet-50",
-    ring: "ring-violet-200",
-    text: "text-violet-800",
+    bg: "bg-purple-50",
+    ring: "ring-purple-200",
+    text: "text-purple-800",
   },
   info: {
     bg: "bg-blue-50",
@@ -41,9 +41,9 @@ const bannerStyles: Record<
     text: "text-blue-800",
   },
   warning: {
-    bg: "bg-amber-50",
-    ring: "ring-amber-200",
-    text: "text-amber-800",
+    bg: "bg-yellow-50",
+    ring: "ring-yellow-200",
+    text: "text-yellow-800",
   },
   success: {
     bg: "bg-green-50",
@@ -75,15 +75,15 @@ export const requirementBox = (
 ) => {
   const isSuccess = variant === "success";
   return `
-  <div id="requirements-box" class="mt-3 p-3 ${isSuccess ? "bg-green-50 ring-1 ring-green-200" : "bg-amber-50 ring-1 ring-amber-200"} rounded-2xl">
-    <p class="text-sm font-medium ${isSuccess ? "text-green-600" : "text-amber-600"} m-0 mb-2">${title}</p>
+  <div id="requirements-box" class="mt-3 p-3 ${isSuccess ? "bg-green-50 ring-1 ring-green-200" : "bg-yellow-50 ring-1 ring-yellow-200"} rounded-2xl">
+    <p class="text-sm font-medium ${isSuccess ? "text-green-600" : "text-yellow-600"} m-0 mb-2">${title}</p>
     ${items}
   </div>
 `;
 };
 
 export const requirementItem = (id: string, content: string) => `
-  <li id="${id}" class="flex items-center gap-2 text-amber-600">
+  <li id="${id}" class="flex items-center gap-2 text-yellow-600">
     <span class="req-icon">○</span> ${content}
   </li>
 `;
@@ -95,7 +95,7 @@ export const connectionStatusBox = (
 ) => {
   const isConnected = variant === "connected";
   return `
-  <div id="${id}" class="mt-3 p-2 ${isConnected ? "bg-green-50 ring-1 ring-green-200" : "bg-amber-50 ring-1 ring-amber-200"} rounded-2xl text-center text-sm ${isConnected ? "text-green-600" : "text-amber-600"}">
+  <div id="${id}" class="mt-3 p-2 ${isConnected ? "bg-green-50 ring-1 ring-green-200" : "bg-yellow-50 ring-1 ring-yellow-200"} rounded-2xl text-center text-sm ${isConnected ? "text-green-600" : "text-yellow-600"}">
     ${isConnected ? "✅ Connection already exists!" : "Waiting for connection..."}
   </div>
 `;

@@ -10,9 +10,9 @@ import { ICONS } from "../icons";
 import { banner } from "../styles";
 
 const getRequirementsHtml = () => `
-  <div id="requirements-box" class="mt-3 p-3 bg-amber-50 ring-1 ring-amber-200 rounded-2xl">
-    <p id="requirements-title" class="text-sm font-medium text-amber-600 m-0 mb-2">⚠️ Required to continue:</p>
-    <ul id="requirements-list" class="text-[0.8125rem] text-amber-600 m-0 pl-4 space-y-1">
+  <div id="requirements-box" class="mt-3 p-3 bg-yellow-50 ring-1 ring-yellow-200 rounded-2xl">
+    <p id="requirements-title" class="text-sm font-medium text-yellow-600 m-0 mb-2">⚠️ Required to continue:</p>
+    <ul id="requirements-list" class="text-[0.8125rem] text-yellow-600 m-0 pl-4 space-y-1">
       <li id="req-a" class="flex items-center gap-2">
         <span class="req-icon">○</span> Enter a number in field <strong>A</strong> (e.g., 10)
       </li>
@@ -32,9 +32,9 @@ const updateToSuccessState = () => {
   const reqList = document.querySelector("#requirements-list");
 
   if (reqBox && reqTitle) {
-    reqBox.classList.remove("bg-amber-50", "ring-amber-200");
+    reqBox.classList.remove("bg-yellow-50", "ring-yellow-200");
     reqBox.classList.add("bg-green-50", "ring-green-200");
-    reqTitle.classList.remove("text-amber-600");
+    reqTitle.classList.remove("text-yellow-600");
     reqTitle.classList.add("text-green-600");
     reqTitle.innerHTML = "🎉 Hurray! All values are completed!";
     if (reqList) {
@@ -50,9 +50,9 @@ const updateToWarningState = () => {
 
   if (reqBox && reqTitle) {
     reqBox.classList.remove("bg-green-50", "ring-green-200");
-    reqBox.classList.add("bg-amber-50", "ring-amber-200");
+    reqBox.classList.add("bg-yellow-50", "ring-yellow-200");
     reqTitle.classList.remove("text-green-600");
-    reqTitle.classList.add("text-amber-600");
+    reqTitle.classList.add("text-yellow-600");
     reqTitle.innerHTML = "⚠️ Required to continue:";
     if (reqList) {
       reqList.classList.remove("hidden");
@@ -122,15 +122,15 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
 
           if (reqAEl) {
             reqAEl.classList.toggle("text-green-600", hasA);
-            reqAEl.classList.toggle("text-amber-600", !hasA);
+            reqAEl.classList.toggle("text-yellow-600", !hasA);
           }
           if (reqBEl) {
             reqBEl.classList.toggle("text-green-600", hasB);
-            reqBEl.classList.toggle("text-amber-600", !hasB);
+            reqBEl.classList.toggle("text-yellow-600", !hasB);
           }
           if (reqOpEl) {
             reqOpEl.classList.toggle("text-green-600", hasOp);
-            reqOpEl.classList.toggle("text-amber-600", !hasOp);
+            reqOpEl.classList.toggle("text-yellow-600", !hasOp);
           }
 
           if (allComplete && !wasComplete) {

@@ -18,7 +18,7 @@ export const createBlockBasicsSteps = (tour: any): StepOptions[] => [
     text: `
       <div class="text-sm leading-[1.375rem] text-zinc-800">
         <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Excellent! This is your <strong>Calculator Block</strong>.</p>
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.5rem;">Let's explore how blocks work.</p>
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0 mt-2">Let's explore how blocks work.</p>
       </div>
     `,
     attachTo: {
@@ -56,7 +56,7 @@ export const createBlockBasicsSteps = (tour: any): StepOptions[] => [
     text: `
       <div class="text-sm leading-[1.375rem] text-zinc-800">
         <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">On the <strong>left side</strong> of the block are <strong>input handles</strong>.</p>
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.5rem;">These are where data flows <em>into</em> the block from other blocks.</p>
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0 mt-2">These are where data flows <em>into</em> the block from other blocks.</p>
       </div>
     `,
     attachTo: {
@@ -87,7 +87,7 @@ export const createBlockBasicsSteps = (tour: any): StepOptions[] => [
     text: `
       <div class="text-sm leading-[1.375rem] text-zinc-800">
         <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">On the <strong>right side</strong> is the <strong>output handle</strong>.</p>
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.5rem;">This is where the result flows <em>out</em> to connect to other blocks.</p>
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0 mt-2">This is where the result flows <em>out</em> to connect to other blocks.</p>
         ${banner(ICONS.Drag, "You can drag from output to input handler to connect blocks", "info")}
       </div>
     `,

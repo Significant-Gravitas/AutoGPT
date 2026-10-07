@@ -10,7 +10,7 @@ import { useEdgeStore } from "../../../../stores/edgeStore";
 import { TUTORIAL_SELECTORS } from "../constants";
 
 const getConnectionStatusHtml = (id: string, isConnected: boolean = false) => `
-  <div id="${id}" class="mt-3 p-2 ${isConnected ? "bg-green-50 ring-1 ring-green-200" : "bg-amber-50 ring-1 ring-amber-200"} rounded-2xl text-center text-sm ${isConnected ? "text-green-600" : "text-amber-600"}">
+  <div id="${id}" class="mt-3 p-2 ${isConnected ? "bg-green-50 ring-1 ring-green-200" : "bg-yellow-50 ring-1 ring-yellow-200"} rounded-2xl text-center text-sm ${isConnected ? "text-green-600" : "text-yellow-600"}">
     ${isConnected ? "✅ Connected!" : "Waiting for connection..."}
   </div>
 `;
@@ -25,9 +25,9 @@ const updateConnectionStatus = (
     statusEl.innerHTML =
       message || (isConnected ? "✅ Connected!" : "Waiting for connection...");
     statusEl.classList.remove(
-      "bg-amber-50",
-      "ring-amber-200",
-      "text-amber-600",
+      "bg-yellow-50",
+      "ring-yellow-200",
+      "text-yellow-600",
       "bg-green-50",
       "ring-green-200",
       "text-green-600",
@@ -35,7 +35,11 @@ const updateConnectionStatus = (
     if (isConnected) {
       statusEl.classList.add("bg-green-50", "ring-green-200", "text-green-600");
     } else {
-      statusEl.classList.add("bg-amber-50", "ring-amber-200", "text-amber-600");
+      statusEl.classList.add(
+        "bg-yellow-50",
+        "ring-yellow-200",
+        "text-yellow-600",
+      );
     }
   }
 };
@@ -293,10 +297,10 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
               <span>→</span>
               <span>Calculator 2</span>
             </div>
-            <p class="text-[0.75rem] text-green-500 m-0 mt-2 text-center italic">The result of Calculator 1 flows into Calculator 2's input A</p>
+            <p class="text-xs text-green-500 m-0 mt-2 text-center italic">The result of Calculator 1 flows into Calculator 2's input A</p>
           </div>
           
-          <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.75rem;">Now let's save and run your agent!</p>
+          <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0 mt-3">Now let's save and run your agent!</p>
         </div>
       `,
       beforeShowPromise: async () => {
