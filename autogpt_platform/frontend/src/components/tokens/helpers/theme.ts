@@ -23,6 +23,19 @@ function themeVariables(css: string, namespace: string) {
   return variables;
 }
 
+// `--name: value;` declarations of the first top-level block with this
+// selector, e.g. `:root` or `.dark`.
+function blockVariables(css: string, selector: string) {
+  const start = css.indexOf(`\n${selector} {`);
+  if (start === -1) return {};
+  const body = css.slice(start, css.indexOf("\n}", start));
+  const variables: Record<string, string> = {};
+  for (const [, name, value] of body.matchAll(/--([\w-]+):\s*([^;]+);/g)) {
+    variables[name] = value.trim();
+  }
+  return variables;
+}
+
 function themeVariable(css: string, name: string) {
   return new RegExp(`--${name}:\\s*([^;]+);`).exec(css)?.[1].trim();
 }
@@ -86,12 +99,62 @@ export function getSpacingScale() {
   }));
 }
 
+// globals.css resets Tailwind's radius scale (`--radius-*: initial`) and
+// defines its own, so only its steps exist; Custom marks a step whose value
+// differs from Tailwind's default.
 export function getBorderRadiusScale() {
-  const defaults = themeVariables(defaultThemeCss, "radius");
   return toScale(
-    { ...defaults, ...themeVariables(globalsCss, "radius") },
-    defaults,
+    themeVariables(globalsCss, "radius"),
+    themeVariables(defaultThemeCss, "radius"),
   );
+}
+
+export interface PaletteFamily {
+  name: string;
+  steps: { step: string; value: string }[];
+}
+
+// The primitive palette from the `@theme static` block, grouped by family.
+export function getPalette() {
+  const families = new Map<string, PaletteFamily>();
+  for (const [name, value] of Object.entries(
+    themeVariables(globalsCss, "color"),
+  )) {
+    const match = /^([a-z]+)-(\d+)$/.exec(name);
+    if (!match) continue;
+    const family = families.get(match[1]) ?? { name: match[1], steps: [] };
+    family.steps.push({ step: match[2], value });
+    families.set(match[1], family);
+  }
+  return [...families.values()];
+}
+
+export function getPaletteSingles() {
+  const colors = themeVariables(globalsCss, "color");
+  return ["white", "black"]
+    .filter((name) => name in colors)
+    .map((name) => ({ name, value: colors[name] }));
+}
+
+export interface SemanticColor {
+  name: string;
+  light: string;
+  dark: string | undefined;
+}
+
+// The semantic colours (`bg-background`, `text-muted-foreground`...) with
+// the palette step each one points at in :root and in .dark.
+export function getSemanticColors() {
+  const light = blockVariables(globalsCss, ":root");
+  const dark = blockVariables(globalsCss, ".dark");
+  const mapped = Object.keys(themeVariables(globalsCss, "color")).filter(
+    (name) => name in light,
+  );
+  return mapped.map((name) => ({
+    name,
+    light: light[name],
+    dark: dark[name],
+  }));
 }
 
 export function utilityClass(prefix: string, name: string) {

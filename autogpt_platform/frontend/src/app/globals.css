@@ -7,14 +7,18 @@
 
 @source "../../node_modules/streamdown/dist/*.js";
 
-/* Same selector as the .dark variables below and next-themes
-   attribute="class"; providers.tsx forces light, so dark: never applies. */
+/* Same selector as the .dark block below and next-themes attribute="class".
+   providers.tsx forces light, so the dark theme never applies yet. */
 @custom-variant dark (&:is(.dark *));
 
-@theme {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-poppins: var(--font-poppins);
+/* Primitive palette. It replaces Tailwind's colours entirely, so only these
+   families compile. `static` keeps every step in :root for code that reads
+   the variables (ErrorCard's border, the colour story). */
+@theme static {
+  --color-*: initial;
+
+  --color-white: #fefefe;
+  --color-black: #141414;
 
   --color-slate-50: #f7f8f9;
   --color-slate-100: #eff1f4;
@@ -60,10 +64,8 @@
   --color-orange-800: #8c4a00;
   --color-orange-900: #6b3900;
 
-  --color-yellow-25: #fffcf3;
   --color-yellow-50: #fef9e6;
   --color-yellow-100: #fcebb0;
-  --color-yellow-150: #fdefbf;
   --color-yellow-200: #fae28a;
   --color-yellow-300: #f8d554;
   --color-yellow-400: #f7cd33;
@@ -106,135 +108,8 @@
   --color-pink-800: #822854;
   --color-pink-900: #631e40;
 
-  --color-white: #fefefe;
-  --color-black: #141414;
-  --color-textGrey: #505057;
-  --color-textBlack: #1f1f20;
-  --color-bgLightGrey: #f3f4f6;
-
-  /* Tailwind 3's default palette, kept so the Tailwind 4 upgrade does not
-     shift these colours to Tailwind 4's OKLCH values. The shadcn token
-     rebuild replaces them. */
-  --color-gray-50: #f9fafb;
-  --color-gray-100: #f3f4f6;
-  --color-gray-200: #e5e7eb;
-  --color-gray-300: #d1d5db;
-  --color-gray-400: #9ca3af;
-  --color-gray-500: #6b7280;
-  --color-gray-600: #4b5563;
-  --color-gray-700: #374151;
-  --color-gray-800: #1f2937;
-  --color-gray-900: #111827;
-  --color-gray-950: #030712;
-
-  --color-neutral-50: #fafafa;
-  --color-neutral-100: #f5f5f5;
-  --color-neutral-200: #e5e5e5;
-  --color-neutral-300: #d4d4d4;
-  --color-neutral-400: #a3a3a3;
-  --color-neutral-500: #737373;
-  --color-neutral-600: #525252;
-  --color-neutral-700: #404040;
-  --color-neutral-800: #262626;
-  --color-neutral-900: #171717;
-  --color-neutral-950: #0a0a0a;
-
-  --color-stone-50: #fafaf9;
-  --color-stone-100: #f5f5f4;
-  --color-stone-200: #e7e5e4;
-  --color-stone-300: #d6d3d1;
-  --color-stone-400: #a8a29e;
-  --color-stone-500: #78716c;
-  --color-stone-600: #57534e;
-  --color-stone-700: #44403c;
-  --color-stone-800: #292524;
-  --color-stone-900: #1c1917;
-  --color-stone-950: #0c0a09;
-
-  --color-emerald-50: #ecfdf5;
-  --color-emerald-100: #d1fae5;
-  --color-emerald-200: #a7f3d0;
-  --color-emerald-300: #6ee7b7;
-  --color-emerald-400: #34d399;
-  --color-emerald-500: #10b981;
-  --color-emerald-600: #059669;
-  --color-emerald-700: #047857;
-  --color-emerald-800: #065f46;
-  --color-emerald-900: #064e3b;
-  --color-emerald-950: #022c22;
-
-  --color-amber-50: #fffbeb;
-  --color-amber-100: #fef3c7;
-  --color-amber-200: #fde68a;
-  --color-amber-300: #fcd34d;
-  --color-amber-400: #fbbf24;
-  --color-amber-500: #f59e0b;
-  --color-amber-600: #d97706;
-  --color-amber-700: #b45309;
-  --color-amber-800: #92400e;
-  --color-amber-900: #78350f;
-  --color-amber-950: #451a03;
-
-  --color-violet-50: #f5f3ff;
-  --color-violet-100: #ede9fe;
-  --color-violet-200: #ddd6fe;
-  --color-violet-300: #c4b5fd;
-  --color-violet-400: #a78bfa;
-  --color-violet-500: #8b5cf6;
-  --color-violet-600: #7c3aed;
-  --color-violet-700: #6d28d9;
-  --color-violet-800: #5b21b6;
-  --color-violet-900: #4c1d95;
-  --color-violet-950: #2e1065;
-
-  --color-indigo-50: #eef2ff;
-  --color-indigo-100: #e0e7ff;
-  --color-indigo-200: #c7d2fe;
-  --color-indigo-300: #a5b4fc;
-  --color-indigo-400: #818cf8;
-  --color-indigo-500: #6366f1;
-  --color-indigo-600: #4f46e5;
-  --color-indigo-700: #4338ca;
-  --color-indigo-800: #3730a3;
-  --color-indigo-900: #312e81;
-  --color-indigo-950: #1e1b4b;
-
-  --color-rose-50: #fff1f2;
-  --color-rose-100: #ffe4e6;
-  --color-rose-200: #fecdd3;
-  --color-rose-300: #fda4af;
-  --color-rose-400: #fb7185;
-  --color-rose-500: #f43f5e;
-  --color-rose-600: #e11d48;
-  --color-rose-700: #be123c;
-  --color-rose-800: #9f1239;
-  --color-rose-900: #881337;
-  --color-rose-950: #4c0519;
-
-  --color-lime-50: #f7fee7;
-  --color-lime-100: #ecfccb;
-  --color-lime-200: #d9f99d;
-  --color-lime-300: #bef264;
-  --color-lime-400: #a3e635;
-  --color-lime-500: #84cc16;
-  --color-lime-600: #65a30d;
-  --color-lime-700: #4d7c0f;
-  --color-lime-800: #3f6212;
-  --color-lime-900: #365314;
-  --color-lime-950: #1a2e05;
-
-  --color-fuchsia-50: #fdf4ff;
-  --color-fuchsia-100: #fae8ff;
-  --color-fuchsia-200: #f5d0fe;
-  --color-fuchsia-300: #f0abfc;
-  --color-fuchsia-400: #e879f9;
-  --color-fuchsia-500: #d946ef;
-  --color-fuchsia-600: #c026d3;
-  --color-fuchsia-700: #a21caf;
-  --color-fuchsia-800: #86198f;
-  --color-fuchsia-900: #701a75;
-  --color-fuchsia-950: #4a044e;
-
+  /* Tailwind's defaults for the families with no decision yet; they keep
+     working until there is one. */
   --color-blue-50: #eff6ff;
   --color-blue-100: #dbeafe;
   --color-blue-200: #bfdbfe;
@@ -245,7 +120,6 @@
   --color-blue-700: #1d4ed8;
   --color-blue-800: #1e40af;
   --color-blue-900: #1e3a8a;
-  --color-blue-950: #172554;
 
   --color-sky-50: #f0f9ff;
   --color-sky-100: #e0f2fe;
@@ -257,7 +131,6 @@
   --color-sky-700: #0369a1;
   --color-sky-800: #075985;
   --color-sky-900: #0c4a6e;
-  --color-sky-950: #082f49;
 
   --color-teal-50: #f0fdfa;
   --color-teal-100: #ccfbf1;
@@ -269,7 +142,6 @@
   --color-teal-700: #0f766e;
   --color-teal-800: #115e59;
   --color-teal-900: #134e4a;
-  --color-teal-950: #042f2e;
 
   --color-cyan-50: #ecfeff;
   --color-cyan-100: #cffafe;
@@ -281,65 +153,17 @@
   --color-cyan-700: #0e7490;
   --color-cyan-800: #155e75;
   --color-cyan-900: #164e63;
-  --color-cyan-950: #083344;
+}
 
-  --color-slate-950: #020617;
-  --color-zinc-950: #09090b;
-  --color-red-950: #450a0a;
-  --color-orange-950: #431407;
-  --color-yellow-950: #422006;
-  --color-green-950: #052e16;
-  --color-purple-950: #3b0764;
-  --color-pink-950: #500724;
-
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-
-  --color-sidebar: hsl(var(--sidebar-background));
-  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
-  --color-sidebar-primary: hsl(var(--sidebar-primary));
-  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
-  --color-sidebar-accent: hsl(var(--sidebar-accent));
-  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
-  --color-sidebar-border: hsl(var(--sidebar-border));
-  --color-sidebar-ring: hsl(var(--sidebar-ring));
-
-  --radius-xsmall: 0.25rem;
-  --radius-small: 0.5rem;
-  --radius-medium: 0.75rem;
-  --radius-large: 1rem;
-  --radius-xlarge: 1.25rem;
-  --radius-2xlarge: 1.5rem;
-  --radius-full: 9999px;
-  --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
+@theme {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-poppins: var(--font-poppins);
 
   --shadow-subtle: 0px 1px 2px 0px rgba(0, 0, 0, 0.05);
+
+  /* The default ring colour, for ring-* without a colour class. */
+  --default-ring-color: var(--ring);
 
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
@@ -485,9 +309,137 @@
   }
 }
 
-/* Tailwind 3 defaults that Tailwind 4 changed, kept for visual parity. */
-@theme {
-  --default-ring-color: rgb(59 130 246 / 0.5);
+/* Radius scale, derived from --radius (0.75rem): fields use rounded-lg
+   (12px), cards rounded-xl (16px). */
+@theme inline {
+  --radius-*: initial;
+  --radius-sm: calc(var(--radius) - 8px);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+}
+
+/* Semantic colours: bg-background, text-muted-foreground, border-border,
+   ring-ring, bg-success and so on. The values live in :root and .dark. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.75rem;
+
+  --background: #fafafa;
+  --foreground: var(--color-black);
+  --card: var(--color-white);
+  --card-foreground: var(--color-black);
+  --popover: var(--color-white);
+  --popover-foreground: var(--color-black);
+  --primary: var(--color-zinc-800);
+  --primary-foreground: var(--color-white);
+  --secondary: var(--color-zinc-100);
+  --secondary-foreground: var(--color-zinc-800);
+  --muted: var(--color-zinc-100);
+  --muted-foreground: var(--color-zinc-600);
+  --accent: var(--color-purple-500);
+  --accent-foreground: var(--color-white);
+  --destructive: var(--color-red-500);
+  --destructive-foreground: var(--color-white);
+  --success: var(--color-green-600);
+  --success-foreground: var(--color-green-50);
+  --warning: var(--color-yellow-600);
+  --warning-foreground: var(--color-yellow-50);
+  --info: var(--color-zinc-700);
+  --info-foreground: var(--color-zinc-100);
+  --border: var(--color-zinc-200);
+  --input: var(--color-zinc-200);
+  --ring: var(--color-purple-400);
+
+  --sidebar: #fafafa;
+  --sidebar-foreground: var(--color-zinc-800);
+  --sidebar-primary: var(--color-zinc-800);
+  --sidebar-primary-foreground: var(--color-white);
+  --sidebar-accent: var(--color-zinc-100);
+  --sidebar-accent-foreground: var(--color-zinc-800);
+  --sidebar-border: var(--color-zinc-200);
+  --sidebar-ring: var(--color-purple-400);
+
+  --smooth-ring-color: rgba(0, 0, 0, 0.05);
+  --smooth-ring-width: 1px;
+}
+
+/* Written now, not active: providers.tsx forces the light theme. Enabling
+   dark mode is removing forcedTheme, not touching components. */
+.dark {
+  --background: var(--color-zinc-900);
+  --foreground: var(--color-zinc-50);
+  --card: #232326;
+  --card-foreground: var(--color-zinc-50);
+  --popover: #232326;
+  --popover-foreground: var(--color-zinc-50);
+  --primary: var(--color-zinc-100);
+  --primary-foreground: var(--color-zinc-900);
+  --secondary: var(--color-zinc-800);
+  --secondary-foreground: var(--color-zinc-50);
+  --muted: var(--color-zinc-800);
+  --muted-foreground: var(--color-zinc-400);
+  --accent: var(--color-purple-400);
+  --accent-foreground: var(--color-white);
+  --destructive: var(--color-red-400);
+  --destructive-foreground: var(--color-zinc-900);
+  --success: var(--color-green-400);
+  --success-foreground: var(--color-green-900);
+  --warning: var(--color-yellow-400);
+  --warning-foreground: var(--color-yellow-900);
+  --info: var(--color-zinc-300);
+  --info-foreground: var(--color-zinc-800);
+  --border: var(--color-zinc-700);
+  --input: var(--color-zinc-700);
+  --ring: var(--color-purple-300);
+
+  --sidebar: var(--color-zinc-900);
+  --sidebar-foreground: var(--color-zinc-100);
+  --sidebar-primary: var(--color-zinc-100);
+  --sidebar-primary-foreground: var(--color-zinc-900);
+  --sidebar-accent: var(--color-zinc-800);
+  --sidebar-accent-foreground: var(--color-zinc-100);
+  --sidebar-border: var(--color-zinc-700);
+  --sidebar-ring: var(--color-purple-300);
+
+  --smooth-ring-color: rgba(255, 255, 255, 0.18);
 }
 
 @layer base {
@@ -496,12 +448,16 @@
   ::before,
   ::backdrop,
   ::file-selector-button {
-    border-color: var(--color-gray-200, currentcolor);
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased transition-colors;
   }
 
   input::placeholder,
   textarea::placeholder {
-    color: var(--color-gray-400);
+    @apply text-zinc-500;
   }
 
   button:not(:disabled),
@@ -519,6 +475,12 @@
   @media (width >= 1400px) {
     max-width: 1400px;
   }
+}
+
+/* The one focus treatment for interactive atoms: a 2px ring in --ring on
+   keyboard focus. Add ring-offset-2 where the ring needs air. */
+@utility focus-ring {
+  @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden;
 }
 
 @utility smooth-shadow-ring-sm {
@@ -541,84 +503,11 @@
 /* *** AutoGPT Design Components *** */
 
 @utility agpt-border-input {
-  @apply m-0.5 border border-input focus:border-gray-400 focus:ring-1 focus:ring-gray-400 focus:outline-hidden data-[state=open]:border-gray-400 data-[state=open]:ring-1 data-[state=open]:ring-gray-400;
+  @apply m-0.5 border border-input focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 focus:outline-hidden data-[state=open]:border-zinc-400 data-[state=open]:ring-1 data-[state=open]:ring-zinc-400;
 }
 
 @utility agpt-shadow-input {
   @apply shadow-xs focus-visible:shadow-md;
-}
-
-@layer base {
-  :root {
-    --background: 0 0% 98%; /* neutral-50#FAFAFA */
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 262 83% 58%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 85%;
-    --ring: 240 5.9% 10%;
-    --radius: 0.5rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-    --smooth-ring-color: rgba(0, 0, 0, 0.05);
-    --smooth-ring-width: 1px;
-  }
-
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-    --smooth-ring-color: rgba(255, 255, 255, 0.18);
-  }
-
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-[#F6F7F8] font-sans text-foreground antialiased transition-colors;
-  }
 }
 
 input[type="number"]::-webkit-outer-spin-button,

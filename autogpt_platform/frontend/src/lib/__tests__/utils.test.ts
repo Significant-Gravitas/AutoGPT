@@ -188,29 +188,35 @@ describe("matchesRoute", () => {
 
 describe("cn", () => {
   test.each([
-    ["rounded-large", "rounded-md", "rounded-md"],
-    ["rounded-md", "rounded-large", "rounded-large"],
-    ["rounded-xsmall", "rounded-full", "rounded-full"],
-    ["rounded-small", "rounded-2xlarge", "rounded-2xlarge"],
-    ["rounded-medium", "rounded-[18px]", "rounded-[18px]"],
-    ["rounded-t-xlarge", "rounded-t-none", "rounded-t-none"],
+    ["rounded-xl", "rounded-md", "rounded-md"],
+    ["rounded-md", "rounded-xl", "rounded-xl"],
+    ["rounded-sm", "rounded-full", "rounded-full"],
+    ["rounded-md", "rounded-3xl", "rounded-3xl"],
+    ["rounded-lg", "rounded-[18px]", "rounded-[18px]"],
+    ["rounded-t-2xl", "rounded-t-none", "rounded-t-none"],
     ["shadow-subtle", "shadow-md", "shadow-md"],
     ["shadow-none", "shadow-subtle", "shadow-subtle"],
     ["shadow-subtle", "shadow-xs", "shadow-xs"],
     ["p-2!", "p-4!", "p-4!"],
+    ["bg-muted", "bg-success", "bg-success"],
+    ["text-muted-foreground", "text-destructive", "text-destructive"],
   ])("lets %s be overridden by %s", (base, override, expected) => {
     expect(cn(base, override)).toBe(expected);
   });
 
-  test("keeps custom tokens from different groups", () => {
-    expect(cn("rounded-large shadow-subtle", "rounded-t-none")).toBe(
-      "rounded-large shadow-subtle rounded-t-none",
+  test("keeps tokens from different groups", () => {
+    expect(cn("rounded-xl shadow-subtle", "rounded-t-none")).toBe(
+      "rounded-xl shadow-subtle rounded-t-none",
     );
   });
 
-  test("does not treat a custom radius as a shadow or vice versa", () => {
-    expect(cn("rounded-large", "shadow-subtle")).toBe(
-      "rounded-large shadow-subtle",
+  test("keeps a text size next to a semantic text colour", () => {
+    expect(cn("text-sm text-muted-foreground")).toBe(
+      "text-sm text-muted-foreground",
     );
+  });
+
+  test("does not treat a radius as a shadow or vice versa", () => {
+    expect(cn("rounded-xl", "shadow-subtle")).toBe("rounded-xl shadow-subtle");
   });
 });

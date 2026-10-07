@@ -144,7 +144,7 @@ describe("Tailwind class checks", () => {
     const source = `
       export function A() {
         return (
-          <div className="group peer rounded-large shadow-subtle smooth-shadow-ring-sm animate-fade-in scrollbar-thin">
+          <div className="group peer rounded-xl shadow-subtle smooth-shadow-ring-sm focus-ring animate-fade-in scrollbar-thin bg-success text-muted-foreground">
             <span className="nodrag nowheel ph-no-capture sentry-unmask agpt-border-input group-hover:p-4" />
           </div>
         );

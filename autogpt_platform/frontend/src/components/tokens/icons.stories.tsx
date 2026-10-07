@@ -318,14 +318,14 @@ export function AllVariants() {
           </Text>
         </div>
 
-        <div className="rounded-lg border-2 border-dashed border-amber-200 bg-amber-50 p-6">
+        <div className="rounded-lg border-2 border-dashed border-yellow-200 bg-yellow-50 p-6">
           <Text
             variant="body-medium"
-            className="mb-3 font-semibold text-amber-800"
+            className="mb-3 font-semibold text-yellow-800"
           >
             🎨 Always Match Figma Designs
           </Text>
-          <div className="space-y-3 text-amber-700">
+          <div className="space-y-3 text-yellow-700">
             <Text variant="body">
               • Check the Figma designs for exact icon sizes (16px, 20px, 24px,
               etc.)

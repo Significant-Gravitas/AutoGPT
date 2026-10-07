@@ -11,12 +11,11 @@ import {
 } from "@/lib/autogpt-server-api/types";
 
 // Teach tailwind-merge the custom theme keys in src/app/globals.css, so a
-// later `rounded-md` replaces `rounded-large` instead of both being kept and
+// later `shadow-md` replaces `shadow-subtle` instead of both being kept and
 // stylesheet order deciding which one wins.
 const twMerge = extendTailwindMerge({
   extend: {
     theme: {
-      radius: ["xsmall", "small", "medium", "large", "xlarge", "2xlarge"],
       shadow: ["subtle"],
     },
   },
