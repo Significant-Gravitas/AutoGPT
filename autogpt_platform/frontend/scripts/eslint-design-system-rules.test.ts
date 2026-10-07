@@ -59,6 +59,7 @@ describe("design-system import boundaries", () => {
     ["@/components/__legacy__/ui/button", "legacy"],
     ["../../components/__legacy__/ui/button", "legacy"],
     ["@/components/ui/tooltip", "ui"],
+    ["@/components/__shadcn_scratch__/button", "shadcn-scratch"],
     ["lucide-react", "lucide-react"],
     ["@phosphor-icons/react", "@phosphor-icons/react"],
     ["@phosphor-icons/react/dist/ssr", "@phosphor-icons/react"],

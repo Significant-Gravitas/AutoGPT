@@ -87,6 +87,7 @@
       "src/app/(public)/tour/chat/components/TourSidebar/TourSidebar.tsx",
       "src/app/(public)/tour/chat/components/TourSidebar/components/TourSidebarHeader.tsx"
     ],
+    "shadcn-scratch": [],
     "lucide-react": [
       "src/components/__legacy__/Sidebar.tsx",
       "src/components/__legacy__/ui/carousel.tsx",

@@ -48,6 +48,15 @@ export const IMPORT_RESTRICTIONS = {
       },
     ],
   },
+  "shadcn-scratch": {
+    patterns: [
+      {
+        regex: "^(@/|(\\.\\./)+)components/__shadcn_scratch__/",
+        message:
+          "src/components/__shadcn_scratch__ is where the shadcn CLI writes (components.json aliases.ui) and is git-ignored. Adapt the generated code into an atom or molecule instead of importing it.",
+      },
+    ],
+  },
   "lucide-react": {
     paths: [{ name: "lucide-react", message: HUGEICONS_ONLY }],
   },

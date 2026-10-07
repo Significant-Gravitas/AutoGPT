@@ -6,14 +6,17 @@
   "tailwind": {
     "config": "",
     "css": "src/app/globals.css",
-    "baseColor": "neutral",
-    "cssVariables": false,
+    "baseColor": "zinc",
+    "cssVariables": true,
     "prefix": ""
   },
-  "iconLibrary": "radix",
+  "iconLibrary": "lucide",
   "aliases": {
     "components": "@/components",
-    "utils": "@/lib/utils"
+    "utils": "@/lib/utils",
+    "ui": "@/components/__shadcn_scratch__",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
   },
   "registries": {
     "@aceternity": "https://ui.aceternity.com/registry/{name}.json"
