@@ -14,13 +14,15 @@ import "../src/app/globals.css";
 import { fonts } from "../src/components/styles/fonts";
 import { theme } from "./theme";
 
-// Same next/font instances as src/app/layout.tsx. The variables go on <html>
-// so portalled content (dialogs, popovers, toasts) picks them up too.
-document.documentElement.classList.add(
-  fonts.poppins.variable,
-  fonts.sans.variable,
-  fonts.mono.variable,
-);
+// Same next/font instances as src/app/layout.tsx. Storybook's next/font
+// shim builds the `variable` class name from the weight, so Geist's
+// "100 900" yields a class with a space in it and a selector that never
+// matches. Set the variables from each font's family instead, on <html> so
+// portalled content (dialogs, popovers, toasts) picks them up too.
+const rootStyle = document.documentElement.style;
+rootStyle.setProperty("--font-poppins", fonts.poppins.style.fontFamily);
+rootStyle.setProperty("--font-geist-sans", fonts.sans.style.fontFamily);
+rootStyle.setProperty("--font-geist-mono", fonts.mono.style.fontFamily);
 
 // One QueryClient per story, so a story's MSW handlers are never shadowed
 // by data another story cached under the same query key. Retries are off so
