@@ -284,6 +284,7 @@ All under `src/components/`. Every folder has a story except the two helper-only
 | Badge              | Status and label pill                                                        | `__legacy__/ui/badge`                                                      |
 | Button             | Every button: variants, sizes, loading, icons, `as="NextLink"`               | `__legacy__/ui/button`, `ui/button`                                        |
 | Card               | Bordered content container                                                   | `__legacy__/ui/card`                                                       |
+| Checkbox           | Checkbox with optional label, description and error                          | `__legacy__/ui/checkbox`                                                   |
 | DateInput          | Date field with calendar popover                                             | (still uses `__legacy__` popover, calendar)                                |
 | DateTimeInput      | Date and time field                                                          | (still uses `__legacy__` popover, calendar)                                |
 | Emoji              | Emoji at a given size                                                        |                                                                            |
@@ -292,59 +293,66 @@ All under `src/components/`. Every folder has a story except the two helper-only
 | GlassPixelBackdrop | Decorative backdrop                                                          |                                                                            |
 | Icon               | Renders a Hugeicon at the system stroke width                                | `__legacy__/ui/icons`, every other icon library                            |
 | Input              | Text, password, number, amount and textarea field with label, hint and error | `__legacy__/ui/input`, `ui/input`, `__legacy__/ui/textarea`, `ui/textarea` |
-| LLMItem            | LLM provider logo and name                                                   |                                                                            |
+| Kbd                | Keyboard key                                                                 | hand-rolled kbd styles                                                     |
 | Link               | In-app and external links                                                    | raw `<a>` and bare `next/link`                                             |
+| LLMItem            | LLM provider logo and name                                                   |                                                                            |
 | LoadingSpinner     | Spinner                                                                      | `__legacy__/ui/loading`, `ui/spinner`                                      |
 | OverflowText       | Truncated text with a tooltip                                                |                                                                            |
 | Progress           | Progress bar                                                                 |                                                                            |
 | Reveal             | Staggered entrance animation                                                 |                                                                            |
+| ScrollArea         | Scroll container with styled scrollbars and scroll-to-top                    | `ui/scroll-area`, `__legacy__/ui/scroll-area`                              |
 | Select             | Labelled select from an options array                                        | `__legacy__/ui/select` (still wraps it)                                    |
+| Separator          | Horizontal or vertical rule                                                  | `ui/separator`, `__legacy__/ui/separator`                                  |
 | Skeleton           | Loading placeholder                                                          | `__legacy__/ui/skeleton`, `ui/skeleton`                                    |
 | SwapFade           | Cross-fade on key change                                                     |                                                                            |
 | Switch             | Toggle switch                                                                |                                                                            |
 | Text               | All typography                                                               | raw `<p>`, `<h1>`…`<h6>` with classes                                      |
+| Textarea           | Multi-line field with label, hint, error and counter                         | `ui/textarea`, `__legacy__/ui/textarea`                                    |
 | TimeInput          | Time field                                                                   |                                                                            |
 | ToggleChip         | Icon and label toggle chip                                                   |                                                                            |
 | Tooltip            | Tooltip (`BaseTooltip.tsx`)                                                  | `ui/tooltip`                                                               |
 
 **Molecules**
 
-| Molecule                                      | Purpose                                                         | Replaces                                                       |
-| --------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------- |
-| Accordion                                     | Accordion primitives                                            | re-exports `ui/accordion`                                      |
-| Alert                                         | Inline alert with icon                                          |                                                                |
-| AutopilotAvatar, ExpertAvatar, WorkflowAvatar | Identity avatars                                                |                                                                |
-| ExpertAvatarPicker, ExpertIdentityDetails     | Expert identity editing and display                             |                                                                |
-| Breadcrumbs                                   | Breadcrumb trail                                                |                                                                |
-| Collapsible                                   | Disclosure section                                              | `__legacy__/ui/collapsible` (still wraps it), `ui/collapsible` |
-| Confetti                                      | Confetti effect                                                 |                                                                |
-| Dialog                                        | Modal, drawer on mobile                                         | `__legacy__/ui/dialog`                                         |
-| DropdownMenu                                  | Dropdown menu                                                   | `__legacy__/ui/dropdown-menu`                                  |
-| ErrorBoundary, ErrorCard                      | Render-error boundary and error display                         |                                                                |
-| Form                                          | react-hook-form bindings                                        | `__legacy__/ui/form`                                           |
-| FullscreenDialog                              | Full-screen modal                                               |                                                                |
-| GlassOrb, TypingText                          | Decorative effects                                              |                                                                |
-| InfiniteList                                  | Infinite-scroll list                                            |                                                                |
-| InformationTooltip                            | Info icon with tooltip                                          |                                                                |
-| InstallWorkflowPicker                         | Pick an expert or workflow to install                           |                                                                |
-| IntegrationLogo, IntegrationsMarquee          | Provider logos                                                  |                                                                |
-| MultiToggle                                   | Segmented toggle group                                          |                                                                |
-| NotionAvatar                                  | Avatar composition helpers (no component, no story)             |                                                                |
-| PlanCard                                      | Pricing data helpers (no component, no story)                   |                                                                |
-| Popover                                       | Popover                                                         | `__legacy__/ui/popover`                                        |
-| RunStatusBadge                                | Agent run status badge                                          | `__legacy__/Status` (partly)                                   |
-| ScrollableTabs                                | Tabs synced to scroll position                                  |                                                                |
-| SearchInput                                   | Search field                                                    |                                                                |
-| SecondaryMenu                                 | Context menu                                                    |                                                                |
-| ShowMoreText                                  | Clamped text with a toggle                                      |                                                                |
-| Table                                         | Editable table from column config                               | `__legacy__/ui/table` (still wraps it)                         |
-| TabsLine                                      | Underline tabs                                                  | `__legacy__/ui/tabs`                                           |
-| TallyPoup                                     | Tally feedback popup (folder name has a typo)                   |                                                                |
-| TimePicker                                    | Hour and minute picker                                          |                                                                |
-| Toast                                         | Toasts (`useToast`, `Toaster`)                                  | direct `sonner` calls                                          |
-| `file-tree.tsx`                               | File tree view (loose file, uses `ui/button`, `ui/scroll-area`) |                                                                |
+| Molecule                                      | Purpose                                             | Replaces                                                     |
+| --------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
+| `file-tree.tsx`                               | File tree view (loose file)                         |                                                              |
+| Accordion                                     | Accordion primitives                                | `ui/accordion` (deleted)                                     |
+| Alert                                         | Inline alert with icon                              |                                                              |
+| AutopilotAvatar, ExpertAvatar, WorkflowAvatar | Identity avatars                                    |                                                              |
+| Breadcrumbs                                   | Breadcrumb trail                                    |                                                              |
+| Collapsible                                   | Disclosure section                                  | `__legacy__/ui/collapsible`, `ui/collapsible` (both deleted) |
+| Confetti                                      | Confetti effect                                     |                                                              |
+| DataTable                                     | Read-only table from column config, sortable        | `__legacy__/ui/table` (partly)                               |
+| Dialog                                        | Modal, drawer on mobile                             | `__legacy__/ui/dialog`                                       |
+| DropdownMenu                                  | Dropdown menu                                       | `__legacy__/ui/dropdown-menu`                                |
+| ErrorBoundary, ErrorCard                      | Render-error boundary and error display             |                                                              |
+| ExpertAvatarPicker, ExpertIdentityDetails     | Expert identity editing and display                 |                                                              |
+| Form                                          | react-hook-form bindings                            | `__legacy__/ui/form`                                         |
+| FullscreenDialog                              | Full-screen modal                                   |                                                              |
+| GlassOrb, TypingText                          | Decorative effects                                  |                                                              |
+| InfiniteList                                  | Infinite-scroll list                                |                                                              |
+| InformationTooltip                            | Info icon with tooltip                              |                                                              |
+| InstallWorkflowPicker                         | Pick an expert or workflow to install               |                                                              |
+| IntegrationLogo, IntegrationsMarquee          | Provider logos                                      |                                                              |
+| MultiToggle                                   | Segmented toggle group                              |                                                              |
+| NotionAvatar                                  | Avatar composition helpers (no component, no story) |                                                              |
+| Pagination                                    | Numbered page navigation                            | `__legacy__/ui/pagination-controls`                          |
+| PlanCard                                      | Pricing data helpers (no component, no story)       |                                                              |
+| Popover                                       | Popover                                             | `__legacy__/ui/popover`                                      |
+| RunStatusBadge                                | Agent run status badge                              | `__legacy__/Status` (partly)                                 |
+| ScrollableTabs                                | Tabs synced to scroll position                      |                                                              |
+| SearchInput                                   | Search field                                        |                                                              |
+| SecondaryMenu                                 | Context menu                                        |                                                              |
+| Sheet                                         | Side panel with title, actions and footer           | `ui/sheet`, `__legacy__/ui/sheet`                            |
+| ShowMoreText                                  | Clamped text with a toggle                          |                                                              |
+| Table                                         | Editable table from column config                   | `__legacy__/ui/table`                                        |
+| TabsLine                                      | Underline tabs                                      | `__legacy__/ui/tabs`                                         |
+| TallyPoup                                     | Tally feedback popup (folder name has a typo)       |                                                              |
+| TimePicker                                    | Hour and minute picker                              |                                                              |
+| Toast                                         | Toasts (`useToast`, `Toaster`)                      | direct `sonner` calls                                        |
 
-**Organisms:** ApprovalFields, BriefingCard, FloatingReviewsPanel, NeedsAttentionList, PendingReviewCard, PendingReviewsList, SearchCommandModal (uses `ui/button`, `ui/input`, `ui/separator`), SubscriptionPlans, TrialCard, VoicePicker, WorkOutputSheet (uses `ui/sheet`). Each is a product feature built from atoms and molecules; reuse them rather than copying.
+**Organisms:** ApprovalFields, BriefingCard, FloatingReviewsPanel, NeedsAttentionList, PendingReviewCard, PendingReviewsList, SearchCommandModal, SubscriptionPlans, TrialCard, VoicePicker, WorkOutputSheet. Each is a product feature built from atoms and molecules; reuse them rather than copying.
 
 ## Rules
 
@@ -399,27 +407,19 @@ Not done yet: visual regression in CI (the Chromatic job runs only when `CHROMAT
 
 Do not add imports of these. Each has a replacement or is waiting for one.
 
-| Deprecated                                                                                                                                                                                                                        | Use instead                                                                          |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `__legacy__/ui/button`, `ui/button`                                                                                                                                                                                               | `atoms/Button`                                                                       |
-| `__legacy__/ui/input`, `ui/input`                                                                                                                                                                                                 | `atoms/Input`                                                                        |
-| `__legacy__/ui/textarea`, `ui/textarea`                                                                                                                                                                                           | `atoms/Input type="textarea"`                                                        |
-| `__legacy__/ui/select`                                                                                                                                                                                                            | `atoms/Select`                                                                       |
-| `__legacy__/ui/skeleton`, `ui/skeleton`                                                                                                                                                                                           | `atoms/Skeleton`                                                                     |
-| `__legacy__/ui/loading`, `ui/spinner`                                                                                                                                                                                             | `atoms/LoadingSpinner`                                                               |
-| `__legacy__/ui/badge`                                                                                                                                                                                                             | `atoms/Badge`                                                                        |
-| `__legacy__/ui/card`                                                                                                                                                                                                              | `atoms/Card`                                                                         |
-| `__legacy__/ui/icons`                                                                                                                                                                                                             | `atoms/Icon` with `@hugeicons/core-free-icons`                                       |
-| `ui/tooltip`                                                                                                                                                                                                                      | `atoms/Tooltip`                                                                      |
-| `__legacy__/ui/dialog`                                                                                                                                                                                                            | `molecules/Dialog`                                                                   |
-| `__legacy__/ui/popover`                                                                                                                                                                                                           | `molecules/Popover`                                                                  |
-| `__legacy__/ui/dropdown-menu`                                                                                                                                                                                                     | `molecules/DropdownMenu`                                                             |
-| `__legacy__/ui/form`                                                                                                                                                                                                              | `molecules/Form`                                                                     |
-| `__legacy__/ui/tabs`                                                                                                                                                                                                              | `molecules/TabsLine`                                                                 |
-| `__legacy__/ui/collapsible`, `ui/collapsible`                                                                                                                                                                                     | `molecules/Collapsible`                                                              |
-| `ui/accordion`                                                                                                                                                                                                                    | `molecules/Accordion`                                                                |
-| `__legacy__/ui/table`                                                                                                                                                                                                             | `molecules/Table` for editable tables; read-only data tables have no replacement yet |
-| `__legacy__/Status`                                                                                                                                                                                                               | `molecules/RunStatusBadge` where it fits                                             |
-| `__legacy__/ui/checkbox`, `label`, `separator`, `scroll-area`, `sheet`, `calendar`, `carousel`, `command`, `multiselect`, `pagination-controls`; `ui/separator`, `scroll-area`, `sheet`, `sidebar`, `input-group`, `button-group` | No replacement yet (atoms are being added in wave 2). Keep existing uses, add none.  |
-| `__legacy__/Sidebar`, `SortDropdown`, `SearchFilterChips`                                                                                                                                                                         | No replacement yet                                                                   |
-| `ui/aurora-background`, `vortex`, `dot-distortion-shader`, `text-generate-effect`                                                                                                                                                 | Decorative one-offs; do not reuse                                                    |
+| Deprecated                                                                                                  | Use instead                                                                     |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `__legacy__/ui/select`                                                                                      | `atoms/Select` (which still renders it)                                         |
+| `__legacy__/ui/icons`                                                                                       | `atoms/Icon` with `@hugeicons/core-free-icons`                                  |
+| `__legacy__/ui/dialog`                                                                                      | `molecules/Dialog`                                                              |
+| `__legacy__/ui/popover`                                                                                     | `molecules/Popover` (the Date atoms still render the legacy one)                |
+| `__legacy__/ui/dropdown-menu`                                                                               | `molecules/DropdownMenu`                                                        |
+| `__legacy__/ui/form`, `label`                                                                               | `molecules/Form`; field atoms carry their own labels                            |
+| `__legacy__/ui/tabs`                                                                                        | `molecules/TabsLine`                                                            |
+| `__legacy__/ui/table`                                                                                       | `molecules/DataTable` for read-only tables, `molecules/Table` for editable ones |
+| `__legacy__/Status`                                                                                         | `molecules/RunStatusBadge` where it fits                                        |
+| `__legacy__/ui/calendar`, `carousel`, `command`, `multiselect`; `ui/sidebar`, `input-group`, `button-group` | No replacement yet. Keep existing uses, add none.                               |
+| `__legacy__/Sidebar`, `SortDropdown`, `SearchFilterChips`                                                   | No replacement yet                                                              |
+| `ui/aurora-background`, `vortex`, `dot-distortion-shader`, `text-generate-effect`                           | Decorative one-offs; do not reuse                                               |
+
+Deleted in wave 3, with every importer moved: `ui/button`, `input`, `textarea`, `separator`, `skeleton`, `tooltip`, `sheet`, `scroll-area`, `accordion`, `collapsible`, and `__legacy__/ui/button`, `input`, `textarea`, `checkbox`, `badge`, `separator`, `sheet`, `scroll-area`, `collapsible`, `pagination-controls`.
