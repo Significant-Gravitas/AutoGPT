@@ -1115,6 +1115,15 @@ async def test_a_result_is_judged_whole_unless_its_declaration_holds(
     assert _MARKER not in result.output and len(rows.rows) == 1
 
 
+async def test_an_unquoted_holds_excerpt_is_only_what_the_judge_read(rows):
+    """The card shows the declared outside part, never the platform's words around it."""
+    unquoted = ContentVerdict(held=True, passage="not on the page")
+    with patch(f"{_READS}.judge_content", _judge(unquoted)):
+        await _call(_Declared(_MARKER, (_MARKER,)), _session())
+    (row,) = rows.rows.values()
+    assert row.payload["excerpt"] == _MARKER
+
+
 async def test_every_image_is_judged_whatever_its_producer_declared(rows):
     """AutoGPT writes no images, so declaring a result its own narrows only
     its text."""
