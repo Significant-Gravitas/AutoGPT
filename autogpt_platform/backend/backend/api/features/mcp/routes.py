@@ -13,11 +13,15 @@ from urllib.parse import urlparse
 import fastapi
 from autogpt_libs.auth import get_user_id
 from fastapi import Security
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
 from backend.api.features.integrations.router import (
     CredentialsMetaResponse,
     to_meta_response,
+)
+from backend.api.features.mcp.oauth_registration import (
+    MCPClientRegistration,
+    select_client_auth_method,
 )
 from backend.blocks.mcp.client import (
     MCPClient,
@@ -31,9 +35,10 @@ from backend.blocks.mcp.helpers import (
     normalize_mcp_url,
     server_host,
 )
-from backend.blocks.mcp.oauth import MCPOAuthHandler
+from backend.blocks.mcp.oauth import MCPOAuthHandler, MCPTokenEndpointAuthMethod
 from backend.data.model import OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.mcp_catalog import get_mcp_catalog_entry_for_url
 from backend.integrations.providers import ProviderName
 from backend.util.request import (
     AUTH_STATUS_CODES,
@@ -55,6 +60,13 @@ creds_manager = IntegrationCredentialsManager()
 _PROBE_TIMEOUT_SECONDS = 10
 _PROBE_CLOSE_TIMEOUT_SECONDS = 5
 
+# `/oauth/login` answers 400 for eight different reasons, and only one of them
+# means "there is no OAuth here, use an API token". The connect panel has to
+# tell that one apart to decide whether to offer the manual-token form, and
+# matching on the prose broke the moment either message was reworded — so the
+# two no-OAuth branches carry this code and the rest stay plain strings.
+NO_OAUTH_CODE = "no_oauth"
+
 
 # ====================== Tool Discovery ====================== #
 
@@ -67,6 +79,11 @@ class DiscoverToolsRequest(BaseModel):
     """Request to discover tools on an MCP server."""
 
     server_url: str = Field(description="URL of the MCP server")
+    use_saved_credentials: bool = Field(
+        default=True,
+        description="Use a saved credential when no auth token is supplied. "
+        "Set false to discover public tools without signing in.",
+    )
     auth_token: SecretStr | None = Field(
         default=None,
         min_length=1,
@@ -108,7 +125,7 @@ async def discover_tools(
     Connect to an MCP server and return its available tools.
 
     If the user has a stored MCP credential for this server URL, it will be
-    used automatically — no need to pass an explicit auth credential.
+    used automatically unless use_saved_credentials is false.
     """
     # Validate URL to prevent SSRF — blocks loopback and private IP ranges.
     try:
@@ -125,7 +142,7 @@ async def discover_tools(
             authorization = normalize_mcp_authorization(explicit_token)
         except ValueError as e:
             raise fastapi.HTTPException(status_code=422, detail=str(e)) from e
-    else:
+    elif request.use_saved_credentials:
         # Auto-use stored MCP credential when no explicit token is provided.
         stored_credential = await auto_lookup_mcp_credential(
             user_id, normalize_mcp_url(request.server_url)
@@ -182,6 +199,26 @@ class MCPOAuthLoginRequest(BaseModel):
     """Request to start an OAuth flow for an MCP server."""
 
     server_url: str = Field(description="URL of the MCP server that requires OAuth")
+    scopes: list[str] | None = Field(
+        default=None,
+        description="OAuth scopes to request. Omit or use null to use catalogue or discovered defaults; "
+        "an empty list requests no scopes.",
+    )
+
+    @field_validator("scopes")
+    @classmethod
+    def validate_scopes(cls, scopes: list[str] | None) -> list[str] | None:
+        if scopes is not None:
+            for scope in scopes:
+                if not scope or any(
+                    char.isspace() or ord(char) < 32 or ord(char) == 127
+                    for char in scope
+                ):
+                    raise ValueError(
+                        "OAuth scopes must be nonempty tokens without whitespace "
+                        "or control characters"
+                    )
+        return scopes
 
 
 class MCPOAuthLoginResponse(BaseModel):
@@ -216,6 +253,21 @@ async def mcp_oauth_login(
     # Normalize the URL so that credentials stored here are matched consistently
     # by auto_lookup_mcp_credential (which also uses normalized URLs).
     server_url = normalize_mcp_url(request.server_url)
+    frontend_base_url = settings.config.frontend_base_url
+    catalog_entry = get_mcp_catalog_entry_for_url(server_url)
+    catalog_scopes: list[str] | None = None
+    if catalog_entry:
+        if "oauth" not in catalog_entry.mcp_server.auth_methods:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail={
+                    "code": NO_OAUTH_CODE,
+                    "message": f"{catalog_entry.display_name} uses "
+                    f"{' / '.join(catalog_entry.mcp_server.auth_methods)} "
+                    f"authentication. {catalog_entry.mcp_server.setup_instructions}",
+                },
+            )
+        catalog_scopes = catalog_entry.mcp_server.oauth_scopes
     client = MCPClient(server_url)
 
     # Step 1: Discover protected-resource metadata (RFC 9728)
@@ -261,17 +313,42 @@ async def mcp_oauth_login(
     ):
         raise fastapi.HTTPException(
             status_code=400,
-            detail="This MCP server does not advertise OAuth support. "
-            "You may need to provide an auth credential manually.",
+            detail={
+                "code": NO_OAUTH_CODE,
+                "message": "This MCP server does not advertise OAuth support. "
+                "You may need to provide an auth credential manually.",
+            },
         )
 
     authorize_url = metadata["authorization_endpoint"]
     token_url = metadata["token_endpoint"]
     registration_endpoint = metadata.get("registration_endpoint")
     revoke_url = metadata.get("revocation_endpoint")
+    # The revocation call carries the token, and this URL comes from the
+    # server's own metadata. Over plain HTTP that hands the token to anyone
+    # on the path, so drop it rather than use it; revocation is best-effort.
+    if isinstance(revoke_url, str) and not revoke_url.lower().startswith("https://"):
+        logger.warning(
+            "Ignoring non-HTTPS revocation endpoint advertised by %s",
+            server_host(request.server_url),
+        )
+        revoke_url = None
+    scopes = (
+        request.scopes
+        if request.scopes is not None
+        else (
+            catalog_scopes
+            if catalog_scopes is not None
+            else (protected_resource or {}).get("scopes_supported")
+            or metadata.get("scopes_supported", [])
+        )
+    )
+    issuer = _validated_issuer(metadata, expected_issuer)
+    iss_required = bool(issuer) and (
+        metadata.get("authorization_response_iss_parameter_supported") is True
+    )
 
     # Step 3: Dynamic Client Registration (RFC 7591) if available
-    frontend_base_url = settings.config.frontend_base_url
     if not frontend_base_url:
         raise fastapi.HTTPException(
             status_code=500,
@@ -281,35 +358,61 @@ async def mcp_oauth_login(
 
     client_id = ""
     client_secret = ""
+    token_endpoint_auth_method: MCPTokenEndpointAuthMethod = "none"
     if registration_endpoint:
+        try:
+            requested_auth_method = select_client_auth_method(metadata)
+        except ValueError as e:
+            raise fastapi.HTTPException(status_code=400, detail=str(e))
         # Validate the registration endpoint from metadata to prevent SSRF.
         try:
             await validate_url_host(registration_endpoint)
         except ValueError:
-            pass  # Skip registration, fall back to default client_id
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail="Could not register an OAuth client because the MCP server's "
+                "registration URL is invalid. Use a manual auth credential if supported.",
+            )
         else:
             reg_result = await _register_mcp_client(
-                registration_endpoint, redirect_uri, server_url
+                registration_endpoint,
+                redirect_uri,
+                server_url,
+                requested_auth_method,
+                scopes=scopes,
+                supports_refresh_token="refresh_token"
+                in (metadata.get("grant_types_supported") or []),
             )
-            if reg_result:
-                client_id = reg_result.get("client_id", "")
-                client_secret = reg_result.get("client_secret", "")
+            if not reg_result:
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail="Could not register an OAuth client with this MCP server. "
+                    "Use a manual auth credential if supported.",
+                )
+            try:
+                registration = MCPClientRegistration.model_validate(
+                    {
+                        **reg_result,
+                        "token_endpoint_auth_method": reg_result.get(
+                            "token_endpoint_auth_method", requested_auth_method
+                        ),
+                    }
+                )
+            except ValueError:
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail="The MCP server returned an invalid registered client, "
+                    "unsupported authentication method, or missing client secret. "
+                    "Use a manual auth credential if supported.",
+                )
+            client_id = registration.client_id
+            client_secret = registration.client_secret.get_secret_value()
+            token_endpoint_auth_method = registration.token_endpoint_auth_method
 
     if not client_id:
         client_id = "autogpt-platform"
 
     # Step 4: Store state token with OAuth metadata for the callback
-    scopes = (protected_resource or {}).get("scopes_supported") or metadata.get(
-        "scopes_supported", []
-    )
-    # RFC 8414 issuer identifier: validated against the ``iss``
-    # authorization-response parameter (RFC 9207) on callback, and recorded
-    # on the credential so it stays bound to the authorization server that
-    # issued it.  Servers that advertise ``iss`` support must send it.
-    issuer = _validated_issuer(metadata, expected_issuer)
-    iss_required = bool(issuer) and (
-        metadata.get("authorization_response_iss_parameter_supported") is True
-    )
     state_token, code_challenge = await creds_manager.store.store_state_token(
         user_id,
         ProviderName.MCP.value,
@@ -322,6 +425,7 @@ async def mcp_oauth_login(
             "server_url": server_url,
             "client_id": client_id,
             "client_secret": client_secret,
+            "token_endpoint_auth_method": token_endpoint_auth_method,
             "issuer": issuer,
             "iss_required": iss_required,
         },
@@ -335,6 +439,7 @@ async def mcp_oauth_login(
         authorize_url=authorize_url,
         token_url=token_url,
         resource_url=resource_url,
+        token_endpoint_auth_method=token_endpoint_auth_method,
     )
     login_url = handler.get_login_url(
         scopes, state_token, code_challenge=code_challenge
@@ -421,6 +526,7 @@ async def mcp_oauth_callback(
         token_url=meta["token_url"],
         revoke_url=meta.get("revoke_url"),
         resource_url=meta.get("resource_url"),
+        token_endpoint_auth_method=meta.get("token_endpoint_auth_method"),
     )
 
     try:
@@ -436,10 +542,29 @@ async def mcp_oauth_callback(
     # Enrich credential metadata for future lookup and token refresh
     if credentials.metadata is None:
         credentials.metadata = {}
-    credentials.metadata["mcp_server_url"] = meta["server_url"]
+    # Two catalog entries sign in at a different URL from the one their
+    # tools are called on (Context7 and Parallel). Binding the credential to
+    # the sign-in URL made lookup miss: the user completed OAuth, the dialog
+    # said connected, and every later call fell back to public limits with
+    # nothing reporting a problem. Record the URL the tools actually use.
+    catalog_entry = get_mcp_catalog_entry_for_url(meta["server_url"])
+    tools_url = (
+        catalog_entry.mcp_server.server_url
+        if catalog_entry and catalog_entry.mcp_server.server_url
+        else meta["server_url"]
+    )
+    credentials.metadata["mcp_server_url"] = tools_url
     credentials.metadata["mcp_client_id"] = meta["client_id"]
-    credentials.metadata["mcp_client_secret"] = meta.get("client_secret", "")
+    credentials.metadata["mcp_client_secret"] = (
+        ""
+        if meta.get("token_endpoint_auth_method") == "none"
+        else meta.get("client_secret", "")
+    )
+    credentials.metadata["mcp_token_endpoint_auth_method"] = meta.get(
+        "token_endpoint_auth_method"
+    ) or ("client_secret_post" if meta.get("client_secret") else "none")
     credentials.metadata["mcp_token_url"] = meta["token_url"]
+    credentials.metadata["mcp_revoke_url"] = meta.get("revoke_url")
     credentials.metadata["mcp_resource_url"] = meta.get("resource_url", "")
     credentials.metadata["mcp_issuer"] = expected_issuer
 
@@ -452,10 +577,13 @@ async def mcp_oauth_callback(
             user_id, ProviderName.MCP.value
         )
         for old in old_creds:
-            if (
-                isinstance(old, OAuth2Credentials)
-                and (old.metadata or {}).get("mcp_server_url") == meta["server_url"]
-            ):
+            # Both URLs count. The new credential is filed under the tools
+            # URL, but ones stored before that change are under the sign-in
+            # URL, and for the two entries where those differ matching only
+            # one of them leaves a dead token behind on every reconnection.
+            if isinstance(old, OAuth2Credentials) and (old.metadata or {}).get(
+                "mcp_server_url"
+            ) in {tools_url, meta["server_url"]}:
                 await creds_manager.store.delete_creds_by_id(user_id, old.id)
                 logger.info(
                     "Removed old MCP credential %s for %s",
@@ -507,7 +635,7 @@ async def mcp_store_token(
 
     Used by the Copilot MCPSetupCard when the server doesn't support the MCP
     OAuth discovery flow (returns 400 from /oauth/login).  Subsequent
-    ``run_mcp_tool`` calls will automatically pick up the credential via
+    ``run_capability`` MCP calls will automatically pick up the credential via
     ``_auto_lookup_credential``.
     """
     try:
@@ -736,21 +864,29 @@ async def _register_mcp_client(
     registration_endpoint: str,
     redirect_uri: str,
     server_url: str,
+    token_endpoint_auth_method: MCPTokenEndpointAuthMethod = "client_secret_post",
+    *,
+    scopes: list[str] | None = None,
+    supports_refresh_token: bool = False,
 ) -> dict[str, Any] | None:
     """Attempt Dynamic Client Registration (RFC 7591) with an MCP auth server."""
     try:
+        grant_types = ["authorization_code"]
+        if supports_refresh_token:
+            grant_types.append("refresh_token")
+        payload: dict[str, str | list[str]] = {
+            "client_name": "AutoGPT Platform",
+            "redirect_uris": [redirect_uri],
+            "grant_types": grant_types,
+            "response_types": ["code"],
+            "token_endpoint_auth_method": token_endpoint_auth_method,
+            "application_type": "web",
+        }
+        if scopes:
+            payload["scope"] = " ".join(scopes)
         response = await Requests(raise_for_status=True).post(
             registration_endpoint,
-            json={
-                "client_name": "AutoGPT Platform",
-                "redirect_uris": [redirect_uri],
-                "grant_types": ["authorization_code"],
-                "response_types": ["code"],
-                "token_endpoint_auth_method": "client_secret_post",
-                # Required by MCP 2026-07-28 so OIDC-backed authorization
-                # servers apply web-app redirect URI rules.
-                "application_type": "web",
-            },
+            json=payload,
         )
         data = response.json()
         if isinstance(data, dict) and "client_id" in data:

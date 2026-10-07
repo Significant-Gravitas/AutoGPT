@@ -19,7 +19,6 @@ from apscheduler.events import (
 )
 from apscheduler.job import Job as JobObj
 from apscheduler.jobstores.memory import MemoryJobStore
-from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
@@ -28,23 +27,28 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
+from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.dream.scheduling import (
     COMMUNITY_REBUILD_REGISTRATION_PREFIX,
     NIGHTLY_BATCH_REGISTRATION_PREFIX,
     SKILL_LEARNING_REGISTRATION_PREFIX,
     clear_registration_marker,
 )
-from backend.copilot.executor.utils import schedule_turn
+from backend.copilot.executor.utils import ScheduledTurnOrigin, schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
+from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
 from backend.copilot.transports import resolve_default_chat_route
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
+from backend.data.schedule import normalize_schedule_name
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
+from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.monitoring import (
     flush_matured_alerts,
     report_block_error_rates,
@@ -71,7 +75,7 @@ from backend.util.exceptions import (
     NotFoundError,
     UserPaywalledError,
 )
-from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
+from backend.util.feature_flag import initialize_feature_flags, shutdown_feature_flags
 from backend.util.logging import PrefixFilter
 from backend.util.retry import func_retry
 from backend.util.service import (
@@ -119,25 +123,25 @@ SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
 SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
 
 
-def _init_launchdarkly_for_scheduler() -> None:
-    """Eagerly initialize LaunchDarkly unless running LOCAL.
+def _init_feature_flags_for_scheduler() -> None:
+    """Eagerly initialize the feature flag backend unless running LOCAL.
 
-    Mirrors ``rest_api.py``'s ``launch_darkly_context``: the @expose flag
+    Mirrors ``rest_api.py``'s ``feature_flag_context``: the @expose flag
     gates (e.g. ``add_nightly_batch_schedule``'s ``DREAM_PASS_ENABLED``
-    check) fail closed, so evaluating them against a lazily-initialized LD
+    check) fail closed, so evaluating them against a lazily-initialized
     client right after a pod restart would silently skip registrations
-    until the first lazy init completed. Skipped LOCAL, where LD is
-    unconfigured and flags resolve to their mock defaults.
+    until the first lazy init completed. Skipped LOCAL, where no vendor is
+    configured and flags resolve to their mock defaults.
     """
     if config.app_env != AppEnvironment.LOCAL:
-        initialize_launchdarkly()
+        initialize_feature_flags()
 
 
-def _shutdown_launchdarkly_for_scheduler() -> None:
-    """Reverse of ``_init_launchdarkly_for_scheduler`` — only tears down the
-    LD client when it was actually initialized (non-LOCAL)."""
+def _shutdown_feature_flags_for_scheduler() -> None:
+    """Reverse of ``_init_feature_flags_for_scheduler`` — only tears down the
+    client when it was actually initialized (non-LOCAL)."""
     if config.app_env != AppEnvironment.LOCAL:
-        shutdown_launchdarkly()
+        shutdown_feature_flags()
 
 
 # The Stripe tier sweep pages through every active subscription, so it needs a
@@ -350,9 +354,70 @@ async def _skip_inactive_expert_scope(
         await _reschedule_one_shot_after_expert_unavailable(args)
 
 
+async def _routine_for_turn(args: "CopilotTurnJobArgs") -> ExpertRoutine | None:
+    """Load the routine behind this job, if it is one.
+
+    A failed lookup returns ``None``, which is the cautious side of both
+    decisions it feeds: the turn lands in a fresh chat rather than one it
+    cannot confirm belongs to this routine, and it runs muted rather than
+    assuming an owner granted it anything.
+    """
+    if args.routine_id is None:
+        return None
+    try:
+        routine = await experts_db().get_routine(args.routine_id)
+    except Exception:
+        logger.warning(
+            "Could not load routine %s for scheduled turn %s; "
+            "firing into a fresh chat with nothing granted",
+            args.routine_id[:12],
+            args.schedule_id,
+            exc_info=True,
+        )
+        return None
+    return routine
+
+
+def _routine_turn_permissions(routine: ExpertRoutine | None) -> CopilotPermissions:
+    """The capability filter a routine's turn runs under.
+
+    Every routine turn gets one, even a fully granted one: no routine may
+    schedule more of itself, because nobody is watching this turn read the page
+    that might ask it to. Passing ``None`` would mean "whatever the session
+    allows", and the point of this object is that the decision is made here, at
+    the boundary, and is visible in the job.
+
+    A routine loaded as ``None`` — the row is gone, or the lookup failed — is
+    treated as ungranted, which is the right way to be wrong.
+    """
+    granted = routine is not None and routine.grants_credentials
+    return CopilotPermissions(tools=sorted(routine_disabled_tools(granted=granted)))
+
+
 async def _execute_copilot_turn(**kwargs):
     expert_scope_was_persisted = "expert_id" in kwargs
     args = CopilotTurnJobArgs(**kwargs)
+    routine = await _routine_for_turn(args)
+    if routine is not None and not routine.enabled:
+        # Deleting a routine's jobs is best effort — the scheduler can refuse,
+        # and a spent one-shot's row outlives its job either way. So "off" has
+        # to mean something at fire time too, or a job that survived being
+        # switched off keeps running work its owner stopped. This is the
+        # fire-time lookup ``delete_routine_schedules`` defers to.
+        logger.info(
+            "Copilot turn schedule %s skipped — routine %s is switched off; "
+            "removing the schedule that outlived it",
+            args.schedule_id,
+            routine.id[:12],
+        )
+        await _self_delete_copilot_turn_schedule(args)
+        return
+    # A THREAD routine keeps one durable conversation: null until its first
+    # fire mints it, reused by every fire after. Resolving it here means the
+    # second fire takes the existing-session branch below and inherits that
+    # branch's ownership and scope re-validation for free.
+    if routine is not None and routine.session_id is not None:
+        args = args.model_copy(update={"session_id": routine.session_id})
     start_time = asyncio.get_event_loop().time()
     try:
         # Resolve the target session.  ``session_id=None`` means "fire into
@@ -411,6 +476,22 @@ async def _execute_copilot_turn(**kwargs):
                 return
             target_session_id = new_session.session_id
             target_session = new_session
+            if routine is not None and routine.session_mode == "THREAD":
+                # First fire of a THREAD routine: remember the conversation so
+                # every later fire continues it instead of leaving a trail of
+                # one-message chats. Best effort — losing this costs a thread,
+                # not a run, and the next fire mints a fresh one.
+                try:
+                    await experts_db().record_routine_thread(
+                        routine.id, target_session_id
+                    )
+                except Exception:
+                    logger.warning(
+                        "Could not record thread %s on routine %s",
+                        target_session_id[:12],
+                        routine.id[:12],
+                        exc_info=True,
+                    )
             # Nothing can be forged in a chat that has never existed before:
             # its ``origin="automation"`` refuses the staffing tools outright,
             # so no proposal can be parked here to approve. Persist the opener
@@ -473,11 +554,45 @@ async def _execute_copilot_turn(**kwargs):
             is_user_message=persist_as_user_turn,
             tool_call_id="scheduled_followup",
             tool_name="schedule_followup",
+            # Even when the target is the user's own chat, nobody is there to
+            # answer this turn's questions, e.g. which of two accounts to use.
+            unattended=True,
+            # So the accounts are the ones chosen when the schedule was made.
+            credential_pins=_credential_pins_for_turn(args, routine),
             organization_id=args.organization_id,
             team_id=args.team_id,
             llm_auth_provider=target_session.metadata.llm_auth_provider,
             llm_credential_id=target_session.metadata.llm_credential_id,
+            # Per turn, not per session: a PINNED routine fires into a chat the
+            # user also drives themselves, and muting the conversation would
+            # take capabilities away from the person sitting in it. What is
+            # unattended is this turn.
+            permissions=(
+                _routine_turn_permissions(routine)
+                if args.routine_id is not None
+                else None
+            ),
+            # Nobody watches a scheduled turn, so the executor alerts when it
+            # fails after this dispatch succeeded (SECRT-2799).
+            scheduled=ScheduledTurnOrigin(
+                schedule_id=args.schedule_id,
+                routine_id=args.routine_id,
+                cron=args.cron,
+            ),
         )
+        if routine is not None and routine.run_at is not None:
+            # APScheduler drops a one-shot job once it fires, so without this
+            # the row would go on describing itself as scheduled for a time
+            # that has passed. After dispatch, not before: a turn that never
+            # reached the queue has not run.
+            try:
+                await experts_db().record_routine_fired(routine.id)
+            except Exception:
+                logger.warning(
+                    "Could not mark one-shot routine %s fired",
+                    routine.id[:12],
+                    exc_info=True,
+                )
         product_analytics.track_schedule_fired(
             user_id=args.user_id,
             schedule_id=args.schedule_id,
@@ -521,6 +636,26 @@ async def _execute_copilot_turn(**kwargs):
             f"{_session_id_label(args)} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+def _credential_pins_for_turn(
+    args: "CopilotTurnJobArgs", routine: ExpertRoutine | None
+) -> CredentialPins:
+    """The accounts this fire runs on, chosen in the chat that made it.
+
+    A routine keeps them on its row, so switching it off and on again, or
+    rewording it, keeps them; a follow-up keeps them in its job. A schedule
+    made before pins existed has none, and its turns take the first saved
+    credential when several fit (SECRT-2804).
+    """
+    pins = routine.credential_pins if routine is not None else args.credential_pins
+    if not pins:
+        logger.info(
+            "Copilot turn schedule %s has no pinned credentials; where several "
+            "fit, its turn uses the first saved one",
+            args.schedule_id,
+        )
+    return pins
 
 
 def _session_id_label(args: "CopilotTurnJobArgs") -> str:
@@ -612,6 +747,15 @@ async def _reschedule_one_shot(
             # turn into a plain session, escaping the expert's thread/budget
             # and its isolated memory scope.
             expert_id=args.expert_id,
+            # And for the routine behind it. Dropping this was the worst of
+            # the three: the retried turn resolves no routine, so it runs
+            # with the session's own permissions instead of the routine's —
+            # an ungranted routine that merely lost a race to the concurrency
+            # cap would come back with everything the mute exists to withhold.
+            routine_id=args.routine_id,
+            # And the accounts it was set up to run on, or the retry would
+            # take the first saved one instead.
+            credential_pins=args.credential_pins,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
@@ -674,6 +818,23 @@ async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None
         args.user_id,
         reason="session unavailable or scope mismatch",
     )
+    # A job with no schedule_id predates the field and cannot be matched
+    # against the ids a routine row holds, so there is nothing to drop.
+    if args.routine_id is None or args.schedule_id is None:
+        return
+    # The row outlives the job it lost, and a routine still listed as switched
+    # on with nothing scheduled behind it is the one state the owner cannot act
+    # on: the UI offers to switch off something that is already not running.
+    # Most often this is a PINNED routine whose chat the owner deleted.
+    try:
+        await experts_db().mark_routine_unscheduled(args.routine_id, args.schedule_id)
+    except Exception:
+        logger.warning(
+            "Could not switch off routine %s after removing its schedule %s",
+            args.routine_id[:12],
+            args.schedule_id,
+            exc_info=True,
+        )
 
 
 async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
@@ -814,6 +975,9 @@ def _morning_briefing_crontab(user_id: str) -> str:
     """
     minute = int(hashlib.sha256(user_id.encode("utf-8")).hexdigest(), 16) % 60
     return f"{minute} 9 * * *"
+
+
+_POSTHOG_LIFECYCLE_JOB_ID = "sync_posthog_lifecycles"
 
 
 def _job_timezone_name(job: JobObj) -> str | None:
@@ -1103,6 +1267,11 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
             (
                 f"ratification: {result.ratification.error}"
                 if result.ratification is not None and result.ratification.error
+                else None
+            ),
+            (
+                f"learning: {result.learning.error}"
+                if result.learning is not None and result.learning.error
                 else None
             ),
         )
@@ -1401,6 +1570,19 @@ def reconcile_stripe_tiers():
     run_async(_reconcile(), timeout=STRIPE_RECONCILE_TIMEOUT_SECONDS)
 
 
+def sync_posthog_lifecycles():
+    """Resend subscription status and lifecycle dates to PostHog (SECRT-2778).
+
+    Only starts the sweep; it runs inside the database manager.
+    """
+
+    async def _start():
+        db = get_database_manager_async_client()
+        return await db.start_posthog_lifecycle_sweep()
+
+    run_async(_start())
+
+
 def execution_accuracy_alerts():
     """Check execution accuracy and send alerts if drops are detected."""
     return report_execution_accuracy_alerts()
@@ -1517,6 +1699,11 @@ def ensure_embeddings_coverage():
 # Monitoring functions are now imported from monitoring module
 
 
+# Paused and fired-once rows are never deleted, so every scan over them is
+# bounded rather than left to grow with the backlog.
+_PARKED_SCAN_LIMIT = 1000
+
+
 class Jobstores(Enum):
     EXECUTION = "execution"
     BATCHED_NOTIFICATIONS = "batched_notifications"
@@ -1581,6 +1768,16 @@ class CopilotTurnJobArgs(BaseModel):
     # and Otto follow-ups in the user's account scope. Optional for
     # backward compat with rows persisted before this field was added.
     expert_id: str | None = None
+    # Set when this job is one fire time of an ``ExpertRoutine``. The row is
+    # what makes a routine more than a followup: it owns the durable thread a
+    # THREAD routine reuses (minted here on the first fire) and the flag that
+    # decides whether the turn may touch a connected service at all. None keeps
+    # ordinary ``schedule_followup`` jobs on their existing path.
+    routine_id: str | None = None
+    # ``{provider: pin}``: the account the user chose for each provider when
+    # the follow-up was made, which every fire runs on (SECRT-2804). A routine
+    # keeps its pins on its row instead. Empty on rows persisted before pins.
+    credential_pins: CredentialPins = Field(default_factory=dict)
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -1796,6 +1993,7 @@ def _job_to_info(
 
 class Scheduler(AppService):
     scheduler: BackgroundScheduler
+    _persistent_jobstores: dict[str, ResilientSQLAlchemyJobStore] = {}
 
     def __init__(self, register_system_tasks: bool = True):
         self.register_system_tasks = register_system_tasks
@@ -1829,7 +2027,7 @@ class Scheduler(AppService):
         # Eagerly initialize LaunchDarkly before any @expose flag gate can
         # run (see the helper for why lazy init would skip registrations
         # after a pod restart).
-        _init_launchdarkly_for_scheduler()
+        _init_feature_flags_for_scheduler()
 
         # Initialize the event loop for async jobs
         global _event_loop
@@ -1846,6 +2044,36 @@ class Scheduler(AppService):
         # Configure executors to limit concurrency without skipping jobs
         from apscheduler.executors.pool import ThreadPoolExecutor
 
+        self._persistent_jobstores = {
+            Jobstores.EXECUTION.value: ResilientSQLAlchemyJobStore(
+                engine=create_engine(
+                    url=db_url,
+                    pool_size=self.db_pool_size(),
+                    max_overflow=0,
+                ),
+                metadata=MetaData(schema=db_schema),
+                # this one is pre-existing so it keeps the
+                # default table name.
+                tablename="apscheduler_jobs",
+            ),
+            Jobstores.BATCHED_NOTIFICATIONS.value: ResilientSQLAlchemyJobStore(
+                engine=create_engine(
+                    url=db_url,
+                    pool_size=self.db_pool_size(),
+                    max_overflow=0,
+                ),
+                metadata=MetaData(schema=db_schema),
+                tablename="apscheduler_jobs_batched_notifications",
+            ),
+        }
+        # Named reference so ``_get_active_jobs_cached`` can query the table
+        # directly with a server-side filter — see that method for why the
+        # stock ``get_all_jobs()`` isn't enough. It must stay the same
+        # instance as the dict entry above: the filtered read goes through
+        # ``ResilientSQLAlchemyJobStore._get_jobs``, which parks an
+        # unrestorable row rather than deleting it.
+        self._execution_jobstore = self._persistent_jobstores[Jobstores.EXECUTION.value]
+
         self.scheduler = BackgroundScheduler(
             executors={
                 "default": ThreadPoolExecutor(
@@ -1858,26 +2086,7 @@ class Scheduler(AppService):
                 "misfire_grace_time": None,  # No time limit for missed jobs
             },
             jobstores={
-                Jobstores.EXECUTION.value: SQLAlchemyJobStore(
-                    engine=create_engine(
-                        url=db_url,
-                        pool_size=self.db_pool_size(),
-                        max_overflow=0,
-                    ),
-                    metadata=MetaData(schema=db_schema),
-                    # this one is pre-existing so it keeps the
-                    # default table name.
-                    tablename="apscheduler_jobs",
-                ),
-                Jobstores.BATCHED_NOTIFICATIONS.value: SQLAlchemyJobStore(
-                    engine=create_engine(
-                        url=db_url,
-                        pool_size=self.db_pool_size(),
-                        max_overflow=0,
-                    ),
-                    metadata=MetaData(schema=db_schema),
-                    tablename="apscheduler_jobs_batched_notifications",
-                ),
+                **self._persistent_jobstores,
                 # These don't really need persistence
                 Jobstores.WEEKLY_NOTIFICATIONS.value: MemoryJobStore(),
             },
@@ -2011,7 +2220,10 @@ class Scheduler(AppService):
                 hours=6,
                 # Due now rather than called inline below: run_service() is what
                 # starts the event loop uvicorn binds the RPC port on.
-                next_run_time=datetime.now(timezone.utc),
+                next_run_time=datetime.now(timezone.utc)
+                + timedelta(
+                    hours=0 if config.scheduler_startup_embedding_backfill else 6
+                ),
                 replace_existing=True,
                 max_instances=1,  # Prevent overlapping runs
                 misfire_grace_time=None,
@@ -2036,9 +2248,36 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
         self.scheduler.start()
+        if self.register_system_tasks:
+            # After start: until then get_job only sees pending jobs, not the
+            # jobstore, so the "leave an unchanged job alone" check can't work.
+            self._register_posthog_lifecycle_sweep()
+        self._report_parked_jobs()
 
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
+
+    # Paused and fired-once rows are never deleted, so this scan is bounded
+    # rather than left to grow with the backlog — startup precedes the RPC port.
+    def _report_parked_jobs(self) -> None:
+        """Parking is recoverable but silent — startup has to say it happened."""
+        for alias, store in self._persistent_jobstores.items():
+            try:
+                parked = store.get_parked_job_ids(limit=_PARKED_SCAN_LIMIT)
+            except Exception as e:
+                logger.error(f"Could not check jobstore '{alias}' for parked jobs: {e}")
+                continue
+            if len(parked) == _PARKED_SCAN_LIMIT:
+                logger.error(
+                    f"at least {len(parked)} job(s) in jobstore '{alias}' are PARKED "
+                    "and will not run until repaired; the startup scan stopped at "
+                    f"its cap: {parked}"
+                )
+            elif parked:
+                logger.error(
+                    f"{len(parked)} job(s) in jobstore '{alias}' are PARKED and will "
+                    f"not run until repaired: {parked}"
+                )
 
     def cleanup(self):
         if self.scheduler:
@@ -2057,7 +2296,7 @@ class Scheduler(AppService):
 
         # Reverse order of run_service: LD was initialized before the
         # scheduler started, so close it after all jobs have drained.
-        _shutdown_launchdarkly_for_scheduler()
+        _shutdown_feature_flags_for_scheduler()
 
         super().cleanup()
 
@@ -2107,6 +2346,8 @@ class Scheduler(AppService):
         team_id: Optional[str] = None,
         expert_id: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
+        name = normalize_schedule_name(name)
+
         if expert_id is not None:
             organization_id, team_id = run_async(
                 experts_db().resolve_private_expert_tenancy(user_id, expert_id)
@@ -2168,6 +2409,8 @@ class Scheduler(AppService):
         organization_id: str | None = None,
         team_id: str | None = None,
         expert_id: str | None = None,
+        routine_id: str | None = None,
+        credential_pins: CredentialPins | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -2204,6 +2447,8 @@ class Scheduler(AppService):
             organization_id=organization_id,
             team_id=team_id,
             expert_id=expert_id,
+            routine_id=routine_id,
+            credential_pins=credential_pins or {},
         )
         default_name = (
             f"copilot turn (session {session_id[:8]})"
@@ -2311,6 +2556,7 @@ class Scheduler(AppService):
         user_id: str | None = None,
         organization_id: str | None = None,
         team_ids: list[str] | None = None,
+        include_paused: bool = False,
     ) -> list[GraphExecutionJobInfo]:
         """Return graph-kind schedules only (typed for legacy callers).
 
@@ -2327,18 +2573,20 @@ class Scheduler(AppService):
                 kind="graph",
                 organization_id=organization_id,
                 team_ids=team_ids,
+                include_paused=include_paused,
             )
             if isinstance(info, GraphExecutionJobInfo)
         ]
 
-    # Process-wide cache for ``scheduler.get_jobs(EXECUTION)``. APScheduler
-    # has no SQL-level user_id / kind filter — it loads every row and
-    # unpickles each ``job.kwargs`` in Python.  The /library page now
-    # fires THREE separate calls into this method on cold load (existing
-    # graph schedules + new copilot followups + briefing-pill counts),
-    # so we memoise the unfiltered list for a few seconds.  Mutations
-    # (`add_*_schedule`, `delete_schedule`) clear the cache so user-visible
-    # latency on writes is unchanged.
+    # Process-wide cache for ``scheduler.get_jobs(EXECUTION)`` — the fully
+    # unfiltered row set, including paused schedules and already-fired
+    # one-shot jobs. APScheduler has no SQL-level user_id / kind filter
+    # either way — it loads every row and unpickles each ``job.kwargs`` in
+    # Python — so this is now only worth paying for on the rare
+    # ``include_paused=True`` lifecycle lookups; see the sibling
+    # ``_get_active_jobs_cached`` below for the path everything else takes.
+    # Mutations (`add_*_schedule`, `delete_schedule`) clear both caches so
+    # user-visible latency on writes is unchanged.
     _JOBS_CACHE_TTL_S = 5.0
     _jobs_cache: list[JobObj] | None = None
     _jobs_cache_expires_at: float = 0.0
@@ -2374,6 +2622,40 @@ class Scheduler(AppService):
             if self._jobs_cache_version == version_at_start:
                 self._jobs_cache = jobs
                 self._jobs_cache_expires_at = time.monotonic() + self._JOBS_CACHE_TTL_S
+        return jobs
+
+    # Second cache, keyed off the same lock/version, for the ``next_run_time
+    # IS NOT NULL`` (non-paused) rows only. This is what every caller except
+    # the pause/resume lifecycle lookups (``include_paused=True``) actually
+    # wants, and unlike ``_get_jobs_cached`` it pushes that filter down to
+    # SQL instead of unpickling every paused/already-fired row in Python
+    # only to throw it away — ``apscheduler_jobs`` accumulates those forever
+    # (nothing deletes a paused or fired-once job), so on a table with a
+    # meaningful history the unfiltered scan is what Sentry was flagging as
+    # a slow, unbounded query. ``next_run_time`` already carries a btree
+    # index from APScheduler's own table definition, so this needs no
+    # schema change.
+    _active_jobs_cache: list[JobObj] | None = None
+    _active_jobs_cache_expires_at: float = 0.0
+
+    def _get_active_jobs_cached(self) -> list[JobObj]:
+        with self._jobs_cache_lock:
+            now = time.monotonic()
+            if (
+                self._active_jobs_cache is not None
+                and now < self._active_jobs_cache_expires_at
+            ):
+                return self._active_jobs_cache
+            version_at_start = self._jobs_cache_version
+        jobs = self._execution_jobstore._get_jobs(
+            self._execution_jobstore.jobs_t.c.next_run_time.isnot(None)
+        )
+        with self._jobs_cache_lock:
+            if self._jobs_cache_version == version_at_start:
+                self._active_jobs_cache = jobs
+                self._active_jobs_cache_expires_at = (
+                    time.monotonic() + self._JOBS_CACHE_TTL_S
+                )
                 # The one scheduler metric with an alert on it was never set.
                 # Only an accepted read may publish it: a read that was
                 # invalidated mid-query is stale by definition and must not
@@ -2387,6 +2669,8 @@ class Scheduler(AppService):
         with self._jobs_cache_lock:
             self._jobs_cache = None
             self._jobs_cache_expires_at = 0.0
+            self._active_jobs_cache = None
+            self._active_jobs_cache_expires_at = 0.0
             self._jobs_cache_version += 1
 
     @expose
@@ -2413,18 +2697,22 @@ class Scheduler(AppService):
         schedules remain owner-only for scoped calls. Trusted global callers
         that provide neither *user_id* nor *organization_id* receive all jobs.
 
-        Paused jobs (``next_run_time is None``) are hidden by default, which
-        is what keeps a fired expert's suspended schedules out of every user
-        -facing listing. *include_paused* is for the lifecycle callers that
-        have to find them again to resume them. Fired one-shot jobs share
-        the same null marker, so they resurface too — filter by kind/id if
-        that matters to the caller.
+        Paused jobs (``next_run_time is None``) are hidden by default —
+        excluded at the SQL level via ``_get_active_jobs_cached`` rather than
+        filtered out afterwards — which is what keeps a fired expert's
+        suspended schedules out of every user-facing listing. *include_paused*
+        is for the lifecycle callers that have to find them again to resume
+        them; that path reads the unfiltered ``_get_jobs_cached`` instead.
+        Fired one-shot jobs share the same null marker, so they resurface too
+        — filter by kind/id if that matters to the caller.
         """
-        jobs: list[JobObj] = self._get_jobs_cached()
+        jobs: list[JobObj] = (
+            self._get_jobs_cached()
+            if include_paused
+            else self._get_active_jobs_cached()
+        )
         results: list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]] = []
         for job in jobs:
-            if job.next_run_time is None and not include_paused:
-                continue
             info = _job_to_info(job)
             if info is None:
                 continue
@@ -2466,6 +2754,33 @@ class Scheduler(AppService):
     @expose
     def execute_send_due_briefings(self):
         send_due_briefings()
+
+    @expose
+    def get_parked_jobs(
+        self, limit: int | None = _PARKED_SCAN_LIMIT
+    ) -> dict[str, list[str]]:
+        """Job ids the scheduler could not restore, per jobstore.
+
+        Bounded by default: paused and fired-once rows accumulate forever and
+        each one read here is deserialized. Pass ``limit=None`` for the whole
+        set, accepting a scan proportional to that backlog.
+        """
+        return {
+            alias: store.get_parked_job_ids(limit=limit)
+            for alias, store in self._persistent_jobstores.items()
+        }
+
+    @expose
+    def reconcile_parked_jobs(self) -> dict[str, list[str]]:
+        """Make repaired rows resumable again, per jobstore.
+
+        For a repair made without ``jobstore_backfill``, which already does
+        this for the rows it rewrites.
+        """
+        return {
+            alias: store.reconcile_repaired_jobs()
+            for alias, store in self._persistent_jobstores.items()
+        }
 
     @expose
     def execute_report_late_executions(self):
@@ -2584,6 +2899,32 @@ class Scheduler(AppService):
         return run_async(
             rebuild_communities_for_user(user_id, force=force),
             timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+        )
+
+    def _register_posthog_lifecycle_sweep(self) -> None:
+        """Daily PostHog lifecycle sweep: the safety net behind the webhook and
+        signup hooks, and what moves a trial that ran out on the clock on.
+
+        Cron rather than an interval, because replace_existing re-arms an
+        interval from every restart. An unchanged job isn't re-registered
+        either: replacing it recomputes ``next_run_time``, so a restart after
+        04:15 but before the overdue run fires would skip that day's sweep.
+        Left in place, the overdue run fires on start (``coalesce``, no
+        misfire limit).
+        """
+        trigger = CronTrigger.from_crontab("15 4 * * *")
+        existing = self.scheduler.get_job(
+            _POSTHOG_LIFECYCLE_JOB_ID, jobstore=Jobstores.EXECUTION.value
+        )
+        if existing is not None and str(existing.trigger) == str(trigger):
+            return
+        self.scheduler.add_job(
+            sync_posthog_lifecycles,
+            trigger,
+            id=_POSTHOG_LIFECYCLE_JOB_ID,
+            replace_existing=True,
+            max_instances=1,
+            jobstore=Jobstores.EXECUTION.value,
         )
 
     # --- Morning briefing ---
@@ -2967,6 +3308,9 @@ class SchedulerClient(AppServiceClient):
     )
     # Polymorphic list — preferred for new callers; returns both kinds.
     get_execution_schedules = endpoint_to_async(Scheduler.get_execution_schedules)
+
+    get_parked_jobs = endpoint_to_async(Scheduler.get_parked_jobs)
+    reconcile_parked_jobs = endpoint_to_async(Scheduler.reconcile_parked_jobs)
 
     add_community_rebuild_schedule = endpoint_to_async(
         Scheduler.add_community_rebuild_schedule

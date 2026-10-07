@@ -13,6 +13,10 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 
+export const Transparent: Story = {
+  args: { size: 120, transparent: true },
+};
+
 export const Sizes: Story = {
   render: function SizesStory() {
     return (

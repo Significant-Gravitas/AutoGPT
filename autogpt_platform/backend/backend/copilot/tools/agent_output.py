@@ -112,6 +112,11 @@ def parse_time_expression(
         return None, None
 
 
+def _run_visible(execution: GraphExecutionMeta, expert_id: str | None) -> bool:
+    """Personal AutoPilot sees every run; an expert only runs it started."""
+    return expert_id is None or execution.expert_id == expert_id
+
+
 class AgentOutputTool(BaseTool):
     """Tool for retrieving execution outputs from user's library agents."""
 
@@ -250,6 +255,7 @@ class AgentOutputTool(BaseTool):
         time_end: datetime | None,
         include_running: bool = False,
         include_node_executions: bool = False,
+        expert_id: str | None = None,
     ) -> tuple[
         GraphExecution | GraphExecutionWithNodes | None,
         list[GraphExecutionMeta],
@@ -262,6 +268,7 @@ class AgentOutputTool(BaseTool):
         Args:
             include_running: If True, also look for running/queued executions (for waiting)
             include_node_executions: If True, include node-by-node execution details
+            expert_id: Only runs this expert started; None sees every run.
         """
         exec_db = execution_db()
 
@@ -272,7 +279,7 @@ class AgentOutputTool(BaseTool):
                 execution_id=execution_id,
                 include_node_executions=include_node_executions,
             )
-            if not execution:
+            if not execution or not _run_visible(execution, expert_id):
                 return None, [], f"Execution '{execution_id}' not found"
             return execution, [], None
 
@@ -298,6 +305,7 @@ class AgentOutputTool(BaseTool):
             created_time_gte=time_start,
             created_time_lte=time_end,
             limit=10,
+            expert_id=expert_id,
         )
 
         if not executions:
@@ -339,7 +347,7 @@ class AgentOutputTool(BaseTool):
                 library_agent_id=agent.id,
                 library_agent_link=library_agent_link,
                 total_executions=0,
-            )
+            ).from_outside()
 
         node_executions_data = None
         node_failures: list[NodeFailureSummary] = []
@@ -427,7 +435,7 @@ class AgentOutputTool(BaseTool):
             execution=execution_info,
             available_executions=available_list,
             total_executions=len(available_executions) if available_executions else 1,
-        )
+        ).from_outside(execution_info)
 
     async def _execute(
         self,
@@ -452,14 +460,14 @@ class AgentOutputTool(BaseTool):
                 message="Invalid input parameters",
                 error=str(e),
                 session_id=session_id,
-            )
+            ).from_outside()
 
         # Ensure user_id is present (should be guaranteed by requires_auth)
         if not user_id:
             return ErrorResponse(
                 message="User authentication required",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         # Check if at least one identifier is provided
         if not any(
@@ -476,7 +484,7 @@ class AgentOutputTool(BaseTool):
                     "library_agent_id, store_slug, or execution_id"
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
 
         # If only execution_id provided, we need to find the agent differently
         if (
@@ -491,11 +499,11 @@ class AgentOutputTool(BaseTool):
                 execution_id=input_data.execution_id,
                 include_node_executions=input_data.show_execution_details,
             )
-            if not execution:
+            if not execution or not _run_visible(execution, session.expert_id):
                 return ErrorResponse(
                     message=f"Execution '{input_data.execution_id}' not found",
                     session_id=session_id,
-                )
+                ).from_outside()
 
             # Find library agent by graph_id
             agent = await library_db().get_library_agent_by_graph_id(
@@ -509,7 +517,7 @@ class AgentOutputTool(BaseTool):
                     ),
                     session_id=session_id,
                     suggestions=["Add the agent to your library to see more details"],
-                )
+                ).from_outside()
 
             return self._build_response(agent, execution, [], session_id)
 
@@ -539,6 +547,7 @@ class AgentOutputTool(BaseTool):
 
         # Fetch execution(s) - include running if we're going to wait
         execution, available_executions, exec_error = await self._get_execution(
+            expert_id=session.expert_id,
             user_id=user_id,
             graph_id=agent.graph_id,
             execution_id=input_data.execution_id or None,

@@ -114,6 +114,7 @@ async def settle_outcome(
     # the safe diagnostic, not the model-written skill name.
     skill_name = None if outcome.status == "blocked_content" else request.skill_name
     if outcome.status == "applied":
+        result.reviewed += 1
         result.applied += 1
         if outcome.version is not None:
             await link_version_to_memory(user_id, outcome.version)

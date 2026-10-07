@@ -1,6 +1,11 @@
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
+import type { LogRow, OverlayPart, TurnLog } from "../stream/turnLog";
 import { toolDisplayName } from "./toolDisplay";
+import {
+  WORKSPACE_FOLDER_PART_TYPE,
+  type WorkspaceFolderPartData,
+} from "./workspaceAttachments";
 
 export interface TurnStats {
   durationMs?: number;
@@ -84,18 +89,39 @@ function coerceSessionChatMessages(
 
 /**
  * Parse the `[Attached files]` block appended by the backend and return
- * the cleaned text plus reconstructed FileUIPart objects.
+ * the cleaned text plus the reconstructed attachment parts.
  *
- * Backend format:
+ * Backend format (`build_files_block`), with either hint line present or
+ * both — a message can attach only folders, so neither may be assumed:
  * ```
  * \n\n[Attached files]
  * - name.jpg (image/jpeg, 191.0 KB), file_id=<uuid>
+ * - Q3 (folder, 3 file(s) directly inside), folder_id=<uuid>
  * Use read_workspace_file with the file_id to access file contents.
+ * Use list_workspace_files with the folder_id to see what is in a folder.
  * ```
  */
-const ATTACHED_FILES_RE =
-  /\n?\n?\[Attached files\]\n([\s\S]*?)Use read_workspace_file with the file_id to access file contents\./;
+const FILE_HINT =
+  "Use read_workspace_file with the file_id to access file contents.";
+const FOLDER_HINT =
+  "Use list_workspace_files with the folder_id to see what is in a folder.";
+// Ends at the LAST hint line, so a hint the block also carries is never left
+// behind as raw text in the user's bubble.
+const ATTACHED_FILES_RE = new RegExp(
+  `\\n?\\n?\\[Attached files\\]\\n([\\s\\S]*?)(?:${escapeRe(FILE_HINT)}|${escapeRe(FOLDER_HINT)})(?:\\n(?:${escapeRe(FILE_HINT)}|${escapeRe(FOLDER_HINT)}))*`,
+);
 const FILE_LINE_RE = /^- (.+) \(([^,]+),\s*[\d.]+ KB\), file_id=([0-9a-f-]+)$/;
+const FOLDER_LINE_RE =
+  /^- (.+) \(folder, (\d+) file\(s\) directly inside\), folder_id=([0-9a-f-]+)$/;
+
+function escapeRe(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+interface WorkspaceFolderUiPart {
+  type: typeof WORKSPACE_FOLDER_PART_TYPE;
+  data: WorkspaceFolderPartData;
+}
 
 /** Default file URL builder — routes through the authed workspace
  *  download endpoint.  Public viewers override this via the
@@ -110,16 +136,28 @@ function extractFileParts(
 ): {
   cleanText: string;
   fileParts: FileUIPart[];
+  folderParts: WorkspaceFolderUiPart[];
 } {
   const match = content.match(ATTACHED_FILES_RE);
-  if (!match) return { cleanText: content, fileParts: [] };
+  if (!match) return { cleanText: content, fileParts: [], folderParts: [] };
 
   const cleanText = content.replace(match[0], "").trim();
   const lines = match[1].trim().split("\n");
   const fileParts: FileUIPart[] = [];
+  const folderParts: WorkspaceFolderUiPart[] = [];
 
   for (const line of lines) {
-    const m = line.trim().match(FILE_LINE_RE);
+    const trimmed = line.trim();
+    const folder = trimmed.match(FOLDER_LINE_RE);
+    if (folder) {
+      const [, name, fileCount, id] = folder;
+      folderParts.push({
+        type: WORKSPACE_FOLDER_PART_TYPE,
+        data: { id, name, fileCount: Number(fileCount) },
+      });
+      continue;
+    }
+    const m = trimmed.match(FILE_LINE_RE);
     if (!m) continue;
     const [, filename, mimeType, fileId] = m;
     fileParts.push({
@@ -130,7 +168,7 @@ function extractFileParts(
     });
   }
 
-  return { cleanText, fileParts };
+  return { cleanText, fileParts, folderParts };
 }
 
 function safeJsonParse(value: string): unknown {
@@ -400,85 +438,11 @@ export function convertChatSessionMessagesToUiMessages(
     const uiRole: "user" | "assistant" =
       msg.role === "reasoning" ? "assistant" : msg.role;
 
-    const parts: UIMessage<unknown, UIDataTypes, UITools>["parts"] = [];
-
-    if (typeof msg.content === "string" && msg.content.trim()) {
-      if (msg.role === "reasoning") {
-        parts.push({
-          type: "reasoning",
-          text: msg.content,
-          state: "done",
-        } as UIMessage<unknown, UIDataTypes, UITools>["parts"][number]);
-      } else if (msg.role === "user") {
-        const { cleanText, fileParts } = extractFileParts(
-          msg.content,
-          fileUrlBuilder,
-        );
-        if (cleanText) {
-          parts.push({ type: "text", text: cleanText, state: "done" });
-        }
-        for (const fp of fileParts) {
-          parts.push(fp);
-        }
-      } else {
-        parts.push({ type: "text", text: msg.content, state: "done" });
-      }
-    }
-
-    if (uiRole === "assistant" && Array.isArray(msg.tool_calls)) {
-      for (const rawToolCall of msg.tool_calls) {
-        if (!rawToolCall || typeof rawToolCall !== "object") continue;
-        const toolCall = rawToolCall as {
-          id?: unknown;
-          display_name?: unknown;
-          function?: { name?: unknown; arguments?: unknown };
-        };
-
-        const toolCallId = String(toolCall.id ?? "").trim();
-        const toolName = String(toolCall.function?.name ?? "").trim();
-        if (!toolCallId || !toolName) continue;
-
-        const input = toToolInput(toolCall.function?.arguments);
-        const output = toolOutputsByCallId.get(toolCallId);
-        const title = toolDisplayName(toolCall.display_name) ?? undefined;
-
-        if (output !== undefined) {
-          parts.push({
-            type: `tool-${toolName}`,
-            toolCallId,
-            title,
-            state: "output-available",
-            input,
-            output: typeof output === "string" ? safeJsonParse(output) : output,
-          });
-        } else if (options?.isComplete) {
-          // Session is complete (no active stream) but this tool call has
-          // no output in the DB — mark as completed to stop stale spinners.
-          parts.push({
-            type: `tool-${toolName}`,
-            toolCallId,
-            title,
-            state: "output-available",
-            input,
-            output: "",
-          });
-        } else {
-          parts.push({
-            type: `tool-${toolName}`,
-            toolCallId,
-            title,
-            state: "input-available",
-            input,
-          });
-        }
-      }
-    }
-
-    // User messages must always be rendered, even with empty content, so the
-    // initial prompt is visible when reloading a session.
-    if (parts.length === 0 && msg.role === "user") {
-      parts.push({ type: "text", text: "", state: "done" });
-    }
+    const parts = buildRowParts(msg, {
+      toolOutputsByCallId,
+      fileUrlBuilder,
+      unanswered: options?.isComplete ? "completed" : "input-available",
+    });
     if (parts.length === 0) return;
 
     // Merge consecutive assistant messages (including reasoning rows) into a
@@ -577,4 +541,278 @@ export function convertChatSessionMessagesToUiMessages(
         ? null
         : (uiMessages[activeTurnStartIndex]?.id ?? null),
   };
+}
+
+type UiMessage = UIMessage<unknown, UIDataTypes, UITools>;
+type UiPart = UiMessage["parts"][number];
+
+interface RowPartsContext {
+  toolOutputsByCallId: Map<string, unknown>;
+  fileUrlBuilder: (fileId: string) => string;
+  /** How a tool call with no output renders: still running, or the turn is over. */
+  unanswered: "input-available" | "completed" | "interrupted";
+  /** A block is still writing into this row. */
+  streaming?: boolean;
+}
+
+function buildRowParts(msg: SessionChatMessage, ctx: RowPartsContext) {
+  const textState = ctx.streaming ? "streaming" : "done";
+  const parts: UiPart[] = [];
+
+  if (typeof msg.content === "string" && msg.content.trim()) {
+    if (msg.role === "reasoning") {
+      parts.push({ type: "reasoning", text: msg.content, state: textState });
+    } else if (msg.role === "user") {
+      const { cleanText, fileParts, folderParts } = extractFileParts(
+        msg.content,
+        ctx.fileUrlBuilder,
+      );
+      if (cleanText) {
+        parts.push({ type: "text", text: cleanText, state: "done" });
+      }
+      parts.push(...fileParts);
+      parts.push(...(folderParts as UiPart[]));
+    } else {
+      parts.push({ type: "text", text: msg.content, state: textState });
+    }
+  }
+
+  if (msg.role !== "user" && Array.isArray(msg.tool_calls)) {
+    for (const rawToolCall of msg.tool_calls) {
+      const part = toolCallPart(rawToolCall, ctx);
+      if (part) parts.push(part);
+    }
+  }
+
+  // User messages must always be rendered, even with empty content, so the
+  // initial prompt is visible when reloading a session.
+  if (parts.length === 0 && msg.role === "user") {
+    parts.push({ type: "text", text: "", state: "done" });
+  }
+  return parts;
+}
+
+function toolCallPart(rawToolCall: unknown, ctx: RowPartsContext) {
+  if (!rawToolCall || typeof rawToolCall !== "object") return null;
+  const toolCall = rawToolCall as {
+    id?: unknown;
+    display_name?: unknown;
+    function?: { name?: unknown; arguments?: unknown };
+  };
+  const toolCallId = String(toolCall.id ?? "").trim();
+  const toolName = String(toolCall.function?.name ?? "").trim();
+  if (!toolCallId || !toolName) return null;
+
+  const base = {
+    type: `tool-${toolName}` as const,
+    toolCallId,
+    title: toolDisplayName(toolCall.display_name) ?? undefined,
+    input: toToolInput(toolCall.function?.arguments),
+  };
+  const output = ctx.toolOutputsByCallId.get(toolCallId);
+  if (output !== undefined) {
+    return {
+      ...base,
+      state: "output-available",
+      output: typeof output === "string" ? safeJsonParse(output) : output,
+    } as UiPart;
+  }
+  // Session is complete (no active stream) but this tool call has no output
+  // in the DB — mark as completed to stop stale spinners.
+  if (ctx.unanswered === "completed") {
+    return { ...base, state: "output-available", output: "" } as UiPart;
+  }
+  if (ctx.unanswered === "interrupted") {
+    return {
+      ...base,
+      state: "output-error",
+      errorText: "Interrupted",
+    } as UiPart;
+  }
+  return { ...base, state: "input-available" } as UiPart;
+}
+
+/**
+ * Render a live turn from its log with the same row rules as hydration, so a
+ * reload shows what the stream showed. A message whose rows, open flags,
+ * tool outputs and overlay did not change is returned as the same object, so
+ * React skips it.
+ */
+export function createTurnLogRenderer(
+  fileUrlBuilder: (fileId: string) => string = defaultWorkspaceFileUrl,
+) {
+  let memo = new Map<string, { deps: unknown[]; message: UiMessage }>();
+
+  return function renderTurnLog(log: TurnLog): UiMessage[] {
+    const outputs = new Map<string, unknown>();
+    for (const row of log.rows) {
+      if (row.role === "tool" && row.toolCallId) {
+        outputs.set(row.toolCallId, row.content);
+      }
+    }
+    const turnOver = log.status === "finished" || log.status === "failed";
+    const streamingRows = new Set(
+      Object.values(log.blocks)
+        .filter((block) => block.open && block.row !== null)
+        .map((block) => block.row),
+    );
+    const stepIsEmpty =
+      log.openStep !== null &&
+      log.openStep.rows === log.rows &&
+      log.openStep.overlay === log.overlay;
+    const ctx: RowPartsContext = {
+      toolOutputsByCallId: outputs,
+      fileUrlBuilder,
+      unanswered: turnOver ? "interrupted" : "input-available",
+    };
+
+    const groups = groupTurnRows(log);
+    const next = new Map<string, { deps: unknown[]; message: UiMessage }>();
+    const messages = groups.map((group, index) => {
+      const trailingStep = stepIsEmpty && index === groups.length - 1;
+      const rows = group.rows.map((i) => log.rows[i]);
+      const deps: unknown[] = [
+        ctx.unanswered,
+        trailingStep,
+        ...group.rows.flatMap((i) => [log.rows[i], streamingRows.has(i)]),
+        ...rows.flatMap((row) => row.toolCalls.map((c) => outputs.get(c.id))),
+        ...group.overlay,
+      ];
+      const cached = memo.get(group.key);
+      const message =
+        cached && sameDeps(cached.deps, deps)
+          ? cached.message
+          : buildGroupMessage(
+              group,
+              log.rows,
+              streamingRows,
+              trailingStep,
+              ctx,
+            );
+      next.set(group.key, { deps, message });
+      return message;
+    });
+    memo = next;
+    return messages;
+  };
+}
+
+interface TurnGroup {
+  key: string;
+  role: "user" | "assistant";
+  /** Indices of the rows that draw parts; tool rows only feed outputs. */
+  rows: number[];
+  overlay: OverlayPart[];
+}
+
+/**
+ * Consecutive assistant and reasoning rows share a bubble, as on reload. The
+ * keys never depend on sequences: the first assistant bubble is the turn's,
+ * and a later one is keyed by the drained follow-up it answers.
+ */
+function groupTurnRows(log: TurnLog): TurnGroup[] {
+  const turn = log.turnId ?? "";
+  const groups: TurnGroup[] = [];
+  const groupOfRow: number[] = [];
+  let afterUser: string | null = null;
+  const assistantKey = () =>
+    afterUser ? `turn:${turn}:after:${afterUser}` : `turn:${turn}`;
+
+  log.rows.forEach((row, i) => {
+    const last = groups[groups.length - 1];
+    if (row.role === "user") {
+      groups.push({ key: row.key, role: "user", rows: [i], overlay: [] });
+      afterUser = row.key;
+    } else if (row.role !== "tool") {
+      if (last?.role === "assistant") last.rows.push(i);
+      else {
+        groups.push({
+          key: assistantKey(),
+          role: "assistant",
+          rows: [i],
+          overlay: [],
+        });
+      }
+    }
+    groupOfRow[i] = groups.length - 1;
+  });
+
+  for (const part of log.overlay) {
+    const from = part.anchor === 0 ? -1 : groupOfRow[part.anchor - 1];
+    let target =
+      from >= 0 && groups[from].role === "assistant"
+        ? from
+        : groups.findIndex((g, gi) => gi > from && g.role === "assistant");
+    if (target === -1) {
+      groups.push({
+        key: assistantKey(),
+        role: "assistant",
+        rows: [],
+        overlay: [],
+      });
+      target = groups.length - 1;
+    }
+    groups[target].overlay.push(part);
+  }
+  return groups;
+}
+
+function buildGroupMessage(
+  group: TurnGroup,
+  rows: readonly LogRow[],
+  streamingRows: Set<number | null>,
+  trailingStep: boolean,
+  ctx: RowPartsContext,
+): UiMessage {
+  const parts: UiPart[] = [];
+  let overlayIndex = 0;
+  const flushOverlayBefore = (rowIndex: number) => {
+    while (
+      overlayIndex < group.overlay.length &&
+      group.overlay[overlayIndex].anchor <= rowIndex
+    ) {
+      const { type, entryId, data } = group.overlay[overlayIndex++];
+      parts.push({ type, id: entryId, data } as UiPart);
+    }
+  };
+  for (const index of group.rows) {
+    flushOverlayBefore(index);
+    parts.push(
+      ...buildRowParts(sessionRowOf(rows[index]), {
+        ...ctx,
+        streaming: streamingRows.has(index),
+      }),
+    );
+  }
+  flushOverlayBefore(Infinity);
+  if (trailingStep) parts.push({ type: "step-start" });
+  const metadata = group.rows.length ? rows[group.rows[0]].metadata : null;
+  return {
+    id: group.key,
+    role: group.role,
+    parts,
+    ...(metadata ? { metadata } : {}),
+  };
+}
+
+function sessionRowOf(row: LogRow): SessionChatMessage {
+  return {
+    id: null,
+    role: row.role,
+    content: row.content,
+    tool_call_id: row.toolCallId,
+    tool_calls: row.toolCalls.map((call) => ({
+      id: call.id,
+      display_name: call.displayName,
+      function: { name: call.name, arguments: call.input },
+    })),
+    sequence: row.sequence,
+    duration_ms: null,
+    created_at: null,
+    metadata: row.metadata,
+  };
+}
+
+function sameDeps(a: unknown[], b: unknown[]) {
+  return a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
 }

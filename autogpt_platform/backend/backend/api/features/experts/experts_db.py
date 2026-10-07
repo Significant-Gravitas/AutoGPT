@@ -21,6 +21,18 @@ from backend.api.features.experts.credential_counts import expert_credential_pro
 from backend.api.features.experts.credentials import (
     expert_allowed_credential_ids as expert_allowed_credential_ids,
 )
+from backend.api.features.experts.credentials import (
+    grant_expert_credentials as grant_expert_credentials,
+)
+from backend.api.features.experts.credentials import (
+    list_expert_credentials as list_expert_credentials,
+)
+from backend.api.features.experts.credentials import (
+    revoke_expert_credential as revoke_expert_credential,
+)
+from backend.api.features.experts.credentials import (
+    settle_credential_seed as settle_credential_seed,
+)
 from backend.api.features.experts.errors import (
     ACTIVE_EXPERT_LIMIT,
     LIFETIME_RAISED_EXPERT_LIMIT,
@@ -43,16 +55,35 @@ from backend.api.features.experts.models import (
     ExpertRun,
     ExpertRunSource,
     ExpertRunStatus,
+    ExpertSetupStatus,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     ExpertTemplate,
+    ExpertWorkflowLabel,
     ExpertWorkflowRef,
     HireResult,
+    HireSurface,
     RaiseAttachment,
     RaiseResult,
     decode_day_one,
     decode_voice_preferences,
 )
+from backend.api.features.experts.presentation import template_presentation
+from backend.api.features.experts.routine_jobs import (
+    mark_routine_unscheduled as mark_routine_unscheduled,
+)
+from backend.api.features.experts.routine_jobs import (
+    record_routine_fired as record_routine_fired,
+)
+from backend.api.features.experts.routine_jobs import (
+    record_routine_thread as record_routine_thread,
+)
+from backend.api.features.experts.routines import create_routine as create_routine
+from backend.api.features.experts.routines import disable_routine as disable_routine
+from backend.api.features.experts.routines import enable_routine as enable_routine
+from backend.api.features.experts.routines import get_routine as get_routine
+from backend.api.features.experts.routines import install_routines
+from backend.api.features.experts.routines import list_routines as list_routines
 from backend.api.features.experts.workflow_chain import (
     build_workflow_chain,
     integration_providers,
@@ -87,6 +118,7 @@ from backend.data.expert_spend import get_weekly_spend
 from backend.data.model import NodeExecutionStats
 from backend.data.user import get_user_by_id
 from backend.util import type as type_utils
+from backend.util.background import spawn_background_task
 from backend.util.exceptions import (
     ConflictError,
     ExpertNotFoundError,
@@ -95,15 +127,23 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.funnel_analytics import emit_funnel_event
+from backend.util.posthog_events import PostHogEvent
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
+
+# A setup job holding its lease longer than this died with its process; the
+# longest measured setup (8 skills) is ~25 s per attempt.
+SETUP_LEASE = timedelta(minutes=10)
+_SETUP_ATTEMPTS = 3
+_SETUP_RETRY_DELAY_SECONDS = 5
 
 
 def _raised_identity(name: str) -> str:
     # f-string, not str.format on a template: user names may contain { or },
     # which str.format would choke on.
-    return f"I'm {name}, raised by you. I learn how you work and grow with you."
+    return f"I'm {name}, an AI Expert created by you. I use your instructions to help with your work."
 
 
 # Postgres promises no row order without this, so the profile's workflow grid
@@ -229,17 +269,19 @@ def _to_model(
         )
     else:
         voice_preferences, voice_samples = row.voicePreferences, []
+    presentation = template_presentation(row)
     return Expert(
         id=row.id,
         name=row.name,
-        avatar_url=row.avatarUrl,
+        avatar_url=presentation["avatarUrl"],
         color=row.color,
         role=row.role,
-        tagline=row.tagline,
-        bio=row.bio,
+        job_title=row.jobTitle,
+        tagline=presentation["tagline"],
+        bio=presentation["bio"],
         skills=row.skills or [],
         categories=row.categories or [],
-        identity=row.identity,
+        identity=presentation["identity"],
         voice_preferences=voice_preferences,
         voice_samples=voice_samples,
         day_one=decode_day_one(row.dayOne),
@@ -256,6 +298,8 @@ def _to_model(
         schedules_paused_at=row.schedulesPausedAt,
         learning_paused_at=row.learningPausedAt,
         pod_id=row.podId,
+        setup_status=_setup_status(row),
+        setup_failures=row.setupFailures or [],
     )
 
 
@@ -280,6 +324,16 @@ async def set_expert_learning_paused(
     if updated == 0:
         return None
     return await get_expert(user_id, expert_id, include_workflows=False)
+
+
+def _setup_status(row: prisma.models.Expert) -> ExpertSetupStatus:
+    # A job whose lease ran out died with its process; show it as retryable.
+    if row.setupStatus == prisma.enums.ExpertSetupStatus.INSTALLING and (
+        row.setupStartedAt is None
+        or row.setupStartedAt < datetime.now(timezone.utc) - SETUP_LEASE
+    ):
+        return "failed"
+    return cast(ExpertSetupStatus, row.setupStatus.lower())
 
 
 async def _latest_runs(
@@ -355,7 +409,7 @@ async def _live_bundled_skills(
             ExpertBundledSkill(
                 id=row.skillListingId,
                 slug=skill.slug,
-                name=skill.name,
+                title=skill.title,
                 description=skill.description,
             )
             for row in rows
@@ -463,7 +517,7 @@ async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
     return await query_raw_with_schema(
         """
         SELECT "id", "name", "avatarUrl" AS "avatar_url", "color", "role",
-               "isArchived" AS "is_archived"
+               "jobTitle" AS "job_title", "isArchived" AS "is_archived"
         FROM {schema_prefix}"Expert"
         WHERE "ownerUserId" = $1 AND "isTemplate" = false
         """,
@@ -490,6 +544,26 @@ async def owns_active_expert(user_id: str, expert_id: str) -> bool:
         )
         > 0
     )
+
+
+async def active_expert_ids(user_id: str, expert_ids: set[str]) -> set[str]:
+    """Which of *expert_ids* are live hires of *user_id*, in one query.
+
+    The batched form of :func:`owns_active_expert`, for callers holding a set:
+    a per-id loop is unbounded in the number of experts on a request that
+    previously did no expert work at all.
+    """
+    if not expert_ids:
+        return set()
+    rows = await prisma.models.Expert.prisma().find_many(
+        where={
+            "id": {"in": sorted(expert_ids)},
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        }
+    )
+    return {row.id for row in rows}
 
 
 async def owns_private_active_expert(user_id: str, expert_id: str) -> bool:
@@ -834,6 +908,14 @@ async def expert_row_exists(user_id: str, expert_id: str) -> bool:
     return count > 0
 
 
+async def expert_setup_status(user_id: str, expert_id: str) -> ExpertSetupStatus:
+    """Where the owner's expert is in its hire setup; "ready" if not found."""
+    row = await prisma.models.Expert.prisma().find_first(
+        where={"id": expert_id, "ownerUserId": user_id}
+    )
+    return _setup_status(row) if row is not None else "ready"
+
+
 async def resolve_private_expert_tenancy(
     user_id: str, expert_id: str
 ) -> tuple[str, str | None]:
@@ -862,7 +944,32 @@ async def resolve_private_expert_tenancy(
     return organization_id, team_id
 
 
-async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:
+async def hire_expert(
+    user_id: str,
+    template_id: str,
+    name: str | None,
+    surface: HireSurface | None = None,
+) -> HireResult:
+    """Hire *template_id* and return as soon as the expert's row exists.
+
+    Its workflows, skills and routines install afterwards (``_run_hire_setup``);
+    the expert reports progress through ``setup_status``. Re-hiring an expert
+    whose setup failed or was abandoned starts that setup again.
+    """
+    try:
+        return await _hire_expert_impl(user_id, template_id, name, surface)
+    except Exception:
+        emit_funnel_event(
+            user_id,
+            PostHogEvent.HIRE_FAILED,
+            {"template_id": template_id, "failed_preloads_count": 0},
+        )
+        raise
+
+
+async def _hire_expert_impl(
+    user_id: str, template_id: str, name: str | None, surface: HireSurface | None
+) -> HireResult:
     template = await prisma.models.Expert.prisma().find_first(
         where={"id": template_id, "isTemplate": True, "isArchived": False},
         include=_WORKFLOW_INCLUDE,
@@ -873,21 +980,23 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     # Copy the plain description, never the template's sample envelope: a hire
     # that skips the voice pick must not leave raw JSON in the prompt, and the
     # pick (when made) overwrites this via the soul PATCH anyway.
+    presentation = template_presentation(template)
     template_voice, _ = decode_voice_preferences(template.voicePreferences)
     create_data: prisma.types.ExpertCreateInput = {
         "ownerUserId": user_id,
         "name": name or template.name,
-        "avatarUrl": template.avatarUrl,
+        "avatarUrl": presentation["avatarUrl"],
         "color": template.color,
         "role": template.role,
-        "tagline": template.tagline,
-        "bio": template.bio,
+        "jobTitle": template.jobTitle,
+        "tagline": presentation["tagline"],
+        "bio": presentation["bio"],
         # The bundled installs below record each name, so the row lists only
         # skills the hire actually owns.
         "skills": [],
         "categories": template.categories or [],
         # No dayOne: it is the template's pre-hire promise, not the hire's.
-        "identity": template.identity,
+        "identity": presentation["identity"],
         "voicePreferences": template_voice,
         "boundaries": template.boundaries,
         "sourceTemplateId": template.id,
@@ -895,6 +1004,8 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     }
     if template.toolProfile is not None:
         create_data["toolProfile"] = template.toolProfile
+    create_data["setupStatus"] = prisma.enums.ExpertSetupStatus.INSTALLING
+    create_data["setupStartedAt"] = datetime.now(timezone.utc)
 
     try:
         expert, state = await _reserve_hired_expert(user_id, template_id, create_data)
@@ -904,21 +1015,184 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         # the same capacity-aware path.
         expert, state = await _reserve_hired_expert(user_id, template_id, create_data)
 
-    if state == "existing":
-        return HireResult(expert=_to_model(expert), failed_preloads=[])
     if state == "revived":
         expert = await _resume_revived_hire(expert)
-        return HireResult(expert=_to_model(expert), failed_preloads=[])
+    # A hire that runs setup is counted by its job, once its preloads are
+    # known; an idempotent re-hire of an already-active expert is not a hire.
+    if state == "created" or await _claim_setup(expert.id):
+        spawn_background_task(
+            _run_hire_setup(
+                user_id,
+                expert.id,
+                template.id,
+                count_hire=state != "existing",
+                surface=surface,
+            ),
+            name=f"hire-setup-{expert.id}",
+        )
+        if state != "created":
+            expert = await _reload_expert(expert)
+    elif state == "revived":
+        _emit_expert_hired(user_id, expert, template.id, 0, surface)
+    return HireResult(expert=_to_model(expert))
 
-    failed = await _install_preloads(expert.id, user_id, template.Workflows or [])
-    await _install_bundled_skills(user_id, expert.id, template.id)
 
-    hydrated = await prisma.models.Expert.prisma().find_unique(
-        where={"id": expert.id}, include=_WORKFLOW_INCLUDE
+def _emit_expert_hired(
+    user_id: str,
+    expert: prisma.models.Expert,
+    template_id: str,
+    failed_preloads_count: int,
+    surface: HireSurface | None,
+) -> None:
+    hired: dict[str, str | int] = {
+        "expert_id": expert.id,
+        "template_id": template_id,
+        "name": expert.name,
+        "failed_preloads_count": failed_preloads_count,
+    }
+    if surface is not None:
+        hired["surface"] = surface
+    emit_funnel_event(user_id, PostHogEvent.EXPERT_HIRED, hired)
+
+
+async def _reload_expert(row: prisma.models.Expert) -> prisma.models.Expert:
+    refreshed = await prisma.models.Expert.prisma().find_unique(
+        where={"id": row.id}, include=_WORKFLOW_INCLUDE
     )
-    if hydrated is None:
-        raise ExpertNotFoundError(expert.id)
-    return HireResult(expert=_to_model(hydrated), failed_preloads=failed)
+    return refreshed or row
+
+
+async def _claim_setup(expert_id: str) -> bool:
+    """Take the setup lease of a hire whose setup failed or whose job died.
+
+    One conditional update, so two concurrent re-hires start one job.
+    """
+    now = datetime.now(timezone.utc)
+    claimed = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "OR": [
+                {"setupStatus": prisma.enums.ExpertSetupStatus.FAILED},
+                {
+                    "setupStatus": prisma.enums.ExpertSetupStatus.INSTALLING,
+                    "setupStartedAt": {"lt": now - SETUP_LEASE},
+                },
+            ],
+        },
+        data={
+            "setupStatus": prisma.enums.ExpertSetupStatus.INSTALLING,
+            "setupStartedAt": now,
+        },
+    )
+    return claimed == 1
+
+
+async def _run_hire_setup(
+    user_id: str,
+    expert_id: str,
+    template_id: str,
+    *,
+    count_hire: bool = False,
+    surface: HireSurface | None = None,
+) -> None:
+    """Install a hire's workflows, skills and routines, retrying what failed.
+
+    Every step skips what an earlier run installed, so a retry or a re-claimed
+    setup finishes the job instead of duplicating it. *count_hire* emits the
+    hire's ``expert_hired`` once the failed preloads are known.
+    """
+    failures: list[str] | None = None
+    failed_preloads: list[str] = []
+    ready = False
+    for attempt in range(_SETUP_ATTEMPTS):
+        if attempt:
+            await asyncio.sleep(_SETUP_RETRY_DELAY_SECONDS * attempt)
+        try:
+            failed_preloads, failed_rest = await _install_hire_contents(
+                user_id, expert_id, template_id
+            )
+        except Exception:
+            # Keeps the last named failures: a raise tells us nothing new.
+            logger.exception(f"Setup attempt {attempt + 1} failed for #{expert_id}")
+            continue
+        failures = failed_preloads + failed_rest
+        ready = not failures
+        if ready:
+            break
+    if failures is None:
+        failed_preloads = await _uninstalled_preloads(expert_id, template_id)
+        failures = failed_preloads
+    settled = await prisma.models.Expert.prisma().update(
+        where={"id": expert_id},
+        data={
+            "setupStatus": (
+                prisma.enums.ExpertSetupStatus.READY
+                if ready
+                else prisma.enums.ExpertSetupStatus.FAILED
+            ),
+            "setupFailures": failures or [],
+        },
+    )
+    if count_hire and settled is not None:
+        _emit_expert_hired(user_id, settled, template_id, len(failed_preloads), surface)
+
+
+async def _uninstalled_preloads(expert_id: str, template_id: str) -> list[str]:
+    """The template's preloads the hire still lacks, for a setup that never
+    got far enough to name its failures."""
+    template = await prisma.models.Expert.prisma().find_unique(
+        where={"id": template_id}, include=_WORKFLOW_INCLUDE
+    )
+    installed = {
+        w.storeListingVersionId
+        for w in await prisma.models.ExpertWorkflow.prisma().find_many(
+            where={"expertId": expert_id}
+        )
+    }
+    return [
+        w.StoreListingVersion.name if w.StoreListingVersion else w.storeListingVersionId
+        for w in (template.Workflows if template else None) or []
+        if w.storeListingVersionId and w.storeListingVersionId not in installed
+    ]
+
+
+async def _install_hire_contents(
+    user_id: str, expert_id: str, template_id: str
+) -> tuple[list[str], list[str]]:
+    """Install what the hire does not have yet; return the preloads, then
+    the skills and routines, that still failed."""
+    template = await prisma.models.Expert.prisma().find_unique(
+        where={"id": template_id}, include=_WORKFLOW_INCLUDE
+    )
+    expert = await prisma.models.Expert.prisma().find_unique(
+        where={"id": expert_id},
+        include={"Workflows": True, "Routines": True},
+    )
+    if template is None or expert is None:
+        raise ExpertNotFoundError(expert_id)
+    installed_listings = {w.storeListingVersionId for w in expert.Workflows or []}
+    installed_routines = {r.key for r in expert.Routines or []}
+    failed_preloads = await _install_preloads(
+        expert_id,
+        user_id,
+        [
+            w
+            for w in template.Workflows or []
+            if w.storeListingVersionId not in installed_listings
+        ],
+    )
+    failed = await _install_bundled_skills(
+        user_id, expert_id, template_id, installed=set(expert.skills or [])
+    )
+    failed += await install_routines(
+        expert_id,
+        [
+            r
+            for r in await _template_routines(template_id)
+            if r.key not in installed_routines
+        ],
+    )
+    return failed_preloads, failed
 
 
 async def _reserve_hired_expert(
@@ -1058,6 +1332,7 @@ async def create_raised_expert(
     role: str | None,
     voice_preferences: str | None,
     *,
+    job_title: str | None = None,
     avatar_url: str | None = None,
     color: str | None = None,
     tagline: str | None = None,
@@ -1070,8 +1345,8 @@ async def create_raised_expert(
 
     A raised expert has no source template, so ``sourceTemplateId`` stays
     NULL. Capacity checks and creation share a per-user advisory lock.
-    Attachments are validated before creation. Workflow install failure
-    remains non-fatal and is reported in the result.
+    Attachments are validated before creation. A workflow or marketplace-skill
+    install failure remains non-fatal and is reported in the result.
     """
     resolved = await raise_attachments.resolve_attachments(user_id, attachments or [])
     expert = await _create_raised_expert_row(
@@ -1079,6 +1354,7 @@ async def create_raised_expert(
         name,
         role,
         voice_preferences,
+        job_title=job_title,
         avatar_url=avatar_url,
         color=color,
         tagline=tagline,
@@ -1087,24 +1363,38 @@ async def create_raised_expert(
         weekly_budget=weekly_budget,
         skills=resolved.skill_names,
     )
-    failed_skills = await _copy_library_skills(user_id, expert.id, resolved.skill_names)
-    if failed_skills:
+    failed_skill_installs = await raise_attachments.install_marketplace_skills(
+        user_id, expert.id, resolved.skills
+    )
+    # Keyed on the whole attachment, not the bare id: the same slug can be
+    # attached from both the Hub and the user's own library, and a failed Hub
+    # install must not drop the library copy that succeeded.
+    uninstalled = {(f.kind, f.source, f.id) for f in failed_skill_installs}
+    dropped_skills = set(
+        await _copy_library_skills(user_id, expert.id, resolved.library_skill_names)
+    ) | {
+        s.name
+        for s in resolved.skills
+        if (s.attachment.kind, s.attachment.source, s.attachment.id) in uninstalled
+    }
+    if dropped_skills:
         expert = (
             await prisma.models.Expert.prisma().update(
                 where={"id": expert.id},
                 data={
                     "skills": [
-                        s for s in (expert.skills or []) if s not in failed_skills
+                        s for s in (expert.skills or []) if s not in dropped_skills
                     ]
                 },
                 include=_WORKFLOW_INCLUDE,
             )
             or expert
         )
-    failed_attachments = await raise_attachments.install_workflows(
+    failed_workflows = await raise_attachments.install_workflows(
         user_id, expert.id, resolved.workflows
     )
-    if resolved.workflows and len(failed_attachments) < len(resolved.workflows):
+    failed_attachments = failed_skill_installs + failed_workflows
+    if resolved.workflows and len(failed_workflows) < len(resolved.workflows):
         hydrated = await get_expert(user_id, expert.id)
         if hydrated is None:
             raise ExpertNotFoundError(expert.id)
@@ -1116,8 +1406,9 @@ async def create_raised_expert(
 async def _copy_library_skills(
     user_id: str, expert_id: str, names: list[str]
 ) -> list[str]:
-    """Give a freshly raised expert its own copies of the Otto skills it
-    was raised with. Defaults and marketplace names have nothing to copy.
+    """Give a freshly raised expert its own copies of the library skills it
+    was raised with. Defaults have nothing to copy; marketplace skills are
+    installed from their listing instead and never reach here.
     Returns the names whose copy failed so the caller can drop them from the
     expert's row rather than list a skill the expert cannot read."""
     candidates = [
@@ -1130,8 +1421,8 @@ async def _copy_library_skills(
     for name in candidates:
         folder = folders.get(name.strip().lower())
         if folder is None:
-            # A marketplace attachment: no library folder to copy, and the
-            # name is legitimate, so it stays on the row.
+            # A default listed under a name that differs from its slug: no
+            # folder to copy, and the name is legitimate, so it stays.
             continue
         try:
             if await copy_skill_to_expert(user_id, expert_id, folder) is None:
@@ -1148,6 +1439,7 @@ async def _create_raised_expert_row(
     role: str | None,
     voice_preferences: str | None,
     *,
+    job_title: str | None = None,
     avatar_url: str | None,
     color: str | None,
     tagline: str | None = None,
@@ -1175,6 +1467,7 @@ async def _create_raised_expert_row(
                 "avatarUrl": avatar_url,
                 "color": color or "",
                 "role": role or "",
+                "jobTitle": job_title,
                 "tagline": tagline,
                 "identity": about or _raised_identity(name),
                 "voicePreferences": voice_preferences or "",
@@ -1201,14 +1494,18 @@ async def update_skills(
     expert_id: str,
     skills: list[str],
     marketplace_listing_ids: list[str] | None = None,
+    remove: list[str] | None = None,
 ) -> Expert:
-    """Replace an expert's skill list.
+    """Attach ``skills`` to an expert and remove the names in ``remove``.
 
     Names the expert does not already carry must resolve to a library skill.
     A personal-Otto skill is copied into the expert's own folder so the
-    expert owns it from then on; names dropped from the list delete the
-    expert's copy. The stored name is the skill's canonical one so display
-    and lookup agree."""
+    expert owns it from then on; a removed name deletes the expert's copy.
+    The stored name is the skill's canonical one so display and lookup agree.
+
+    Only an explicit ``remove`` deletes anything. The expert distils new
+    skills into its own folder at any time, so a list the client read earlier
+    can be missing one; treating an absent name as a removal destroyed it."""
     row = await prisma.models.Expert.prisma().find_first(
         where={
             "id": expert_id,
@@ -1234,6 +1531,16 @@ async def update_skills(
         await _resolve_marketplace_skill_name(listing_id)
         for listing_id in marketplace_listing_ids or []
     ]
+    removed = {skill_name_key(name) for name in remove or []}
+    # A listing resolves to a name only here, so the request validator could
+    # not see this contradiction: attaching a marketplace skill and removing
+    # it in the same call would delete the copy and then recreate it. Checked
+    # before the copies below so a rejected request writes nothing.
+    both = sorted(n for n in marketplace if skill_name_key(n) in removed)
+    if both:
+        raise ValueError(
+            f"Skills cannot be both attached and removed: {', '.join(both)}"
+        )
     resolved: list[str] = []
     for canonical, folder in plan:
         if folder is not None:
@@ -1252,8 +1559,7 @@ async def update_skills(
     for name in marketplace:
         if name.lower() not in {r.lower() for r in resolved}:
             resolved.append(name)
-    kept = {r.lower() for r in resolved}
-    for dropped in [name for name in current.values() if name.lower() not in kept]:
+    for dropped in [n for n in current.values() if skill_name_key(n) in removed]:
         # delete_user_skill drops the row name itself — except for a built-in,
         # where it raises first and _detach_expert_skill swallows that.
         await _detach_expert_skill(user_id, expert_id, dropped)
@@ -1315,6 +1621,13 @@ async def _detach_expert_skill(user_id: str, expert_id: str, name: str) -> None:
 async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
     """Record a skill the expert now owns; idempotent, and a display name and
     its slug count as one name."""
+    await add_expert_skill_names(user_id, expert_id, [name])
+
+
+async def add_expert_skill_names(
+    user_id: str, expert_id: str, names: list[str]
+) -> None:
+    """:func:`add_expert_skill_name` for several names in one row write."""
     await _rewrite_skill_names(
         {
             "id": expert_id,
@@ -1322,12 +1635,18 @@ async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None
             "isTemplate": False,
             "isArchived": False,
         },
-        lambda names: (
-            names
-            if skill_name_key(name) in {skill_name_key(n) for n in names}
-            else [*names, name]
-        ),
+        lambda current: _with_names(current, names),
     )
+
+
+def _with_names(current: list[str], names: list[str]) -> list[str]:
+    merged = list(current)
+    keys = {skill_name_key(n) for n in merged}
+    for name in names:
+        if skill_name_key(name) not in keys:
+            keys.add(skill_name_key(name))
+            merged.append(name)
+    return merged
 
 
 async def remove_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
@@ -1381,6 +1700,14 @@ async def _owned_active_expert(
 
 
 async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> Expert:
+    before = await prisma.models.Expert.prisma().find_first(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+        },
+    )
     updated = await prisma.models.Expert.prisma().update_many(
         where={
             "id": expert_id,
@@ -1402,6 +1729,10 @@ async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> E
     expert = await get_expert(user_id, expert_id)
     if expert is None:
         raise ExpertNotFoundError(expert_id)
+    if before is not None:
+        _emit_writing_style_added(
+            user_id, expert_id, before.voicePreferences, soul.voice_preferences
+        )
     return expert
 
 
@@ -1598,7 +1929,25 @@ async def update_soul_fields_if_current(
         },
         data=data,
     )
-    return updated == 1
+    if updated != 1:
+        return False
+    if voice_preferences is not None:
+        _emit_writing_style_added(
+            user_id, expert_id, expected_voice_preferences, voice_preferences
+        )
+    return True
+
+
+def _emit_writing_style_added(
+    user_id: str, expert_id: str, before: str | None, after: str | None
+) -> None:
+    """Only a first blank→nonblank writing style counts; rewrites and removals
+    are silent, so the funnel measures personalisation rather than edits."""
+    if (before or "").strip() or not (after or "").strip():
+        return
+    emit_funnel_event(
+        user_id, PostHogEvent.WRITING_STYLE_ADDED, {"expert_id": expert_id}
+    )
 
 
 async def _install_preloads(
@@ -1630,7 +1979,7 @@ async def _install_preloads(
             continue
         try:
             library_agent = await library_db.add_store_agent_to_library(
-                preload.storeListingVersionId, user_id
+                preload.storeListingVersionId, user_id, track_listing_added=False
             )
             row = await prisma.models.ExpertWorkflow.prisma().create(
                 data={
@@ -1669,24 +2018,46 @@ async def _install_preloads(
     return failed
 
 
+async def _template_routines(
+    template_id: str,
+) -> list[prisma.models.ExpertRoutine]:
+    """The proposals a template ships, in the order the roster declares them."""
+    return await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": template_id},
+        order=[{"createdAt": "asc"}, {"id": "asc"}],
+    )
+
+
 async def _install_bundled_skills(
-    user_id: str, expert_id: str, template_id: str
-) -> None:
-    """Install the Hub skills the template bundles into the new expert's folder.
+    user_id: str, expert_id: str, template_id: str, *, installed: set[str]
+) -> list[str]:
+    """Install the Hub skills the template bundles into the new expert's
+    folder, skipping names already *installed*; return the titles that failed.
 
     Each install records its name on the row; a failed one is logged and
     leaves no name, so the hire never lists a skill it does not have.
     """
     bundled = await _live_bundled_skills(user_id, [template_id])
-    for skill in bundled.get(template_id, []):
-        try:
-            await skill_db.install_marketplace_skill(
-                user_id, skill.slug, expert_id=expert_id
+    missing = [s for s in bundled.get(template_id, []) if s.slug not in installed]
+    if not missing:
+        return []
+    try:
+        outcomes: list[object] = list(
+            await skill_db.install_marketplace_skills(
+                user_id, [s.slug for s in missing], expert_id=expert_id
             )
-        except Exception:
-            logger.exception(
-                f"Failed to install bundled skill {skill.slug!r} on expert #{expert_id}"
+        )
+    except Exception as e:
+        outcomes = [e] * len(missing)
+    failed: list[str] = []
+    for skill, outcome in zip(missing, outcomes):
+        if isinstance(outcome, Exception):
+            logger.error(
+                f"Failed to install bundled skill {skill.slug!r} on expert #{expert_id}",
+                exc_info=outcome,
             )
+            failed.append(skill.title)
+    return failed
 
 
 async def install_workflow(
@@ -1750,6 +2121,15 @@ async def _install_library_workflow(
         data={"expertId": expert_id, "libraryAgentId": library_agent_id},
         include=_WORKFLOW_ROW_INCLUDE,
     )
+    emit_funnel_event(
+        user_id,
+        PostHogEvent.WORKFLOW_INSTALLED_ON_EXPERT,
+        {
+            "expert_id": expert_id,
+            "workflow_source": "library",
+            "library_agent_id": library_agent_id,
+        },
+    )
     return _to_workflow_ref(row)
 
 
@@ -1767,7 +2147,7 @@ async def _install_marketplace_workflow(
         return _to_workflow_ref(existing)
 
     library_agent = await library_db.add_store_agent_to_library(
-        store_listing_version_id, user_id
+        store_listing_version_id, user_id, track_listing_added=False
     )
     try:
         row = await prisma.models.ExpertWorkflow.prisma().create(
@@ -1790,13 +2170,24 @@ async def _install_marketplace_workflow(
         if raced is None:
             raise
         return _to_workflow_ref(raced)
+    emit_funnel_event(
+        user_id,
+        PostHogEvent.WORKFLOW_INSTALLED_ON_EXPERT,
+        {
+            "expert_id": expert_id,
+            "workflow_source": "marketplace",
+            "store_listing_version_id": store_listing_version_id,
+        },
+    )
     return _to_workflow_ref(row)
 
 
-async def remove_workflow(user_id: str, expert_id: str, workflow_id: str) -> None:
-    """Detach a workflow from a hired expert, dropping its install-time
-    schedule. The library agent itself is left alone — it is still the
-    user's, and another expert may share it."""
+async def remove_workflow(user_id: str, expert_id: str, workflow_id: str) -> list[str]:
+    """Detach a workflow from a hired expert and stop its triggers.
+
+    Returns the names of the triggers that were paused or deactivated, so the
+    caller can say what it stopped. The library agent itself is left alone — it
+    is still the user's, and another expert may share it."""
     expert = await prisma.models.Expert.prisma().find_first(
         where={
             "id": expert_id,
@@ -1810,14 +2201,50 @@ async def remove_workflow(user_id: str, expert_id: str, workflow_id: str) -> Non
         raise ExpertNotFoundError(expert_id)
 
     row = await prisma.models.ExpertWorkflow.prisma().find_first(
-        where={"id": workflow_id, "expertId": expert_id}
+        where={"id": workflow_id, "expertId": expert_id},
+        include={"LibraryAgent": True},
     )
     if row is None:
         raise NotFoundError(f"Workflow #{workflow_id} not found on expert")
 
     if row.scheduleId:
         await scheduling.delete_workflow_schedule(row.scheduleId, user_id, expert_id)
+    stopped: list[str] = []
+    if row.LibraryAgent is not None:
+        stopped = await scheduling.suspend_workflow_triggers(
+            user_id,
+            expert_id,
+            row.LibraryAgent.agentGraphId,
+            except_schedule_id=row.scheduleId,
+        )
     await prisma.models.ExpertWorkflow.prisma().delete(where={"id": row.id})
+    return stopped
+
+
+async def get_workflow_label(
+    user_id: str, workflow_id: str
+) -> ExpertWorkflowLabel | None:
+    """An installed workflow's name and expert, if *user_id* owns the expert."""
+    row = await prisma.models.ExpertWorkflow.prisma().find_first(
+        where={
+            "id": workflow_id,
+            "Expert": {"is": {"ownerUserId": user_id, "isTemplate": False}},
+        },
+        include={
+            "LibraryAgent": {"include": {"AgentGraph": True}},
+            "StoreListingVersion": True,
+        },
+    )
+    if row is None:
+        return None
+    # Named as the roster names it: the listing's title first.
+    if row.StoreListingVersion is not None:
+        name = row.StoreListingVersion.name
+    elif row.LibraryAgent is not None:
+        name = _library_agent_labels(row.LibraryAgent)[0]
+    else:
+        name = None
+    return ExpertWorkflowLabel(expert_id=row.expertId, name=name)
 
 
 async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
@@ -1893,12 +2320,25 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
             "id": expert_id,
             "ownerUserId": user_id,
             "isTemplate": False,
+            "isArchived": False,
             "visibility": ResourceVisibility.PRIVATE,
         },
         data={"isArchived": True},
     )
     if updated == 0:
-        raise ExpertNotFoundError(expert_id)
+        already_archived = await prisma.models.Expert.prisma().find_first(
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "visibility": ResourceVisibility.PRIVATE,
+            },
+        )
+        if already_archived is None:
+            raise ExpertNotFoundError(expert_id)
+        # Re-archiving is an idempotent no-op; the funnel counts each firing once.
+        return
+    emit_funnel_event(user_id, PostHogEvent.EXPERT_FIRED, {"expert_id": expert_id})
     try:
         await scheduling.detach_expert_triggers(user_id, expert_id)
     except Exception:

@@ -98,6 +98,34 @@ async def _seed(store: FakeLearningStore, *, sources: list[dict] | None = None):
 
 
 @pytest.mark.asyncio
+async def test_existing_untracked_skill_becomes_a_decision(
+    fake_store, workspace, monkeypatch
+):
+    existing = _content(BODY_V1)
+    monkeypatch.setattr(
+        publish, "read_user_skill_markdown", AsyncMock(return_value=existing)
+    )
+    outcome = await publish.publish_learned_version(
+        publish.PublishRequest(
+            user_id=USER,
+            expert_id=EXPERT,
+            skill_name=NAME,
+            description="Import a CSV",
+            triggers=["csv"],
+            body=BODY_V2,
+            summary="Validate row counts",
+            origin="saved_overnight",
+        )
+    )
+    assert outcome.status == "needs_decision"
+    workspace.assert_not_awaited()
+    head = await fake_store.get_head(USER, EXPERT, NAME)
+    assert head is not None and not head.auto_improve
+    current = await fake_store.get_version(USER, head.current_version_id)
+    assert current.content == existing
+
+
+@pytest.mark.asyncio
 async def test_restore_creates_a_new_version_and_blocks_reappearance(
     fake_store, workspace
 ):

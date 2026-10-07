@@ -16,7 +16,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { getCategoryAccent } from "../../ExpertsSection/helpers";
-import { formatSkillTitle } from "../helpers";
+import { formatCategoryLabel } from "../helpers";
 
 interface Props {
   skill: MarketplaceSkill;
@@ -25,7 +25,7 @@ interface Props {
 
 export function SkillCard({ skill, isInstalled }: Props) {
   const { accent, icon } = getCategoryAccent(skill.categories[0]);
-  const title = formatSkillTitle(skill.name);
+  const title = skill.title;
   const providers = skill.required_providers;
 
   return (
@@ -58,7 +58,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
               )}
             >
               <Icon icon={icon} size={14} aria-hidden />
-              {formatSkillTitle(skill.categories[0])}
+              {formatCategoryLabel(skill.categories[0])}
             </span>
           ) : null}
         </div>
@@ -83,6 +83,12 @@ export function SkillCard({ skill, isInstalled }: Props) {
               </Avatar>
               by {skill.creator ?? "AutoGPT"}
             </span>
+            {skill.source_repo ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden>·</span>
+                From {skill.source_repo}
+              </span>
+            ) : null}
             {providers.length > 0 ? (
               <span className="inline-flex items-center gap-1.5">
                 <span aria-hidden>·</span>

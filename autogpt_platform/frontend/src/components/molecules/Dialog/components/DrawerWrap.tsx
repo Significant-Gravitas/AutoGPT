@@ -51,7 +51,6 @@ export function DrawerWrap({
     <Drawer.Portal>
       <Drawer.Overlay className={drawerStyles.overlay} />
       <Drawer.Content
-        aria-describedby={undefined}
         className={cn(
           drawerStyles.content,
           isCompact && compactStyles.drawerContent,
@@ -59,7 +58,8 @@ export function DrawerWrap({
         )}
         data-testid={testId}
         onEscapeKeyDown={handleEscapeKeyDown}
-        onInteractOutside={handleClose}
+        // No onInteractOutside close: Radix dismisses outside taps itself and
+        // vetoes the focus a closing DropdownMenu hands back to its trigger.
       >
         <div
           className={cn(
@@ -93,6 +93,7 @@ export function DrawerWrap({
             )
           ) : null}
         </div>
+        <Drawer.Description className="sr-only">Dialog</Drawer.Description>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div
             className={cn(

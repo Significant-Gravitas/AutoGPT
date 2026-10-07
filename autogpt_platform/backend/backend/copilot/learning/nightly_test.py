@@ -7,7 +7,7 @@ suppressions are exercised for real through ``FakeLearningStore``.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
@@ -133,8 +133,9 @@ def boundaries(monkeypatch):
     write = AsyncMock()
     memory = AsyncMock(return_value=True)
     budget = AsyncMock(return_value=(True, None))
+    lease = Mock(refresh=AsyncMock(return_value=True))
     monkeypatch.setattr(nightly, "is_feature_enabled", AsyncMock(return_value=True))
-    monkeypatch.setattr(nightly, "_acquire_lease", AsyncMock(return_value=object()))
+    monkeypatch.setattr(nightly, "_acquire_lease", AsyncMock(return_value=lease))
     monkeypatch.setattr(nightly, "_release_lease", AsyncMock())
     monkeypatch.setattr(nightly, "check_dream_budget", budget)
     monkeypatch.setattr(nightly, "review_evidence", review)
@@ -150,7 +151,13 @@ def boundaries(monkeypatch):
         publish, "read_user_skill_markdown", AsyncMock(return_value=None)
     )
     monkeypatch.setattr(publish, "invalidate_skills_index_cache", AsyncMock())
-    return {"review": review, "write": write, "memory": memory, "budget": budget}
+    return {
+        "review": review,
+        "write": write,
+        "memory": memory,
+        "budget": budget,
+        "lease": lease,
+    }
 
 
 async def _source(
@@ -193,6 +200,26 @@ async def test_no_eligible_work_means_no_model_call(fake_store, adapter, boundar
 
 
 @pytest.mark.asyncio
+async def test_review_knows_every_existing_skill_in_the_owner_scope(monkeypatch):
+    skills = [
+        ParsedSkill(name=f"recipe-{i}", description=f"Task {i}", body="")
+        for i in range(20)
+    ]
+    index = AsyncMock(return_value=skills)
+    body = AsyncMock(
+        side_effect=lambda user_id, name, **kwargs: next(
+            s for s in skills if s.name == name
+        )
+    )
+    monkeypatch.setattr(nightly, "list_user_skills", index)
+    monkeypatch.setattr(nightly, "read_user_skill_with_body", body)
+    known = await nightly._existing_skills(USER, EXPERT)
+    assert {s.name for s in known} == {s.name for s in skills}
+    index.assert_awaited_once_with(USER, EXPERT, heal_missing=False)
+    assert body.await_count <= nightly.MAX_EXISTING_SKILL_BODIES
+
+
+@pytest.mark.asyncio
 async def test_unverified_source_is_skipped_without_a_model_call(
     fake_store, adapter, boundaries
 ):
@@ -210,10 +237,26 @@ async def test_unverified_source_is_skipped_without_a_model_call(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("refresh_results", [[False], [True, False]])
+async def test_lost_lease_never_publishes_or_advances_source(
+    fake_store, adapter, boundaries, refresh_results
+):
+    source = await _source(fake_store)
+    boundaries["lease"].refresh.side_effect = refresh_results
+    result = await _run()
+    assert result.error == "learning lease lost"
+    assert result.applied == 0
+    boundaries["write"].assert_not_called()
+    assert (await fake_store.get_source(USER, source.id)).has_unprocessed_revision
+    assert result.model_calls == len(refresh_results) - 1
+
+
+@pytest.mark.asyncio
 async def test_verified_source_becomes_a_ready_version(fake_store, adapter, boundaries):
     source = await _source(fake_store)
     result = await _run()
     assert result.applied == 1 and result.model_calls == 1
+    assert result.reviewed == 1
     head = await fake_store.get_head(USER, EXPERT, "csv-import-checks")
     assert head is not None and head.current_version == 1
     version = await fake_store.get_version(USER, head.current_version_id)
@@ -514,6 +557,12 @@ async def test_unsupported_or_questionable_proposals_are_rejected_deterministica
     assert nightly.validate_proposal(_proposal(decision="update"), bundle, []) == (
         "update names a skill that does not exist"
     )
+    for body in ["", "x" * 12_001]:
+        incomplete = [ParsedSkill(name="csv-import-checks", description="d", body=body)]
+        assert (
+            nightly.validate_proposal(_proposal(decision="update"), bundle, incomplete)
+            == "update requires the complete existing skill body"
+        )
     assert (
         nightly.validate_proposal(
             _proposal(decision="skip", reason="only a plan"), bundle, []

@@ -5,7 +5,11 @@ import {
   removeGtagShim,
 } from "@/tests/integrations/gtag-shim";
 import { ACCOUNT_CREATED_COOKIE } from "../account-created-cookie";
-import { consent } from "@/services/consent/cookies";
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
 
 let pathname = "/copilot";
 vi.mock("next/navigation", () => ({
@@ -54,19 +58,14 @@ describe("AdsConversionTracker", () => {
     );
     // Identifiers only ride along on an affirmative yes, so the cases below
     // that assert them start from an answered banner.
-    consent.save({
-      hasConsented: true,
-      timestamp: 1,
-      analytics: true,
-      monitoring: true,
-      advertising: true,
-    });
+    configureCookiebot();
+    installCookiebot({ statistics: true, marketing: true });
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
     removeGtagShim();
-    consent.clear();
+    removeCookiebot();
   });
 
   it("fires sign_up once for a just-created account and clears the flag", () => {
@@ -248,13 +247,7 @@ describe("AdsConversionTracker", () => {
   });
 
   it("drops the identifiers when the visitor rejected advertising", () => {
-    consent.save({
-      hasConsented: true,
-      timestamp: 1,
-      analytics: true,
-      monitoring: true,
-      advertising: false,
-    });
+    installCookiebot({ statistics: true, marketing: false });
     document.cookie = `${ACCOUNT_CREATED_COOKIE}=email; Path=/`;
 
     render(<AdsConversionTracker />);
@@ -278,7 +271,8 @@ describe("AdsConversionTracker", () => {
   });
 
   it("drops the identifiers while the banner is unanswered", () => {
-    consent.clear();
+    removeCookiebot();
+    installCookiebot();
     document.cookie = `${ACCOUNT_CREATED_COOKIE}=email; Path=/`;
 
     render(<AdsConversionTracker />);

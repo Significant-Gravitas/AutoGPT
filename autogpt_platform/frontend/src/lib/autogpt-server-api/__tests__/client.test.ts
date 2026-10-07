@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/auth/actions", () => ({
+  getWebSocketToken: vi.fn(async () => ({ token: "test-token" })),
+}));
+
 import BackendAPI, { buildOAuthLoginQuery } from "../client";
 
 describe("BackendAPI.oAuthLogin", () => {
@@ -116,5 +121,100 @@ describe("BackendAPI._makeClientRequest 204 handling", () => {
     const result = await (api as any)._makeClientRequest("GET", "/x");
 
     expect(result).toEqual({ ok: true });
+  });
+});
+
+describe("BackendAPI WebSocket failure logging", () => {
+  const sockets: FakeWebSocket[] = [];
+
+  class FakeWebSocket {
+    static readonly CONNECTING = 0;
+    static readonly OPEN = 1;
+    static readonly CLOSING = 2;
+    static readonly CLOSED = 3;
+
+    readyState = FakeWebSocket.CONNECTING;
+    onopen: (() => void) | null = null;
+    onclose:
+      | ((event: Pick<CloseEvent, "code" | "reason" | "wasClean">) => void)
+      | null = null;
+    onerror:
+      | ((event: Pick<Event, "type"> & { target?: unknown }) => void)
+      | null = null;
+    onmessage: ((event: MessageEvent) => void) | null = null;
+    state = "connecting";
+    close = vi.fn();
+    send = vi.fn();
+
+    constructor(public url: string) {
+      sockets.push(this);
+    }
+  }
+
+  afterEach(() => {
+    sockets.length = 0;
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  async function connect() {
+    vi.useFakeTimers();
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    const api = new BackendAPI("http://test", "ws://test/ws");
+    void api.connectWebSocket();
+    await vi.waitFor(() => expect(sockets).toHaveLength(1), { interval: 1 });
+    return sockets[0];
+  }
+
+  it("reports the close code and reason instead of the CloseEvent object", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const socket = await connect();
+
+    socket.onclose!({ code: 4002, reason: "Invalid token", wasClean: true });
+
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    const [message, ...rest] = consoleError.mock.calls[0];
+    expect(rest).toHaveLength(0);
+    expect(message).toContain("[BackendAPI] WebSocket failed to connect");
+    expect(message).toContain("4002");
+    expect(message).toContain("Invalid token");
+    expect(message).not.toContain("[object");
+  });
+
+  it("reports a close on an established connection at warn level", async () => {
+    const consoleWarn = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
+    const socket = await connect();
+    socket.state = "connected";
+
+    socket.onclose!({ code: 1006, reason: "", wasClean: false });
+
+    const [message] = consoleWarn.mock.calls[0];
+    expect(message).toContain("[BackendAPI] WebSocket connection closed");
+    expect(message).toContain("1006");
+    expect(message).toContain("abnormal closure");
+    expect(message).not.toContain("[object");
+  });
+
+  it("reports the socket state on an error event instead of the Event object", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const socket = await connect();
+    socket.state = "connected";
+    socket.readyState = FakeWebSocket.CLOSED;
+
+    socket.onerror!({ type: "error", target: socket });
+
+    const [message, ...rest] = consoleError.mock.calls[0];
+    expect(rest).toHaveLength(0);
+    expect(message).toContain("[BackendAPI] WebSocket error");
+    expect(message).toContain("CLOSED");
+    expect(message).not.toContain("[object");
+    expect(message).not.toContain("test-token");
   });
 });

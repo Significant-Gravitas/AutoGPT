@@ -153,7 +153,9 @@ def extract_turn_signals(
             if signal is not None:
                 signals.append(signal)
             continue
-        if message.role == "assistant" and (message.content or "").strip():
+        if message.role == "assistant" and (
+            (message.content or "").strip() or message.tool_calls
+        ):
             refs.append(EvidenceRef(kind="assistant", ref=ref, label="assistant reply"))
             continue
         if message.role != "user":

@@ -1,16 +1,33 @@
 import { getListCopilotSkillsMockHandler } from "@/app/api/__generated__/endpoints/skills/skills.msw";
 import {
-  getGetV2GetSpecificAgentMockHandler,
+  getGetV2ListMarketplaceSkillsMockHandler200,
   getGetV2ListStoreAgentsMockHandler,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
+import type { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import type { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
-import type { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { SkillsStep } from "./SkillsStep";
+
+const flags = vi.hoisted(() => ({ skillsHub: true }));
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useFlagStatus: (flag: string) => {
+      if (flag === "skills-hub")
+        return { enabled: flags.skillsHub, ready: true };
+      return actual.useFlagStatus(flag as never);
+    },
+  };
+});
 
 const storeAgent = {
   slug: "seo-writer",
@@ -24,6 +41,28 @@ const storeAgent = {
   rating: 5,
   agent_graph_id: "graph-1",
 } as StoreAgent;
+
+const outreach: MarketplaceSkill = {
+  slug: "outreach-playbook",
+  name: "outreach-playbook",
+  title: "Outreach playbook",
+  description: "Cold outreach that lands",
+  categories: ["sales"],
+  required_providers: [],
+  install_count: 4,
+};
+
+function marketplaceSkills(skills: MarketplaceSkill[]) {
+  return getGetV2ListMarketplaceSkillsMockHandler200({
+    skills,
+    pagination: {
+      total_items: skills.length,
+      total_pages: 1,
+      current_page: 1,
+      page_size: 3,
+    },
+  });
+}
 
 function renderSkills(
   overrides: Partial<Parameters<typeof SkillsStep>[0]> = {},
@@ -49,6 +88,11 @@ function renderSkills(
 }
 
 describe("SkillsStep", () => {
+  beforeEach(() => {
+    flags.skillsHub = true;
+    server.use(marketplaceSkills([]));
+  });
+
   test("shows only three default library skills", async () => {
     server.use(
       getListCopilotSkillsMockHandler([
@@ -91,7 +135,35 @@ describe("SkillsStep", () => {
     ]);
   });
 
-  test("searches marketplace agents as skills", async () => {
+  test("adds a marketplace skill by its slug", async () => {
+    server.use(
+      getListCopilotSkillsMockHandler([]),
+      marketplaceSkills([outreach]),
+    );
+    const { onSubmit } = renderSkills();
+
+    expect(await screen.findByText("Marketplace skill")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /Remove Outreach playbook/ }),
+      ).toBeDefined(),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Bring Otto to life" }),
+    );
+
+    expect(onSubmit).toHaveBeenCalledWith([
+      expect.objectContaining({
+        kind: "skill",
+        source: "marketplace",
+        id: "outreach-playbook",
+        name: "Outreach playbook",
+      }),
+    ]);
+  });
+
+  test("never offers a marketplace agent as a skill", async () => {
     server.use(
       getListCopilotSkillsMockHandler([]),
       getGetV2ListStoreAgentsMockHandler({
@@ -103,39 +175,26 @@ describe("SkillsStep", () => {
           page_size: 3,
         },
       }),
-      getGetV2GetSpecificAgentMockHandler({
-        store_listing_version_id: "listing-version-42",
-        slug: "seo-writer",
-        agent_name: "SEO Blog Writer",
-        creator: "acme",
-      } as StoreAgentDetails),
+      marketplaceSkills([outreach]),
     );
-    const { onSubmit } = renderSkills();
+    renderSkills();
 
-    await userEvent.type(
-      screen.getByRole("textbox", { name: "Search skills" }),
-      "seo",
-    );
+    expect(await screen.findByText("Outreach playbook")).toBeDefined();
+    expect(screen.queryByText("SEO Blog Writer")).toBeNull();
+  });
 
-    expect(await screen.findByText("Marketplace skill")).toBeDefined();
-    await userEvent.click(screen.getByRole("button", { name: "Add" }));
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: /Remove SEO Blog Writer/ }),
-      ).toBeDefined(),
+  test("offers no marketplace skills while the hub is off", async () => {
+    flags.skillsHub = false;
+    server.use(
+      getListCopilotSkillsMockHandler([
+        { name: "seo-audit", description: "Audit landing pages" },
+      ]),
+      marketplaceSkills([outreach]),
     );
-    await userEvent.click(
-      screen.getByRole("button", { name: "Bring Otto to life" }),
-    );
+    renderSkills();
 
-    expect(onSubmit).toHaveBeenCalledWith([
-      expect.objectContaining({
-        kind: "skill",
-        source: "marketplace",
-        id: "listing-version-42",
-        name: "SEO Blog Writer",
-      }),
-    ]);
+    expect(await screen.findByText("seo-audit")).toBeDefined();
+    expect(screen.queryByText("Outreach playbook")).toBeNull();
   });
 
   test("skip raises without extra skills", async () => {

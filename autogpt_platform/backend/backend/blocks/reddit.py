@@ -9,6 +9,7 @@ from pydantic import BaseModel, SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -19,6 +20,7 @@ from backend.data.model import (
     OAuth2Credentials,
     SchemaField,
 )
+from backend.integrations.oauth.reddit import RedditOAuthHandler
 from backend.integrations.providers import ProviderName
 from backend.util.mock import MockObject
 from backend.util.settings import Settings
@@ -36,11 +38,48 @@ RedditCredentialsInput = CredentialsMetaInput[
     Literal["oauth2"],
 ]
 
+# Single source of truth for the baseline scopes: the OAuth handler owns them, so
+# the two lists can't drift apart.
+REDDIT_BASE_SCOPES = frozenset(RedditOAuthHandler.DEFAULT_SCOPES)
 
-def RedditCredentialsField() -> RedditCredentialsInput:
-    """Creates a Reddit credentials input on a block."""
+# Elevated moderator scopes. These are never in `DEFAULT_SCOPES`; only blocks that
+# actually need them ask for them via `RedditCredentialsField(required_scopes=...)`.
+MOD_POSTS_SCOPE = "modposts"  # Remove/approve/lock posts and comments
+MOD_CONTRIBUTORS_SCOPE = "modcontributors"  # Ban and unban subreddit users
+MODMAIL_SCOPE = "modmail"  # Send modmail conversations
+REDDIT_MODERATION_SCOPES = frozenset(
+    {MOD_POSTS_SCOPE, MOD_CONTRIBUTORS_SCOPE, MODMAIL_SCOPE}
+)
+
+
+def RedditCredentialsField(
+    required_scopes: set[str] | None = None,
+) -> RedditCredentialsInput:
+    """
+    Creates a Reddit credentials input on a block.
+
+    `required_scopes=None` preserves the legacy implicit-scope path, where the OAuth
+    handler supplies `DEFAULT_SCOPES`. Passing a set opts into explicit scope metadata;
+    the baseline is then merged because `BaseOAuthHandler.handle_default_scopes`
+    *replaces* `DEFAULT_SCOPES` with a non-empty requested list rather than unioning
+    them — without the merge, a moderation block would mint a token that can't even
+    call `client.user.me()`.
+    """
+    if required_scopes is None:
+        merged_scopes: set[str] = set()
+    else:
+        merged_scopes = set(REDDIT_BASE_SCOPES) | required_scopes
     return CredentialsField(
+        required_scopes=merged_scopes,
         description="Connect your Reddit account to access Reddit features.",
+    )
+
+
+def reddit_disabled() -> bool:
+    """Whether Reddit blocks should be disabled for want of app credentials."""
+    return (
+        not settings.secrets.reddit_client_id
+        or not settings.secrets.reddit_client_secret
     )
 
 
@@ -50,15 +89,7 @@ TEST_CREDENTIALS = OAuth2Credentials(
     access_token=SecretStr("mock-reddit-access-token"),
     refresh_token=SecretStr("mock-reddit-refresh-token"),
     access_token_expires_at=9999999999,
-    scopes=[
-        "identity",
-        "read",
-        "submit",
-        "edit",
-        "history",
-        "privatemessages",
-        "flair",
-    ],
+    scopes=sorted(REDDIT_BASE_SCOPES | REDDIT_MODERATION_SCOPES),
     title="Mock Reddit credentials",
     username="mock-reddit-username",
 )
@@ -294,6 +325,8 @@ class PostRedditCommentBlock(Block):
             test_mock={
                 "reply_post": lambda creds, post_id, comment: "dummy_comment_id"
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -379,6 +412,8 @@ class CreateRedditPostBlock(Block):
                     "https://reddit.com/r/test/comments/abc123/test_post/",
                 )
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -1761,6 +1796,8 @@ class ReplyToRedditCommentBlock(Block):
             test_mock={
                 "reply_to_comment": lambda creds, comment_id, reply_text: "new_reply_id"
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -2005,6 +2042,8 @@ class SendRedditMessageBlock(Block):
                 ("username", "testuser"),
             ],
             test_mock={"send_message": lambda creds, username, subject, message: True},
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -2232,7 +2271,8 @@ class DeleteRedditPostBlock(Block):
                 ("post_id", "abc123"),
             ],
             test_mock={"delete_post": lambda creds, post_id: True},
-            is_sensitive_action=True,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -2291,7 +2331,8 @@ class DeleteRedditCommentBlock(Block):
                 ("comment_id", "xyz789"),
             ],
             test_mock={"delete_comment": lambda creds, comment_id: True},
-            is_sensitive_action=True,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

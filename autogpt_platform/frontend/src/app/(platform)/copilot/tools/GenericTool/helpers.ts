@@ -31,6 +31,10 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   view_agent_output: "Agent output",
   run_block: "Action",
   run_mcp_tool: "MCP tool",
+  find_capability: "Capability search",
+  describe_capability: "Capability details",
+  run_capability: "Action",
+  resume_capability: "Resumed action",
   get_agent_building_guide: "Agent building guide",
 };
 

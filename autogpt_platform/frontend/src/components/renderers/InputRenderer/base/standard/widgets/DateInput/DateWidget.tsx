@@ -1,3 +1,4 @@
+import { useFieldAccessibility } from "../../../../field-accessibility";
 import { WidgetProps } from "@rjsf/utils";
 import { DateInput } from "@/components/atoms/DateInput/DateInput";
 
@@ -11,8 +12,16 @@ export const DateWidget = (props: WidgetProps) => {
     autofocus,
     id,
     formContext,
+    schema,
+    label,
   } = props;
   const { size = "small" } = formContext || {};
+  const accessibility = useFieldAccessibility(
+    id,
+    schema.title || label,
+    formContext ?? props.registry?.formContext,
+    props["aria-describedby"],
+  );
 
   // Determine input size based on context
   const inputSize = size === "large" ? "default" : "small";
@@ -20,9 +29,9 @@ export const DateWidget = (props: WidgetProps) => {
   return (
     <DateInput
       size={inputSize as any}
-      id={id}
+      {...accessibility}
       hideLabel={true}
-      label={""}
+      label={schema.title || label || ""}
       value={value}
       onChange={onChange}
       placeholder={placeholder}

@@ -16,7 +16,9 @@ from backend.data.credit_history.service import (
 from backend.data.model import CreditHistoryCharge, CreditTransactionItem
 
 
-def history_row(key: str, execution_id: str | None = "run-1") -> _HistoryRow:
+def history_row(
+    key: str, execution_id: str | None = "run-1", session_id: str | None = None
+) -> _HistoryRow:
     return _HistoryRow(
         id=key,
         transaction_key=key,
@@ -24,6 +26,7 @@ def history_row(key: str, execution_id: str | None = "run-1") -> _HistoryRow:
         transaction_time=datetime(2026, 9, 4, tzinfo=timezone.utc),
         usage_start_time=datetime(2026, 9, 3, tzinfo=timezone.utc),
         usage_execution_id=execution_id,
+        usage_chat_session_id=session_id,
         usage_graph_id="graph-1",
         usage_has_block=True,
         usage_charge_amount=-100,
@@ -139,15 +142,17 @@ async def test_invalid_page_limit_is_rejected_before_query(limit):
 
 
 @pytest.mark.parametrize(
-    "execution_id,activity,description",
+    "execution_id,session_id,activity,description",
     [
-        ("run-1", "agent_run", "Agent run"),
-        ("copilot-session-chat", "copilot_tools", "Expert tool use"),
-        (None, "block_usage", "Block usage"),
+        ("run-1", None, "agent_run", "Agent run"),
+        (None, "chat", "copilot_tools", "Expert tool use"),
+        (None, None, "block_usage", "Block usage"),
     ],
 )
-def test_usage_types_are_not_mislabelled(execution_id, activity, description):
-    item = _to_item(history_row("id", execution_id), "user")
+def test_usage_types_are_not_mislabelled(
+    execution_id, session_id, activity, description
+):
+    item = _to_item(history_row("id", execution_id, session_id), "user")
     assert item.activity_type == activity
     assert item.description == description
     assert (

@@ -20,14 +20,34 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { parseAsString, useQueryState } from "nuqs";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecipientChip } from "../components/ChatInput/components/RecipientChip";
 import { useRecipientPicker } from "../components/EmptySession/useRecipientPicker";
 import { ChatMessagesContainer } from "../components/ChatMessagesContainer/ChatMessagesContainer";
 import { ChatSidebar } from "../components/ChatSidebar/ChatSidebar";
 import { useChatSession } from "../useChatSession";
+import { getNewChatHref } from "@/components/layout/AppSidebar/components/RecentChats/helpers";
 import { useCopilotUIStore } from "../store";
 import { groupSessionsByExpert } from "../useSessionList";
+
+const { capture } = vi.hoisted(() => ({ capture: vi.fn() }));
+vi.mock("posthog-js", () => ({ default: { capture } }));
+
+/** Funnel events as PostHog received them, in order. */
+function funnelCalls() {
+  return capture.mock.calls.map(([event, data]) => ({
+    type: event as string,
+    data: (data ?? {}) as Record<string, unknown>,
+  }));
+}
+
+beforeEach(() => {
+  capture.mockReset();
+});
+
+function funnelEventNames() {
+  return capture.mock.calls.map(([event]) => event as string);
+}
 
 const flagState = vi.hoisted(() => ({
   values: { "hire-experts": true } as Record<string, boolean>,
@@ -131,10 +151,10 @@ vi.mock(
   }),
 );
 vi.mock("../components/ChatMessagesContainer/helpers", () => ({
+  extractReviewTarget: () => null,
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
-  parseSpecialMarkers: () => ({ markerType: null }),
 }));
 vi.mock("../components/JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,
@@ -203,6 +223,18 @@ function ExpertSessionHarness() {
   );
 }
 
+function AutopilotSessionHarness() {
+  const { createSession, sessionId } = useChatSession();
+  return (
+    <div>
+      <div data-testid="session-id">{sessionId ?? "none"}</div>
+      <button onClick={() => void createSession().catch(() => {})}>
+        create
+      </button>
+    </div>
+  );
+}
+
 /** Mirrors `CopilotPage`, which keys the chat host on the session id — every
  *  session change (including "New Chat" clearing it) remounts `useChatSession`
  *  with fresh refs. */
@@ -211,8 +243,31 @@ function KeyedSessionHost() {
   return <ExpertSessionHarness key={`chat-host-${sessionId ?? "new"}`} />;
 }
 
+/** Stands in for the sidebar's "New chat with Maria" link: following it
+ *  lands on the href `getNewChatHref` builds, which replaces the whole query
+ *  string, so whatever session was open is dropped along the way. Each key
+ *  goes through its own setter, like the real New Chat handler. */
+function SidebarNewChatLink() {
+  const [, setExpertId] = useQueryState("expertId", parseAsString);
+  const [, setSessionId] = useQueryState("sessionId", parseAsString);
+  const [, setNewThread] = useQueryState("new", parseAsString);
+  function follow() {
+    const href = getNewChatHref("expert-maria", new Set(["expert-maria"]));
+    const target = new URL(href ?? "/home", "http://localhost");
+    void setSessionId(target.searchParams.get("sessionId"));
+    void setExpertId(target.searchParams.get("expertId"));
+    void setNewThread(target.searchParams.get("new"));
+  }
+  return <button onClick={follow}>New chat with Maria</button>;
+}
+
 const NuqsWrapper = withNuqsTestingAdapter({
   searchParams: "?expertId=expert-maria",
+  hasMemory: true,
+});
+
+const EmptyNuqsWrapper = withNuqsTestingAdapter({
+  searchParams: "",
   hasMemory: true,
 });
 
@@ -272,6 +327,67 @@ describe("useChatSession — expert sessions", () => {
       // chosen for one chat leaked into every later chat.
       expect(createBody).toEqual({ expert_id: "expert-maria" });
     });
+    await waitFor(() =>
+      expect(
+        funnelCalls().find((event) => event.type === "expert_thread_created")
+          ?.data,
+      ).toEqual({ expert_id: "expert-maria" }),
+    );
+  });
+
+  it("does not emit expert_thread_created for an Autopilot session", async () => {
+    let transportInventoryLoaded = false;
+    server.use(
+      http.post("*/api/chat/sessions", () =>
+        HttpResponse.json({
+          id: "new-autopilot-session",
+          created_at: "2026-01-01T00:00:00Z",
+          user_id: "user-1",
+          expert_id: null,
+        }),
+      ),
+      http.get("*/api/chat/sessions/new-autopilot-session", () =>
+        HttpResponse.json({
+          id: "new-autopilot-session",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+          user_id: "user-1",
+          messages: [],
+        }),
+      ),
+      http.get("*/api/chat/transports", () => {
+        transportInventoryLoaded = true;
+        return HttpResponse.json({
+          transports: [
+            {
+              auth_provider: "platform",
+              credential_id: null,
+              label: "AutoGPT Platform",
+              available: true,
+              default: true,
+            },
+          ],
+        });
+      }),
+      getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
+    );
+
+    render(
+      <CredentialsProvidersContext.Provider value={{}}>
+        <EmptyNuqsWrapper>
+          <AutopilotSessionHarness />
+        </EmptyNuqsWrapper>
+      </CredentialsProvidersContext.Provider>,
+    );
+    await waitFor(() => expect(transportInventoryLoaded).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "create" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("session-id").textContent).toBe(
+        "new-autopilot-session",
+      ),
+    );
+
+    expect(funnelEventNames()).not.toContain("expert_thread_created");
   });
 
   it("opens the expert's latest thread when one already exists", async () => {
@@ -345,6 +461,136 @@ describe("useChatSession — expert sessions", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.getByTestId("session-id").textContent).toBe("none");
     expect(listedSessions).toBe(0);
+  });
+
+  it("opens a fresh expert page from the sidebar + while that expert's chat is running, and again after", async () => {
+    const runningSession = makeSession({
+      id: "s-maria-running",
+      title: "Maria thread",
+      expert_id: "expert-maria",
+      is_processing: true,
+    });
+    let adoptionLookups = 0;
+    const writesToRunningSession: string[] = [];
+    server.use(
+      http.get("*/api/chat/sessions", ({ request }) => {
+        if (new URL(request.url).searchParams.get("expert_id")) {
+          adoptionLookups += 1;
+        }
+        return HttpResponse.json({ sessions: [runningSession], total: 1 });
+      }),
+      http.get("*/api/chat/sessions/s-maria-running", () =>
+        HttpResponse.json({
+          ...runningSession,
+          user_id: "user-1",
+          messages: [],
+          active_stream: { started_at: "2026-01-01T00:00:00Z" },
+        }),
+      ),
+      http.all("*/api/chat/sessions/s-maria-running/*", ({ request }) => {
+        writesToRunningSession.push(`${request.method} ${request.url}`);
+        return HttpResponse.json({});
+      }),
+      http.post("*/api/chat/sessions", () =>
+        HttpResponse.json({
+          id: "s-maria-fresh",
+          created_at: "2026-01-03T00:00:00Z",
+          user_id: "user-1",
+          expert_id: "expert-maria",
+        }),
+      ),
+      http.get("*/api/chat/sessions/s-maria-fresh", () =>
+        HttpResponse.json({
+          id: "s-maria-fresh",
+          created_at: "2026-01-03T00:00:00Z",
+          updated_at: "2026-01-03T00:00:00Z",
+          user_id: "user-1",
+          expert_id: "expert-maria",
+          messages: [],
+        }),
+      ),
+      http.get("*/api/chat/transports", () =>
+        HttpResponse.json({
+          transports: [
+            {
+              auth_provider: "platform",
+              credential_id: null,
+              label: "AutoGPT Platform",
+              available: true,
+              default: true,
+            },
+          ],
+        }),
+      ),
+    );
+    // The adapter only commits the URL after nuqs's throttle, so the test
+    // reads it back here rather than trusting the optimistic hook state.
+    let committedUrl = new URLSearchParams(
+      "?expertId=expert-maria&sessionId=s-maria-running",
+    );
+    const RunningWrapper = withNuqsTestingAdapter({
+      searchParams: committedUrl.toString(),
+      hasMemory: true,
+      onUrlUpdate: (event) => {
+        committedUrl = event.searchParams;
+      },
+    });
+
+    render(
+      <CredentialsProvidersContext.Provider value={{}}>
+        <RunningWrapper>
+          <SidebarNewChatLink />
+          <KeyedSessionHost />
+        </RunningWrapper>
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(screen.getByTestId("session-id").textContent).toBe(
+      "s-maria-running",
+    );
+
+    // Clicks happen inside waitFor, as in the New Chat test below: the
+    // testing adapter resets nuqs's update queue whenever it re-renders, so
+    // a click that lands while a previous URL commit is still rendering can
+    // be dropped. Re-clicking is idempotent (sets the same values).
+    async function followSidebarLink() {
+      await waitFor(() => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "New chat with Maria" }),
+        );
+        expect(screen.getByTestId("session-id").textContent).toBe("none");
+      });
+      await waitFor(() => expect(committedUrl.get("sessionId")).toBeNull());
+    }
+
+    // First click: the running thread is dropped for the fresh page, and the
+    // remount must not go looking for Maria's latest thread to re-adopt.
+    await followSidebarLink();
+    expect(screen.getByTestId("expert-id").textContent).toBe("expert-maria");
+    expect(committedUrl.get("expertId")).toBe("expert-maria");
+    expect(committedUrl.get("new")).toBe("1");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+    expect(adoptionLookups).toBe(0);
+
+    // Start a task on the fresh page, then hit + again: the second fresh page
+    // must not bounce into either Maria thread.
+    fireEvent.click(screen.getByRole("button", { name: "create" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("session-id").textContent).toBe(
+        "s-maria-fresh",
+      );
+    });
+    await waitFor(() =>
+      expect(committedUrl.get("sessionId")).toBe("s-maria-fresh"),
+    );
+    await followSidebarLink();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+    expect(screen.getByTestId("expert-id").textContent).toBe("expert-maria");
+    expect(committedUrl.get("new")).toBe("1");
+    expect(adoptionLookups).toBe(0);
+    // Leaving the running chat is navigation only: nothing was sent to it.
+    expect(writesToRunningSession).toEqual([]);
   });
 
   it("stays on a fresh session after New Chat instead of re-adopting the expert's thread", async () => {
@@ -457,10 +703,13 @@ describe("ChatSidebar — expert groups", () => {
     const mariaHeader = await screen.findByTestId(
       "expert-group-header-expert-maria",
     );
-    expect(mariaHeader.textContent).toBe("Maria");
+    expect(within(mariaHeader).getByText("Maria")).toBeDefined();
+    expect(within(mariaHeader).getByText(mariaExpert.role)).toBeDefined();
     expect(
-      screen.getByTestId("expert-group-header-autopilot").textContent,
-    ).toBe("Otto");
+      within(screen.getByTestId("expert-group-header-autopilot")).getByText(
+        "Otto",
+      ),
+    ).toBeDefined();
     expect(screen.getByText("Campaign ideas")).toBeDefined();
   });
 
@@ -533,7 +782,7 @@ describe("ChatSidebar — expert groups", () => {
     expect(within(mariaGroup).queryByText("Pinned campaign")).toBeNull();
   });
 
-  it("shows the first 5 chats of an expert and reveals the rest via Load more", async () => {
+  it("shows the first four chats of an expert and reveals the rest via Load more", async () => {
     server.use(
       getGetV2ListSessionsMockHandler200({
         sessions: [
@@ -558,8 +807,8 @@ describe("ChatSidebar — expert groups", () => {
     );
 
     await screen.findByText("Maria chat 1");
-    expect(screen.getByText("Maria chat 5")).toBeDefined();
-    expect(screen.queryByText("Maria chat 6")).toBeNull();
+    expect(screen.getByText("Maria chat 4")).toBeDefined();
+    expect(screen.queryByText("Maria chat 5")).toBeNull();
 
     fireEvent.click(screen.getByTestId("expert-group-load-more-expert-maria"));
     expect(screen.getByText("Maria chat 6")).toBeDefined();
@@ -653,6 +902,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     name: "Maria",
     avatarUrl: mariaExpert.avatar_url,
     role: mariaExpert.role,
+    jobTitle: "Marketing Manager",
     isArchived: false,
     readOnlyReason: null,
   };
@@ -674,41 +924,13 @@ describe("ChatMessagesContainer — expert identity", () => {
 
     const header = screen.getByTestId("expert-thread-header");
     expect(within(header).getByText("Maria")).toBeDefined();
+    expect(within(header).getByText("Marketing Manager")).toBeDefined();
+    expect(within(header).queryByText(mariaExpert.role)).toBeNull();
     expect(within(header).getByRole("img", { name: "Maria" })).toBeDefined();
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
 
-  it("opens the session activity card when the chip is clicked", async () => {
-    flagState.values["artifacts"] = true;
-    server.use(
-      getGetExpertMockHandler(mariaExpert),
-      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
-    );
-    useCopilotUIStore.setState((s) => ({
-      artifactPanel: { ...s.artifactPanel, isOpen: false, activeTab: "files" },
-    }));
-    render(
-      <ChatMessagesContainer
-        messages={[assistantMessage]}
-        status="ready"
-        error={undefined}
-        isLoading={false}
-        expertIdentity={mariaIdentity}
-        sessionID="session-1"
-        canOpenActivity
-      />,
-    );
-
-    await userEvent.click(
-      screen.getByRole("button", { name: /Open session activity/ }),
-    );
-
-    const panel = useCopilotUIStore.getState().artifactPanel;
-    expect(panel.isOpen).toBe(true);
-    expect(panel.activeTab).toBe("files");
-  });
-
-  it("stays a passive label in hosts that never mount the activity card", async () => {
+  it("keeps the chip a passive label with no file counter", async () => {
     flagState.values["artifacts"] = true;
     let workspaceFileRequests = 0;
     server.use(
@@ -718,8 +940,6 @@ describe("ChatMessagesContainer — expert identity", () => {
         return HttpResponse.json({ files: [], offset: 0, has_more: false });
       }),
     );
-    // Same live sessionId the builder and memory panels pass — only the host's
-    // canOpenActivity separates them from the copilot chat.
     render(
       <ChatMessagesContainer
         messages={[assistantMessage]}
@@ -732,9 +952,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     );
 
     const header = await screen.findByTestId("expert-thread-header");
-    expect(
-      within(header).queryByRole("button", { name: /Open session activity/ }),
-    ).toBeNull();
+    expect(within(header).queryByRole("button")).toBeNull();
     expect(workspaceFileRequests).toBe(0);
   });
 
@@ -753,7 +971,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
 
-  it("keeps the passive chip keyboard-reachable, since the role only exists in its tooltip", () => {
+  it("keeps the passive chip keyboard-reachable with its area", () => {
     server.use(
       getGetExpertMockHandler(mariaExpert),
       getGetV1ListExecutionSchedulesForAUserMockHandler([]),
@@ -769,11 +987,48 @@ describe("ChatMessagesContainer — expert identity", () => {
     );
 
     const header = screen.getByTestId("expert-thread-header");
-    const chip = within(header).getByLabelText("Maria — Marketing Strategist");
+    const chip = within(header).getByLabelText("Maria — Marketing Manager");
 
     // A tooltip opens on focus as well as hover; an unfocusable trigger
     // hides the role from keyboard users entirely.
     expect(chip.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("does not rewrite a job title that matches a special area", () => {
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={{
+          ...mariaIdentity,
+          jobTitle: "Social & Content Repurposing",
+        }}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    expect(
+      within(header).getByText("Social & Content Repurposing"),
+    ).toBeDefined();
+    expect(within(header).queryByText("Social media")).toBeNull();
+  });
+
+  it("falls back to the default role when an expert has no title or area", () => {
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={{ ...mariaIdentity, role: null, jobTitle: null }}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    expect(within(header).getByText("Head of AI")).toBeDefined();
+    expect(within(header).getByLabelText("Maria — Head of AI")).toBeDefined();
   });
 });
 

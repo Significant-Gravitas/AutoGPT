@@ -6,6 +6,7 @@ other services to push messages into chat platforms.
 import asyncio
 import logging
 from concurrent.futures import Future
+from typing import Literal
 
 from backend.platform_linking.models import Platform
 from backend.util.service import (
@@ -23,7 +24,7 @@ from .adapters.discord import config as discord_config
 from .adapters.discord.adapter import DiscordAdapter
 from .bot_backend import BotBackend
 from .handler import MessageHandler
-from .outbound import DeliveryResult
+from .outbound import DeliveryResult, EditResult
 from .webhook_routes import build_webhook_adapters
 
 logger = logging.getLogger(__name__)
@@ -200,6 +201,28 @@ class CoPilotChatBridge(AppService):
             adapter, api, platform.value, user_id, channel, thread_name, content
         )
 
+    @expose
+    async def edit_message_in_channel(
+        self,
+        platform: Platform,
+        user_id: str,
+        target: Literal["channel", "dm"],
+        channel_id: str,
+        ref_id: str,
+        content: str,
+    ) -> EditResult:
+        """Edit a message ``user_id`` previously posted via ``send_message_to_channel``
+        / ``send_dm_to_user`` / ``create_thread_in_channel``.
+
+        ``channel_id``/``ref_id`` must be exactly what that earlier call
+        returned — authorization re-derives the expected channel from the
+        user's links rather than trusting the caller's ``channel_id``.
+        """
+        adapter, api = self._require(platform)
+        return await outbound.edit_message(
+            adapter, api, platform.value, user_id, target, channel_id, ref_id, content
+        )
+
 
 class CoPilotChatBridgeClient(AppServiceClient):
     @classmethod
@@ -213,6 +236,9 @@ class CoPilotChatBridgeClient(AppServiceClient):
     send_dm_to_user = endpoint_to_async(CoPilotChatBridge.send_dm_to_user)
     create_thread_in_channel = endpoint_to_async(
         CoPilotChatBridge.create_thread_in_channel
+    )
+    edit_message_in_channel = endpoint_to_async(
+        CoPilotChatBridge.edit_message_in_channel
     )
 
 

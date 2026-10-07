@@ -283,7 +283,8 @@ async def test_same_second_overwrites_do_not_collide_on_the_tombstone(
         rows = await db.prisma.userworkspacefile.find_many(
             where={"workspaceId": workspace.id, "isDeleted": True}
         )
-        assert len(rows) == 2 and len({r.path for r in rows}) == 2
+        assert len(rows) == 2
+        assert all(r.path == "/skills/rapid/SKILL.md" for r in rows)
         started = datetime.now(timezone.utc)
         assert all(r.deletedAt is not None and r.deletedAt <= started for r in rows)
     finally:

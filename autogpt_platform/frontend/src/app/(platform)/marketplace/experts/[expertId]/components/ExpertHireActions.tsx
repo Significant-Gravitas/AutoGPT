@@ -2,7 +2,7 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { markHireStarted } from "@/services/experts/hire-timing";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 
 // Sized and shaped like the small button beside it so the pair reads as one row.
@@ -65,10 +65,11 @@ export function ExpertHireActions({
     );
   }
 
-  // The clock starts on the click, not on the request: the hire flow finishes
-  // in a dialog, and sometimes on another page entirely.
   function handleHire() {
-    markHireStarted(expert.id);
+    trackFunnel("hire_started", {
+      template_id: expert.id,
+      surface: "expert_page",
+    });
     onHire();
   }
 

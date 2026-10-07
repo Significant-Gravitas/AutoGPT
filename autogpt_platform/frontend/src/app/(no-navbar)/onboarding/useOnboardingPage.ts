@@ -8,17 +8,19 @@ import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/
 import { resolveResponse } from "@/app/api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackAdsConversion } from "@/services/analytics/google-ads";
+import { trackTrialCheckoutAbandoned } from "@/services/analytics/monetization-analytics";
 import { environment } from "@/services/environment";
 import { useTrialCheckoutReturn } from "@/services/trials/useTrialCheckoutReturn";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useLDClient } from "launchdarkly-react-client-sdk";
+import {
+  Flag,
+  useFlagStatus,
+  useGetFlag,
+} from "@/services/feature-flags/use-get-flag";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { accountDisplayName, normalizeOnboardingProfile } from "./helpers";
 import { buildStepLayout, Step, useOnboardingWizardStore } from "./store";
 import { onboardingStepKey, trackOnboardingStep } from "./tracking";
-
-const LD_INIT_TIMEOUT_SECONDS = 5;
 
 // SessionStorage ceiling for the wizard. The backend's `completedSteps`
 // only records ONBOARDING_COMPLETE at the very end (the 5 in-wizard steps
@@ -59,35 +61,18 @@ export function useOnboardingPage() {
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
   const setSteps = useOnboardingWizardStore((s) => s.setSteps);
 
-  // Wait for LaunchDarkly before initialising the wizard from the URL.
+  // Wait for the flag vendor before initialising the wizard from the URL.
   // Without this, the init effect runs against the default flag value
   // (false) on first render and clamps e.g. ?step=5 down to step 1; once
   // the flag resolves to true, the hasInitialized guard blocks re-init
   // and the user is stuck on step 1.
-  const ldClient = useLDClient();
-  const ldEnabled = environment.areFeatureFlagsEnabled();
-  const [areFlagsReady, setAreFlagsReady] = useState(!ldEnabled);
-  useEffect(() => {
-    if (!ldEnabled || !ldClient || areFlagsReady) return;
-    let cancelled = false;
-    // Use the same 5s timeout as LDProvider so the wizard never hangs
-    // when LaunchDarkly is unreachable; on timeout we fall back to the
-    // default flag values that useGetFlag already returns.
-    ldClient
-      .waitForInitialization(LD_INIT_TIMEOUT_SECONDS)
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setAreFlagsReady(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [ldClient, ldEnabled, areFlagsReady]);
-
-  // Snapshot the flag once LaunchDarkly resolves so an admin toggling
+  //
+  // Snapshot the value once it resolves so an admin toggling
   // ENABLE_PLATFORM_PAYMENT mid-session can't shuffle steps under a user
   // who is already inside the wizard.
-  const livePaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { enabled: livePaymentEnabled, ready: areFlagsReady } = useFlagStatus(
+    Flag.ENABLE_PLATFORM_PAYMENT,
+  );
   const paymentEnabledSnapshot = useRef<boolean | null>(null);
   if (paymentEnabledSnapshot.current === null && areFlagsReady) {
     paymentEnabledSnapshot.current = livePaymentEnabled;
@@ -178,6 +163,10 @@ export function useOnboardingPage() {
   useEffect(() => {
     if (!isReady || hasInitialized.current) return;
     hasInitialized.current = true;
+    // Read before the URL sync below rewrites the query to `?step=N`.
+    if (searchParams.get("trial") === "cancelled") {
+      trackTrialCheckoutAbandoned("onboarding");
+    }
     const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
     // The paywall is the first step, so a successful Stripe checkout return
     // is a trusted intent to advance past it onto the step after it and start

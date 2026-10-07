@@ -22,6 +22,11 @@ from backend.data.subscription_trial import (
     get_subscription_trial,
     reserve_subscription_trial,
 )
+from backend.data.subscription_trial_capacity import (
+    TRIAL_FULL,
+    TrialCapacityReached,
+    renew_trial_seat,
+)
 from backend.data.subscription_trial_config import (
     AcceptedTrialOffer,
     TrialOffer,
@@ -50,10 +55,12 @@ async def create_trial_checkout(
     success_url: str,
     cancel_url: str,
     metadata: dict[str, str],
+    *,
+    country: str | None = None,
 ) -> str:
     async with subscription_checkout_lock(user_id):
         return await _create_trial_checkout(
-            user_id, offer_token, success_url, cancel_url, metadata
+            user_id, offer_token, success_url, cancel_url, metadata, country
         )
 
 
@@ -63,8 +70,12 @@ async def _create_trial_checkout(
     success_url: str,
     cancel_url: str,
     metadata: dict[str, str],
+    country: str | None,
 ) -> str:
-    offer = await get_trial_offer(user_id)
+    # The same question the status endpoint answers before showing the offer,
+    # asked of the *current* flag: someone who would not be shown the trial
+    # now cannot start or resume one, whatever they were shown earlier.
+    offer = await get_trial_offer(user_id, country=country)
     if offer is None:
         raise TrialUnavailable("Trials are not available right now")
     existing = await get_subscription_trial(user_id)
@@ -73,6 +84,8 @@ async def _create_trial_checkout(
             raise TrialUnavailable("A trial has already been used for this account")
         if existing.offer.token != offer_token:
             raise TrialUnavailable("Refresh to accept the reserved trial terms")
+        if not await renew_trial_seat(offer, existing.id):
+            raise TrialUnavailable(TRIAL_FULL)
         return await _resume_checkout(existing)
     customer_id = await get_stripe_customer_id(user_id)
     await _verify_eligibility(user_id, customer_id, offer)
@@ -81,9 +94,12 @@ async def _create_trial_checkout(
         raise TrialUnavailable(
             "The trial offer changed. Refresh to see the current terms"
         )
-    trial = await reserve_subscription_trial(
-        user_id, accepted, customer_id, success_url, cancel_url, metadata
-    )
+    try:
+        trial = await reserve_subscription_trial(
+            user_id, accepted, customer_id, success_url, cancel_url, metadata
+        )
+    except TrialCapacityReached as exc:
+        raise TrialUnavailable(str(exc)) from exc
     if trial.offer.token != offer_token:
         raise TrialUnavailable(
             "Another checkout reserved different trial terms. Refresh"

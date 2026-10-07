@@ -90,7 +90,9 @@ async def run_skill_learning_pass(
         if lock is None:
             return finish(result, skip_reason="lease_held")
         try:
-            await _run_under_lease(user_id, result, source_ids, config or ChatConfig())
+            await _run_under_lease(
+                user_id, result, source_ids, config or ChatConfig(), lock
+            )
         finally:
             await _release_lease(lock)
     except Exception as exc:
@@ -104,6 +106,7 @@ async def _run_under_lease(
     result: SkillLearningResult,
     source_ids: list[str] | None,
     config: ChatConfig,
+    lock: AsyncClusterLock,
 ) -> None:
     result.reconciled_writes = await reconcile_pending(user_id)
     pending = await _select_sources(user_id, source_ids)
@@ -121,6 +124,9 @@ async def _run_under_lease(
         return
     budget_exhausted = False
     for stored in pending:
+        if not await lock.refresh():
+            result.error = "learning lease lost"
+            return
         if result.applied + result.proposed >= MAX_CHANGES_PER_RUN:
             count(result, "deferred")
             continue
@@ -128,7 +134,7 @@ async def _run_under_lease(
             count(result, "budget_exhausted")
             continue
         try:
-            disposition = await _process_source(user_id, stored, result, config)
+            disposition = await _process_source(user_id, stored, result, config, lock)
             budget_exhausted = disposition == "budget_exhausted"
         except Exception as exc:
             logger.warning(
@@ -176,6 +182,7 @@ async def _process_source(
     stored: LearningSourceRecord,
     result: SkillLearningResult,
     config: ChatConfig,
+    lock: AsyncClusterLock,
 ) -> str:
     source = source_revision_from_record(stored)
     settled = await already_settled(user_id, source, result)
@@ -262,6 +269,17 @@ async def _process_source(
         output_tokens=completion.usage.output_tokens,
         cost_microdollars=cost,
     )
+    if not await lock.refresh():
+        result.error = "learning lease lost"
+        return await record(
+            user_id,
+            source,
+            result,
+            "deferred",
+            "learning lease lost during review; not published",
+            advance=False,
+            stamp=stamp,
+        )
     proposal = completion.value
     rejection = validate_proposal(proposal, bundle, existing)
     if rejection is not None:
@@ -286,7 +304,7 @@ async def _existing_skills(user_id: str, expert_id: str | None) -> list[ParsedSk
     for skill in skills[:MAX_EXISTING_SKILL_BODIES]:
         full = await read_user_skill_with_body(user_id, skill.name, expert_id=expert_id)
         out.append(full or skill)
-    return out
+    return [*out, *skills[MAX_EXISTING_SKILL_BODIES:]]
 
 
 async def _open_proposals(user_id: str, owner_key: str) -> int:

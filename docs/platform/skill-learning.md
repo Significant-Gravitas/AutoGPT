@@ -3,8 +3,10 @@
 AutoPilot and Experts can turn work they actually verified into reusable
 skills. This page describes what the first release does, what it does not
 do, and how to inspect and control it. The feature is off by default and
-enabled per cohort with the `dream-skill-learning-enabled` flag; it is
-independent of the dream pass and never enables another memory stage.
+enabled per cohort with the `dream-skill-learning-enabled` flag. The dreaming
+pipeline runs learning after its memory stages when this flag is enabled.
+Learning also has an independent nightly job, so it can run without enabling
+other memory stages. Both paths share the same lease and revision ledger.
 
 ## What happens
 
@@ -23,12 +25,19 @@ independent of the dream pass and never enables another memory stage.
    concrete outcome signal. Plans, unanswered questions, and unsupported
    "done" claims are skipped without a model call. Idle accounts cost
    nothing: with no new eligible work the pass exits before any model call.
-3. The reviewer model (routed and billed like ordinary work) proposes one
+3. The reviewer model (routed and billed like ordinary work) looks for
+   work worth keeping: repeatable multi-step workflows, non-obvious error
+   recoveries, and user corrections that improve recurring work. Trivial
+   successes, generic advice, chat logs, and duplicate procedures are skipped.
+   It proposes one
    bounded change: update an existing skill, create a meaningfully distinct
    one, or skip. Deterministic checks then require a valid slug, the required
    sections (`Steps`, `Verification`), a concrete verification statement, and
    citations of evidence spans that carry a checked outcome. Rejected
    metadata is never persisted.
+   An existing skill can be rewritten only when its complete body was
+   included in the review. Skills outside the bounded body window still
+   appear by name and description to prevent duplicate creation.
 4. **Publication** re-checks everything live inside one database
    transaction: source eligibility, epoch and revision, the skill's own
    policy, and the head version (compare-and-swap). A concurrent human edit,
@@ -46,6 +55,12 @@ Every write to a skill — overnight, during work, an owner edit, a restore,
 or an import — appends an immutable version with its origin and the
 contributing source revisions. A version restored from history inherits
 its base version's sources.
+
+Learned skills stay private to the account and Expert that did the work.
+Personal conversations teach the account's personal assistant; an Expert's
+conversation teaches only that Expert. The learning process never creates
+a marketplace listing or automatically shares a skill. Existing imported
+skills require the owner's decision before an automated change is applied.
 
 ## Evidence and states
 
@@ -111,6 +126,13 @@ and the last 30 days of review cost. Every review disposition — applied,
 skipped, no novel procedure, deferred, conflict, blocked by content check,
 provider error, budget exhausted, stale eligibility, inaccessible evidence,
 suppressed — is kept per source revision in the review ledger.
+
+`POST /api/skill-learning/run` runs the same bounded learning pass immediately
+for the authenticated account. It preserves the normal billing, scope,
+content, and ownership checks. A second run with no new evidence makes no
+model calls. Runs renew their lease between sources and check it again after
+each model review; losing the lease leaves the source pending without
+publishing the proposed change.
 
 ## Not in the first release
 

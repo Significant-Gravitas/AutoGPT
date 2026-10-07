@@ -36,7 +36,6 @@ interface Props {
   isExporting: boolean;
   isDeleting: boolean;
   isPinningEnabled: boolean;
-  isSharingEnabled: boolean;
   isLearningEnabled: boolean;
   showProcessing: boolean;
   showCompleted: boolean;
@@ -62,7 +61,6 @@ export function ChatSessionRow({
   isExporting,
   isDeleting,
   isPinningEnabled,
-  isSharingEnabled,
   isLearningEnabled,
   showProcessing,
   showCompleted,
@@ -205,12 +203,10 @@ export function ChatSessionRow({
               )}
               {isExporting ? "Exporting…" : "Export chat"}
             </DropdownMenuItem>
-            {isSharingEnabled && (
-              <DropdownMenuItem onClick={onShare}>
-                <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
-                Share chat
-              </DropdownMenuItem>
-            )}
+            <DropdownMenuItem onClick={onShare}>
+              <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
+              Share chat
+            </DropdownMenuItem>
             {isLearningEnabled && (
               <DropdownMenuItem onClick={onExcludeFromLearning}>
                 <Icon icon={BookOpen01Icon} className="mr-2 h-4 w-4" />

@@ -73,6 +73,7 @@ async def apply_owner_edit(
             body=body,
             triggers=triggers,
             version=current.version if current else None,
+            extra=current.extra if current else None,
             expert_id=expert_id,
             version_origin="edited",
             actor_user_id=user_id,

@@ -8,6 +8,7 @@ import { AIConnectionsSection } from "./components/AIConnectionsSection/AIConnec
 import { ConnectServiceDialog } from "./components/ConnectServiceDialog/ConnectServiceDialog";
 import { IntegrationsHeader } from "./components/IntegrationsHeader/IntegrationsHeader";
 import { IntegrationsList } from "./components/IntegrationsList/IntegrationsList";
+import { AvailableIntegrations } from "./components/AvailableIntegrations/AvailableIntegrations";
 
 interface Props {
   withHeading?: boolean;
@@ -15,11 +16,20 @@ interface Props {
 
 export function IntegrationsPanel({ withHeading = true }: Props) {
   const [isConnectOpen, setIsConnectOpen] = useState(false);
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
+    null,
+  );
+  const [query, setQuery] = useState("");
+
+  function openConnect(providerId: string | null = null) {
+    setSelectedProviderId(providerId);
+    setIsConnectOpen(true);
+  }
 
   return (
     <>
       <IntegrationsHeader
-        onConnect={() => setIsConnectOpen(true)}
+        onConnect={() => openConnect()}
         withTitle={withHeading}
       />
       <AIConnectionsSection />
@@ -32,11 +42,13 @@ export function IntegrationsPanel({ withHeading = true }: Props) {
         >
           Tools your agents use
         </Text>
-        <IntegrationsList />
+        <IntegrationsList query={query} onQueryChange={setQuery} />
       </section>
+      <AvailableIntegrations query={query} onSelect={openConnect} />
       <ConnectServiceDialog
         open={isConnectOpen}
         onOpenChange={setIsConnectOpen}
+        initialProviderId={selectedProviderId}
       />
     </>
   );

@@ -3,9 +3,19 @@ from datetime import date, datetime
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
+from backend.api.features.experts.avatar_catalog import resolve_avatar_url
+from backend.copilot.credential_selection import CredentialPins
 from backend.data.expert_run_output import OutputType
+from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, skill_name_key
 
 ExpertRunStatus = Literal[
     "incomplete",
@@ -18,9 +28,9 @@ ExpertRunStatus = Literal[
 ]
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
-# Only some outward calls are actually gated for approval — is_sensitive_action
-# (backend/blocks/_base.py, checked in backend/data/graph.py:261) covers 17 of
-# 513 blocks — so this is phrased as expert behaviour, not a platform guarantee.
+# Only some outward calls are actually gated for approval — is_irreversible_action
+# (backend/blocks/_base.py) marks only the irreversible blocks — so this is
+# phrased as expert behaviour, not a platform guarantee.
 EXTERNAL_ACTION_APPROVAL_RULE = "The expert asks for approval before acting externally."
 # Dual-audience: this tuple is both Soul-drawer UI copy and injected LLM
 # instruction text. Reword for one audience without silently breaking the other.
@@ -122,13 +132,26 @@ class ExpertWorkflowRef(BaseModel):
     integration_providers: list[str] = Field(default_factory=list)
 
 
+class ExpertWorkflowLabel(BaseModel):
+    """What names an installed workflow on an approval card."""
+
+    expert_id: str
+    name: str | None
+
+
 class ExpertIdentity(BaseModel):
     id: str
     name: str
     avatar_url: str | None
     color: str | None = None
     role: str
+    job_title: str | None = None
     is_archived: bool
+
+    @field_validator("avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
 
 
 class ExpertSetupItem(BaseModel):
@@ -154,6 +177,11 @@ class ExpertSetupItem(BaseModel):
     # Titles of the graph inputs a scheduled run cannot supply; only set on
     # an ``inputs`` item.
     missing_inputs: list[str] = Field(default_factory=list)
+
+    @field_validator("expert_avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
 
 
 class ExpertCredentialRef(BaseModel):
@@ -196,6 +224,52 @@ _DAY_ONE_ITEMS: TypeAdapter[list[ExpertDayOneItem]] = TypeAdapter(
 )
 
 
+class ExpertRoutine(BaseModel):
+    """Standing work done unattended, as the API and the fire path see it.
+
+    A template's row is a proposal; a hire's row is that proposal until
+    somebody switches it on. A row the owner dictated is neither — it is
+    already theirs.
+    """
+
+    id: str
+    # None when this is the account's own standing work rather than an
+    # expert's: Otto is the default assistant, not a row in Expert.
+    expert_id: str | None = None
+    # Roster/shared slug; None when this one was authored in conversation.
+    key: str | None = None
+    title: str
+    prompt: str
+    # Exactly one of ``crons`` and ``run_at`` is set.
+    crons: list[str] = []
+    run_at: datetime | None = None
+    # What must be asked before this can run. Non-empty on a proposal nobody
+    # has answered yet, and answering them is what makes it runnable.
+    asks: list[str] = []
+    session_mode: str = "THREAD"
+    session_id: str | None = None
+    # "TEMPLATE" (someone else wrote the prompt) or "OWNER" (the owner did).
+    # What the fire-time turn may reach hangs off this.
+    source: str = "TEMPLATE"
+    enabled: bool = False
+    # True once the owner resolved the proposal, after which no roster edit
+    # touches this row again.
+    customized: bool = False
+    # Whether this routine's turns may reach the owner's connected services.
+    # Always False on anything a template shipped.
+    grants_credentials: bool = False
+    # ``{provider: pin}``: the account each of its turns runs on where the
+    # owner has several, chosen in the chat that set it up (SECRT-2804).
+    credential_pins: CredentialPins = {}
+
+    @property
+    def recurring(self) -> bool:
+        return bool(self.crons)
+
+
+ExpertSetupStatus = Literal["installing", "ready", "failed"]
+
+
 class Expert(BaseModel):
     id: str
     name: str
@@ -203,6 +277,7 @@ class Expert(BaseModel):
     # Accent color token chosen while raising; "" when unset.
     color: str = ""
     role: str
+    job_title: str | None = None
     tagline: str | None
     bio: str | None
     skills: list[str]
@@ -242,6 +317,15 @@ class Expert(BaseModel):
     learning_paused_at: datetime | None = None
     # Owner-scoped grouping. None = ungrouped ("unpodded").
     pod_id: str | None = None
+    # A hire's workflows, skills and routines land after it is returned.
+    setup_status: ExpertSetupStatus = "ready"
+    # What setup could not install; re-hiring the template retries it.
+    setup_failures: list[str] = []
+
+    @field_validator("avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
 
 
 class ExpertBundledSkill(BaseModel):
@@ -249,7 +333,7 @@ class ExpertBundledSkill(BaseModel):
 
     id: str
     slug: str
-    name: str
+    title: str
     description: str
 
 
@@ -320,7 +404,10 @@ class ExpertDetachPreview(BaseModel):
 
 class HireResult(BaseModel):
     expert: Expert
-    failed_preloads: list[str]
+
+
+# Where a hire was made, for the ``expert_hired`` analytics event.
+HireSurface = Literal["onboarding", "expert_page", "copilot"]
 
 
 RaiseAttachmentKind = Literal["workflow", "skill"]
@@ -333,10 +420,10 @@ WEEKLY_BUDGET_MAX_CREDITS = 1_000_000
 class RaiseAttachment(BaseModel):
     """One workflow or skill to attach while raising an expert.
 
-    ``id`` is a store listing version UUID (marketplace), a library agent
-    UUID (library workflow), or a copilot skill slug (library skill).
-    Marketplace skills use a store listing version UUID; the listing's
-    public name is stored on ``Expert.skills``.
+    ``id`` is a store listing version UUID (marketplace workflow), a library
+    agent UUID (library workflow), or a skill slug — the caller's own skill
+    for ``library``, a Hub :class:`SkillListing` slug for ``marketplace``.
+    Either skill slug ends up on ``Expert.skills``.
     """
 
     kind: RaiseAttachmentKind
@@ -377,16 +464,39 @@ class RaiseResult(BaseModel):
 
 
 class ExpertSkillsUpdate(BaseModel):
-    """The full list of skill names an expert should carry. Names new to the
-    expert must be library skills (default or uploaded); names already on
-    the expert are kept as-is so marketplace skills survive a round-trip."""
+    """Skills to attach to an expert and skills to remove from it. Names new
+    to the expert must be library skills (default or uploaded); names already
+    on the expert are kept as-is so marketplace skills survive a round-trip.
 
-    skills: list[str] = Field(max_length=50)
+    Only names listed in ``remove`` are removed. A skill the expert carries
+    that appears in neither list is left alone, so a client holding a stale
+    list can never delete a skill it has not seen (the expert can distil new
+    ones at any time).
+
+    A normalized name must not appear in both ``skills`` and ``remove``;
+    such a request is rejected with a validation error. A marketplace listing
+    whose name matches a ``remove`` entry is rejected with a 400."""
+
+    skills: list[str] = Field(default_factory=list, max_length=MAX_SKILLS_PER_EXPERT)
+    remove: list[str] = Field(default_factory=list, max_length=MAX_SKILLS_PER_EXPERT)
     # Store listing versions to attach as marketplace skills; each resolves
     # to the listing's public name, the same way the raise flow records them.
     marketplace_listing_ids: list[str] = Field(default_factory=list, max_length=20)
 
-    @field_validator("skills", mode="before")
+    @model_validator(mode="after")
+    def reject_names_both_kept_and_removed(self) -> "ExpertSkillsUpdate":
+        # The same key update_skills removes by, so a name cannot pass this
+        # check as "different" and then match a removal on spelling alone.
+        both = {skill_name_key(n) for n in self.skills} & {
+            skill_name_key(n) for n in self.remove
+        }
+        if both:
+            raise ValueError(
+                f"Skills cannot be both added and removed: {', '.join(sorted(both))}"
+            )
+        return self
+
+    @field_validator("skills", "remove", mode="before")
     @classmethod
     def strip_and_dedupe(cls, value: object) -> object:
         if not isinstance(value, list):
@@ -399,9 +509,12 @@ class ExpertSkillsUpdate(BaseModel):
             name = item.strip()
             if not name or len(name) > 100:
                 raise ValueError("Skill names must be 1-100 characters")
-            if name.lower() in seen:
+            # Same key the overlap check and update_skills use, so
+            # "Deep Research" and "deep_research" count as one skill.
+            key = skill_name_key(name)
+            if key in seen:
                 continue
-            seen.add(name.lower())
+            seen.add(key)
             cleaned.append(name)
         return cleaned
 

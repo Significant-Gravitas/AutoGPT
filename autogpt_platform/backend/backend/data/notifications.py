@@ -194,7 +194,7 @@ class SubscriptionPlan(BaseModel):
     name: str = Field(description='"Pro" / "Max"')
     cycle: Literal["monthly", "yearly"]
     cycle_noun: Literal["month", "year"]
-    label: str = Field(description='"Pro — monthly"')
+    label: str = Field(description='"Pro · monthly"')
     price_display: str = Field(description='"$50.00 / month"')
 
 
@@ -213,6 +213,7 @@ class LifecycleData(BaseNotificationData):
 
 class SubscriptionWelcomeData(LifecycleData):
     renews_label: str
+    experts_enabled: bool = False
 
 
 class PaymentFailedData(LifecycleData):
@@ -411,11 +412,57 @@ class NotificationResult(BaseModel):
 
 class AudienceAction(Enum):
     """Membership changes the backend owns. The tour → changelog handoff is
-    deliberately absent: MailerLite's automation owns that edge."""
+    deliberately absent: MailerLite's automation owns that edge. Both edges of
+    the trial group are the backend's."""
 
     ENROLL_TOUR = "enroll_tour"
     ADD_CHANGELOG = "add_changelog"
     REMOVE_CHANGELOG = "remove_changelog"
+    ADD_TRIAL = "add_trial"
+    REMOVE_TRIAL = "remove_trial"
+    # No group change: only the subscriber's fields.
+    UPDATE_FIELDS = "update_fields"
+    # Nothing queues this: a signup stays out of MailerLite until it opens
+    # checkout. It exists so an older queued or dead-lettered message still
+    # parses, and only updates someone MailerLite already has (see
+    # `mailerlite.record_signup`).
+    SIGNUP = "signup"
+    # Someone opened Stripe checkout: into the checkout openers group, with
+    # the fields GTM segments them on (see `mailerlite.record_checkout_opened`).
+    CHECKOUT_OPENED = "checkout_opened"
+
+
+class SubscriberField(str, Enum):
+    """MailerLite field keys the backend writes: our custom fields, and
+    MailerLite's built-in `country`. GTM segments on these, so a key is renamed
+    only together with MailerLite."""
+
+    STATUS = "subscription_status"
+    SIGNUP = "signup_date"
+    TRIAL_STARTED = "trial_started_date"
+    SUBSCRIPTION_STARTED = "subscription_started_date"
+    SUBSCRIPTION_CANCELED = "subscription_canceled_date"
+    SUBSCRIPTION_ENDED = "subscription_ended_date"
+    # The checkout opener's segmentation (see `audience_enrichment`).
+    CHECKOUT_OPENED = "checkout_opened_date"
+    EMAIL_TYPE = "email_type"
+    SIGNIN_METHOD = "signin_method"
+    # Built into MailerLite, so never created: the full English name.
+    COUNTRY = "country"
+    COUNTRY_CODE = "country_code"
+    COUNTRY_SOURCE = "country_source"
+    EXCLUDE_DE_AT = "exclude_de_at"
+
+
+class SubscriptionStatus(str, Enum):
+    """Exactly one of these is a subscriber's `subscription_status`."""
+
+    SIGNED = "signed"
+    IN_TRIAL = "in_trial"
+    TRIAL_CANCELED = "trial_canceled"
+    SUBSCRIBED = "subscribed"
+    SUBSCRIPTION_CANCELED = "subscription_canceled"
+    SUBSCRIPTION_ENDED = "subscription_ended"
 
 
 class AudienceEventModel(BaseModel):
@@ -425,6 +472,10 @@ class AudienceEventModel(BaseModel):
     action: AudienceAction
     email: EmailStr
     user_id: str
+    # Written with the group change, or alone for UPDATE_FIELDS and SIGNUP. A
+    # date is YYYY-MM-DD; None clears the field, and a field left out is
+    # untouched. CHECKOUT_OPENED's are merged with what MailerLite holds first.
+    fields: dict[SubscriberField, str | None] = Field(default_factory=dict)
 
 
 class NotificationPreference(BaseModel):

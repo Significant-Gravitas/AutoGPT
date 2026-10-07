@@ -1,6 +1,7 @@
 "use client";
 
 import type BackendAPI from "@/lib/autogpt-server-api/client";
+import { resetAnalyticsIdentity } from "@/services/analytics/reset-identity";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
@@ -291,4 +292,10 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     refreshSession: refreshSessionInternal,
     cleanup,
   };
+});
+
+useAuthStore.subscribe((state, previousState) => {
+  if (previousState.user && previousState.user.id !== state.user?.id) {
+    resetAnalyticsIdentity();
+  }
 });

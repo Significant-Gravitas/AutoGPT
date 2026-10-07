@@ -261,6 +261,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Create Enrichment](block-integrations/exa/websets_enrichment.md#exa-create-enrichment) | Create enrichments to extract additional structured data from webset items |
 | [Exa Create Research](block-integrations/exa/research.md#exa-create-research) | Create research task with optional waiting - explores web and synthesizes findings with citations |
 | [Ideogram Model](block-integrations/llm.md#ideogram-model) | This block runs Ideogram models with both simple and advanced settings |
+| [Jev Ask Many](block-integrations/typesafe/ask_many.md#jev-ask-many) | Ask multiple Choice, Score, or Noul questions of one shared state with Jev in a single call |
+| [Jev Choice](block-integrations/typesafe/choice.md#jev-choice) | Make a typed choice with Jev |
+| [Jev Filter](block-integrations/typesafe/filter.md#jev-filter) | Filter items with sequential Jev scores, one call per item |
+| [Jev Pick Best](block-integrations/typesafe/pick_best.md#jev-pick-best) | Choose the best candidate using Jev and rank candidates directly by its probabilities |
+| [Jev Route](block-integrations/typesafe/route.md#jev-route) | Route data using Jev's typed choice |
+| [Jev Score](block-integrations/typesafe/score.md#jev-score) | Score evidence with Jev using an explicit ordered scale |
+| [Jev Yes No](block-integrations/typesafe/yes_no.md#jev-yes-no) | Ask Jev a plain-language yes/no question and forward data to the chosen pin, or unsure below your confidence threshold |
 | [Jina Chunking](block-integrations/jina/chunking.md#jina-chunking) | Chunks texts using Jina AI's segmentation service |
 | [Jina Embedding](block-integrations/jina/embeddings.md#jina-embedding) | Generates embeddings using Jina AI |
 | [Orchestrator](block-integrations/llm.md#orchestrator) | Uses AI to intelligently decide what tool to use |
@@ -278,6 +285,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [AnySearch](block-integrations/anysearch/search.md#anysearch) | Searches the web using AnySearch - general queries plus vertical domains (finance, academic, health, legal, and more) via domain/sub_domain filters |
+| [AnySearch Extract](block-integrations/anysearch/extract.md#anysearch-extract) | Extracts readable content from a single URL using AnySearch, optimized for LLM consumption |
+| [AnySearch Parallel Search](block-integrations/anysearch/parallel_search.md#anysearch-parallel-search) | Runs several AnySearch queries in parallel (client-side concurrency via asyncio) |
 | [Ask Wolfram](block-integrations/wolfram/llm_api.md#ask-wolfram) | Ask Wolfram Alpha a question |
 | [Exa Bulk Webset Items](block-integrations/exa/websets_items.md#exa-bulk-webset-items) | Get all items from a webset in bulk (with configurable limits) |
 | [Exa Cancel Enrichment](block-integrations/exa/websets_enrichment.md#exa-cancel-enrichment) | Cancel a running enrichment operation |
@@ -340,6 +350,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [Approve Reddit Post](block-integrations/misc.md#approve-reddit-post) | Approves a Reddit post or comment from the mod queue |
+| [Ban Subreddit User](block-integrations/misc.md#ban-subreddit-user) | Bans a user from a subreddit |
 | [Create Discord Thread](block-integrations/discord/bot_blocks.md#create-discord-thread) | Creates a new thread in a Discord channel |
 | [Create Reddit Post](block-integrations/misc.md#create-reddit-post) | Create a new post on a subreddit |
 | [Delete Reddit Comment](block-integrations/misc.md#delete-reddit-comment) | Delete a Reddit comment that you own |
@@ -366,6 +378,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Get User Posts](block-integrations/misc.md#get-user-posts) | Fetch posts by a specific Reddit user |
 | [Linkedin Person Lookup](block-integrations/enrichlayer/linkedin.md#linkedin-person-lookup) | Look up LinkedIn profiles by person information using Enrichlayer |
 | [Linkedin Role Lookup](block-integrations/enrichlayer/linkedin.md#linkedin-role-lookup) | Look up LinkedIn profiles by role in a company using Enrichlayer |
+| [Lock Reddit Post](block-integrations/misc.md#lock-reddit-post) | Locks or unlocks a Reddit post or comment to prevent or allow replies |
+| [Mod Queue](block-integrations/misc.md#mod-queue) | Fetches the mod queue for a subreddit |
 | [Post Reddit Comment](block-integrations/misc.md#post-reddit-comment) | This block posts a Reddit comment on a specified Reddit post |
 | [Post To Bluesky](block-integrations/ayrshare/post_to_bluesky.md#post-to-bluesky) | Post to Bluesky using Ayrshare |
 | [Post To Facebook](block-integrations/ayrshare/post_to_facebook.md#post-to-facebook) | Post to Facebook using Ayrshare |
@@ -383,6 +397,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Publish To Medium](block-integrations/misc.md#publish-to-medium) | Publishes a post to Medium |
 | [Read Discord Messages](block-integrations/discord/bot_blocks.md#read-discord-messages) | Reads new messages from a Discord channel using a bot token and triggers when a new message is posted |
 | [Reddit Get My Posts](block-integrations/misc.md#reddit-get-my-posts) | Fetch posts created by the authenticated Reddit user (you) |
+| [Remove Reddit Post](block-integrations/misc.md#remove-reddit-post) | Removes a Reddit post or comment as a moderator |
 | [Reply To Discord Message](block-integrations/discord/bot_blocks.md#reply-to-discord-message) | Replies to a specific Discord message |
 | [Reply To Reddit Comment](block-integrations/misc.md#reply-to-reddit-comment) | Reply to a specific Reddit comment |
 | [Reply To Telegram Message](block-integrations/telegram/blocks.md#reply-to-telegram-message) | Reply to a specific message in a Telegram chat |
@@ -391,6 +406,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Send Discord Embed](block-integrations/discord/bot_blocks.md#send-discord-embed) | Sends a rich embed message to a Discord channel |
 | [Send Discord File](block-integrations/discord/bot_blocks.md#send-discord-file) | Sends a file attachment to a Discord channel |
 | [Send Discord Message](block-integrations/discord/bot_blocks.md#send-discord-message) | Sends a message to a Discord channel using a bot token |
+| [Send Mod Mail](block-integrations/misc.md#send-mod-mail) | Sends a modmail message from a subreddit to a user |
 | [Send Reddit Message](block-integrations/misc.md#send-reddit-message) | Send a private message (DM) to a Reddit user |
 | [Send Slack Message](block-integrations/slack/blocks.md#send-slack-message) | Send a text message to any Slack channel, DM, or thread |
 | [Send Telegram Audio](block-integrations/telegram/blocks.md#send-telegram-audio) | Send an audio file to a Telegram chat |
@@ -453,6 +469,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Twitter Unmute User](block-integrations/twitter/mutes.md#twitter-unmute-user) | This block unmutes a specified Twitter user |
 | [Twitter Unpin List](block-integrations/twitter/pinned_lists.md#twitter-unpin-list) | This block allows the authenticated user to unpin a specified List |
 | [Twitter Update List](block-integrations/twitter/manage_lists.md#twitter-update-list) | This block updates a specified Twitter List owned by the authenticated user |
+| [Unban Subreddit User](block-integrations/misc.md#unban-subreddit-user) | Unbans a user from a subreddit |
 
 ## Communication
 
@@ -521,6 +538,17 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AllQuiet List Incidents](block-integrations/allquiet/incident_search.md#allquiet-list-incidents) | Searches All Quiet incidents by status, severity, team or text |
 | [AllQuiet List Teams](block-integrations/allquiet/teams.md#allquiet-list-teams) | Lists All Quiet teams and their IDs |
 | [AllQuiet Update Incident](block-integrations/allquiet/incidents.md#allquiet-update-incident) | Investigates, resolves, escalates or comments on an All Quiet incident |
+| [Conductor Create Session](block-integrations/conductor/create_session.md#conductor-create-session) | Start a new agent session (chat) in an existing Conductor workspace, optionally with a first prompt, and optionally wait for the agent's reply |
+| [Conductor Create Workspace](block-integrations/conductor/create_workspace.md#conductor-create-workspace) | Create a Conductor cloud workspace for a project or repository, optionally start its agent with a prompt and wait for the reply |
+| [Conductor Get Account](block-integrations/conductor/account.md#conductor-get-account) | Get an overview of your Conductor account in one call: who you are, the projects (repositories) you can open workspaces in, your sections and your routines |
+| [Conductor Get Session](block-integrations/conductor/get_session.md#conductor-get-session) | Get a Conductor agent session: its details, whether the agent is idle, working or errored, and recent transcript messages |
+| [Conductor Get Workspace](block-integrations/conductor/get_workspace.md#conductor-get-workspace) | Get everything about one Conductor workspace: details, current status, shared preview URL and its agent sessions |
+| [Conductor List Workspaces](block-integrations/conductor/list_workspaces.md#conductor-list-workspaces) | List Conductor workspaces, optionally filtered by project, state, name, repository, creator or activity date |
+| [Conductor Manage Routine](block-integrations/conductor/routines.md#conductor-manage-routine) | Create a Conductor routine (a saved prompt that runs a fresh agent in a project whenever its webhook URL is called) or rotate a routine's webhook secret |
+| [Conductor Manage Section](block-integrations/conductor/sections.md#conductor-manage-section) | Create or delete a Conductor cloud section |
+| [Conductor Manage Session](block-integrations/conductor/manage_session.md#conductor-manage-session) | Rename, cancel or archive a Conductor agent session |
+| [Conductor Manage Workspace](block-integrations/conductor/manage_workspace.md#conductor-manage-workspace) | Change a Conductor workspace: rename it, archive, unarchive or sleep it, share or stop sharing a port at its public preview URL, or move it into a section |
+| [Conductor Send Message](block-integrations/conductor/send_message.md#conductor-send-message) | Send a prompt to a Conductor agent session and, by default, wait for the agent to finish and return its reply |
 | [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
 | [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |
 | [Execute Code Step](block-integrations/misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |

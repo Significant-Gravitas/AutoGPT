@@ -1,5 +1,6 @@
 import { isValidUUID } from "@/lib/utils";
 import type { UIMessage } from "ai";
+import { v4 as uuidv4 } from "uuid";
 
 const EXPERT_KICKOFF_KIND = "expert_kickoff";
 const KICKOFF_STORAGE_PREFIX = "expert-kickoff-status:";
@@ -166,7 +167,8 @@ export function markKickoffPending(
   userId: string,
   expertId: string,
 ): KickoffAttemptToken {
-  const attemptToken = `${Date.now()}:${crypto.randomUUID()}`;
+  // uuidv4({}) rather than crypto.randomUUID, which is missing on plain HTTP.
+  const attemptToken = `${Date.now()}:${uuidv4({})}`;
   if (typeof window === "undefined") return attemptToken;
   try {
     window.localStorage.setItem(

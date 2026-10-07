@@ -5,7 +5,7 @@ backend/conftest.py so that integration tests in this directory do not trigger
 the full SpinTestServer startup (which requires Postgres + RabbitMQ).
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -62,6 +62,18 @@ def stub_learning_registry(monkeypatch):
     from backend.copilot.learning._fake_store import FakeLearningStore
 
     store = FakeLearningStore()
+    seen: dict[str, str] = {}
+
+    async def mark_seen(session_id, revision):
+        seen[session_id] = revision
+
+    monkeypatch.setattr(
+        "backend.copilot.tools.skills.read_seen_index_revision",
+        AsyncMock(side_effect=lambda session_id: seen.get(session_id)),
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.skills.mark_index_revision_seen", mark_seen
+    )
     for target in (
         "backend.copilot.learning.retrieval.skill_versions_db",
         "backend.copilot.learning.retrieval.skill_use_db",
@@ -76,3 +88,18 @@ def stub_learning_registry(monkeypatch):
 @pytest.fixture
 def fake_learning_store(stub_learning_registry):
     return stub_learning_registry
+
+
+@pytest.fixture(autouse=True)
+def login_chain_unchanged(request):
+    """Sandbox doubles hold no login files; tests of that check opt out."""
+    if request.node.get_closest_marker("real_login_chain"):
+        yield
+        return
+    unchanged = AsyncMock(return_value={})
+    with (
+        patch("backend.util.sandbox_login.changed_login_files", unchanged),
+        patch("backend.copilot.tools.bash_exec.changed_login_files", unchanged),
+        patch("backend.copilot.tools.e2b_sandbox.take_baseline", AsyncMock()),
+    ):
+        yield

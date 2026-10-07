@@ -41,6 +41,7 @@ export function ExpertSkillsSection({
     setMarketQuery,
     marketplaceSkills,
     isMarketplaceLoading,
+    hasMarketplace,
     addSkill,
     addMarketplaceSkill,
     removeSkill,
@@ -82,7 +83,7 @@ export function ExpertSkillsSection({
               ? `${learning.recentChange.summary} · ${learning.recentChange.origin_label ?? ""} · ${learning.recentChange.state_label}`
               : "No overnight changes yet. Verified procedures from chats are reviewed nightly."}
           </Text>
-          <label className="flex items-center gap-2">
+          <label className="flex shrink-0 items-center gap-2 whitespace-nowrap">
             <Text variant="small" tone="primary">
               {learning.isLearningPaused ? "Learning paused" : "Learning on"}
             </Text>
@@ -133,6 +134,7 @@ export function ExpertSkillsSection({
         onMarketQueryChange={setMarketQuery}
         marketplaceSkills={marketplaceSkills}
         isMarketplaceLoading={isMarketplaceLoading}
+        hasMarketplace={hasMarketplace}
         isSaving={isSaving}
         onAdd={addSkill}
         onAddMarketplace={addMarketplaceSkill}

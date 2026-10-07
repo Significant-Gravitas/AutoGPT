@@ -7,6 +7,7 @@ from typing_extensions import TypedDict
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -108,6 +109,8 @@ class GithubCreatePRReviewBlock(Block):
                     "https://github.com/owner/repo/pull/1#pullrequestreview-123456",
                 )
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -302,6 +305,7 @@ class GithubListPRReviewsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -426,6 +430,8 @@ class GithubSubmitPendingReviewBlock(Block):
                     "https://github.com/owner/repo/pull/1#pullrequestreview-123456",
                 )
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -734,6 +740,7 @@ class GithubGetPRReviewCommentsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -861,6 +868,7 @@ class GithubCreateCommentObjectBlock(Block):
                     },
                 ),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(

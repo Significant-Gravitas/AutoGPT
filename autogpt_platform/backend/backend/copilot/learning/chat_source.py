@@ -13,6 +13,7 @@ as omitted.
 
 from __future__ import annotations
 
+import json
 import logging
 
 from backend.copilot.model import ChatMessage, ChatSession
@@ -155,10 +156,14 @@ class ChatSessionSourceAdapter:
         spans: list[EvidenceSpan] = []
         clipped: list[str] = []
         used = 0
-        for message in page.messages:
+        for message in reversed(page.messages):
             if message.sequence is None or message.sequence > last_sequence:
                 continue
             text = (message.content or "").strip()
+            if message.role == "assistant" and message.tool_calls:
+                text = "\n".join(
+                    part for part in (text, json.dumps(message.tool_calls)) if part
+                )
             if not text or message.role not in ("user", "assistant", "tool"):
                 continue
             ref = message_ref(message)
@@ -182,7 +187,10 @@ class ChatSessionSourceAdapter:
             {r.ref for r in source.evidence_refs if r.ref not in present} | set(clipped)
         )
         return EvidenceBundle(
-            source=source, spans=spans, omitted_refs=omitted, clipped_refs=clipped
+            source=source,
+            spans=list(reversed(spans)),
+            omitted_refs=omitted,
+            clipped_refs=clipped,
         )
 
 

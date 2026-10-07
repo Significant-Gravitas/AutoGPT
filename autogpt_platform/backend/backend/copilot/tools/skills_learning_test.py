@@ -24,7 +24,7 @@ from backend.copilot.tools.skills import (
     SkillVersionConflictError,
     SkillWriteLockError,
     build_skills_context,
-    build_skills_refresh_context,
+    build_skills_update_notice,
     list_all_skills,
     store_user_skill,
 )
@@ -60,16 +60,29 @@ def workspace():
 
 @pytest.fixture(autouse=True)
 def _no_redis_markers(monkeypatch):
+    changed: set[str] = set()
     seen: dict[str, str] = {}
 
-    async def read(session_id: str):
-        return seen.get(session_id)
+    async def remember(user_id, expert_id, names):
+        changed.update(names)
 
-    async def mark(session_id: str, revision: str):
+    async def consume(user_id, expert_id):
+        names = list(changed)
+        changed.clear()
+        return names
+
+    async def mark_seen(session_id, revision):
         seen[session_id] = revision
 
-    monkeypatch.setattr("backend.copilot.tools.skills.read_seen_index_revision", read)
-    monkeypatch.setattr("backend.copilot.tools.skills.mark_index_revision_seen", mark)
+    monkeypatch.setattr("backend.copilot.tools.skills._remember_updated", remember)
+    monkeypatch.setattr("backend.copilot.tools.skills._consume_updated", consume)
+    monkeypatch.setattr(
+        "backend.copilot.tools.skills.read_seen_index_revision",
+        AsyncMock(side_effect=lambda session_id: seen.get(session_id)),
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.skills.mark_index_revision_seen", mark_seen
+    )
     monkeypatch.setattr("backend.copilot.tools.skills.record_skill_loaded", AsyncMock())
     monkeypatch.setattr(
         "backend.copilot.tools.skills.is_skills_feature_enabled",
@@ -231,9 +244,10 @@ async def test_existing_conversation_sees_index_changes_at_the_next_turn(workspa
     await store_user_skill(
         USER, name="csv-import", description="Import CSV", body="## Steps\n1. go\n"
     )
-    first_turn = await build_skills_context(USER, session_id="sess-1")
+    first_turn = await build_skills_context(USER)
+    history = [f"<available_skills>{first_turn}</available_skills>"]
     assert "csv-import" in first_turn
-    assert await build_skills_refresh_context(USER, None, "sess-1") == ""
+    await build_skills_update_notice(USER, None, history)
     await store_user_skill(
         USER,
         name="csv-import",
@@ -241,10 +255,37 @@ async def test_existing_conversation_sees_index_changes_at_the_next_turn(workspa
         body="## Steps\n1. go\n",
         version="2",
     )
-    refresh = await build_skills_refresh_context(USER, None, "sess-1")
-    assert "changed since this conversation last saw it" in refresh
+    refresh = await build_skills_update_notice(USER, None, history)
     assert "csv-import" in refresh
-    assert await build_skills_refresh_context(USER, None, "sess-1") == ""
+    assert await build_skills_update_notice(USER, None, history) == ""
+
+
+@pytest.mark.asyncio
+async def test_each_conversation_sees_body_updates_even_with_the_same_authored_version(
+    workspace,
+):
+    await store_user_skill(
+        USER, name="csv-import", description="Import CSV", body="## Steps\n1. go\n"
+    )
+    context = await build_skills_context(USER)
+    history = [f"<available_skills>{context}</available_skills>"]
+    for session in ["first-chat", "second-chat"]:
+        await build_skills_update_notice(USER, None, history, session_id=session)
+    await store_user_skill(
+        USER,
+        name="csv-import",
+        description="Import CSV",
+        body="## Steps\n1. validate\n",
+    )
+    for session in ["first-chat", "second-chat"]:
+        notice = await build_skills_update_notice(
+            USER, None, history, session_id=session
+        )
+        assert "Updated skills: csv-import" in notice
+        assert (
+            await build_skills_update_notice(USER, None, history, session_id=session)
+            == ""
+        )
 
 
 @pytest.mark.asyncio

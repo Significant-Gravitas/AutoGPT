@@ -208,3 +208,82 @@ async def test_record_conversion_carries_approval_checkpoint(fake_store):
     assert converted.approval.event_id == "ev-9"
     assert converted.approval.approved_revision == "000000000003"
     assert converted.epoch == 1
+
+
+@pytest.mark.asyncio
+async def test_recent_work_survives_a_large_earlier_conversation(fake_store, chat_db):
+    db, _, _ = chat_db
+    earlier = [
+        ChatMessage(role="assistant", content="earlier context " * 200, sequence=i)
+        for i in range(1, 25)
+    ]
+    recent = [
+        ChatMessage(
+            role="user", content="Import and verify the latest CSV", sequence=25
+        ),
+        ChatMessage(
+            role="assistant", content="Validate the encoding first", sequence=26
+        ),
+        ChatMessage(
+            role="tool", content='{"type":"bash_exec","exit_code":0}', sequence=27
+        ),
+        ChatMessage(
+            role="assistant", content="The import and row check passed", sequence=28
+        ),
+    ]
+    db.get_chat_messages_paginated.side_effect = None
+    db.get_chat_messages_paginated.return_value = PaginatedMessages(
+        messages=earlier + recent,
+        has_more=False,
+        oldest_sequence=1,
+        session=_session_info(),
+    )
+    record = await record_chat_turn(
+        USER, _session(), recent, "Import and verify the latest CSV"
+    )
+    bundle = await ChatSessionSourceAdapter().load_evidence(
+        source_revision_from_record(record), max_chars=4_000
+    )
+    assert bundle.verification_complete
+    assert {"msg:25", "msg:26", "msg:27", "msg:28"} <= {s.ref for s in bundle.spans}
+    assert sum(len(s.text) for s in bundle.spans) <= 4_000
+
+
+@pytest.mark.asyncio
+async def test_evidence_includes_the_tool_inputs_that_produced_the_outcome(
+    fake_store, chat_db
+):
+    db, _, _ = chat_db
+    rows = [
+        ChatMessage(role="user", content="Verify the transformed CSV", sequence=0),
+        ChatMessage(
+            role="assistant",
+            content=None,
+            sequence=1,
+            tool_calls=[
+                {
+                    "id": "call-1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash_exec",
+                        "arguments": '{"command":"python verify_csv.py output.csv"}',
+                    },
+                }
+            ],
+        ),
+        ChatMessage(
+            role="tool", content='{"type":"bash_exec","exit_code":0}', sequence=2
+        ),
+    ]
+    db.get_chat_messages_paginated.side_effect = None
+    db.get_chat_messages_paginated.return_value = PaginatedMessages(
+        messages=rows, has_more=False, oldest_sequence=0, session=_session_info()
+    )
+    record = await record_chat_turn(
+        USER, _session(), rows, "Verify the transformed CSV"
+    )
+    bundle = await ChatSessionSourceAdapter().load_evidence(
+        source_revision_from_record(record), max_chars=4_000
+    )
+    assert "msg:1" in {r["ref"] for r in record.evidence_refs}
+    assert "python verify_csv.py output.csv" in "\n".join(s.text for s in bundle.spans)

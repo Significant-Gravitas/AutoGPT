@@ -14,7 +14,7 @@ from backend.copilot.tools.skills import ParsedSkill
 from backend.data.skill_publication import ReviewStamp
 
 from .contract import EvidenceBundle, SourceRevision
-from .prompts import LearningProposal
+from .prompts import MAX_PROPOSAL_BODY_CHARS, LearningProposal
 from .publish import PublishRequest, SourceSnapshot
 
 _SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$")
@@ -58,6 +58,10 @@ def validate_proposal(
     names = {s.name for s in existing}
     if proposal.decision == "update" and proposal.skill_name not in names:
         return "update names a skill that does not exist"
+    if proposal.decision == "update":
+        current = next(s for s in existing if s.name == proposal.skill_name)
+        if not current.body or len(current.body) > MAX_PROPOSAL_BODY_CHARS:
+            return "update requires the complete existing skill body"
     if proposal.decision == "create" and proposal.skill_name in names:
         return "create would duplicate an existing skill"
     return None

@@ -6,6 +6,7 @@ import pytest
 
 from backend.copilot.permissions import (
     ALL_TOOL_NAMES,
+    CAPABILITY_GATE_NAMES,
     DREAM_PERMISSIONS,
     PLATFORM_TOOL_NAMES,
     SDK_BUILTIN_TOOL_NAMES,
@@ -105,6 +106,34 @@ class TestEffectiveAllowedTools:
         perms = CopilotPermissions(tools=["nonexistent"], tools_exclude=True)
         result = perms.effective_allowed_tools(ALL_TOOLS)
         assert result == ALL_TOOLS
+
+    def test_denying_a_capability_also_denies_what_extends_it(self):
+        # A blacklist is written against the tools that exist at the time, so
+        # an operator who revoked proactive posting never listed the edit
+        # tool — and would otherwise silently regain the ability to rewrite
+        # everything the bot has already said in their servers.
+        chat_tools = frozenset(
+            ["post_to_chat_platform", "edit_chat_platform_message", "run_block"]
+        )
+        perms = CopilotPermissions(tools=["post_to_chat_platform"], tools_exclude=True)
+
+        result = perms.effective_allowed_tools(chat_tools)
+
+        assert result == frozenset(["run_block"])
+
+    def test_an_implied_denial_does_not_leak_into_a_whitelist(self):
+        # Whitelists are explicit: listing the edit tool means it is wanted,
+        # and the implication table must not second-guess that.
+        chat_tools = frozenset(
+            ["post_to_chat_platform", "edit_chat_platform_message", "run_block"]
+        )
+        perms = CopilotPermissions(
+            tools=["edit_chat_platform_message"], tools_exclude=False
+        )
+
+        result = perms.effective_allowed_tools(chat_tools)
+
+        assert result == frozenset(["edit_chat_platform_message"])
 
 
 # ---------------------------------------------------------------------------
@@ -337,7 +366,11 @@ class TestApplyToolPermissions:
     def test_empty_permissions_returns_base_unchanged(self, mocker):
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
-            return_value=["mcp__copilot__run_block", "mcp__copilot__web_fetch", "Task"],
+            return_value=[
+                "mcp__copilot__run_capability",
+                "mcp__copilot__web_fetch",
+                "Task",
+            ],
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_sdk_disallowed_tools",
@@ -345,18 +378,18 @@ class TestApplyToolPermissions:
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": object(), "web_fetch": object()},
+            {"run_capability": object(), "web_fetch": object()},
         )
         perms = CopilotPermissions()
         allowed, disallowed = apply_tool_permissions(perms, use_e2b=False)
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
         assert "mcp__copilot__web_fetch" in allowed
 
     def test_blacklist_removes_tool(self, mocker):
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
-                "mcp__copilot__run_block",
+                "mcp__copilot__run_capability",
                 "mcp__copilot__web_fetch",
                 "mcp__copilot__bash_exec",
                 "Task",
@@ -369,25 +402,27 @@ class TestApplyToolPermissions:
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
             {
-                "run_block": object(),
+                "run_capability": object(),
                 "web_fetch": object(),
                 "bash_exec": object(),
             },
         )
         mocker.patch(
             "backend.copilot.permissions.all_known_tool_names",
-            return_value=frozenset(["run_block", "web_fetch", "bash_exec", "Task"]),
+            return_value=frozenset(
+                ["run_capability", "web_fetch", "bash_exec", "Task"]
+            ),
         )
         perms = CopilotPermissions(tools=["bash_exec"], tools_exclude=True)
         allowed, _ = apply_tool_permissions(perms, use_e2b=False)
         assert "mcp__copilot__bash_exec" not in allowed
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
 
     def test_whitelist_keeps_only_listed(self, mocker):
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
-                "mcp__copilot__run_block",
+                "mcp__copilot__run_capability",
                 "mcp__copilot__web_fetch",
                 "Task",
                 "WebSearch",
@@ -399,15 +434,17 @@ class TestApplyToolPermissions:
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": object(), "web_fetch": object()},
+            {"run_capability": object(), "web_fetch": object()},
         )
         mocker.patch(
             "backend.copilot.permissions.all_known_tool_names",
-            return_value=frozenset(["run_block", "web_fetch", "Task", "WebSearch"]),
+            return_value=frozenset(
+                ["run_capability", "web_fetch", "Task", "WebSearch"]
+            ),
         )
-        perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
+        perms = CopilotPermissions(tools=["run_capability"], tools_exclude=False)
         allowed, _ = apply_tool_permissions(perms, use_e2b=False)
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
         assert "mcp__copilot__web_fetch" not in allowed
         assert "Task" not in allowed
 
@@ -416,7 +453,7 @@ class TestApplyToolPermissions:
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
-                "mcp__copilot__run_block",
+                "mcp__copilot__run_capability",
                 "mcp__copilot__read_tool_result",
                 "Task",
             ],
@@ -427,11 +464,11 @@ class TestApplyToolPermissions:
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": object()},
+            {"run_capability": object()},
         )
         mocker.patch(
             "backend.copilot.permissions.all_known_tool_names",
-            return_value=frozenset(["run_block", "Read", "Task"]),
+            return_value=frozenset(["run_capability", "Read", "Task"]),
         )
         # Explicitly blacklist Read
         perms = CopilotPermissions(tools=["Read"], tools_exclude=True)
@@ -439,7 +476,7 @@ class TestApplyToolPermissions:
         assert (
             "mcp__copilot__read_tool_result" in allowed
         )  # always preserved for SDK internals
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
         assert "Task" in allowed
 
     def test_read_tool_always_included_with_narrow_whitelist(self, mocker):
@@ -447,7 +484,7 @@ class TestApplyToolPermissions:
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
-                "mcp__copilot__run_block",
+                "mcp__copilot__run_capability",
                 "mcp__copilot__read_tool_result",
                 "Task",
             ],
@@ -458,26 +495,26 @@ class TestApplyToolPermissions:
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": object()},
+            {"run_capability": object()},
         )
         mocker.patch(
             "backend.copilot.permissions.all_known_tool_names",
-            return_value=frozenset(["run_block", "Read", "Task"]),
+            return_value=frozenset(["run_capability", "Read", "Task"]),
         )
-        # Whitelist only run_block — Read not listed
-        perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
+        # Whitelist only run_capability — Read not listed
+        perms = CopilotPermissions(tools=["run_capability"], tools_exclude=False)
         allowed, _ = apply_tool_permissions(perms, use_e2b=False)
         assert (
             "mcp__copilot__read_tool_result" in allowed
         )  # always preserved for SDK internals
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
 
     def test_e2b_file_tools_included_when_sdk_builtin_whitelisted(self, mocker):
         """In E2B mode, whitelisting 'Read' must include mcp__copilot__read_file."""
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
-                "mcp__copilot__run_block",
+                "mcp__copilot__run_capability",
                 "mcp__copilot__read_tool_result",
                 "mcp__copilot__read_file",
                 "mcp__copilot__write_file",
@@ -490,21 +527,23 @@ class TestApplyToolPermissions:
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": object()},
+            {"run_capability": object()},
         )
         mocker.patch(
             "backend.copilot.permissions.all_known_tool_names",
-            return_value=frozenset(["run_block", "Read", "Write", "Task"]),
+            return_value=frozenset(["run_capability", "Read", "Write", "Task"]),
         )
         mocker.patch(
             "backend.copilot.sdk.e2b_file_tools.E2B_FILE_TOOL_NAMES",
             ["read_file", "write_file", "edit_file", "glob", "grep"],
         )
-        # Whitelist Read and run_block — E2B read_file should be included
-        perms = CopilotPermissions(tools=["Read", "run_block"], tools_exclude=False)
+        # Whitelist Read and run_capability — E2B read_file should be included
+        perms = CopilotPermissions(
+            tools=["Read", "run_capability"], tools_exclude=False
+        )
         allowed, _ = apply_tool_permissions(perms, use_e2b=True)
         assert "mcp__copilot__read_file" in allowed
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
         # Write not whitelisted — write_file should NOT be included
         assert "mcp__copilot__write_file" not in allowed
 
@@ -513,7 +552,7 @@ class TestApplyToolPermissions:
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
-                "mcp__copilot__run_block",
+                "mcp__copilot__run_capability",
                 "mcp__copilot__Write",
                 "mcp__copilot__Edit",
                 "mcp__copilot__read_file",
@@ -527,17 +566,19 @@ class TestApplyToolPermissions:
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": object()},
+            {"run_capability": object()},
         )
         mocker.patch(
             "backend.copilot.permissions.all_known_tool_names",
-            return_value=frozenset(["run_block", "Read", "Write", "Edit", "Task"]),
+            return_value=frozenset(["run_capability", "Read", "Write", "Edit", "Task"]),
         )
-        # Whitelist Write and run_block — mcp__copilot__Write should be included
-        perms = CopilotPermissions(tools=["Write", "run_block"], tools_exclude=False)
+        # Whitelist Write and run_capability — mcp__copilot__Write should be included
+        perms = CopilotPermissions(
+            tools=["Write", "run_capability"], tools_exclude=False
+        )
         allowed, _ = apply_tool_permissions(perms, use_e2b=False)
         assert "mcp__copilot__Write" in allowed
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
         # Edit not whitelisted — should NOT be included
         assert "mcp__copilot__Edit" not in allowed
         # read_tool_result always preserved for SDK internals
@@ -548,7 +589,7 @@ class TestApplyToolPermissions:
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
-                "mcp__copilot__run_block",
+                "mcp__copilot__run_capability",
                 "mcp__copilot__read_tool_result",
                 "mcp__copilot__read_file",
                 "Task",
@@ -560,11 +601,11 @@ class TestApplyToolPermissions:
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": object()},
+            {"run_capability": object()},
         )
         mocker.patch(
             "backend.copilot.permissions.all_known_tool_names",
-            return_value=frozenset(["run_block", "Read", "Task"]),
+            return_value=frozenset(["run_capability", "Read", "Task"]),
         )
         mocker.patch(
             "backend.copilot.sdk.e2b_file_tools.E2B_FILE_TOOL_NAMES",
@@ -574,7 +615,7 @@ class TestApplyToolPermissions:
         perms = CopilotPermissions(tools=["Read"], tools_exclude=True)
         allowed, _ = apply_tool_permissions(perms, use_e2b=True)
         assert "mcp__copilot__read_file" not in allowed
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
         # mcp__copilot__read_tool_result is always preserved for SDK internals
         assert "mcp__copilot__read_tool_result" in allowed
 
@@ -615,7 +656,10 @@ class TestSdkBuiltinToolNames:
 
     def test_all_tool_names_is_union(self):
         """ALL_TOOL_NAMES must equal PLATFORM_TOOL_NAMES | SDK_BUILTIN_TOOL_NAMES."""
-        assert ALL_TOOL_NAMES == PLATFORM_TOOL_NAMES | SDK_BUILTIN_TOOL_NAMES
+        assert (
+            ALL_TOOL_NAMES
+            == PLATFORM_TOOL_NAMES | SDK_BUILTIN_TOOL_NAMES | CAPABILITY_GATE_NAMES
+        )
 
     def test_no_overlap_between_platform_and_sdk(self):
         """Platform and SDK built-in names must not overlap."""
@@ -703,9 +747,11 @@ class TestDreamPermissionsPreset:
             assert tool not in effective, f"{tool} must be blocked for dream sub-agent"
 
     def test_effective_set_matches_whitelist_intersection(self):
-        # Sanity: effective set = whitelist ∩ known universe.  web_fact_check
-        # is intentionally absent from the universe until P0.5 lands, so the
-        # effective set today is the four memory tools.
+        # Sanity: effective set = whitelist ∩ known universe, plus the
+        # dispatcher the whitelist needs — all four memory tools are deferred
+        # (#14569), so without run_capability the dream pass could reach none
+        # of them.  web_fact_check is intentionally absent from the universe
+        # until P0.5 lands.
         effective = DREAM_PERMISSIONS.effective_allowed_tools(ALL_TOOL_NAMES)
         assert effective == frozenset(
             {
@@ -713,6 +759,7 @@ class TestDreamPermissionsPreset:
                 "memory_store",
                 "memory_forget_search",
                 "memory_forget_confirm",
+                "run_capability",
             }
         )
 

@@ -48,7 +48,6 @@ interface Props {
   onCancelRename: () => void;
   isExporting: boolean;
   isDeleting: boolean;
-  chatSharingEnabled: boolean;
   chatPinningEnabled: boolean;
   onPin: (id: string, isPinned: boolean) => void;
   onRename: (id: string, title: string | null | undefined) => void;
@@ -82,7 +81,6 @@ export function RecentChatItem({
   onCancelRename,
   isExporting,
   isDeleting,
-  chatSharingEnabled,
   chatPinningEnabled,
   onPin,
   onRename,
@@ -140,7 +138,7 @@ export function RecentChatItem({
         tooltip={title}
         className="font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal hover:!bg-zinc-100"
       >
-        <Link href={`/copilot?sessionId=${session.id}`}>
+        <Link href={`/home?sessionId=${session.id}`}>
           {session.is_processing ? (
             <LoadingSpinner
               size="small"
@@ -197,12 +195,10 @@ export function RecentChatItem({
             )}
             {isExporting ? "Exporting…" : "Export chat"}
           </DropdownMenuItem>
-          {chatSharingEnabled && (
-            <DropdownMenuItem onClick={() => onShare(session.id)}>
-              <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
-              Share chat
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem onClick={() => onShare(session.id)}>
+            <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
+            Share chat
+          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => onDelete(session.id, session.title)}
             disabled={isDeleting}

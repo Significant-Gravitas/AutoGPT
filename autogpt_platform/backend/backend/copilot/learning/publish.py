@@ -61,6 +61,7 @@ from .fingerprint import (
     behavior_tokens,
     token_overlap,
 )
+from .history import record_registry_write
 
 logger = logging.getLogger(__name__)
 
@@ -151,12 +152,18 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
             pattern_class=metadata_failure.pattern_class,
             blocked_step=metadata_failure.step,
         )
+    current_text = await read_user_skill_markdown(
+        request.user_id, request.skill_name, expert_id=request.expert_id
+    )
+    current = parse_skill_markdown(current_text) if current_text else None
     parsed = canonicalize_skill(
         ParsedSkill(
             name=request.skill_name,
             description=request.description,
             body=request.body,
             triggers=tuple(request.triggers),
+            version=current.version if current else None,
+            extra=current.extra if current else {},
         )
     )
     rendered = render_skill_markdown(parsed)
@@ -168,6 +175,27 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
     head = await versions.ensure_head(
         request.user_id, request.expert_id, request.skill_name
     )
+    if head.current_version_id is None and current is not None and current_text:
+        await record_registry_write(
+            request.user_id,
+            expert_id=request.expert_id,
+            skill_name=request.skill_name,
+            rendered=current_text,
+            description=current.description,
+            triggers=list(current.triggers),
+            origin="imported",
+            actor_user_id=None,
+            summary="Existing skill preserved before learning",
+            keep_auto_improve=False,
+        )
+        head = await versions.ensure_head(
+            request.user_id, request.expert_id, request.skill_name
+        )
+        if head.current_version_id is None:
+            return PublishOutcome(
+                status="write_failed",
+                reason="existing skill history could not be preserved",
+            )
     if head.learning_paused_at is not None:
         return PublishOutcome(status="paused", reason="learning paused for this skill")
 
@@ -337,6 +365,7 @@ async def _record_untracked_edit(
         body=current.body,
         triggers=list(current.triggers),
         version=current.version,
+        extra=current.extra,
         expert_id=request.expert_id,
         version_origin="edited",
         actor_user_id=request.user_id,
@@ -436,6 +465,7 @@ async def write_committed_version(
             body=parsed.body,
             triggers=list(parsed.triggers),
             version=parsed.version,
+            extra=parsed.extra,
             expert_id=version.expert_id,
             version_origin=None,
             expected_head=ExpectedHead(version_id=version.id),

@@ -30,6 +30,9 @@ function resetStore() {
       history: [],
       activeTab: "files",
       lastArtifact: null,
+      mode: "artifact",
+      computer: null,
+      isComputerOpen: false,
     },
   });
   // Clear the module-level auto-open flags so each test starts isolated —
@@ -517,6 +520,17 @@ describe("lastArtifact session scoping", () => {
     useCopilotUIStore.getState().closeArtifactPanel();
     useCopilotUIStore.getState().clearLastArtifact();
     expect(useCopilotUIStore.getState().artifactPanel.lastArtifact).toBeNull();
+  });
+
+  it("clearLastArtifact forgets the previous chat's expert integrations", () => {
+    useCopilotUIStore
+      .getState()
+      .toggleIntegrationsPanel({ id: "expert-maria", name: "Maria" });
+    useCopilotUIStore.getState().closeArtifactPanel();
+    useCopilotUIStore.getState().clearLastArtifact();
+    const s = useCopilotUIStore.getState();
+    expect(s.contextPanelExpert).toBeNull();
+    expect(s.artifactPanel.activeTab).toBe("files");
   });
 
   it("closing the artifacts tab forgets the remembered preview", () => {

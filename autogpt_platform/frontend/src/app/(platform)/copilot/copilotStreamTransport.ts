@@ -1,11 +1,14 @@
+import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
 import { environment } from "@/services/environment";
 import { DefaultChatTransport } from "ai";
 import type { ChatTransport, FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
+import { getAutopilotModeChoice } from "./autopilotModeStore";
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
+import { createShadowFetch } from "./stream/turnShadow";
 import { isVoiceTurn } from "./voice/pendingVoiceStart";
 import { isTokenDevtoolEnabled } from "./tokenDevtool/gate";
 import { createUsageCapturingFetch } from "./tokenDevtool/usageTap";
@@ -61,11 +64,14 @@ export function createCopilotTransport({
 
   return new SmoothedCopilotChatTransport({
     api: baseUrl,
-    // Dev-only: tee the raw SSE stream so `: usage {...}` comments (dropped
-    // by the AI SDK parser) feed the token devtool badge.
-    ...(isTokenDevtoolEnabled()
-      ? { fetch: createUsageCapturingFetch(sessionId) }
-      : {}),
+    // Tee the raw SSE into the stream converter's shadow, and in dev into the
+    // token devtool, which reads the `: usage {...}` comments the SDK drops.
+    fetch: createShadowFetch(
+      sessionId,
+      isTokenDevtoolEnabled()
+        ? createUsageCapturingFetch(sessionId)
+        : undefined,
+    ),
     prepareSendMessagesRequest: async ({ messages }) => {
       const last = messages[messages.length - 1];
       const kickoffExpertId = getKickoffExpertIdFromMetadata(last.metadata);
@@ -78,6 +84,11 @@ export function createCopilotTransport({
           return match?.[1];
         })
         .filter(Boolean) as string[] | undefined;
+      // A folder is named for the model to open, never expanded into files,
+      // so it travels as its own id list.
+      const folderIds = last.parts?.flatMap((p) =>
+        isWorkspaceFolderPart(p) ? [p.data.id] : [],
+      );
       // ``message_id`` is the client idempotency key. The backend scopes it
       // to the authenticated user + session before using the result as the
       // persisted PK, so retransmits collide atomically without letting one
@@ -99,6 +110,7 @@ export function createCopilotTransport({
           is_user_message: last.role === "user",
           context: null,
           file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
+          folder_ids: folderIds && folderIds.length > 0 ? folderIds : null,
           model: copilotModelRef.current ?? null,
           // Supplying options forces uuid's
           // getRandomValues path. Unlike crypto.randomUUID,
@@ -109,6 +121,7 @@ export function createCopilotTransport({
           // send false and pay nothing for it.
           voice: isVoiceTurn(),
           expert_kickoff: kickoffExpertId !== null,
+          ...optionalAutopilotMode(sessionId),
         },
         headers: await getCopilotAuthHeaders(),
       };
@@ -129,4 +142,20 @@ export function createCopilotTransport({
       };
     },
   });
+}
+
+// Absent unless the user picked a mode, so a chat nobody touched keeps its own.
+function optionalAutopilotMode(sessionId: string) {
+  const mode = getAutopilotModeChoice(sessionId);
+  return mode ? { autopilot_mode: mode } : {};
+}
+
+function isWorkspaceFolderPart(
+  part: unknown,
+): part is { type: string; data: { id: string } } {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    (part as { type?: unknown }).type === WORKSPACE_FOLDER_PART_TYPE
+  );
 }

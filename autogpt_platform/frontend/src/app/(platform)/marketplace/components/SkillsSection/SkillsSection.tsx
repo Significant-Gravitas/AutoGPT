@@ -19,13 +19,15 @@ interface Props {
 export function SkillsSection({ category }: Props) {
   const {
     isLoggedIn,
-    skills,
+    skills: fetchedSkills,
     total,
     installedSlugs,
     isLoading,
     isError,
     refetch,
   } = useSkillsSection({ category });
+  // One shared query feeds both shelves; the card layout takes the first four.
+  const skills = fetchedSkills.slice(0, SHELF_SIZE);
 
   // Under a category filter an empty shelf means "no skills in this
   // category", so the whole section goes rather than offering an empty state.
@@ -40,23 +42,16 @@ export function SkillsSection({ category }: Props) {
       className="mb-20 scroll-mt-24"
     >
       <SectionHeader
-        titleIcon={<Icon icon={BookOpen01Icon} size={30} aria-hidden />}
         title="Skills"
         titleId={HEADING_ID}
         subtitle="Playbooks your experts follow — from brand voice to cold outreach. Teach them your way of working."
         action={sectionAction({ isLoggedIn, total })}
+        secondaryAction={
+          isLoggedIn
+            ? { label: "Build your own", href: "/library/skills" }
+            : undefined
+        }
       />
-      {isLoggedIn ? (
-        <div className="-mt-3 mb-6">
-          <Link
-            href="/library/skills"
-            className="text-sm font-medium text-accent transition-colors hover:text-accent/80"
-          >
-            …or teach them a skill of your own
-          </Link>
-        </div>
-      ) : null}
-
       {isLoading ? (
         <div
           role="status"
