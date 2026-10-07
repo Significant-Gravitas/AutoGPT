@@ -1,3 +1,4 @@
+import { Kbd } from "@/components/atoms/Kbd/Kbd";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -91,15 +92,15 @@ export function SearchCommandResultItem({
             className="shrink-0 text-zinc-500"
           />
         ) : (
-          <span
+          <Kbd
             aria-hidden="true"
             className={cn(
-              "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white px-1 font-sans text-[11px] text-zinc-600 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)] transition-opacity duration-150",
+              "text-zinc-600 transition-opacity duration-150",
               isHighlighted ? "opacity-100" : "opacity-0",
             )}
           >
             ↵
-          </span>
+          </Kbd>
         )}
       </div>
     </Button>

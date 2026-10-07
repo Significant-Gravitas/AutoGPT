@@ -135,6 +135,7 @@ export const DateInput = ({
           <Calendar
             mode="single"
             selected={selected}
+            defaultMonth={selected}
             onSelect={setDate}
             showOutsideDays
             // Prevent selection when disabled/readonly

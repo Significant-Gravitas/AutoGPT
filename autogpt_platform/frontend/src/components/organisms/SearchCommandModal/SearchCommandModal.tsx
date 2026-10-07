@@ -16,6 +16,7 @@ import { SearchCommandSkeleton } from "./SearchCommandSkeleton";
 import { useKeyboardNav } from "./useKeyboardNav";
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Kbd } from "@/components/atoms/Kbd/Kbd";
 import { isKey } from "@/lib/keyboard";
 
 interface Props {
@@ -209,25 +210,17 @@ export function SearchCommandModal({
           <div className="flex items-center justify-between gap-4 bg-zinc-50 px-4 py-4 text-xs text-zinc-700">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5">
-                <kbd className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-zinc-200 bg-white font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
-                  ↑
-                </kbd>
-                <kbd className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-zinc-200 bg-white font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
-                  ↓
-                </kbd>
+                <Kbd>↑</Kbd>
+                <Kbd>↓</Kbd>
                 <span>Navigate</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-zinc-200 bg-white px-1 font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
-                  ↵
-                </kbd>
+                <Kbd>↵</Kbd>
                 <span>Select</span>
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              <kbd className="inline-flex h-5 items-center justify-center rounded-md border border-zinc-200 bg-white px-1.5 font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
-                esc
-              </kbd>
+              <Kbd>esc</Kbd>
               <span>Close</span>
             </div>
           </div>

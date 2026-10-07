@@ -6,10 +6,15 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 interface Props {
   isCanceling: boolean;
   onCancel: () => void;
+  defaultOpen?: boolean;
 }
 
-export function CancelTrialDialog({ isCanceling, onCancel }: Props) {
-  const [isOpen, setIsOpen] = useState(false);
+export function CancelTrialDialog({
+  isCanceling,
+  onCancel,
+  defaultOpen = false,
+}: Props) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
 
   function confirmCancellation() {
     setIsOpen(false);

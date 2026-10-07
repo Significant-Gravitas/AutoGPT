@@ -8,6 +8,7 @@ import { DialogCtx } from "../useDialogCtx";
 import { compactStyles, drawerStyles, modalStyles } from "./styles";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 type BaseProps = DialogCtx & PropsWithChildren;
 
@@ -20,6 +21,8 @@ interface Props extends BaseProps {
 export function DrawerWrap({
   children,
   title,
+  description,
+  hideDescription,
   variant,
   testId,
   handleClose,
@@ -29,6 +32,8 @@ export function DrawerWrap({
   const accessibleTitle = title || "Dialog";
   const hasVisibleTitle = Boolean(title);
   const isCompact = variant === "compact";
+  const hasVisibleHeader =
+    hasVisibleTitle || Boolean(description && !hideDescription);
 
   // Mirrors DialogWrap: below the lg breakpoint the same <Dialog> renders as a
   // drawer, and Escape has to behave identically in both.
@@ -60,29 +65,42 @@ export function DrawerWrap({
         )}
         data-testid={testId}
         onEscapeKeyDown={handleEscapeKeyDown}
-        aria-describedby={undefined}
+        {...(description ? {} : { "aria-describedby": undefined })}
         // No onInteractOutside close: Radix dismisses outside taps itself and
         // vetoes the focus a closing DropdownMenu hands back to its trigger.
       >
         <div
           className={cn(
             "flex w-full shrink-0 items-center justify-between",
-            hasVisibleTitle
+            hasVisibleHeader
               ? isCompact
                 ? compactStyles.header
                 : "pb-6"
               : "pb-0",
           )}
         >
-          {hasVisibleTitle ? (
-            <Drawer.Title
-              className={isCompact ? compactStyles.title : drawerStyles.title}
-            >
-              {accessibleTitle}
-            </Drawer.Title>
-          ) : (
-            <Drawer.Title className="sr-only">{accessibleTitle}</Drawer.Title>
-          )}
+          <div className="flex min-w-0 flex-col gap-2">
+            {hasVisibleTitle ? (
+              <Drawer.Title
+                className={isCompact ? compactStyles.title : drawerStyles.title}
+              >
+                {accessibleTitle}
+              </Drawer.Title>
+            ) : (
+              <Drawer.Title className="sr-only">{accessibleTitle}</Drawer.Title>
+            )}
+            {description ? (
+              <Drawer.Description asChild>
+                <Text
+                  variant="body"
+                  tone="secondary"
+                  className={cn(hideDescription && "sr-only")}
+                >
+                  {description}
+                </Text>
+              </Drawer.Description>
+            ) : null}
+          </div>
 
           {!isForceOpen ? (
             hasVisibleTitle ? (

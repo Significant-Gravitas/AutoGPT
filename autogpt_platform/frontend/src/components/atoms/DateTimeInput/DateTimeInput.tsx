@@ -204,6 +204,7 @@ export const DateTimeInput = ({
             <Calendar
               mode="single"
               selected={selected}
+              defaultMonth={selected}
               onSelect={setDate}
               showOutsideDays
               modifiersClassNames={{

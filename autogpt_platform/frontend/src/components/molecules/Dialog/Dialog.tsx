@@ -11,6 +11,10 @@ import { useDialogInternal } from "./useDialogInternal";
 
 interface Props extends PropsWithChildren {
   title?: React.ReactNode;
+  /** Linked to the dialog as its accessible description. */
+  description?: React.ReactNode;
+  /** Keeps the description for screen readers only. */
+  hideDescription?: boolean;
   /** `compact` is the dense neutral style: smaller radius, tighter padding,
    *  sans title. */
   variant?: DialogVariant;
@@ -32,6 +36,8 @@ Dialog.Footer = BaseFooter;
 function Dialog({
   children,
   title,
+  description,
+  hideDescription = false,
   variant = "default",
   styling,
   className,
@@ -47,6 +53,8 @@ function Dialog({
     <DialogCtx.Provider
       value={{
         title: title || "",
+        description,
+        hideDescription,
         variant,
         styling,
         className,

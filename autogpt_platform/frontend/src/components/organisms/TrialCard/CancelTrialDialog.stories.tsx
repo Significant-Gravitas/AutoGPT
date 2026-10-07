@@ -12,7 +12,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "The Cancel trial button and its confirmation dialog. The dialog's open state is internal, so the Open story opens it by clicking the trigger.",
+          "The Cancel trial button and its confirmation dialog. The dialog's open state is internal: the Open story opens it by clicking the trigger, and `defaultOpen` starts it open.",
       },
       story: { inline: false, iframeHeight: 480 },
     },
@@ -35,6 +35,10 @@ export const Open: Story = {
     );
     await screen.findByRole("button", { name: "End trial now" });
   },
+};
+
+export const DefaultOpen: Story = {
+  args: { defaultOpen: true },
 };
 
 export const Canceling: Story = {
