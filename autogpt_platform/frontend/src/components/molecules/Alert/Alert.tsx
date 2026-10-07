@@ -1,7 +1,12 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { InfoIcon, AlertTriangleIcon, XCircleIcon } from "lucide-react";
+import {
+  Alert02Icon,
+  CancelCircleIcon,
+  InformationCircleIcon,
+} from "@hugeicons/core-free-icons";
 
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 
 const alertVariants = cva(
@@ -11,9 +16,9 @@ const alertVariants = cva(
       variant: {
         default: "bg-white text-zinc-800 [&>svg]:text-purple-500",
         warning:
-          "bg-[#FFF3E680] border-yellow-300 text-zinc-800 [&>svg]:text-orange-600",
+          "bg-orange-50/50 border-yellow-300 text-zinc-800 [&>svg]:text-orange-600",
         error:
-          "bg-[#FDECEC80] border-red-300 text-zinc-800 [&>svg]:text-red-500",
+          "bg-red-100/50 border-red-300 text-zinc-800 [&>svg]:text-red-500",
       },
     },
     defaultVariants: {
@@ -23,9 +28,9 @@ const alertVariants = cva(
 );
 
 const variantIcons = {
-  default: InfoIcon,
-  warning: AlertTriangleIcon,
-  error: XCircleIcon,
+  default: InformationCircleIcon,
+  warning: Alert02Icon,
+  error: CancelCircleIcon,
 } as const;
 
 interface AlertProps
@@ -37,9 +42,12 @@ interface AlertProps
 }
 
 const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
-  ({ className, variant = "default", icon, children, ...props }, ref) => {
+  (
+    { className, variant = "default", icon: CustomIcon, children, ...props },
+    ref,
+  ) => {
     const currentVariant = variant || "default";
-    const IconComponent = icon ?? variantIcons[currentVariant];
+    const iconClassName = "h-[1.125rem] w-[1.125rem]";
 
     return (
       <div
@@ -48,7 +56,11 @@ const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
         className={cn(alertVariants({ variant: currentVariant }), className)}
         {...props}
       >
-        <IconComponent className="h-[1.125rem] w-[1.125rem]" />
+        {CustomIcon ? (
+          <CustomIcon className={iconClassName} />
+        ) : (
+          <Icon icon={variantIcons[currentVariant]} className={iconClassName} />
+        )}
         {children}
       </div>
     );
