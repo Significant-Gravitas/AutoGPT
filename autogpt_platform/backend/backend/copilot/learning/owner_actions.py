@@ -8,11 +8,11 @@ overnight change into a lost update.
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
 from typing import Literal
 
 from backend.copilot.tools.skills import (
     ExpectedHead,
+    ParsedSkill,
     SkillContentBlockedError,
     SkillVersionConflictError,
     SkillWriteLockError,
@@ -254,7 +254,18 @@ async def decide_proposal(
             return PublishOutcome(
                 status="conflict", reason="proposal content is invalid"
             )
-        content = render_skill_markdown(canonicalize_skill(replace(parsed, body=body)))
+        content = render_skill_markdown(
+            canonicalize_skill(
+                ParsedSkill(
+                    name=parsed.name,
+                    description=parsed.description,
+                    body=body,
+                    triggers=parsed.triggers,
+                    version=parsed.version,
+                    extra=parsed.extra,
+                )
+            )
+        )
     draft = VersionDraft(
         content=content,
         description=proposal.description,
