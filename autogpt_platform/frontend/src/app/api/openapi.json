@@ -16252,6 +16252,7 @@
               }
             }
           },
+          "307": { "description": "Short-lived signed download URL" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
@@ -16264,7 +16265,8 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
+          },
+          "503": { "description": "Private media is temporarily unavailable" }
         }
       }
     },

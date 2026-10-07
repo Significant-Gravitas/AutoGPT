@@ -8,13 +8,23 @@ export const trialPlanLabels: Record<TrialOfferResponse["tier"], string> = {
 };
 
 export function formatTrialPrice(offer: TrialOfferResponse) {
-  const formatter = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: offer.currency,
-  });
-  const decimals = formatter.resolvedOptions().maximumFractionDigits ?? 2;
-  const amount = formatter.format(offer.unit_amount / 10 ** decimals);
+  const amount = currencyFormatter(offer.currency).format(
+    getTrialChargeAmount(offer),
+  );
   return `${amount} / ${offer.billing_cycle === "yearly" ? "year" : "month"}`;
+}
+
+// What Stripe charges per billing cycle once the trial ends, in major units.
+// Zero-decimal currencies (JPY) carry no minor unit.
+export function getTrialChargeAmount(offer: TrialOfferResponse) {
+  const decimals =
+    currencyFormatter(offer.currency).resolvedOptions().maximumFractionDigits ??
+    2;
+  return offer.unit_amount / 10 ** decimals;
+}
+
+function currencyFormatter(currency: string) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency });
 }
 
 export function formatTrialEnd(value: Date | string | null | undefined) {
