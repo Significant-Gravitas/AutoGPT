@@ -1,4 +1,5 @@
 import { RJSFSchema } from "@rjsf/utils";
+import { getTypeColor } from "@/lib/utils";
 
 export enum InputType {
   SINGLE_LINE_TEXT = "single-line-text",
@@ -96,8 +97,8 @@ export const getTypeDisplayInfo = (schema: any) => {
   ) {
     return {
       displayType: "table",
-      colorClass: "!text-indigo-500",
-      hexColor: "#6366f1",
+      colorClass: "text-indigo-500",
+      hexColor: getTypeColor("array"),
     };
   }
 
@@ -108,33 +109,33 @@ export const getTypeDisplayInfo = (schema: any) => {
     > = {
       file: {
         displayType: "file",
-        colorClass: "!text-green-500",
-        hexColor: "#22c55e",
+        colorClass: "text-green-500",
+        hexColor: getTypeColor("string"),
       },
       date: {
         displayType: "date",
-        colorClass: "!text-blue-500",
-        hexColor: "#3b82f6",
+        colorClass: "text-blue-500",
+        hexColor: getTypeColor("number"),
       },
       time: {
         displayType: "time",
-        colorClass: "!text-blue-500",
-        hexColor: "#3b82f6",
+        colorClass: "text-blue-500",
+        hexColor: getTypeColor("number"),
       },
       "date-time": {
         displayType: "datetime",
-        colorClass: "!text-blue-500",
-        hexColor: "#3b82f6",
+        colorClass: "text-blue-500",
+        hexColor: getTypeColor("number"),
       },
       "long-text": {
         displayType: "text",
-        colorClass: "!text-green-500",
-        hexColor: "#22c55e",
+        colorClass: "text-green-500",
+        hexColor: getTypeColor("string"),
       },
       "short-text": {
         displayType: "text",
-        colorClass: "!text-green-500",
-        hexColor: "#22c55e",
+        colorClass: "text-green-500",
+        hexColor: getTypeColor("string"),
       },
     };
 
@@ -157,29 +158,18 @@ export const getTypeDisplayInfo = (schema: any) => {
   const displayType = typeMap[schema?.type] || schema?.type || "any";
 
   const colorMap: Record<string, string> = {
-    string: "!text-green-500",
-    number: "!text-blue-500",
-    integer: "!text-blue-500",
-    boolean: "!text-yellow-500",
-    object: "!text-purple-500",
-    array: "!text-indigo-500",
-    null: "!text-gray-500",
-    any: "!text-gray-500",
+    string: "text-green-500",
+    number: "text-blue-500",
+    integer: "text-blue-500",
+    boolean: "text-yellow-500",
+    object: "text-purple-500",
+    array: "text-indigo-500",
+    null: "text-zinc-500",
+    any: "text-zinc-500",
   };
 
-  const hexColorMap: Record<string, string> = {
-    string: "#22c55e",
-    number: "#3b82f6",
-    integer: "#3b82f6",
-    boolean: "#eab308",
-    object: "#a855f7",
-    array: "#6366f1",
-    null: "#6b7280",
-    any: "#6b7280",
-  };
-
-  const colorClass = colorMap[schema?.type] || "!text-gray-500";
-  const hexColor = hexColorMap[schema?.type] || "#6b7280";
+  const colorClass = colorMap[schema?.type] || "text-zinc-500";
+  const hexColor = getTypeColor(schema?.type);
 
   return {
     displayType,
@@ -194,7 +184,7 @@ export function getEdgeColorFromOutputType(
 ): { colorClass: string; hexColor: string } {
   const defaultColor = {
     colorClass: "stroke-zinc-500/50",
-    hexColor: "#6b7280",
+    hexColor: getTypeColor(undefined),
   };
 
   if (!outputSchema?.properties) return defaultColor;
@@ -210,7 +200,7 @@ export function getEdgeColorFromOutputType(
 
     if (i === handleParts.length - 1) {
       const { hexColor, colorClass } = getTypeDisplayInfo(fieldSchema);
-      return { colorClass: colorClass.replace("!text-", "stroke-"), hexColor };
+      return { colorClass: colorClass.replace("text-", "stroke-"), hexColor };
     }
 
     if (fieldSchema.properties) {
