@@ -56,7 +56,7 @@ export function CopilotPage() {
   if (isUserLoading || !isLoggedIn) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#f6f7fb]">
-        <ScaleLoader className="text-neutral-400" />
+        <ScaleLoader className="text-zinc-400" />
       </div>
     );
   }

@@ -72,7 +72,7 @@ export function CopilotChatHost({
           immutable metadata. Never based on the global isDryRun preference
           (which only predicts future sessions). */}
       {sessionId && sessionDryRun && (
-        <div className="flex items-center justify-center gap-1.5 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
+        <div className="flex items-center justify-center gap-1.5 bg-yellow-50 px-3 py-1.5 text-xs font-medium text-yellow-800">
           <Icon icon={FlaskConicalIcon} size={13} />
           Test mode — this session runs agents as simulation
         </div>

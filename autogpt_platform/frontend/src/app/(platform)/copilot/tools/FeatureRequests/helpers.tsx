@@ -252,8 +252,8 @@ export function ToolIcon({
         isError
           ? "text-red-500"
           : isStreaming
-            ? "text-neutral-500"
-            : "text-neutral-400"
+            ? "text-zinc-500"
+            : "text-zinc-400"
       }
     />
   );

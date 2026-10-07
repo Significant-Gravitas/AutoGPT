@@ -399,16 +399,16 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               disabled={loading}
               nameSuffix={service}
               className="grid gap-1"
-              labelClassName="text-xs font-medium text-gray-700"
+              labelClassName="text-xs font-medium text-zinc-700"
               selectClassName="rounded border bg-background px-2 py-1.5 text-sm"
             />
             <label
               htmlFor={manualTokenInputId}
-              className="text-xs font-medium text-gray-700"
+              className="text-xs font-medium text-zinc-700"
             >
               {`${mcpAuthTokenLabel(manualAuthScheme)} for ${service}`}
             </label>
-            <p id={manualTokenHintId} className="text-xs text-gray-500">
+            <p id={manualTokenHintId} className="text-xs text-zinc-500">
               {mcpAuthTokenHint(manualAuthScheme)}
             </p>
             <div className="flex gap-2">

@@ -607,11 +607,7 @@ function getTodoAccordionData(input: unknown): AccordionData {
                   className="text-blue-500"
                 />
               ) : (
-                <Icon
-                  icon={CircleIcon}
-                  size={14}
-                  className="text-neutral-400"
-                />
+                <Icon icon={CircleIcon} size={14} className="text-zinc-400" />
               )}
             </span>
             <span

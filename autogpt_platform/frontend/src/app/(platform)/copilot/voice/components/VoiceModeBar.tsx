@@ -16,8 +16,8 @@ const APPEARANCE: Record<
   Exclude<VoiceState, "off">,
   { source: TraceSource; color: string }
 > = {
-  listening: { source: "mic", color: "bg-emerald-500" },
-  hearing: { source: "mic", color: "bg-emerald-500" },
+  listening: { source: "mic", color: "bg-green-500" },
+  hearing: { source: "mic", color: "bg-green-500" },
   transcribing: { source: "pulse", color: "bg-accent" },
   thinking: { source: "pulse", color: "bg-accent" },
   speaking: { source: "speech", color: "bg-zinc-900" },

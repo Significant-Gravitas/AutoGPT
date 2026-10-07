@@ -21,9 +21,9 @@ export function SuggestedGoalCard({
   onUseSuggestedGoal,
 }: Props) {
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+    <div className="rounded-xl border border-yellow-200 bg-yellow-50/50 p-4">
       <div className="flex items-start gap-3">
-        <Icon icon={BulbIcon} size={20} className="mt-0.5 text-amber-600" />
+        <Icon icon={BulbIcon} size={20} className="mt-0.5 text-yellow-600" />
         <div className="flex-1 space-y-3">
           <div>
             <Text variant="body-medium" className="font-medium text-slate-900">
@@ -36,8 +36,11 @@ export function SuggestedGoalCard({
             </Text>
           </div>
 
-          <div className="rounded-lg border border-amber-300 bg-white p-3">
-            <Text variant="small" className="mb-1 font-semibold text-amber-800">
+          <div className="rounded-lg border border-yellow-300 bg-white p-3">
+            <Text
+              variant="small"
+              className="mb-1 font-semibold text-yellow-800"
+            >
               Suggested alternative:
             </Text>
             <Text variant="body-medium" className="text-slate-900">

@@ -95,7 +95,10 @@ export function connectionBadge(
 ): ConnectionBadge | null {
   if (item.connected === undefined || item.connected === null) return null;
   if (item.connected === "needs_expert_grant") {
-    return { label: "grant needed", className: "bg-amber-100 text-amber-800" };
+    return {
+      label: "grant needed",
+      className: "bg-yellow-100 text-yellow-800",
+    };
   }
   if (item.connected) {
     return { label: "connected", className: "bg-green-100 text-green-800" };
