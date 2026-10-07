@@ -8,6 +8,7 @@ import {
 import Image from "next/image";
 import { useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import { CARD, HALF, RESULT_GRID } from "./ResultCards";
 import {
@@ -77,13 +78,25 @@ export function BlockListCard({ blocks }: BlockListCardProps) {
               />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium text-zinc-800">
+              <Text
+                variant="body-medium"
+                as="p"
+                tone="primary"
+                unmask={false}
+                className="truncate text-[13px]"
+              >
                 {getBlockDisplayName(block.name, block) ?? "Block"}
-              </p>
+              </Text>
               {str(block, "description") && (
-                <p className="truncate text-xs text-zinc-500">
+                <Text
+                  variant="small"
+                  as="p"
+                  tone="muted"
+                  unmask={false}
+                  className="truncate"
+                >
                   {str(block, "description")}
-                </p>
+                </Text>
               )}
             </div>
             {categories[0] && (
@@ -115,9 +128,15 @@ export function BlockOutputCard({ output }: BlockOutputCardProps) {
             fallback={BLOCK_ICON}
           />
         </div>
-        <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
+        <Text
+          variant="body-medium"
+          as="p"
+          tone="primary"
+          unmask={false}
+          className="min-w-0 flex-1 truncate text-[13px]"
+        >
           {name}
-        </p>
+        </Text>
         {ok ? (
           <Icon
             icon={CheckmarkCircle02Icon}
@@ -139,12 +158,24 @@ export function BlockOutputCard({ output }: BlockOutputCardProps) {
               Array.isArray(value) && value.length === 1 ? value[0] : value;
             return (
               <div key={key} className="px-2.5 py-1.5">
-                <p className="text-[11px] uppercase tracking-wide text-zinc-400">
+                <Text
+                  variant="small"
+                  as="p"
+                  tone="muted"
+                  unmask={false}
+                  className="text-[11px] uppercase tracking-wide"
+                >
                   {key.replace(/_/g, " ")}
-                </p>
-                <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap break-words text-[13px] text-zinc-700">
+                </Text>
+                <Text
+                  variant="body"
+                  as="p"
+                  tone="secondary"
+                  unmask={false}
+                  className="mt-0.5 line-clamp-3 whitespace-pre-wrap break-words text-[13px]"
+                >
                   {inline(flat)}
-                </p>
+                </Text>
               </div>
             );
           })}

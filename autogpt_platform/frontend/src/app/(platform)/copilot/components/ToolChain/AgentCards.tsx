@@ -9,6 +9,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { CARD, HALF, RESULT_GRID, StatusPill } from "./ResultCards";
@@ -68,9 +69,15 @@ export function AgentListCard({ agents }: AgentListCardProps) {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <p className="min-w-0 truncate text-[13px] font-medium text-zinc-800">
+                <Text
+                  variant="body-medium"
+                  as="p"
+                  tone="primary"
+                  unmask={false}
+                  className="min-w-0 truncate text-[13px]"
+                >
                   {str(agent, "name", "agent_name") ?? inline(agent)}
-                </p>
+                </Text>
                 {str(agent, "creator") && (
                   <span className="shrink-0 truncate text-[11px] text-zinc-400">
                     by {str(agent, "creator")}
@@ -78,7 +85,15 @@ export function AgentListCard({ agents }: AgentListCardProps) {
                 )}
               </div>
               {subtitle && (
-                <p className="truncate text-xs text-zinc-500">{subtitle}</p>
+                <Text
+                  variant="small"
+                  as="p"
+                  tone="muted"
+                  unmask={false}
+                  className="truncate"
+                >
+                  {subtitle}
+                </Text>
               )}
               {(runs !== null || rating !== null) && (
                 <div className="mt-1 flex items-center gap-2.5 text-[11px] text-zinc-400">
@@ -123,9 +138,15 @@ export function AgentSavedCard({ output }: OutputCardProps) {
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
         <Icon icon={Robot01Icon} size={15} className="text-zinc-600" />
       </div>
-      <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
+      <Text
+        variant="body-medium"
+        as="p"
+        tone="primary"
+        unmask={false}
+        className="min-w-0 flex-1 truncate text-[13px]"
+      >
         {name}
-      </p>
+      </Text>
       {typeof version === "number" && (
         <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
           v{version}
@@ -155,11 +176,25 @@ export function AgentPreviewCard({ output }: OutputCardProps) {
         <Icon icon={Robot01Icon} size={15} className="text-zinc-600" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-zinc-800">{name}</p>
+        <Text
+          variant="body-medium"
+          as="p"
+          tone="primary"
+          unmask={false}
+          className="truncate text-[13px]"
+        >
+          {name}
+        </Text>
         {str(output, "description", "message") && (
-          <p className="truncate text-xs text-zinc-500">
+          <Text
+            variant="small"
+            as="p"
+            tone="muted"
+            unmask={false}
+            className="truncate"
+          >
             {str(output, "description", "message")}
-          </p>
+          </Text>
         )}
       </div>
       {count !== null && (
@@ -194,12 +229,18 @@ export function SubSessionCard({
     <div className={cn(CARD, "w-full rounded-2xl p-2.5")}>
       <div className="flex items-center gap-2.5">
         <ExpertAvatar name={name} avatarUrl={avatarUrl ?? null} size={28} />
-        <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
+        <Text
+          variant="body-medium"
+          as="p"
+          tone="primary"
+          unmask={false}
+          className="min-w-0 flex-1 truncate text-[13px]"
+        >
           {name}
           {role && (
             <span className="ml-1.5 font-normal text-zinc-400">{role}</span>
           )}
-        </p>
+        </Text>
         {elapsed !== null && (
           <span className="shrink-0 text-[11px] text-zinc-400">
             {elapsed >= 60
@@ -211,9 +252,15 @@ export function SubSessionCard({
         {link && <CardLink href={link} label="Open sub-session" />}
       </div>
       {!minimal && response && (
-        <p className="mt-1.5 line-clamp-2 pl-9 text-xs text-zinc-500">
+        <Text
+          variant="small"
+          as="p"
+          tone="muted"
+          unmask={false}
+          className="mt-1.5 line-clamp-2 pl-9"
+        >
           {response}
-        </p>
+        </Text>
       )}
       {/* Keyed to the FROZEN status on purpose: once mounted for a running
           output, the live view stays up after completion showing the final

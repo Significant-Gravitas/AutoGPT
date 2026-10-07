@@ -11,6 +11,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { CARD, HALF, RESULT_GRID } from "./ResultCards";
 import {
   formatBytes,
@@ -49,13 +50,25 @@ export function FeatureRequestList({ results }: ResultsProps) {
           className={CARD + " flex items-start gap-2.5 p-2.5"}
         >
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-medium text-zinc-800">
+            <Text
+              variant="body-medium"
+              as="p"
+              tone="primary"
+              unmask={false}
+              className="truncate text-[13px]"
+            >
               {str(request, "title") ?? inline(request)}
-            </p>
+            </Text>
             {str(request, "description") && (
-              <p className="truncate text-xs text-zinc-500">
+              <Text
+                variant="small"
+                as="p"
+                tone="muted"
+                unmask={false}
+                className="truncate"
+              >
                 {str(request, "description")}
-              </p>
+              </Text>
             )}
           </div>
           {str(request, "identifier") && (
@@ -84,14 +97,26 @@ export function ScheduleList({ schedules }: SchedulesProps) {
               <Icon icon={ClockIcon} size={15} className="text-zinc-600" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium text-zinc-800">
+              <Text
+                variant="body-medium"
+                as="p"
+                tone="primary"
+                unmask={false}
+                className="truncate text-[13px]"
+              >
                 {str(schedule, "name", "message") ?? inline(schedule)}
-              </p>
+              </Text>
               {next && (
-                <p className="flex items-center gap-1 text-xs text-zinc-500">
+                <Text
+                  variant="small"
+                  as="p"
+                  tone="muted"
+                  unmask={false}
+                  className="flex items-center gap-1"
+                >
                   {recurring && <Icon icon={RepeatIcon} size={11} />}
                   {formatWhen(next)}
-                </p>
+                </Text>
               )}
             </div>
             {str(schedule, "kind") && (
@@ -114,16 +139,27 @@ export function ScheduleCreatedCard({ output }: OutputProps) {
         <Icon icon={ClockIcon} size={15} className="text-zinc-600" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-zinc-800">
+        <Text
+          variant="body-medium"
+          as="p"
+          tone="primary"
+          className="truncate text-[13px]"
+        >
           Follow-up scheduled
-        </p>
+        </Text>
         {next && (
-          <p className="flex items-center gap-1 text-xs text-zinc-500">
+          <Text
+            variant="small"
+            as="p"
+            tone="muted"
+            unmask={false}
+            className="flex items-center gap-1"
+          >
             {output.is_recurring === true && (
               <Icon icon={RepeatIcon} size={11} />
             )}
             {formatWhen(next)}
-          </p>
+          </Text>
         )}
       </div>
     </div>
@@ -144,9 +180,15 @@ export function FolderList({ folders }: FoldersProps) {
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
               <Icon icon={FolderIcon} size={15} className="text-zinc-600" />
             </div>
-            <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
+            <Text
+              variant="body-medium"
+              as="p"
+              tone="primary"
+              unmask={false}
+              className="min-w-0 flex-1 truncate text-[13px]"
+            >
               {str(folder, "name") ?? inline(folder)}
-            </p>
+            </Text>
             {count !== null && (
               <span className="shrink-0 text-xs text-zinc-400">
                 {count} agent{count === 1 ? "" : "s"}
@@ -177,9 +219,15 @@ export function FileList({ files }: FilesProps) {
               size={14}
               className="shrink-0 text-zinc-400"
             />
-            <p className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-700">
+            <Text
+              variant="small"
+              as="p"
+              tone="secondary"
+              unmask={false}
+              className="min-w-0 flex-1 truncate font-mono"
+            >
               {str(file, "path", "name") ?? inline(file)}
-            </p>
+            </Text>
             {size !== null && (
               <span className="shrink-0 text-xs text-zinc-400">
                 {formatBytes(size)}
@@ -208,9 +256,15 @@ export function DocsList({ results }: ResultsProps) {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <p className="min-w-0 truncate text-[13px] font-medium text-zinc-800">
+                <Text
+                  variant="body-medium"
+                  as="p"
+                  tone="primary"
+                  unmask={false}
+                  className="min-w-0 truncate text-[13px]"
+                >
                   {str(doc, "title", "path") ?? inline(doc)}
-                </p>
+                </Text>
                 {section && (
                   <span className="shrink-0 truncate text-[11px] text-zinc-400">
                     {section}
@@ -218,9 +272,15 @@ export function DocsList({ results }: ResultsProps) {
                 )}
               </div>
               {str(doc, "snippet") && (
-                <p className="truncate text-xs text-zinc-500">
+                <Text
+                  variant="small"
+                  as="p"
+                  tone="muted"
+                  unmask={false}
+                  className="truncate"
+                >
                   {str(doc, "snippet")}
-                </p>
+                </Text>
               )}
             </div>
             {docUrl && (

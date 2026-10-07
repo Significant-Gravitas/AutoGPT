@@ -3,6 +3,7 @@
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore } from "../../store";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
@@ -39,7 +40,14 @@ function ReasoningStream({ text, live }: ReasoningStreamProps) {
           : "max-h-64 overflow-y-auto scrollbar-none",
       )}
     >
-      <p className="whitespace-pre-wrap">{text}</p>
+      <Text
+        variant="body"
+        as="p"
+        unmask={false}
+        className="whitespace-pre-wrap text-[13px] leading-5 text-inherit"
+      >
+        {text}
+      </Text>
     </div>
   );
 }
@@ -199,9 +207,14 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           </div>
         )}
         {row.detail && (
-          <p className="animate-fade-in truncate text-xs text-red-400 motion-reduce:animate-none">
+          <Text
+            variant="small"
+            as="p"
+            unmask={false}
+            className="animate-fade-in truncate text-red-400 motion-reduce:animate-none"
+          >
             {row.detail}
-          </p>
+          </Text>
         )}
         <div className={ACCORDION_PANEL + " " + accordionState(showContent)}>
           <div

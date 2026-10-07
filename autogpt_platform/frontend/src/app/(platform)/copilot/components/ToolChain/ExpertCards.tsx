@@ -16,6 +16,7 @@ import { type ReactNode, useContext, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
@@ -58,6 +59,8 @@ const SHELL =
 const HEADER = "flex items-center gap-2.5 border-b border-zinc-100 px-4 py-3";
 const FOOTER =
   "flex items-center justify-between gap-2 border-t border-zinc-100 px-4 py-3";
+const PAGER_ARROW =
+  "size-6 rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 disabled:opacity-35";
 
 type ExpertKind = "hire" | "raise" | "update";
 
@@ -229,10 +232,26 @@ export function ExpertChangeCard({
             size={32}
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-medium text-zinc-800">
+            <Text
+              variant="body-medium"
+              as="p"
+              tone="primary"
+              unmask={false}
+              className="truncate text-[13px]"
+            >
               {name}
-            </p>
-            {role && <p className="truncate text-xs text-zinc-400">{role}</p>}
+            </Text>
+            {role && (
+              <Text
+                variant="small"
+                as="p"
+                tone="muted"
+                unmask={false}
+                className="truncate"
+              >
+                {role}
+              </Text>
+            )}
           </div>
           {showDetails && (
             <Button
@@ -241,17 +260,21 @@ export function ExpertChangeCard({
               aria-expanded={panelAvailable ? undefined : showCharter}
               onClick={handleShowMore}
               leftIcon={<Icon icon={InformationCircleIcon} size={16} />}
-              className="h-8 !min-w-0 shrink-0 px-3"
+              className="h-8 min-w-0 shrink-0 px-3"
             >
               {showCharter ? "Hide details" : "Details"}
             </Button>
           )}
         </div>
         {summary && (
-          <p
+          <Text
             key={`${artifactId ?? name}-summary`}
+            variant="body"
+            as="p"
+            tone="muted"
+            unmask={false}
             className={cn(
-              "pl-[42px] pt-2 text-sm text-zinc-500",
+              "pl-[42px] pt-2",
               stepDirection &&
                 "delay-75 duration-300 animate-in fade-in fill-mode-both motion-reduce:animate-none",
               stepDirection === "forward" && "slide-in-from-right-4",
@@ -259,15 +282,19 @@ export function ExpertChangeCard({
             )}
           >
             {summary}
-          </p>
+          </Text>
         )}
         {hasCharter && !panelAvailable && showCharter && (
           <div className="flex flex-col gap-1 pl-[42px] pt-1.5">
             {tagline && about && (
-              <p className="text-sm text-zinc-500">{about}</p>
+              <Text variant="body" as="p" tone="muted" unmask={false}>
+                {about}
+              </Text>
             )}
             {boundaries && (
-              <p className="text-sm text-zinc-400">Stops at: {boundaries}</p>
+              <Text variant="body" as="p" tone="muted" unmask={false}>
+                Stops at: {boundaries}
+              </Text>
             )}
           </div>
         )}
@@ -282,7 +309,7 @@ export function ExpertChangeCard({
                 size="small"
                 onClick={onUndo}
                 leftIcon={<Icon icon={UndoIcon} size={14} />}
-                className="h-8 !min-w-0 px-3"
+                className="h-8 min-w-0 px-3"
               >
                 {decision === "approved" ? "Unapprove" : "Undo decline"}
               </Button>
@@ -293,7 +320,7 @@ export function ExpertChangeCard({
                   variant="ghost"
                   size="small"
                   onClick={() => onDecide("declined")}
-                  className="h-8 !min-w-0 px-3"
+                  className="h-8 min-w-0 px-3"
                 >
                   Decline
                 </Button>
@@ -301,7 +328,7 @@ export function ExpertChangeCard({
                   variant="primary"
                   size="small"
                   onClick={() => onDecide("approved")}
-                  className="h-8 !min-w-0 px-3"
+                  className="h-8 min-w-0 px-3"
                 >
                   Approve
                 </Button>
@@ -474,15 +501,18 @@ export function ExpertChangeGroup({
 
   const pager = visible.length > 1 && (
     <div className="flex items-center gap-2">
-      <button
+      <Button
         type="button"
+        variant="toggle"
+        size="icon-xs"
         aria-label="Previous expert"
+        withTooltip={false}
         disabled={current === 0}
         onClick={() => goTo(current - 1)}
-        className="flex size-6 items-center justify-center rounded-lg text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-35"
+        className={PAGER_ARROW}
       >
         <Icon icon={ArrowLeft01Icon} size={14} />
-      </button>
+      </Button>
       <span className="flex items-center gap-1.5">
         {visible.map(({ toolCallId }, i) => (
           <button
@@ -506,15 +536,18 @@ export function ExpertChangeGroup({
           />
         ))}
       </span>
-      <button
+      <Button
         type="button"
+        variant="toggle"
+        size="icon-xs"
         aria-label="Next expert"
+        withTooltip={false}
         disabled={isLast}
         onClick={() => goTo(current + 1)}
-        className="flex size-6 items-center justify-center rounded-lg text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-35"
+        className={PAGER_ARROW}
       >
         <Icon icon={ArrowRight01Icon} size={14} />
-      </button>
+      </Button>
       <span className="text-xs text-zinc-400">
         {current + 1} of {visible.length}
       </span>

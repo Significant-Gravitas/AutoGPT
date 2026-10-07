@@ -8,6 +8,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { safeHostname } from "./resultHelpers";
 
@@ -85,9 +86,15 @@ export function StatusCard({ label, ok }: StatusCardProps) {
           className="shrink-0 text-red-400"
         />
       )}
-      <p className="min-w-0 truncate text-[13px] font-medium text-zinc-700">
+      <Text
+        variant="body-medium"
+        as="p"
+        tone="secondary"
+        unmask={false}
+        className="min-w-0 truncate text-[13px]"
+      >
         {label}
-      </p>
+      </Text>
     </div>
   );
 }
@@ -106,9 +113,15 @@ export function StatCard({ value, label }: StatCardProps) {
 export function ChipList({ label, items }: ChipListProps) {
   return (
     <div className={`${CARD} ${HALF} p-2.5`}>
-      <p className="mb-1.5 text-[11px] uppercase tracking-wide text-zinc-400">
+      <Text
+        variant="small"
+        as="p"
+        tone="muted"
+        unmask={false}
+        className="mb-1.5 text-[11px] uppercase tracking-wide"
+      >
         {label}
-      </p>
+      </Text>
       <div className="flex flex-wrap gap-1">
         {Array.from(new Set(items)).map((item) => (
           <span
@@ -139,10 +152,24 @@ export function LinkCard({ url, title, meta, secret }: LinkCardProps) {
         <Icon icon={GlobeIcon} size={15} className="shrink-0 text-zinc-400" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-zinc-800">
+        <Text
+          variant="body-medium"
+          as="p"
+          tone="primary"
+          unmask={false}
+          className="truncate text-[13px]"
+        >
           {title ?? domain}
-        </p>
-        <p className="truncate text-xs text-zinc-500">{title ? domain : url}</p>
+        </Text>
+        <Text
+          variant="small"
+          as="p"
+          tone="muted"
+          unmask={false}
+          className="truncate"
+        >
+          {title ? domain : url}
+        </Text>
       </div>
       {meta && <span className="shrink-0 text-xs text-zinc-400">{meta}</span>}
       <Link

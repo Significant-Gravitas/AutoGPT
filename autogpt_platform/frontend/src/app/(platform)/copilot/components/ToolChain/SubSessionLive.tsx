@@ -6,6 +6,7 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
@@ -72,9 +73,15 @@ export function SubSessionLive({ subSessionId, active }: Props) {
     <div className="mt-2 border-t border-zinc-100 pl-1 pt-2.5">
       <LiveSteps rows={rows} />
       {latestText && (
-        <p className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-zinc-600">
+        <Text
+          variant="body"
+          as="p"
+          tone="secondary"
+          unmask={false}
+          className="mt-1.5 line-clamp-3 leading-relaxed"
+        >
           {latestText}
-        </p>
+        </Text>
       )}
       {notice && <LiveNotice text={notice} subSessionId={subSessionId} />}
     </div>
@@ -139,7 +146,13 @@ function LiveNotice({
   subSessionId: string;
 }) {
   return (
-    <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">
+    <Text
+      variant="small"
+      as="p"
+      tone="muted"
+      unmask={false}
+      className="mt-1.5 flex flex-wrap items-center gap-1.5"
+    >
       {text}
       <Link
         href={`/copilot?sessionId=${subSessionId}`}
@@ -147,7 +160,7 @@ function LiveNotice({
       >
         Open sub-session
       </Link>
-    </p>
+    </Text>
   );
 }
 
@@ -162,7 +175,7 @@ function LiveSteps({ rows }: { rows: ChainRow[] }) {
           </div>
           {!isLastRow && <div className="w-px flex-1 bg-zinc-200" />}
         </div>
-        <div className={cn("min-w-0 flex-1 pt-[2px]", !isLastRow && "pb-2.5")}>
+        <div className={cn("min-w-0 flex-1 pt-0.5", !isLastRow && "pb-2.5")}>
           <SwapText
             text={row.text}
             shimmer={row.state === "running"}
@@ -289,14 +302,20 @@ export function SubSessionPendingCard({
           color={expert?.color}
           size={28}
         />
-        <p className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-800">
+        <Text
+          variant="body-medium"
+          as="p"
+          tone="primary"
+          unmask={false}
+          className="min-w-0 flex-1 truncate"
+        >
           {expert?.name ?? "Expert"}
           {expert?.role && (
             <span className="ml-1.5 font-normal text-zinc-400">
               {expert.role}
             </span>
           )}
-        </p>
+        </Text>
         {/* Once the poll dies the card no longer knows the run is going —
             keeping the spinner up would be a guess dressed as a fact. */}
         <StatusPill
@@ -314,9 +333,15 @@ export function SubSessionPendingCard({
         )}
       </div>
       {!minimal && prompt && (
-        <p className="mt-1.5 line-clamp-2 pl-9 text-sm text-zinc-500">
+        <Text
+          variant="body"
+          as="p"
+          tone="muted"
+          unmask={false}
+          className="mt-1.5 line-clamp-2 pl-9"
+        >
           {prompt}
-        </p>
+        </Text>
       )}
       {!minimal && liveSessionId && (
         <SubSessionLive subSessionId={liveSessionId} active />

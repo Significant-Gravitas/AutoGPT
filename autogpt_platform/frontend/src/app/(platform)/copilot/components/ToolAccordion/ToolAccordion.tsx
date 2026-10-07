@@ -6,6 +6,7 @@ import { useId } from "react";
 import { useToolAccordion } from "./useToolAccordion";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   icon: React.ReactNode;
@@ -58,16 +59,24 @@ export function ToolAccordion({
             {icon}
           </span>
           <div className="min-w-0">
-            <p
-              className={cn(
-                "truncate text-sm font-medium text-zinc-800",
-                titleClassName,
-              )}
+            <Text
+              variant="body-medium"
+              as="p"
+              tone="primary"
+              unmask={false}
+              className={cn("truncate", titleClassName)}
             >
               {title}
-            </p>
+            </Text>
             {description && (
-              <p className="truncate text-xs text-slate-800">{description}</p>
+              <Text
+                variant="small"
+                as="p"
+                unmask={false}
+                className="truncate text-slate-800"
+              >
+                {description}
+              </Text>
             )}
           </div>
         </div>
@@ -95,9 +104,7 @@ export function ToolAccordion({
             className="overflow-hidden"
             style={{ willChange: "height, opacity, filter" }}
           >
-            <div className="max-h-[24rem] overflow-y-auto pb-2 pt-3">
-              {children}
-            </div>
+            <div className="max-h-96 overflow-y-auto pb-2 pt-3">{children}</div>
           </motion.div>
         )}
       </AnimatePresence>
