@@ -24,9 +24,9 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
         </Text>
         <span
           className={cn(
-            "relative isolate flex shrink-0 items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-700",
+            "relative isolate flex shrink-0 items-center gap-2 rounded-full bg-green-100 px-3 py-1.5 text-sm font-semibold text-green-700",
             !runCompleted &&
-              "shadow-[0_0_14px_-2px_rgba(16,185,129,0.65),0_0_28px_-4px_rgba(16,185,129,0.5)] ring-1 ring-emerald-300/70",
+              "shadow-[0_0_14px_-2px_rgba(16,185,129,0.65),0_0_28px_-4px_rgba(16,185,129,0.5)] ring-1 ring-green-300/70",
           )}
         >
           {runCompleted ? (
@@ -39,11 +39,11 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
               {/* Breathing halo behind the badge while the run is live. */}
               <span
                 aria-hidden="true"
-                className="absolute -inset-1.5 -z-10 animate-pulse rounded-full bg-emerald-400/50 blur-md"
+                className="absolute -inset-1.5 -z-10 animate-pulse rounded-full bg-green-400/50 blur-md"
               />
               <span className="relative flex size-2 shrink-0">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-                <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
+                <span className="relative inline-flex size-2 rounded-full bg-green-500" />
               </span>
               Running
             </>

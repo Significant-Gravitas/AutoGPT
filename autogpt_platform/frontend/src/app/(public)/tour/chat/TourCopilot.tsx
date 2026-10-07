@@ -30,7 +30,7 @@ function TourBackdrop() {
       dotSize={1}
       opacity={0.2}
       isStatic
-      className="pointer-events-none absolute inset-0 !bg-transparent [&_canvas]:opacity-70"
+      className="pointer-events-none absolute inset-0 bg-transparent [&_canvas]:opacity-70"
     />
   );
 }
@@ -99,7 +99,7 @@ export function TourCopilot() {
       className="h-dvh min-h-0"
     >
       <TourSidebar />
-      <SidebarInset className="min-h-0 overflow-hidden bg-[#fafafa]">
+      <SidebarInset className="min-h-0 overflow-hidden bg-background">
         <div className="relative flex h-full min-h-0 w-full">
           {chatColumn}
           {artifactPanels}

@@ -43,7 +43,7 @@ export function TourArtifactCard({ artifact }: Props) {
               icon={ArrowRight02Icon}
               className="size-4 shrink-0 text-zinc-500"
             />
-            <span className="text-emerald-700">{artifact.diff.to}</span>
+            <span className="text-green-700">{artifact.diff.to}</span>
           </div>
           <span className="text-sm text-zinc-500">{artifact.diff.delta}</span>
         </div>

@@ -23,10 +23,10 @@ export function TourChatHeader({ scenarioLabel, scenarioIcon }: Props) {
         <div className="md:hidden">
           <SidebarTrigger />
         </div>
-        <Icon icon={scenarioIcon} className="size-4 shrink-0 text-violet-600" />
+        <Icon icon={scenarioIcon} className="size-4 shrink-0 text-purple-600" />
         <Text
           variant="body-medium"
-          className="truncate bg-gradient-to-r from-violet-600 to-indigo-500 bg-clip-text text-transparent"
+          className="truncate bg-gradient-to-r from-purple-600 to-purple-400 bg-clip-text text-transparent"
         >
           {scenarioLabel}
         </Text>
@@ -37,7 +37,7 @@ export function TourChatHeader({ scenarioLabel, scenarioIcon }: Props) {
         onClick={handleShare}
         leftIcon={
           isCopied ? (
-            <Icon icon={Tick02Icon} className="size-4 text-emerald-600" />
+            <Icon icon={Tick02Icon} className="size-4 text-green-600" />
           ) : (
             <Icon icon={Link02Icon} className="size-4" />
           )

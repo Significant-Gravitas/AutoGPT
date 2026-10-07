@@ -18,9 +18,9 @@ export function TourEndCard() {
   return (
     <div className="mx-auto w-full max-w-md rounded-2xl border border-zinc-200/70 bg-white p-5 shadow-sm duration-500 animate-in fade-in slide-in-from-bottom-2 sm:p-6">
       <div className="flex flex-col items-center gap-2 text-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1">
-          <Icon icon={Tick02Icon} className="size-3.5 text-emerald-700" />
-          <Text variant="small-medium" className="!text-emerald-700">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1">
+          <Icon icon={Tick02Icon} className="size-3.5 text-green-700" />
+          <Text variant="small-medium" className="text-green-700">
             Agent built &amp; first run complete — {TOUR_DEMO_CLAIM_SECONDS}{" "}
             seconds
           </Text>
