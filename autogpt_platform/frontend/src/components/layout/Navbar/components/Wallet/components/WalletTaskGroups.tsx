@@ -1,10 +1,15 @@
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
-import { BadgeQuestionMark, Check, ChevronDown } from "lucide-react";
 import confetti, { type Options as ConfettiOptions } from "canvas-confetti";
 import { AGPT_CONFETTI_COLORS } from "@/components/molecules/Confetti/Confetti";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Task, TaskGroup } from "../helpers";
+import {
+  ArrowDown01Icon,
+  BadgeQuestionMarkIcon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   groups: TaskGroup[];
@@ -197,14 +202,15 @@ export function TaskGroups({ groups }: Props) {
                   Done
                 </div>
               ) : (
-                <div className="text-xs font-medium leading-tight text-violet-600">
+                <div className="text-xs font-medium leading-tight text-purple-600">
                   $
                   {group.tasks
                     .reduce((sum, task) => sum + task.amount, 0)
                     .toFixed(2)}
                 </div>
               )}
-              <ChevronDown
+              <Icon
+                icon={ArrowDown01Icon}
                 className={`h-5 w-5 text-slate-950 transition-transform duration-300 ease-in-out ${openGroups[group.name] ? "rotate-180" : ""}`}
               />
             </div>
@@ -232,12 +238,15 @@ export function TaskGroups({ groups }: Props) {
                       className={cn(
                         "flex h-4 w-4 items-center justify-center rounded-full border",
                         isTaskCompleted(task)
-                          ? "border-emerald-600"
+                          ? "border-green-600"
                           : "border-zinc-600",
                       )}
                     >
                       {isTaskCompleted(task) && (
-                        <Check className="h-3 w-3 text-emerald-600" />
+                        <Icon
+                          icon={Tick02Icon}
+                          className="h-3 w-3 text-green-600"
+                        />
                       )}
                     </div>
                     <span
@@ -268,7 +277,7 @@ export function TaskGroups({ groups }: Props) {
                   <div className="mb-1 flex w-full items-center justify-between pl-6 pr-3">
                     <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100">
                       <div
-                        className="h-full bg-violet-400 transition-all duration-500 ease-in-out"
+                        className="h-full bg-purple-400 transition-all duration-500 ease-in-out"
                         style={{
                           width: `${Math.min(
                             100,
@@ -353,7 +362,7 @@ export function TaskGroups({ groups }: Props) {
               {/* Question mark and rectangle */}
               <div className="flex items-center gap-2">
                 <div className="flex h-4 w-4 items-center justify-center">
-                  <BadgeQuestionMark />
+                  <Icon icon={BadgeQuestionMarkIcon} size={24} />
                 </div>
                 <div className="h-4 w-64 rounded-full bg-zinc-100" />
               </div>
@@ -364,7 +373,7 @@ export function TaskGroups({ groups }: Props) {
               {/* Question mark and rectangle */}
               <div className="flex items-center gap-2">
                 <div className="flex h-4 w-4 items-center justify-center">
-                  <BadgeQuestionMark />
+                  <Icon icon={BadgeQuestionMarkIcon} size={24} />
                 </div>
                 <div className="h-4 w-64 rounded-full bg-zinc-100" />
               </div>

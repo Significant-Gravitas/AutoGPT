@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { PopoverClose } from "@radix-ui/react-popover";
@@ -31,8 +32,8 @@ export function WalletFullPanel({ groups, formattedCredits }: Props) {
             subscription and is not usable for plan fees.
           </span>
         </div>
-        <div className="flex shrink-0 items-center text-sm text-violet-700">
-          <div className="rounded-lg bg-violet-100 px-3 py-2">
+        <div className="flex shrink-0 items-center text-sm text-purple-700">
+          <div className="rounded-lg bg-purple-100 px-3 py-2">
             Earn credits{" "}
             <span className="font-semibold">{formattedCredits}</span>
           </div>
@@ -48,9 +49,9 @@ export function WalletFullPanel({ groups, formattedCredits }: Props) {
         {/* Top ups */}
         {isPaymentEnabled && <WalletRefill />}
         {/* Tasks */}
-        <p className="mx-1 my-3 font-sans text-xs font-normal text-zinc-400">
+        <Text variant="small" tone="muted" className="mx-1 my-3">
           Complete the following tasks to earn more credits!
-        </p>
+        </Text>
         <TaskGroups groups={groups} />
       </ScrollArea>
     </>

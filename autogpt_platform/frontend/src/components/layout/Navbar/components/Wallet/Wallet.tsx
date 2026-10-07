@@ -4,7 +4,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
+} from "@/components/molecules/Popover/Popover";
 import { Text } from "@/components/atoms/Text/Text";
 import { TopUpDialog } from "@/components/layout/TopUpPrompt/TopUpDialog/TopUpDialog";
 import { cn } from "@/lib/utils";
@@ -75,10 +75,10 @@ export function Wallet({ compact = false }: Props) {
                 {!compact &&
                   completedCount !== null &&
                   completedCount < totalCount && (
-                    <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
+                    <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-purple-600"></span>
                   )}
                 {!compact && (
-                  <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
+                  <div className="absolute -bottom-10 left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
                     <Text variant="body-medium">
                       {completedCount} of {totalCount} rewards claimed
                     </Text>
@@ -88,7 +88,7 @@ export function Wallet({ compact = false }: Props) {
             </button>
             <div
               className={cn(
-                "pointer-events-none absolute inset-0 bg-violet-400 duration-2000 ease-in-out",
+                "pointer-events-none absolute inset-0 bg-purple-400 duration-2000 ease-in-out",
                 compact ? "rounded-lg" : "rounded-md",
                 flash ? "opacity-50 duration-0" : "opacity-0",
               )}

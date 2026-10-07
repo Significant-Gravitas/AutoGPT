@@ -7,6 +7,7 @@ import {
 } from "@/components/__legacy__/ui/tabs";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   useToast,
   useToastOnFail,
@@ -83,12 +84,12 @@ export function WalletRefill() {
 
   return (
     <div className="mx-1 border-b border-zinc-300">
-      <p className="mx-0 mt-4 font-sans text-xs font-medium text-violet-700">
+      <Text variant="small-medium" className="mx-0 mt-4 text-purple-700">
         Add credits to your balance
-      </p>
-      <p className="mx-0 my-1 font-sans text-xs font-normal text-zinc-500">
+      </Text>
+      <Text variant="small" tone="muted" className="mx-0 my-1">
         Choose a one-time top-up or set up automatic refills
-      </p>
+      </Text>
       <Tabs
         defaultValue="top-up"
         className="mb-6 mt-4 flex w-full flex-col items-center"

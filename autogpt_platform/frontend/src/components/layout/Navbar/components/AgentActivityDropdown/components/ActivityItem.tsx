@@ -25,7 +25,7 @@ function ActivityNavIndicator() {
     return (
       <LoadingSpinner
         size="small"
-        className="shrink-0 text-neutral-400"
+        className="shrink-0 text-zinc-400"
         aria-hidden="true"
       />
     );
@@ -34,7 +34,7 @@ function ActivityNavIndicator() {
     <Icon
       icon={ArrowUpRight01Icon}
       size={16}
-      className="shrink-0 text-neutral-400"
+      className="shrink-0 text-zinc-400"
       aria-hidden="true"
     />
   );
@@ -157,7 +157,9 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
         {getStatusIcon()}
         <Text
           variant={newLayout ? "small-medium" : "body-medium"}
-          className="max-w-44 truncate text-gray-900"
+          tone="primary"
+          className="max-w-44 truncate"
+          unmask={false}
         >
           {execution.agent_name}
         </Text>
@@ -169,7 +171,7 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
           <Text
             key={index}
             variant="small"
-            className={index === 0 ? "!text-zinc-600" : "!text-zinc-500"}
+            tone={index === 0 ? "secondary" : "muted"}
           >
             {line}
           </Text>
@@ -181,7 +183,7 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
   if (withExecutionLink) {
     return newLayout ? (
       <Link
-        className="flex cursor-pointer items-center justify-between gap-2 rounded-xl px-2 py-3 transition-colors hover:bg-bgLightGrey"
+        className="flex cursor-pointer items-center justify-between gap-2 rounded-xl px-2 py-3 transition-colors hover:bg-zinc-100"
         href={linkUrl}
         role="button"
       >
@@ -190,7 +192,7 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
       </Link>
     ) : (
       <Link
-        className="block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-bgLightGrey"
+        className="block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-zinc-100"
         href={linkUrl}
         role="button"
       >

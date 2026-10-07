@@ -3,7 +3,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { usePathname, useRouter } from "next/navigation";
 import { Login03Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function LoginButton() {
   const router = useRouter();
@@ -20,7 +19,7 @@ export function LoginButton() {
     <Button
       onClick={handleLogin}
       size="small"
-      leftIcon={<Icon icon={Login03Icon} className="size-4" />}
+      leadingIcon={Login03Icon}
       variant="secondary"
     >
       Log In

@@ -1,8 +1,7 @@
 "use client";
 
-import { IconType } from "@/components/__legacy__/ui/icons";
 import { useRouter } from "next/navigation";
-import { getAccountMenuOptionIcon } from "../../../helpers";
+import { getAccountMenuOptionIcon, IconType } from "../../../helpers";
 
 interface Props {
   icon: IconType;
@@ -18,10 +17,10 @@ export function MobileNavbarLogoutItem({ icon, text }: Props) {
 
   return (
     <button className="w-full" onClick={handleLogout} type="button">
-      <div className="inline-flex w-full items-center justify-start gap-4 py-2 hover:rounded hover:bg-[#e0e0e0]">
+      <div className="inline-flex w-full items-center justify-start gap-4 py-2 hover:rounded hover:bg-zinc-200">
         {getAccountMenuOptionIcon(icon)}
         <div className="relative">
-          <div className="font-sans text-base font-normal leading-7 text-[#474747]">
+          <div className="font-sans text-base font-normal leading-7 text-zinc-800">
             {text}
           </div>
         </div>
