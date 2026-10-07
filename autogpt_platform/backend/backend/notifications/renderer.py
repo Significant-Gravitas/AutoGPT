@@ -138,7 +138,7 @@ def _build_context(
     asset_url = urlsplit(context["assets"])
     context["otto_asset_url"] = (
         f"{asset_url.scheme}://{asset_url.netloc}"
-        "/autogpt-characters/v1.1/otto/neutral/256.png"
+        "/autogpt-characters/v1.1/otto/neutral-transparent/256.png"
     )
     if "plan" in context:
         plan = context["plan"]
