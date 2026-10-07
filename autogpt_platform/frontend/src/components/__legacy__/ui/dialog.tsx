@@ -8,8 +8,6 @@ import { cn } from "@/lib/utils";
 
 const Dialog = DialogPrimitive.Root;
 
-const DialogTrigger = DialogPrimitive.Trigger;
-
 const DialogPortal = DialogPrimitive.Portal;
 
 /**
@@ -177,7 +175,6 @@ export {
   Dialog,
   DialogPortal,
   DialogOverlay,
-  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogFooter,

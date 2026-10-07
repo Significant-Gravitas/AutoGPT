@@ -180,22 +180,6 @@ export const IconRefresh = createIcon((props) => (
  * // With custom size and onClick handler
  * <IconKey size="sm" onClick={handleOnClick} />
  */
-export const IconKey = createIcon((props) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-label="Key Icon"
-    {...props}
-  >
-    <path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" />
-    <circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />
-  </svg>
-));
 
 /**
  * User icon component.
@@ -216,22 +200,6 @@ export const IconKey = createIcon((props) => (
  * // With custom size and onClick handler
  * <IconUser size="sm" onClick={handleOnClick} />
  */
-export const IconUser = createIcon((props) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-label="User Icon"
-    {...props}
-  >
-    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-    <circle cx="12" cy="7" r="4" />
-  </svg>
-));
 
 /**
  * Edit icon component.
@@ -527,25 +495,6 @@ export const IconSliders = createIcon((props) => (
  * // With custom color and size
  * <IconMore className="text-neutral-800" size="lg" />
  */
-export const IconMore = createIcon((props) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="20"
-    height="20"
-    viewBox="0 0 20 20"
-    fill="currentColor"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-label="More Icon"
-    {...props}
-  >
-    <path d="M10 10.8333C10.4603 10.8333 10.8334 10.4602 10.8334 9.99999C10.8334 9.53975 10.4603 9.16666 10 9.16666C9.53978 9.16666 9.16669 9.53975 9.16669 9.99999C9.16669 10.4602 9.53978 10.8333 10 10.8333Z" />
-    <path d="M10 4.99999C10.4603 4.99999 10.8334 4.6269 10.8334 4.16666C10.8334 3.70642 10.4603 3.33333 10 3.33333C9.53978 3.33333 9.16669 3.70642 9.16669 4.16666C9.16669 4.6269 9.53978 4.99999 10 4.99999Z" />
-    <path d="M10 16.6667C10.4603 16.6667 10.8334 16.2936 10.8334 15.8333C10.8334 15.3731 10.4603 15 10 15C9.53978 15 9.16669 15.3731 9.16669 15.8333C9.16669 16.2936 9.53978 16.6667 10 16.6667Z" />
-  </svg>
-));
 
 /**
  * AutoGPT Logo icon component.
