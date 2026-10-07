@@ -10,7 +10,7 @@ import {
 import { DayPicker, DropdownProps } from "react-day-picker";
 
 import { cn } from "@/lib/utils";
-import { buttonVariants } from "@/components/__legacy__/ui/button";
+import { extendedButtonVariants } from "@/components/atoms/Button/helpers";
 import {
   Select,
   SelectContent,
@@ -56,8 +56,8 @@ function Calendar({
             : "has-aria-[selected]:rounded-md",
         ),
         day_button: cn(
-          buttonVariants({ variant: "ghost" }),
-          "h-8 w-8 p-0 font-normal aria-selected:opacity-100",
+          extendedButtonVariants({ variant: "ghost", size: "icon-sm" }),
+          "font-normal aria-selected:opacity-100",
         ),
         range_start: "range-start",
         range_end: "range-end",

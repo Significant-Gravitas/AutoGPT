@@ -1,7 +1,7 @@
 "use client";
 
 import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Table,
   TableBody,
@@ -74,7 +74,9 @@ export function APIKeysSection() {
                         <Button
                           data-testid="api-key-actions"
                           variant="ghost"
-                          size="sm"
+                          size="icon-sm"
+                          withTooltip={false}
+                          aria-label="API key actions"
                         >
                           <Icon icon={MoreVerticalIcon} size={16} />
                         </Button>

@@ -7,7 +7,7 @@ import useEmblaCarousel, {
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import * as React from "react";
 
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import { isKey } from "@/lib/keyboard";
 
@@ -198,82 +198,70 @@ CarouselItem.displayName = "CarouselItem";
 
 const CarouselPrevious = React.forwardRef<
   HTMLButtonElement,
-  React.ComponentProps<typeof Button> & { afterClick?: () => void }
->(
-  (
-    { className, afterClick, variant = "outline", size = "icon", ...props },
-    ref,
-  ) => {
-    const { orientation, scrollPrev, canScrollPrev } = useCarousel();
+  { className?: string; afterClick?: () => void }
+>(({ className, afterClick }, ref) => {
+  const { orientation, scrollPrev, canScrollPrev } = useCarousel();
 
-    return (
-      <Button
-        ref={ref}
-        variant={variant}
-        size={size}
-        className={cn(
-          "absolute h-[52px] w-[52px] rounded-full",
-          orientation === "horizontal"
-            ? "top-0 right-20"
-            : "-top-12 left-1/2 -translate-x-1/2 rotate-90",
-          className,
-        )}
-        disabled={!canScrollPrev}
-        onClick={() => {
-          scrollPrev();
-          if (afterClick) {
-            afterClick();
-          }
-        }}
-        {...props}
-      >
-        <ChevronLeft className="h-8 w-8" strokeWidth={1.25} />
-        <span className="sr-only">Previous slide</span>
-      </Button>
-    );
-  },
-);
+  return (
+    <Button
+      ref={ref}
+      variant="outline"
+      size="icon-lg"
+      className={cn(
+        "absolute h-[52px] w-[52px] rounded-full",
+        orientation === "horizontal"
+          ? "top-0 right-20"
+          : "-top-12 left-1/2 -translate-x-1/2 rotate-90",
+        className,
+      )}
+      disabled={!canScrollPrev}
+      onClick={() => {
+        scrollPrev();
+        if (afterClick) {
+          afterClick();
+        }
+      }}
+    >
+      <ChevronLeft className="h-8 w-8" strokeWidth={1.25} />
+      <span className="sr-only">Previous slide</span>
+    </Button>
+  );
+});
 CarouselPrevious.displayName = "CarouselPrevious";
 
 const CarouselNext = React.forwardRef<
   HTMLButtonElement,
-  React.ComponentProps<typeof Button> & { afterClick?: () => void }
->(
-  (
-    { className, afterClick, variant = "outline", size = "icon", ...props },
-    ref,
-  ) => {
-    const { orientation, scrollNext, canScrollNext } = useCarousel();
+  { className?: string; afterClick?: () => void }
+>(({ className, afterClick }, ref) => {
+  const { orientation, scrollNext, canScrollNext } = useCarousel();
 
-    const handleClick = () => {
-      scrollNext();
-      if (afterClick) {
-        afterClick();
-      }
-    };
+  const handleClick = () => {
+    scrollNext();
+    if (afterClick) {
+      afterClick();
+    }
+  };
 
-    return (
-      <Button
-        ref={ref}
-        variant={variant}
-        size={size}
-        className={cn(
-          "absolute h-[52px] w-[52px] rounded-full",
-          orientation === "horizontal"
-            ? "top-0 right-4"
-            : "-bottom-12 left-1/2 -translate-x-1/2 rotate-90",
-          className,
-        )}
-        disabled={!canScrollNext}
-        onClick={handleClick}
-        {...props}
-      >
-        <ChevronRight className="h-8 w-8" strokeWidth={1.25} />
-        <span className="sr-only">Next slide</span>
-      </Button>
-    );
-  },
-);
+  return (
+    <Button
+      ref={ref}
+      variant="outline"
+      size="icon-lg"
+      className={cn(
+        "absolute h-[52px] w-[52px] rounded-full",
+        orientation === "horizontal"
+          ? "top-0 right-4"
+          : "-bottom-12 left-1/2 -translate-x-1/2 rotate-90",
+        className,
+      )}
+      disabled={!canScrollNext}
+      onClick={handleClick}
+    >
+      <ChevronRight className="h-8 w-8" strokeWidth={1.25} />
+      <span className="sr-only">Next slide</span>
+    </Button>
+  );
+});
 CarouselNext.displayName = "CarouselNext";
 
 const CarouselIndicator = React.forwardRef<
