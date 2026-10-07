@@ -127,6 +127,7 @@ interface Connection {
   openedAt: number;
   lastFrameAt: number;
   frames: number;
+  entries: number;
   turnId: string | null;
   closedByClient: boolean;
   syntheticError: string | null;
@@ -407,6 +408,7 @@ export class TurnRuntime {
       openedAt: now,
       lastFrameAt: now,
       frames: 0,
+      entries: 0,
       turnId,
       closedByClient: false,
       syntheticError: null,
@@ -452,9 +454,14 @@ export class TurnRuntime {
       retired?.controller.abort();
       if (retired) retired.closedByClient = true;
     }
-    if (conn.frames === 1) this.resetFailures();
-    if (frame.kind === "entry") this.applyFrom(conn, frame.entry);
-    else if (frame.kind === "synthetic" && frame.chunk.type === "error") {
+    // Every response ends with [DONE]; only an entry or a heartbeat shows the
+    // route is following a running turn.
+    if (frame.kind === "entry" || frame.kind === "comment")
+      this.resetFailures();
+    if (frame.kind === "entry") {
+      conn.entries += 1;
+      this.applyFrom(conn, frame.entry);
+    } else if (frame.kind === "synthetic" && frame.chunk.type === "error") {
       conn.syntheticError = str(frame.chunk.errorText);
     }
     this.emit();
@@ -524,10 +531,22 @@ export class TurnRuntime {
       else this.retry(conn);
       return;
     }
-    // A clean close without the turn's finish is an expected cut (a proxy
-    // restart, the route's own error frame): resume at once.
-    if (end.kind === "closed" && conn.frames > 0) this.resume(seg);
+    // A clean close after entries but without the turn's finish is an expected
+    // cut (a proxy restart, the route's own error frame): resume at once.
+    if (end.kind === "closed" && conn.entries > 0) this.resume(seg);
+    else if (end.kind === "closed") void this.closedEmpty(seg.key, conn);
     else this.retry(conn);
+  }
+
+  // A read that yields no entry may be of a turn the server stopped running
+  // without storing its finish; resuming it again would loop.
+  private async closedEmpty(key: string, lost: Lost) {
+    const view = await this.recover(() => this.fetchView());
+    const seg = this.segmentByKey(key);
+    if (seg?.kind !== "turn" || seg.ended || seg.stopped || seg.frozen) return;
+    if (view && view.active_stream?.turn_id !== seg.log.turnId)
+      void this.expire(key, view);
+    else this.retry(lost);
   }
 
   /**
@@ -728,8 +747,8 @@ export class TurnRuntime {
 
   // The stream is gone: the DB view is the whole truth, and a turn that
   // stopped mid-part renders as interrupted.
-  private async expire(key: string) {
-    const view = await this.recover(() => this.fetchView());
+  private async expire(key: string, known: SessionView | null = null) {
+    const view = known ?? (await this.recover(() => this.fetchView()));
     const seg = this.segmentByKey(key);
     if (seg?.kind !== "turn") return;
     if (!view) {

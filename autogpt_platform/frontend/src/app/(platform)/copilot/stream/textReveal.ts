@@ -69,10 +69,12 @@ export class TextReveal {
   // the backlog per 10 ms, a whole word at least.
   private tick() {
     const open = openRows(this.segments());
+    let moved = false;
     for (const [key, shown] of this.shown) {
       const row = open.get(key);
       if (!row) {
         this.shown.delete(key);
+        moved = true;
         continue;
       }
       let next = shown;
@@ -82,10 +84,13 @@ export class TextReveal {
         const words = Math.max(1, Math.ceil(cuts.length / BACKLOG_DRAIN_TICKS));
         next += cuts[Math.min(words, cuts.length) - 1];
       }
-      if (next !== shown) this.shown.set(key, next);
+      if (next !== shown) {
+        this.shown.set(key, next);
+        moved = true;
+      }
     }
     if (this.shown.size === 0) this.dispose();
-    this.onTick();
+    if (moved) this.onTick();
   }
 }
 

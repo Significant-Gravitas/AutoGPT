@@ -121,10 +121,13 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
 
         sim.publish();
         // The reconcile adopts the prompt's persisted row, timestamp included.
-        await waitFor(
-          () => expect(screen.getByText(/Sep 30, 2026/)).toBeDefined(),
-          { timeout: 10_000 },
+        const stamp = new Date(String(turn.rows[0].created_at)).toLocaleString(
+          undefined,
+          { dateStyle: "medium", timeStyle: "short" },
         );
+        await waitFor(() => expect(screen.getByText(stamp)).toBeDefined(), {
+          timeout: 10_000,
+        });
         await waitForStableTranscript(1000);
         const after = messageElements();
         expect(after).toHaveLength(2);

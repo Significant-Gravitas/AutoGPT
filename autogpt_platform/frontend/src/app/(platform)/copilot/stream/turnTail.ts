@@ -226,8 +226,12 @@ export function mergeRows(
   persisted: readonly LogRow[],
 ): LogRow[] {
   const differing = new Set(diffRows(live, persisted).map((d) => d.index));
+  // A streamed row past the DB's end is one it lacks only if every row before
+  // it matched; after a mismatch it is a persisted row at another index.
+  const aligned = [...differing].every((i) => i >= persisted.length);
+  const length = aligned ? live.length : 0;
   const merged: LogRow[] = [];
-  for (let i = 0; i < Math.max(live.length, persisted.length); i++) {
+  for (let i = 0; i < Math.max(length, persisted.length); i++) {
     const a = live[i];
     const b = persisted[i];
     if (!b) merged.push(a);

@@ -142,6 +142,18 @@ describe("§1.7 — every disconnect cause is expected but one", () => {
     expect(toast).not.toHaveBeenCalled();
   });
 
+  it("a stop before the POST names its turn never attaches to that turn", async () => {
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(0);
+    runtime.stop();
+    // The server runs the turn on for a moment, and the view says so.
+    backend.publish(FIRST_BLOCK_DONE);
+    runtime.observe(backend.view());
+    await advance(60_000);
+    expect(backend.connections).toHaveLength(1);
+    expect(snapshot().stopped).toBe(true);
+  });
+
   it("a connection silent for 30 s is replaced without a toast", async () => {
     await sendAndPublish(FIRST_BLOCK_DONE);
     backend.connections[0].silence();
@@ -202,6 +214,35 @@ describe("§1.7 — every disconnect cause is expected but one", () => {
     expect(textsOf(messages).at(-1)).toContain("Response was interrupted");
     expect(toolStates(messages)).toEqual(["output-error"]);
     expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("a resume that yields only the end marker while the view shows no active turn ends the turn, inline", async () => {
+    await sendAndPublish(toolTurn.sse.length - 1);
+    backend.stopWithoutFinish();
+    await advance(60_000);
+
+    expect(backend.connections.map((c) => c.method)).toEqual(["POST", "GET"]);
+    expect(snapshot().phase).toBe("finished");
+    expect(turnSegment().reconciled).toBe(true);
+    expect(textsOf(render())).toEqual([PROMPT, `${FIRST_TEXT}${SECOND_TEXT}`]);
+    expect(textsOf(render()).join()).not.toContain("interrupted");
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("a resume that yields only the end marker while the view still runs the turn backs off", async () => {
+    await sendAndPublish(toolTurn.sse.length - 1);
+    runtime.bind({}, async () => ({
+      ...backend.view(),
+      active_stream: { turn_id: backend.turnId },
+    }));
+    backend.stopWithoutFinish();
+    await advance(60_000);
+
+    // At once after the POST's close, then 1, 2, 4 and 8 s after each 5 s read.
+    expect(backend.connections.filter((c) => c.method === "GET")).toHaveLength(
+      5,
+    );
+    expect(snapshot().notice).toBe("reconnecting");
   });
 });
 
@@ -322,6 +363,22 @@ describe("rotation", () => {
     expect(textsOf(render())).toEqual([PROMPT, `${FIRST_TEXT}${SECOND_TEXT}`]);
     expect(turnSegment().log.protocolErrors).toEqual([]);
     expect(report).not.toHaveBeenCalled();
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("a connection lost past the rotation age resumes at once", async () => {
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    // Every rotation fails to open, so the first connection lives to the
+    // load balancer's cut.
+    backend.respond(({ method }) =>
+      method === "GET" ? "network-error" : "stream",
+    );
+    await advance(ROTATE_AFTER_MS + 60_000);
+    backend.respond(() => "stream");
+    backend.connections[0].fail();
+    await advance(0);
+    expect(backend.connections).toHaveLength(2);
+    expect(backend.connections[1].url.searchParams.get("after")).toBe("9-0");
     expect(toast).not.toHaveBeenCalled();
   });
 

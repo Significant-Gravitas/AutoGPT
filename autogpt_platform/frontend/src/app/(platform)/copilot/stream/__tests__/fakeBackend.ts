@@ -4,6 +4,8 @@ import type { SessionView } from "../turnRuntime";
 import type { RecordedTurn } from "./recordedTurns";
 
 const HEARTBEAT_MS = 10_000;
+// The route's listener checks the meta after each empty read of this length.
+const LISTENER_READ_MS = 5_000;
 const encoder = new TextEncoder();
 
 export interface FakeConnection {
@@ -38,6 +40,7 @@ export function fakeBackend(turn: RecordedTurn) {
   let published = 0;
   let running = false;
   let started = false;
+  let stoppedWithoutFinish = false;
   const connections: FakeConnection[] = [];
   // Every request, refused ones included.
   const requests: { method: string; url: URL }[] = [];
@@ -88,6 +91,7 @@ export function fakeBackend(turn: RecordedTurn) {
     if (index === -1) index = frames.length;
     let controller!: ReadableStreamDefaultController<Uint8Array>;
     let heartbeat: ReturnType<typeof setInterval> | null = null;
+    let done: ReturnType<typeof setTimeout> | null = null;
     const conn: FakeConnection = {
       method,
       url,
@@ -105,6 +109,7 @@ export function fakeBackend(turn: RecordedTurn) {
       if (conn.closed) return;
       conn.closed = true;
       if (heartbeat) clearInterval(heartbeat);
+      if (done) clearTimeout(done);
       pumps.delete(pump);
       finish();
     }
@@ -117,6 +122,12 @@ export function fakeBackend(turn: RecordedTurn) {
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           end(() => controller.close());
         }
+      }
+      if (stoppedWithoutFinish && !conn.closed && !done) {
+        done = setTimeout(() => {
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          end(() => controller.close());
+        }, LISTENER_READ_MS);
       }
     }
     connections.push(conn);
@@ -152,6 +163,16 @@ export function fakeBackend(turn: RecordedTurn) {
       running = true;
       published = Math.min(frames.length, published + count);
       if (published === frames.length) running = false;
+      pumps.forEach((pump) => pump());
+    },
+    /**
+     * The meta stops saying running while the stream holds no finish (a
+     * crash between the status CAS and the finish publish): every read ends
+     * with `[DONE]` once it has nothing left to replay.
+     */
+    stopWithoutFinish() {
+      running = false;
+      stoppedWithoutFinish = true;
       pumps.forEach((pump) => pump());
     },
     /** The turn is already running when the page loads. */

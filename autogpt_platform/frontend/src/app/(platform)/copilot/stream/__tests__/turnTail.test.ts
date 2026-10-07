@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { emptyTurnLog, type PersistedRow } from "../turnLog";
+import { emptyTurnLog, type LogRow, type PersistedRow } from "../turnLog";
 import {
+  mergeRows,
   newTurnSegment,
   turnRows,
   userSegment,
@@ -42,6 +43,46 @@ describe("turnRows", () => {
     ]);
   });
 });
+
+describe("mergeRows", () => {
+  it("keeps every on-screen key, and an equal row's object", () => {
+    const live = [row("block-1", "Hello", 1), row("block-2", "Bye", null)];
+    const persisted = [row("seq:1", "Hello", 1), row("seq:2", "Goodbye", 2)];
+
+    const merged = mergeRows(live, persisted);
+
+    expect(merged.map((r) => r.key)).toEqual(["block-1", "block-2"]);
+    expect(merged[0]).toBe(live[0]);
+    expect(merged[1]).toMatchObject({ content: "Goodbye", sequence: 2 });
+  });
+
+  it("drops streamed rows past the DB's end once an earlier row is out of place", () => {
+    // The fold holds one row the DB does not, so every later index is shifted.
+    const live = [
+      row("block-0", "Thinking", null),
+      row("block-1", "Hello", null),
+      row("block-2", "Bye", null),
+    ];
+    const persisted = [row("seq:1", "Hello", 1), row("seq:2", "Bye", 2)];
+
+    expect(mergeRows(live, persisted).map((r) => r.content)).toEqual([
+      "Hello",
+      "Bye",
+    ]);
+  });
+});
+
+function row(key: string, content: string, sequence: number | null): LogRow {
+  return {
+    key,
+    role: "assistant",
+    content,
+    toolCalls: [],
+    toolCallId: null,
+    sequence,
+    metadata: null,
+  };
+}
 
 function prompt(text: string) {
   return {
