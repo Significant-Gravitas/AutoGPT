@@ -1,6 +1,5 @@
 import { Text } from "@/components/atoms/Text/Text";
 import type { Meta } from "@storybook/nextjs";
-import { SquareArrowOutUpRight } from "lucide-react";
 import { StoryCode } from "./helpers/StoryCode";
 import {
   Alert01Icon,
@@ -24,6 +23,7 @@ import {
   Key01Icon,
   LibraryIcon,
   Linkedin01Icon,
+  LinkSquare02Icon,
   Logout03Icon,
   Menu01Icon,
   NewTwitterIcon,
@@ -47,6 +47,7 @@ const meta: Meta = {
   parameters: {
     layout: "fullscreen",
     controls: { disable: true },
+    a11y: { test: "error" },
   },
 };
 
@@ -210,7 +211,7 @@ export function AllVariants() {
               Hugeicons
             </Text>
             <div className="space-y-4">
-              <div className="rounded-lg border border-gray-200 p-4">
+              <div className="rounded-lg border border-zinc-200 p-4">
                 <a
                   href="https://hugeicons.com/icons/stroke-rounded"
                   target="_blank"
@@ -218,7 +219,7 @@ export function AllVariants() {
                   className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-blue-600 hover:underline"
                 >
                   Hugeicons Library{" "}
-                  <SquareArrowOutUpRight className="inline-block h-3 w-3" />
+                  <Icon icon={LinkSquare02Icon} size={12} aria-hidden />
                 </a>
                 <Text variant="body" className="mb-2 text-zinc-600">
                   A comprehensive icon family; we use the stroke-rounded variant
@@ -227,7 +228,7 @@ export function AllVariants() {
                   @hugeicons/core-free-icons → icon data
                 </div>
               </div>
-              <div className="rounded-lg border border-gray-200 p-4">
+              <div className="rounded-lg border border-zinc-200 p-4">
                 <Text
                   variant="body-medium"
                   className="mb-2 font-semibold text-zinc-800"
@@ -342,7 +343,7 @@ export function AllVariants() {
           </div>
         </div>
 
-        <div className="flex items-center gap-8 rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center gap-8 rounded-lg border border-zinc-200 p-6">
           <div className="flex items-center gap-4">
             <Icon icon={Alien01Icon} size={16} className="text-zinc-600" />
             <Text variant="small" className="font-mono text-zinc-500">
@@ -398,11 +399,11 @@ export function AllVariants() {
                 {category.description}
               </Text>
             </div>
-            <div className="grid grid-cols-2 gap-4 rounded-lg border border-gray-200 p-4 md:grid-cols-3 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-4 rounded-lg border border-zinc-200 p-4 md:grid-cols-3 lg:grid-cols-6">
               {category.icons.map((entry) => (
                 <div
                   key={entry.name}
-                  className="flex flex-col items-center space-y-2 rounded-lg p-3 hover:bg-gray-50"
+                  className="flex flex-col items-center space-y-2 rounded-lg p-3 hover:bg-zinc-50"
                 >
                   <Icon icon={entry.icon} size={24} className="text-zinc-600" />
                   <Text
@@ -455,7 +456,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 <Icon
   icon={BellIcon}
   size={20}
-  className={hasNotifications ? "text-blue-500" : "text-gray-400"}
+  className={hasNotifications ? "text-blue-500" : "text-zinc-400"}
 />
 
 // In buttons
