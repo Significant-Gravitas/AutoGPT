@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { forwardRef } from "react";
 
 const kbdVariants = cva(
-  "inline-flex shrink-0 items-center justify-center rounded-md border border-zinc-200 border-b-zinc-300 bg-white font-sans text-xs font-normal text-zinc-800 shadow-xs",
+  "inline-flex shrink-0 items-center justify-center rounded-md border border-border border-b-zinc-300 bg-card font-sans text-xs font-normal text-foreground shadow-xs",
   {
     variants: {
       size: {

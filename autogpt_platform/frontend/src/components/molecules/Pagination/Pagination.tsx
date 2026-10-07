@@ -36,8 +36,7 @@ export const Pagination = forwardRef<HTMLElement, Props>(function Pagination(
   ref,
 ) {
   const items = getPageItems(page, pageCount, siblingCount);
-  const focusRing =
-    "focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2";
+  const focusRing = "focus-ring focus-visible:ring-offset-2";
 
   function goTo(next: number) {
     if (next < 1 || next > pageCount || next === page) return;
@@ -85,7 +84,7 @@ export const Pagination = forwardRef<HTMLElement, Props>(function Pagination(
             <li
               key={item}
               aria-hidden
-              className="flex size-8 items-center justify-center text-zinc-500"
+              className="flex size-8 items-center justify-center text-muted-foreground"
             >
               <Icon icon={MoreHorizontalIcon} size={16} />
             </li>

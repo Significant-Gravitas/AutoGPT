@@ -5,7 +5,7 @@ import * as SeparatorPrimitive from "@radix-ui/react-separator";
 import { cva } from "class-variance-authority";
 import { forwardRef } from "react";
 
-const separatorVariants = cva("shrink-0 bg-zinc-200", {
+const separatorVariants = cva("shrink-0 bg-border", {
   variants: {
     orientation: {
       horizontal: "h-px w-full",

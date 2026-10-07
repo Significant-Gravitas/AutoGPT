@@ -74,7 +74,7 @@ function DataTableInner<T>(
       return Array.from({ length: loadingRowCount }, (_, rowIndex) => (
         <tr
           key={`loading-${rowIndex}`}
-          className="border-b border-zinc-100 last:border-0"
+          className="border-b border-border last:border-0"
         >
           {columns.map((column) => (
             <td key={column.key} className="px-4 py-3">
@@ -110,16 +110,16 @@ function DataTableInner<T>(
         }
         tabIndex={onRowClick ? 0 : undefined}
         className={cn(
-          "border-b border-zinc-100 transition-colors last:border-0",
+          "border-b border-border transition-colors last:border-0",
           onRowClick &&
-            "cursor-pointer hover:bg-zinc-50 focus-visible:bg-zinc-50 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-hidden focus-visible:ring-inset",
+            "cursor-pointer focus-ring hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-inset",
         )}
       >
         {columns.map((column) => (
           <td
             key={column.key}
             className={cn(
-              "px-4 py-3 align-middle font-sans text-sm text-zinc-800",
+              "px-4 py-3 align-middle font-sans text-sm text-foreground",
               alignClassName[column.align ?? DEFAULT_ALIGN],
               column.className,
             )}
@@ -134,7 +134,7 @@ function DataTableInner<T>(
   return (
     <div
       className={cn(
-        "relative w-full overflow-x-auto rounded-xl border border-zinc-200 bg-white",
+        "relative w-full overflow-x-auto rounded-xl border border-border bg-card",
         className,
       )}
     >
@@ -144,8 +144,8 @@ function DataTableInner<T>(
         className="w-full caption-bottom border-collapse"
       >
         <caption className="sr-only">{caption}</caption>
-        <thead className="bg-zinc-50">
-          <tr className="border-b border-zinc-200">
+        <thead className="bg-muted/50">
+          <tr className="border-b border-border">
             {columns.map((column) => {
               const align = column.align ?? DEFAULT_ALIGN;
               const isSortable = Boolean(column.sortValue);
