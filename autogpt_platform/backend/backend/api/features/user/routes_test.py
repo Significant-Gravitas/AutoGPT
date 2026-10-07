@@ -304,7 +304,7 @@ def test_record_user_consent_route_rejects_an_invalid_body(
 
 
 async def _reset_consent(user_id: str) -> None:
-    await PrismaUser.prisma().update(
+    row = await PrismaUser.prisma().update(
         where={"id": user_id},
         data={
             "termsAcceptedAt": None,
@@ -313,9 +313,17 @@ async def _reset_consent(user_id: str) -> None:
             "marketingOptOutSource": None,
         },
     )
+    assert row is not None
     get_user_by_id.cache_delete(user_id)
-    get_user_by_email.cache_delete("test@example.com")
+    get_user_by_email.cache_delete(row.email)
     get_or_create_user.cache_clear()
+
+
+async def _email_of(user_id: str) -> str:
+    """The shared test user's stored address. Not necessarily
+    test@example.com: the default user may have created the row first."""
+    row = await PrismaUser.prisma().find_unique_or_raise(where={"id": user_id})
+    return row.email
 
 
 @pytest.fixture
@@ -403,14 +411,11 @@ async def test_a_mailerlite_unsubscribe_is_recorded_in_the_database(
     """Matched whatever the address's case, and the first refusal wins: a
     redelivered unsubscribe keeps the first date."""
     where = {"id": consent_reset}
+    email = await _email_of(consent_reset)
 
-    first = await record_marketing_opt_out_by_email(
-        "TEST@example.com", "email_unsubscribe"
-    )
+    first = await record_marketing_opt_out_by_email(email.upper(), "email_unsubscribe")
     stored = await PrismaUser.prisma().find_unique_or_raise(where=where)
-    repeated = await record_marketing_opt_out_by_email(
-        "test@example.com", "email_unsubscribe"
-    )
+    repeated = await record_marketing_opt_out_by_email(email, "email_unsubscribe")
     after = await PrismaUser.prisma().find_unique_or_raise(where=where)
     cached = await get_user_by_id(consent_reset)
 
@@ -434,10 +439,9 @@ async def test_an_unsubscribe_keeps_a_signup_refusal(
         where={"id": consent_reset}
     )
 
-    assert (
-        await record_marketing_opt_out_by_email("test@example.com", "email_unsubscribe")
-        is None
-    )
+    email = await _email_of(consent_reset)
+
+    assert await record_marketing_opt_out_by_email(email, "email_unsubscribe") is None
     after = await PrismaUser.prisma().find_unique_or_raise(where={"id": consent_reset})
     assert after.marketingOptOutSource == "signup"
     assert after.marketingOptOutAt == signed_up.marketingOptOutAt
