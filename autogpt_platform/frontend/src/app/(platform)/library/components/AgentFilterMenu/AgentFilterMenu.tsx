@@ -2,6 +2,7 @@
 
 import type { SelectOption } from "@/components/atoms/Select/Select";
 import { Select } from "@/components/atoms/Select/Select";
+import { Text } from "@/components/atoms/Text/Text";
 import type { AgentStatusFilter, FleetSummary } from "../../types";
 import { FunnelIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -33,9 +34,14 @@ export function AgentFilterMenu({ value, onChange, summary }: Props) {
 
   return (
     <div className="flex items-center" data-testid="agent-filter-dropdown">
-      <span className="hidden whitespace-nowrap text-sm text-zinc-500 sm:inline">
+      <Text
+        variant="body"
+        as="span"
+        tone="muted"
+        className="hidden whitespace-nowrap sm:inline"
+      >
         filter
-      </span>
+      </Text>
       <Icon icon={FunnelIcon} className="ml-1 h-4 w-4 sm:hidden" />
       <Select
         id="agent-status-filter"
@@ -45,7 +51,7 @@ export function AgentFilterMenu({ value, onChange, summary }: Props) {
         onValueChange={handleChange}
         options={options}
         size="small"
-        className="ml-1 w-fit border-none !bg-transparent text-sm underline underline-offset-4 shadow-none"
+        className="ml-1 w-fit border-none bg-transparent text-sm underline underline-offset-4 shadow-none"
         wrapperClassName="mb-0"
       />
     </div>

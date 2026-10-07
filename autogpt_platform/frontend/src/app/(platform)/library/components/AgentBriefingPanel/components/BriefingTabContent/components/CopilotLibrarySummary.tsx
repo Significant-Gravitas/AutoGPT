@@ -42,13 +42,13 @@ export function CopilotLibrarySummary() {
       className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-100 pt-3"
       data-testid="copilot-library-summary"
     >
-      <Text variant="small" className="!text-zinc-500">
+      <Text variant="small" tone="muted">
         Skills and follow-ups
       </Text>
       {showSkills ? (
         <Link
           href="/library/skills"
-          className="text-sm text-violet-700 hover:underline"
+          className="text-sm text-purple-700 hover:underline"
           data-testid="copilot-library-skills-link"
         >
           {skillsCount} skill{skillsCount === 1 ? "" : "s"}

@@ -23,8 +23,8 @@ export function TopRunsList({ runs, agentLookup }: Props) {
   const hasMore = runs.length > INITIAL_VISIBLE;
 
   return (
-    <section className="flex flex-col gap-2 lg:mt-[1rem]">
-      <Text variant="body-medium" className="text-neutral-800 lg:mb-[.5rem]">
+    <section className="flex flex-col gap-2 lg:mt-4">
+      <Text variant="body-medium" tone="primary" className="lg:mb-2">
         Most expensive tasks
       </Text>
       <ul className="flex flex-col divide-y divide-zinc-100 rounded-medium border border-zinc-100 bg-white">
@@ -38,10 +38,15 @@ export function TopRunsList({ runs, agentLookup }: Props) {
           const row = (
             <div className="flex items-center justify-between gap-3 px-3 py-2">
               <div className="min-w-0 flex-1">
-                <Text variant="body" className="truncate text-neutral-800">
+                <Text
+                  variant="body"
+                  tone="primary"
+                  unmask={false}
+                  className="truncate"
+                >
                   {label}
                 </Text>
-                <Text variant="small" className="text-neutral-400">
+                <Text variant="small" tone="muted">
                   {formatRelativeDate(run.started_at)}
                   {run.node_error_count > 0
                     ? ` · ${run.node_error_count} error${run.node_error_count === 1 ? "" : "s"}`
@@ -50,7 +55,8 @@ export function TopRunsList({ runs, agentLookup }: Props) {
               </div>
               <Text
                 variant="body-medium"
-                className="tabular-nums text-neutral-800"
+                tone="primary"
+                className="tabular-nums"
               >
                 {formatCents(run.cost_cents)}
               </Text>

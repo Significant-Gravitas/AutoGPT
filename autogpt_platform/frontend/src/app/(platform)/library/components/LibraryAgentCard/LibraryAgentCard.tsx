@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
@@ -20,10 +21,10 @@ import type { AgentStatusInfo } from "../../types";
 import {
   Tooltip,
   TooltipContent,
+  TooltipPortal,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { Chatting01Icon, EyeIcon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
@@ -77,7 +78,7 @@ export function LibraryAgentCard({
         <NextLink href={`/library/agents/${id}`} className="flex-shrink-0">
           <div className="relative flex items-center gap-3 pl-2 pr-4 pt-3">
             <StatusBadge status={statusInfo.status} />
-            <Text variant="small" className="text-zinc-400">
+            <Text variant="small" tone="muted">
               {statusInfo.totalRuns} tasks
             </Text>
           </div>
@@ -96,6 +97,7 @@ export function LibraryAgentCard({
           >
             <Text
               variant="h5"
+              unmask={false}
               data-testid="library-agent-card-name"
               className="line-clamp-3 hyphens-auto break-words no-underline hover:no-underline"
             >
@@ -110,7 +112,7 @@ export function LibraryAgentCard({
                     "bg-gradient-to-r from-pink-200 to-purple-200",
                     "bg-gradient-to-r from-yellow-200 to-orange-200",
                     "bg-gradient-to-r from-blue-200 to-cyan-200",
-                    "bg-gradient-to-r from-indigo-200 to-purple-200",
+                    "bg-gradient-to-r from-purple-100 to-purple-200",
                   ][parseInt(id.slice(0, 8), 16) % 5]
                 }`}
                 style={{
@@ -132,33 +134,37 @@ export function LibraryAgentCard({
           </NextLink>
 
           <div className="mt-4 flex w-full items-center justify-end gap-1 border-t border-zinc-100 pb-0 pt-2">
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="xs"
+              leadingIcon={EyeIcon}
               onClick={() => router.push(`/library/agents/${id}`)}
               data-testid="library-agent-card-see-runs-link"
-              className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
+              className="text-zinc-600 hover:text-zinc-800"
             >
-              <Icon icon={EyeIcon} size={14} className="shrink-0" />
               See tasks
-            </button>
+            </Button>
             <ContextualActionButton
               status={statusInfo.status}
               agentID={id}
               executionID={statusInfo.activeExecutionID ?? undefined}
             />
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="xs"
+              leadingIcon={Chatting01Icon}
               onClick={() => {
                 const prompt = encodeURIComponent(
                   `Tell me about my agent "${name}" (library agent ID: ${id}). Use find_library_agent with this exact agent_id to look it up, then summarize its current status, recent runs, and how I can get the most out of it.`,
                 );
                 router.push(`/home?autosubmit=true#prompt=${prompt}`);
               }}
-              className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
+              className="text-zinc-600 hover:text-zinc-800"
             >
-              <Icon icon={Chatting01Icon} size={14} className="shrink-0" />
               Chat
-            </button>
+            </Button>
           </div>
         </div>
       </motion.div>
@@ -169,9 +175,11 @@ export function LibraryAgentCard({
     return (
       <Tooltip>
         <TooltipTrigger asChild>{card}</TooltipTrigger>
-        <TooltipContent className="max-w-xs text-red-600">
-          {statusInfo.lastError}
-        </TooltipContent>
+        <TooltipPortal>
+          <TooltipContent className="max-w-xs text-red-600">
+            {statusInfo.lastError}
+          </TooltipContent>
+        </TooltipPortal>
       </Tooltip>
     );
   }

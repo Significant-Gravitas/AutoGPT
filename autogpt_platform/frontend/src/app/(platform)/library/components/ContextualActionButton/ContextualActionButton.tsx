@@ -1,4 +1,5 @@
 "use client";
+import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import type { AgentStatus } from "../../types";
@@ -39,17 +40,16 @@ export function ContextualActionButton({
   }
 
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="xs"
       onClick={handleClick}
-      className={cn(
-        "inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800",
-        className,
-      )}
+      leftIcon={<Icon icon={config.icon} size={12} className="shrink-0" />}
+      className={cn("text-zinc-600 hover:text-zinc-800", className)}
     >
-      <Icon icon={config.icon} size={12} className="shrink-0" />
       {config.label}
-    </button>
+    </Button>
   );
 }
 

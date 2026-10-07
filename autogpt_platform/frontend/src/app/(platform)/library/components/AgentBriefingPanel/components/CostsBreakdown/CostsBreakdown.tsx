@@ -28,7 +28,7 @@ export function CostsBreakdown({ agents }: Props) {
         size="small"
         onClick={() => setIsExpanded((prev) => !prev)}
         aria-expanded={isExpanded}
-        className="w-fit gap-1 px-0 text-neutral-800 hover:bg-transparent"
+        className="w-fit gap-1 px-0 text-zinc-800 hover:bg-transparent"
       >
         {isExpanded ? "Hide costs breakdown" : "See costs breakdown"}
         <Icon
@@ -68,7 +68,7 @@ function ExpandedBody({
 }: ExpandedBodyProps) {
   if (isError) {
     return (
-      <Text variant="body" className="text-neutral-500">
+      <Text variant="body" tone="muted">
         Couldn&apos;t load cost breakdown.
       </Text>
     );
@@ -88,7 +88,7 @@ function ExpandedBody({
 
   if (!hasAnySpend) {
     return (
-      <Text variant="body" className="text-neutral-500">
+      <Text variant="body" tone="muted">
         No spend this month yet.
       </Text>
     );
@@ -104,7 +104,7 @@ function ExpandedBody({
 
   return (
     <>
-      <Text variant="small" className="text-neutral-500">
+      <Text variant="small" tone="muted">
         Calendar month so far · {formatMonthRangeLabel()}
       </Text>
       <StatRow
@@ -166,15 +166,16 @@ function StatRow({ items }: { items: StatItem[] }) {
           key={item.label}
           className="flex flex-col gap-0.5 rounded-medium border border-zinc-100 bg-white p-3"
         >
-          <Text variant="small" className="text-neutral-500">
+          <Text variant="small" tone="muted">
             {item.label}
           </Text>
           <Text
             variant="body-medium"
+            tone={item.tone === "warn" ? undefined : "primary"}
             className={
               item.tone === "warn"
                 ? "tabular-nums text-orange-600"
-                : "tabular-nums text-neutral-800"
+                : "tabular-nums"
             }
           >
             {item.value}

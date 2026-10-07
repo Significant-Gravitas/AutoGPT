@@ -66,7 +66,7 @@ export function LibraryFolder({
       className={`group relative inline-flex h-[10.625rem] w-full max-w-[25rem] cursor-pointer flex-col items-start justify-between gap-2.5 rounded-medium border p-4 shadow-sm backdrop-blur-md transition-all duration-200 hover:shadow-md ${
         isDragOver
           ? "border-blue-400 bg-blue-50 ring-2 ring-blue-200"
-          : "border-indigo-200/40 bg-gradient-to-br from-indigo-50/40 via-white/70 to-purple-50/30"
+          : "border-purple-200/40 bg-gradient-to-br from-purple-50/40 via-white/70 to-purple-50/30"
       }`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -80,6 +80,7 @@ export function LibraryFolder({
         <div className="flex flex-1 flex-col gap-2">
           <Text
             variant="h5"
+            unmask={false}
             data-testid="library-folder-name"
             className="line-clamp-2 hyphens-auto break-words"
           >
@@ -88,7 +89,7 @@ export function LibraryFolder({
           <div className="flex items-center gap-2">
             <Text
               variant="small"
-              className="text-zinc-500"
+              tone="muted"
               data-testid="library-folder-agent-count"
             >
               {agentCount} {agentCount === 1 ? "agent" : "agents"}
@@ -112,25 +113,25 @@ export function LibraryFolder({
       >
         <Button
           variant="icon"
-          size="icon"
+          size="icon-sm"
           aria-label="Edit folder"
           onClick={(e) => {
             e.stopPropagation();
             onEdit?.();
           }}
-          className="h-8 w-8 border border-neutral-200 bg-white/80 p-2 text-neutral-500 hover:bg-white hover:text-neutral-700"
+          className="border-zinc-200 bg-white/80 text-zinc-500 hover:bg-white hover:text-zinc-700"
         >
           <Icon icon={PencilIcon} className="h-4 w-4" />
         </Button>
         <Button
           variant="icon"
-          size="icon"
+          size="icon-sm"
           aria-label="Delete folder"
           onClick={(e) => {
             e.stopPropagation();
             onDelete?.();
           }}
-          className="h-8 w-8 border border-neutral-200 bg-white/80 p-2 text-neutral-500 hover:bg-white hover:text-neutral-700"
+          className="border-zinc-200 bg-white/80 text-zinc-500 hover:bg-white hover:text-zinc-700"
         >
           <Icon icon={Delete02Icon} className="h-4 w-4" />
         </Button>

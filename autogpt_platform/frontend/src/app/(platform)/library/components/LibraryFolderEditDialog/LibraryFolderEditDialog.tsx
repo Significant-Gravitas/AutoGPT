@@ -27,6 +27,7 @@ import type { LibraryFolder } from "@/app/api/__generated__/models/libraryFolder
 import type { getV2ListLibraryFoldersResponseSuccess } from "@/app/api/__generated__/endpoints/folders/folders";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { FOLDER_COLORS } from "../folder-constants";
+import { cn } from "@/lib/utils";
 
 const LazyEmojiPicker = dynamic(
   () =>
@@ -188,7 +189,7 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
                     label="Folder name"
                     placeholder="Enter folder name"
                     className="w-full"
-                    wrapperClassName="!mb-0"
+                    wrapperClassName="mb-0"
                   />
                 </FormControl>
                 <FormMessage />
@@ -208,14 +209,16 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
                     placeholder="Select a color"
                     value={field.value}
                     onValueChange={field.onChange}
-                    wrapperClassName="!mb-0"
+                    wrapperClassName="mb-0"
                     options={FOLDER_COLORS.map((color) => ({
                       value: color.value,
                       label: color.label,
                       icon: (
                         <div
-                          className="h-4 w-4 rounded-full"
-                          style={{ backgroundColor: color.value }}
+                          className={cn(
+                            "h-4 w-4 rounded-full",
+                            color.swatchClassName,
+                          )}
                         />
                       ),
                     }))}
@@ -238,17 +241,19 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-col gap-2">
-                  <Text variant="large-medium" as="span" className="text-black">
+                  <Text variant="large-medium" as="span">
                     Folder icon
                   </Text>
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center gap-3">
-                      <Text variant="small" className="text-zinc-500">
+                      <Text variant="small" tone="muted">
                         Selected:
                       </Text>
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-2xl">
                         {form.watch("folderIcon") || (
-                          <span className="text-sm text-zinc-400">—</span>
+                          <Text variant="body" as="span" tone="muted">
+                            —
+                          </Text>
                         )}
                       </div>
                     </div>
@@ -269,7 +274,7 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
           <Button
             type="submit"
             variant="primary"
-            className="mt-2 min-w-[18rem]"
+            className="mt-2 min-w-72"
             disabled={!form.formState.isValid || isPending}
             loading={isPending}
           >

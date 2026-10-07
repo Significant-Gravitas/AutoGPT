@@ -3,6 +3,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { FileInput } from "@/components/atoms/FileInput/FileInput";
 import { Input } from "@/components/atoms/Input/Input";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Text } from "@/components/atoms/Text/Text";
 import { TabsLineContent } from "@/components/molecules/TabsLine/TabsLine";
 import { useExternalWorkflowTab } from "./useExternalWorkflowTab";
 
@@ -20,10 +21,10 @@ export default function ExternalWorkflowTab({
 }: ExternalWorkflowTabProps) {
   return (
     <TabsLineContent value="platform">
-      <p className="mb-4 text-sm text-neutral-500">
+      <Text variant="body" tone="muted" className="mb-4">
         Upload a workflow exported from n8n, Make.com, Zapier, or any other
         platform. Otto will convert it into an AutoGPT agent for you.
-      </p>
+      </Text>
       <FileInput
         mode="base64"
         value={importWorkflow.fileValue}
@@ -52,22 +53,26 @@ export default function ExternalWorkflowTab({
       </Button>
 
       <div className="my-5 flex items-center gap-3">
-        <div className="h-px flex-1 bg-neutral-200" />
-        <span className="text-xs text-neutral-400">or import from URL</span>
-        <div className="h-px flex-1 bg-neutral-200" />
+        <div className="h-px flex-1 bg-zinc-200" />
+        <Text variant="small" as="span" tone="muted">
+          or import from URL
+        </Text>
+        <div className="h-px flex-1 bg-zinc-200" />
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
         {N8N_EXAMPLES.map((p) => (
-          <button
+          <Button
             key={p.label}
             type="button"
+            variant="secondary"
+            size="xs"
             disabled={importWorkflow.isSubmitting}
             onClick={() => importWorkflow.setUrlValue(p.url)}
-            className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-600 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50"
+            className="rounded-full font-normal text-zinc-600 shadow-none hover:border-purple-400 hover:bg-white hover:text-purple-600"
           >
             {p.label}
-          </button>
+          </Button>
         ))}
       </div>
       <Input
