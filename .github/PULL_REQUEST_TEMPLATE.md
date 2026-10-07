@@ -32,6 +32,13 @@ Write None if no agents were used, or unknown for unavailable model details. -->
   - [ ] Edit an agent from monitor, and confirm it executes correctly
 </details>
 
+#### For frontend UI changes (`autogpt_platform/frontend/src`):
+<!-- See autogpt_platform/frontend/DESIGN.md. Delete this section if the PR has no UI changes. -->
+- [ ] Uses design tokens and the atoms, molecules and organisms in `src/components` (`Text`, `Button`, `Link`, `Icon`...), not raw elements or one-off styles
+- [ ] No new imports from `src/components/__legacy__` or `src/components/ui` outside `src/components`, and no new entries in `eslint-allowlist.json`
+- [ ] No `dark:` classes, no hex colour classes, no default-palette families (`gray`, `neutral`, `amber`, `violet`...)
+- [ ] Added or updated a story for every design-system component this PR adds or changes
+
 #### For configuration changes:
 
 - [ ] `.env.default` is updated or already compatible with my changes
