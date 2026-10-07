@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { ApprovalCard } from "./components/ApprovalCard/ApprovalCard";
 import { CompactApprovalLine } from "./components/CompactApprovalLine";
 import { QueueHeader } from "./components/QueueHeader";
@@ -57,9 +58,15 @@ export function ApprovalQueue({ items, expertName = null, onAnswered }: Props) {
         }
       />
       {showModeLine && pending.length > 0 && (
-        <p className="border-b border-zinc-100 px-4 py-2 text-sm text-zinc-500">
+        <Text
+          variant="body"
+          as="p"
+          tone="muted"
+          unmask={false}
+          className="border-b border-zinc-100 px-4 py-2"
+        >
           {modeLine(mode)}
-        </p>
+        </Text>
       )}
       <ol className="divide-y divide-zinc-100">
         {pending.map((item) => (

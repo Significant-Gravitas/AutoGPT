@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 
 interface Props {
   /** Extra line before the 32h block (the variant used while fetching text). */

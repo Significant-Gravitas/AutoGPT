@@ -103,7 +103,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           animate={{ width: contextPanelWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
-          className="relative h-full shrink-0 border-l border-l-[#80808017] bg-sidebar"
+          className="relative h-full shrink-0 border-l border-l-zinc-200/10 bg-sidebar"
         >
           {/* Sibling of the clip, not a child of it: the handle is
               -translate-x-1/2 and deliberately straddles the border, so

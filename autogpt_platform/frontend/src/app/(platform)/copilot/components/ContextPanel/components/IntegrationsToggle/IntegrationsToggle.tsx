@@ -1,6 +1,7 @@
 "use client";
 
 import { PlugSocketIcon } from "@hugeicons/core-free-icons";
+import { Button } from "@/components/atoms/Button/Button";
 import { groupExpertIntegrations } from "@/app/(platform)/team/[expertId]/components/ExpertIntegrationsSection/ExpertIntegrationGroups";
 import {
   Tooltip,
@@ -42,25 +43,24 @@ export function IntegrationsToggle({ expert, className }: Props) {
 
   if (services.length === 0) {
     return (
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-sm"
+        withTooltip={false}
         onClick={() => toggleIntegrationsPanel(expert)}
         aria-label={
           isActive ? "Hide integrations" : `${expert.name}'s integrations`
         }
         aria-pressed={isActive}
         data-testid="expert-integrations-empty"
-        className={cn(
-          className,
-          "flex size-8 items-center justify-center",
-          isActive && "bg-zinc-100",
-        )}
+        className={cn(className, isActive && "bg-zinc-100")}
       >
         <Icon
           icon={PlugSocketIcon}
-          className="!size-4 text-sidebar-foreground/90"
+          className="size-4 text-sidebar-foreground/90"
         />
-      </button>
+      </Button>
     );
   }
 
@@ -71,8 +71,12 @@ export function IntegrationsToggle({ expert, className }: Props) {
 
   return (
     <TooltipProvider>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-sm"
+        withTooltip={false}
+        unmask={false}
         onClick={() => toggleIntegrationsPanel(expert)}
         aria-label={
           isActive
@@ -83,7 +87,7 @@ export function IntegrationsToggle({ expert, className }: Props) {
         data-testid="expert-integrations"
         className={cn(
           className,
-          "flex h-8 items-center gap-1.5 px-1.5",
+          "h-8 w-auto gap-1.5 px-1.5",
           isActive && "bg-zinc-100",
         )}
       >
@@ -113,7 +117,7 @@ export function IntegrationsToggle({ expert, className }: Props) {
             <TooltipContent side="bottom">{hiddenNames}</TooltipContent>
           </Tooltip>
         )}
-      </button>
+      </Button>
     </TooltipProvider>
   );
 }

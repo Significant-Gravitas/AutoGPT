@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { http, HttpResponse } from "msw";
@@ -52,7 +53,9 @@ const meta: Meta<typeof ArtifactPanel> = {
       <TooltipProvider>
         <div className="flex h-[800px] w-full bg-sidebar">
           <div className="flex-1 bg-zinc-50 p-8">
-            <p className="text-sm text-zinc-500">Chat area</p>
+            <Text variant="body" as="p" tone="muted">
+              Chat area
+            </Text>
           </div>
           <Story />
         </div>

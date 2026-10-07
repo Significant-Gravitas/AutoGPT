@@ -27,9 +27,9 @@ export function DeleteFileDialog({
       }}
     >
       <Dialog.Content>
-        <Text variant="body">
+        <Text variant="body" unmask={false}>
           Delete{" "}
-          <Text variant="body-medium" as="span">
+          <Text variant="body-medium" as="span" unmask={false}>
             &quot;{fileName}&quot;
           </Text>
           ? This removes it from the workspace and cannot be undone.

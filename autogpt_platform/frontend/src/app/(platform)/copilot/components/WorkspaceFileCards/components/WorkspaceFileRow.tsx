@@ -40,14 +40,17 @@ export function WorkspaceFileRow({
           <Text
             variant="body-medium"
             as="span"
-            className="truncate text-zinc-900"
+            tone="primary"
+            unmask={false}
+            className="truncate"
           >
             {item.name}
           </Text>
           <Text
             variant="small"
             as="span"
-            className="text-zinc-500"
+            tone="muted"
+            unmask={false}
             title={formatFullDate(item.created_at)}
           >
             {formatDayLabel(item.created_at)} ·{" "}

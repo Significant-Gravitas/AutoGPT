@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { ApprovalFields } from "@/components/organisms/ApprovalFields/ApprovalFields";
 import {
   type ApprovalItem,
@@ -78,11 +79,21 @@ export function ApprovalCard({
       <ApprovalHeadline item={item} />
       <div className="flex flex-col gap-3 sm:pl-[38px]">
         {failed && (
-          <p role="alert" className="text-sm text-red-600">
+          <Text variant="body" as="p" tone="danger" role="alert">
             Couldn&apos;t send your answer. Nothing ran. Try again.
-          </p>
+          </Text>
         )}
-        {reason && <p className="-mt-1 text-sm text-zinc-500">{reason}</p>}
+        {reason && (
+          <Text
+            variant="body"
+            as="p"
+            tone="muted"
+            unmask={false}
+            className="-mt-1"
+          >
+            {reason}
+          </Text>
+        )}
         {item.spend && <MoneyBlock spend={item.spend} />}
         {read ? (
           item.passage && <HeldPassage passage={item.passage} />

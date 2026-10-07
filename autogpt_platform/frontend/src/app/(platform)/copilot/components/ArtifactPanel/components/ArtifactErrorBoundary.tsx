@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import * as Sentry from "@sentry/nextjs";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
@@ -72,28 +74,36 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
         role="alert"
         className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm font-medium text-zinc-700">
+        <Text variant="body-medium" as="p" tone="secondary">
           This artifact couldn&apos;t be rendered
-        </p>
-        <p className="max-w-md break-words text-xs text-zinc-500">
+        </Text>
+        <Text
+          variant="small"
+          as="p"
+          tone="muted"
+          unmask={false}
+          className="max-w-md break-words"
+        >
           Something in{" "}
           <span className="font-mono">{this.props.artifactTitle}</span> threw an
           error while rendering. The chat and sidebar are still working.
-        </p>
+        </Text>
         <pre className="max-h-32 max-w-md overflow-auto whitespace-pre-wrap break-words rounded-md bg-zinc-100 px-3 py-2 text-left text-xs text-zinc-700">
           {message}
         </pre>
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="xs"
           onClick={this.handleCopy}
-          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+          className="h-auto px-3 py-1.5 leading-4 text-zinc-700"
         >
           Copy error details
-        </button>
-        <p className="max-w-md text-xs text-zinc-400">
+        </Button>
+        <Text variant="small" as="p" tone="muted" className="max-w-md">
           Paste this into the chat so the agent can regenerate a working
           version.
-        </p>
+        </Text>
       </div>
     );
   }
