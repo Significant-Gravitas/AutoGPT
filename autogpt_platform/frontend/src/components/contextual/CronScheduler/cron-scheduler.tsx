@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Label } from "@/components/__legacy__/ui/label";
-import { Input as LegacyInput } from "@/components/__legacy__/ui/input";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
+import { TimeInput } from "@/components/atoms/TimeInput/TimeInput";
 import { CronFrequency, makeCronExpression } from "@/lib/cron-expression-utils";
 
 const weekDays = [
@@ -512,10 +512,12 @@ export function CronScheduler({
         !(frequency === "custom" && customInterval.unit !== "days") && (
           <div className="flex items-center gap-4 space-y-2">
             <Label className="pt-2">At</Label>
-            <LegacyInput
-              type="time"
+            <TimeInput
               value={selectedTime}
-              onChange={(e) => setSelectedTime(e.target.value)}
+              onChange={setSelectedTime}
+              aria-label="Time"
+              size="md"
+              wrapperClassName="mb-0"
             />
           </div>
         )}

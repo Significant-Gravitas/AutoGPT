@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 import React from "react";
-import { Input } from "@/components/__legacy__/ui/input";
 import { useBlockMenuSearchBar } from "./useBlockMenuSearchBar";
 import { Button } from "@/components/atoms/Button/Button";
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
@@ -33,7 +32,7 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
           strokeWidth={2}
         />
       </div>
-      <Input
+      <input
         ref={inputRef}
         type="text"
         value={localQuery}
@@ -42,10 +41,7 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
           debouncedSetSearchQuery(e.target.value);
         }}
         placeholder={"Blocks, Agents, Integrations or Keywords..."}
-        className={cn(
-          "m-0 border-none p-0 font-sans text-base font-normal text-zinc-800 shadow-none outline-hidden",
-          "placeholder:text-zinc-400 focus:shadow-none focus:ring-0 focus:outline-hidden",
-        )}
+        className="flex h-9 w-full bg-transparent p-0 font-sans text-base font-normal text-foreground outline-hidden placeholder:text-zinc-500"
       />
       {localQuery.length > 0 && (
         <Button

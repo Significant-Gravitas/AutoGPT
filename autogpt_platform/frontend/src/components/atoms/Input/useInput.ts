@@ -1,4 +1,3 @@
-import { InputProps } from "@/components/__legacy__/ui/input";
 import {
   filterNumberInput,
   filterPhoneInput,
@@ -7,7 +6,7 @@ import {
   removeCommas,
 } from "./helpers";
 
-interface ExtendedInputProps extends InputProps {
+interface ExtendedInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   decimalCount?: number;
   type?:
     | "text"
