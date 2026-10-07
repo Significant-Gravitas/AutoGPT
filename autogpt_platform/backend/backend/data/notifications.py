@@ -484,7 +484,8 @@ class NotificationPreference(BaseModel):
     are sent regardless of these settings."""
 
     user_id: str
-    email: EmailStr
+    # Built from the stored address; EmailStr rejects reserved domains on read.
+    email: str
     briefing_frequency: BriefingFrequency = BriefingFrequency.WEEKLY
     alerts_enabled: bool = True
     store_verdicts_enabled: bool = True
@@ -496,7 +497,13 @@ class NotificationPreference(BaseModel):
 
 
 class NotificationPreferenceDTO(BaseModel):
-    email: EmailStr
+    # Not validated: the settings pages echo the stored address, which
+    # EmailStr may reject (reserved domains).
+    email: str = Field(
+        default="",
+        description="Ignored: saving preferences never changes the account's "
+        "email address. Use POST /auth/user/email for that.",
+    )
     briefing_frequency: BriefingFrequency
     alerts_enabled: bool
     store_verdicts_enabled: bool
