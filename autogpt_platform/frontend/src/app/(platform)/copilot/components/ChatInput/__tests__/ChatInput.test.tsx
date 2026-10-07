@@ -644,6 +644,22 @@ describe("ChatInput guided prompt prefill", () => {
 });
 
 describe("ChatInput submit behavior", () => {
+  it("preserves an editable draft while a usage cap blocks submission", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<ChatInput onSend={onSend} sendDisabled />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    expect(textarea.disabled).toBe(false);
+    fireEvent.change(textarea, { target: { value: "My next idea" } });
+    fireEvent.submit(textarea.closest("form")!);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("My next idea");
+    rerender(<ChatInput onSend={onSend} sendDisabled={false} />);
+    fireEvent.submit(textarea.closest("form")!);
+    await waitFor(() =>
+      expect(onSend).toHaveBeenCalledWith("My next idea", undefined, undefined),
+    );
+  });
+
   it("does not call onSend when textarea is empty", () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(<ChatInput onSend={onSend} />);

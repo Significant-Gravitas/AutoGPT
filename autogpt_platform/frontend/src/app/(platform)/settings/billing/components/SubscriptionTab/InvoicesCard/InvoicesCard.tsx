@@ -53,13 +53,13 @@ export function InvoicesCard({ index = 0 }: Props) {
 
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
-      <div className="px-4">
+      <div className="px-1">
         <Text variant="body-medium" as="span" className="text-textBlack">
           Invoices
         </Text>
       </div>
 
-      <div className="overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
         {invoices.length === 0 ? (
           <div className="px-4 py-6">
             <Text variant="small" as="span" className="text-zinc-500">

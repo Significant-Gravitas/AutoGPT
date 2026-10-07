@@ -4,110 +4,187 @@ import type { SubscriptionTier } from "@/app/api/__generated__/models/subscripti
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { PlanOffer } from "@/components/organisms/UsageExperience/PlanOffer";
+import { ProviderContinuation } from "@/components/organisms/UsageExperience/ProviderContinuation";
+import { UsageMeter } from "@/components/organisms/UsageExperience/UsageMeter";
+import {
+  getUsageExperience,
+  type UsageExperience,
+} from "@/services/usageExperience/helpers";
+import { usagePresentation } from "@/services/usageExperience/presentation";
 import { useRouter } from "next/navigation";
-import { formatResetTime } from "../usageHelpers";
+import type { ComponentProps } from "react";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   resetsAt?: string | Date | null;
   tier?: SubscriptionTier | null;
-  /**
-   * A linked subscription this chat could continue on instead. The platform
-   * cap does not apply to a turn billed to the user's own credential, so when
-   * the account holds one, switching is a way out that costs nothing more.
-   * Offered beside the upgrade, never instead of it: the cap is still ours.
-   */
+  experience?: UsageExperience;
+  offer?: Omit<ComponentProps<typeof PlanOffer>, "onUpgrade">;
+  onUpgrade?: () => void;
+  unavailable?: boolean;
+  checking?: boolean;
+  failureWindow?: string;
+  onRetry?: () => void;
+  isBillingEnabled?: boolean;
   alternative?: { display_name: string } | null;
   onContinue?: () => void;
   isSwitching?: boolean;
 }
-
-const CONTACT_US_URL = "mailto:contact@agpt.co";
-const BILLING_PATH = "/settings/billing";
-
-// Tiers that have no higher self-serve plan to upgrade to — direct these
-// users to support instead of the billing page.
-const TOP_TIERS: ReadonlySet<SubscriptionTier> = new Set([
-  "MAX",
-  "BUSINESS",
-  "ENTERPRISE",
-]);
 
 export function RateLimitResetDialog({
   isOpen,
   onClose,
   resetsAt,
   tier,
-  alternative = null,
+  experience,
+  offer,
+  onUpgrade,
+  unavailable = false,
+  checking = false,
+  failureWindow,
+  onRetry,
+  isBillingEnabled = true,
+  alternative,
   onContinue,
-  isSwitching = false,
+  isSwitching,
 }: Props) {
   const router = useRouter();
-  const resetTimeLabel = resetsAt ? formatResetTime(resetsAt) : null;
-  const isTopTier = !!tier && TOP_TIERS.has(tier);
-  const canContinue = alternative !== null && onContinue !== undefined;
-
-  const ctaLabel = isTopTier ? "Contact us" : "Upgrade plan";
-  const bodyTrailer = isTopTier
-    ? "or contact us if you need more capacity."
-    : "or upgrade your plan.";
-
-  function handleCtaClick() {
-    onClose();
-    if (isTopTier) {
-      window.open(CONTACT_US_URL, "_blank", "noopener,noreferrer");
-      return;
+  const model =
+    experience ??
+    getUsageExperience({
+      tier: tier ?? "BASIC",
+      daily: {
+        percent_used: 100,
+        resets_at: resetsAt ? new Date(resetsAt).toISOString() : "",
+      },
+    });
+  const copy = usagePresentation(model);
+  const fallbackTitle =
+    failureWindow === "trial"
+      ? "Trial allowance reached."
+      : failureWindow === "weekly"
+        ? "Weekly usage reached."
+        : failureWindow === "daily"
+          ? "Daily usage reached."
+          : "We couldn’t check your usage.";
+  function upgrade() {
+    if (onUpgrade) onUpgrade();
+    else {
+      onClose();
+      router.push("/settings/billing");
     }
-    router.push(BILLING_PATH);
   }
-
   return (
     <Dialog
-      title="Daily usage limit reached"
-      styling={{ maxWidth: "28rem", minWidth: "auto" }}
+      variant="compact"
+      title={
+        <div className="pr-6">
+          <Text variant="small" className="mb-2 !text-xs !text-zinc-500">
+            {checking
+              ? "Checking your allowance"
+              : unavailable
+                ? "Usage temporarily unavailable"
+                : copy.eyebrow}
+          </Text>
+          <Text as="span" variant="h3" className="!text-[26px] !leading-8">
+            {checking
+              ? "One moment. Your work is saved."
+              : unavailable
+                ? fallbackTitle
+                : copy.title}
+          </Text>
+        </div>
+      }
+      styling={{ maxWidth: "35rem", minWidth: "auto" }}
       controlled={{
         isOpen,
-        set: async (open) => {
+        set: (open) => {
           if (!open) onClose();
         },
       }}
     >
       <Dialog.Content>
-        <Text variant="body">
-          You&apos;ve reached your daily usage limit.
-          {resetTimeLabel && resetTimeLabel !== "now"
-            ? ` Resets ${resetTimeLabel}.`
-            : ""}{" "}
-          You can still browse, edit agents, and view results &mdash;{" "}
-          {bodyTrailer}
-        </Text>
-        {canContinue && (
-          <Text variant="small" className="mt-3 !text-zinc-500">
-            Or continue on {alternative.display_name}: the rest of this chat
-            runs there instead, and everything already said stays as it is.
-          </Text>
-        )}
-        <Dialog.Footer className="!justify-center">
-          <Button variant="secondary" onClick={onClose}>
-            Wait for reset
-          </Button>
-          <Button
-            variant={canContinue ? "secondary" : "primary"}
-            onClick={handleCtaClick}
+        {checking ? (
+          <Text
+            variant="body"
+            role="status"
+            className="!text-sm !text-zinc-500"
           >
-            {ctaLabel}
-          </Button>
-          {canContinue && (
-            <Button
-              variant="primary"
-              onClick={onContinue}
-              loading={isSwitching}
+            Refreshing your plan and usage…
+          </Text>
+        ) : unavailable ? (
+          <div className="space-y-5">
+            <Text variant="body" className="!text-sm !leading-6 !text-zinc-500">
+              Your work is saved. Try again to check your allowance before
+              continuing.
+            </Text>
+            <Button onClick={onRetry}>Try again</Button>
+          </div>
+        ) : (
+          <>
+            <Text
+              variant="body"
+              className="mb-5 !text-sm !leading-6 !text-zinc-500"
             >
-              Continue on {alternative.display_name}
-            </Button>
-          )}
-        </Dialog.Footer>
+              {copy.description}
+            </Text>
+            {copy.trialSpent ? (
+              <div className="mb-5">
+                <UsageMeter
+                  label="Trial allowance"
+                  percent={model.trialPercent ?? 100}
+                  detail="One allowance for your trial. It doesn’t refresh."
+                />
+              </div>
+            ) : (
+              copy.resetLabel && (
+                <div className="mb-5 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                  <Text variant="small" className="mb-1 !text-zinc-500">
+                    You can continue after
+                  </Text>
+                  <Text variant="body-medium">{copy.resetLabel}</Text>
+                </div>
+              )
+            )}
+            {isBillingEnabled && model.targetTier && (
+              <PlanOffer
+                tier={model.targetTier}
+                {...offer}
+                onUpgrade={upgrade}
+              />
+            )}
+            {isBillingEnabled && model.isTopTier && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 p-4">
+                <div>
+                  <Text variant="small-medium">Need more capacity?</Text>
+                  <Text variant="small" className="mt-1 !text-zinc-500">
+                    We’ll help find the right fit.
+                  </Text>
+                </div>
+                <Button
+                  as="NextLink"
+                  href="mailto:contact@agpt.co"
+                  variant="secondary"
+                  size="small"
+                >
+                  {copy.supportLabel}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+        {alternative && onContinue && (
+          <ProviderContinuation
+            name={alternative.display_name}
+            onContinue={onContinue}
+            isSwitching={isSwitching}
+          />
+        )}
+        <Button variant="ghost" className="mt-3 w-full" onClick={onClose}>
+          {checking || unavailable ? "Back to my work" : copy.secondary}
+        </Button>
       </Dialog.Content>
     </Dialog>
   );

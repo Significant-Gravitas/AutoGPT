@@ -68,6 +68,7 @@ interface Props {
     workspaceFiles?: WorkspaceAttachment[],
   ) => void | Promise<void>;
   disabled?: boolean;
+  sendDisabled?: boolean;
   isStreaming?: boolean;
   isUploadingFiles?: boolean;
   onStop?: () => void;
@@ -76,6 +77,7 @@ interface Props {
   placeholder?: string;
   className?: string;
   inputId?: string;
+  draftKey?: string;
   /** Files dropped onto the chat window by the parent. */
   droppedFiles?: File[];
   /** Called after droppedFiles have been merged into internal state. */
@@ -114,6 +116,7 @@ interface Props {
 export function ChatInput({
   onSend,
   disabled = false,
+  sendDisabled = false,
   isStreaming = false,
   isUploadingFiles = false,
   onStop,
@@ -121,6 +124,7 @@ export function ChatInput({
   placeholder = "Type your message...",
   className,
   inputId = "chat-input",
+  draftKey,
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
@@ -202,9 +206,10 @@ export function ChatInput({
       onEnqueue,
       isStreaming,
       hasAttachments,
-      disabled: isTextareaDisabled,
+      disabled: isTextareaDisabled || sendDisabled,
       canSendEmpty: hasAttachments,
       inputId,
+      draftKey,
     });
 
   const integrations = useConnectedIntegrations(expertId);
@@ -278,6 +283,7 @@ export function ChatInput({
   const devtoolSessionId = isTokenDevtoolEnabled() ? sessionId : null;
   const canSend =
     !disabled &&
+    !sendDisabled &&
     (!!value.trim() || hasAttachments) &&
     !isRecording &&
     !isTranscribing;

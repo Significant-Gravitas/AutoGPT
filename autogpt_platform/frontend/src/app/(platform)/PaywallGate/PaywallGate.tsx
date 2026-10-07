@@ -15,6 +15,7 @@ import { WorkflowsMovedNotice } from "../components/WorkflowsMovedNotice/Workflo
 // out of Otto.
 const PAYWALL_EXEMPT_PREFIXES = [
   "/profile",
+  "/settings",
   "/admin",
   "/auth",
   "/login",

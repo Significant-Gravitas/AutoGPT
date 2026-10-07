@@ -139,6 +139,15 @@ afterEach(async () => {
 });
 
 describe("PaywallModal — dynamic plan rendering", () => {
+  it("keeps account and billing access available without starting a checkout", () => {
+    const { mutateFn } = setupMocks({
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+    render(<PaywallModal />);
+    fireEvent.click(screen.getByRole("button", { name: "Back to billing" }));
+    expect(mockReplace).toHaveBeenCalledWith("/settings/billing");
+    expect(mutateFn).not.toHaveBeenCalled();
+  });
   it("renders one card per tier in tier_costs (PRO + MAX → 2 cards)", () => {
     setupMocks({
       subscription: {
@@ -207,7 +216,7 @@ describe("PaywallModal — logout", () => {
 });
 
 describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
-  it("defaults to monthly billing with the full monthly prices and a 'billed monthly' caption", () => {
+  it("defaults to monthly billing with the actual monthly prices", () => {
     setupMocks({
       subscription: {
         tier: "NO_TIER",
@@ -219,13 +228,13 @@ describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
     render(<PaywallModal />);
 
     // PRO monthly = 5000 cents = $50.00, MAX monthly = 32000 cents = $320.00.
-    expect(screen.getByLabelText("$50.00")).toBeDefined();
-    expect(screen.getByLabelText("$320.00")).toBeDefined();
-    expect(screen.getAllByText("billed monthly").length).toBe(2);
+    expect(screen.getByText("$50")).toBeDefined();
+    expect(screen.getByText("$320")).toBeDefined();
+    expect(screen.getAllByText("/ month").length).toBe(2);
     expect(screen.queryByText(/Charged today/i)).toBeNull();
   });
 
-  it("toggling Yearly switches to the discounted monthly-equivalent prices and a 'billed annually' caption", async () => {
+  it("toggling Yearly shows the actual yearly charge and billing interval", async () => {
     setupMocks({
       subscription: {
         tier: "NO_TIER",
@@ -238,11 +247,11 @@ describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /yearly/i }));
 
-    // PRO yearly = 51000 cents → $42.50/mo, MAX yearly = 326400 cents → $272.00/mo.
+    // Show the full yearly payment, not a monthly equivalent.
     await waitFor(() => {
-      expect(screen.getByLabelText("$42.50")).toBeDefined();
-      expect(screen.getByLabelText("$272.00")).toBeDefined();
-      expect(screen.getAllByText("billed annually").length).toBe(2);
+      expect(screen.getByText("$510")).toBeDefined();
+      expect(screen.getByText("$3,264")).toBeDefined();
+      expect(screen.getAllByText("/ year").length).toBe(2);
     });
   });
 });

@@ -11,6 +11,8 @@ import {
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatTierLabel, TIER_BADGE_CLASS_NAME } from "../../usageHelpers";
+import { UsageMeter } from "@/components/organisms/UsageExperience/UsageMeter";
+import { formatUsageDate } from "@/services/usageExperience/helpers";
 import { StorageBar } from "../StorageBar";
 import { UsageBar } from "../UsageBar";
 import { useUsagePopover } from "./useUsagePopover";
@@ -23,12 +25,14 @@ interface Props {
 }
 
 export function UsagePopover({ trigger, align = "start" }: Props) {
-  const { usage, isSuccess, isBillingEnabled } = useUsagePopover();
+  const { usage, experience, isLoading, isError, retry, isBillingEnabled } =
+    useUsagePopover();
 
-  if (!isSuccess || !usage) return null;
-  if (!usage.daily && !usage.weekly) return null;
+  if (isLoading) return null;
+  if (!isError && !usage?.daily && !usage?.weekly && !experience.isActiveTrial)
+    return null;
 
-  const tierLabel = formatTierLabel(usage.tier);
+  const tierLabel = formatTierLabel(experience.tier);
 
   return (
     <Popover>
@@ -54,18 +58,39 @@ export function UsagePopover({ trigger, align = "start" }: Props) {
                 size="small"
                 className={TIER_BADGE_CLASS_NAME}
               >
-                {tierLabel} plan
+                {tierLabel}
               </Badge>
             )}
           </div>
-          {usage.daily && (
+          {isError && (
+            <div>
+              <Text variant="small">We couldn’t check your usage.</Text>
+              <Button size="small" variant="ghost" onClick={() => void retry()}>
+                Try again
+              </Button>
+            </div>
+          )}
+          {!isError &&
+            experience.isActiveTrial &&
+            experience.trialPercent !== null && (
+              <UsageMeter
+                label="Trial allowance"
+                percent={experience.trialPercent}
+                detail={
+                  experience.trialEndsAt
+                    ? `Trial ends ${formatUsageDate(experience.trialEndsAt)}`
+                    : "Your allowance for this trial"
+                }
+              />
+            )}
+          {!isError && !experience.isLifetimeTrial && usage?.daily && (
             <UsageBar
               label="Today"
               percentUsed={usage.daily.percent_used}
               resetsAt={usage.daily.resets_at}
             />
           )}
-          {usage.weekly && (
+          {!isError && !experience.isLifetimeTrial && usage?.weekly && (
             <UsageBar
               label="This week"
               percentUsed={usage.weekly.percent_used}

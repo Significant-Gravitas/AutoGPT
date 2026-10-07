@@ -1,94 +1,62 @@
 "use client";
 
-import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
-import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
-import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
-import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
-import type { SubscriptionTier } from "@/app/api/__generated__/models/subscriptionTier";
-import { toast } from "@/components/molecules/Toast/use-toast";
-import { useEffect } from "react";
+import { useRateLimitRefresh } from "./useRateLimitRefresh";
 import type { ProviderFailure } from "../../providerFailure";
 import { useProviderLimitDialog } from "../ProviderLimitDialog/useProviderLimitDialog";
 import { RateLimitResetDialog } from "./RateLimitResetDialog";
+import { useUsageActions } from "@/services/usageExperience/useUsageActions";
 
 interface Props {
   rateLimitMessage: string | null;
-  /**
-   * The typed envelope behind our cap, when the backend sent one. With it
-   * the dialog can also offer a linked subscription to continue on. Without
-   * it (an older backend, or a 429 that is not the usage cap) the dialog is
-   * exactly as it always was.
-   */
   failure?: ProviderFailure | null;
   sessionId?: string | null;
   onDismiss: () => void;
+  onRefreshingChange?: (refreshing: boolean) => void;
+  refreshState?: ReturnType<typeof useRateLimitRefresh>;
 }
 
-/**
- * Renders the rate-limit dialog when the user hits their daily limit.
- * Falls back to a toast when the usage query fails.
- */
 export function RateLimitGate({
   rateLimitMessage,
   failure = null,
   sessionId = null,
   onDismiss,
+  onRefreshingChange,
+  refreshState,
 }: Props) {
-  // The switch itself is the provider-limit dialog's: the same offers list,
-  // the same exclusion of the connection that just refused, the same session
-  // mutation. Only the framing differs. Here the cap is ours, so the upgrade
-  // stays on offer and the switch is offered beside it, never instead.
+  const state = useUsageActions();
+  const localRefresh = useRateLimitRefresh(
+    refreshState ? null : rateLimitMessage,
+    state.retry,
+    onRefreshingChange,
+  );
+  const refresh = refreshState ?? localRefresh;
   const { alternative, continueHere, isSwitching } = useProviderLimitDialog({
     failure,
     sessionId,
-    onDismiss,
-  });
-
-  const {
-    data: usage,
-    isSuccess: hasUsage,
-    isError: usageError,
-  } = useGetV2GetCopilotUsage({
-    query: {
-      select: (res) => res.data as CoPilotUsagePublic,
-      enabled: !!rateLimitMessage,
-      refetchInterval: 30_000,
-      staleTime: 10_000,
+    onDismiss: () => {
+      refresh.release();
+      onDismiss();
     },
   });
-
-  // Pulls the user's current tier so the dialog can branch the CTA between
-  // "Upgrade plan" (route to /settings/billing) and "Contact us" (top-tier
-  // users have no higher self-serve plan to upgrade to).
-  const { data: tier } = useGetSubscriptionStatus({
-    query: {
-      enabled: !!rateLimitMessage,
-      select: (res) =>
-        res.status === 200
-          ? ((res.data as SubscriptionStatusResponse).tier as SubscriptionTier)
-          : null,
-    },
-  });
-
-  useEffect(() => {
-    if (!rateLimitMessage) return;
-    if (!usageError) return;
-    toast({
-      title: "Usage limit reached",
-      description: rateLimitMessage,
-      variant: "destructive",
-    });
+  const failureWindow = /\b(weekly|daily|trial)\b/i
+    .exec(rateLimitMessage ?? "")?.[1]
+    ?.toLowerCase();
+  function upgrade() {
     onDismiss();
-  }, [rateLimitMessage, usageError, onDismiss]);
-
-  const isOpen = !!rateLimitMessage && hasUsage;
-
+    state.upgrade();
+  }
   return (
     <RateLimitResetDialog
-      isOpen={isOpen}
+      isOpen={!!rateLimitMessage}
       onClose={onDismiss}
-      resetsAt={usage?.daily?.resets_at ?? usage?.weekly?.resets_at ?? null}
-      tier={tier ?? null}
+      experience={state.experience}
+      offer={state.offer}
+      onUpgrade={upgrade}
+      checking={refresh.checking || state.isLoading}
+      failureWindow={failureWindow}
+      unavailable={state.isError || refresh.failed || !state.experience.blocked}
+      onRetry={() => void refresh.refresh()}
+      isBillingEnabled={state.isBillingEnabled}
       alternative={alternative}
       onContinue={continueHere}
       isSwitching={isSwitching}

@@ -30,9 +30,14 @@ import { getSearchMock } from "@/app/api/__generated__/endpoints/search/search.m
 import { getSkillsMock } from "@/app/api/__generated__/endpoints/skills/skills.msw";
 import { getStoreMock } from "@/app/api/__generated__/endpoints/store/store.msw";
 import { getWorkspaceMock } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
+import { http, HttpResponse } from "msw";
 
 // Pass hard-coded data to individual handler functions to override faker-generated data.
 export const mockHandlers = [
+  // No activation in progress unless a test explicitly provides one.
+  http.get("/api/proxy/api/credits/pro-activation/current", () =>
+    HttpResponse.json({ detail: "No activation in progress" }, { status: 404 }),
+  ),
   ...getAdminMock(),
   ...getAnalyticsMock(),
   ...getApiKeysMock(),

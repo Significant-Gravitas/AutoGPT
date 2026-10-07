@@ -111,8 +111,18 @@ vi.mock("framer-motion", () => {
 });
 
 vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
-  ChatInput: ({ disabled }: { disabled?: boolean }) => (
-    <input data-testid="chat-input" disabled={disabled} />
+  ChatInput: ({
+    disabled,
+    sendDisabled,
+  }: {
+    disabled?: boolean;
+    sendDisabled?: boolean;
+  }) => (
+    <input
+      data-testid="chat-input"
+      disabled={disabled}
+      data-send-disabled={String(!!sendDisabled)}
+    />
   ),
 }));
 
@@ -244,17 +254,16 @@ describe("ChatContainer", () => {
     consoleWarn.mockRestore();
   });
 
-  it("renders the blurred usage-limit backdrop only when the limit is reached", () => {
+  it("keeps the draft editable while the usage notice pauses sending", () => {
     mockIsUsageLimitReached.mockReturnValue(true);
-
     render(<ChatContainer {...baseProps} />);
-
-    const backdrop = screen.getByTestId("usage-limit-backdrop");
-
     expect(screen.getByRole("alert")).toBeDefined();
-    expect(backdrop.className).toContain("backdrop-blur-lg");
-    expect(backdrop.className).toContain("[mask-image:linear-gradient");
-    expect(backdrop.className).toContain("radial-gradient");
+    const input = screen.getByTestId("chat-input") as HTMLInputElement;
+    expect(input.disabled).toBe(false);
+    expect(input.getAttribute("data-send-disabled")).toBe("true");
+    fireEvent.change(input, { target: { value: "Keep this draft" } });
+    expect(input.value).toBe("Keep this draft");
+    expect(screen.queryByTestId("usage-limit-backdrop")).toBeNull();
   });
 
   it("does not render the usage-limit backdrop while usage is still available", () => {

@@ -66,7 +66,13 @@ function makeUsage({
 }
 
 function mockUsageResponse(body: JsonBodyType) {
-  server.use(http.get("*/api/chat/usage", () => HttpResponse.json(body)));
+  server.use(
+    http.get(
+      "*/api/credits/subscription",
+      () => new HttpResponse(null, { status: 503 }),
+    ),
+    http.get("*/api/chat/usage", () => HttpResponse.json(body)),
+  );
 }
 
 describe("UsagePopover", () => {
@@ -117,7 +123,7 @@ describe("UsagePopover", () => {
     mockUsageResponse(makeUsage({ tier: "PRO" }));
     render(<UsagePopover />);
 
-    expect(await screen.findByText("Pro plan")).toBeDefined();
+    expect(await screen.findByText("Pro")).toBeDefined();
   });
 
   it("never renders the 'Go to billing' button (handled by the card)", async () => {

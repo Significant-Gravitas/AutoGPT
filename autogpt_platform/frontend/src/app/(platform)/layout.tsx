@@ -3,13 +3,16 @@ import { PushNotificationProvider } from "@/services/push-notifications/PushNoti
 import { ReactNode } from "react";
 import { AutoPilotBridgeProvider } from "@/contexts/AutoPilotBridgeContext";
 import { PlatformChrome } from "./PlatformChrome/PlatformChrome";
+import { ProActivationProvider } from "@/services/pro-activation/ProActivationProvider";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
   return (
     <AutoPilotBridgeProvider>
       <NetworkStatusMonitor />
       <PushNotificationProvider />
-      <PlatformChrome>{children}</PlatformChrome>
+      <ProActivationProvider>
+        <PlatformChrome>{children}</PlatformChrome>
+      </ProActivationProvider>
     </AutoPilotBridgeProvider>
   );
 }
