@@ -23,45 +23,45 @@ const statusIconMap: Record<AgentExecutionStatus, StatusIconMap> = {
   INCOMPLETE: {
     icon: <Icon icon={AlertCircleIcon} size={16} className="text-red-700" />,
     bgColor: "bg-red-50",
-    textColor: "!text-red-700",
+    textColor: "text-red-700",
   },
   QUEUED: {
     icon: <Icon icon={Clock01Icon} size={16} className="text-yellow-700" />,
     bgColor: "bg-yellow-50",
-    textColor: "!text-yellow-700",
+    textColor: "text-yellow-700",
   },
   RUNNING: {
     icon: <Icon icon={PauseCircleIcon} size={16} className="text-yellow-700" />,
     bgColor: "bg-yellow-50",
-    textColor: "!text-yellow-700",
+    textColor: "text-yellow-700",
   },
   REVIEW: {
     icon: <Icon icon={Alert01Icon} size={16} className="text-yellow-700" />,
     bgColor: "bg-yellow-50",
-    textColor: "!text-yellow-700",
+    textColor: "text-yellow-700",
   },
   COMPLETED: {
     icon: (
       <Icon icon={CheckmarkCircle02Icon} size={16} className="text-green-700" />
     ),
     bgColor: "bg-green-50",
-    textColor: "!text-green-700",
+    textColor: "text-green-700",
   },
   TERMINATED: {
     icon: <Icon icon={StopCircleIcon} size={16} className="text-slate-700" />,
     bgColor: "bg-slate-50",
-    textColor: "!text-slate-700",
+    textColor: "text-slate-700",
   },
   FAILED: {
     icon: <Icon icon={CancelCircleIcon} size={16} className="text-red-700" />,
     bgColor: "bg-red-50",
-    textColor: "!text-red-700",
+    textColor: "text-red-700",
   },
 };
 
-type Props = {
+interface Props {
   status: AgentExecutionStatus;
-};
+}
 
 export function RunStatusBadge({ status }: Props) {
   return (

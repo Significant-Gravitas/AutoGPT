@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { Text } from "@/components/atoms/Text/Text";
 
 type FolderSize = "xs" | "sm" | "md" | "lg" | "xl";
-export type FolderColorName = "blue" | "purple" | "emerald" | "orange" | "pink";
+export type FolderColorName = "blue" | "purple" | "green" | "orange" | "pink";
 
 export type FolderColor = FolderColorName | (string & {});
 
@@ -11,8 +11,8 @@ const hexToColorName: Record<string, FolderColorName> = {
   "#3b82f6": "blue",
   "#A855F7": "purple",
   "#a855f7": "purple",
-  "#10B981": "emerald",
-  "#10b981": "emerald",
+  "#10B981": "green",
+  "#10b981": "green",
   "#F97316": "orange",
   "#f97316": "orange",
   "#EC4899": "pink",
@@ -66,12 +66,12 @@ const colorMap: Record<
     fill: "fill-purple-200",
     stroke: "stroke-purple-400",
   },
-  emerald: {
-    bg: "bg-emerald-300",
-    border: "border-emerald-300",
-    borderLight: "border-emerald-200",
-    fill: "fill-emerald-300",
-    stroke: "stroke-emerald-400",
+  green: {
+    bg: "bg-green-300",
+    border: "border-green-300",
+    borderLight: "border-green-200",
+    fill: "fill-green-300",
+    stroke: "stroke-green-400",
   },
   orange: {
     bg: "bg-orange-200",
@@ -102,14 +102,14 @@ export const folderCardStyles: Record<
   purple: {
     bg: "bg-purple-50",
     border: "border-purple-200",
-    buttonBase: "border-zinc-600 text-black ",
+    buttonBase: "border-zinc-600 text-black",
     buttonHover: "hover:bg-purple-200",
   },
-  emerald: {
-    bg: "bg-emerald-50",
-    border: "border-emerald-200",
+  green: {
+    bg: "bg-green-50",
+    border: "border-green-200",
     buttonBase: "border-zinc-600 text-black",
-    buttonHover: "hover:bg-emerald-200",
+    buttonHover: "hover:bg-green-200",
   },
   orange: {
     bg: "bg-orange-50",
@@ -240,13 +240,11 @@ function Page({ color = "blue" }: PageProps) {
       className={`h-full w-full rounded-xl border bg-white p-4 ${colors.borderLight}`}
     >
       <div className="flex flex-col gap-2">
-        <Text variant="h5" className="text-black">
-          agent.json
-        </Text>
+        <Text variant="h5">agent.json</Text>
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex gap-2">
-            <div className="h-1.5 flex-1 rounded-full bg-neutral-100" />
-            <div className="h-1.5 flex-1 rounded-full bg-neutral-100" />
+            <div className="h-1.5 flex-1 rounded-full bg-zinc-100" />
+            <div className="h-1.5 flex-1 rounded-full bg-zinc-100" />
           </div>
         ))}
       </div>
