@@ -190,4 +190,41 @@ describe("connecting a service from the composer", () => {
     expect(requests.grants).toBe(0);
     expect(useCopilotUIStore.getState().contextPanelExpert).toBeNull();
   });
+
+  test("an expert resolving from cache cannot receive a new grant", async () => {
+    const requests = arrangeSentry();
+    render(
+      <>
+        <ChatContainer
+          {...baseProps}
+          sessionId={null}
+          expertIdentity={maria}
+          isResolvingExpertIdentity
+        />
+        <CopilotModals />
+      </>,
+    );
+
+    await waitFor(() =>
+      expect(useCopilotUIStore.getState().contextPanelExpert).toBeNull(),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Add files and more" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: /Connect service/ }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: /Sentry/ }),
+    );
+    fireEvent.change(await within(dialog).findByLabelText("API token"), {
+      target: { value: "sntrys_token" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save token" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(requests.token).toBe(1);
+    expect(requests.grants).toBe(0);
+  });
 });

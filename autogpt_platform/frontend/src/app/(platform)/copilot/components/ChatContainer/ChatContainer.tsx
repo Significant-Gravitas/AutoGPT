@@ -200,7 +200,7 @@ export const ChatContainer = ({
     : null;
   const isExpertArchived = archivedExpertIdentity !== null;
   const chatExpert =
-    expertIdentity && !expertIdentity.isArchived
+    !isResolvingExpertIdentity && expertIdentity && !expertIdentity.isArchived
       ? { id: expertIdentity.id, name: expertIdentity.name }
       : null;
   useShareChatExpert(chatExpert);
