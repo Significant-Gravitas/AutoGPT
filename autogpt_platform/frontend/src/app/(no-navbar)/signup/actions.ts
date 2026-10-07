@@ -5,7 +5,6 @@ import { getOnboardingStatus } from "@/app/api/helpers";
 import { auth } from "@/lib/auth/auth";
 import { getEmailVerificationCallbackURL } from "@/lib/auth/email-verification";
 import { rollbackSession } from "@/lib/auth/server/rollbackSession";
-import { runSignUp } from "@/lib/auth/sign-up-next";
 import { markAccountCreated } from "@/services/analytics/account-created-server";
 import {
   scheduleAccountCreatedGoal,
@@ -42,18 +41,15 @@ export async function signup(
     let signUpResult;
     try {
       // The session cookie is set automatically by the nextCookies plugin.
-      const requestHeaders = await headers();
-      signUpResult = await runSignUp(next, () =>
-        auth.api.signUpEmail({
-          body: {
-            email: parsed.data.email,
-            password: parsed.data.password,
-            name: parsed.data.email.split("@")[0],
-            callbackURL: getEmailVerificationCallbackURL(next),
-          },
-          headers: requestHeaders,
-        }),
-      );
+      signUpResult = await auth.api.signUpEmail({
+        body: {
+          email: parsed.data.email,
+          password: parsed.data.password,
+          name: parsed.data.email.split("@")[0],
+          callbackURL: getEmailVerificationCallbackURL(next),
+        },
+        headers: await headers(),
+      });
     } catch (error) {
       if (error instanceof APIError) {
         // Match on the body message ("Signups are not allowed."), not

@@ -177,9 +177,7 @@ describe("SignupPage with email verification required", () => {
     expect(
       await screen.findByRole("button", { name: "Resend email in 60s" }),
     ).toHaveProperty("disabled", true);
-    expect(
-      await screen.findByText(`Verification email sent to ${email}`),
-    ).toBeDefined();
+    expect(await screen.findByText(`Email sent to ${email}`)).toBeDefined();
   });
 
   test("start again returns to the form with the address cleared", async () => {

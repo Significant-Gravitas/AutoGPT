@@ -59,3 +59,21 @@ function describePgError(error: unknown): {
       typeof fields.constraint === "string" ? fields.constraint : "unknown",
   };
 }
+
+// Whether the platform `User` row exists. Throws if it can't be read: the
+// callers want opposite answers then (see hasAccountBeenUsed).
+export async function platformUserExists(
+  pool: Pick<Pool, "query">,
+  userId: string,
+) {
+  try {
+    const result = await pool.query('SELECT 1 FROM "User" WHERE id = $1', [
+      userId,
+    ]);
+    return (result.rowCount ?? 0) > 0;
+  } catch (error) {
+    const { code } = describePgError(error);
+    console.error("Failed to look up the platform User", { userId, code });
+    throw new Error(`Failed to look up the platform User (pg ${code})`);
+  }
+}
