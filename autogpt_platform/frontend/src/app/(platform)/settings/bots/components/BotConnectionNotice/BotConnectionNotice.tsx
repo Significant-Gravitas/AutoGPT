@@ -22,8 +22,8 @@ export function BotConnectionNotice() {
   if (!current || transports.filter((t) => t.available).length < 2) return null;
 
   return (
-    <div className="mb-6 ml-4 rounded-2xl border border-[#DADADC] bg-white px-4 py-3">
-      <Text variant="small" className="text-[#505057]">
+    <div className="mb-6 ml-4 rounded-2xl border border-zinc-200 bg-white px-4 py-3">
+      <Text variant="small" className="text-zinc-700">
         Conversations that come in over a bot start on{" "}
         <span className="font-medium text-black">{current.label}</span>, the
         connection you chose in{" "}

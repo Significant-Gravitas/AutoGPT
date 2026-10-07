@@ -58,7 +58,7 @@ export function EmailForm({ user }: EmailFormProps) {
               variant="outline"
               as="NextLink"
               href="/reset-password"
-              className="min-w-[10rem]"
+              className="min-w-40"
               size="small"
             >
               Reset password
@@ -67,7 +67,7 @@ export function EmailForm({ user }: EmailFormProps) {
               type="submit"
               disabled={hasError || isSameEmail}
               loading={isLoading}
-              className="min-w-[10rem]"
+              className="min-w-40"
               size="small"
             >
               {isLoading ? "Saving..." : "Update email"}

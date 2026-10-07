@@ -4,7 +4,13 @@ import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { Text } from "@/components/atoms/Text/Text";
 
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { Status } from "@/components/__legacy__/Status";
 import { useAgentTableRow } from "./useAgentTableRow";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
@@ -67,7 +73,7 @@ export const AgentTableRow = ({
       data-testid="agent-table-row"
       data-agent-id={graph_id}
       data-submission-id={listing_version_id}
-      className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex"
+      className="hidden items-center border-b border-zinc-300 px-4 py-4 hover:bg-zinc-50 md:flex"
     >
       <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
         {/* Agent info column */}
@@ -95,22 +101,22 @@ export const AgentTableRow = ({
             <div className="flex items-center gap-2">
               <Text
                 variant="h3"
-                className="line-clamp-1 text-ellipsis text-neutral-800 dark:text-neutral-200"
                 size="large-medium"
+                tone="primary"
+                className="line-clamp-1 text-ellipsis"
+                unmask={false}
               >
                 {agentName}
               </Text>
-              <Text
-                variant="body"
-                size="small"
-                className="text-neutral-500 dark:text-neutral-400"
-              >
+              <Text variant="small" tone="muted">
                 v{graph_version}
               </Text>
             </div>
             <Text
               variant="body"
-              className="line-clamp-1 text-ellipsis text-neutral-600 dark:text-neutral-400"
+              tone="secondary"
+              className="line-clamp-1 text-ellipsis"
+              unmask={false}
             >
               {description}
             </Text>
@@ -118,7 +124,7 @@ export const AgentTableRow = ({
         </div>
 
         {/* Date column */}
-        <div className="text-sm text-neutral-600 dark:text-neutral-400">
+        <div className="text-sm text-zinc-600">
           {submitted_at && submitted_at.toLocaleDateString()}
         </div>
 
@@ -128,7 +134,7 @@ export const AgentTableRow = ({
         </div>
 
         {/* Runs column */}
-        <div className="text-right text-sm text-neutral-600 dark:text-neutral-400">
+        <div className="text-right text-sm text-zinc-600">
           {run_count?.toLocaleString() ?? "0"}
         </div>
 
@@ -136,68 +142,64 @@ export const AgentTableRow = ({
         <div className="text-right">
           {review_avg_rating ? (
             <div className="flex items-center justify-end gap-1">
-              <span className="text-sm font-medium">
+              <Text variant="body-medium" as="span">
                 {review_avg_rating.toFixed(1)}
-              </span>
+              </Text>
               <Icon icon={StarIcon} className="h-2 w-2" />
             </div>
           ) : (
-            <span className="text-sm text-neutral-600 dark:text-neutral-400">
+            <Text variant="body" as="span" tone="secondary">
               No reviews
-            </span>
+            </Text>
           )}
         </div>
 
         {/* Actions - Three dots menu */}
         <div className="flex justify-end">
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger data-testid="agent-table-row-actions">
+          <DropdownMenu>
+            <DropdownMenuTrigger data-testid="agent-table-row-actions">
               <Icon
                 icon={MoreVerticalIcon}
-                className="h-5 w-5 text-neutral-800"
+                size={20}
+                className="text-zinc-800"
               />
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="rounded-xl p-1 shadow-md">
               {canModify ? (
-                <DropdownMenu.Item
+                <DropdownMenuItem
                   onSelect={handleEdit}
-                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-zinc-100"
                 >
-                  <Icon
-                    icon={PencilIcon}
-                    className="mr-2 h-4 w-4 dark:text-gray-100"
-                  />
-                  <span className="dark:text-gray-100">Edit</span>
-                </DropdownMenu.Item>
+                  <Icon icon={PencilIcon} size={16} className="mr-2" />
+                  <span>Edit</span>
+                </DropdownMenuItem>
               ) : (
-                <DropdownMenu.Item
+                <DropdownMenuItem
                   onSelect={handleView}
-                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-zinc-100"
                 >
-                  <Icon
-                    icon={EyeIcon}
-                    className="mr-2 h-4 w-4 dark:text-gray-100"
-                  />
-                  <span className="dark:text-gray-100">View</span>
-                </DropdownMenu.Item>
+                  <Icon icon={EyeIcon} size={16} className="mr-2" />
+                  <span>View</span>
+                </DropdownMenuItem>
               )}
               {canModify && (
                 <>
-                  <DropdownMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
-                  <DropdownMenu.Item
+                  <DropdownMenuSeparator className="mx-0 my-1 h-px bg-zinc-300" />
+                  <DropdownMenuItem
                     onSelect={handleDelete}
-                    className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-zinc-100"
                   >
                     <Icon
                       icon={Delete02Icon}
-                      className="mr-2 h-4 w-4 text-red-500 dark:text-red-400"
+                      size={16}
+                      className="mr-2 text-red-500"
                     />
-                    <span className="dark:text-red-400">Delete</span>
-                  </DropdownMenu.Item>
+                    <span>Delete</span>
+                  </DropdownMenuItem>
                 </>
               )}
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </div>

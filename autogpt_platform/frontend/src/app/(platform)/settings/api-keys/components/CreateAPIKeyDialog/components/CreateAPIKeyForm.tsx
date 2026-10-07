@@ -35,7 +35,7 @@ export function CreateAPIKeyForm({ form, onSubmit, isPending }: Props) {
                 id={field.name}
                 label="Name"
                 placeholder="My integration key"
-                wrapperClassName="!mb-0"
+                wrapperClassName="mb-0"
               />
             </FormControl>
             <FormMessage />
@@ -54,7 +54,7 @@ export function CreateAPIKeyForm({ form, onSubmit, isPending }: Props) {
                 id={field.name}
                 label="Description (optional)"
                 placeholder="Describe what this key is used for"
-                wrapperClassName="!mb-0"
+                wrapperClassName="mb-0"
               />
             </FormControl>
             <FormMessage />

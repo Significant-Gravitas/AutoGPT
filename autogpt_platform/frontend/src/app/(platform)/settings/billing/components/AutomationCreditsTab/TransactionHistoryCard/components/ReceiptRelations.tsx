@@ -5,11 +5,11 @@ import { Text } from "@/components/atoms/Text/Text";
 import { libraryHref, type Transaction } from "../helpers";
 import { TransactionAmount } from "./TransactionAmount";
 
-type Props = {
+interface Props {
   transaction: Transaction;
   loadedTransactions: Transaction[];
   onSelectRelated: (executionID: string) => void;
-};
+}
 
 export function ReceiptRelations({
   transaction,

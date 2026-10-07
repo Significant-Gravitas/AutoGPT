@@ -19,7 +19,7 @@ export function APIKeySelectionBar({
   onDeleteSelected,
 }: Props) {
   return (
-    <div className="flex w-full items-center justify-between rounded-[4px] border border-zinc-200 bg-zinc-100 px-4 py-2">
+    <div className="flex w-full items-center justify-between rounded border border-zinc-200 bg-zinc-100 px-4 py-2">
       <div className="flex items-center gap-5">
         <Text variant="body" as="span" className="text-zinc-700">
           {selectedCount} selected

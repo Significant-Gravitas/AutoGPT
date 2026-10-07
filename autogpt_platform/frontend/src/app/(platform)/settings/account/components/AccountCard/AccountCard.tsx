@@ -61,7 +61,7 @@ export function AccountCard({ user, index = 0 }: Props) {
     >
       <div className="flex flex-col divide-y divide-zinc-200 rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         <div className="flex items-center justify-between gap-4 px-4 py-4">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span">
             Email
           </Text>
 
@@ -69,7 +69,8 @@ export function AccountCard({ user, index = 0 }: Props) {
             <Text
               variant="body"
               as="span"
-              className="min-w-0 truncate text-textBlack"
+              className="min-w-0 truncate"
+              unmask={false}
             >
               {currentEmail}
             </Text>
@@ -115,7 +116,7 @@ export function AccountCard({ user, index = 0 }: Props) {
                               autoComplete="email"
                               size="medium"
                               className="w-full"
-                              wrapperClassName="!mb-0"
+                              wrapperClassName="mb-0"
                               error={fieldState.error?.message}
                               {...field}
                             />
@@ -149,7 +150,7 @@ export function AccountCard({ user, index = 0 }: Props) {
         </div>
 
         <div className="flex items-center justify-between gap-4 px-4 py-4">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span">
             Password
           </Text>
 

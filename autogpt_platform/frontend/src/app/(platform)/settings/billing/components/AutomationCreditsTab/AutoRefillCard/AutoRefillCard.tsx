@@ -38,11 +38,11 @@ export function AutoRefillCard({ index = 0 }: Props) {
       className="flex w-full flex-wrap items-center justify-between gap-4 rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]"
     >
       <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-violet-100 text-violet-700">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-purple-100 text-purple-700">
           <Icon icon={ReloadIcon} size={20} />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span">
             Auto-refill
           </Text>
           <Text variant="body" as="span" className="text-zinc-500">

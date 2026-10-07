@@ -42,7 +42,8 @@ export function SidebarItemCard({
           </Text>
           <Text
             variant="body"
-            className="leading-tight !text-zinc-500"
+            tone="muted"
+            className="leading-tight"
             title={descriptionTitle}
           >
             {description}

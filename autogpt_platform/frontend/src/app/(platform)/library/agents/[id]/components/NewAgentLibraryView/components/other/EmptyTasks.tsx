@@ -17,7 +17,6 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { exportAsJSONFile } from "@/lib/utils";
 import { formatDate } from "@/lib/utils/time";
 import { useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { RunAgentModal } from "../modals/RunAgentModal/RunAgentModal";
@@ -109,7 +108,7 @@ export function EmptyTasks({
           <div className="flex flex-col items-center gap-12">
             <div className="flex items-center justify-between gap-2">
               <div className="flex flex-col items-center gap-2">
-                <Text variant="h3" className="text-center text-[1.375rem]">
+                <Text variant="h4" as="h3" className="text-center">
                   Ready to get started?
                 </Text>
                 <Text variant="large" className="text-center">
@@ -138,13 +137,15 @@ export function EmptyTasks({
       </RunDetailCard>
 
       <div className="mt-4 flex flex-col gap-10 rounded-large border border-zinc-200 p-6 lg:mt-0 lg:w-[29.5rem]">
-        <Text variant="label" className="text-zinc-500">
+        <Text variant="label" tone="muted">
           About this agent
         </Text>
         <div className="flex flex-col gap-2">
-          <Text variant="h4">{agent.name}</Text>
+          <Text variant="h4" unmask={false}>
+            {agent.name}
+          </Text>
           {isPublished ? (
-            <Text variant="body">
+            <Text variant="body" unmask={false}>
               by {agent.marketplace_listing?.creator.name}
             </Text>
           ) : null}
@@ -152,7 +153,7 @@ export function EmptyTasks({
         <ShowMoreText
           previewLimit={170}
           variant="body"
-          className="-mt-4 text-textGrey"
+          className="-mt-4 text-zinc-700"
         >
           {agent.description ||
             `This agent is not yet published. Once it is published, You can publish your agent by clicking the "Publish" button in the agent editor.`}
@@ -160,32 +161,29 @@ export function EmptyTasks({
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-20">
             <div className="flex flex-col gap-0">
-              <Text variant="body-medium" className="text-black">
-                Agent created on
-              </Text>
-              <Text variant="body" className="text-textGrey">
+              <Text variant="body-medium">Agent created on</Text>
+              <Text variant="body" tone="secondary">
                 {createdAt}
               </Text>
             </div>
             {isUpdated ? (
               <div className="flex flex-col gap-0">
-                <Text variant="body-medium" className="text-black">
-                  Agent updated on
-                </Text>
-                <Text variant="body" className="text-textGrey">
+                <Text variant="body-medium">Agent updated on</Text>
+                <Text variant="body" tone="secondary">
                   {updatedAt}
                 </Text>
               </div>
             ) : null}
           </div>
           <div className="mt-4 flex items-center gap-2">
-            <Button variant="secondary" size="small" asChild>
-              <Link
-                href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
-                target="_blank"
-              >
-                Edit agent
-              </Link>
+            <Button
+              variant="secondary"
+              size="small"
+              as="NextLink"
+              href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
+              target="_blank"
+            >
+              Edit agent
             </Button>
             <Button variant="secondary" size="small" onClick={handleExport}>
               Export agent to file

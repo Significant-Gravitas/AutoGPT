@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { APIKeyInfo } from "@/app/api/__generated__/models/aPIKeyInfo";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   Tooltip,
@@ -63,7 +64,7 @@ export function APIKeyRow({
         </button>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <Text variant="body-medium" as="span" className="text-textBlack">
+            <Text variant="body-medium" as="span" unmask={false}>
               {apiKey.name}
             </Text>
             <TooltipProvider>
@@ -97,14 +98,17 @@ export function APIKeyRow({
         </div>
       </div>
 
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-sm"
         aria-label={`Delete ${apiKey.name}`}
+        withTooltip={false}
         onClick={onDelete}
-        className="shrink-0 rounded text-zinc-500 transition-colors hover:text-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
+        className="shrink-0 text-zinc-500 hover:text-zinc-700"
       >
         <Icon icon={Delete02Icon} size={20} />
-      </button>
+      </Button>
 
       <APIKeyInfoDialog
         open={infoOpen}

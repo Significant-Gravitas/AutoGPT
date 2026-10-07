@@ -119,7 +119,7 @@ export function MoveToFolderDialog({
           <div className="max-h-[280px] overflow-y-auto">
             {folders.length === 0 ? (
               <div className="flex h-20 items-center justify-center">
-                <Text variant="small" className="text-zinc-400">
+                <Text variant="small" tone="muted">
                   No folders found
                 </Text>
               </div>
@@ -135,7 +135,7 @@ export function MoveToFolderDialog({
                     <span className="text-lg">📂</span>
                     <div className="flex flex-col items-start">
                       <Text variant="small-medium">My Library (root)</Text>
-                      <Text variant="small" className="text-zinc-400">
+                      <Text variant="small" tone="muted">
                         Remove from folder
                       </Text>
                     </div>
@@ -152,8 +152,10 @@ export function MoveToFolderDialog({
                   >
                     <span className="text-lg">{folder.icon ?? "📁"}</span>
                     <div className="flex flex-col items-start">
-                      <Text variant="small-medium">{folder.name}</Text>
-                      <Text variant="small" className="text-zinc-400">
+                      <Text variant="small-medium" unmask={false}>
+                        {folder.name}
+                      </Text>
+                      <Text variant="small" tone="muted">
                         {folder.agent_count ?? 0}{" "}
                         {(folder.agent_count ?? 0) === 1 ? "agent" : "agents"}
                       </Text>

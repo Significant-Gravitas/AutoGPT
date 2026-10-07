@@ -38,7 +38,7 @@ export function SortColumnFilter({
   return (
     <ColumnFilter active={isActive} label="Sort" align="start">
       <div className="flex flex-col gap-2">
-        <Text variant="small-medium" as="span" className="px-2 text-textBlack">
+        <Text variant="small-medium" as="span" className="px-2">
           Sort
         </Text>
         <SortOption
@@ -89,14 +89,14 @@ function SortOption({
         "ease-[cubic-bezier(0.16,1,0.3,1)] transition-[background-color,color,transform] duration-150",
         "active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100",
         active
-          ? "bg-violet-50 text-violet-700"
+          ? "bg-purple-50 text-purple-700"
           : "text-zinc-700 hover:bg-zinc-100",
       )}
     >
       <span
         className={cn(
           "flex h-5 w-5 items-center justify-center rounded text-zinc-500",
-          active && "text-violet-700",
+          active && "text-purple-700",
         )}
       >
         {icon}

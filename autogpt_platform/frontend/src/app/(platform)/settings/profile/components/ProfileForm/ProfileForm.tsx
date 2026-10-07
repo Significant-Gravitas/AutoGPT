@@ -5,6 +5,7 @@ import { type ReactNode, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
@@ -93,7 +94,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
     remaining < 0
       ? "text-red-500"
       : remaining < 30
-        ? "text-amber-600"
+        ? "text-yellow-600"
         : "text-zinc-400";
 
   function applyAction(action: MarkdownAction) {
@@ -183,33 +184,32 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           aria-hidden={isPreview}
         >
           {ACTIONS.map((action) => (
-            <button
+            <Button
               key={action.label}
               type="button"
+              variant="ghost"
+              size="icon-sm"
               aria-label={action.label}
-              title={action.label}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => applyAction(action)}
               disabled={isPreview}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-black"
+              className="rounded-full text-zinc-600 hover:bg-zinc-100 hover:text-black"
             >
               {action.icon}
-            </button>
+            </Button>
           ))}
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="xs"
           aria-pressed={isPreview}
           onClick={() => setIsPreview((v) => !v)}
-          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-black"
+          leadingIcon={isPreview ? EyeClosedIcon : EyeIcon}
+          className="ml-auto h-8 rounded-full px-3 text-zinc-700 hover:bg-zinc-100 hover:text-black"
         >
-          {isPreview ? (
-            <Icon icon={EyeClosedIcon} size={14} />
-          ) : (
-            <Icon icon={EyeIcon} size={14} />
-          )}
           {isPreview ? "Edit" : "Preview"}
-        </button>
+        </Button>
       </div>
       {isPreview ? (
         <div
@@ -260,7 +260,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           value={formState.description}
           error={errors.description}
           onChange={(e) => onChange("description", e.target.value)}
-          className="!rounded-3xl !rounded-tr-md scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200 hover:scrollbar-thumb-zinc-300"
+          className="rounded-3xl rounded-tr-md scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200 hover:scrollbar-thumb-zinc-300"
         />
       )}
     </motion.div>

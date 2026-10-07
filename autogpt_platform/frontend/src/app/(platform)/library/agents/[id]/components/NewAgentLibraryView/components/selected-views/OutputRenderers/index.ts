@@ -4,7 +4,7 @@ import { codeRenderer } from "./renderers/CodeRenderer";
 import { imageRenderer } from "./renderers/ImageRenderer";
 import { videoRenderer } from "./renderers/VideoRenderer";
 import { jsonRenderer } from "./renderers/JSONRenderer";
-import { markdownRenderer } from "./renderers/MarkdownRenderer";
+import { markdownRenderer } from "@/components/contextual/OutputRenderers/renderers/MarkdownRenderer";
 
 // Register all renderers in priority order
 globalRegistry.register(videoRenderer);

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 
@@ -39,13 +40,14 @@ export function YearlyPicker({
         Months
       </Text>
       <div className="flex gap-2">
-        <button
+        <Button
           type="button"
-          className="h-[2.25rem] rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium leading-[16px] text-black hover:bg-zinc-100"
+          variant="outline"
+          size="small"
           onClick={toggleAll}
         >
           {values.length === months.length ? "Deselect All" : "Select All"}
-        </button>
+        </Button>
       </div>
       <MultiToggle
         items={items}

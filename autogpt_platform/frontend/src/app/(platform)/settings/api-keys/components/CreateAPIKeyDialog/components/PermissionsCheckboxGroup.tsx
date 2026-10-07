@@ -22,12 +22,7 @@ export function PermissionsCheckboxGroup({ value, onChange }: Props) {
 
   return (
     <div className="flex flex-col gap-2">
-      <Text
-        id="api-key-permissions-label"
-        variant="large-medium"
-        as="span"
-        className="text-textBlack"
-      >
+      <Text id="api-key-permissions-label" variant="large-medium" as="span">
         Permissions
       </Text>
       <div

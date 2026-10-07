@@ -76,7 +76,7 @@ function renderVideo(
     <div className="group relative">
       <video
         controls
-        className="h-auto max-w-full rounded-md border border-gray-200"
+        className="h-auto max-w-full rounded-md border border-zinc-200"
         preload="metadata"
       >
         <source src={videoUrl} type={metadata?.mimeType || "video/mp4"} />

@@ -69,7 +69,7 @@ export function LibraryFolderDeleteDialog({
     >
       <Dialog.Content>
         <div>
-          <Text variant="large">
+          <Text variant="large" unmask={false}>
             Are you sure you want to delete &ldquo;{folder.name}&rdquo;? Agents
             inside this folder will be moved back to your library.
           </Text>

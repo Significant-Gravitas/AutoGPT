@@ -34,7 +34,7 @@ export function ColumnFilter({
             "ease-[cubic-bezier(0.16,1,0.3,1)] transition-[transform,background-color,color] duration-150",
             "active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100",
             active
-              ? "bg-violet-100 text-violet-700 hover:bg-violet-200"
+              ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
               : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700",
           )}
         >

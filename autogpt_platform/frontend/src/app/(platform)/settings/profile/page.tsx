@@ -50,7 +50,7 @@ export default function SettingsProfilePage() {
   return (
     <div className="flex w-full flex-col gap-6">
       <div className="flex flex-col pb-2">
-        <Text variant="h4" as="h1" className="leading-[28px] text-textBlack">
+        <Text variant="h4" as="h1" className="leading-[28px]">
           Profile
         </Text>
         <Text variant="body" className="mt-4 max-w-[600px] text-zinc-700">

@@ -8,10 +8,10 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 import type { SettingsNavItem as SettingsNavItemType } from "./helpers";
 
-type Props = {
+interface Props {
   item: SettingsNavItemType;
   isActive: boolean;
-};
+}
 
 function NavItemContent({
   label,
@@ -26,20 +26,11 @@ function NavItemContent({
 
   return (
     <>
-      <UIIcon
-        icon={Icon}
-        size={16}
-        className={isActive ? "text-black" : "text-[#1F1F20]"}
-      />
+      <UIIcon icon={Icon} size={16} className="text-black" />
       <Text
-        variant="body"
+        variant={isActive ? "body-medium" : "body"}
         as="span"
-        className={cn(
-          "flex-1",
-          isActive
-            ? "font-medium text-[#1F1F20]"
-            : "font-normal text-[#505057]",
-        )}
+        className={cn("flex-1", !isActive && "text-zinc-700")}
       >
         {label}
       </Text>
@@ -74,8 +65,8 @@ export function SettingsNavItem({ item, isActive }: Props) {
         href={item.href}
         aria-current={isActive ? "page" : undefined}
         className={cn(
-          "flex h-[38px] w-full items-center gap-2 rounded-[8px] px-3 text-[#505057] transition-colors",
-          isActive ? "bg-[#EFEFF0]" : "hover:bg-[#F5F5F6]",
+          "flex h-[38px] w-full items-center gap-2 rounded-lg px-3 text-zinc-700 transition-colors",
+          isActive ? "bg-zinc-100" : "hover:bg-zinc-50",
         )}
       >
         <NavItemContent

@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -41,8 +43,10 @@ function CoPilotUsageSection() {
 
   return (
     <div className="my-6 space-y-4">
-      <h3 className="text-lg font-medium">Expert Usage & Storage</h3>
-      <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
+      <Text variant="h5" as="h3">
+        Expert Usage & Storage
+      </Text>
+      <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4">
         {usage.daily && (
           <UsageBar
             label="Today"
@@ -59,7 +63,11 @@ function CoPilotUsageSection() {
         )}
         <StorageBar />
       </div>
-      <Button className="w-full" onClick={() => router.push("/copilot")}>
+      <Button
+        size="small"
+        className="w-full"
+        onClick={() => router.push("/copilot")}
+      >
         Open Otto
       </Button>
     </div>
@@ -153,9 +161,9 @@ export default function CreditsPage() {
 
   return (
     <div className="w-full px-4 sm:px-8 md:min-w-[800px]">
-      <h1 className="mb-6 text-[28px] font-normal text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
+      <Text variant="h2" as="h1" tone="primary" className="mb-6 sm:mb-8">
         Billing
-      </h1>
+      </Text>
 
       {/* Subscription Tier */}
       <div className="mb-8">
@@ -165,9 +173,11 @@ export default function CreditsPage() {
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Top-up Form */}
         <div className="space-y-4">
-          <h3 className="text-lg font-medium">Top-up Credits</h3>
+          <Text variant="h5" as="h3">
+            Top-up Credits
+          </Text>
 
-          <p className="mb-6 text-neutral-600 dark:text-neutral-400">
+          <Text variant="large" tone="secondary" className="mb-6">
             {topupStatus === "success" && (
               <span className="text-green-500">
                 Your payment was successful. Your credits will be updated
@@ -179,97 +189,82 @@ export default function CreditsPage() {
                 Payment failed. Your payment method has not been charged.
               </span>
             )}
-          </p>
+          </Text>
 
           <form onSubmit={submitTopUp} className="space-y-4">
-            <div>
-              <label
-                htmlFor="topUpAmount"
-                className="mb-1 block text-neutral-700"
-              >
-                Top-up amount (USD), minimum $5:
-              </label>
-              <input
-                type="number"
-                id="topUpAmount"
-                name="topUpAmount"
-                placeholder="Enter top-up amount"
-                min="5"
-                step="1"
-                defaultValue={5}
-                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
-                required
-              />
-            </div>
+            <Input
+              type="number"
+              id="topUpAmount"
+              name="topUpAmount"
+              label="Top-up amount (USD), minimum $5:"
+              labelVariant="large"
+              labelClassName="text-zinc-700"
+              placeholder="Enter top-up amount"
+              min="5"
+              step="1"
+              defaultValue={5}
+              required
+            />
 
-            <Button type="submit" className="w-full">
+            <Button type="submit" size="small" className="w-full">
               Top-up
             </Button>
           </form>
 
           {/* Auto Top-up Form */}
           <form onSubmit={submitAutoTopUpConfig} className="my-6 space-y-4">
-            <h3 className="text-lg font-medium">Automatic Refill Settings</h3>
+            <Text variant="h5" as="h3">
+              Automatic Refill Settings
+            </Text>
 
-            <div>
-              <label
-                htmlFor="threshold"
-                className="mb-1 block text-neutral-700"
-              >
-                When my balance goes below this amount:
-              </label>
-              <input
-                type="number"
-                id="threshold"
-                name="threshold"
-                defaultValue={
-                  autoTopUpConfig?.threshold
-                    ? autoTopUpConfig.threshold / 100
-                    : ""
-                }
-                placeholder="Refill threshold, minimum $5"
-                min="5"
-                step="1"
-                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
-                required
-              />
-            </div>
+            <Input
+              type="number"
+              id="threshold"
+              name="threshold"
+              label="When my balance goes below this amount:"
+              labelVariant="large"
+              labelClassName="text-zinc-700"
+              defaultValue={
+                autoTopUpConfig?.threshold
+                  ? autoTopUpConfig.threshold / 100
+                  : ""
+              }
+              placeholder="Refill threshold, minimum $5"
+              min="5"
+              step="1"
+              required
+            />
 
-            <div>
-              <label
-                htmlFor="autoTopUpAmount"
-                className="mb-1 block text-neutral-700"
-              >
-                Automatically refill my balance with this amount:
-              </label>
-              <input
-                type="number"
-                id="autoTopUpAmount"
-                name="topUpAmount"
-                defaultValue={
-                  autoTopUpConfig?.amount ? autoTopUpConfig.amount / 100 : ""
-                }
-                placeholder="Refill amount, minimum $5"
-                min="5"
-                step="1"
-                className="w-full rounded-md border border-slate-200 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
-                required
-              />
-            </div>
+            <Input
+              type="number"
+              id="autoTopUpAmount"
+              name="topUpAmount"
+              label="Automatically refill my balance with this amount:"
+              labelVariant="large"
+              labelClassName="text-zinc-700"
+              defaultValue={
+                autoTopUpConfig?.amount ? autoTopUpConfig.amount / 100 : ""
+              }
+              placeholder="Refill amount, minimum $5"
+              min="5"
+              step="1"
+              required
+            />
 
-            <p className="text-sm">
+            <Text variant="body">
               <b>Note:</b> For your safety, we will top up your balance{" "}
               <b>at most once</b> per agent execution to prevent unintended
               excessive charges. Therefore, ensure that the automatic top-up
               amount is sufficient for your agent&apos;s operation.
-            </p>
+            </Text>
 
             {autoTopUpConfig?.amount ? (
               <>
-                <Button type="submit" className="w-full">
+                <Button type="submit" size="small" className="w-full">
                   Save Changes
                 </Button>
                 <Button
+                  size="small"
                   className="w-full"
                   variant="destructive"
                   onClick={() =>
@@ -282,7 +277,7 @@ export default function CreditsPage() {
                 </Button>
               </>
             ) : (
-              <Button type="submit" className="w-full">
+              <Button type="submit" size="small" className="w-full">
                 Enable Auto-Refill
               </Button>
             )}
@@ -294,12 +289,15 @@ export default function CreditsPage() {
 
         <div className="my-6 space-y-4">
           {/* Payment Portal */}
-          <h3 className="text-lg font-medium">Manage Your Payment Methods</h3>
-          <p className="text-neutral-600">
+          <Text variant="h5" as="h3">
+            Manage Your Payment Methods
+          </Text>
+          <Text variant="large" tone="secondary">
             You can manage your cards and see your payment history in the
             billing portal.
-          </p>
+          </Text>
           <Button
+            size="small"
             type="submit"
             className="w-full"
             onClick={() => openBillingPortal()}
@@ -308,9 +306,13 @@ export default function CreditsPage() {
           </Button>
 
           {/* Transaction History */}
-          <h3 className="text-lg font-medium">Transaction History</h3>
+          <Text variant="h5" as="h3">
+            Transaction History
+          </Text>
           {transactionHistory.transactions.length === 0 && (
-            <p className="text-neutral-600">No transactions found.</p>
+            <Text variant="large" tone="secondary">
+              No transactions found.
+            </Text>
           )}
           <Table
             className={
@@ -354,6 +356,7 @@ export default function CreditsPage() {
           </Table>
           {transactionHistory.next_transaction_time && (
             <Button
+              size="small"
               type="submit"
               className="w-full"
               onClick={() => fetchTransactionHistory()}
@@ -364,7 +367,9 @@ export default function CreditsPage() {
 
           {refundRequests.length > 0 && (
             <>
-              <h3 className="text-lg font-medium">Your Refund Requests</h3>
+              <Text variant="h5" as="h3">
+                Your Refund Requests
+              </Text>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -400,6 +405,7 @@ export default function CreditsPage() {
           )}
 
           <Button
+            size="small"
             variant="destructive"
             onClick={() => openRefundModal()}
             className="w-full"

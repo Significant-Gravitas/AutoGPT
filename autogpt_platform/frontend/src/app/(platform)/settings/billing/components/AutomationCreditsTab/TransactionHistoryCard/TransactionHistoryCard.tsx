@@ -10,7 +10,9 @@ import { getSectionMotionProps } from "../../../helpers";
 import { TransactionHistoryTable } from "./components/TransactionHistoryTable";
 import { useTransactionHistoryCard } from "./useTransactionHistoryCard";
 
-type Props = { index?: number };
+interface Props {
+  index?: number;
+}
 
 export function TransactionHistoryCard({ index = 0 }: Props) {
   const reduceMotion = useReducedMotion();

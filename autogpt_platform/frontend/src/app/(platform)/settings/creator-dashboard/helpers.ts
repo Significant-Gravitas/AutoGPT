@@ -115,21 +115,20 @@ export const STATUS_VISUAL: Record<SubmissionStatus, StatusVisual> = {
   [SubmissionStatus.PENDING]: {
     label: "In review",
     Icon: Clock01Icon,
-    pillClass: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
-    dotClass: "bg-amber-500",
+    pillClass: "bg-yellow-50 text-yellow-800 ring-1 ring-inset ring-yellow-200",
+    dotClass: "bg-yellow-500",
   },
   [SubmissionStatus.APPROVED]: {
     label: "Approved",
     Icon: CheckmarkCircle02Icon,
-    pillClass:
-      "bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200",
-    dotClass: "bg-emerald-500",
+    pillClass: "bg-green-50 text-green-800 ring-1 ring-inset ring-green-200",
+    dotClass: "bg-green-500",
   },
   [SubmissionStatus.REJECTED]: {
     label: "Needs changes",
     Icon: UnavailableIcon,
-    pillClass: "bg-rose-50 text-rose-800 ring-1 ring-inset ring-rose-200",
-    dotClass: "bg-rose-500",
+    pillClass: "bg-red-50 text-red-800 ring-1 ring-inset ring-red-200",
+    dotClass: "bg-red-500",
   },
 };
 

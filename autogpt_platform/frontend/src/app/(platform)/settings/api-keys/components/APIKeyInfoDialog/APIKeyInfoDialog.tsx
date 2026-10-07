@@ -33,7 +33,7 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
 
           {apiKey.description && (
             <Section label="Description">
-              <Text variant="body" className="text-zinc-700">
+              <Text variant="body" className="text-zinc-700" unmask={false}>
                 {apiKey.description}
               </Text>
             </Section>

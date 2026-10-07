@@ -3,6 +3,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { FileInput } from "@/components/atoms/FileInput/FileInput";
 import { Input } from "@/components/atoms/Input/Input";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Form,
   FormControl,
@@ -20,9 +21,9 @@ type AgentUploadTabProps = {
 export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
   return (
     <TabsLineContent value="agent">
-      <p className="mb-4 text-sm text-neutral-500">
+      <Text variant="body" tone="muted" className="mb-4">
         Upload a previously exported AutoGPT agent file (.json).
-      </p>
+      </Text>
       <Form
         form={upload.form}
         onSubmit={upload.onSubmit}

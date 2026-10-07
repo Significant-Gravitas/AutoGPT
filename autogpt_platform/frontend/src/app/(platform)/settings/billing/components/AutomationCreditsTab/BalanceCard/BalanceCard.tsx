@@ -59,14 +59,14 @@ export function BalanceCard({ index = 0 }: Props) {
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
       <div className="flex items-center gap-1 px-4">
-        <Text variant="body-medium" as="span" className="text-textBlack">
+        <Text variant="body-medium" as="span">
           Automation credits
         </Text>
         <InformationTooltip description={BALANCE_EXPLAINER} iconSize={22} />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-        <Text variant="h2" as="span" className="text-textBlack">
+        <Text variant="h2" as="span">
           {formatCents(balanceCents)}
         </Text>
         <Dialog
@@ -93,7 +93,7 @@ export function BalanceCard({ index = 0 }: Props) {
                 placeholder="Amount"
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
-                wrapperClassName="!mb-0"
+                wrapperClassName="mb-0"
               />
             </div>
             <Dialog.Footer>

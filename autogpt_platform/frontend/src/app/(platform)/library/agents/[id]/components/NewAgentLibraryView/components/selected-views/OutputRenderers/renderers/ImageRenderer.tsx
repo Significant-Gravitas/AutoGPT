@@ -116,7 +116,7 @@ function renderImage(
       <img
         src={imageUrl}
         alt={altText}
-        className="h-auto max-w-full rounded-md border border-gray-200"
+        className="h-auto max-w-full rounded-md border border-zinc-200"
         loading="lazy"
       />
     </div>

@@ -1,8 +1,8 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Text } from "@/components/atoms/Text/Text";
-import NextLink from "next/link";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import type { SitrepItemData, SitrepPriority } from "../../types";
@@ -121,7 +121,12 @@ export function SitrepItem({ item }: Props) {
         )}
 
         <div className="min-w-0 flex-1">
-          <Text variant="body-medium" className="leading-tight text-zinc-900">
+          <Text
+            variant="body-medium"
+            tone="primary"
+            unmask={false}
+            className="leading-tight"
+          >
             {item.agentName}
           </Text>
           <OverflowText
@@ -134,13 +139,16 @@ export function SitrepItem({ item }: Props) {
 
       <div className="flex flex-shrink-0 flex-wrap items-center justify-center gap-1.5 sm:flex-nowrap sm:justify-end">
         {item.priority === "success" ? (
-          <NextLink
+          <Button
+            as="NextLink"
             href={`/library/agents/${item.agentID}${item.executionID ? `?activeItem=${item.executionID}` : ""}`}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
+            variant="ghost"
+            size="xs"
+            leadingIcon={EyeIcon}
+            className="text-zinc-600 hover:text-zinc-800"
           >
-            <Icon icon={EyeIcon} size={14} className="shrink-0" />
             See task
-          </NextLink>
+          </Button>
         ) : (
           <ContextualActionButton
             status={item.status}
@@ -148,14 +156,16 @@ export function SitrepItem({ item }: Props) {
             executionID={item.executionID}
           />
         )}
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="xs"
+          leadingIcon={Chatting01Icon}
           onClick={handleAskAutoPilot}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
+          className="text-zinc-600 hover:text-zinc-800"
         >
-          <Icon icon={Chatting01Icon} size={14} className="shrink-0" />
           Ask Otto
-        </button>
+        </Button>
       </div>
     </div>
   );

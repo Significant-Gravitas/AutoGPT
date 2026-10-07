@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Badge } from "@/components/atoms/Badge/Badge";
+import { Text } from "@/components/atoms/Text/Text";
 import { useOAuthApps } from "./useOAuthApps";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import {
@@ -48,11 +49,11 @@ export function OAuthAppsSection() {
     return (
       <div className="py-8 text-center text-muted-foreground">
         <p>You don&apos;t have any OAuth applications.</p>
-        <p className="mt-2 text-sm">
+        <Text variant="body" tone="muted" className="mt-2">
           OAuth applications can currently <strong>not</strong> be registered
           via the API. Contact the system administrator to request an OAuth app
           registration.
-        </p>
+        </Text>
       </div>
     );
   }
@@ -84,7 +85,9 @@ export function OAuthAppsSection() {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h3 className="truncate text-lg font-semibold">{app.name}</h3>
+                <Text variant="h5" as="h3" className="truncate" unmask={false}>
+                  {app.name}
+                </Text>
                 <Badge
                   className="ml-2"
                   variant={app.is_active ? "success" : "error"}
@@ -93,9 +96,14 @@ export function OAuthAppsSection() {
                 </Badge>
               </div>
               {app.description && (
-                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                <Text
+                  variant="body"
+                  tone="muted"
+                  className="mt-1 line-clamp-2"
+                  unmask={false}
+                >
                   {app.description}
-                </p>
+                </Text>
               )}
             </div>
           </div>
@@ -124,7 +132,7 @@ export function OAuthAppsSection() {
                 size="small"
                 onClick={() => handleToggleStatus(app.id, app.is_active)}
                 loading={updatingAppId === app.id}
-                leftIcon={<Icon icon={PowerIcon} className="h-4 w-4" />}
+                leadingIcon={PowerIcon}
               >
                 {app.is_active ? "Disable" : "Enable"}
               </Button>
@@ -142,7 +150,7 @@ export function OAuthAppsSection() {
                 size="small"
                 onClick={() => fileInputRefs.current[app.id]?.click()}
                 loading={uploadingAppId === app.id}
-                leftIcon={<Icon icon={Upload01Icon} className="h-4 w-4" />}
+                leadingIcon={Upload01Icon}
               >
                 {app.logo_url ? "Change " : "Upload "}Logo
               </Button>

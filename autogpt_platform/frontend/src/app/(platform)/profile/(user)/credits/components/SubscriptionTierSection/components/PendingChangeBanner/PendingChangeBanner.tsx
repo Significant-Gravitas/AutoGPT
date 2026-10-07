@@ -1,4 +1,5 @@
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { formatPendingDate, getTierLabel } from "../../helpers";
 
 interface Props {
@@ -31,9 +32,9 @@ export function PendingChangeBanner({
     <div
       role="status"
       aria-live="polite"
-      className="flex flex-col gap-2 rounded-md border border-violet-500 bg-violet-50 px-3 py-2 text-sm text-violet-800 sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col gap-2 rounded-md border border-purple-500 bg-purple-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
     >
-      <p>
+      <Text variant="body" className="text-purple-800">
         {isCancellation ? (
           <>
             Scheduled to cancel your subscription on{" "}
@@ -46,10 +47,10 @@ export function PendingChangeBanner({
             <span className="font-semibold">{dateText}</span>.
           </>
         )}
-      </p>
+      </Text>
       <Button
-        variant="outline"
-        size="sm"
+        variant="secondary"
+        size="small"
         disabled={isBusy}
         onClick={onKeepCurrent}
       >

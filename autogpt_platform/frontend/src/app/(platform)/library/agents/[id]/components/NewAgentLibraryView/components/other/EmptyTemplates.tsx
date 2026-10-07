@@ -312,10 +312,10 @@ export function EmptyTemplates() {
         </svg>
       </div>
       <div className="flex flex-col items-center gap-2">
-        <Text variant="h4" className="text-center text-[1.375rem]">
+        <Text variant="h4" className="text-center">
           No templates yet
         </Text>
-        <Text variant="large" className="text-zinc-700">
+        <Text variant="large" tone="secondary">
           Create a task first, then save it as a template to reuse later —
           it&apos;ll show up here.
         </Text>

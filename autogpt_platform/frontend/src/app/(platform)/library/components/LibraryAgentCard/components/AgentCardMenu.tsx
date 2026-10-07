@@ -155,14 +155,11 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="absolute right-2 top-1 rounded p-1.5 transition-opacity hover:bg-neutral-100"
+            className="absolute right-2 top-1 rounded p-1.5 transition-opacity hover:bg-zinc-100"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
-            <Icon
-              icon={MoreHorizontalIcon}
-              className="h-5 w-5 text-neutral-600"
-            />
+            <Icon icon={MoreHorizontalIcon} className="h-5 w-5 text-zinc-600" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

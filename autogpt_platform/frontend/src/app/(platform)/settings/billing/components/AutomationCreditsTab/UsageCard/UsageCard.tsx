@@ -50,7 +50,7 @@ export function UsageCard({ index = 0 }: Props) {
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
       <div className="px-4">
-        <Text variant="body-medium" as="span" className="text-textBlack">
+        <Text variant="body-medium" as="span">
           Usage
         </Text>
       </div>
@@ -58,11 +58,7 @@ export function UsageCard({ index = 0 }: Props) {
       <div className="flex flex-col gap-5 rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div className="flex items-baseline gap-2">
-            <Text
-              variant="large-medium"
-              as="span"
-              className="tabular-nums text-textBlack"
-            >
+            <Text variant="large-medium" as="span" className="tabular-nums">
               ${totalSpent.toFixed(2)}
             </Text>
             <Text variant="body" as="span" className="text-zinc-500">
@@ -176,15 +172,32 @@ function UsageBar({
       </TooltipTrigger>
       <TooltipContent side="top">
         <div className="flex flex-col gap-0.5">
-          <span className="text-[0.6785rem] font-medium uppercase tracking-[0.06em] text-zinc-500">
+          <Text
+            variant="label"
+            as="span"
+            tone="muted"
+            unmask={false}
+            className="tracking-[0.06em]"
+          >
             {day.date}
-          </span>
-          <span className="text-sm font-medium tabular-nums text-textBlack">
+          </Text>
+          <Text
+            variant="body-medium"
+            as="span"
+            unmask={false}
+            className="tabular-nums"
+          >
             ${day.amount.toFixed(2)}
-          </span>
-          <span className="text-xs tabular-nums text-zinc-500">
+          </Text>
+          <Text
+            variant="small"
+            as="span"
+            tone="muted"
+            unmask={false}
+            className="tabular-nums"
+          >
             {day.runs} runs
-          </span>
+          </Text>
         </div>
       </TooltipContent>
     </Tooltip>

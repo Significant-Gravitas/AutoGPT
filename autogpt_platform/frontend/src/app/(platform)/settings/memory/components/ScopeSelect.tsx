@@ -27,7 +27,7 @@ function ScopeCheck({ selected }: { selected: boolean }) {
     <Icon
       icon={Tick02Icon}
       size={16}
-      className="ml-auto shrink-0 text-violet-600"
+      className="ml-auto shrink-0 text-purple-600"
     />
   );
 }
@@ -44,9 +44,9 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           type="button"
           aria-label="Memory scope"
           className={cn(
-            "flex w-full items-center gap-2.5 rounded-[10px] border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-textBlack",
-            "transition-colors hover:border-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400",
-            "data-[state=open]:border-violet-500",
+            "flex w-full items-center gap-2.5 rounded-[10px] border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-black",
+            "transition-colors hover:border-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
+            "data-[state=open]:border-purple-500",
           )}
         >
           {selectedExpert ? (
@@ -70,15 +70,15 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="max-h-96 w-[300px] overflow-y-auto rounded-[12px] p-1.5"
+        className="max-h-96 w-[300px] overflow-y-auto rounded-xl p-1.5"
       >
         <DropdownMenuItem
-          className="flex items-start gap-2.5 rounded-[8px] px-2.5 py-2"
+          className="flex items-start gap-2.5 rounded-lg px-2.5 py-2"
           onSelect={() => onSelect(null)}
         >
           <AutopilotAvatar size={28} />
           <span className="flex min-w-0 flex-col leading-snug">
-            <span className="text-sm font-medium text-textBlack">Otto</span>
+            <span className="text-sm font-medium text-black">Otto</span>
             <span className="text-xs text-zinc-500">
               Your account memory — everything you do together
             </span>
@@ -95,7 +95,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
             {experts.map((expert) => (
               <DropdownMenuItem
                 key={expert.id}
-                className="flex items-start gap-2.5 rounded-[8px] px-2.5 py-2"
+                className="flex items-start gap-2.5 rounded-lg px-2.5 py-2"
                 onSelect={() => onSelect(expert.id)}
               >
                 <ExpertAvatar
@@ -104,7 +104,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
                   size={28}
                 />
                 <span className="flex min-w-0 flex-col leading-snug">
-                  <span className="truncate text-sm font-medium text-textBlack">
+                  <span className="truncate text-sm font-medium text-black">
                     {expert.name}
                   </span>
                   {expert.role && (

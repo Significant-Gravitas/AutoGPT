@@ -11,7 +11,7 @@ export function SectionWrap({ children, className }: Props) {
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-col gap-4 rounded-medium bg-[#FAFAFA] py-4",
+        "flex min-h-0 flex-col gap-4 rounded-medium bg-zinc-50 py-4",
         className,
       )}
     >

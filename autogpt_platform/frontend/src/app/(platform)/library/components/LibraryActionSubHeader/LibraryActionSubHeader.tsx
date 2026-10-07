@@ -14,11 +14,7 @@ export function LibraryActionSubHeader({ agentCount, setLibrarySort }: Props) {
     <div className="flex items-baseline justify-between">
       <div className="flex items-baseline gap-4">
         <Text variant="h5">My agents</Text>
-        <Text
-          variant="body"
-          data-testid="agents-count"
-          className="text-zinc-500"
-        >
+        <Text variant="body" data-testid="agents-count" tone="muted">
           {agentCount}
         </Text>
       </div>

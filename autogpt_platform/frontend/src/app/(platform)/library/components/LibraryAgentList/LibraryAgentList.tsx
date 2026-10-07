@@ -7,6 +7,7 @@ import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteS
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 import { LibraryFolder } from "../LibraryFolder/LibraryFolder";
 import { LibrarySubSection } from "../LibrarySubSection/LibrarySubSection";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   AnimatePresence,
@@ -182,20 +183,22 @@ export function LibraryAgentList({
         )}
         {selectedFolderId && (
           <div className="mb-4 flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              variant="link"
+              size="small"
               onClick={() => onFolderSelect(null)}
-              className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900"
+              leftIcon={<Icon icon={ArrowLeft02Icon} size={16} />}
+              className="h-auto min-w-0 gap-1 px-0 py-0 font-normal text-zinc-500 no-underline hover:text-zinc-900"
             >
-              <Icon icon={ArrowLeft02Icon} className="h-4 w-4" />
               My Library
-            </button>
+            </Button>
             {currentFolder && (
               <>
-                <Text variant="body" className="text-zinc-400">
+                <Text variant="body" tone="muted">
                   /
                 </Text>
-                <Text variant="large" className="text-zinc-700">
+                <Text variant="large" tone="secondary" unmask={false}>
                   {currentFolder.name}
                 </Text>
               </>

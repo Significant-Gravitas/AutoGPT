@@ -23,7 +23,7 @@ export function PaymentMethodCard({ index = 0 }: Props) {
       className="flex w-full flex-col gap-2"
     >
       <div className="px-4">
-        <Text variant="body-medium" as="span" className="text-textBlack">
+        <Text variant="body-medium" as="span">
           Payment method
         </Text>
       </div>
@@ -34,7 +34,7 @@ export function PaymentMethodCard({ index = 0 }: Props) {
             <Icon icon={CreditCardIcon} size={20} />
           </div>
           <div className="flex min-w-0 flex-col">
-            <Text variant="body-medium" as="span" className="text-textBlack">
+            <Text variant="body-medium" as="span">
               Manage payment method
             </Text>
             <Text variant="small" as="span" className="text-zinc-500">

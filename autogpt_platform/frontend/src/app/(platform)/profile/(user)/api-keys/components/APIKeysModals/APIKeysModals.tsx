@@ -1,18 +1,11 @@
 "use client";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/__legacy__/ui/dialog";
-import { LuCopy } from "react-icons/lu";
+import { Copy01Icon } from "@hugeicons/core-free-icons";
 import { Label } from "@/components/__legacy__/ui/label";
-import { Input } from "@/components/__legacy__/ui/input";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 
 import { useAPIkeysModals } from "./useAPIkeysModals";
 import { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
@@ -32,46 +25,46 @@ export const APIKeysModals = () => {
 
   return (
     <div className="mb-4 flex justify-end">
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogTrigger asChild>
-          <Button>Create Key</Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create New API Key</DialogTitle>
-            <DialogDescription>
-              Create a new AutoGPT Platform API key
-            </DialogDescription>
-          </DialogHeader>
+      <Dialog
+        title="Create New API Key"
+        controlled={{ isOpen: isCreateOpen, set: setIsCreateOpen }}
+      >
+        <Dialog.Trigger>
+          <Button size="small">Create Key</Button>
+        </Dialog.Trigger>
+        <Dialog.Content>
+          <Text variant="body" tone="muted">
+            Create a new AutoGPT Platform API key
+          </Text>
           <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Name</Label>
-              <Input
-                id="name"
-                value={keyState.newKeyName}
-                onChange={(e) =>
-                  setKeyState((prev) => ({
-                    ...prev,
-                    newKeyName: e.target.value,
-                  }))
-                }
-                placeholder="My AutoGPT Platform API Key"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="description">Description (Optional)</Label>
-              <Input
-                id="description"
-                value={keyState.newKeyDescription}
-                onChange={(e) =>
-                  setKeyState((prev) => ({
-                    ...prev,
-                    newKeyDescription: e.target.value,
-                  }))
-                }
-                placeholder="Used for..."
-              />
-            </div>
+            <Input
+              id="name"
+              label="Name"
+              labelVariant="body-medium"
+              size="small"
+              value={keyState.newKeyName}
+              onChange={(e) =>
+                setKeyState((prev) => ({
+                  ...prev,
+                  newKeyName: e.target.value,
+                }))
+              }
+              placeholder="My AutoGPT Platform API Key"
+            />
+            <Input
+              id="description"
+              label="Description (Optional)"
+              labelVariant="body-medium"
+              size="small"
+              value={keyState.newKeyDescription}
+              onChange={(e) =>
+                setKeyState((prev) => ({
+                  ...prev,
+                  newKeyDescription: e.target.value,
+                }))
+              }
+              placeholder="Used for..."
+            />
             <div className="grid gap-2">
               <Label>Permissions</Label>
               {Object.values(APIKeyPermission).map((permission) => (
@@ -95,38 +88,52 @@ export const APIKeysModals = () => {
               ))}
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
+          <Dialog.Footer>
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={() => setIsCreateOpen(false)}
+            >
               Cancel
             </Button>
-            <Button onClick={handleCreateKey} disabled={isCreating}>
+            <Button
+              size="small"
+              onClick={handleCreateKey}
+              disabled={isCreating}
+            >
               Create
             </Button>
-          </DialogFooter>
-        </DialogContent>
+          </Dialog.Footer>
+        </Dialog.Content>
       </Dialog>
 
-      <Dialog open={isKeyDialogOpen} onOpenChange={setIsKeyDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>AutoGPT Platform API Key Created</DialogTitle>
-            <DialogDescription>
-              Please copy your AutoGPT API key now. You won&apos;t be able to
-              see it again!
-            </DialogDescription>
-          </DialogHeader>
+      <Dialog
+        title="AutoGPT Platform API Key Created"
+        controlled={{ isOpen: isKeyDialogOpen, set: setIsKeyDialogOpen }}
+      >
+        <Dialog.Content>
+          <Text variant="body" tone="muted" className="mb-4">
+            Please copy your AutoGPT API key now. You won&apos;t be able to see
+            it again!
+          </Text>
           <div className="flex items-center space-x-2">
             <code className="ph-no-capture flex-1 rounded-md bg-secondary p-2 text-sm">
               {keyState.newApiKey}
             </code>
-            <Button size="icon" variant="outline" onClick={handleCopyKey}>
-              <LuCopy className="h-4 w-4" />
-            </Button>
+            <Button
+              size="icon-sm"
+              variant="secondary"
+              aria-label="Copy API key"
+              leadingIcon={Copy01Icon}
+              onClick={handleCopyKey}
+            />
           </div>
-          <DialogFooter>
-            <Button onClick={() => setIsKeyDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
+          <Dialog.Footer>
+            <Button size="small" onClick={() => setIsKeyDialogOpen(false)}>
+              Close
+            </Button>
+          </Dialog.Footer>
+        </Dialog.Content>
       </Dialog>
     </div>
   );

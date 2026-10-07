@@ -29,7 +29,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
           <ShowMoreText
             previewLimit={400}
             variant="small"
-            className="mb-2 mt-4 !text-zinc-700"
+            className="mb-2 mt-4 text-zinc-700"
           >
             {agent.description}
           </ShowMoreText>
@@ -52,7 +52,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
         ) : null}
 
         {agent.instructions ? (
-          <div className="mt-4 flex flex-col gap-4 rounded-medium border border-purple-100 bg-[#f1ebfe80] p-4">
+          <div className="mt-4 flex flex-col gap-4 rounded-medium border border-purple-100 bg-purple-50/50 p-4">
             <Text variant="lead-semibold" className="text-purple-600">
               Instructions
             </Text>

@@ -75,8 +75,8 @@ export function TaskListItem({
   onDeleted,
 }: Props) {
   const icon = run.is_dry_run ? (
-    <IconWrapper className="border-amber-50 bg-amber-50">
-      <Icon icon={FlaskConicalIcon} size={16} className="text-amber-700" />
+    <IconWrapper className="border-yellow-50 bg-yellow-50">
+      <Icon icon={FlaskConicalIcon} size={16} className="text-yellow-700" />
     </IconWrapper>
   ) : (
     statusIconMap[run.status]

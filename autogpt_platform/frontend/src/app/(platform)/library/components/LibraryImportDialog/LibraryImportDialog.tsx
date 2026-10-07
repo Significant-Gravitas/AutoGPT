@@ -41,7 +41,7 @@ export default function LibraryImportDialog() {
         <Button
           data-testid="import-button"
           variant="primary"
-          className="h-[2.78rem] w-full md:w-[10rem]"
+          className="h-[2.78rem] w-full md:w-40"
           size="small"
         >
           <Icon icon={Upload03Icon} width={18} height={18} />

@@ -77,9 +77,9 @@ export function ProfileHeader({
         onMouseLeave={() => setIsHovered(false)}
         disabled={isUploading}
         aria-label="Change profile photo"
-        className="group relative h-[112px] w-[112px] shrink-0 cursor-pointer rounded-full outline-none transition-transform duration-150 ease-out focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-wait"
+        className="group relative size-28 shrink-0 cursor-pointer rounded-full outline-none transition-transform duration-150 ease-out focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-wait"
       >
-        <Avatar className="h-[112px] w-[112px] shadow-[0_8px_28px_-12px_rgba(15,15,20,0.18)] ring-2 ring-white">
+        <Avatar className="size-28 shadow-[0_8px_28px_-12px_rgba(15,15,20,0.18)] ring-2 ring-white">
           <AvatarImage
             src={avatarUrl}
             alt={name || "Profile"}
@@ -142,7 +142,7 @@ export function ProfileHeader({
 
       <div className="grid w-full gap-4 sm:grid-cols-2">
         <label htmlFor="profile-name" className="flex w-full flex-col gap-2">
-          <Text variant="body-medium" as="span" className="px-4 text-black">
+          <Text variant="body-medium" as="span" className="px-4">
             Display name
           </Text>
           <Input
@@ -161,10 +161,10 @@ export function ProfileHeader({
           className="flex w-full flex-col gap-2"
         >
           <div className="flex items-center justify-between px-4">
-            <Text variant="body-medium" as="span" className="text-black">
+            <Text variant="body-medium" as="span">
               Handle
             </Text>
-            <Text variant="small" as="span" className="!text-zinc-400">
+            <Text variant="small" as="span" className="text-zinc-400">
               agpt.co/@your-handle
             </Text>
           </div>

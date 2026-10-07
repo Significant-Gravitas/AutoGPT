@@ -81,7 +81,7 @@ export function RunOutputs({ outputs, shareToken }: RunOutputsProps) {
   }, [outputs, shareToken]);
 
   if (!items.length) {
-    return <div className="text-neutral-600">No output from this run.</div>;
+    return <div className="text-zinc-600">No output from this run.</div>;
   }
 
   return (

@@ -2,10 +2,15 @@
 
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
-import { IconStarFilled, IconMore } from "@/components/__legacy__/ui/icons";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { Status } from "@/components/__legacy__/Status";
-import { ImageNotFound01Icon } from "@hugeicons/core-free-icons";
+import {
+  ImageNotFound01Icon,
+  MoreVerticalIcon,
+  StarIcon,
+} from "@hugeicons/core-free-icons";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useImageFallback } from "@/hooks/useImageFallback";
 
@@ -36,9 +41,9 @@ export const AgentTableCard = ({
   const { showImage, handleImageError } = useImageFallback(image_urls?.[0]);
 
   return (
-    <div className="border-b border-neutral-300 p-4 dark:border-neutral-700">
+    <div className="border-b border-zinc-300 p-4">
       <div className="flex gap-4">
-        <div className="relative flex aspect-video w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-zinc-100 dark:bg-neutral-800">
+        <div className="relative flex aspect-video w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-zinc-100">
           {showImage && image_urls?.[0] ? (
             <Image
               src={image_urls[0]}
@@ -57,38 +62,59 @@ export const AgentTableCard = ({
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="text-[15px] font-medium text-neutral-800 dark:text-neutral-200">
+            <Text
+              variant="body-medium"
+              as="h3"
+              tone="primary"
+              className="text-[15px]"
+              unmask={false}
+            >
               {agentName}
-            </h3>
-            <span className="text-[13px] text-neutral-500 dark:text-neutral-400">
+            </Text>
+            <Text
+              variant="small"
+              as="span"
+              tone="muted"
+              className="text-[13px]"
+            >
               v{graph_version}
-            </span>
+            </Text>
           </div>
-          <p className="line-clamp-2 text-sm text-neutral-600 dark:text-neutral-400">
+          <Text
+            variant="body"
+            tone="secondary"
+            className="line-clamp-2"
+            unmask={false}
+          >
             {description}
-          </p>
+          </Text>
         </div>
-        <button
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="View submission"
+          withTooltip={false}
           onClick={onView}
-          className="h-fit rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700"
-        >
-          <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
-        </button>
+          className="rounded-full"
+          leftIcon={
+            <Icon icon={MoreVerticalIcon} size={20} className="text-zinc-800" />
+          }
+        />
       </div>
 
       <div className="mt-4 flex flex-wrap gap-4">
         <Status status={status} />
-        <div className="text-sm text-neutral-600 dark:text-neutral-400">
+        <div className="text-sm text-zinc-600">
           {submitted_at && submitted_at.toLocaleDateString()}
         </div>
-        <div className="text-sm text-neutral-600 dark:text-neutral-400">
+        <div className="text-sm text-zinc-600">
           {(run_count ?? 0).toLocaleString()} runs
         </div>
         <div className="flex items-center gap-1">
-          <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+          <Text variant="body-medium" as="span" tone="primary">
             {(rating ?? 0).toFixed(1)}
-          </span>
-          <IconStarFilled className="h-4 w-4 text-neutral-800 dark:text-neutral-200" />
+          </Text>
+          <Icon icon={StarIcon} size={16} className="text-zinc-800" />
         </div>
       </div>
     </div>

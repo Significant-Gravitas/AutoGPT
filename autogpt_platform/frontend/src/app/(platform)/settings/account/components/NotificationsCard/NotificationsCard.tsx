@@ -43,7 +43,7 @@ export function NotificationsCard({
     >
       <div className="flex h-fit flex-col gap-4 rounded-[18px] border border-zinc-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         <div className="flex flex-col gap-1">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span">
             Email
           </Text>
           <Text variant="small" as="span" className="text-zinc-500">
@@ -73,7 +73,7 @@ export function NotificationsCard({
 
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col">
-            <Text variant="body-medium" as="span" className="text-textBlack">
+            <Text variant="body-medium" as="span">
               Alerts
             </Text>
             <Text variant="small" as="span" className="text-zinc-500">
@@ -90,7 +90,7 @@ export function NotificationsCard({
 
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col">
-            <Text variant="body-medium" as="span" className="text-textBlack">
+            <Text variant="body-medium" as="span">
               Marketplace reviews
             </Text>
             <Text variant="small" as="span" className="text-zinc-500">

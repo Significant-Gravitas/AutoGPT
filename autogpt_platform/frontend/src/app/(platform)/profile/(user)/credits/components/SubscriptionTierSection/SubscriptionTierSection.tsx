@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useSubscriptionTierSection } from "./useSubscriptionTierSection";
@@ -53,13 +54,16 @@ export function SubscriptionTierSection() {
   if (error) {
     return (
       <div className="space-y-4">
-        <h3 className="text-lg font-medium">Subscription Plan</h3>
-        <p
+        <Text variant="h5" as="h3">
+          Subscription Plan
+        </Text>
+        <Text
+          variant="body"
           role="alert"
-          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
+          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-700"
         >
           {error}
-        </p>
+        </Text>
       </div>
     );
   }
@@ -71,15 +75,17 @@ export function SubscriptionTierSection() {
   if (currentTier === "ENTERPRISE") {
     return (
       <div className="space-y-4">
-        <h3 className="text-lg font-medium">Subscription Plan</h3>
-        <div className="rounded-lg border border-violet-500 bg-violet-50 p-4 dark:bg-violet-900/20">
-          <p className="font-semibold text-violet-700 dark:text-violet-200">
+        <Text variant="h5" as="h3">
+          Subscription Plan
+        </Text>
+        <div className="rounded-lg border border-purple-500 bg-purple-50 p-4">
+          <Text variant="large-semibold" className="text-purple-700">
             Enterprise Plan
-          </p>
-          <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+          </Text>
+          <Text variant="body" tone="secondary" className="mt-1">
             Your Enterprise plan is managed by your administrator. Contact your
             account team for changes.
-          </p>
+          </Text>
         </div>
       </div>
     );
@@ -127,28 +133,33 @@ export function SubscriptionTierSection() {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-medium">Subscription Plan</h3>
+      <Text variant="h5" as="h3">
+        Subscription Plan
+      </Text>
 
       {needsSubscription && (
         <div
           role="status"
-          className="rounded-md border border-violet-300 bg-violet-50 px-4 py-3 text-sm text-violet-900 dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-200"
+          className="rounded-md border border-purple-300 bg-purple-50 px-4 py-3"
         >
-          <p className="font-medium">Pick a plan to continue using AutoGPT.</p>
-          <p className="mt-1">
+          <Text variant="body-medium" className="text-purple-900">
+            Pick a plan to continue using AutoGPT.
+          </Text>
+          <Text variant="body" className="mt-1 text-purple-900">
             Your account doesn&apos;t have an active subscription. Choose a tier
             below to start working with experts and running agents.
-          </p>
+          </Text>
         </div>
       )}
 
       {tierError && (
-        <p
+        <Text
+          variant="body"
           role="alert"
-          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
+          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-700"
         >
           {tierError}
-        </p>
+        </Text>
       )}
 
       {hasPendingChange && pendingTierFromSubscription ? (
@@ -184,36 +195,41 @@ export function SubscriptionTierSection() {
               key={tier.key}
               aria-current={isCurrent ? "true" : undefined}
               className={`rounded-lg border p-4 ${
-                isCurrent
-                  ? "border-violet-500 bg-violet-50 dark:bg-violet-900/20"
-                  : "border-neutral-200 dark:border-neutral-700"
+                isCurrent ? "border-purple-500 bg-purple-50" : "border-zinc-200"
               }`}
             >
               <div className="mb-2 flex items-center justify-between">
-                <span className="font-semibold">{tier.label}</span>
+                <Text variant="large-semibold" as="span">
+                  {tier.label}
+                </Text>
                 {isCurrent && (
-                  <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-800 dark:text-violet-200">
+                  <Text
+                    variant="small-medium"
+                    as="span"
+                    className="rounded-full bg-purple-100 px-2 py-0.5 text-purple-700"
+                  >
                     Current
-                  </span>
+                  </Text>
                 )}
               </div>
 
-              <p className="mb-1 text-2xl font-bold">
+              <Text variant="h4" as="p" className="mb-1">
                 {formatCost(cost, tier.key)}
-              </p>
+              </Text>
               {rateLimitLabel && (
-                <p className="mb-1 text-sm font-medium text-neutral-600 dark:text-neutral-400">
+                <Text variant="body-medium" tone="secondary" className="mb-1">
                   {rateLimitLabel}
-                </p>
+                </Text>
               )}
-              <p className="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
+              <Text variant="body" tone="muted" className="mb-4">
                 {tier.description}
-              </p>
+              </Text>
 
               {!isCurrent && isPaymentEnabled && (
                 <Button
+                  size="small"
                   className="w-full"
-                  variant={isUpgrade ? "default" : "outline"}
+                  variant={isUpgrade ? "primary" : "secondary"}
                   disabled={isPending || isScheduledTier}
                   onClick={() => onTierButtonClick(tier.key)}
                 >
@@ -235,15 +251,16 @@ export function SubscriptionTierSection() {
 
       {currentTier !== "NO_TIER" && isPaymentEnabled && (
         <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-neutral-500">
+          <Text variant="body" tone="muted">
             Your subscription is managed through Stripe. Upgrades take effect
             immediately. Downgrades take effect at the end of your current
             billing period.
-          </p>
+          </Text>
           {!hasPendingChange && (
             <Button
               variant="ghost"
-              className="shrink-0 text-sm text-neutral-600 hover:text-red-600 dark:text-neutral-400"
+              size="small"
+              className="shrink-0 text-zinc-600 hover:text-red-600"
               disabled={isPending}
               onClick={() => setConfirmDowngradeTo("NO_TIER")}
             >
@@ -263,21 +280,23 @@ export function SubscriptionTierSection() {
         }}
       >
         <Dialog.Content>
-          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+          <Text variant="body" tone="secondary">
             {confirmDowngradeTo === "NO_TIER"
               ? `Cancelling your subscription schedules it to end at the close of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today and no further charges to your card. You keep your current plan and existing credits until then.`
               : `Switching to ${getTierLabel(confirmDowngradeTo ?? "")} takes effect at the end of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today. You keep your current plan until then. From that date your saved card is billed at the ${getTierLabel(confirmDowngradeTo ?? "")} rate.`}{" "}
             Are you sure?
-          </p>
+          </Text>
           <Dialog.Footer>
             <Button
-              variant="outline"
+              variant="secondary"
+              size="small"
               onClick={() => setConfirmDowngradeTo(null)}
             >
               Cancel
             </Button>
             <Button
               variant="destructive"
+              size="small"
               onClick={() => void confirmDowngrade()}
             >
               Confirm Downgrade
@@ -296,7 +315,7 @@ export function SubscriptionTierSection() {
         }}
       >
         <Dialog.Content>
-          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+          <Text variant="body" tone="secondary">
             You have a pending change to{" "}
             {getTierLabel(pendingTierFromSubscription ?? "")}
             {subscription.pending_tier_effective_at
@@ -304,16 +323,18 @@ export function SubscriptionTierSection() {
               : ""}
             . Switching to {getTierLabel(confirmReplacePendingTo ?? "")} will
             replace it. Continue?
-          </p>
+          </Text>
           <Dialog.Footer>
             <Button
-              variant="outline"
+              variant="secondary"
+              size="small"
               onClick={() => setConfirmReplacePendingTo(null)}
             >
               Cancel
             </Button>
             <Button
               variant="destructive"
+              size="small"
               onClick={() => void confirmReplacePending()}
             >
               Replace pending change
@@ -332,19 +353,20 @@ export function SubscriptionTierSection() {
         }}
       >
         <Dialog.Content>
-          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+          <Text variant="body" tone="secondary">
             {subscription.has_active_stripe_subscription
               ? `Your subscription is upgraded to ${getTierLabel(pendingUpgradeTier ?? "")} immediately. On your next invoice${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""}, your saved card is charged for the upgrade proration since today plus the next month at the new rate, with the unused portion of your current plan automatically deducted.`
               : `You'll be redirected to Stripe to enter payment details and start your ${getTierLabel(pendingUpgradeTier ?? "")} subscription.`}
-          </p>
+          </Text>
           <Dialog.Footer>
             <Button
-              variant="outline"
+              variant="secondary"
+              size="small"
               onClick={() => setPendingUpgradeTier(null)}
             >
               Cancel
             </Button>
-            <Button onClick={() => void confirmUpgrade()}>
+            <Button size="small" onClick={() => void confirmUpgrade()}>
               {subscription.has_active_stripe_subscription
                 ? "Confirm Upgrade"
                 : "Continue to Checkout"}

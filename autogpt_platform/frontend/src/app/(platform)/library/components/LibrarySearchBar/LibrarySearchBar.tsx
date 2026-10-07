@@ -29,7 +29,7 @@ export function LibrarySearchBar({ setSearchTerm }: Props) {
         id="library-search-bar"
         hideLabel
         onChange={handleSearchInput}
-        className="min-w-[18rem] pl-12 lg:min-w-[30rem]"
+        className="min-w-72 pl-12 lg:min-w-[30rem]"
         type="text"
         data-testid="library-textbox"
         placeholder="Search agents"
