@@ -23,6 +23,7 @@ from backend.data.user import (
     get_or_create_user,
     get_user_by_email,
     get_user_by_id,
+    record_marketing_opt_out_by_email,
     record_signup_consent,
 )
 from backend.util.exceptions import DatabaseError
@@ -372,6 +373,52 @@ async def test_a_failed_opt_out_write_leaves_neither_half(
 
     row = await PrismaUser.prisma().find_unique_or_raise(where={"id": consent_reset})
     assert _stored_consent(row) == UserConsentResponse()
+
+
+async def test_a_mailerlite_unsubscribe_is_recorded_in_the_database(
+    consent_reset: str,
+) -> None:
+    """Matched whatever the address's case, and the first refusal wins: a
+    redelivered unsubscribe keeps the first date."""
+    where = {"id": consent_reset}
+
+    first = await record_marketing_opt_out_by_email(
+        "TEST@example.com", "email_unsubscribe"
+    )
+    stored = await PrismaUser.prisma().find_unique_or_raise(where=where)
+    repeated = await record_marketing_opt_out_by_email(
+        "test@example.com", "email_unsubscribe"
+    )
+    after = await PrismaUser.prisma().find_unique_or_raise(where=where)
+    cached = await get_user_by_id(consent_reset)
+
+    assert first == consent_reset
+    assert repeated is None
+    assert stored.marketingOptOutAt is not None
+    assert stored.marketingOptOutSource == "email_unsubscribe"
+    assert _stored_consent(after) == _stored_consent(stored)
+    assert cached.marketing_opt_out_at == stored.marketingOptOutAt
+
+
+async def test_an_unsubscribe_keeps_a_signup_refusal(
+    consent_reset: str, mocker: pytest_mock.MockFixture
+) -> None:
+    mocker.patch(
+        "backend.data.user.queue_audience_change",
+        new=AsyncMock(return_value=NotificationResult(success=True, message="")),
+    )
+    await record_signup_consent(consent_reset, "2026-10", True)
+    signed_up = await PrismaUser.prisma().find_unique_or_raise(
+        where={"id": consent_reset}
+    )
+
+    assert (
+        await record_marketing_opt_out_by_email("test@example.com", "email_unsubscribe")
+        is None
+    )
+    after = await PrismaUser.prisma().find_unique_or_raise(where={"id": consent_reset})
+    assert after.marketingOptOutSource == "signup"
+    assert after.marketingOptOutAt == signed_up.marketingOptOutAt
 
 
 def test_the_frontend_terms_version_is_recognized() -> None:

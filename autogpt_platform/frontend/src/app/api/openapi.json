@@ -6287,6 +6287,19 @@
         "security": [{ "APIKeyAuthenticator-X-Postmark-Webhook-Token": [] }]
       }
     },
+    "/api/email/mailerlite/webhook": {
+      "post": {
+        "tags": ["v1", "email"],
+        "summary": "Handle MailerLite webhooks",
+        "operationId": "postV1Handle mailerlite webhooks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
+      }
+    },
     "/api/email/unsubscribe": {
       "post": {
         "tags": ["v1", "email"],

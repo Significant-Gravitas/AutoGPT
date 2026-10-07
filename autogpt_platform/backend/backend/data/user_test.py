@@ -14,6 +14,7 @@ from backend.data import user as user_module
 from backend.data.notifications import AudienceAction, NotificationResult
 from backend.data.user import (
     get_billing_email_recipient,
+    record_marketing_opt_out_by_email,
     record_signup_consent,
     update_user_timezone,
 )
@@ -730,6 +731,126 @@ class TestSignupRefusalReachesMailerLite:
             caplog.text
         )
         assert "user@example.com" not in caplog.text
+
+
+class TestRecordMarketingOptOutByEmail:
+    """A refusal made outside the app (an unsubscribe in MailerLite)."""
+
+    @pytest.fixture
+    def db(self) -> Iterator[MagicMock]:
+        with patch.object(user_module, "PrismaUser") as mock_prisma_user:
+            db = mock_prisma_user.prisma.return_value
+            db.find_unique = AsyncMock(return_value=_consent_row())
+            db.find_first = AsyncMock(return_value=None)
+            db.update_many = AsyncMock(return_value=1)
+            yield db
+
+    @pytest.fixture(autouse=True)
+    def caches(self) -> Iterator[MagicMock]:
+        caches = MagicMock()
+        with (
+            patch.object(
+                user_module.get_user_by_id, "cache_delete", caches.by_id_delete
+            ),
+            patch.object(
+                user_module.get_user_by_email, "cache_delete", caches.by_email_delete
+            ),
+            patch.object(
+                user_module.get_or_create_user, "cache_clear", caches.or_create_clear
+            ),
+        ):
+            yield caches
+
+    @pytest.mark.asyncio
+    async def test_records_the_refusal_with_its_source(
+        self, db: MagicMock, caches: MagicMock
+    ):
+        before = datetime.now(timezone.utc)
+
+        result = await record_marketing_opt_out_by_email(
+            "user@example.com", "email_unsubscribe"
+        )
+
+        assert result == "user-1"
+        db.find_unique.assert_awaited_once_with(where={"email": "user@example.com"})
+        db.find_first.assert_not_awaited()
+        data = _opt_out_written(db)
+        assert data["marketingOptOutSource"] == "email_unsubscribe"
+        assert before <= data["marketingOptOutAt"] <= datetime.now(timezone.utc)
+        caches.by_id_delete.assert_called_once_with("user-1")
+        caches.by_email_delete.assert_called_once_with("user@example.com")
+        caches.or_create_clear.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_a_case_insensitive_match(self, db: MagicMock):
+        db.find_unique.return_value = None
+        db.find_first.return_value = _consent_row(email="User@Example.com")
+
+        result = await record_marketing_opt_out_by_email(
+            "user@example.com", "email_unsubscribe"
+        )
+
+        assert result == "user-1"
+        db.find_first.assert_awaited_once_with(
+            where={"email": {"equals": "user@example.com", "mode": "insensitive"}}
+        )
+        _opt_out_written(db)
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_address_writes_nothing(
+        self, db: MagicMock, caches: MagicMock
+    ):
+        db.find_unique.return_value = None
+
+        assert (
+            await record_marketing_opt_out_by_email(
+                "x@example.com", "email_unsubscribe"
+            )
+            is None
+        )
+        db.update_many.assert_not_awaited()
+        assert caches.mock_calls == []
+
+    @pytest.mark.asyncio
+    async def test_the_first_refusal_wins(self, db: MagicMock, caches: MagicMock):
+        """Already opted out at signup: a later unsubscribe keeps that date and
+        source, so a redelivered webhook changes nothing either."""
+        db.find_unique.return_value = _accepted(True)
+
+        assert (
+            await record_marketing_opt_out_by_email(
+                "user@example.com", "email_unsubscribe"
+            )
+            is None
+        )
+        db.update_many.assert_not_awaited()
+        assert caches.mock_calls == []
+
+    @pytest.mark.asyncio
+    async def test_a_refusal_recorded_since_the_read_is_kept(
+        self, db: MagicMock, caches: MagicMock
+    ):
+        db.update_many.return_value = 0
+
+        assert (
+            await record_marketing_opt_out_by_email(
+                "user@example.com", "email_unsubscribe"
+            )
+            is None
+        )
+        _opt_out_written(db)
+        assert caches.mock_calls == []
+
+    @pytest.mark.asyncio
+    async def test_a_database_failure_names_no_address(self, db: MagicMock):
+        db.find_unique.side_effect = RuntimeError("connection lost")
+
+        with pytest.raises(DatabaseError) as raised:
+            await record_marketing_opt_out_by_email(
+                "user@example.com", "email_unsubscribe"
+            )
+
+        assert "user@example.com" not in str(raised.value)
 
 
 class TestGetBillingEmailRecipient:

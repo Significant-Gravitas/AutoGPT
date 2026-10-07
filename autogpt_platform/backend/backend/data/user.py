@@ -852,6 +852,7 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
 
 
 MARKETING_OPT_OUT_SOURCE_SIGNUP = "signup"
+MARKETING_OPT_OUT_SOURCE_EMAIL_UNSUBSCRIBE = "email_unsubscribe"
 
 
 async def record_signup_consent(
@@ -961,6 +962,39 @@ async def _unsubscribe_from_marketing(user_id: str, email: str) -> None:
         logger.exception(
             f"Could not queue the MailerLite unsubscribe for user {user_id}"
         )
+
+
+async def record_marketing_opt_out_by_email(email: str, source: str) -> str | None:
+    """Record that the account at `email` refused marketing, from `source`.
+
+    For refusals made outside the app, such as an unsubscribe in MailerLite.
+    The address is matched exactly, then case-insensitively. First refusal
+    wins: an account already opted out keeps its date and source, so a
+    redelivered call changes nothing. Returns the account's ID only when this
+    call recorded the refusal; None for an unknown address or a repeat.
+    """
+    try:
+        row = await PrismaUser.prisma().find_unique(where={"email": email})
+        if row is None:
+            row = await PrismaUser.prisma().find_first(
+                where={"email": {"equals": email, "mode": "insensitive"}}
+            )
+        if row is None or row.marketingOptOutAt is not None:
+            return None
+        written = await PrismaUser.prisma().update_many(
+            where={"id": row.id, "marketingOptOutAt": None},
+            data={
+                "marketingOptOutAt": datetime.now(timezone.utc),
+                "marketingOptOutSource": source,
+            },
+        )
+        if not written:
+            return None
+        _invalidate_user_caches(row.id, row.email)
+        return row.id
+    except Exception as e:
+        # The address stays out of the message: it would reach the logs.
+        raise DatabaseError(f"Failed to record a marketing opt-out: {e}") from e
 
 
 def _invalidate_user_caches(user_id: str, email: str | None) -> None:
