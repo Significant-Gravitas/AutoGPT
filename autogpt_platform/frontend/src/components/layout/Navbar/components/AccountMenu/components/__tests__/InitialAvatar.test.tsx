@@ -4,7 +4,7 @@ import { InitialAvatar } from "../InitialAvatar";
 
 function getFallbackSVG(container: HTMLElement) {
   const svg = container.querySelector("svg");
-  return svg?.innerHTML.replace(/:r[0-9a-z]+:/g, "id") ?? null;
+  return svg?.innerHTML.replace(/:r[0-9a-z]+:|_r_[0-9a-z]+_/g, "id") ?? null;
 }
 
 describe("InitialAvatar", () => {
