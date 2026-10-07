@@ -216,9 +216,7 @@ describe("default-palette ban", () => {
     },
   );
 
-  it("exempts the files in the no-restricted-classes allowlist", async () => {
-    const [file] = ALLOWLIST.tailwind["no-restricted-classes"];
-    expect(file).toBeDefined();
-    expect(await restrictedClasses("bg-gray-100", file)).toEqual([]);
+  it("has no file left to exempt: the banned families no longer compile", () => {
+    expect(ALLOWLIST.tailwind["no-restricted-classes"]).toEqual([]);
   });
 });
