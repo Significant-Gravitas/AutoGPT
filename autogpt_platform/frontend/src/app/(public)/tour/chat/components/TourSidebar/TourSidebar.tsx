@@ -8,7 +8,7 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@radix-ui/react-collapsible";
 import {
   Sidebar,
   SidebarContent,

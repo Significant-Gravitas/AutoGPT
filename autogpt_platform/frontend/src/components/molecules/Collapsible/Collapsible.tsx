@@ -6,7 +6,7 @@ import {
   Collapsible as BaseCollapsible,
   CollapsibleTrigger as BaseCollapsibleTrigger,
   CollapsibleContent as BaseCollapsibleContent,
-} from "@/components/__legacy__/ui/collapsible";
+} from "@radix-ui/react-collapsible";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 

@@ -6,7 +6,7 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@radix-ui/react-collapsible";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { useState, type ReactNode } from "react";
 import { EXPERT_CHAT_PAGE_SIZE } from "@/services/experts/expert-chat-pagination";

@@ -16,7 +16,7 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@radix-ui/react-collapsible";
 import { SidebarMenu } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
