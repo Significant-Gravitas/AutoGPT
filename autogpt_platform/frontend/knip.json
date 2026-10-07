@@ -5,11 +5,244 @@
     "scripts/migrate-supabase-auth.ts",
     "scripts/seed-preview-accounts.ts"
   ],
+  // knip blocks CI. Entries under a "Backlog" comment were findings when it
+  // became blocking (2026-10-07): fix the code and delete the entry, and do
+  // not add new ones.
   "ignoreDependencies": [
     "@opentelemetry/instrumentation",
     "import-in-the-middle",
     "require-in-the-middle",
-    "postcss-load-config"
+    "postcss-load-config",
+    // Backlog: unused since their only importers in __legacy__ were deleted;
+    // remove them from package.json.
+    "@radix-ui/react-radio-group",
+    "@tanstack/react-table",
+    // Backlog: imported by .storybook/main.ts, not declared in package.json.
+    "webpack"
   ],
+  // Backlog: called from package.json scripts but not installed.
+  "ignoreBinaries": ["test-storybook", "wait-on"],
+  "ignoreFiles": [
+    // Loaded by URL or path string, or run by hand; never imported.
+    "public/gtag.js",
+    "public/push-sw.js",
+    ".storybook/mocks/auth-actions.ts",
+    "scripts/vendor-notion-avatar.mjs",
+    // Backlog: unused files.
+    "playwright.security.config.ts",
+    "src/app/(no-navbar)/login/helpers.ts",
+    "src/app/(platform)/artifacts/components/OriginFilter/OriginFilter.stories.tsx",
+    "src/app/(platform)/build/components/FlowEditor/edges/components/SVGBeads.tsx",
+    "src/app/(platform)/build/components/FlowEditor/handlers/helpers.ts",
+    "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/AiBlock.tsx",
+    "src/app/(platform)/build/hooks/useCopyPasteKeyboard.ts",
+    "src/app/(platform)/copilot/components/ProgressBar/ProgressBar.tsx",
+    "src/app/(platform)/copilot/components/SpinnerLoader/SpinnerLoader.module.css",
+    "src/app/(platform)/copilot/components/SpinnerLoader/SpinnerLoader.tsx",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/RunAgentModal/components/ModalRunSection/helpers.ts",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/RunAgentModal/helpers.ts",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/ScheduleAgentModal/components/ModalScheduleSection/useModalScheduleSection.ts",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/AgentSettingsButton.tsx",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/EmptySchedulesIllustration.tsx",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers/components/OutputActions.tsx",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers/components/OutputItem.tsx",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers/index.ts",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers/renderers/CodeRenderer.tsx",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers/renderers/ImageRenderer.tsx",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers/renderers/JSONRenderer.tsx",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers/renderers/MarkdownRenderer.tsx",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers/renderers/TextRenderer.tsx",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers/renderers/VideoRenderer.tsx",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers/types.ts",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers/utils/copy.ts",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers/utils/download.ts",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/SelectedRunView/components/SafeModeToggle.tsx",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/SelectedScheduleView/components/DeleteScheduleButton/DeleteScheduleButton.tsx",
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/SelectedSettingsView/SelectedSettingsView.tsx",
+    "src/app/(platform)/library/components/LibraryActionSubHeader/LibraryActionSubHeader.tsx",
+    "src/app/(platform)/marketplace/components/CreatorInfoCard/CreatorInfoCard.tsx",
+    "src/app/(platform)/raise/components/AssistantBubble/AssistantBubble.tsx",
+    "src/app/(platform)/team/components/NewPodDialog/NewPodDialog.tsx",
+    "src/app/(platform)/team/components/PodBoard/PodBoard.tsx",
+    "src/app/(public)/tour/chat/components/TourNextScenarioChip/TourNextScenarioChip.tsx",
+    "src/components/auth/PasswordInput.tsx",
+    "src/components/contextual/CredentialsInput/components/CredentialsAccordionView/CredentialsAccordionView.tsx",
+    "src/components/contextual/GoogleDrivePicker/types.ts",
+    "src/components/contextual/IntegrationsPanel/components/AIConnectionsSection/ProviderBox.stories.tsx",
+    "src/components/contextual/OutputRenderers/utils/copy.ts",
+    "src/components/contextual/RunAgentInputs/RunAgentInputs.tsx",
+    "src/components/contextual/RunAgentInputs/useRunAgentInputs.ts",
+    "src/components/contextual/marketplaceHelpers.ts",
+    "src/components/layout/Navbar/components/AccountMenu/AccountMenu.stories.tsx",
+    "src/components/layout/Navbar/useNavbar.ts",
+    "src/components/renderers/InputRenderer/base/array/helpers.ts",
+    "src/components/renderers/InputRenderer/base/index.ts",
+    "src/components/renderers/InputRenderer/base/standard/errors/ErrorList.tsx",
+    "src/components/renderers/InputRenderer/base/standard/errors/index.ts",
+    "src/components/renderers/InputRenderer/base/standard/helpers.ts",
+    "src/components/renderers/InputRenderer/custom/MultiSelectField/index.ts",
+    "src/components/renderers/InputRenderer/index.ts",
+    "src/components/renderers/InputRenderer/registry/types.ts",
+    "src/components/renderers/InputRenderer/utils/rjsf-utils.ts",
+    "src/lib/auth/client.ts",
+    "src/mocks/index.ts",
+    "src/mocks/mock-browser.ts",
+    "src/playwright/credentials/index.ts",
+    "src/playwright/pages/header.page.ts",
+    "src/playwright/pages/profile.page.ts",
+    "src/playwright/utils/signin.ts",
+    "src/services/feature-flags/FeatureFlagPage.tsx",
+    "src/services/feature-flags/FeatureFlagRedirect.tsx",
+    "src/services/storage/session-storage.ts",
+    "src/types/chat.ts",
+    "src/types/types.ts",
+    "test-runner-jest.config.js"
+  ],
+  // Backlog: unused exports, types, enum members and duplicate exports.
+  "ignoreIssues": {
+    "src/app/(no-navbar)/onboarding/steps/BrainDumpStep/components/useAudioBars.ts": [
+      "types"
+    ],
+    "src/app/(no-navbar)/onboarding/store.ts": ["exports"],
+    "src/app/(platform)/artifacts/components/ArtifactsList/FileIllustration.tsx": [
+      "exports"
+    ],
+    "src/app/(platform)/build/components/FlowEditor/edges/helpers.ts": [
+      "exports"
+    ],
+    "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/NodeOutput/components/NodeDataViewer/useNodeDataViewer.ts": [
+      "types"
+    ],
+    "src/app/(platform)/build/components/FlowEditor/nodes/helpers.ts": [
+      "exports"
+    ],
+    "src/app/(platform)/build/components/FlowEditor/tutorial/helpers/blocks.ts": [
+      "exports"
+    ],
+    "src/app/(platform)/build/components/FlowEditor/tutorial/helpers/canvas.ts": [
+      "exports"
+    ],
+    "src/app/(platform)/build/components/FlowEditor/tutorial/helpers/connections.ts": [
+      "exports"
+    ],
+    "src/app/(platform)/build/components/FlowEditor/tutorial/helpers/dom.ts": [
+      "exports"
+    ],
+    "src/app/(platform)/build/components/FlowEditor/tutorial/helpers/index.ts": [
+      "exports"
+    ],
+    "src/app/(platform)/build/components/FlowEditor/tutorial/helpers/menu.ts": [
+      "exports"
+    ],
+    "src/app/(platform)/build/components/FlowEditor/tutorial/helpers/save.ts": [
+      "exports"
+    ],
+    "src/app/(platform)/build/components/FlowEditor/tutorial/icons.ts": [
+      "exports"
+    ],
+    "src/app/(platform)/build/components/FlowEditor/tutorial/index.ts": [
+      "exports"
+    ],
+    "src/app/(platform)/build/components/FlowEditor/tutorial/styles.ts": [
+      "exports"
+    ],
+    "src/app/(platform)/build/components/NewControlPanel/NewBlockMenu/BlockMenuFilters/types.ts": [
+      "types"
+    ],
+    "src/app/(platform)/build/components/NewControlPanel/NewControlPanel.tsx": [
+      "duplicates"
+    ],
+    "src/app/(platform)/build/components/helper.ts": ["enumMembers"],
+    "src/app/(platform)/copilot/helpers/greetingOrb.ts": ["exports"],
+    "src/app/(platform)/copilot/sharing/useShareChatDialog.ts": ["types"],
+    "src/app/(platform)/copilot/voice/speechLevel.ts": ["exports"],
+    "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/AgentInputsReadOnly/helpers.ts": [
+      "exports"
+    ],
+    "src/app/(platform)/library/components/LibraryAgentList/helpers.ts": [
+      "exports"
+    ],
+    "src/app/(platform)/library/components/LibraryFolder/FolderIcon.tsx": [
+      "exports"
+    ],
+    "src/app/(platform)/library/components/LibraryUploadAgentDialog/LibraryUploadAgentDialog.tsx": [
+      "exports"
+    ],
+    "src/app/(platform)/library/hooks/useAgentStatus.ts": ["exports"],
+    "src/app/(platform)/marketplace/components/AgentsSection/AgentsSection.tsx": [
+      "types"
+    ],
+    "src/app/(platform)/profile/(user)/credits/components/SubscriptionTierSection/useSubscriptionTierSection.ts": [
+      "types"
+    ],
+    "src/app/(platform)/raise/components/ColorStep/helpers.ts": ["exports"],
+    "src/app/(platform)/raise/helpers.ts": ["exports"],
+    "src/app/(platform)/settings/account/helpers.ts": ["exports"],
+    "src/app/(platform)/settings/creator-dashboard/helpers.ts": ["exports"],
+    "src/app/(platform)/settings/memory/helpers.ts": ["exports"],
+    "src/app/(platform)/team/helpers.ts": ["exports"],
+    "src/app/(public)/tour/chat/constants.ts": ["exports"],
+    "src/components/ai-elements/conversation.tsx": ["exports"],
+    "src/components/ai-elements/message.tsx": ["exports"],
+    "src/components/atoms/Avatar/Avatar.tsx": ["duplicates"],
+    "src/components/contextual/CredentialsInput/helpers.ts": ["types"],
+    "src/components/contextual/CronScheduler/cron-scheduler-dialog.tsx": [
+      "exports"
+    ],
+    "src/components/contextual/OutputRenderers/index.ts": ["types"],
+    "src/components/contextual/OutputRenderers/utils/download.ts": ["types"],
+    "src/components/contextual/PublishAgentModal/components/AgentInfoStep/helpers.ts": [
+      "exports"
+    ],
+    "src/components/layout/Navbar/helpers.tsx": ["exports"],
+    "src/components/molecules/AutopilotAvatar/helpers.ts": ["exports"],
+    "src/components/molecules/Confetti/Confetti.tsx": ["exports", "types"],
+    "src/components/molecules/Dialog/Dialog.tsx": ["exports"],
+    "src/components/molecules/DropdownMenu/DropdownMenu.tsx": ["exports"],
+    "src/components/molecules/Popover/Popover.tsx": ["exports"],
+    "src/components/molecules/ShowMoreText/helpers.ts": ["exports"],
+    "src/components/molecules/TallyPoup/TallyPopup.tsx": [
+      "exports",
+      "duplicates"
+    ],
+    "src/components/renderers/InputRenderer/base/anyof/helpers.ts": ["exports"],
+    "src/components/renderers/InputRenderer/base/array/context/array-item-context.tsx": [
+      "exports"
+    ],
+    "src/components/renderers/InputRenderer/base/array/index.ts": ["exports"],
+    "src/components/renderers/InputRenderer/base/standard/buttons/index.ts": [
+      "exports"
+    ],
+    "src/components/renderers/InputRenderer/base/standard/widgets/TextInput/index.ts": [
+      "exports"
+    ],
+    "src/components/renderers/InputRenderer/constants.ts": ["exports"],
+    "src/components/renderers/InputRenderer/custom/CredentialField/helpers.ts": [
+      "exports"
+    ],
+    "src/components/renderers/InputRenderer/custom/JsonTextField/JsonTextField.tsx": [
+      "exports",
+      "duplicates"
+    ],
+    "src/components/renderers/InputRenderer/helpers.ts": ["exports"],
+    "src/components/renderers/InputRenderer/registry/index.ts": ["exports"],
+    "src/components/renderers/InputRenderer/utils/schema-utils.ts": ["exports"],
+    "src/components/ui/button-group.tsx": ["exports"],
+    "src/components/ui/sheet.tsx": ["exports"],
+    "src/contexts/AutoPilotBridgeContext.tsx": ["exports"],
+    "src/hooks/usePendingReviews.ts": ["exports"],
+    "src/lib/autogpt-server-api/helpers.ts": ["exports"],
+    "src/lib/autogpt-server-api/types.ts": ["exports", "types", "enumMembers"],
+    "src/lib/autogpt-server-api/utils.ts": ["exports"],
+    "src/lib/constants.ts": ["exports"],
+    "src/lib/timezone-utils.ts": ["exports"],
+    "src/lib/utils.ts": ["exports"],
+    "src/playwright/credentials/accounts.ts": ["exports", "duplicates"],
+    "src/playwright/pages/library.page.ts": ["exports"],
+    "src/playwright/utils/assertion.ts": ["exports"],
+    "src/playwright/utils/auth.ts": ["exports", "types"],
+    "src/playwright/utils/signup.ts": ["exports"],
+    "src/types/google.ts": ["types"]
+  },
   "ignoreExportsUsedInFile": true
 }

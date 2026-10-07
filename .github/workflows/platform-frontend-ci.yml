@@ -114,11 +114,9 @@ jobs:
       - name: Generate API client
         run: pnpm generate:api
 
-      # Reports unused files, exports and dependencies. Informational for now:
-      # the codebase has a backlog of findings, so they must not block PRs.
-      # Scoped to this step so install/generate failures still fail the job.
+      # Fails on unused files, exports and dependencies. The backlog that
+      # existed when this became blocking is listed in knip.json.
       - name: Run knip
-        continue-on-error: true
         run: pnpm knip --no-progress --reporter markdown | tee -a "$GITHUB_STEP_SUMMARY"
 
   chromatic:
