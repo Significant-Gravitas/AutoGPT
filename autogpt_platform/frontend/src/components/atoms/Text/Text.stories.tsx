@@ -53,7 +53,7 @@ export function AllVariants() {
   return (
     <div className="space-y-8">
       {/* Headings */}
-      <div className="mb-19 mb-20 space-y-6">
+      <div className="mb-20 space-y-6">
         <h2 className="mb-4 border-b border-border pb-2 text-xl text-zinc-500">
           Headings
         </h2>

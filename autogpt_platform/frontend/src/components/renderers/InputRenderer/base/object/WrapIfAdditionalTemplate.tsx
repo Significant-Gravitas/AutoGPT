@@ -94,7 +94,7 @@ export default function WrapIfAdditionalTemplate(
               disabled={disabled || readonly}
               id={getFieldDomId(keyId, formContext)}
               aria-describedby={accessibility["aria-describedby"]}
-              wrapperClassName="mb-2 w-30"
+              wrapperClassName="mb-2"
               name={keyId}
               onBlur={!readonly ? handleBlur : undefined}
               type="text"

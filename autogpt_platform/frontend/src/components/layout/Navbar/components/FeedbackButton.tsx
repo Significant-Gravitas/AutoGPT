@@ -27,7 +27,7 @@ export function FeedbackButton() {
           : String(state.isAuthenticated)
       }
     >
-      <div className="rounded-full bg-linear-to-r from-purple-100 to-purple-300 to-zinc-400 p-px">
+      <div className="rounded-full bg-linear-to-r from-purple-100 to-zinc-400 p-px">
         <div className="flex items-center gap-1.5 rounded-full bg-background/80 px-3 py-1.5 text-sm font-medium whitespace-nowrap text-zinc-700 backdrop-blur-xl transition-colors duration-150 ease-out group-hover:bg-zinc-100/90">
           <span className="hidden xl:inline">Give Feedback</span>
           <Icon icon={Chatting01Icon} size={16} />

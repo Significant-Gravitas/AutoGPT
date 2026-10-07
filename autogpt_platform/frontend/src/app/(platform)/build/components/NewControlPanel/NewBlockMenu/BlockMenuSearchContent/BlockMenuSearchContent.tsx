@@ -34,7 +34,7 @@ export const BlockMenuSearchContent = () => {
           "flex items-center justify-center",
         )}
       >
-        <LoadingSpinner className="size-13" />
+        <LoadingSpinner />
       </div>
     );
   }
@@ -48,7 +48,7 @@ export const BlockMenuSearchContent = () => {
       isFetchingNextPage={isFetchingNextPage}
       fetchNextPage={fetchNextPage}
       hasNextPage={hasNextPage}
-      loader={<LoadingSpinner className="size-13" />}
+      loader={<LoadingSpinner />}
       className="space-y-2.5"
     >
       {searchResults.map((item: SearchResponseItemsItem, index: number) => {

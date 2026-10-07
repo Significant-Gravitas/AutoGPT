@@ -255,7 +255,6 @@ export function HostScopedCredentialsModal({
                     label="Header Value"
                     size="small"
                     type="password"
-                    className="flex-2"
                     placeholder="Header value (e.g., Bearer token123)"
                     value={pair.value}
                     onChange={(e) =>
