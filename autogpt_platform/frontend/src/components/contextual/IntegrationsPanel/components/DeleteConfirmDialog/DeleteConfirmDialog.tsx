@@ -52,12 +52,12 @@ export function DeleteConfirmDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="body" className="text-zinc-800">
+          <Text variant="body" tone="primary">
             {message}
           </Text>
 
           {notice && (
-            <Text variant="small" className="text-[#505057]">
+            <Text variant="small" tone="secondary">
               {notice}
             </Text>
           )}

@@ -17,7 +17,7 @@ export function IntegrationsListEmpty({ query }: Props) {
         <Text variant="large-medium" as="span" className="text-textBlack">
           {hasQuery ? "No integrations found" : "No integration connected"}
         </Text>
-        <Text variant="body" className="max-w-[360px] text-zinc-500">
+        <Text variant="body" tone="muted" className="max-w-[360px]">
           {hasQuery
             ? `No integrations match "${query.trim()}". Try a different search.`
             : "Connect a service to let your agents use third-party tools like GitHub, Gmail, or Figma."}
