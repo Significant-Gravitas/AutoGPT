@@ -3,6 +3,7 @@
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { Select } from "@/components/atoms/Select/Select";
 import { AUTOPILOT_MEMORY_SCOPE } from "./useMemoryScope";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   value: string;
@@ -53,13 +54,25 @@ export function MemoryScopeSelector({
         />
       </div>
       <div aria-live="polite" className="flex flex-col gap-1 text-xs">
-        {loading ? <p className="text-gray-500">Loading experts…</p> : null}
-        {value !== AUTOPILOT_MEMORY_SCOPE ? (
-          <p className="text-gray-500">Expert memory is read-only.</p>
+        {loading ? (
+          <Text variant="small" tone="muted">
+            Loading experts…
+          </Text>
         ) : null}
-        {error ? <p className="text-red-700">Failed to load experts.</p> : null}
+        {value !== AUTOPILOT_MEMORY_SCOPE ? (
+          <Text variant="small" tone="muted">
+            Expert memory is read-only.
+          </Text>
+        ) : null}
+        {error ? (
+          <Text variant="small" className="text-red-700">
+            Failed to load experts.
+          </Text>
+        ) : null}
         {!loading && !error && experts.length === 0 ? (
-          <p className="text-gray-500">No experts for this account.</p>
+          <Text variant="small" tone="muted">
+            No experts for this account.
+          </Text>
         ) : null}
       </div>
     </div>
