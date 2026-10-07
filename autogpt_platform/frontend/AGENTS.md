@@ -50,6 +50,7 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 - Use Next.js `<Link>` for internal navigation — never raw `<a>` tags
 - No `any` types unless the value genuinely can be anything
 - No linter suppressors (`// @ts-ignore`, `// eslint-disable`) — fix the actual issue
+- Design-system lint rules live in `eslint.design-system.mjs`: no `__legacy__` imports, no `@/components/ui/*` outside `src/components`, Hugeicons only through the `Icon` atom, toasts only through `molecules/Toast`, and no class names Tailwind does not know. `eslint-allowlist.json` lists the files that broke these rules before they existed. Never add to it; when you fix a file, delete its entry (`scripts/eslint-allowlist.test.ts` fails on stale entries)
 - **File length** — keep files under ~200 lines; extract sub-components or hooks into their own files when a file grows beyond this
 - **Function/component length** — keep render functions and hooks under ~50 lines; extract named helpers or sub-components when they grow longer
 

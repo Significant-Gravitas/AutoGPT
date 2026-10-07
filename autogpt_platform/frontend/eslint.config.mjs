@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { FlatCompat } from "@eslint/eslintrc";
 import pluginQuery from "@tanstack/eslint-plugin-query";
 import storybook from "eslint-plugin-storybook";
+import { importBlocks, tailwindBlocks } from "./eslint.design-system.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -97,4 +98,6 @@ export default [
     files: ["*.config.js"],
     rules: { "@typescript-eslint/no-require-imports": "off" },
   },
+  ...importBlocks(),
+  ...tailwindBlocks(),
 ];
