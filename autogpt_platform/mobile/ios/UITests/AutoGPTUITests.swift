@@ -59,7 +59,15 @@ final class AutoGPTUITests: XCTestCase {
     defer { XCUIDevice.shared.orientation = .portrait }
     app.launch()
     app.buttons["App menu"].tap()
-    app.buttons["Server settings"].tap()
+    let settings = app.buttons["Server settings"]
+    let menu = app.collectionViews.firstMatch
+    XCTAssertTrue(menu.waitForExistence(timeout: 3))
+    for _ in 0..<6 {
+      if settings.exists && settings.isHittable { break }
+      menu.swipeUp()
+    }
+    XCTAssertTrue(settings.isHittable)
+    settings.tap()
     let scroll = app.scrollViews["Server settings content"]
     XCTAssertTrue(scroll.waitForExistence(timeout: 5))
     let heading = app.staticTexts["Server settings title"]
