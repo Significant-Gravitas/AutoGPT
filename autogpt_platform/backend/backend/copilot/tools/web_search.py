@@ -99,9 +99,10 @@ class WebSearchTool(BaseTool):
                 "max_results": {
                     "type": "integer",
                     "description": (
-                        f"Minimum sources to return (default "
-                        f"{_DEFAULT_MAX_RESULTS}, cap {_HARD_MAX_RESULTS}); "
-                        "every source the answer cites is always returned."
+                        "Minimum number of sources to return (default "
+                        f"{_DEFAULT_MAX_RESULTS}, capped at {_HARD_MAX_RESULTS}). "
+                        "It is a floor, not a limit: every source the answer "
+                        "cites is always returned, even beyond this number."
                     ),
                     "default": _DEFAULT_MAX_RESULTS,
                 },

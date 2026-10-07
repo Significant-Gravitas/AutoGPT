@@ -327,7 +327,7 @@ function getWebAccordionData(
             return (
               <div key={i} className="text-sm">
                 {citation !== null && (
-                  <span className="mr-1.5 text-xs tabular-nums text-slate-400">
+                  <span className="mr-1.5 text-xs tabular-nums text-slate-500">
                     [{citation}]
                   </span>
                 )}

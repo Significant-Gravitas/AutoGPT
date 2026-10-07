@@ -100,7 +100,7 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
             className="flex items-center gap-2.5 px-3 py-2"
           >
             {citation !== null && (
-              <span className="shrink-0 text-xs tabular-nums text-zinc-400">
+              <span className="shrink-0 text-xs tabular-nums text-zinc-600">
                 [{citation}]
               </span>
             )}

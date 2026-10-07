@@ -259,19 +259,14 @@ class TestCitedSources:
     say where a claim came from."""
 
     @pytest.mark.asyncio
-    async def test_answer_citing_twelve_sources_returns_all_twelve_numbered(
-        self, monkeypatch
-    ):
+    async def test_max_results_pads_the_cited_sources_up_to_it(self, monkeypatch):
         sources = [
             {"title": f"Source {i}", "url": f"https://news.example.com/story-{i}"}
             for i in range(1, 13)
         ]
-        answer = " ".join(
-            f"Claim {i} is reported by source {i}.[{i}]" for i in range(1, 13)
-        )
         dispatch = TestWebSearchToolDispatch()
         mock_client = dispatch._mock_client(
-            _fake_response(citations=sources, answer=answer)
+            _fake_response(citations=sources, answer="A.[11] B.[12]")
         )
         monkeypatch.setattr(
             "backend.copilot.tools.web_search._chat_config",
@@ -292,29 +287,14 @@ class TestCitedSources:
             ),
         ):
             result = await WebSearchTool()._execute(
-                user_id="u1", session=dispatch._session(), query="twelve sources"
+                user_id="u1",
+                session=dispatch._session(),
+                query="twelve sources",
+                max_results=4,
             )
 
         assert isinstance(result, WebSearchResponse)
-        assert [r.model_dump() for r in result.results] == [
-            {
-                "n": i,
-                "title": f"Source {i}",
-                "url": f"https://news.example.com/story-{i}",
-            }
-            for i in range(1, 13)
-        ]
-
-    def test_answer_citing_seven_returns_a_result_numbered_seven(self):
-        resp = _fake_response(
-            citations=[
-                {"title": f"r{i}", "url": f"https://e/{i}"} for i in range(1, 9)
-            ],
-            answer="Only the seventh source backs this.[7]",
-        )
-        by_n = {r.n: r for r in _extract_results(resp, limit=5)}
-        assert by_n[7].url == "https://e/7"
-        assert by_n[7].title == "r7"
+        assert [r.n for r in result.results] == [1, 2, 11, 12]
 
     @pytest.mark.parametrize("name", ["jwst_news", "central_bank_rates"])
     def test_recorded_sonar_response_every_cited_number_resolves(self, name):
