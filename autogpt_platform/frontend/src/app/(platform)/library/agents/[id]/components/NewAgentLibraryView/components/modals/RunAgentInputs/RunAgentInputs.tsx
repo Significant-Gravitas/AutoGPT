@@ -124,6 +124,7 @@ export function RunAgentInputs({
           </span>
           <Switch
             className="ml-auto"
+            aria-label={schema.title ?? "Value"}
             checked={!!value}
             onCheckedChange={(checked: boolean) => onChange(checked)}
             {...props}

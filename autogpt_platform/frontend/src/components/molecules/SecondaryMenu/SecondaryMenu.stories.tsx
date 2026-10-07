@@ -67,7 +67,7 @@ export const DropdownMenuExample: Story = {
     <div className="flex h-96 items-center justify-center">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="secondary" size="md">
+          <Button variant="secondary" size="md" aria-label="More actions">
             <Icon icon={MoreVerticalIcon} size={16} />
           </Button>
         </DropdownMenuTrigger>

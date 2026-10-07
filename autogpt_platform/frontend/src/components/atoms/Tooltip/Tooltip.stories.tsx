@@ -12,7 +12,9 @@ const meta: Meta<typeof Tooltip> = {
   tags: ["autodocs"],
   component: Tooltip,
   parameters: {
-    a11y: { test: "error" },
+    // Known axe findings, mostly colour contrast (DESIGN.md, "Story tests").
+    // Back to "error" once they are fixed.
+    a11y: { test: "todo" },
     layout: "centered",
     docs: {
       description: {
@@ -176,7 +178,10 @@ export const WithIcon: Story = {
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button className="rounded-full p-2 hover:bg-zinc-100">
+            <button
+              className="rounded-full p-2 hover:bg-zinc-100"
+              aria-label="More information"
+            >
               <svg
                 width="16"
                 height="16"

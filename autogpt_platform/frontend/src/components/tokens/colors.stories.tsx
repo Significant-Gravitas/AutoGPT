@@ -84,7 +84,9 @@ export function AllVariants() {
       </div>
 
       <section className="space-y-4">
-        <Text variant="h3">Semantic</Text>
+        <Text variant="h3" as="h2">
+          Semantic
+        </Text>
         <Text variant="body" tone="muted">
           Each class points at a palette step in <code>:root</code>; the{" "}
           <code>.dark</code> value is written but not active.
@@ -103,7 +105,9 @@ export function AllVariants() {
       </section>
 
       <section className="space-y-4">
-        <Text variant="h3">White and black</Text>
+        <Text variant="h3" as="h2">
+          White and black
+        </Text>
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
           {singles.map((color) => (
             <Swatch
@@ -119,7 +123,7 @@ export function AllVariants() {
       {palette.map((family) => (
         <section key={family.name} className="space-y-4">
           <div className="space-y-1">
-            <Text variant="h3" className="capitalize">
+            <Text variant="h3" as="h2" className="capitalize">
               {family.name}
             </Text>
             <Text variant="body" tone="muted">

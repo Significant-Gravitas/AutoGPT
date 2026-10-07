@@ -48,6 +48,8 @@ export const Basic: Story = {
 
     return (
       <div
+        // Focusable so keyboard users can scroll the list.
+        tabIndex={0}
         style={{
           height: 320,
           overflow: "auto",
@@ -88,6 +90,8 @@ export const LongList: Story = {
 
     return (
       <div
+        // Focusable so keyboard users can scroll the list.
+        tabIndex={0}
         style={{
           height: 320,
           overflow: "auto",
@@ -128,6 +132,8 @@ export const WithLoadingIndicator: Story = {
 
     return (
       <div
+        // Focusable so keyboard users can scroll the list.
+        tabIndex={0}
         style={{
           height: 320,
           overflow: "auto",

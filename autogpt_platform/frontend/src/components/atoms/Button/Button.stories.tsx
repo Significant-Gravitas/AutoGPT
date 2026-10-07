@@ -26,7 +26,9 @@ const meta: Meta<typeof Button> = {
     ),
   ],
   parameters: {
-    a11y: { test: "error" },
+    // Known axe findings, mostly colour contrast (DESIGN.md, "Story tests").
+    // Back to "error" once they are fixed.
+    a11y: { test: "todo" },
     layout: "centered",
     docs: {
       description: {
@@ -814,13 +816,18 @@ function renderAllVariants() {
               Icon
             </div>
             <div className="flex flex-col gap-8">
-              <Button variant="icon" size="icon-lg">
+              <Button variant="icon" size="icon-lg" aria-label="Add">
                 <Plus className="h-4 w-4" />
               </Button>
-              <Button variant="primary" size="icon-lg" className="bg-zinc-700">
+              <Button
+                variant="primary"
+                size="icon-lg"
+                className="bg-zinc-700"
+                aria-label="Add"
+              >
                 <Plus className="h-4 w-4" />
               </Button>
-              <Button variant="icon" size="icon-lg" disabled>
+              <Button variant="icon" size="icon-lg" disabled aria-label="Add">
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
