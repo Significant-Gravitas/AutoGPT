@@ -1,5 +1,58 @@
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SAFE_MEDIA_PATH_COMPONENT_RE = /^(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
+const SINGLE_BYTE_RANGE_RE =
+  /^bytes=(?:([0-9]{1,15})-([0-9]{0,15})|-([0-9]{1,15}))$/;
+// Private media up to this size is buffered before it is forwarded, below
+// Vercel's 4.5 MB limit for buffered bodies, and each video range is capped to
+// it so every video response stays buffered.
+export const PRIVATE_MEDIA_RANGE_CHUNK_BYTES = 4 * 1024 * 1024;
+
+export function isPrivateStoreMediaRequest(path: string[]): boolean {
+  return (
+    path.length === 7 &&
+    path[0] === "api" &&
+    path[1] === "store" &&
+    path[2] === "submissions" &&
+    path[3] === "media" &&
+    SAFE_MEDIA_PATH_COMPONENT_RE.test(path[4]) &&
+    (path[5] === "images" || path[5] === "videos") &&
+    SAFE_MEDIA_PATH_COMPONENT_RE.test(path[6])
+  );
+}
+
+export function isPrivateStoreVideoRequest(path: string[]): boolean {
+  return isPrivateStoreMediaRequest(path) && path[5] === "videos";
+}
+
+export function getSafePrivateMediaRange(value: string | null): string | null {
+  if (!value) return null;
+  const match = SINGLE_BYTE_RANGE_RE.exec(value.trim());
+  if (!match) return null;
+  const [, startText, endText, suffixText] = match;
+  if (suffixText !== undefined) {
+    const suffix = Math.min(
+      Number(suffixText),
+      PRIVATE_MEDIA_RANGE_CHUNK_BYTES,
+    );
+    return `bytes=-${suffix}`;
+  }
+  const start = Number(startText);
+  const chunkEnd = start + PRIVATE_MEDIA_RANGE_CHUNK_BYTES - 1;
+  const end = endText ? Math.min(Number(endText), chunkEnd) : chunkEnd;
+  return `bytes=${start}-${end}`;
+}
+
+export function shouldBufferPrivateMedia(headers: Headers): boolean {
+  const header = headers.get("content-length");
+  if (!header) return false;
+  const length = Number(header);
+  return (
+    Number.isFinite(length) &&
+    length >= 0 &&
+    length <= PRIVATE_MEDIA_RANGE_CHUNK_BYTES
+  );
+}
 
 export function isWorkspaceDownloadRequest(path: string[]): boolean {
   // api/workspace/files/{id}/download
