@@ -87,14 +87,10 @@ describe("Dialog rendered as a drawer", () => {
     expect(set).toHaveBeenCalledWith(false);
   });
 
-  test("associates an sr-only Description with constant text Dialog", () => {
+  test("has no aria-describedby, since there is no description", () => {
     renderDrawer({ set: vi.fn() });
 
     const dialog = screen.getByRole("dialog");
-    const descriptionId = dialog.getAttribute("aria-describedby");
-    expect(descriptionId).toBeTruthy();
-    const description = document.getElementById(descriptionId ?? "");
-    expect(description?.textContent).toBe("Dialog");
-    expect(description?.classList.contains("sr-only")).toBe(true);
+    expect(dialog.hasAttribute("aria-describedby")).toBe(false);
   });
 });

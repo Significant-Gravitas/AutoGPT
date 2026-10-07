@@ -37,6 +37,11 @@ export function ToggleChip({
   // than a hard cut; opacity alone carries it under reduced motion.
   const blurred = prefersReducedMotion ? "blur(0px)" : "blur(3px)";
 
+  function handleClick() {
+    if (locked) return;
+    onToggle();
+  }
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -44,7 +49,7 @@ export function ToggleChip({
           type="button"
           aria-pressed={pressed}
           aria-disabled={locked}
-          onClick={onToggle}
+          onClick={handleClick}
           aria-label={ariaLabel}
           className={cn(
             "group inline-flex h-7 items-center justify-center gap-1 rounded-full px-2.5 text-xs font-medium text-zinc-950 transition-colors hover:bg-white",

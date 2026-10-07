@@ -117,25 +117,17 @@ describe("Dialog", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  test("associates an sr-only Description with constant text Dialog", () => {
+  test("has no aria-describedby, since there is no description", () => {
     renderDialog({ title: "My Title" });
 
     const dialog = screen.getByRole("dialog");
-    const descriptionId = dialog.getAttribute("aria-describedby");
-    expect(descriptionId).toBeTruthy();
-    const description = document.getElementById(descriptionId ?? "");
-    expect(description?.textContent).toBe("Dialog");
-    expect(description?.classList.contains("sr-only")).toBe(true);
+    expect(dialog.hasAttribute("aria-describedby")).toBe(false);
   });
 
-  test("associates the same default sr-only Description when title is missing", () => {
+  test("has no aria-describedby when title is missing", () => {
     renderDialog({});
 
     const dialog = screen.getByRole("dialog");
-    const descriptionId = dialog.getAttribute("aria-describedby");
-    expect(descriptionId).toBeTruthy();
-    const description = document.getElementById(descriptionId ?? "");
-    expect(description?.textContent).toBe("Dialog");
-    expect(description?.classList.contains("sr-only")).toBe(true);
+    expect(dialog.hasAttribute("aria-describedby")).toBe(false);
   });
 });

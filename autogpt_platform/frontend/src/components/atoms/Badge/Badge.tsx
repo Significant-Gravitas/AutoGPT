@@ -11,9 +11,9 @@ interface BadgeProps {
 }
 
 const badgeVariants: Record<BadgeVariant, string> = {
-  success: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
+  success: "bg-green-50 text-green-700 ring-green-600/20",
   error: "bg-red-50 text-red-700 ring-red-600/10",
-  warning: "bg-amber-50 text-amber-800 ring-amber-500/20",
+  warning: "bg-yellow-50 text-yellow-800 ring-yellow-500/20",
   info: "bg-zinc-50 text-zinc-600 ring-zinc-500/10",
 };
 
@@ -32,7 +32,7 @@ export function Badge({
     <span
       className={cn(
         "inline-flex items-center gap-1.5 rounded-md font-sans font-medium ring-1 ring-inset",
-        "overflow-hidden text-ellipsis",
+        "overflow-hidden",
         badgeSizes[size],
         badgeVariants[variant],
         className,

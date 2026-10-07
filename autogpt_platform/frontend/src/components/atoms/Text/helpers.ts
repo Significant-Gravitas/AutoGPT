@@ -43,7 +43,7 @@ export const variants = {
 
   // Label Text
   label:
-    "font-sans text-[0.6785rem] font-medium uppercase leading-[1.25rem] tracking-[0.06785rem] text-black",
+    "font-sans text-[0.6875rem] font-medium uppercase leading-[1.25rem] tracking-[0.06875rem] text-black",
   eyebrow:
     "font-sans text-[0.75rem] font-[500] uppercase leading-[1rem] tracking-[0.06em] text-zinc-500",
 } as const;

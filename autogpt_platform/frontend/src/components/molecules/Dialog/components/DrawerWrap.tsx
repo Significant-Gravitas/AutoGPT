@@ -1,4 +1,4 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
@@ -38,10 +38,12 @@ export function DrawerWrap({
 
   const closeBtn = (
     <Button
-      variant="link"
+      variant="ghost"
+      size="icon-sm"
       aria-label="Close"
       onClick={handleClose}
-      className="!focus-visible:ring-0 p-0"
+      className="focus-visible:!ring-0"
+      withTooltip={false}
     >
       <Icon icon={Cancel01Icon} width={isCompact ? "1.25rem" : "1.5rem"} />
     </Button>
@@ -58,6 +60,7 @@ export function DrawerWrap({
         )}
         data-testid={testId}
         onEscapeKeyDown={handleEscapeKeyDown}
+        aria-describedby={undefined}
         // No onInteractOutside close: Radix dismisses outside taps itself and
         // vetoes the focus a closing DropdownMenu hands back to its trigger.
       >
@@ -86,14 +89,13 @@ export function DrawerWrap({
               closeBtn
             ) : (
               <div
-                className={`${modalStyles.iconWrap} transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700`}
+                className={`${modalStyles.iconWrap} transition-colors duration-200 hover:bg-gray-200`}
               >
                 {closeBtn}
               </div>
             )
           ) : null}
         </div>
-        <Drawer.Description className="sr-only">Dialog</Drawer.Description>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div
             className={cn(

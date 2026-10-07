@@ -54,7 +54,7 @@ export function Collapsible({
           triggerClassName,
         )}
       >
-        <div className="flex-end flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {trigger}
           <Icon
             icon={ArrowDown01Icon}
