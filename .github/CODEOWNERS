@@ -4,4 +4,6 @@ classic/forge/ @Significant-Gravitas/forge-maintainers
 classic/benchmark/ @Significant-Gravitas/benchmark-maintainers
 classic/frontend/ @Significant-Gravitas/frontend-maintainers
 autogpt_platform/infra @Significant-Gravitas/devops
+autogpt_platform/frontend/src/components/** @Significant-Gravitas/maintainers
+autogpt_platform/frontend/DESIGN.md @Significant-Gravitas/maintainers
 .github/CODEOWNERS @Significant-Gravitas/admins

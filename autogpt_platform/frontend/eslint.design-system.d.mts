@@ -9,6 +9,7 @@ interface BlockOptions {
   allowlist?: boolean;
 }
 
+export const LINT_IGNORES: string[];
 export const IMPORT_RESTRICTIONS: Record<string, Restriction>;
 export const IMPORT_SCOPES: Record<string, string[]>;
 export const ALLOWLIST: {
@@ -16,6 +17,7 @@ export const ALLOWLIST: {
   tailwind: Record<string, string[]>;
 };
 export const NON_TAILWIND_CLASSES: string[];
+export const RESTRICTED_PALETTE: Record<string, string | undefined>;
 export function restrictionFor(source: string): string | undefined;
 export function importBlocks(options?: BlockOptions): Linter.Config[];
 export function tailwindBlocks(options?: BlockOptions): Linter.Config[];

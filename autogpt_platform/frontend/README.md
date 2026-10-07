@@ -133,12 +133,7 @@ Storybook is a powerful development environment for UI components. It allows you
    pnpm build-storybook
    ```
 
-3. **Running Storybook Tests**:
-   Storybook tests can be run using:
-
-   ```bash
-   pnpm test-storybook
-   ```
+3. **Storybook tests**: not available yet. `pnpm test-storybook` needs `@storybook/test-runner`, which is not installed; a runner comes with the Storybook 10 upgrade. CI builds Storybook on pull requests that touch `src/components`.
 
 4. **Writing Stories**:
    Create `.stories.tsx` files alongside your components to define different states and variations of your components.
@@ -156,8 +151,7 @@ By integrating Storybook into our development workflow, we can streamline UI dev
 ### Styling & UI Components
 
 - [**Tailwind CSS**](https://tailwindcss.com/) - Utility-first CSS framework
-- [**shadcn/ui**](https://ui.shadcn.com/) - Re-usable components built with Radix UI and Tailwind CSS
-- [**Radix UI**](https://www.radix-ui.com/) - Headless UI components for accessibility
+- [**Radix UI**](https://www.radix-ui.com/) - Headless UI components for accessibility, under the design system in `src/components` (see [DESIGN.md](./DESIGN.md)); some started as [shadcn/ui](https://ui.shadcn.com/) output
 - [**Hugeicons**](https://hugeicons.com/icons/stroke-rounded) - Icon set used across the app (stroke-rounded)
 - [**Framer Motion**](https://motion.dev/) - Animation library for React
 

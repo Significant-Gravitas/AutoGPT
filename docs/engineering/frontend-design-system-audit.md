@@ -393,6 +393,26 @@ Numbers are for `src/` excluding generated code. Per-directory breakdowns show w
 | `ui/` importers from `src/app` | 37 files | `copilot` 24 |
 | Non-Hugeicons icon imports | lucide 42, legacy icons 21, radix 15, react-icons 1, phosphor 1 | |
 
+**Current counts (2026-10-07, after wave 1).** Measured with one set of grep patterns on `origin/dev` and on `ds/integration` (wave 1 merged), so the two columns compare directly. The patterns differ slightly from the ones behind the table above, which is why the `dev` column does not always equal it. "Banned families" are the ones `better-tailwindcss/no-restricted-classes` now rejects.
+
+| Signal | `dev` | `ds/integration` |
+|---|---|---|
+| Default palette, banned families (`gray`, `neutral`, `stone`, `emerald`, `amber`, `violet`, `indigo`, `rose`, `lime`, `fuchsia`) | 2,267 in 415 files | 1,240 in 216 files |
+| `blue`, `sky`, `teal`, `cyan` (undecided) | 312 in 88 files | 287 in 82 files |
+| Arbitrary hex colour classes | 216 in 74 files | 145 in 48 files |
+| `textBlack` / `textGrey` / `bgLightGrey` classes | 91 | 27 |
+| `dark:` classes | 640 in 102 files | 388 in 64 files (15 in atoms/molecules/organisms, all in stories) |
+| Arbitrary `h-`/`w-`/`size-` values | 739 in 331 files | 659 in 307 files |
+| Arbitrary `text-[px/rem]` / `rounded-[` | 313 / 185 | 283 / 161 |
+| Raw `<p>`/`<h*>` with classes in `src/app` | 409 in 137 files | 97 in 51 files |
+| Raw `<button className>` in `src/app` | 99 in 81 files | 71 in 63 files |
+| Raw `<input className>` in `src/app` | 26 in 12 files | 6 in 6 files |
+| `!important` utilities | 316 in 138 files | 245 in 105 files |
+| Inline `style={{` | 160 in 111 files | 155 in 105 files |
+| `__legacy__` importers (outside `__legacy__`) | 116 files | 98 files |
+| `ui/` importers from `src/app` | 40 files | 25 files |
+| lucide / legacy icons / radix icons / react-icons / phosphor importers | 42 / 16 / 16 / 2 / 1 | 30 / 12 / 12 / 1 / 1 |
+
 What is working: zero direct `HugeiconsIcon` usage outside the `Icon` atom (1,174 uses of the atom across 527 files), and `Text` is imported in 336 of 1,385 app files.
 
 Exact duplicate files that will keep drift alive if only one copy is fixed: `contextual/OutputRenderers/renderers/MarkdownRenderer.tsx` and `library/agents/[id]/.../OutputRenderers/renderers/MarkdownRenderer.tsx`; `__legacy__/CreatorInfoCard.tsx` and `marketplace/components/CreatorInfoCard/CreatorInfoCard.tsx`.
@@ -732,3 +752,26 @@ These were open questions blocking the token mapping; they are now decided and a
 | Control heights | **shadcn's 32 / 36 / 40.** | `h-8 / h-9 / h-10` for `sm / md / lg` on Button, Input, Select, SearchInput, Date and Time inputs, MultiToggle. The 46px `large` button and field go away. |
 | Muted text | **`zinc-600`** for contrast. | `--muted-foreground` maps to `zinc-600` (`#68686F`, about 5.2:1 on white). `Text tone="muted"` follows. `zinc-500` is reserved for placeholders and disabled text. |
 | Dark mode | **Near future, by swapping tokens only.** No `dark:` classes anywhere; the `.dark` block of semantic variables is the entire implementation. | Keep `forcedTheme="light"` until the semantic layer is complete. Delete every hand-placed `dark:` class now. Write the `.dark` block with the palette so enabling the theme is a one-line change later. |
+
+---
+
+## Wave 1 and 2 outcome
+
+Status on 2026-10-07. Wave 1 is merged into `ds/integration`; wave 2 branches are in progress and not merged, so the counts in Part 3 ("Current counts") reflect wave 1 only. Each branch's full report is in `.context/design-system-status/` of the lead workspace.
+
+**Wave 1 (merged).**
+
+- **Lint (Part 8.3 step 1).** ESLint 9 flat config; `eslint.design-system.mjs` with `no-restricted-imports` for `__legacy__`, `ui/` outside `src/components`, the four non-Hugeicons icon packages, direct `@hugeicons/react` and `sonner`; `better-tailwindcss/no-unknown-classes` and `no-conflicting-classes` (the latter inert until Tailwind 4). A path-based allowlist with a test that fails on stale entries. `cn()` uses `extendTailwindMerge` for the custom radii and `shadow-subtle`; Prettier sorts classes in `cn`/`cva`/`clsx`.
+- **Atom fixes (Part 6 Step 1).** All eleven live bugs fixed: Button disabled double-dimming, radius and border; Dialog animation; tab underline transition; the dead class names; `slate-700`/`red-900`; the `label` size; Select keyboard actions; TimePicker ids; ExpertAvatar `color`; the FloatingReviewsPanel close label; locked ToggleChip. Also Badge and Alert onto the palette and Hugeicons, `dark:` removed from every non-story design-system file, and Button forwards refs.
+- **Dead code (Part 6 Step 3).** 21 dead `__legacy__` files and legacy `Button`, 40 unused icon exports, dead NotionAvatar components, ShowMore, dead Tailwind config and `globals.css` classes, `darkMode` aligned to `.dark`, `fonts.css`. knip is blocking in CI.
+- **Storybook.** A story for every component folder (25 added), `a11y: { test: "error" }` declared on every story, token stories read from the resolved theme, Storybook loads fonts through `next/font`. No runner executes them yet.
+- **Migrations.** `admin`, `copilot`, `library`, `profile` and `settings` moved onto `Text`, `Button`, `Input`, `Select`, `Dialog` and the palette: zero banned-family classes, `dark:` classes and raw `<p>`/`<h*>` left in those directories, with the exceptions each status file lists (mostly raw controls under Radix triggers, read-only tables, and `blue`).
+
+**Wave 2 (in progress at the time of writing).**
+
+- `build`, `marketplace`/`artifacts`/`team`/`raise`, the app shell, auth and public pages, and `components/contextual`, `layout`, `renderers`, `ai-elements` migrations.
+- New atoms: Checkbox, Kbd, Separator, ScrollArea and a Sheet molecule (with SearchCommandModal and WorkOutputSheet moved onto them so far).
+- The knip dead-code backlog.
+- Governance (this branch): `frontend/DESIGN.md` as the single design-system document; the Part 4.7 contradictions fixed in `AGENTS.md`, `CONTRIBUTING.md`, `TESTING.md` and `README.md`; a design-system checklist in the PR template and a CODEOWNERS entry for `src/components` and `DESIGN.md`; `better-tailwindcss/no-restricted-classes` banning the ten default-palette families, with 196 files allowlisted; `scripts/eslint-allowlist-regenerate.ts` to rebuild the allowlist; an `autogpt-ui` agent skill and a `PostToolUse` hook that runs `eslint --fix` after every agent edit under `src/`; Chromatic driven by a `CHROMATIC_PROJECT_TOKEN` secret instead of a plaintext token, and a `build-storybook` job on PRs touching `src/components`.
+
+**Still open.** Tailwind 4 and the shadcn token rebuild (which applies the Part 8.4 decisions: `--radius: 0.75rem`, 32/36/40 controls, `zinc-600` muted, `bg-background` on `body`), a decision on `blue`/`sky`/`teal`/`cyan`, lint for `dark:`, hex classes, raw elements and `next/link`, a story test runner (`@storybook/addon-vitest`), the Chromatic secret, and the ratchet from Part 6 Step 8.

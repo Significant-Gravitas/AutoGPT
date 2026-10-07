@@ -1,6 +1,6 @@
 <div align="center">
   <h1>AutoGPT Frontend • Contributing ⌨️</h1>
-  <p>Next.js App Router • Client-first • Type-safe generated API hooks • Tailwind + shadcn/ui</p>
+  <p>Next.js App Router • Client-first • Type-safe generated API hooks • Tailwind + Radix</p>
 </div>
 
 ---
@@ -93,7 +93,7 @@ See [Data fetching patterns](#-data-fetching-patterns) for more examples.
 6. Use Tailwind + design tokens (avoid hardcoded values)
 7. Only use Hugeicons via the `Icon` atom
 8. Test in Storybook: `pnpm storybook`
-9. Verify in Chromatic after PR
+9. Add it to the catalog in [`DESIGN.md`](./DESIGN.md)
 
 **Example structure:**
 
@@ -129,7 +129,7 @@ Before requesting review:
 
 - [x] Code follows architecture and conventions here
 - [x] `pnpm format && pnpm lint && pnpm types` pass
-- [x] Relevant tests pass locally: `pnpm test` (and/or Storybook tests)
+- [x] Relevant tests pass locally: `pnpm test:unit` and/or `pnpm test`
 - [x] If touching UI, validate against our design system and stories
 
 ### 4) Merge to `dev`
@@ -180,10 +180,10 @@ While server components and actions are cool and cutting-edge, they introduce a 
 
 ### Styling and components
 
-- [Tailwind CSS](https://tailwindcss.com/docs) + [shadcn/ui](https://ui.shadcn.com/) ([Radix Primitives](https://www.radix-ui.com/docs/primitives/overview/introduction) under the hood)
-- Use the design system under `src/components` for primitives and building blocks
-- Do not use anything under `src/components/_legacy__`; migrate away from it when touching old code
-- Reference the design system catalog on Chromatic: [`https://dev--670f94474adee5e32c896b98.chromatic.com/`](https://dev--670f94474adee5e32c896b98.chromatic.com/)
+- [Tailwind CSS](https://tailwindcss.com/docs) + [Radix Primitives](https://www.radix-ui.com/docs/primitives/overview/introduction), with components we own in `src/components` (some started as [shadcn/ui](https://ui.shadcn.com/) output)
+- Use the design system under `src/components` (atoms, molecules, organisms) for primitives and building blocks; [`DESIGN.md`](./DESIGN.md) lists them, the tokens and the rules
+- Do not use anything under `src/components/__legacy__`; migrate away from it when touching old code
+- Browse the components in Storybook (`pnpm storybook`). The Chromatic catalog is not published while the Chromatic CI job is off (it runs only when the `CHROMATIC_PROJECT_TOKEN` secret is set)
 - Use the [`tailwind-scrollbar`](https://www.npmjs.com/package/tailwind-scrollbar) plugin utilities for scrollbar styling
 
 ---
@@ -428,7 +428,7 @@ The app has multiple error handling strategies depending on the type of error:
 Use `<ErrorCard />` to display render or runtime errors gracefully:
 
 ```tsx
-import { ErrorCard } from "@/components/molecules/ErrorCard";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 export function DataPanel() {
   const { data, isLoading, isError, error } = useGetData();
@@ -445,7 +445,7 @@ export function DataPanel() {
 Display mutation errors using toast notifications:
 
 ```tsx
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export function useUpdateSettings() {
   const { toast } = useToast();
@@ -616,15 +616,14 @@ Control flow:
 
 ## 🎨 Styling
 
-- Use Tailwind utilities; prefer semantic, composable class names
-- Use shadcn/ui components as building blocks when available
+[`DESIGN.md`](./DESIGN.md) is the reference for styling: the tokens, the component catalog, and every rule with the lint rule that enforces it. Read it before building UI.
+
+- Use Tailwind utilities; prefer semantic classes (`bg-background`, `text-muted-foreground`, `border-border`) and the palette in `src/components/styles/colors.ts`
+- Build from the atoms, molecules and organisms in `src/components`. Do not import `src/components/ui/*` (raw shadcn output) or `src/components/__legacy__/*` in feature code; lint blocks both
+- Do not use Tailwind's default palette families (`gray`, `neutral`, `stone`, `emerald`, `amber`, `violet`, `indigo`, `rose`, `lime`, `fuchsia`); lint blocks them. Avoid hex values and arbitrary sizes when a token exists
+- Do not write `dark:` classes. Dark mode will come from swapping the semantic variables, not from per-class overrides
+- Typography goes through the `Text` atom, buttons through the `Button` atom, in-app links through the `Link` atom
 - Use the `tailwind-scrollbar` utilities for scrollbar styling
-- Keep responsive and dark-mode behavior consistent with the design system
-
-Additional requirements:
-
-- Do not import shadcn primitives directly in feature code; only use components exposed in our design system under `src/components`. shadcn is a low-level skeleton we style on top of and is not meant to be consumed directly.
-- Prefer design tokens over Tailwind's default theme whenever possible (e.g., color, spacing, radius, and typography tokens). Avoid hardcoded values and default palette if a token exists.
 
 ---
 
@@ -726,7 +725,7 @@ export function useFeatureX() {
 
 ## 🖼 Icons
 
-- Only use Hugeicons, always through the `Icon` atom. Treat all other icon libraries as deprecated for new code.
+- Only use Hugeicons, always through the `Icon` atom. Lint blocks `lucide-react`, `@phosphor-icons/react`, `@radix-ui/react-icons` and `react-icons`; the files that still use them are listed in `eslint-allowlist.json` and are being migrated.
   - Icon data: `@hugeicons/core-free-icons` (stroke-rounded variants)
   - Renderer: `src/components/atoms/Icon/Icon.tsx`
   - Site: [`https://hugeicons.com/icons/stroke-rounded`](https://hugeicons.com/icons/stroke-rounded)
@@ -740,12 +739,12 @@ Example usage:
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-export function CreateButton() {
+export function CreateLabel() {
   return (
-    <button type="button" className="inline-flex items-center gap-2">
+    <span className="inline-flex items-center gap-2">
       <Icon icon={PlusSignIcon} size={16} />
       Create
-    </button>
+    </span>
   );
 }
 ```
@@ -850,10 +849,10 @@ Generated API client:
 
 - Client-first: server components only for SEO or extreme TTFB needs
 - Uses generated API hooks; no new `BackendAPI` usages
-- UI uses `src/components` primitives; no new `_legacy__` components
+- UI uses `src/components` primitives; no new `__legacy__` or `ui/` imports, no `dark:` classes, no default-palette colours (see `DESIGN.md`)
 - Logic is separated into `use*.ts` and `helpers.ts` when non-trivial
 - Reusable logic extracted to `src/services/` or `src/lib/utils.ts` when appropriate
-- Navigation uses the Next.js router
+- Navigation uses the `Link` atom or the Next.js router
 - Integration tests added/updated for new pages and features (`pnpm test:unit`)
 - Lint, format, type-check, and tests pass locally
 - Stories updated/added if UI changed; verified in Storybook
@@ -864,7 +863,7 @@ Generated API client:
 
 When touching legacy code:
 
-- Replace usages of `src/components/_legacy__/*` with the modern design system components under `src/components`
+- Replace usages of `src/components/__legacy__/*` with the modern design system components under `src/components` (`DESIGN.md` lists the replacement for each), then delete the file's entry from `eslint-allowlist.json` or run `npx tsx scripts/eslint-allowlist-regenerate.ts`
 - Replace `BackendAPI` or `src/lib/autogpt-server-api/*` with generated API hooks
 - Move presentational logic into render files and data/behavior into hooks
 - Keep one-off transformations in local `helpers.ts`; move reusable logic to `src/services/` or `src/lib/utils.ts`
@@ -873,6 +872,6 @@ When touching legacy code:
 
 ## 📚 References
 
-- Design system (Chromatic): [`https://dev--670f94474adee5e32c896b98.chromatic.com/`](https://dev--670f94474adee5e32c896b98.chromatic.com/)
+- Design system: [`DESIGN.md`](./DESIGN.md) and Storybook (`pnpm storybook`)
 - Project README for setup and API client examples: `autogpt_platform/frontend/README.md`
 - Conventional Commits: [conventionalcommits.org](https://www.conventionalcommits.org/)
