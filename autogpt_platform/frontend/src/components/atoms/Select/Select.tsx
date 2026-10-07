@@ -73,7 +73,7 @@ export function Select({
     // Base styles matching Input
     "rounded-xl border border-zinc-200 bg-white px-4 shadow-none",
     "font-normal text-black w-full",
-    "placeholder:font-normal !placeholder:text-zinc-500",
+    "placeholder:font-normal placeholder:text-zinc-500",
     // Focus and hover states
     "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
     // Size variants
@@ -85,8 +85,7 @@ export function Select({
     ],
     size === "medium" && ["h-[2.875rem]", "py-2.5", "text-sm"],
     // Error state
-    error &&
-      "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
+    error && "border-red-500 focus:border-red-500 focus:ring-red-500",
     // Placeholder styling for SelectValue when data-placeholder is present
     "[&[data-placeholder]>span]:text-zinc-400 [&[data-placeholder]>span]:font-normal",
     className,
