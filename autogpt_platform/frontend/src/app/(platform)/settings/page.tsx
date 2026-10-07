@@ -22,8 +22,8 @@ function SettingsContentSkeleton() {
       aria-busy="true"
       aria-live="polite"
     >
-      <Skeleton className="h-7 w-44 rounded-[8px]" />
-      <Skeleton className="h-4 w-72 rounded-[8px]" />
+      <Skeleton className="h-7 w-44 rounded-lg" />
+      <Skeleton className="h-4 w-72 rounded-lg" />
       <Skeleton className="mt-2 h-[120px] w-full rounded-[18px]" />
       <Skeleton className="h-[180px] w-full rounded-[18px]" />
       <Skeleton className="h-[120px] w-full rounded-[18px]" />

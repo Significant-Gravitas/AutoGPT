@@ -9,7 +9,7 @@ export function ProfileSkeleton() {
       </div>
 
       <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-start sm:gap-6">
-        <Skeleton className="h-[112px] w-[112px] shrink-0 rounded-full" />
+        <Skeleton className="size-28 shrink-0 rounded-full" />
         <div className="grid w-full gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2">
             <Skeleton className="h-4 w-24" />

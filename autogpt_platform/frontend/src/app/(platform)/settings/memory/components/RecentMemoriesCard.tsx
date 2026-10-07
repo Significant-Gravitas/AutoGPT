@@ -23,7 +23,7 @@ export function RecentMemoriesCard({
 }: Props) {
   return (
     <div className="flex flex-col rounded-[18px] border border-zinc-200 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-      <Text variant="body-medium" as="span" className="text-textBlack">
+      <Text variant="body-medium" as="span">
         Recent memories
       </Text>
       <Text variant="small" as="span" className="text-zinc-500">
@@ -51,7 +51,7 @@ export function RecentMemoriesCard({
                 variant="small"
                 as="span"
                 unmask={false}
-                className="min-w-0 flex-1 text-textBlack"
+                className="min-w-0 flex-1"
               >
                 {fact.fact || `${fact.source} → ${fact.target}`}
               </Text>
@@ -66,7 +66,7 @@ export function RecentMemoriesCard({
               <Button
                 variant="ghost"
                 size="small"
-                className="h-7 !min-w-0 shrink-0 px-2 text-zinc-600"
+                className="h-7 min-w-0 shrink-0 px-2 text-zinc-600"
                 loading={forgettingUuid === fact.uuid}
                 onClick={() => onForget(fact.uuid)}
               >

@@ -5,6 +5,7 @@ import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatM
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { BrainIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
 
 interface Props {
@@ -54,7 +55,7 @@ export function MemoryChatPanel({
         >
           <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
             <div className="flex items-center gap-2">
-              <Icon icon={BrainIcon} size={18} className="text-violet-600" />
+              <Icon icon={BrainIcon} size={18} className="text-purple-600" />
               <span className="text-sm font-semibold text-zinc-800">
                 {scopeName}&apos;s memory
               </span>
@@ -72,12 +73,12 @@ export function MemoryChatPanel({
           <div className="flex h-0 min-h-0 flex-1 flex-col">
             {startError ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-zinc-600">
-                <p className="font-medium text-zinc-800">
+                <Text variant="body-medium" tone="primary">
                   Could not start the memory chat
-                </p>
-                <p className="text-zinc-500">
+                </Text>
+                <Text variant="body" tone="muted">
                   Something went wrong. Retry to try again.
-                </p>
+                </Text>
                 <Button variant="secondary" size="small" onClick={onRetry}>
                   Retry
                 </Button>

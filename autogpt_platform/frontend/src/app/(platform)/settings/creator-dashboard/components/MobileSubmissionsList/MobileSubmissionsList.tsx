@@ -87,7 +87,7 @@ export function MobileSubmissionsList({
     >
       <div className="flex items-center justify-between gap-3 px-1">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span">
             Submissions
           </Text>
         </div>
@@ -152,7 +152,7 @@ export function MobileSubmissionsList({
           ))
         ) : (
           <div className="flex flex-col items-center justify-center gap-3 px-4 py-10 text-center">
-            <Text variant="body-medium" className="text-textBlack">
+            <Text variant="body-medium">
               {debouncedSearch
                 ? `No submissions match "${debouncedSearch}"`
                 : "No submissions match these filters"}

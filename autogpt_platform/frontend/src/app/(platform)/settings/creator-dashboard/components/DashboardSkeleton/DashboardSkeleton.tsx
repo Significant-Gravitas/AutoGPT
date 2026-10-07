@@ -39,7 +39,7 @@ export function DashboardSkeleton() {
             key={i}
             className="flex items-center gap-3 border-b border-zinc-100 px-4 py-3 last:border-b-0"
           >
-            <Skeleton className="aspect-video h-12 w-20 shrink-0 rounded-[8px]" />
+            <Skeleton className="aspect-video h-12 w-20 shrink-0 rounded-lg" />
             <div className="flex flex-1 flex-col gap-2">
               <Skeleton className="h-4 w-1/3" />
               <Skeleton className="h-3 w-2/3" />

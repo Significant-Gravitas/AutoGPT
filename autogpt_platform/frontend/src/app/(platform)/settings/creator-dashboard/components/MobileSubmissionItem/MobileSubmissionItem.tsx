@@ -94,7 +94,7 @@ export function MobileSubmissionItem({
       className="flex flex-col gap-3 border-b border-zinc-100 px-3 py-3 last:border-b-0"
     >
       <div className="flex items-start gap-3">
-        <div className="relative aspect-video w-16 shrink-0 select-none overflow-hidden rounded-[8px] bg-zinc-100">
+        <div className="relative aspect-video w-16 shrink-0 select-none overflow-hidden rounded-lg bg-zinc-100">
           {thumbnail ? (
             <Image
               src={thumbnail}
@@ -124,14 +124,10 @@ export function MobileSubmissionItem({
                 href={marketplaceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex min-w-0 items-center gap-1 truncate text-textBlack hover:underline"
+                className="inline-flex min-w-0 items-center gap-1 truncate text-black hover:underline"
                 data-testid="submission-marketplace-link"
               >
-                <Text
-                  variant="body-medium"
-                  as="span"
-                  className="truncate text-textBlack"
-                >
+                <Text variant="body-medium" as="span" className="truncate">
                   {submission.name}
                 </Text>
                 <UIIcon
@@ -142,11 +138,7 @@ export function MobileSubmissionItem({
                 />
               </Link>
             ) : (
-              <Text
-                variant="body-medium"
-                as="span"
-                className="truncate text-textBlack"
-              >
+              <Text variant="body-medium" as="span" className="truncate">
                 {submission.name}
               </Text>
             )}
@@ -217,7 +209,7 @@ export function MobileSubmissionItem({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => setConfirmDeleteOpen(true)}
-                  className="flex cursor-pointer items-center gap-2 text-rose-600 focus:text-rose-700"
+                  className="flex cursor-pointer items-center gap-2 text-red-600 focus:text-red-700"
                 >
                   <UIIcon icon={Delete02Icon} size={14} />
                   Delete
@@ -251,7 +243,7 @@ export function MobileSubmissionItem({
             </span>
             <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-zinc-500">
               {submission.review_avg_rating!.toFixed(1)}
-              <UIIcon icon={StarIcon} size={10} className="text-amber-500" />
+              <UIIcon icon={StarIcon} size={10} className="text-yellow-500" />
             </span>
           </>
         ) : null}
