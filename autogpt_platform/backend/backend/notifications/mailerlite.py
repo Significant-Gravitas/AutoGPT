@@ -21,9 +21,11 @@ transition:
 
 Someone who opted out of marketing enters none of these. Every write below
 upserts the subscriber, a removal or a field update included, so nothing is
-queued for them at all (`consent.py`), and the backfills leave them out. The
-one exception is `unsubscribe`, which carries the refusal itself to someone
-MailerLite already has, and never creates a subscriber.
+queued for them at all (`consent.py`), the backfills leave them out, and the
+consumer re-reads the opt-out right before each write, which drops a change
+queued just before the refusal. The one exception is `unsubscribe`, which
+carries the refusal itself to someone MailerLite already has, and never
+creates a subscriber.
 
 Subscriber fields (`SubscriberField`) are the backend's alone: every write
 comes from here, and MailerLite automations only read them.

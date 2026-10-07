@@ -997,6 +997,20 @@ async def record_marketing_opt_out_by_email(email: str, source: str) -> str | No
         raise DatabaseError(f"Failed to record a marketing opt-out: {e}") from e
 
 
+async def is_marketing_opted_out(user_id: str) -> bool:
+    """Whether the account refused marketing, read from the database rather
+    than the user cache, for the last check before a MailerLite write. An
+    account that no longer exists counts as opted out: nothing about it should
+    reach MailerLite either."""
+    try:
+        row = await PrismaUser.prisma().find_unique(where={"id": user_id})
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to read the marketing opt-out for user {user_id}: {e}"
+        ) from e
+    return row is None or row.marketingOptOutAt is not None
+
+
 def _invalidate_user_caches(user_id: str, email: str | None) -> None:
     get_user_by_id.cache_delete(user_id)
     if email:

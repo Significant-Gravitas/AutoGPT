@@ -14,6 +14,7 @@ from backend.data import user as user_module
 from backend.data.notifications import AudienceAction, NotificationResult
 from backend.data.user import (
     get_billing_email_recipient,
+    is_marketing_opted_out,
     record_marketing_opt_out_by_email,
     record_signup_consent,
     update_user_timezone,
@@ -851,6 +852,44 @@ class TestRecordMarketingOptOutByEmail:
             )
 
         assert "user@example.com" not in str(raised.value)
+
+
+class TestIsMarketingOptedOut:
+    """The audience consumer's last check before a MailerLite write."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "row,expected",
+        [
+            pytest.param(_accepted(True), True, id="opted-out"),
+            pytest.param(_accepted(False), False, id="opted-in"),
+            pytest.param(None, True, id="deleted-account"),
+        ],
+    )
+    async def test_reads_the_row_not_the_cache(
+        self, row: MagicMock | None, expected: bool
+    ):
+        with (
+            patch.object(user_module, "PrismaUser") as mock_prisma_user,
+            patch.object(user_module, "get_user_by_id") as cached,
+        ):
+            db = mock_prisma_user.prisma.return_value
+            db.find_unique = AsyncMock(return_value=row)
+
+            assert await is_marketing_opted_out("user-1") is expected
+
+        db.find_unique.assert_awaited_once_with(where={"id": "user-1"})
+        cached.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_read_raises(self):
+        with patch.object(user_module, "PrismaUser") as mock_prisma_user:
+            mock_prisma_user.prisma.return_value.find_unique = AsyncMock(
+                side_effect=RuntimeError("connection lost")
+            )
+
+            with pytest.raises(DatabaseError, match="user-1"):
+                await is_marketing_opted_out("user-1")
 
 
 class TestGetBillingEmailRecipient:

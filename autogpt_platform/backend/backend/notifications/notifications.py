@@ -36,6 +36,7 @@ from backend.data.user import (
     generate_unsubscribe_link,
 )
 from backend.notifications import briefing_runner, mailerlite
+from backend.notifications.consent import log_opted_out_skip
 from backend.notifications.dedupe import claim_daily_send
 from backend.notifications.email import EmailSender
 from backend.notifications.preferences import SERVICE_MESSAGES, wants_notification
@@ -72,6 +73,18 @@ def _utc_today() -> date:
     """The cap resets at UTC midnight, matching the Alert engine's own daily
     cap. Both are documented as a follow-up to move to the user's local day."""
     return datetime.now(tz=timezone.utc).date()
+
+
+async def _opted_out_since_queued(event: AudienceEventModel) -> bool:
+    """Re-read the opt-out right before the write. A change queued just before
+    the account refused marketing must not reach MailerLite: every write but the
+    unsubscribe upserts the subscriber. The unsubscribe is the refusal itself,
+    so it always goes through."""
+    if event.action is AudienceAction.UNSUBSCRIBE:
+        return False
+    return await get_database_manager_async_client(
+        should_retry=False
+    ).is_marketing_opted_out(event.user_id)
 
 
 def _is_channel_loss(error: BaseException) -> bool:
@@ -390,6 +403,10 @@ class NotificationManager(AppService):
                     "MAILERLITE_API_TOKEN is not set; dropping audience changes"
                 )
                 _mailerlite_off_logged = True
+            return True
+
+        if await _opted_out_since_queued(event):
+            log_opted_out_skip(event.email, event.action.value)
             return True
 
         handler = {
