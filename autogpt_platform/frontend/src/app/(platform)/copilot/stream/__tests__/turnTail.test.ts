@@ -44,6 +44,37 @@ describe("turnRows", () => {
   });
 });
 
+describe("turnRows", () => {
+  it("finds a repeated prompt's row after the rows the tail already holds", () => {
+    const answered = newTurnSegment("turn-1", {
+      ...emptyTurnLog(),
+      rows: [row("block-1", "Hello", 1)],
+    });
+    // Stopped before its first checkpoint, so its start is found by its prompt.
+    const stopped = {
+      ...newTurnSegment("turn-2", emptyTurnLog()),
+      stopped: true,
+    };
+    const segments: Segment[] = [
+      { ...userSegment(prompt("hi"), "sent"), sequence: 0 },
+      answered,
+      userSegment(prompt("hi"), "sent"),
+      stopped,
+    ];
+    const rows: PersistedRow[] = [
+      { role: "user", content: "hi", sequence: 0 },
+      { role: "assistant", content: "Hello", sequence: 1 },
+      { role: "user", content: "hi", sequence: 2 },
+      { role: "assistant", content: "Partial", sequence: 3 },
+    ];
+
+    const persisted = turnRows(segments, 0, stopped, rows);
+
+    expect(persisted?.start).toBe(3);
+    expect(persisted?.rows.map((r) => r.content)).toEqual(["Partial"]);
+  });
+});
+
 describe("mergeRows", () => {
   it("keeps every on-screen key, and an equal row's object", () => {
     const live = [row("block-1", "Hello", 1), row("block-2", "Bye", null)];

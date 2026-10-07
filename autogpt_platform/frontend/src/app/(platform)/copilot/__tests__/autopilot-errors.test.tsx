@@ -254,12 +254,16 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         lastSubmittedKickoffAttemptToken: null,
       });
       expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
-      expect(
-        useCopilotStreamStore
-          .getState()
-          .getMessageSnapshot(TEST_SESSION_ID)
-          .filter((message) => message.role === "user"),
-      ).toHaveLength(0);
+      const userRows =
+        path === "stream runtime"
+          ? getTurnRuntime(TEST_SESSION_ID)
+              .getSnapshot()
+              .segments.filter((seg) => seg.kind === "user")
+          : useCopilotStreamStore
+              .getState()
+              .getMessageSnapshot(TEST_SESSION_ID)
+              .filter((message) => message.role === "user");
+      expect(userRows).toHaveLength(0);
     });
 
     it("surfaces an HTTP 500 response as a visible error", async () => {

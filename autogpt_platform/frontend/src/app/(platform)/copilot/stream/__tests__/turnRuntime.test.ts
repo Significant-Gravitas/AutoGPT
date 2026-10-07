@@ -299,6 +299,22 @@ describe("recovery", () => {
     );
     expect(textsOf(render())).toEqual([PROMPT, FIRST_TEXT]);
   });
+
+  it("a lost resend of the same prompt takes no earlier prompt's row", async () => {
+    await sendAndPublish(toolTurn.sse.length);
+    await advance(2_000);
+    backend.respond(({ method }) =>
+      method === "POST" ? "network-error" : "stream",
+    );
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+
+    expect(textsOf(render())).toEqual([
+      PROMPT,
+      `${FIRST_TEXT}${SECOND_TEXT}`,
+      PROMPT,
+    ]);
+  });
 });
 
 describe("one connection slot", () => {

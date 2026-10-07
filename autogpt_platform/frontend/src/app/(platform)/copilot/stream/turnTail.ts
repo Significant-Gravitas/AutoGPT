@@ -113,7 +113,9 @@ export function turnStart(
   const before = segments[index - 1];
   if (before?.kind === "user") {
     const prompt =
-      before.sequence ?? locatePrompt(before, rows, ownedFrom)?.sequence;
+      before.sequence ??
+      locatePrompt(before, rows, promptFloor(segments, index - 1, ownedFrom))
+        ?.sequence;
     return typeof prompt === "number" ? prompt + 1 : null;
   }
   return index === 0 ? ownedFrom : null;
@@ -325,6 +327,26 @@ export function locatePrompt(
       r.content.startsWith(text),
   );
   return row ?? null;
+}
+
+/** A prompt's row comes after every row the segments before it already hold. */
+export function promptFloor(
+  segments: readonly Segment[],
+  index: number,
+  ownedFrom: number | null,
+) {
+  const placed = segments.slice(0, index).flatMap((seg) => {
+    if (seg.kind === "user") return [seg.sequence];
+    return (seg.kind === "rows" ? seg.rows : seg.log.rows).map(
+      (r) => r.sequence,
+    );
+  });
+  return Math.max(
+    ownedFrom ?? 0,
+    ...placed
+      .filter((s): s is number => typeof s === "number")
+      .map((s) => s + 1),
+  );
 }
 
 export function lastCheckpoint(log: TurnLog): TurnCheckpoint | null {

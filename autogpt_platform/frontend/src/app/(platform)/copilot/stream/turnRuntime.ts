@@ -28,6 +28,7 @@ import {
   mergeRows,
   newTurnSegment,
   persistedRows,
+  promptFloor,
   reconcileTurn,
   tailEndSequence,
   turnRows,
@@ -875,7 +876,12 @@ export class TurnRuntime {
       last.origin === "sent" &&
       last.sequence === null
     ) {
-      const row = locatePrompt(last, rows, this.ownedFrom);
+      const floor = promptFloor(
+        this.segments,
+        this.segments.length - 1,
+        this.ownedFrom,
+      );
+      const row = locatePrompt(last, rows, floor);
       if (!row) return;
       this.segments[this.segments.length - 1] = withPromptRow(last, row);
     }
