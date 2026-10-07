@@ -3,6 +3,7 @@
 import { UsagePopover } from "@/app/(platform)/copilot/components/UsageLimits/UsagePopover/UsagePopover";
 import { useUsageIndicator } from "./useUsageIndicator";
 import { GaugeIcon } from "@hugeicons/core-free-icons";
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function UsageIndicator() {
@@ -14,10 +15,13 @@ export function UsageIndicator() {
     <UsagePopover
       align="end"
       trigger={
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           aria-label={label}
-          className="relative flex size-8 items-center justify-center rounded-lg p-0 transition-colors hover:bg-zinc-100"
+          withTooltip={false}
+          className="relative hover:border-zinc-100 hover:bg-zinc-100"
         >
           <Icon icon={GaugeIcon} className="size-5 text-black" />
 
@@ -42,7 +46,7 @@ export function UsageIndicator() {
               />
             </svg>
           ) : null}
-        </button>
+        </Button>
       }
     />
   );

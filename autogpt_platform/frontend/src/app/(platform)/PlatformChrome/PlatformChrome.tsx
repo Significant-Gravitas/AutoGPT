@@ -31,7 +31,7 @@ interface Props {
 // Mobile header buttons float over the content, so they get a pill surface to
 // stay readable against whatever scrolls underneath.
 const mobileTriggerClassName =
-  "rounded-full border border-[#DADADC] bg-white hover:bg-[#F5F5F6]";
+  "rounded-full border border-zinc-200 bg-white hover:bg-zinc-50";
 
 export function PlatformChrome({ children }: Props) {
   const {
@@ -59,7 +59,7 @@ export function PlatformChrome({ children }: Props) {
     return (
       <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
         <TourSidebar variant="marketplace" />
-        <SidebarInset className="bg-[#f9f9f9]">
+        <SidebarInset className="bg-background">
           <div className="flex shrink-0 items-center px-4 pt-4 md:hidden">
             <SidebarTrigger />
           </div>
@@ -78,7 +78,7 @@ export function PlatformChrome({ children }: Props) {
         <BuilderSidebarAutoClose />
         <ArtifactsPanelNavCollapse />
         <AppSidebar />
-        <SidebarInset className="bg-[#f9f9f9]">
+        <SidebarInset className="bg-background">
           <header
             className={cn(
               "flex shrink-0 items-center pb-4 pt-6",
