@@ -99,7 +99,7 @@ export function ActivityDropdown({
                   label="Search agents"
                   placeholder="Search runs by agent name..."
                   hideLabel
-                  size="small"
+                  size="md"
                   value={searchQuery}
                   onChange={(e) => handleSearchChange(e.target.value)}
                   className="w-full pr-10"

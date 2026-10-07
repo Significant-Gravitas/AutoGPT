@@ -107,7 +107,7 @@ export function SubmissionsList({
           aria-label="Search submissions"
           maxLength={100}
           loading={isFetching}
-          size="medium"
+          size="lg"
         />
       </div>
 

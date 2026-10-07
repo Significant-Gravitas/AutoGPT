@@ -101,7 +101,7 @@ export default function TextWidget(props: WidgetProps) {
   };
 
   // Determine input size based on context
-  const inputSize = size === "large" ? "medium" : "small";
+  const inputSize = size === "large" ? "lg" : "md";
 
   // Check if this input type should show the expand button
   // Show for text and password types, not for number/integer
@@ -117,7 +117,7 @@ export default function TextWidget(props: WidgetProps) {
         hideLabel={true}
         type={"textarea"}
         label={schema.title || props.label || "Note"}
-        size="small"
+        size="md"
         wrapperClassName="mb-0"
         value={displayValue}
         className="h-[230px]! resize-none rounded-none border-none bg-transparent p-0 placeholder:text-black/60 focus:ring-0"
@@ -137,7 +137,7 @@ export default function TextWidget(props: WidgetProps) {
           hideLabel={true}
           type={config.htmlType as any}
           label={schema.title || props.label || ""}
-          size={inputSize as any}
+          size={inputSize}
           wrapperClassName="mb-0 flex-1"
           value={displayValue}
           onChange={handleChange}

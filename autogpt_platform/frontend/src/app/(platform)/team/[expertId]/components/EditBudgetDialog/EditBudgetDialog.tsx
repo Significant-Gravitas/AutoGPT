@@ -37,7 +37,7 @@ export function EditBudgetDialog({ expert, open, onClose }: Props) {
           <div className="flex flex-col gap-1.5">
             <Input
               id="expert-weekly-budget"
-              size="small"
+              size="md"
               label="Weekly budget"
               labelVariant="small-medium"
               placeholder="e.g. 25"

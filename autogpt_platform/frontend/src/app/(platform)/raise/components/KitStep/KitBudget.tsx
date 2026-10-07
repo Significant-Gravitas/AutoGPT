@@ -51,7 +51,7 @@ export function KitBudget({
         id="raise-kit-custom-budget"
         label="Custom weekly budget in dollars"
         hideLabel
-        size="small"
+        size="md"
         inputMode="decimal"
         value={customAmount}
         onChange={(event) => onCustomChange(event.target.value)}

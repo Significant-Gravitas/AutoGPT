@@ -106,7 +106,7 @@ export function ExpertIntegrationsSection({
           </Button>
           {compact ? null : (
             <SearchInput
-              size="small"
+              size="md"
               value={query}
               onChange={setQuery}
               placeholder="Search integrations"

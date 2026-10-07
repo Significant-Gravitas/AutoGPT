@@ -60,7 +60,7 @@ export function SearchAndFilterAdminMarketplace({
           id="admin-marketplace-search"
           label="Search agents by Name, Creator, or Description..."
           hideLabel
-          size="small"
+          size="md"
           wrapperClassName="mb-0"
           placeholder="Search agents by Name, Creator, or Description..."
           value={searchQuery}
@@ -81,7 +81,7 @@ export function SearchAndFilterAdminMarketplace({
         id="admin-marketplace-status-filter"
         label="Status"
         hideLabel
-        size="small"
+        size="md"
         wrapperClassName="mb-0 w-[180px]"
         placeholder="Select Status"
         value={selectedStatus}

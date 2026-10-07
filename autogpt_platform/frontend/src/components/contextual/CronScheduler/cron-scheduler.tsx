@@ -249,7 +249,7 @@ export function CronScheduler({
           id="cron-frequency"
           label="Repeat"
           hideLabel
-          size="small"
+          size="md"
           wrapperClassName="mb-0"
           placeholder="Select frequency"
           value={frequency}
@@ -264,7 +264,7 @@ export function CronScheduler({
               id="cron-minute"
               label="At minute"
               hideLabel
-              size="small"
+              size="md"
               className="w-24"
               wrapperClassName="mb-0"
               placeholder="Select minute"
@@ -283,7 +283,7 @@ export function CronScheduler({
               label="Every"
               hideLabel
               type="number"
-              size="small"
+              size="md"
               min="1"
               className="w-20"
               wrapperClassName="mb-0 w-20"
@@ -299,7 +299,7 @@ export function CronScheduler({
               id="cron-custom-interval-unit"
               label="Interval unit"
               hideLabel
-              size="small"
+              size="md"
               className="w-32"
               wrapperClassName="mb-0"
               value={customInterval.unit}

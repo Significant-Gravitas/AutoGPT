@@ -48,7 +48,7 @@ const meta = {
     },
     size: {
       control: "select",
-      options: ["default", "small"],
+      options: ["sm", "md", "lg"],
       description: "Trigger height",
     },
   },
@@ -56,7 +56,7 @@ const meta = {
     id: "run-at",
     label: "Run at",
     onChange: fn(),
-    size: "default",
+    size: "lg",
     disabled: false,
     readonly: false,
     hideLabel: false,
@@ -97,7 +97,7 @@ export const Readonly: Story = {
 };
 
 export const Small: Story = {
-  args: { size: "small", value: "2026-01-15T10:30" },
+  args: { size: "md", value: "2026-01-15T10:30" },
 };
 
 export const Interactive: Story = {
@@ -136,13 +136,13 @@ function renderAllSizes() {
       <DateTimeInput
         id="size-default"
         label="Default"
-        size="default"
+        size="lg"
         value="2026-01-15T10:30"
       />
       <DateTimeInput
         id="size-small"
         label="Small"
-        size="small"
+        size="md"
         value="2026-01-15T10:30"
       />
     </div>

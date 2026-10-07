@@ -99,7 +99,7 @@ export const JsonTextField = (props: FieldProps) => {
           hideLabel={true}
           type="textarea"
           label={title}
-          size="small"
+          size="md"
           wrapperClassName="mb-0 flex-1 "
           value={textValue}
           onChange={handleChange}

@@ -106,7 +106,7 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
                 id="cron-schedule-name"
                 label="Schedule Name"
                 labelVariant="body-medium"
-                size="small"
+                size="md"
                 wrapperClassName="mb-0"
                 value={scheduleName}
                 onChange={(e) => setScheduleName(e.target.value)}

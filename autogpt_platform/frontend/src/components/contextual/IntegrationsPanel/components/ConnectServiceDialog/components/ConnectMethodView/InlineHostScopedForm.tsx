@@ -108,7 +108,7 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
                 spellCheck={false}
                 label="Host"
                 labelVariant="small-medium"
-                size="small"
+                size="md"
                 readOnly={Boolean(host)}
                 placeholder="api.example.com"
                 wrapperClassName="mb-0"
@@ -138,7 +138,7 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
               id={`header-${index}-key`}
               label="Header name"
               hideLabel
-              size="small"
+              size="md"
               className="flex-1"
               wrapperClassName="mb-0 flex-1"
               placeholder="Authorization"
@@ -153,7 +153,7 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
               hideLabel
               type="password"
               autoComplete="new-password"
-              size="small"
+              size="md"
               className="flex-1"
               wrapperClassName="mb-0 flex-1"
               placeholder="Bearer …"

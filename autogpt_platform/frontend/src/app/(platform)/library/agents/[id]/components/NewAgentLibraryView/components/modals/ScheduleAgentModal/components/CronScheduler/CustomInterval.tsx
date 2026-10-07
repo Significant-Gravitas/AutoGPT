@@ -23,12 +23,12 @@ export function CustomInterval({
           onChange({ ...value, value: parseInt(e.target.value || "1") })
         }
         className="max-w-24"
-        size="small"
+        size="md"
       />
       <Select
         id="custom-interval-unit"
         label="Interval"
-        size="small"
+        size="md"
         value={value.unit}
         onValueChange={(v) => onChange({ ...value, unit: v as any })}
         options={[

@@ -104,7 +104,7 @@ export function MobileSubmissionsList({
           aria-label="Search submissions"
           maxLength={100}
           loading={isFetching}
-          size="small"
+          size="md"
         />
       </div>
 

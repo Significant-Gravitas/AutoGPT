@@ -90,7 +90,7 @@ export function JobTitleStep({
             id="raise-job-title"
             label="Job title"
             hideLabel
-            size="small"
+            size="md"
             value={custom}
             onChange={(event) => setCustom(event.target.value)}
             placeholder="Type a job title…"

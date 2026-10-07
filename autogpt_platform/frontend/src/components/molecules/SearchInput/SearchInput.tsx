@@ -8,6 +8,7 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { fieldVariants } from "@/components/atoms/Input/fieldVariants";
 
 interface Props {
   value: string;
@@ -17,21 +18,23 @@ interface Props {
   disabled?: boolean;
   loading?: boolean;
   maxLength?: number;
-  size?: "xsmall" | "small" | "medium";
+  size?: "sm" | "md" | "lg";
   className?: string;
 }
 
 const sizeStyles = {
-  xsmall: "h-7 rounded-md pl-8 pr-7 text-xs leading-5",
-  small: "h-[36px] pl-10 pr-9 text-sm leading-[22px]",
-  medium: "h-[46px] pl-12 pr-10 text-sm leading-[22px]",
+  sm: "pr-7 pl-8",
+  md: "pr-9 pl-10",
+  lg: "pr-10 pl-11",
 } as const;
 
 const iconOffset = {
-  xsmall: { left: "left-2.5", right: "right-1" },
-  small: { left: "left-3", right: "right-2" },
-  medium: { left: "left-4", right: "right-3" },
+  sm: { left: "left-2.5", right: "right-1" },
+  md: { left: "left-3", right: "right-2" },
+  lg: { left: "left-3.5", right: "right-2.5" },
 } as const;
+
+const iconSize = { sm: 14, md: 16, lg: 18 } as const;
 
 export const SearchInput = forwardRef<HTMLInputElement, Props>(
   function SearchInput(
@@ -43,7 +46,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
       disabled,
       loading,
       maxLength,
-      size = "medium",
+      size = "lg",
       className,
     },
     ref,
@@ -53,7 +56,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
       <div className={cn("relative w-full", className)}>
         <Icon
           icon={Search01Icon}
-          size={size === "medium" ? 20 : size === "small" ? 16 : 14}
+          size={iconSize[size]}
           className={cn(
             "pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground",
             iconOffset[size].left,
@@ -69,7 +72,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
           disabled={disabled}
           maxLength={maxLength}
           className={cn(
-            "w-full rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-60",
+            fieldVariants({ size }),
             sizeStyles[size],
             "[&::-webkit-search-cancel-button]:appearance-none",
           )}
@@ -85,7 +88,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
           >
             <Icon
               icon={Loading03Icon}
-              size={size === "medium" ? 16 : 14}
+              size={size === "lg" ? 16 : 14}
               className="animate-spin"
             />
           </span>
@@ -95,11 +98,11 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
             onClick={() => onChange("")}
             aria-label="Clear search"
             className={cn(
-              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
+              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground focus-ring transition hover:bg-muted hover:text-foreground",
               iconOffset[size].right,
             )}
           >
-            <Icon icon={Cancel01Icon} size={size === "medium" ? 14 : 12} />
+            <Icon icon={Cancel01Icon} size={size === "lg" ? 14 : 12} />
           </button>
         ) : null}
       </div>

@@ -1,12 +1,8 @@
 import { cva } from "class-variance-authority";
+import { FIELD_BASE, FIELD_INVALID } from "../Input/fieldVariants";
 
 export const textareaVariants = cva(
-  [
-    "block w-full resize-y rounded-xl border bg-white font-sans text-sm leading-snug font-normal text-black shadow-none transition-colors",
-    "placeholder:font-normal placeholder:text-zinc-500",
-    "focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:outline-hidden",
-    "disabled:cursor-not-allowed disabled:opacity-50",
-  ],
+  [FIELD_BASE, "block resize-y text-sm leading-snug"],
   {
     variants: {
       size: {
@@ -14,8 +10,8 @@ export const textareaVariants = cva(
         md: "min-h-20 px-4 py-2.5",
       },
       invalid: {
-        true: "border-red-500 focus-visible:ring-red-500",
-        false: "border-zinc-200 hover:border-zinc-300",
+        true: FIELD_INVALID,
+        false: "",
       },
     },
     defaultVariants: {

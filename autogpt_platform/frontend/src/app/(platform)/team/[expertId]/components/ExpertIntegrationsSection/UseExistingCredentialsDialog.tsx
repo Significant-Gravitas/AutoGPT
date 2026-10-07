@@ -175,7 +175,7 @@ export function UseExistingCredentialsDialog({
                 remove the access from this tab at any time.
               </Text>
               <SearchInput
-                size="small"
+                size="md"
                 value={query}
                 onChange={setQuery}
                 placeholder="Search connections"

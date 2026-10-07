@@ -28,7 +28,7 @@ export function FrequencySelect({
       <Select
         id="repeat"
         label="Repeats"
-        size="small"
+        size="md"
         value={value}
         onValueChange={(v) => onChange(v as CronFrequency)}
         options={[
@@ -45,7 +45,7 @@ export function FrequencySelect({
         <Select
           id="at-minute"
           label="At minute"
-          size="small"
+          size="md"
           value={selectedMinute}
           onValueChange={(v) => onMinuteChange(v)}
           options={["0", "15", "30", "45"].map((m) => ({ label: m, value: m }))}

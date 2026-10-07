@@ -47,7 +47,7 @@ const meta: Meta<typeof Select> = {
     },
     size: {
       control: { type: "radio" },
-      options: ["small", "medium"],
+      options: ["sm", "md", "lg"],
       description:
         "Visual size variant. small = compact trigger (22px line-height), medium = default (46px height).",
     },
@@ -103,7 +103,7 @@ export const Small: Story = {
     id: "select-small",
     label: "Compact",
     hideLabel: true,
-    size: "small",
+    size: "md",
     placeholder: "Choose option",
     options: [
       { value: "opt1", label: "Option 1" },
@@ -125,7 +125,7 @@ export const Medium: Story = {
   args: {
     id: "select-medium",
     label: "Medium",
-    size: "medium",
+    size: "lg",
     placeholder: "Choose option",
     options: [
       { value: "opt1", label: "Option 1" },

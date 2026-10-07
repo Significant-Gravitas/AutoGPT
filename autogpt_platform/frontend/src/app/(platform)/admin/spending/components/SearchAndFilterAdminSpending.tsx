@@ -60,7 +60,7 @@ export function SearchAndFilterAdminSpending({
         id="spending-status-filter"
         label="Transaction status"
         hideLabel
-        size="small"
+        size="md"
         wrapperClassName="mb-0 w-1/4"
         placeholder="Select Status"
         value={selectedStatus}

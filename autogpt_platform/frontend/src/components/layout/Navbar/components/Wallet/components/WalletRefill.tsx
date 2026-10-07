@@ -129,7 +129,7 @@ export function WalletRefill() {
                       type="amount"
                       label="Refill when balance drops below:"
                       id={field.name}
-                      size="small"
+                      size="md"
                       decimalCount={0}
                       error={autoRefillForm.formState.errors.threshold?.message}
                       amountPrefix="$"
@@ -144,7 +144,7 @@ export function WalletRefill() {
                     <Input
                       type="amount"
                       label="Add this amount:"
-                      size="small"
+                      size="md"
                       decimalCount={0}
                       id={field.name}
                       error={

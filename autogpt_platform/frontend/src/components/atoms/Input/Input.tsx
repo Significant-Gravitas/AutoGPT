@@ -1,7 +1,3 @@
-import {
-  Input as BaseInput,
-  type InputProps,
-} from "@/components/__legacy__/ui/input";
 import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { forwardRef, ReactNode, useState } from "react";
@@ -10,19 +6,23 @@ import { Text } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { useInput } from "./useInput";
+import { FIELD_BASE, FIELD_INVALID, fieldVariants } from "./fieldVariants";
 import { EyeIcon, EyeOffIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement;
 
-export interface TextFieldProps extends Omit<InputProps, "size" | "onKeyDown"> {
+export interface TextFieldProps extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  "size" | "onKeyDown"
+> {
   label: string;
   id: string;
   hideLabel?: boolean;
   decimalCount?: number; // Only used for type="amount"
   error?: string;
   hint?: ReactNode;
-  size?: "small" | "medium";
+  size?: "sm" | "md" | "lg";
   labelVariant?: Variant;
   labelClassName?: string;
   labelTooltip?: string;
@@ -56,7 +56,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     decimalCount,
     hint,
     error,
-    size = "medium",
+    size = "lg",
     labelVariant = "large-medium",
     labelClassName,
     labelTooltip,
@@ -99,42 +99,24 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     }
   }
 
-  const baseStyles = cn(
-    // Base styles
-    "rounded-xl border border-zinc-200 bg-white px-4 shadow-none w-full",
-    "font-normal text-black",
-    "placeholder:font-normal placeholder:text-zinc-500",
-    // Focus and hover states
-    "focus:border-purple-400 focus:shadow-none focus:outline-hidden focus:ring-1 focus:ring-purple-400 focus:ring-offset-0",
-    className,
-  );
-
-  const errorStyles =
-    error && "border! border-red-500! focus:border-red-500 focus:ring-red-500";
-
+  const fieldClassName = fieldVariants({ size, invalid: Boolean(error) });
   const renderInput = () => {
     if (props.type === "textarea") {
       return (
         <textarea
           ref={ref as React.Ref<HTMLTextAreaElement>}
           className={cn(
-            baseStyles,
-            errorStyles,
-            "-mb-1 h-auto min-h-11.5",
-            // Size variants for textarea
-            size === "small" && [
-              "min-h-9", // 36px minimum
-              "py-2",
-              "text-sm leading-[22px]",
-              "placeholder:text-sm placeholder:leading-[22px]",
-            ],
-            size === "medium" && [
-              "min-h-11.5 text-sm leading-[22px]", // 46px minimum (current default)
-              "py-2.5",
-            ],
+            FIELD_BASE,
+            error && FIELD_INVALID,
+            "-mb-1 h-auto py-2 text-sm leading-snug",
+            size === "sm" && "min-h-8 px-3",
+            size === "md" && "min-h-9 px-3",
+            size === "lg" && "min-h-10 px-4",
+            className,
           )}
           placeholder={placeholder || label}
           onChange={handleTextareaChange}
+          aria-invalid={error ? true : undefined}
           onKeyDown={guardedOnKeyDown}
           rows={props.rows || 3}
           aria-label={
@@ -155,18 +137,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     if (props.type === "amount") {
       return (
         <CurrencyInput
-          className={cn(
-            baseStyles,
-            errorStyles,
-            // Size variants
-            size === "small" && [
-              "h-9",
-              "py-2",
-              "text-sm leading-[22px]",
-              "placeholder:text-sm placeholder:leading-[22px]",
-            ],
-            size === "medium" && ["h-11.5", "py-2.5"],
-          )}
+          className={cn(fieldClassName, className)}
           placeholder={placeholder || label}
           // CurrencyInput gives unformatted numeric string in value param
           onValueChange={handleAmountValueChange}
@@ -196,27 +167,12 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     }
 
     return (
-      <BaseInput
+      <input
         ref={ref as React.Ref<HTMLInputElement>}
-        className={cn(
-          baseStyles,
-          errorStyles,
-          // Add padding for password toggle button
-          isPasswordType && "pr-12",
-          // Size variants
-          size === "small" && [
-            "h-9", // 36px
-            "py-2",
-            "text-sm leading-[22px]", // 14px font, 22px line height
-            "placeholder:text-sm placeholder:leading-[22px]",
-          ],
-          size === "medium" && [
-            "h-11.5", // 46px (current default)
-            "py-2.5",
-          ],
-        )}
+        className={cn(fieldClassName, isPasswordType && "pr-12", className)}
         placeholder={placeholder || label}
         onChange={handleInputChange}
+        aria-invalid={error ? true : undefined}
         {...(hideLabel && label ? { "aria-label": label } : {})}
         {...props}
         id={inputId}
@@ -237,7 +193,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           type="button"
           onClick={handleTogglePassword}
           disabled={props.disabled}
-          className="absolute top-1/2 right-4 -translate-y-1/2 text-zinc-400 transition-colors hover:text-zinc-600 disabled:cursor-not-allowed disabled:opacity-50"
+          className="absolute top-1/2 right-4 -translate-y-1/2 rounded-sm text-muted-foreground focus-ring transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
           aria-label={showPassword ? "Hide password" : "Show password"}
           aria-pressed={showPassword}
           aria-controls={inputId}
@@ -258,8 +214,9 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
       <Text
         variant="small-medium"
         as="span"
+        tone="danger"
         className={cn(
-          "absolute top-full left-0 mt-1 text-red-500! transition-opacity duration-200",
+          "absolute top-full left-0 mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
@@ -276,11 +233,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
           <label htmlFor={inputId}>
-            <Text
-              variant={labelVariant}
-              as="span"
-              className={cn("text-black", labelClassName)}
-            >
+            <Text variant={labelVariant} as="span" className={labelClassName}>
               {label}
             </Text>
           </label>
@@ -289,7 +242,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           ) : null}
         </div>
         {hint ? (
-          <Text variant="small" as="span" className="text-zinc-400!">
+          <Text variant="small" as="span" tone="muted">
             {hint}
           </Text>
         ) : null}

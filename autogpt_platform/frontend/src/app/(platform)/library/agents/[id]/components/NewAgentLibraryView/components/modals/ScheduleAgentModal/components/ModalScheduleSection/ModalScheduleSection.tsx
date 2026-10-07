@@ -46,7 +46,7 @@ export function ModalScheduleSection({
         id="schedule-name"
         label="Schedule Name"
         value={scheduleName}
-        size="small"
+        size="md"
         onChange={(e) => {
           handleScheduleNameChange(e);
           validateNow({ scheduleName: e.target.value });

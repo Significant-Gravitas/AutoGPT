@@ -81,7 +81,7 @@ export function InlineUserPasswordForm({
                 autoComplete="off"
                 label="Name"
                 labelVariant="small-medium"
-                size="small"
+                size="md"
                 placeholder={`My ${providerName} account`}
                 wrapperClassName="mb-0"
               />
@@ -104,7 +104,7 @@ export function InlineUserPasswordForm({
                 spellCheck={false}
                 label="Username"
                 labelVariant="small-medium"
-                size="small"
+                size="md"
                 wrapperClassName="mb-0"
               />
             </FormControl>
@@ -126,7 +126,7 @@ export function InlineUserPasswordForm({
                 autoComplete="new-password"
                 label="Password"
                 labelVariant="small-medium"
-                size="small"
+                size="md"
                 wrapperClassName="mb-0"
               />
             </FormControl>

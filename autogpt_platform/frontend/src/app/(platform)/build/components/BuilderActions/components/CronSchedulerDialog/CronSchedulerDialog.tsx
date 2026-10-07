@@ -53,7 +53,7 @@ export function CronSchedulerDialog({
             id="schedule-name"
             label="Schedule Name"
             placeholder="Enter schedule name"
-            size="small"
+            size="md"
             className="max-w-80"
             value={scheduleName}
             onChange={(e) => setScheduleName(e.target.value)}

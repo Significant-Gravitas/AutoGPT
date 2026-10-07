@@ -67,7 +67,7 @@ export function NameStep({
             id="raise-name"
             label="Or type your own"
             hideLabel
-            size="small"
+            size="md"
             value={custom}
             onChange={(event) => setCustom(event.target.value)}
             placeholder="Type a name…"

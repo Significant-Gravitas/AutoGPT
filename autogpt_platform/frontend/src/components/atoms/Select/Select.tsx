@@ -14,6 +14,7 @@ import { ReactNode, useState } from "react";
 import { Text } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
+import { fieldVariants } from "../Input/fieldVariants";
 
 export interface SelectOption {
   value: string;
@@ -37,7 +38,7 @@ export interface SelectFieldProps {
   value?: string;
   onValueChange?: (value: string) => void;
   options: SelectOption[];
-  size?: "small" | "medium";
+  size?: "sm" | "md" | "lg";
   labelVariant?: Variant;
   labelClassName?: string;
   labelTooltip?: string;
@@ -60,7 +61,7 @@ export function Select({
   value,
   onValueChange,
   options,
-  size = "medium",
+  size = "lg",
   labelVariant = "large-medium",
   labelClassName,
   labelTooltip,
@@ -71,24 +72,8 @@ export function Select({
   "aria-describedby": ariaDescribedBy,
 }: SelectFieldProps) {
   const triggerStyles = cn(
-    // Base styles matching Input
-    "rounded-xl border border-zinc-200 bg-white px-4 shadow-none",
-    "font-normal text-black w-full",
-    "placeholder:font-normal placeholder:text-zinc-500",
-    // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-hidden focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
-    // Size variants
-    size === "small" && [
-      "h-9",
-      "py-2",
-      "text-sm leading-[22px]",
-      "placeholder:text-sm placeholder:leading-[22px]",
-    ],
-    size === "medium" && ["h-11.5", "py-2.5", "text-sm"],
-    // Error state
-    error && "border-red-500 focus:border-red-500 focus:ring-red-500",
-    // Placeholder styling for SelectValue when data-placeholder is present
-    "[&[data-placeholder]>span]:text-zinc-400 [&[data-placeholder]>span]:font-normal",
+    fieldVariants({ size, invalid: Boolean(error) }),
+    "[&[data-placeholder]>span]:font-normal [&[data-placeholder]>span]:text-zinc-500",
     className,
   );
 
@@ -118,6 +103,7 @@ export function Select({
         aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
         aria-labelledby={ariaLabelledBy}
         aria-describedby={ariaDescribedBy}
+        aria-invalid={error ? true : undefined}
         id={id}
       >
         <SelectValue placeholder={placeholder || label} />
@@ -153,8 +139,9 @@ export function Select({
       <Text
         variant="small-medium"
         as="span"
+        tone="danger"
         className={cn(
-          "absolute top-full left-0 mt-1 text-red-500! transition-opacity duration-200",
+          "absolute top-full left-0 mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
@@ -171,11 +158,7 @@ export function Select({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
           <label htmlFor={id}>
-            <Text
-              variant={labelVariant}
-              as="span"
-              className={cn("text-black", labelClassName)}
-            >
+            <Text variant={labelVariant} as="span" className={labelClassName}>
               {label}
             </Text>
           </label>

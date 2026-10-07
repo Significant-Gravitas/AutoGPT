@@ -1,9 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Calendar as CalendarIcon } from "lucide-react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Calendar03Icon } from "@hugeicons/core-free-icons";
+import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import { fieldVariants } from "../Input/fieldVariants";
 import {
   Popover,
   PopoverContent,
@@ -40,7 +43,7 @@ export interface DateInputProps {
   hideLabel?: boolean;
   error?: string;
   id?: string;
-  size?: "default" | "small";
+  size?: "sm" | "md" | "lg";
   "aria-label"?: string;
   "aria-labelledby"?: string;
   "aria-describedby"?: string;
@@ -58,7 +61,7 @@ export const DateInput = ({
   hideLabel = false,
   error,
   id,
-  size = "default",
+  size = "lg",
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
   "aria-describedby": ariaDescribedBy,
@@ -83,33 +86,19 @@ export const DateInput = ({
   const isDisabled = disabled || readonly;
 
   const triggerStyles = cn(
-    // Base styles matching other form components
-    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
-    "font-normal text-black w-full text-sm",
-    "placeholder:font-normal placeholder:text-zinc-500",
-    // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-hidden focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
-    // Error state
-    error && "border-red-500 focus:border-red-500 focus:ring-red-500",
-    // Placeholder styling
-    !selected && "text-zinc-400",
-    "justify-start text-left",
-    // Size variants
-    size === "default" && "h-11.5 py-2.5",
+    fieldVariants({ size, invalid: Boolean(error) }),
+    "min-w-0 justify-start gap-2 text-left",
+    !selected && "text-zinc-500",
     className,
-    size === "small" && [
-      "min-h-9", // 36px minimum
-      "py-2",
-      "text-sm leading-[22px]",
-      "placeholder:text-sm placeholder:leading-[22px]",
-    ],
   );
 
   return (
     <div className="flex flex-col gap-1">
       {label && !hideLabel && (
-        <label htmlFor={id} className="text-sm font-medium text-zinc-700">
-          {label}
+        <label htmlFor={id}>
+          <Text variant="body-medium" as="span">
+            {label}
+          </Text>
         </label>
       )}
       <Popover open={open} onOpenChange={setOpen}>
@@ -124,9 +113,12 @@ export const DateInput = ({
             aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
             aria-labelledby={ariaLabelledBy}
             aria-describedby={ariaDescribedBy}
+            aria-invalid={error ? true : undefined}
           >
-            <CalendarIcon
-              className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
+            <Icon
+              icon={Calendar03Icon}
+              size={size === "sm" ? 14 : 16}
+              aria-hidden
             />
             {buttonText}
           </Button>
@@ -145,7 +137,11 @@ export const DateInput = ({
           />
         </PopoverContent>
       </Popover>
-      {error && <span className="text-sm text-red-500">{error}</span>}
+      {error && (
+        <Text variant="small-medium" as="span" tone="danger">
+          {error}
+        </Text>
+      )}
     </div>
   );
 };

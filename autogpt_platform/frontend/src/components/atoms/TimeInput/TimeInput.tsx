@@ -1,6 +1,7 @@
 import React, { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Text } from "../Text/Text";
+import { fieldVariants } from "../Input/fieldVariants";
 
 interface TimeInputProps {
   value?: string;
@@ -13,7 +14,7 @@ interface TimeInputProps {
   hideLabel?: boolean;
   error?: string;
   hint?: ReactNode;
-  size?: "small" | "medium";
+  size?: "sm" | "md" | "lg";
   wrapperClassName?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;
@@ -31,7 +32,7 @@ export const TimeInput: React.FC<TimeInputProps> = ({
   hideLabel = false,
   error,
   hint,
-  size = "medium",
+  size = "lg",
   wrapperClassName,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
@@ -41,19 +42,6 @@ export const TimeInput: React.FC<TimeInputProps> = ({
     onChange?.(e.target.value);
   };
 
-  const baseStyles = cn(
-    // Base styles
-    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
-    "font-normal text-black",
-    "placeholder:font-normal placeholder:text-zinc-500",
-    // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0 focus:outline-hidden",
-    className,
-  );
-
-  const errorStyles =
-    error && "border! border-red-500! focus:border-red-500 focus:ring-red-500";
-
   const input = (
     <div className={cn("relative", wrapperClassName)}>
       <input
@@ -61,25 +49,15 @@ export const TimeInput: React.FC<TimeInputProps> = ({
         value={value}
         onChange={handleChange}
         className={cn(
-          baseStyles,
-          errorStyles,
-          // Size variants
-          size === "small" && [
-            "h-9", // 36px
-            "py-2",
-            "text-sm leading-[22px]", // 14px font, 22px line height
-            "placeholder:text-sm placeholder:leading-[22px]",
-          ],
-          size === "medium" && [
-            "h-11.5", // 46px (current default)
-            "py-2.5",
-          ],
+          fieldVariants({ size, invalid: Boolean(error) }),
+          className,
         )}
         disabled={disabled}
         placeholder={placeholder || label}
         aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
         aria-labelledby={ariaLabelledBy}
         aria-describedby={ariaDescribedBy}
+        aria-invalid={error ? true : undefined}
         id={id}
       />
     </div>
@@ -91,8 +69,9 @@ export const TimeInput: React.FC<TimeInputProps> = ({
       <Text
         variant="small-medium"
         as="span"
+        tone="danger"
         className={cn(
-          "absolute top-full left-0 mt-1 text-red-500! transition-opacity duration-200",
+          "absolute top-full left-0 mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
@@ -107,11 +86,11 @@ export const TimeInput: React.FC<TimeInputProps> = ({
   ) : (
     <label htmlFor={id} className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <Text variant="body-medium" as="span" className="text-black">
+        <Text variant="body-medium" as="span">
           {label}
         </Text>
         {hint ? (
-          <Text variant="small" as="span" className="text-zinc-400!">
+          <Text variant="small" as="span" tone="muted">
             {hint}
           </Text>
         ) : null}

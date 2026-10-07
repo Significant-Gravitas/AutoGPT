@@ -24,11 +24,11 @@ export const DateWidget = (props: WidgetProps) => {
   );
 
   // Determine input size based on context
-  const inputSize = size === "large" ? "default" : "small";
+  const inputSize = size === "large" ? "lg" : "md";
 
   return (
     <DateInput
-      size={inputSize as any}
+      size={inputSize}
       {...accessibility}
       hideLabel={true}
       label={schema.title || label || ""}

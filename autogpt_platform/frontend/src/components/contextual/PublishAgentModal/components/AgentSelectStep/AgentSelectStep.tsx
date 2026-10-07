@@ -138,7 +138,7 @@ export function AgentSelectStep({
                 aria-label="Search your agents"
                 maxLength={100}
                 loading={isFetching || isDebouncingSearch}
-                size="small"
+                size="md"
               />
             </div>
             <div className="w-full sm:w-[220px]">
@@ -146,7 +146,7 @@ export function AgentSelectStep({
                 id="agent-sort"
                 label="Sort agents"
                 hideLabel
-                size="small"
+                size="md"
                 value={sortBy}
                 onValueChange={handleSortChange}
                 options={SORT_OPTIONS}

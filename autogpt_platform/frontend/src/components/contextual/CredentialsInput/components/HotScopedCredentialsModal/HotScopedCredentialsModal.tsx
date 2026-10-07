@@ -211,7 +211,7 @@ export function HostScopedCredentialsModal({
                   id="host"
                   label="Host Pattern"
                   type="text"
-                  size="small"
+                  size="md"
                   readOnly={!!currentHost}
                   hint={
                     currentHost
@@ -242,7 +242,7 @@ export function HostScopedCredentialsModal({
                     id={`header-${index}-key`}
                     label="Header Name"
                     placeholder="Header name (e.g., Authorization)"
-                    size="small"
+                    size="md"
                     value={pair.key}
                     className="flex-1"
                     onChange={(e) =>
@@ -253,7 +253,7 @@ export function HostScopedCredentialsModal({
                   <Input
                     id={`header-${index}-value`}
                     label="Header Value"
-                    size="small"
+                    size="md"
                     type="password"
                     placeholder="Header value (e.g., Bearer token123)"
                     value={pair.value}

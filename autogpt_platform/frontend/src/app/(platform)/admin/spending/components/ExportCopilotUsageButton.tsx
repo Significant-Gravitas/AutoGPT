@@ -124,7 +124,7 @@ export function ExportCopilotUsageButton() {
                 id="copilot-export-start"
                 label="Start date (UTC)"
                 labelVariant="body"
-                size="small"
+                size="md"
                 wrapperClassName="mb-0"
                 type="date"
                 value={start}
@@ -136,7 +136,7 @@ export function ExportCopilotUsageButton() {
                 id="copilot-export-end"
                 label="End date (UTC)"
                 labelVariant="body"
-                size="small"
+                size="md"
                 wrapperClassName="mb-0"
                 type="date"
                 value={end}

@@ -71,7 +71,7 @@ export function TimezoneCard({ value, onChange, index = 0 }: Props) {
             onValueChange={onChange}
             options={options}
             placeholder="Select your timezone"
-            size="small"
+            size="md"
             wrapperClassName="mb-0 w-fit"
           />
         </div>

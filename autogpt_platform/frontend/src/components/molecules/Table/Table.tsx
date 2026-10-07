@@ -84,7 +84,7 @@ export function Table({
                           handleCellChange(rowIndex, column, e.target.value)
                         }
                         placeholder={formatPlaceholder(column)}
-                        size="small"
+                        size="md"
                         wrapperClassName="mb-0"
                       />
                     )}

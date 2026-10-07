@@ -29,7 +29,7 @@ export function TimePicker({ value, onChange, className }: Props) {
           id={`${id}-hour`}
           label="Hour"
           hideLabel
-          size="small"
+          size="md"
           value={hour}
           onValueChange={(val: string) => changeTime(val, minute, meridiem)}
           options={Array.from({ length: 12 }, (_, i) => pad(i + 1)).map(
@@ -50,7 +50,7 @@ export function TimePicker({ value, onChange, className }: Props) {
           id={`${id}-minute`}
           label="Minute"
           hideLabel
-          size="small"
+          size="md"
           value={minute}
           onValueChange={(val: string) => changeTime(hour, val, meridiem)}
           options={Array.from({ length: 60 }, (_, i) => pad(i)).map((m) => ({
@@ -65,7 +65,7 @@ export function TimePicker({ value, onChange, className }: Props) {
           id={`${id}-meridiem`}
           label="AM/PM"
           hideLabel
-          size="small"
+          size="md"
           value={meridiem}
           onValueChange={(val: string) => changeTime(hour, minute, val)}
           options={[

@@ -31,7 +31,7 @@ export function ArtifactsSearchBar({ searchTerm, setSearchTerm }: Props) {
         id="artifacts-search-bar"
         hideLabel
         type="text"
-        size="small"
+        size="md"
         value={searchTerm}
         onChange={handleChange}
         placeholder="Search"

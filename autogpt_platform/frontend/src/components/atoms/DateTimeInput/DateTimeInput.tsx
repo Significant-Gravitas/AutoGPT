@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Calendar as CalendarIcon, Clock } from "lucide-react";
+import { Calendar03Icon, Clock01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
+import { fieldVariants } from "../Input/fieldVariants";
 
 import { Text } from "../Text/Text";
 import {
@@ -43,7 +45,7 @@ export interface DateTimeInputProps {
   error?: string;
   hint?: React.ReactNode;
   id?: string;
-  size?: "default" | "small";
+  size?: "sm" | "md" | "lg";
   wrapperClassName?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;
@@ -63,7 +65,7 @@ export const DateTimeInput = ({
   error,
   hint,
   id,
-  size = "default",
+  size = "lg",
   wrapperClassName,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
@@ -133,47 +135,12 @@ export const DateTimeInput = ({
   const isDisabled = disabled || readonly;
 
   const triggerStyles = cn(
-    // Base styles matching other form components
-    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
-    "font-normal text-black w-full text-sm",
-    "placeholder:font-normal placeholder:text-zinc-500",
-    // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-hidden focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
-    // Error state
-    error && "border-red-500 focus:border-red-500 focus:ring-red-500",
-    // Placeholder styling
-    !selected && "text-zinc-400",
-    "justify-start text-left",
-    // Size variants
-    size === "default" && "h-11.5 py-2.5",
-    size === "small" && [
-      "min-h-9", // 36px minimum
-      "py-2",
-      "text-sm leading-[22px]",
-      "placeholder:text-sm placeholder:leading-[22px]",
-    ],
+    fieldVariants({ size, invalid: Boolean(error) }),
+    "min-w-0 justify-start gap-2 text-left",
+    !selected && "text-zinc-500",
     className,
   );
-
-  const timeInputStyles = cn(
-    // Base styles
-    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
-    "font-normal text-black w-full",
-    "placeholder:font-normal placeholder:text-zinc-500",
-    // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-hidden focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
-    // Size variants
-    size === "small" && [
-      "h-9", // 36px
-      "py-2",
-      "text-sm leading-[22px]", // 14px font, 22px line height
-      "placeholder:text-sm placeholder:leading-[22px]",
-    ],
-    size === "default" && [
-      "h-11.5", // 46px
-      "py-2.5",
-    ],
-  );
+  const iconSize = size === "sm" ? 14 : 16;
 
   const inputWithError = (
     <div className={cn("relative", error ? "mb-6" : "", wrapperClassName)}>
@@ -189,13 +156,10 @@ export const DateTimeInput = ({
             aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
             aria-labelledby={ariaLabelledBy}
             aria-describedby={ariaDescribedBy}
+            aria-invalid={error ? true : undefined}
           >
-            <CalendarIcon
-              className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
-            />
-            <Clock
-              className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
-            />
+            <Icon icon={Calendar03Icon} size={iconSize} aria-hidden />
+            <Icon icon={Clock01Icon} size={iconSize} aria-hidden />
             {buttonText}
           </Button>
         </PopoverTrigger>
@@ -212,18 +176,17 @@ export const DateTimeInput = ({
               }}
             />
             <div className="mt-3 border-t pt-3">
-              <label
-                htmlFor={timeInputId}
-                className="mb-2 block text-sm font-medium text-zinc-700"
-              >
-                Time
+              <label htmlFor={timeInputId} className="mb-2 block">
+                <Text variant="body-medium" as="span">
+                  Time
+                </Text>
               </label>
               <input
                 id={timeInputId}
                 type="time"
                 value={timeValue}
                 onChange={(e) => handleTimeChange(e.target.value)}
-                className={timeInputStyles}
+                className={fieldVariants({ size })}
                 disabled={isDisabled}
                 placeholder="HH:MM"
               />
@@ -235,8 +198,9 @@ export const DateTimeInput = ({
         <Text
           variant="small-medium"
           as="span"
+          tone="danger"
           className={cn(
-            "absolute top-full left-0 mt-1 text-red-500! transition-opacity duration-200",
+            "absolute top-full left-0 mt-1 transition-opacity duration-200",
             error ? "opacity-100" : "opacity-0",
           )}
         >
@@ -251,11 +215,11 @@ export const DateTimeInput = ({
   ) : (
     <label htmlFor={id} className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <Text variant="body-medium" as="span" className="text-black">
+        <Text variant="body-medium" as="span">
           {label}
         </Text>
         {hint ? (
-          <Text variant="small" as="span" className="text-zinc-400!">
+          <Text variant="small" as="span" tone="muted">
             {hint}
           </Text>
         ) : null}

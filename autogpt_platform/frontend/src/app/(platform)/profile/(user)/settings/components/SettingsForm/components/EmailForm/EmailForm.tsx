@@ -45,7 +45,7 @@ export function EmailForm({ user }: EmailFormProps) {
                     type="text"
                     autoComplete="off"
                     className="w-full"
-                    size="small"
+                    size="md"
                     error={fieldState.error?.message}
                     {...field}
                   />

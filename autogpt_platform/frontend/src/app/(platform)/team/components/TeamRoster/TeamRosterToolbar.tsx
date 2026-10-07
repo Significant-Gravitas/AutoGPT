@@ -28,7 +28,7 @@ export function TeamRosterToolbar({
       <SearchInput
         value={query}
         onChange={onQueryChange}
-        size="small"
+        size="md"
         placeholder="Search experts"
         aria-label="Search experts"
         className="w-full sm:w-48"

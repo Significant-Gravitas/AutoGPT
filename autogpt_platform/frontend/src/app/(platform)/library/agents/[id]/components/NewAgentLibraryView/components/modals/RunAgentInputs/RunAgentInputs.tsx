@@ -314,7 +314,7 @@ export function RunAgentInputs({
                           id={`${baseId}-table-${rowIndex}-${header}`}
                           label={header}
                           hideLabel
-                          size="small"
+                          size="md"
                           wrapperClassName="mb-0"
                           type="text"
                           value={String(row[header] || "")}

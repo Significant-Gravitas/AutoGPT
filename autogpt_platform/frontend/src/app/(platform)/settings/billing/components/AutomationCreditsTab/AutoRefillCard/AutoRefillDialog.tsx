@@ -135,7 +135,7 @@ function RefillRow({
           amountPrefix="$"
           decimalCount={2}
           placeholder="min $5"
-          size="small"
+          size="md"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           wrapperClassName="mb-0"

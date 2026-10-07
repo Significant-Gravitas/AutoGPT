@@ -58,7 +58,7 @@ export function BotsContent() {
           value={state.platform}
           onValueChange={state.setPlatform}
           options={PLATFORM_OPTIONS}
-          size="small"
+          size="md"
         />
         <Select
           id="days-filter"
@@ -67,7 +67,7 @@ export function BotsContent() {
           value={String(state.days)}
           onValueChange={(value) => state.setDays(Number(value))}
           options={DAYS_OPTIONS}
-          size="small"
+          size="md"
         />
       </div>
 

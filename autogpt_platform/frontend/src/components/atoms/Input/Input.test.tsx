@@ -52,3 +52,36 @@ describe("Input keyboard handling", () => {
     expect(onKeyDown).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("Input field styles", () => {
+  it("uses the shared field classes at 40px by default", () => {
+    render(<Input id="name" label="Name" />);
+    const field = screen.getByLabelText("Name");
+    expect(field.className).toContain("rounded-lg");
+    expect(field.className).toContain("border-input");
+    expect(field.className).toContain("focus-ring");
+    expect(field.className).toContain("h-10");
+  });
+
+  it.each([
+    ["sm", "h-8"],
+    ["md", "h-9"],
+  ] as const)("renders %s at %s", (size, height) => {
+    render(<Input id="name" label="Name" size={size} />);
+    expect(screen.getByLabelText("Name").className).toContain(height);
+  });
+
+  it("marks an error with the destructive border and aria-invalid", () => {
+    render(<Input id="name" label="Name" error="Required" />);
+    const field = screen.getByLabelText("Name");
+    expect(field.className).toContain("border-destructive");
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("puts the consumer className last", () => {
+    render(<Input id="name" label="Name" className="rounded-full" />);
+    const field = screen.getByLabelText("Name");
+    expect(field.className).toContain("rounded-full");
+    expect(field.className).not.toContain("rounded-lg");
+  });
+});

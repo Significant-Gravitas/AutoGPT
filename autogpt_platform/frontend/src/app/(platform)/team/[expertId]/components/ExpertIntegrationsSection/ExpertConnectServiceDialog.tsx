@@ -162,7 +162,7 @@ export function ExpertConnectServiceDialog({
                     ) : (
                       <div className="flex flex-col gap-3">
                         <SearchInput
-                          size="small"
+                          size="md"
                           value={query}
                           onChange={setQuery}
                           placeholder="Search services..."

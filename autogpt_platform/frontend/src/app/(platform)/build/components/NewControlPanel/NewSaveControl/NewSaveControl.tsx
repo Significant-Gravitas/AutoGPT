@@ -66,7 +66,7 @@ export const NewSaveControl = () => {
                       <Input
                         id="name"
                         label="Name"
-                        size="small"
+                        size="md"
                         placeholder="Enter your agent name"
                         data-id="save-control-name-input"
                         data-testid="save-control-name-input"
@@ -83,7 +83,7 @@ export const NewSaveControl = () => {
                     render={({ field }) => (
                       <Input
                         id="description"
-                        size="small"
+                        size="md"
                         label="Description"
                         placeholder="Your agent description"
                         data-id="save-control-description-input"
@@ -99,7 +99,7 @@ export const NewSaveControl = () => {
                     <Input
                       id="version"
                       placeholder="Version"
-                      size="small"
+                      size="md"
                       value={graphVersion || "-"}
                       disabled
                       data-testid="save-control-version-output"

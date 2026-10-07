@@ -23,7 +23,7 @@ export const TimeWidget = (props: WidgetProps) => {
   );
 
   // Determine input size based on context
-  const inputSize = size === "large" ? "medium" : "small";
+  const inputSize = size === "large" ? "lg" : "md";
 
   return (
     <TimeInput
@@ -33,7 +33,7 @@ export const TimeWidget = (props: WidgetProps) => {
       label={schema.title || label || ""}
       {...accessibility}
       hideLabel={true}
-      size={inputSize as any}
+      size={inputSize}
       wrapperClassName="mb-0"
       disabled={disabled || readonly}
       placeholder={placeholder}

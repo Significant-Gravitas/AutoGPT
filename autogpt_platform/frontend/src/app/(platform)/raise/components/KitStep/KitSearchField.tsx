@@ -41,7 +41,7 @@ export function KitSearchField({
         id={`raise-${scope}-search`}
         label={label}
         hideLabel
-        size="small"
+        size="md"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}

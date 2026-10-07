@@ -96,7 +96,7 @@ export function ShareRunButton({
                   readOnly
                   label="Share URL"
                   id="share-url"
-                  size="small"
+                  size="md"
                   className="m-0"
                   wrapperClassName="flex-1"
                 />

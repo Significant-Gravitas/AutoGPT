@@ -35,7 +35,7 @@ export function InlineApiKeyForm({ form, providerName, onSubmit }: Props) {
                 autoComplete="off"
                 label="Name"
                 labelVariant="small-medium"
-                size="small"
+                size="md"
                 placeholder={`My ${providerName} key`}
                 wrapperClassName="mb-0"
               />
@@ -59,7 +59,7 @@ export function InlineApiKeyForm({ form, providerName, onSubmit }: Props) {
                 spellCheck={false}
                 label="API key"
                 labelVariant="small-medium"
-                size="small"
+                size="md"
                 placeholder="sk-..."
                 wrapperClassName="mb-0"
               />
@@ -82,7 +82,7 @@ export function InlineApiKeyForm({ form, providerName, onSubmit }: Props) {
                 type="date"
                 label="Expires (optional)"
                 labelVariant="small-medium"
-                size="small"
+                size="md"
                 wrapperClassName="mb-0"
               />
             </FormControl>

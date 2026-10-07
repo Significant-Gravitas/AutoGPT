@@ -62,7 +62,7 @@ export function TimeAt({
           <Select
             id="time-hour"
             label=""
-            size="small"
+            size="md"
             value={hour12}
             onValueChange={(v) => {
               setHour12(v);
@@ -74,7 +74,7 @@ export function TimeAt({
           <Select
             id="time-minute"
             label=""
-            size="small"
+            size="md"
             value={minute}
             onValueChange={(v) => {
               setMinute(v);
@@ -86,7 +86,7 @@ export function TimeAt({
           <Select
             id="time-meridiem"
             label=""
-            size="small"
+            size="md"
             value={ampm}
             onValueChange={(v) => {
               const mer = (v as "AM" | "PM") || "AM";

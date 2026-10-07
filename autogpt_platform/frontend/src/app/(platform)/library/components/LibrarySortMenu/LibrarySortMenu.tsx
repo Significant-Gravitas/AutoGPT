@@ -40,7 +40,7 @@ export function LibrarySortMenu({ setLibrarySort }: Props) {
         placeholder="Last Modified"
         onValueChange={(value) => handleSortChange(value as LibraryAgentSort)}
         options={SORT_OPTIONS}
-        size="small"
+        size="md"
         className="ml-1 w-fit border-none bg-transparent text-sm underline underline-offset-4 shadow-none [&[data-placeholder]>span]:text-black"
         wrapperClassName="mb-0"
       />

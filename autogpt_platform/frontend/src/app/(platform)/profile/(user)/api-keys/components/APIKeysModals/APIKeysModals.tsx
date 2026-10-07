@@ -41,7 +41,7 @@ export const APIKeysModals = () => {
               id="name"
               label="Name"
               labelVariant="body-medium"
-              size="small"
+              size="md"
               value={keyState.newKeyName}
               onChange={(e) =>
                 setKeyState((prev) => ({
@@ -55,7 +55,7 @@ export const APIKeysModals = () => {
               id="description"
               label="Description (Optional)"
               labelVariant="body-medium"
-              size="small"
+              size="md"
               value={keyState.newKeyDescription}
               onChange={(e) =>
                 setKeyState((prev) => ({

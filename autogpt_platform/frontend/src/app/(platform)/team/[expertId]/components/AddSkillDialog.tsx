@@ -106,7 +106,7 @@ export function AddSkillDialog({
           {!hasMarketplace || source === "library" ? (
             <>
               <SearchInput
-                size="small"
+                size="md"
                 value={query}
                 onChange={setQuery}
                 placeholder="Search your library"
@@ -153,7 +153,7 @@ export function AddSkillDialog({
           ) : (
             <>
               <SearchInput
-                size="small"
+                size="md"
                 value={marketQuery}
                 onChange={onMarketQueryChange}
                 placeholder="Search the marketplace"

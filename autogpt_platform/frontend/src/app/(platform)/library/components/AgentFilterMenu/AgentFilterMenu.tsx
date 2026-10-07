@@ -50,7 +50,7 @@ export function AgentFilterMenu({ value, onChange, summary }: Props) {
         value={value}
         onValueChange={handleChange}
         options={options}
-        size="small"
+        size="md"
         className="ml-1 w-fit border-none bg-transparent text-sm underline underline-offset-4 shadow-none"
         wrapperClassName="mb-0"
       />

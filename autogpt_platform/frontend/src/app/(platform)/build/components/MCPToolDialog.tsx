@@ -398,7 +398,7 @@ export function MCPToolDialog({
               id="mcp-server-url"
               label="Server URL"
               labelVariant="body-medium"
-              size="small"
+              size="md"
               wrapperClassName="mb-0"
               type="url"
               placeholder="https://mcp.example.com/mcp"
@@ -454,7 +454,7 @@ export function MCPToolDialog({
                   id="mcp-auth-token"
                   label={mcpAuthTokenLabel(manualAuthScheme)}
                   labelVariant="body"
-                  size="small"
+                  size="md"
                   wrapperClassName="mb-0"
                   aria-describedby="mcp-auth-token-hint"
                   type="password"

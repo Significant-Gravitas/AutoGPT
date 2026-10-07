@@ -49,7 +49,7 @@ export function MemoryScopeSelector({
           value={value}
           onValueChange={onValueChange}
           options={options}
-          size="small"
+          size="md"
           disabled={loading}
         />
       </div>

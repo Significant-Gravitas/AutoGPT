@@ -98,7 +98,7 @@ export default function WrapIfAdditionalTemplate(
               name={keyId}
               onBlur={!readonly ? handleBlur : undefined}
               type="text"
-              size="small"
+              size="md"
             />
             <div className="mt-2"> {children}</div>
           </div>

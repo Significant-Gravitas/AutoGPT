@@ -55,7 +55,7 @@ export function AdminUserSearch({
         id="admin-user-search"
         label={placeholder}
         hideLabel
-        size="small"
+        size="md"
         wrapperClassName="mb-0"
         placeholder={placeholder}
         value={currentValue}

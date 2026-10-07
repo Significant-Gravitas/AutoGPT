@@ -12,12 +12,12 @@ const meta: Meta<typeof SearchInput> = {
   },
   args: {
     placeholder: "Search",
-    size: "medium",
+    size: "lg",
   },
   argTypes: {
     size: {
       control: { type: "radio" },
-      options: ["xsmall", "small", "medium"],
+      options: ["sm", "md", "lg"],
     },
     disabled: { control: "boolean" },
   },
@@ -50,7 +50,7 @@ export const WithValue: Story = {
 };
 
 export const Small: Story = {
-  args: { size: "small", value: "scraper" },
+  args: { size: "md", value: "scraper" },
   render: (args) => <ControlledExample {...args} />,
 };
 

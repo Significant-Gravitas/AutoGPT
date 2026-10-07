@@ -54,7 +54,7 @@ export function ExpertSkillsSection({ expert, accentClassName }: Props) {
             Add skill
           </Button>
           <SearchInput
-            size="small"
+            size="md"
             value={query}
             onChange={setQuery}
             placeholder="Search skills"

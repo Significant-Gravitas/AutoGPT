@@ -131,7 +131,7 @@ export function InstallWorkflowPicker({
             </div>
             <Input
               id="install-workflow-search"
-              size="small"
+              size="md"
               label="Search workflows"
               hideLabel
               placeholder={

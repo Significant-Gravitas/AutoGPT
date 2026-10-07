@@ -141,7 +141,7 @@ export function ExportCreditTransactionsButton() {
                 id="credit-export-start"
                 label="Start date (UTC)"
                 labelVariant="body"
-                size="small"
+                size="md"
                 wrapperClassName="mb-0"
                 type="date"
                 value={start}
@@ -153,7 +153,7 @@ export function ExportCreditTransactionsButton() {
                 id="credit-export-end"
                 label="End date (UTC)"
                 labelVariant="body"
-                size="small"
+                size="md"
                 wrapperClassName="mb-0"
                 type="date"
                 value={end}
@@ -165,7 +165,7 @@ export function ExportCreditTransactionsButton() {
             id="credit-export-type"
             label="Transaction type"
             labelVariant="body"
-            size="small"
+            size="md"
             wrapperClassName="mb-0"
             value={typeFilter}
             onValueChange={(v) => setTypeFilter(v as TypeFilter)}
@@ -176,7 +176,7 @@ export function ExportCreditTransactionsButton() {
               id="credit-export-user-id"
               label="User ID (optional)"
               labelVariant="body"
-              size="small"
+              size="md"
               wrapperClassName="mb-0"
               type="text"
               placeholder="Filter by a single user ID"

@@ -29,7 +29,7 @@ export function AutopilotSkillsSection({ skills }: Props) {
           Otto&apos;s Skills
         </Text>
         <SearchInput
-          size="small"
+          size="md"
           value={query}
           onChange={setQuery}
           placeholder="Search skills"

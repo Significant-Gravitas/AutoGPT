@@ -319,7 +319,7 @@ export function ExecutionAnalyticsForm() {
               id="graph_id"
               label="Graph ID *"
               labelVariant="body-medium"
-              size="small"
+              size="md"
               wrapperClassName="mb-0"
               value={formData.graph_id}
               onChange={(e) => handleInputChange("graph_id", e.target.value)}
@@ -333,7 +333,7 @@ export function ExecutionAnalyticsForm() {
               id="graph_version"
               label="Graph Version"
               labelVariant="body-medium"
-              size="small"
+              size="md"
               wrapperClassName="mb-0"
               type="number"
               value={formData.graph_version || ""}
@@ -352,7 +352,7 @@ export function ExecutionAnalyticsForm() {
               id="user_id"
               label="User ID"
               labelVariant="body-medium"
-              size="small"
+              size="md"
               wrapperClassName="mb-0"
               value={formData.user_id || ""}
               onChange={(e) => handleInputChange("user_id", e.target.value)}
@@ -365,7 +365,7 @@ export function ExecutionAnalyticsForm() {
               id="created_after"
               label="Created After"
               labelVariant="body-medium"
-              size="small"
+              size="md"
               wrapperClassName="mb-0"
               type="datetime-local"
               value={formData.created_after || ""}
@@ -380,7 +380,7 @@ export function ExecutionAnalyticsForm() {
               id="model_name"
               label="AI Model"
               labelVariant="body-medium"
-              size="small"
+              size="md"
               wrapperClassName="mb-0"
               placeholder="Select AI model"
               value={formData.model_name}
@@ -439,7 +439,7 @@ export function ExecutionAnalyticsForm() {
                   type="textarea"
                   label="Custom System Prompt (Optional)"
                   labelVariant="body-medium"
-                  size="small"
+                  size="md"
                   wrapperClassName="mb-0"
                   value={formData.system_prompt || ""}
                   onChange={(e) =>
@@ -462,7 +462,7 @@ export function ExecutionAnalyticsForm() {
                   type="textarea"
                   label="Custom User Prompt Template (Optional)"
                   labelVariant="body-medium"
-                  size="small"
+                  size="md"
                   wrapperClassName="mb-0"
                   value={formData.user_prompt || ""}
                   onChange={(e) =>

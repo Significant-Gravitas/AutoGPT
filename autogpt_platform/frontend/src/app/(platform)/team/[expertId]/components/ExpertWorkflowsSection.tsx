@@ -70,7 +70,7 @@ export function ExpertWorkflowsSection({
             </Button>
           ) : null}
           <SearchInput
-            size="small"
+            size="md"
             value={query}
             onChange={setQuery}
             placeholder="Search workflows"

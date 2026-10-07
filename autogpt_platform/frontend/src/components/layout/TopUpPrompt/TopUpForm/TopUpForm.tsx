@@ -10,7 +10,7 @@ interface Props {
 
 export function TopUpForm({ submitLabel = "Top up", size = "normal" }: Props) {
   const { form, isLoading, submitTopUp } = useTopUpForm();
-  const inputSize = size === "small" ? "small" : "medium";
+  const inputSize = size === "small" ? "md" : "lg";
   const buttonSize = size === "small" ? "md" : "lg";
 
   return (

@@ -37,7 +37,7 @@ const meta = {
     disabled: { control: "boolean", description: "Disable the input" },
     size: {
       control: "select",
-      options: ["small", "medium"],
+      options: ["sm", "md", "lg"],
       description: "Input height",
     },
   },
@@ -45,7 +45,7 @@ const meta = {
     id: "daily-run-time",
     label: "Daily run time",
     onChange: fn(),
-    size: "medium",
+    size: "lg",
     disabled: false,
     hideLabel: false,
   },
@@ -77,7 +77,7 @@ export const Disabled: Story = {
 };
 
 export const Small: Story = {
-  args: { size: "small", value: "09:30" },
+  args: { size: "md", value: "09:30" },
 };
 
 export const Interactive: Story = {
@@ -113,8 +113,8 @@ function renderInteractive() {
 function renderAllSizes() {
   return (
     <div className="flex flex-col gap-2">
-      <TimeInput id="size-medium" label="Medium" size="medium" value="09:30" />
-      <TimeInput id="size-small" label="Small" size="small" value="09:30" />
+      <TimeInput id="size-medium" label="Medium" size="lg" value="09:30" />
+      <TimeInput id="size-small" label="Small" size="md" value="09:30" />
     </div>
   );
 }

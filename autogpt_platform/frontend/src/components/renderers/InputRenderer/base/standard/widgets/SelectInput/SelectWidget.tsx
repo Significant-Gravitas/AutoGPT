@@ -100,7 +100,7 @@ export function SelectWidget(props: WidgetProps) {
   );
 
   // Determine select size based on context
-  const selectSize = size === "large" ? "medium" : "small";
+  const selectSize = size === "large" ? "lg" : "md";
 
   const renderInput = () => {
     if (type === InputType.MULTI_SELECT) {

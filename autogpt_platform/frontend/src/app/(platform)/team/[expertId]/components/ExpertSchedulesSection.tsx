@@ -67,7 +67,7 @@ export function ExpertSchedulesSection({
             </Button>
           ) : null}
           <SearchInput
-            size="small"
+            size="md"
             value={query}
             onChange={setQuery}
             placeholder="Search schedules"

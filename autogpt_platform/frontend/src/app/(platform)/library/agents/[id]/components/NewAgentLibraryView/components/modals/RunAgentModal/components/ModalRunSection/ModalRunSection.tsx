@@ -52,7 +52,7 @@ export function ModalRunSection() {
               <Input
                 id="trigger_name"
                 label="Trigger Name"
-                size="small"
+                size="md"
                 hideLabel
                 value={presetName}
                 placeholder="Enter trigger name"
@@ -67,7 +67,7 @@ export function ModalRunSection() {
               <Input
                 id="trigger_description"
                 label="Trigger Description"
-                size="small"
+                size="md"
                 hideLabel
                 value={presetDescription}
                 placeholder="Enter trigger description"

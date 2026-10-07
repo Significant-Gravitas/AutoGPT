@@ -77,7 +77,7 @@ export function PendingReviewCard({
           id="data-string"
           label="Value"
           hideLabel
-          size="small"
+          size="md"
           type="textarea"
           rows={3}
           value={data}
@@ -91,7 +91,7 @@ export function PendingReviewCard({
           id="data-number"
           label="Value"
           hideLabel
-          size="small"
+          size="md"
           type="number"
           value={data}
           onChange={(e) => handleDataChange(Number(e.target.value))}
@@ -117,7 +117,7 @@ export function PendingReviewCard({
           id="data-json"
           label="Value"
           hideLabel
-          size="small"
+          size="md"
           type="textarea"
           rows={6}
           value={JSON.stringify(data, null, 2)}

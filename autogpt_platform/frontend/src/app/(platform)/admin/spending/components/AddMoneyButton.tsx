@@ -100,7 +100,7 @@ export function AdminAddMoneyButton({
                 id="dollarAmount"
                 label="Amount (in dollars)"
                 labelVariant="body-medium"
-                size="small"
+                size="md"
                 wrapperClassName="mb-0"
                 type="amount"
                 amountPrefix="$"

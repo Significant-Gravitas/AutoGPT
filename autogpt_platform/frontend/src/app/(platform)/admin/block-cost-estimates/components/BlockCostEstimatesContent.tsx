@@ -42,7 +42,7 @@ export function BlockCostEstimatesContent() {
             id="bce-start"
             label="Start date (UTC)"
             labelVariant="body"
-            size="small"
+            size="md"
             wrapperClassName="mb-0"
             type="date"
             value={start}
@@ -54,7 +54,7 @@ export function BlockCostEstimatesContent() {
             id="bce-end"
             label="End date (UTC)"
             labelVariant="body"
-            size="small"
+            size="md"
             wrapperClassName="mb-0"
             type="date"
             value={end}
@@ -66,7 +66,7 @@ export function BlockCostEstimatesContent() {
             id="bce-min-samples"
             label="Min samples"
             labelVariant="body"
-            size="small"
+            size="md"
             wrapperClassName="mb-0"
             type="number"
             min={1}
