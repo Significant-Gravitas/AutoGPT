@@ -37,10 +37,6 @@
   ],
   // Backlog: unused exports, types, enum members and duplicate exports.
   "ignoreIssues": {
-    "src/app/(no-navbar)/onboarding/steps/BrainDumpStep/components/useAudioBars.ts": [
-      "types"
-    ],
-    "src/app/(no-navbar)/onboarding/store.ts": ["exports"],
     "src/app/(platform)/artifacts/components/ArtifactsList/FileIllustration.tsx": [
       "exports"
     ],
@@ -118,7 +114,6 @@
     "src/app/(platform)/settings/creator-dashboard/helpers.ts": ["exports"],
     "src/app/(platform)/settings/memory/helpers.ts": ["exports"],
     "src/app/(platform)/team/helpers.ts": ["exports"],
-    "src/app/(public)/tour/chat/constants.ts": ["exports"],
     "src/components/atoms/Avatar/Avatar.tsx": ["duplicates"],
     "src/components/contextual/CredentialsInput/helpers.ts": ["types"],
     "src/components/contextual/CronScheduler/cron-scheduler-dialog.tsx": [
@@ -161,10 +156,7 @@
     ],
     "src/components/renderers/InputRenderer/helpers.ts": ["exports"],
     "src/components/renderers/InputRenderer/registry/index.ts": ["exports"],
-    "src/components/renderers/InputRenderer/utils/schema-utils.ts": ["exports"],
-    "src/contexts/AutoPilotBridgeContext.tsx": ["exports"],
-    "src/hooks/usePendingReviews.ts": ["exports"],
-    "src/types/google.ts": ["types"]
+    "src/components/renderers/InputRenderer/utils/schema-utils.ts": ["exports"]
   },
   "ignoreExportsUsedInFile": true
 }

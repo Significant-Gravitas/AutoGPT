@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const STORAGE_KEY = "autopilot_pending_prompt";
@@ -47,18 +47,4 @@ export function AutoPilotBridgeProvider({ children }: Props) {
       {children}
     </AutoPilotBridgeContext.Provider>
   );
-}
-
-export function useAutoPilotBridge(): AutoPilotBridgeState {
-  const context = useContext(AutoPilotBridgeContext);
-  if (!context) {
-    // Return a no-op implementation when used outside the provider
-    // (e.g. in tests or isolated component renders).
-    return {
-      pendingPrompt: null,
-      sendPrompt: () => {},
-      consumePrompt: () => null,
-    };
-  }
-  return context;
 }

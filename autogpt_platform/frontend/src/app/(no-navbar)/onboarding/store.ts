@@ -68,15 +68,6 @@ export const NO_PAYWALL_STEPS = {
   preparing: 3,
 } as const;
 
-// Self-host has no paywall; it asks for a model at the end instead — link
-// the ChatGPT plan you already pay for — once the profile is in.
-export const SELF_HOST_STEPS = {
-  role: 1,
-  painPoints: 2,
-  connect: 3,
-  preparing: 4,
-} as const;
-
 interface OnboardingWizardState {
   currentStep: Step;
   // The numbering in force for this session, set by the page hook once the
