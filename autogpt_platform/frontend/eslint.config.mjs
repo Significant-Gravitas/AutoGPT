@@ -4,7 +4,11 @@ import { fileURLToPath } from "node:url";
 import { FlatCompat } from "@eslint/eslintrc";
 import pluginQuery from "@tanstack/eslint-plugin-query";
 import storybook from "eslint-plugin-storybook";
-import { importBlocks, tailwindBlocks } from "./eslint.design-system.mjs";
+import {
+  importBlocks,
+  LINT_IGNORES,
+  tailwindBlocks,
+} from "./eslint.design-system.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -56,19 +60,7 @@ const KEYBOARD_RULES = [
 ];
 
 export default [
-  {
-    ignores: [
-      ".next/**",
-      "node_modules/**",
-      "public/**",
-      "coverage/**",
-      "storybook-static/**",
-      "playwright-report/**",
-      "test-results/**",
-      "src/app/api/__generated__/**",
-      "next-env.d.ts",
-    ],
-  },
+  { ignores: LINT_IGNORES },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   ...storybook.configs["flat/recommended"],
   ...pluginQuery.configs["flat/recommended"],

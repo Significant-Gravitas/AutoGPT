@@ -5,7 +5,22 @@ import allowlist from "./eslint-allowlist.json" with { type: "json" };
 // Design-system lint rules: import boundaries and Tailwind class checks, plus
 // the allowlist of existing violations. Kept apart from eslint.config.mjs so
 // scripts/*.test.ts can import it without loading the Next.js presets.
-// See docs/engineering/frontend-design-system-audit.md, Part 8.3 step 1.
+// DESIGN.md lists the rules; docs/engineering/frontend-design-system-audit.md
+// (Part 8.3 step 1) has the history.
+
+// Build output, generated code and vendored files. eslint.config.mjs ignores
+// them, and scripts/eslint-allowlist-regenerate.ts skips them too.
+export const LINT_IGNORES = [
+  ".next/**",
+  "node_modules/**",
+  "public/**",
+  "coverage/**",
+  "storybook-static/**",
+  "playwright-report/**",
+  "test-results/**",
+  "src/app/api/__generated__/**",
+  "next-env.d.ts",
+];
 
 const HUGEICONS_ONLY =
   'Hugeicons only: import the icon from "@hugeicons/core-free-icons" and render it with the Icon atom.';
@@ -184,6 +199,39 @@ export const NON_TAILWIND_CLASSES = [
   "^markdown-output$", // src/app/globals.css
 ];
 
+// Tailwind default-palette families that are not part of the design system,
+// with the palette family each one maps to (see DESIGN.md, "Rules"). The
+// families in src/components/styles/colors.ts override Tailwind's, so only
+// these fall through to the defaults. `blue`, `sky`, `teal` and `cyan` are
+// left out until there is a decision for them.
+export const RESTRICTED_PALETTE = {
+  gray: "zinc",
+  neutral: "zinc",
+  stone: "zinc",
+  emerald: "green",
+  amber: "yellow",
+  violet: "purple",
+  indigo: "purple",
+  rose: "red",
+  lime: undefined,
+  fuchsia: undefined,
+};
+
+// Every utility that takes a colour, after any variants (`hover:`,
+// `[&_svg]:`) and an optional `!`, with an optional `/opacity` suffix.
+const COLOUR_UTILITIES =
+  "bg|text|border(?:-[xytrblse])?|divide|outline|ring(?:-offset)?|shadow|from|via|to|fill|stroke|decoration|accent|caret|placeholder";
+
+function paletteRestriction([family, replacement]) {
+  const instead = replacement
+    ? `Use \`${replacement}\` at the same step, or a semantic class`
+    : "No mapping is decided for it yet; use the nearest palette family or a semantic class";
+  return {
+    pattern: `(?:^|:)!?(?:${COLOUR_UTILITIES})-${family}-(?:50|[1-9]00|950)(?:/\\S+)?!?$`,
+    message: `\`${family}\` is Tailwind's default palette, not a design-system colour. ${instead}. See autogpt_platform/frontend/DESIGN.md.`,
+  };
+}
+
 export function tailwindBlocks({ allowlist = true } = {}) {
   return [
     {
@@ -220,6 +268,13 @@ export function tailwindBlocks({ allowlist = true } = {}) {
         // Tailwind 4 only: on 3.4 the plugin cannot detect conflicts and the
         // rule reports nothing. It starts working with the Tailwind 4 upgrade.
         "better-tailwindcss/no-conflicting-classes": "error",
+        "better-tailwindcss/no-restricted-classes": [
+          "error",
+          {
+            restrict:
+              Object.entries(RESTRICTED_PALETTE).map(paletteRestriction),
+          },
+        ],
       },
     },
     ...Object.entries(allowlist ? ALLOWLIST.tailwind : {})

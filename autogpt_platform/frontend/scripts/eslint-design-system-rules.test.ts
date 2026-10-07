@@ -1,6 +1,10 @@
 import { ESLint } from "eslint";
 import { beforeAll, describe, expect, it } from "vitest";
-import { ALLOWLIST, restrictionFor } from "../eslint.design-system.mjs";
+import {
+  ALLOWLIST,
+  RESTRICTED_PALETTE,
+  restrictionFor,
+} from "../eslint.design-system.mjs";
 
 // Lints fixtures against the real eslint.config.mjs, so these assertions
 // cover both the rule options and how the blocks are wired together.
@@ -16,6 +20,7 @@ beforeAll(async () => {
 
 const IMPORT_RULE = "@typescript-eslint/no-restricted-imports";
 const UNKNOWN_CLASS_RULE = "better-tailwindcss/no-unknown-classes";
+const RESTRICTED_CLASS_RULE = "better-tailwindcss/no-restricted-classes";
 
 async function lint(source: string, filePath: string) {
   const [result] = await eslint.lintText(source, { filePath });
@@ -34,6 +39,17 @@ async function unknownClasses(source: string) {
   return messages
     .filter((m) => m.ruleId === UNKNOWN_CLASS_RULE)
     .map((m) => m.message.replace("Unknown class detected: ", ""));
+}
+
+async function restrictedClasses(
+  classes: string,
+  filePath = "src/app/palette-fixture.tsx",
+) {
+  const messages = await lint(
+    `export const A = <div className="${classes}" />;`,
+    filePath,
+  );
+  return messages.filter((m) => m.ruleId === RESTRICTED_CLASS_RULE);
 }
 
 describe("design-system import boundaries", () => {
@@ -141,5 +157,54 @@ describe("Tailwind class checks", () => {
     expect(config.rules?.["better-tailwindcss/no-conflicting-classes"]).toEqual(
       [2],
     );
+  });
+});
+
+describe("default-palette ban", () => {
+  it.each(Object.keys(RESTRICTED_PALETTE))(
+    "reports %s in colour utilities",
+    async (family) => {
+      const messages = await restrictedClasses(
+        `bg-${family}-50 text-${family}-950 border-x-${family}-200`,
+      );
+      expect(messages).toHaveLength(3);
+      expect(messages[0].message).toContain(`\`${family}\``);
+      expect(messages[0].message).toContain("DESIGN.md");
+    },
+  );
+
+  it.each([
+    "hover:bg-gray-100",
+    "[&_svg]:!text-neutral-500",
+    "data-[state=open]:ring-stone-400/50",
+    "md:group-hover:from-indigo-500",
+    "divide-amber-200",
+    "fill-emerald-600",
+    "placeholder:text-rose-400",
+    "ring-offset-violet-300",
+    "shadow-lime-500/20",
+    "decoration-fuchsia-700",
+  ])("reports %s", async (className) => {
+    expect(await restrictedClasses(className)).toHaveLength(1);
+  });
+
+  it("names the palette family to use instead", async () => {
+    const [gray, amber] = await restrictedClasses("text-gray-500 bg-amber-50");
+    expect(gray.message).toContain("Use `zinc`");
+    expect(amber.message).toContain("Use `yellow`");
+  });
+
+  it("allows the palette, semantic classes and the undecided blues", async () => {
+    expect(
+      await restrictedClasses(
+        "bg-zinc-100 text-purple-500 border-red-200 bg-background text-muted-foreground text-blue-500 bg-sky-50 border-teal-200 text-cyan-700 grayscale bg-gray",
+      ),
+    ).toEqual([]);
+  });
+
+  it("exempts the files in the no-restricted-classes allowlist", async () => {
+    const [file] = ALLOWLIST.tailwind["no-restricted-classes"];
+    expect(file).toBeDefined();
+    expect(await restrictedClasses("bg-gray-100", file)).toEqual([]);
   });
 });
