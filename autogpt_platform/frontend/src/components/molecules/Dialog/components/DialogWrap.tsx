@@ -165,7 +165,7 @@ export function DialogWrap({
               onClick={handleClose}
               aria-label="Close"
               className={cn(
-                "absolute top-4 right-4 z-50 bg-white",
+                "absolute top-4 right-4 z-50 bg-popover",
                 isCompact ? compactStyles.close : "size-10",
               )}
               withTooltip={false}

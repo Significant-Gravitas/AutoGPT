@@ -107,7 +107,7 @@ export function DrawerWrap({
               closeBtn
             ) : (
               <div
-                className={`${modalStyles.iconWrap} transition-colors duration-200 hover:bg-zinc-200`}
+                className={`${modalStyles.iconWrap} transition-colors duration-200 hover:bg-muted`}
               >
                 {closeBtn}
               </div>

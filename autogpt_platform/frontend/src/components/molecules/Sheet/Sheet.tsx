@@ -119,7 +119,6 @@ export const Sheet = forwardRef<HTMLDivElement, Props>(function Sheet(
                   size="icon-sm"
                   aria-label="Close"
                   withTooltip={false}
-                  className="focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2"
                 >
                   <Icon icon={Cancel01Icon} size={16} aria-hidden />
                 </Button>
@@ -136,7 +135,7 @@ export const Sheet = forwardRef<HTMLDivElement, Props>(function Sheet(
             {children}
           </div>
           {footer ? (
-            <div className="flex shrink-0 justify-end gap-2 border-t border-zinc-200 px-6 py-4">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-border px-6 py-4">
               {footer}
             </div>
           ) : null}
