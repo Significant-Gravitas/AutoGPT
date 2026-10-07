@@ -8,7 +8,9 @@ import { useRef } from "react";
 import { PanelHeader } from "./components/PanelHeader";
 import { useBuilderChatPanel } from "./useBuilderChatPanel";
 import { BubbleChatIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   className?: string;
@@ -71,19 +73,21 @@ export function BuilderChatPanel({ className }: Props) {
             <div className="flex h-0 min-h-0 flex-1 flex-col">
               {activeError && activeRetry ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-slate-600">
-                  <p className="font-medium text-slate-800">
+                  <Text variant="body-medium" className="text-slate-800">
                     {activeErrorTitle}
-                  </p>
-                  <p className="text-slate-500">
+                  </Text>
+                  <Text variant="body" className="text-slate-500">
                     Something went wrong. Retry to try again.
-                  </p>
-                  <button
+                  </Text>
+                  <Button
                     type="button"
+                    variant="secondary"
+                    size="small"
                     onClick={activeRetry}
-                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+                    className="h-auto min-w-0 rounded-md border-slate-300 px-3 py-1.5 text-slate-700 hover:border-slate-300 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-purple-400"
                   >
                     Retry
-                  </button>
+                  </Button>
                 </div>
               ) : isBootstrapping ? (
                 <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-slate-500">
@@ -124,17 +128,18 @@ export function BuilderChatPanel({ className }: Props) {
         </CopilotChatActionsProvider>
       )}
 
-      <button
+      <Button
         type="button"
+        variant="ghost"
         onClick={handleToggle}
         aria-expanded={isOpen}
         aria-label={isOpen ? "Close chat" : "Chat with builder"}
         className={cn(
-          "pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-colors",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2",
+          "pointer-events-auto flex h-12 w-12 min-w-0 items-center justify-center rounded-full p-0 shadow-lg transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2",
           isOpen
-            ? "bg-slate-800 text-white hover:bg-slate-700"
-            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+            ? "border-transparent bg-slate-800 text-white hover:border-transparent hover:bg-slate-700"
+            : "border border-slate-200 bg-white text-slate-700 hover:border-slate-200 hover:bg-slate-50",
         )}
       >
         {isOpen ? (
@@ -142,7 +147,7 @@ export function BuilderChatPanel({ className }: Props) {
         ) : (
           <Icon icon={BubbleChatIcon} size={22} />
         )}
-      </button>
+      </Button>
     </div>
   );
 }

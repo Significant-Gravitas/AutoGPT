@@ -113,7 +113,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
               <SheetTitle className="text-xl">Run Outputs</SheetTitle>
               <SheetDescription className="mt-1 text-sm text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="rounded-md bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
+                  <span className="rounded-md bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800">
                     Beta
                   </span>
                   <span>This feature is in beta and may contain bugs</span>
@@ -134,7 +134,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                         {group.metadata.name || "Unnamed Output"}
                       </Label>
                       {group.metadata.description && (
-                        <Label className="mt-1 block text-sm text-gray-600">
+                        <Label className="mt-1 block text-sm text-zinc-600">
                           {group.metadata.description}
                         </Label>
                       )}
@@ -151,7 +151,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                   </div>
                 ))
               ) : (
-                <div className="flex h-full items-center justify-center text-gray-500">
+                <div className="flex h-full items-center justify-center text-zinc-500">
                   <p>No output blocks available.</p>
                 </div>
               )}

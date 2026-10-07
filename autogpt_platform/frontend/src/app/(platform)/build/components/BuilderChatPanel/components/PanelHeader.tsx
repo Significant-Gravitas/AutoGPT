@@ -22,7 +22,7 @@ export function PanelHeader({
   return (
     <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
       <div className="flex items-center gap-2">
-        <Icon icon={BubbleChatIcon} size={18} className="text-violet-600" />
+        <Icon icon={BubbleChatIcon} size={18} className="text-purple-600" />
         <span className="text-sm font-semibold text-slate-800">
           Chat with Builder
         </span>

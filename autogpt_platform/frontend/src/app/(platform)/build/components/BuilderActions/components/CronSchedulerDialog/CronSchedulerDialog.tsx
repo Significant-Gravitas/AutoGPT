@@ -3,7 +3,8 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { InfoIcon } from "lucide-react";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { useCronSchedulerDialog } from "./useCronSchedulerDialog";
 
 type CronSchedulerDialogProps = {
@@ -67,9 +68,12 @@ export function CronSchedulerDialog({
 
           {/* Timezone info */}
           {userTimezone === "not-set" ? (
-            <div className="flex items-center gap-2 rounded-xlarge border border-amber-200 bg-amber-50 p-3">
-              <InfoIcon className="h-4 w-4 text-amber-600" />
-              <Text variant="body" className="text-amber-800">
+            <div className="flex items-center gap-2 rounded-xlarge border border-yellow-200 bg-yellow-50 p-3">
+              <Icon
+                icon={InformationCircleIcon}
+                className="h-4 w-4 text-yellow-600"
+              />
+              <Text variant="body" className="text-yellow-800">
                 No timezone set. Schedule will run in UTC.
                 <a href="/settings/account" className="ml-1 underline">
                   Set your timezone
@@ -78,7 +82,10 @@ export function CronSchedulerDialog({
             </div>
           ) : (
             <div className="flex items-center gap-2 rounded-xlarge bg-muted/50 p-3">
-              <InfoIcon className="h-4 w-4 text-muted-foreground" />
+              <Icon
+                icon={InformationCircleIcon}
+                className="h-4 w-4 text-muted-foreground"
+              />
               <Text variant="body">
                 Schedule will run in your timezone:{" "}
                 <Text variant="body-medium" as="span">

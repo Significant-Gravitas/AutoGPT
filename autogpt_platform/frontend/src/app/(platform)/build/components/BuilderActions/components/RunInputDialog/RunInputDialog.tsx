@@ -78,7 +78,7 @@ export const RunInputDialog = ({
               {hasCredentials() && credentialFields.length > 0 && (
                 <div data-id="run-input-credentials-section">
                   <div className="mb-4">
-                    <Text variant="h4" className="text-gray-900">
+                    <Text variant="h4" tone="primary">
                       Credentials
                     </Text>
                   </div>
@@ -98,7 +98,7 @@ export const RunInputDialog = ({
               {hasInputs() && (
                 <div data-id="run-input-inputs-section">
                   <div className="mb-4">
-                    <Text variant="h4" className="text-gray-900">
+                    <Text variant="h4" tone="primary">
                       Inputs
                     </Text>
                   </div>

@@ -98,24 +98,18 @@ export function DraftRecoveryPopup({
         >
           <div
             className={cn(
-              "flex items-center gap-3 rounded-xlarge border border-amber-200 bg-amber-50 px-4 py-3 shadow-lg",
+              "flex items-center gap-3 rounded-xlarge border border-yellow-200 bg-yellow-50 px-4 py-3 shadow-lg",
             )}
           >
-            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+            <div className="flex items-center gap-2 text-yellow-700">
               <Icon icon={HistoryIcon} className="h-5 w-5" />
             </div>
 
             <div className="flex flex-col">
-              <Text
-                variant="small-medium"
-                className="text-amber-900 dark:text-amber-100"
-              >
+              <Text variant="small-medium" className="text-yellow-900">
                 Unsaved changes found
               </Text>
-              <Text
-                variant="small"
-                className="text-amber-700 dark:text-amber-400"
-              >
+              <Text variant="small" className="text-yellow-700">
                 {diffSummary ||
                   `${nodeCount} block${nodeCount !== 1 ? "s" : ""}, ${edgeCount} connection${edgeCount !== 1 ? "s" : ""}`}{" "}
                 • {formatTimeAgo(new Date(savedAt).toISOString())}
