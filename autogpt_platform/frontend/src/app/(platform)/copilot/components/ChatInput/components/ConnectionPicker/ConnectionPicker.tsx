@@ -8,8 +8,9 @@ import {
 import {
   Tooltip,
   TooltipContent,
+  TooltipPortal,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import {
   AlertCircleIcon,
@@ -22,6 +23,7 @@ import Link from "next/link";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { cn } from "@/lib/utils";
 
@@ -216,7 +218,11 @@ export function ConnectionPicker({
       {showsTier ? (
         <Tooltip>
           <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-          <TooltipContent side="top">{tierLabel(active, tier)}</TooltipContent>
+          <TooltipPortal>
+            <TooltipContent side="top">
+              {tierLabel(active, tier)}
+            </TooltipContent>
+          </TooltipPortal>
         </Tooltip>
       ) : (
         trigger
@@ -225,7 +231,7 @@ export function ConnectionPicker({
       <PopoverContent
         align="end"
         className={cn(
-          "max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-zinc-200 bg-[#F9F9FA] p-3 pt-4 text-zinc-900 shadow-lg",
+          "max-h-[var(--radix-popover-content-available-height)] w-96 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-zinc-200 bg-zinc-50 p-3 pt-4 text-zinc-900 shadow-lg",
           showMaxUpgrade && "bg-white",
         )}
       >
@@ -301,7 +307,7 @@ export function ConnectionPicker({
             <SectionLabel>Model tier</SectionLabel>
             <div
               className={cn(
-                "overflow-hidden rounded-xl border border-neutral-200 bg-white",
+                "overflow-hidden rounded-xl border border-zinc-200 bg-white",
                 showMaxUpgrade && "border-0",
               )}
             >
@@ -363,8 +369,14 @@ function OfferMark({ offer }: { offer: AIConnectionOffer }) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-3 pb-1.5 pt-3 text-[11px] font-medium uppercase tracking-[0.06em] text-zinc-500 first:pt-0">
+    <Text
+      variant="small-medium"
+      as="p"
+      tone="muted"
+      unmask={false}
+      className="px-3 pb-1.5 pt-3 text-[11px] uppercase tracking-[0.06em] first:pt-0"
+    >
       {children}
-    </p>
+    </Text>
   );
 }

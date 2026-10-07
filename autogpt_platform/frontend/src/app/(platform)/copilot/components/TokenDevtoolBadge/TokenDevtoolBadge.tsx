@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Popover,
   PopoverContent,
@@ -89,20 +90,31 @@ export function TokenDevtoolBadge({ sessionId, className }: Props) {
           </span>
         </div>
         <ContextBar context={context ?? 0} />
-        <p className="pt-1 font-mono text-[10px] text-zinc-400">
+        <Text
+          variant="small"
+          as="p"
+          tone="muted"
+          unmask={false}
+          className="pt-1 font-mono text-[10px]"
+        >
           assumes a {formatTokenCount(MODEL_CONTEXT_WINDOW)} window; the backend
           threshold is configurable
-        </p>
-        <p className="pb-2.5 pt-0.5 text-right font-mono text-xs text-amber-500">
+        </Text>
+        <Text
+          variant="small"
+          as="p"
+          unmask={false}
+          className="pb-2.5 pt-0.5 text-right font-mono text-yellow-500"
+        >
           summarizes ~{formatTokenCount(AUTOCOMPACT_TOKENS)}
-        </p>
+        </Text>
 
         {showBreakdown && <BreakdownSection breakdown={breakdown} />}
 
         {!turns?.length ? (
-          <p className="text-sm text-zinc-500">
+          <Text variant="body" as="p" tone="muted">
             Live per-turn data starts with your next message.
-          </p>
+          </Text>
         ) : (
           <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
             {turns.map((turn, i) => (

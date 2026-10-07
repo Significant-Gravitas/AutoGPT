@@ -149,7 +149,7 @@ export function ClarificationQuestionsCard({
                   I need more information
                 </Text>
               </div>
-              <Text variant="body" className="text-slate-600">
+              <Text variant="body" className="text-slate-600" unmask={false}>
                 {message}
               </Text>
             </div>
@@ -184,6 +184,7 @@ export function ClarificationQuestionsCard({
                         <Text
                           variant="h5"
                           className="mb-2 font-semibold text-slate-900"
+                          unmask={false}
                         >
                           {q.question}
                         </Text>
@@ -191,6 +192,7 @@ export function ClarificationQuestionsCard({
                           <Text
                             variant="body"
                             className="mb-2 italic text-slate-500"
+                            unmask={false}
                           >
                             Example: {q.example}
                           </Text>

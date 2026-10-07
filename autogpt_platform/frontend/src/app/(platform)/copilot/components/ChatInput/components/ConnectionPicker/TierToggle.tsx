@@ -79,7 +79,7 @@ export function TierToggle({
       aria-label="Model tier"
       onKeyDown={handleKeyDown}
       className={cn(
-        "divide-y divide-neutral-200",
+        "divide-y divide-zinc-200",
         advancedUpgrade && "divide-y-0",
       )}
     >
@@ -102,7 +102,7 @@ export function TierToggle({
             onClick={() => onSelect(segment.tier)}
             className={cn(
               "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-              "focus-visible:bg-neutral-50 focus-visible:outline-none",
+              "focus-visible:bg-zinc-50 focus-visible:outline-none",
             )}
           >
             <Icon

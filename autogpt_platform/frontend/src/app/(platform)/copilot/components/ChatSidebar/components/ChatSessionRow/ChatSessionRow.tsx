@@ -77,8 +77,8 @@ export function ChatSessionRow({
         isActive
           ? "rounded-lg bg-zinc-100"
           : cn(
-              "border-b border-b-[#8080800f] last:border-b-0 hover:bg-zinc-50",
-              isNextActive && "!border-b-0",
+              "border-b border-b-zinc-200/10 last:border-b-0 hover:bg-zinc-50",
+              isNextActive && "border-b-0",
             ),
       )}
     >
@@ -155,7 +155,7 @@ export function ChatSessionRow({
           <DropdownMenuTrigger asChild>
             <button
               onClick={(e) => e.stopPropagation()}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-neutral-100"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-zinc-100"
               aria-label="More actions"
             >
               <Icon icon={MoreHorizontalIcon} className="h-4 w-4" />

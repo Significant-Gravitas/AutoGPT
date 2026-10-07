@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import type { CredentialRejection } from "@/app/api/__generated__/models/credentialRejection";
 
 interface Props {
@@ -14,7 +15,14 @@ export function CredentialRejectionNotice({ rejection }: Props) {
         ? `"${rejection.credential_title}" was refused`
         : "The saved credential was refused"}
       {rejection.status_code ? ` — HTTP ${rejection.status_code}` : ""}
-      <p className="mt-1 break-words opacity-80">{rejection.detail}</p>
+      <Text
+        variant="small"
+        as="p"
+        unmask={false}
+        className="mt-1 break-words text-inherit opacity-80"
+      >
+        {rejection.detail}
+      </Text>
     </div>
   );
 }

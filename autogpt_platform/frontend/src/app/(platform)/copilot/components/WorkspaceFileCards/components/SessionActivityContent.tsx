@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { formatWhen } from "../../ToolChain/resultHelpers";
 import type { SessionRun, SessionSchedule } from "../helpers";
@@ -28,7 +29,7 @@ const RUN_STATUS: Record<
   },
   FAILED: { icon: CancelCircleIcon, className: "text-red-500", spin: false },
   RUNNING: { icon: Loading03Icon, className: "text-purple-600", spin: true },
-  QUEUED: { icon: ClockIcon, className: "text-amber-600", spin: false },
+  QUEUED: { icon: ClockIcon, className: "text-yellow-600", spin: false },
 };
 
 const FALLBACK_STATUS = {
@@ -93,8 +94,26 @@ function RunRow({ run }: { run: SessionRun }) {
         )}
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-zinc-800">{name}</p>
-        {meta && <p className="truncate text-xs text-zinc-400">{meta}</p>}
+        <Text
+          variant="body"
+          as="p"
+          tone="primary"
+          unmask={false}
+          className="truncate"
+        >
+          {name}
+        </Text>
+        {meta && (
+          <Text
+            variant="small"
+            as="p"
+            tone="muted"
+            unmask={false}
+            className="truncate"
+          >
+            {meta}
+          </Text>
+        )}
       </div>
     </>
   );
@@ -130,14 +149,34 @@ function ScheduleRow({ schedule }: { schedule: SessionSchedule }) {
         className="mt-0.5 shrink-0 text-zinc-700"
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-zinc-800">{schedule.name}</p>
+        <Text
+          variant="body"
+          as="p"
+          tone="primary"
+          unmask={false}
+          className="truncate"
+        >
+          {schedule.name}
+        </Text>
         {schedule.detail && (
-          <p className="line-clamp-2 text-xs text-zinc-500">
+          <Text
+            variant="small"
+            as="p"
+            tone="muted"
+            unmask={false}
+            className="line-clamp-2"
+          >
             {schedule.detail}
-          </p>
+          </Text>
         )}
         {(when || schedule.cron) && (
-          <p className="flex min-w-0 items-center gap-1.5 text-xs text-zinc-400">
+          <Text
+            variant="small"
+            as="p"
+            tone="muted"
+            unmask={false}
+            className="flex min-w-0 items-center gap-1.5"
+          >
             {when && <span className="truncate">{when}</span>}
             {when && schedule.cron && <span aria-hidden>·</span>}
             {schedule.cron && (
@@ -146,7 +185,7 @@ function ScheduleRow({ schedule }: { schedule: SessionSchedule }) {
             {schedule.timezone && (
               <span className="shrink-0">{schedule.timezone}</span>
             )}
-          </p>
+          </Text>
         )}
       </div>
     </div>

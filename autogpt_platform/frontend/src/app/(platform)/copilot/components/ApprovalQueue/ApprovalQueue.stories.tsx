@@ -50,7 +50,7 @@ const meta: Meta<typeof ApprovalQueue> = {
   decorators: [
     (Story) => (
       <TooltipProvider>
-        <div className="mx-auto w-full max-w-[42rem]">
+        <div className="mx-auto w-full max-w-2xl">
           <Story />
         </div>
       </TooltipProvider>

@@ -17,7 +17,7 @@ export function StatusIcon({ status }: Props) {
       <Icon
         icon={Tick02Icon}
         size={14}
-        className="text-emerald-500"
+        className="text-green-500"
         aria-label="completed"
       />
     );
@@ -36,7 +36,7 @@ export function StatusIcon({ status }: Props) {
       <Icon
         icon={PauseCircleIcon}
         size={15}
-        className="text-amber-500"
+        className="text-yellow-500"
         aria-label="stopped"
       />
     );

@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { RunStatusBadge } from "@/components/molecules/RunStatusBadge/RunStatusBadge";
 import { buildRunLink } from "@/components/organisms/WorkOutputSheet/helpers";
 import { WorkOutputSheet } from "@/components/organisms/WorkOutputSheet/WorkOutputSheet";
@@ -23,9 +24,15 @@ export function WorkCard({ metadata, preview }: Props) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-zinc-900">
+          <Text
+            variant="body-medium"
+            as="p"
+            tone="primary"
+            unmask={false}
+            className="truncate"
+          >
             {metadata.graphName}
-          </p>
+          </Text>
           <div className="mt-1">
             <RunStatusBadge status={metadata.status} />
           </div>
@@ -39,7 +46,15 @@ export function WorkCard({ metadata, preview }: Props) {
         </Button>
       </div>
       {preview ? (
-        <p className="mt-2 line-clamp-2 text-sm text-zinc-500">{preview}</p>
+        <Text
+          variant="body"
+          as="p"
+          tone="muted"
+          unmask={false}
+          className="mt-2 line-clamp-2"
+        >
+          {preview}
+        </Text>
       ) : null}
 
       <WorkOutputSheet

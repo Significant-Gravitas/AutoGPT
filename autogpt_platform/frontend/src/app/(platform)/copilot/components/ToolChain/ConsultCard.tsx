@@ -37,7 +37,7 @@ const VERDICTS: Record<string, VerdictStyle> = {
   insufficient: {
     label: "Not checked",
     icon: HelpCircleIcon,
-    chip: "bg-amber-50 text-amber-700",
+    chip: "bg-yellow-50 text-yellow-700",
   },
 };
 

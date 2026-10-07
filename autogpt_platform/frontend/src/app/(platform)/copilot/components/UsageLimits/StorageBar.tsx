@@ -17,14 +17,14 @@ export function StorageBar() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <Text variant="body-medium" className="text-neutral-700">
+        <Text variant="body-medium" className="text-zinc-700">
           File storage
         </Text>
-        <Text variant="body" className="tabular-nums text-neutral-500">
+        <Text variant="body" className="tabular-nums text-zinc-500">
           {percentLabel}
         </Text>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200">
         <div
           role="progressbar"
           aria-label="File storage usage"
@@ -37,7 +37,7 @@ export function StorageBar() {
           style={{ width: `${Math.max(used_bytes > 0 ? 1 : 0, percent)}%` }}
         />
       </div>
-      <Text variant="small" className="text-neutral-400">
+      <Text variant="small" className="text-zinc-400">
         {formatBytes(used_bytes)} of {formatBytes(limit_bytes)} &middot;{" "}
         {file_count} {file_count === 1 ? "file" : "files"}
       </Text>

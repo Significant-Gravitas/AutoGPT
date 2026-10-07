@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { HorizontalScroll } from "@/app/(platform)/build/components/NewControlPanel/NewBlockMenu/HorizontalScroll";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import {
@@ -42,7 +43,15 @@ function CapabilityCard({ item }: { item: CapabilityListing }) {
       <ContentCardDescription className="mt-1 line-clamp-2">
         {item.purpose}
       </ContentCardDescription>
-      <p className="mt-1 text-[11px] text-zinc-500">{kindLabel(item)}</p>
+      <Text
+        variant="small"
+        as="p"
+        tone="muted"
+        unmask={false}
+        className="mt-1 text-[11px]"
+      >
+        {kindLabel(item)}
+      </Text>
     </ContentCard>
   );
 }

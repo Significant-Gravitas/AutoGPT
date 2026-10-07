@@ -150,8 +150,8 @@ export const HTMLArtifact: Story = {
 <html>
 <head><title>Artifact Preview</title></head>
 <body class="p-8 font-sans">
-  <h1 class="text-2xl font-bold text-indigo-600 mb-4">HTML Artifact</h1>
-  <p class="text-gray-700">This is an HTML artifact rendered in a sandboxed iframe with Tailwind CSS injected.</p>
+  <h1 class="text-2xl font-bold text-purple-600 mb-4">HTML Artifact</h1>
+  <p class="text-zinc-700">This is an HTML artifact rendered in a sandboxed iframe with Tailwind CSS injected.</p>
   <div class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
     <p class="text-blue-800">Interactive content works via allow-scripts sandbox.</p>
   </div>

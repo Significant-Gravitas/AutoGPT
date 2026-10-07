@@ -64,7 +64,7 @@ function ToolStatusIcon({
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
-  return <Icon icon={Folder01Icon} size={14} className="text-neutral-400" />;
+  return <Icon icon={Folder01Icon} size={14} className="text-zinc-400" />;
 }
 
 /* ------------------------------------------------------------------ */
@@ -82,7 +82,7 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
               style={{ backgroundColor: folder.color }}
             />
           ) : (
-            <Icon icon={Folder01Icon} size={14} className="text-neutral-600" />
+            <Icon icon={Folder01Icon} size={14} className="text-zinc-600" />
           )}
           <ContentCardTitle>{folder.name}</ContentCardTitle>
         </div>
@@ -93,13 +93,13 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
           ` · ${folder.subfolder_count} subfolder${folder.subfolder_count !== 1 ? "s" : ""}`}
       </ContentHint>
       {folder.agents && folder.agents.length > 0 && (
-        <div className="mt-2 space-y-1 border-t border-neutral-200 pt-2">
+        <div className="mt-2 space-y-1 border-t border-zinc-200 pt-2">
           {folder.agents.map((a) => (
             <div key={a.id} className="flex items-center gap-1.5">
               <Icon
                 icon={FileEmpty02Icon}
                 size={12}
-                className="text-neutral-600"
+                className="text-zinc-600"
               />
               <span className="text-xs text-zinc-600">{a.name}</span>
             </div>
@@ -147,10 +147,10 @@ function FolderTreeView({ tree }: { tree: FolderTreeInfo[] }) {
       initialExpandedItems={allIDs}
       elements={elements}
       openIcon={
-        <Icon icon={FolderOpenIcon} size={16} className="text-neutral-600" />
+        <Icon icon={FolderOpenIcon} size={16} className="text-zinc-600" />
       }
       closeIcon={
-        <Icon icon={Folder01Icon} size={16} className="text-neutral-600" />
+        <Icon icon={Folder01Icon} size={16} className="text-zinc-600" />
       }
       className="max-h-64"
     >
@@ -167,7 +167,7 @@ function FolderTreeNodes({ element }: { element: TreeNode }) {
       <TreeFile
         value={element.id}
         fileIcon={
-          <Icon icon={FileEmpty02Icon} size={14} className="text-neutral-600" />
+          <Icon icon={FileEmpty02Icon} size={14} className="text-zinc-600" />
         }
       >
         <span className="text-sm text-zinc-700">{element.name}</span>

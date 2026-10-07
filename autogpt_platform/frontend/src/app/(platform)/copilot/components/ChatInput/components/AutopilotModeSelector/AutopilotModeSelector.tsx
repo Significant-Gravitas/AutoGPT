@@ -47,7 +47,7 @@ export function AutopilotModeSelector({ sessionId, persistedMode }: Props) {
               mode === "ask_first" &&
                 "bg-zinc-100 text-zinc-700 hover:bg-zinc-200",
               mode === "unsupervised" &&
-                "bg-amber-50 text-amber-700 hover:bg-amber-100",
+                "bg-yellow-50 text-yellow-700 hover:bg-yellow-100",
             )}
           >
             <Icon icon={current.icon} size={16} aria-hidden="true" />

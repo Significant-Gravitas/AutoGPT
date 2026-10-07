@@ -94,7 +94,15 @@ export function WorkspaceFileList({
   if (files.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-8">
-        <p className="text-center text-sm text-zinc-500">{emptyMessage}</p>
+        <Text
+          variant="body"
+          as="p"
+          tone="muted"
+          unmask={false}
+          className="text-center"
+        >
+          {emptyMessage}
+        </Text>
         {emptyAction}
       </div>
     );
@@ -113,7 +121,7 @@ export function WorkspaceFileList({
       <div
         ref={scrollRef}
         onScroll={updateEdges}
-        className="max-h-[24rem] overflow-y-auto py-1"
+        className="max-h-96 overflow-y-auto py-1"
       >
         <div className="grid grid-cols-2 gap-2">
           {files.map((file, index) => {
@@ -134,7 +142,7 @@ export function WorkspaceFileList({
                 className={cn(
                   "flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left transition-colors",
                   isSelected
-                    ? "border-violet-300 ring-1 ring-violet-200"
+                    ? "border-purple-300 ring-1 ring-purple-200"
                     : "border-zinc-200 hover:border-zinc-300",
                 )}
               >
@@ -148,10 +156,15 @@ export function WorkspaceFileList({
                     variant="body-medium"
                     className="truncate text-zinc-900"
                     title={file.name}
+                    unmask={false}
                   >
                     {file.name}
                   </Text>
-                  <Text variant="small" className="truncate text-zinc-500">
+                  <Text
+                    variant="small"
+                    className="truncate text-zinc-500"
+                    unmask={false}
+                  >
                     {getFileTypeLabel(file.mime_type)} ·{" "}
                     {formatFileSize(file.size_bytes)} ·{" "}
                     {formatRelativeDate(file.created_at)}
@@ -160,7 +173,7 @@ export function WorkspaceFileList({
                 {isSelected && (
                   <Icon
                     icon={CheckmarkCircle02Icon}
-                    className="h-5 w-5 shrink-0 text-violet-600"
+                    className="h-5 w-5 shrink-0 text-purple-600"
                   />
                 )}
               </button>

@@ -2,6 +2,7 @@
 
 import { useGetV1ListAvailableBlocks } from "@/app/api/__generated__/endpoints/blocks/blocks";
 import type { ToolUIPart } from "ai";
+import { Text } from "@/components/atoms/Text/Text";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import { BlockDetailsCard } from "./components/BlockDetailsCard/BlockDetailsCard";
@@ -98,10 +99,10 @@ export function RunBlockTool({ part }: Props) {
       </div>
 
       {isCorrupted && (
-        <p className="mt-1 text-sm text-red-500">
+        <Text variant="body" as="p" tone="danger" className="mt-1">
           The result data arrived corrupted, so any sign-in or setup card it
           contained can&apos;t be shown. Ask your expert to retry this step.
-        </p>
+        </Text>
       )}
 
       {setupRequirementsOutput && (

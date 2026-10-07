@@ -33,7 +33,7 @@ export function ToolErrorCard({
           className="mt-0.5 shrink-0 text-red-500"
         />
         <div className="flex-1 space-y-2">
-          <Text variant="body-medium" className="text-red-900">
+          <Text variant="body-medium" unmask={false} className="text-red-900">
             {message || fallbackMessage}
           </Text>
           {(error || details) && (

@@ -27,13 +27,13 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
     >
       <Dialog.Content>
         <div className="space-y-4">
-          <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3">
-            <Text variant="small" className="text-amber-900">
+          <div className="space-y-2 rounded-md border border-yellow-200 bg-yellow-50 p-3">
+            <Text variant="small" className="text-yellow-900">
               Anyone with the link will see this conversation. Don&apos;t share
               if it contains secrets you pasted, personal details, or
               credentials you wouldn&apos;t want public.
             </Text>
-            <Text variant="small" className="text-amber-900">
+            <Text variant="small" className="text-yellow-900">
               Sharing is <strong>live</strong>: new messages, agent runs, and
               files added after you enable sharing become visible too. Stop
               sharing to revoke access.
@@ -47,7 +47,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
             // enable (so they can audit what the public viewer sees
             // right now).
             <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
-              <Text variant="small" className="font-medium text-zinc-900">
+              <Text variant="small-medium" as="p" tone="primary">
                 {state.isShared ? "Currently sharing" : "About to share"}
               </Text>
               <ul className="mt-1 list-disc pl-5 text-xs text-zinc-700">
@@ -75,10 +75,10 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
               state always matches what the viewer sees. */}
           <div className="flex items-center justify-between gap-3 rounded border border-zinc-200 px-3 py-2.5">
             <div className="min-w-0">
-              <Text variant="body" className="font-medium">
+              <Text variant="body-medium" as="p">
                 Share agent runs in this chat
               </Text>
-              <Text variant="small" className="text-zinc-500">
+              <Text variant="small" as="p" tone="muted">
                 Includes every run from this conversation, including ones that
                 happen after you share.
               </Text>
@@ -93,7 +93,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
 
           {state.isShared && state.shareUrl && (
             <div className="space-y-2">
-              <Text variant="small" className="font-medium">
+              <Text variant="small-medium" as="p">
                 Share link
               </Text>
               <div className="flex items-center gap-2">

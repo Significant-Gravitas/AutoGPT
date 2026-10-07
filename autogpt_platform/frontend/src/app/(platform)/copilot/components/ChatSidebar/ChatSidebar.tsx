@@ -8,7 +8,6 @@ import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sess
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
-import { Button as ShadcnButton } from "@/components/ui/button";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import {
   Sidebar,
@@ -315,7 +314,7 @@ export function ChatSidebar() {
       <Sidebar
         variant="inset"
         collapsible="icon"
-        className="!top-[calc(50px+var(--preview-banner-height,0px))] !h-[calc(100vh-50px-var(--preview-banner-height,0px))] px-0 [&_[data-sidebar=sidebar]]:border-r [&_[data-sidebar=sidebar]]:border-r-[#80808017]"
+        className="!top-[calc(50px+var(--preview-banner-height,0px))] !h-[calc(100vh-50px-var(--preview-banner-height,0px))] px-0 [&_[data-sidebar=sidebar]]:border-r [&_[data-sidebar=sidebar]]:border-r-zinc-200/10"
       >
         {isCollapsed && (
           <SidebarHeader
@@ -339,23 +338,24 @@ export function ChatSidebar() {
                   <Button
                     variant="ghost"
                     onClick={handleNewChat}
-                    style={{ minWidth: "auto", width: "auto" }}
+                    className="w-auto min-w-0"
                   >
-                    <Icon icon={PlusSignCircleIcon} className="!size-5" />
+                    <Icon icon={PlusSignCircleIcon} className="size-5" />
                     <span className="sr-only">New Chat</span>
                   </Button>
                 ) : null}
                 {isChatSearchEnabled ? (
-                  <ShadcnButton
+                  <Button
                     type="button"
                     variant="ghost"
                     size="icon-sm"
                     aria-label="Search chats"
+                    withTooltip={false}
                     onClick={() => openSearch()}
-                    className="rounded-full text-zinc-600 hover:bg-zinc-100"
+                    className="rounded-full text-zinc-600 hover:border-transparent hover:bg-zinc-100"
                   >
-                    <Icon icon={Search01Icon} className="!size-5" />
-                  </ShadcnButton>
+                    <Icon icon={Search01Icon} className="size-5" />
+                  </Button>
                 ) : null}
               </div>
             </motion.div>
@@ -376,28 +376,30 @@ export function ChatSidebar() {
                 <div className="flex items-center [&_button:hover]:!bg-zinc-100 [&_button]:!h-8 [&_button]:!w-8 [&_button]:!min-w-0 [&_button]:!rounded-full [&_button]:!p-0 [&_button]:!text-zinc-600 [&_svg]:!size-[1.125rem]">
                   {isChatSearchEnabled ? (
                     <HeaderAction label="Search chats">
-                      <ShadcnButton
+                      <Button
                         type="button"
                         variant="ghost"
                         size="icon-sm"
                         aria-label="Search chats"
+                        withTooltip={false}
                         onClick={() => openSearch()}
                       >
-                        <Icon icon={Search01Icon} className="!size-5" />
-                      </ShadcnButton>
+                        <Icon icon={Search01Icon} className="size-5" />
+                      </Button>
                     </HeaderAction>
                   ) : null}
                   {isArtifactsEnabled ? (
                     <HeaderAction label="Files">
-                      <ShadcnButton
+                      <Button
                         type="button"
                         variant="ghost"
                         size="icon-sm"
                         aria-label="Files"
+                        withTooltip={false}
                         onClick={() => router.push("/artifacts")}
                       >
-                        <Icon icon={Files01Icon} className="!size-5" />
-                      </ShadcnButton>
+                        <Icon icon={Files01Icon} className="size-5" />
+                      </Button>
                     </HeaderAction>
                   ) : null}
                   <HeaderAction label="Usage limits">
@@ -436,12 +438,12 @@ export function ChatSidebar() {
             >
               {isLoadingSessions ? (
                 <div className="flex min-h-[30rem] items-center justify-center py-4">
-                  <LoadingSpinner size="small" className="text-neutral-600" />
+                  <LoadingSpinner size="small" className="text-zinc-600" />
                 </div>
               ) : !sessions?.length ? (
-                <p className="py-4 text-center text-sm text-neutral-500">
+                <Text variant="body" tone="muted" className="py-4 text-center">
                   No conversations yet
-                </p>
+                </Text>
               ) : sessionSections ? (
                 <>
                   {pinned.length > 0 && (

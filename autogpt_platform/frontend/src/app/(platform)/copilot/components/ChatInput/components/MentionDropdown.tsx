@@ -13,6 +13,7 @@ import {
   Loading03Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import type { IntegrationMention } from "../helpers";
 import type { MentionOption } from "../useChatMentions";
 
@@ -126,23 +127,39 @@ export function MentionDropdown({
         return null;
       })}
       {isError ? (
-        <p className="flex items-center gap-2 px-3 py-2 text-sm text-red-600">
+        <Text
+          variant="body"
+          as="p"
+          tone="danger"
+          className="flex items-center gap-2 px-3 py-2"
+        >
           <Icon icon={AlertCircleIcon} className="h-4 w-4 shrink-0" />
           Couldn&apos;t load files. Try again.
-        </p>
+        </Text>
       ) : isLoading ? (
-        <p className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-500">
+        <Text
+          variant="body"
+          as="p"
+          tone="muted"
+          className="flex items-center gap-2 px-3 py-2"
+        >
           <Icon
             icon={Loading03Icon}
             className="h-4 w-4 shrink-0 animate-spin"
           />
           Searching files…
-        </p>
+        </Text>
       ) : null}
       {showEmpty && (
-        <p className="px-3 py-2 text-sm text-zinc-500">
+        <Text
+          variant="body"
+          as="p"
+          tone="muted"
+          unmask={false}
+          className="px-3 py-2"
+        >
           {emptyMessage(showFiles, hasIntegrations)}
-        </p>
+        </Text>
       )}
     </div>
   );
@@ -206,12 +223,16 @@ function FileOption({ file }: { file: WorkspaceFileItem }) {
 
 function SectionHeading({ label }: { label: string }) {
   return (
-    <p
+    <Text
+      variant="small-medium"
+      as="p"
+      tone="muted"
+      unmask={false}
       role="presentation"
-      className="px-3 pb-1 pt-2 text-left text-xs font-medium uppercase tracking-wide text-zinc-400"
+      className="px-3 pb-1 pt-2 text-left uppercase tracking-wide"
     >
       {label}
-    </p>
+    </Text>
   );
 }
 

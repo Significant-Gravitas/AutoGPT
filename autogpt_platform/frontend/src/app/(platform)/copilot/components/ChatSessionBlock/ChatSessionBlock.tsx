@@ -86,10 +86,10 @@ export function ChatSessionBlock({
               icon={PinIcon}
               aria-label="Pinned"
               data-testid="session-pinned-indicator"
-              className="h-3 w-3 shrink-0 text-neutral-400"
+              className="h-3 w-3 shrink-0 text-zinc-400"
             />
           ) : null}
-          <Text variant="small" className="text-neutral-400">
+          <Text variant="small" className="text-zinc-400">
             {formatDate(updatedAt)}
           </Text>
           <ChatOriginIcon sourcePlatform={sourcePlatform} />
@@ -102,7 +102,7 @@ export function ChatSessionBlock({
           data-testid="session-status-running"
           className="inline-flex h-4 w-4 shrink-0 items-center justify-center"
         >
-          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+          <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
         </span>
       ) : null}
       {chatStatus === "queued" ? (

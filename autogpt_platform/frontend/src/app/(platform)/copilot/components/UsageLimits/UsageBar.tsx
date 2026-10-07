@@ -16,14 +16,14 @@ export function UsageBar({ label, percentUsed, resetsAt }: Props) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <Text variant="body-medium" className="text-neutral-700">
+        <Text variant="body-medium" className="text-zinc-700">
           {label}
         </Text>
-        <Text variant="body" className="tabular-nums text-neutral-500">
+        <Text variant="body" className="tabular-nums text-zinc-500">
           {percentLabel}
         </Text>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200">
         <div
           role="progressbar"
           aria-label={`${label} usage`}
@@ -36,7 +36,7 @@ export function UsageBar({ label, percentUsed, resetsAt }: Props) {
           style={{ width: `${Math.max(percent > 0 ? 1 : 0, percent)}%` }}
         />
       </div>
-      <Text variant="small" className="text-neutral-400">
+      <Text variant="small" className="text-zinc-400">
         Resets {formatResetTime(resetsAt)}
       </Text>
     </div>

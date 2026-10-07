@@ -3,7 +3,9 @@
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
 import { codeRenderer } from "@/components/contextual/OutputRenderers/renderers/CodeRenderer";
 import { Suspense, useState } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/atoms/Button/Button";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Text } from "@/components/atoms/Text/Text";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 import { ArtifactErrorBoundary } from "./ArtifactErrorBoundary";
@@ -41,15 +43,21 @@ function ArtifactContentLoader({
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm text-zinc-500">Failed to load content</p>
-        <p className="text-xs text-zinc-400">{error}</p>
-        <button
+        <Text variant="body" as="p" tone="muted">
+          Failed to load content
+        </Text>
+        <Text variant="small" as="p" tone="muted" unmask={false}>
+          {error}
+        </Text>
+        <Button
           type="button"
+          variant="secondary"
+          size="xs"
           onClick={retry}
-          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="h-auto px-3 py-1.5 leading-4 text-zinc-700"
         >
           Try again
-        </button>
+        </Button>
       </div>
     );
   }
@@ -92,18 +100,22 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm text-zinc-500">Failed to load image</p>
-        <button
+        <Text variant="body" as="p" tone="muted">
+          Failed to load image
+        </Text>
+        <Button
           type="button"
+          variant="secondary"
+          size="xs"
           onClick={() => {
             setError(false);
             setLoaded(false);
             setRetryNonce((n) => n + 1);
           }}
-          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="h-auto px-3 py-1.5 leading-4 text-zinc-700"
         >
           Try again
-        </button>
+        </Button>
       </div>
     );
   }
@@ -136,18 +148,22 @@ function ArtifactVideo({ src }: { src: string }) {
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm text-zinc-500">Failed to load video</p>
-        <button
+        <Text variant="body" as="p" tone="muted">
+          Failed to load video
+        </Text>
+        <Button
           type="button"
+          variant="secondary"
+          size="xs"
           onClick={() => {
             setError(false);
             setLoaded(false);
             setRetryNonce((n) => n + 1);
           }}
-          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="h-auto px-3 py-1.5 leading-4 text-zinc-700"
         >
           Try again
-        </button>
+        </Button>
       </div>
     );
   }

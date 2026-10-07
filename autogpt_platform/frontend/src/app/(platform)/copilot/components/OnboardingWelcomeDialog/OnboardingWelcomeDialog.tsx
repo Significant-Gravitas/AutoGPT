@@ -222,17 +222,20 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                       transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
                     >
                       {/* Stage: the card's icon floats here. */}
-                      <div className="relative h-36 bg-gradient-to-br from-violet-100 via-violet-200 to-violet-300">
+                      <div className="relative h-36 bg-gradient-to-br from-purple-100 via-purple-200 to-purple-300">
                         <GlassPixelBackdrop />
                         {cardIndex > 0 && (
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            withTooltip={false}
                             aria-label="Previous card"
                             onClick={() => setCardIndex(cardIndex - 1)}
-                            className="absolute left-3 top-3 z-10 flex size-5 items-center justify-center rounded-full text-violet-800/70 transition-colors hover:bg-white/50"
+                            className="absolute left-3 top-3 z-10 size-5 rounded-full text-purple-800/70 hover:border-transparent hover:bg-white/50"
                           >
                             <Icon icon={ArrowLeft01Icon} size={13} />
-                          </button>
+                          </Button>
                         )}
                         <AnimatePresence mode="wait">
                           <motion.div
@@ -250,7 +253,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                                   <Icon
                                     icon={card.icon}
                                     size={28}
-                                    className="text-violet-600"
+                                    className="text-purple-600"
                                   />
                                 </div>
                               </div>

@@ -4,7 +4,8 @@ import { Download01Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Text } from "@/components/atoms/Text/Text";
 import type { SessionFile } from "../../ContextPanel/components/FilesTab/useSessionFiles";
 import { WorkspaceFileCard } from "./WorkspaceFileCard";
 import { WorkspaceFileRow } from "./WorkspaceFileRow";
@@ -49,11 +50,12 @@ export function WorkspaceFilesContent({
           {files.length > 0 && (
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-xs"
+              withTooltip={false}
               onClick={onDownloadAll}
               loading={isZipping}
               aria-label="Download all"
-              className="size-7 rounded-lg !p-0 text-zinc-500"
+              className="rounded-lg text-zinc-500"
             >
               <Icon icon={Download01Icon} size={15} />
             </Button>
@@ -110,16 +112,24 @@ function Body({
 
   if (isError) {
     return (
-      <p className="py-2 text-[13px] text-zinc-400">Failed to load files.</p>
+      <Text variant="body" as="p" tone="muted" className="py-2 text-[13px]">
+        Failed to load files.
+      </Text>
     );
   }
 
   if (files.length === 0) {
     return (
-      <p className="py-2 text-[13px] text-zinc-400">
+      <Text
+        variant="body"
+        as="p"
+        tone="muted"
+        unmask={false}
+        className="py-2 text-[13px]"
+      >
         {emptyMessage ??
           "No files yet. Upload one or ask an expert to create something."}
-      </p>
+      </Text>
     );
   }
 

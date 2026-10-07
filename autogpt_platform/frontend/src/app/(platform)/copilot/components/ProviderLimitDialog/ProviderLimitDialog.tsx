@@ -49,19 +49,19 @@ export function ProviderLimitDialog({ failure, sessionId, onDismiss }: Props) {
       }}
     >
       <Dialog.Content>
-        <Text variant="body" className="text-zinc-600">
+        <Text variant="body" tone="secondary" unmask={false}>
           {failure?.message?.trim() ||
             "The connection this chat runs on stopped accepting turns."}
           {resetHint ? ` ${resetHint}` : ""}
         </Text>
 
         {isLoadingOffers ? (
-          <Text variant="small" className="mt-3 !text-zinc-500">
+          <Text variant="small" tone="muted" className="mt-3">
             Checking what else this chat can run on&hellip;
           </Text>
         ) : failedToLoadOffers ? (
           <>
-            <Text variant="small" className="mt-3 !text-zinc-500">
+            <Text variant="small" tone="muted" className="mt-3">
               We couldn&apos;t check your other connections just now.
             </Text>
             <Dialog.Footer>
@@ -75,7 +75,7 @@ export function ProviderLimitDialog({ failure, sessionId, onDismiss }: Props) {
           </>
         ) : alternative ? (
           <>
-            <Text variant="small" className="mt-3 !text-zinc-500">
+            <Text variant="small" tone="muted" unmask={false} className="mt-3">
               Continuing moves the rest of this chat to{" "}
               {alternative.display_name}. Everything already said stays as it
               is, on the connection it ran on.
@@ -97,7 +97,7 @@ export function ProviderLimitDialog({ failure, sessionId, onDismiss }: Props) {
           <>
             {/* Nothing to offer: saying so is better than a button that
                 cannot do anything. */}
-            <Text variant="small" className="mt-3 !text-zinc-500">
+            <Text variant="small" tone="muted" className="mt-3">
               There is no other connection set up to continue on. You can add
               one in Settings, or wait for this one to reset.
             </Text>

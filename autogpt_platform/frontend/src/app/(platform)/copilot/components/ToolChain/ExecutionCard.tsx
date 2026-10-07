@@ -7,6 +7,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { CARD, HALF, StatusPill } from "./ResultCards";
 
 interface Props {
@@ -26,9 +27,15 @@ export function ExecutionCard({ name, status, href, variant = "run" }: Props) {
           <Icon icon={PlayIcon} size={13} className="text-zinc-600" />
         )}
       </div>
-      <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
+      <Text
+        variant="body-medium"
+        as="p"
+        tone="primary"
+        unmask={false}
+        className="min-w-0 flex-1 truncate text-[13px]"
+      >
         {name}
-      </p>
+      </Text>
       {status && <StatusPill status={status} />}
       {href && (
         <Link

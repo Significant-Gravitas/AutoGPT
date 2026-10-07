@@ -221,8 +221,8 @@ describe("ConnectToolsPanel — picking a provider", () => {
 
     // The connected mark is a decorative icon with no accessible name, so
     // it can only be identified by its tint.
-    expect(github.querySelector(".text-emerald-500")).not.toBeNull();
-    expect(smtp.querySelector(".text-emerald-500")).toBeNull();
+    expect(github.querySelector(".text-green-500")).not.toBeNull();
+    expect(smtp.querySelector(".text-green-500")).toBeNull();
   });
 });
 

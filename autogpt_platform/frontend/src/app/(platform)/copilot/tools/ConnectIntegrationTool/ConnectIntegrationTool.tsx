@@ -2,6 +2,7 @@
 
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import type { ToolUIPart } from "ai";
+import { Text } from "@/components/atoms/Text/Text";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { SetupRequirementsCard } from "../../components/SetupRequirementsCard/SetupRequirementsCard";
 import {
@@ -91,14 +92,28 @@ export function ConnectIntegrationTool({ part }: Props) {
       </div>
 
       {isError && errorMessage && (
-        <p className="mt-1 text-sm text-red-500">{errorMessage}</p>
+        <Text
+          variant="body"
+          as="p"
+          tone="danger"
+          unmask={false}
+          className="mt-1"
+        >
+          {errorMessage}
+        </Text>
       )}
 
       {isCorrupted && (
-        <p className="mt-1 text-sm text-red-500">
+        <Text
+          variant="body"
+          as="p"
+          tone="danger"
+          unmask={false}
+          className="mt-1"
+        >
           The sign-in card data arrived corrupted and can&apos;t be shown. Ask
           your expert to retry connecting {providerName}.
-        </p>
+        </Text>
       )}
 
       {output && (

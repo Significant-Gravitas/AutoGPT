@@ -3,6 +3,7 @@
 import { Download01Icon, File02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import type { ContextPanelExpert } from "../../store";
 import { DeleteFileDialog } from "../ContextPanel/components/FilesTab/components/DeleteFileDialog";
 import { SessionActivityCard } from "./components/SessionActivityCard";
@@ -51,9 +52,9 @@ export function WorkspaceFileCards({ sessionId, expert = null }: Props) {
     <div className="flex flex-col gap-3">
       {!showFilesCard && !hasActivity && !hasExpertSection && (
         <div className="rounded-3xl bg-white/90 px-4 py-3 backdrop-blur smooth-shadow-ring-sm">
-          <p className="py-2 text-center text-sm text-zinc-400">
+          <Text variant="body" as="p" tone="muted" className="py-2 text-center">
             Nothing here yet.
-          </p>
+          </Text>
         </div>
       )}
       {showFilesCard && (
@@ -65,11 +66,12 @@ export function WorkspaceFileCards({ sessionId, expert = null }: Props) {
             files.length > 0 && (
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon-xs"
+                withTooltip={false}
                 onClick={handleDownloadAll}
                 loading={isZipping}
                 aria-label="Download all"
-                className="size-6 rounded-lg !p-0 text-zinc-400"
+                className="size-6 rounded-lg text-zinc-400"
               >
                 <Icon icon={Download01Icon} size={14} />
               </Button>

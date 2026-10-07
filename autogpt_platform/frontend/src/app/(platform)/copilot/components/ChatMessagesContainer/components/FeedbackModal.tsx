@@ -1,9 +1,10 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 interface Props {
   isOpen: boolean;
@@ -13,6 +14,7 @@ interface Props {
 
 export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
   const [comment, setComment] = useState("");
+  const commentId = useId();
 
   function handleSubmit() {
     if (!comment.trim()) return;
@@ -37,21 +39,26 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
     >
       <Dialog.Content>
         <div className="mx-auto w-[95%] space-y-4">
-          <p className="text-sm text-muted-foreground">
+          <Text variant="body" as="p" tone="muted">
             Your feedback helps us improve. Share details below.
-          </p>
-          <Textarea
+          </Text>
+          <Input
+            id={commentId}
+            label="Feedback"
+            hideLabel
+            type="textarea"
             placeholder="Tell us what went wrong or could be improved..."
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             rows={4}
             maxLength={2000}
             className="resize-none"
+            wrapperClassName="mb-0"
           />
           <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">
+            <Text variant="small" as="p" tone="muted" unmask={false}>
               {comment.length}/2000
-            </p>
+            </Text>
             <div className="flex gap-2">
               <Button variant="outline" size="small" onClick={handleClose}>
                 Cancel

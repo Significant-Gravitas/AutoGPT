@@ -1,6 +1,7 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { cn } from "@/lib/utils";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Folder01Icon } from "@hugeicons/core-free-icons";
 import { useCopilotUIStore } from "../../store";
@@ -17,12 +18,16 @@ export function WorkspaceFilesTrigger({ className }: Props) {
   return (
     <Button
       variant="ghost"
-      size="icon"
-      className={className}
+      size="icon-sm"
+      className={cn(
+        "size-9 rounded-md hover:border-transparent hover:bg-zinc-100",
+        className,
+      )}
       onClick={toggleContextPanel}
       aria-label="Open workspace files"
+      withTooltip={false}
     >
-      <Icon icon={Folder01Icon} className="!size-5" />
+      <Icon icon={Folder01Icon} className="size-5" />
     </Button>
   );
 }

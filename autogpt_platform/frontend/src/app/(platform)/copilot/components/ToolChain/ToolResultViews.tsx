@@ -8,6 +8,7 @@ import {
   ImageIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ChainRow } from "./helpers";
 import { CARD, HALF } from "./ResultCards";
@@ -109,9 +110,15 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
                 {title}
               </a>
             ) : (
-              <p className="min-w-0 truncate text-[13px] text-zinc-700">
+              <Text
+                variant="body"
+                as="p"
+                tone="secondary"
+                unmask={false}
+                className="min-w-0 truncate text-[13px]"
+              >
                 {title}
-              </p>
+              </Text>
             )}
             {domain && (
               <span className="ml-auto shrink-0 text-xs text-zinc-400">
@@ -134,10 +141,15 @@ export function Terminal({ row }: RowProps) {
   return (
     <div className="rounded-xl bg-zinc-900 p-3 font-mono text-[11px] leading-4">
       {command && (
-        <p className="whitespace-pre-wrap break-words text-zinc-400">
+        <Text
+          variant="small"
+          as="p"
+          unmask={false}
+          className="whitespace-pre-wrap break-words font-mono text-[11px] leading-4 text-zinc-400"
+        >
           <span className="select-none text-zinc-500">$ </span>
           {command}
-        </p>
+        </Text>
       )}
       {stdout && (
         <pre className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-zinc-100 scrollbar-none">
@@ -145,7 +157,14 @@ export function Terminal({ row }: RowProps) {
         </pre>
       )}
       {typeof exitCode === "number" && exitCode !== 0 && (
-        <p className="mt-1.5 text-red-400">exit {exitCode}</p>
+        <Text
+          variant="small"
+          as="p"
+          unmask={false}
+          className="mt-1.5 font-mono text-[11px] leading-4 text-red-400"
+        >
+          exit {exitCode}
+        </Text>
       )}
     </div>
   );
@@ -215,9 +234,15 @@ export function FileCard({ row }: RowProps) {
         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
           <Icon icon={fileIcon} size={15} className="text-zinc-600" />
         </div>
-        <p className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-700">
+        <Text
+          variant="small"
+          as="p"
+          tone="secondary"
+          unmask={false}
+          className="min-w-0 flex-1 truncate font-mono"
+        >
           {path}
-        </p>
+        </Text>
         {typeof size === "number" && (
           <span className="shrink-0 text-xs text-zinc-400">
             {formatBytes(size)}
@@ -225,9 +250,15 @@ export function FileCard({ row }: RowProps) {
         )}
       </div>
       {preview && (
-        <p className="mt-1.5 line-clamp-2 whitespace-pre-wrap pl-9 text-xs text-zinc-400">
+        <Text
+          variant="small"
+          as="p"
+          tone="muted"
+          unmask={false}
+          className="mt-1.5 line-clamp-2 whitespace-pre-wrap pl-9"
+        >
           {preview}
-        </p>
+        </Text>
       )}
     </div>
   );
@@ -238,12 +269,24 @@ export function OutputList({ items }: ItemsProps) {
     <div className={`${CARD} ${HALF} divide-y divide-zinc-100`}>
       {items.map((item, i) => (
         <div key={resultItemKey(item, i)} className="p-2.5">
-          <p className="text-[11px] uppercase tracking-wide text-zinc-400">
+          <Text
+            variant="small"
+            as="p"
+            tone="muted"
+            unmask={false}
+            className="text-[11px] uppercase tracking-wide"
+          >
             {str(item, "name", "key", "label") ?? `Output ${i + 1}`}
-          </p>
-          <p className="mt-0.5 whitespace-pre-wrap break-words text-[13px] text-zinc-800">
+          </Text>
+          <Text
+            variant="body"
+            as="p"
+            tone="primary"
+            unmask={false}
+            className="mt-0.5 whitespace-pre-wrap break-words text-[13px]"
+          >
             {inline(item.value ?? item)}
-          </p>
+          </Text>
         </div>
       ))}
     </div>
@@ -258,18 +301,30 @@ export function KeyValueList({ value }: ValueProps) {
     return (
       <div className={`${CARD} w-full rounded-2xl p-3`}>
         <div className="relative">
-          <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-relaxed text-zinc-600 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+          <Text
+            variant="body"
+            as="p"
+            tone="secondary"
+            unmask={false}
+            className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-relaxed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200"
+          >
             {truncated?.preview ?? value}
-          </p>
+          </Text>
           {truncated && (
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent" />
           )}
         </div>
         {truncated && (
-          <p className="mt-2 text-[11px] text-zinc-400">
+          <Text
+            variant="small"
+            as="p"
+            tone="muted"
+            unmask={false}
+            className="mt-2 text-[11px]"
+          >
             Preview of {truncated.totalChars.toLocaleString()} characters — full
             output saved to the workspace
-          </p>
+          </Text>
         )}
       </div>
     );

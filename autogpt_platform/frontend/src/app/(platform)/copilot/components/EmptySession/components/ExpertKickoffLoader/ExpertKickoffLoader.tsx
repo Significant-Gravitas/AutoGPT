@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { OrbitLoader } from "../../../OrbitLoader/OrbitLoader";
 
 interface Props {
@@ -13,14 +14,14 @@ export function ExpertKickoffLoader({ expertName }: Props) {
     >
       <OrbitLoader size={32} />
       <div>
-        <p className="text-base font-medium text-neutral-900">
+        <Text variant="large-medium" tone="primary" as="p" unmask={false}>
           {expertName
             ? `Opening ${expertName}'s workspace`
             : "Opening workspace"}
-        </p>
-        <p className="mt-1 text-sm text-neutral-500">
+        </Text>
+        <Text variant="body" tone="muted" as="p" className="mt-1">
           Your expert is getting ready to start.
-        </p>
+        </Text>
       </div>
     </div>
   );

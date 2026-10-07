@@ -14,8 +14,9 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
   Tooltip,
   TooltipContent,
+  TooltipPortal,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import {
   Analytics01Icon,
   ArrowRight01Icon,
@@ -148,7 +149,7 @@ export function OnboardingIntroCard({
 
   return (
     <div
-      className="mb-8 w-full max-w-[48rem] text-left"
+      className="mb-8 w-full max-w-3xl text-left"
       data-testid="onboarding-intro-card"
     >
       <div className="mb-4 flex items-center gap-3">
@@ -166,7 +167,7 @@ export function OnboardingIntroCard({
           <GlassOrb params={SMALL_ORB_PARAMS} />
         </motion.span>
         <motion.div {...reveal(HEADING_START)}>
-          <Text variant="large-medium" tone="primary">
+          <Text variant="large-medium" tone="primary" unmask={false}>
             Hey, <span className="text-zinc-900">{name}</span>
           </Text>
         </motion.div>
@@ -184,23 +185,30 @@ export function OnboardingIntroCard({
                     <Icon
                       icon={Tick02Icon}
                       size={16}
-                      className="text-emerald-600"
+                      className="text-green-600"
                     />
                   ) : (
                     <Icon icon={Copy01Icon} size={16} />
                   )}
                 </button>
               </TooltipTrigger>
-              <TooltipContent>
-                {isCopied ? "Copied!" : "Copy everything you told me"}
-              </TooltipContent>
+              <TooltipPortal>
+                <TooltipContent>
+                  {isCopied ? "Copied!" : "Copy everything you told me"}
+                </TooltipContent>
+              </TooltipPortal>
             </Tooltip>
           </motion.div>
         )}
       </div>
 
       <motion.div {...reveal(GREETING_START)}>
-        <Text variant="large" tone="secondary" className="text-pretty">
+        <Text
+          variant="large"
+          tone="secondary"
+          unmask={false}
+          className="text-pretty"
+        >
           {greeting}
         </Text>
       </motion.div>
@@ -230,7 +238,7 @@ export function OnboardingIntroCard({
                     size={15}
                     className="shrink-0 text-zinc-400"
                   />
-                  <Text variant="body-medium" tone="primary">
+                  <Text variant="body-medium" tone="primary" unmask={false}>
                     {prompt.title}
                   </Text>
                   <Icon

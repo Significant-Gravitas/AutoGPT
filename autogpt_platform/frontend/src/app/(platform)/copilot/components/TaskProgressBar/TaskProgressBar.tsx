@@ -68,7 +68,7 @@ export function TaskProgressBar({
     : { duration: 0.22, ease: EASE_OUT };
 
   return (
-    <div className="mx-auto w-[95%] overflow-hidden rounded-t-3xl border border-b-0 border-zinc-200 bg-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),inset_0_5px_6px_-4px_rgba(255,255,255,0.7)]">
+    <div className="mx-auto w-[95%] overflow-hidden rounded-t-3xl border border-b-0 border-zinc-200 bg-zinc-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),inset_0_5px_6px_-4px_rgba(255,255,255,0.7)]">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -81,11 +81,12 @@ export function TaskProgressBar({
               <Icon
                 icon={CheckmarkBadge01Icon}
                 size={22}
-                className="flex-shrink-0 text-[#00a656]"
+                className="flex-shrink-0 text-green-500"
               />
               <Text
                 variant="body-medium"
-                className="min-w-0 flex-1 truncate text-sm text-zinc-800"
+                tone="primary"
+                className="min-w-0 flex-1 truncate text-sm"
               >
                 All tasks complete
               </Text>
@@ -102,7 +103,9 @@ export function TaskProgressBar({
                 />
                 <Text
                   variant="body-medium"
-                  className="min-w-0 flex-1 truncate text-sm text-zinc-800"
+                  tone="primary"
+                  unmask={false}
+                  className="min-w-0 flex-1 truncate text-sm"
                 >
                   {toDisplayStatus(current.status, isStreaming) === "stopped"
                     ? current.content
@@ -119,7 +122,8 @@ export function TaskProgressBar({
               />
               <Text
                 variant="body-medium"
-                className="min-w-0 flex-1 text-sm text-zinc-800"
+                tone="primary"
+                className="min-w-0 flex-1 text-sm"
               >
                 Task Progress
               </Text>

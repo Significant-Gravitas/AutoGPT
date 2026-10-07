@@ -7,6 +7,7 @@ import {
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
 import {
   mcpAuthTokenHint,
@@ -399,18 +400,24 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               disabled={loading}
               nameSuffix={service}
               className="grid gap-1"
-              labelClassName="text-xs font-medium text-gray-700"
+              labelClassName="text-xs font-medium text-zinc-700"
               selectClassName="rounded border bg-background px-2 py-1.5 text-sm"
             />
             <label
               htmlFor={manualTokenInputId}
-              className="text-xs font-medium text-gray-700"
+              className="text-xs font-medium text-zinc-700"
             >
               {`${mcpAuthTokenLabel(manualAuthScheme)} for ${service}`}
             </label>
-            <p id={manualTokenHintId} className="text-xs text-gray-500">
+            <Text
+              variant="small"
+              as="p"
+              tone="muted"
+              unmask={false}
+              id={manualTokenHintId}
+            >
               {mcpAuthTokenHint(manualAuthScheme)}
-            </p>
+            </Text>
             <div className="flex gap-2">
               <input
                 id={manualTokenInputId}

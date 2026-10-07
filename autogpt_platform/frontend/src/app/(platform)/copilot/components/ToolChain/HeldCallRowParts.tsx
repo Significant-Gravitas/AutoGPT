@@ -7,12 +7,15 @@ import { approvalCardId } from "../ApprovalQueue/helpers";
 import type { HeldRowInfo, HeldState } from "./heldRow";
 
 const TAGS: Record<HeldState, { text: string; className: string }> = {
-  waiting: { text: "Waiting for you", className: "bg-amber-50 text-amber-700" },
+  waiting: {
+    text: "Waiting for you",
+    className: "bg-yellow-50 text-yellow-700",
+  },
   approved: { text: "Approved", className: "bg-zinc-100 text-zinc-500" },
   rejected: { text: "Rejected", className: "bg-zinc-100 text-zinc-500" },
   expired: { text: "Expired", className: "bg-zinc-100 text-zinc-500" },
   closed: { text: "Not run", className: "bg-zinc-100 text-zinc-500" },
-  unknown: { text: "Unclear", className: "bg-amber-50 text-amber-700" },
+  unknown: { text: "Unclear", className: "bg-yellow-50 text-yellow-700" },
   "not-run": { text: "Not run", className: "bg-red-50 text-red-700" },
 };
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
@@ -58,15 +59,16 @@ export function InputsSection({ requests }: Props) {
               />
             )}
             {request.hasAdvanced && (
-              <button
+              <Button
                 type="button"
-                className="mb-2 mt-1 text-xs text-muted-foreground underline"
+                variant="link"
+                className="mb-2 mt-1 h-auto min-w-0 p-0 text-xs font-normal text-muted-foreground"
                 onClick={request.onToggleAdvanced}
               >
                 {request.showAdvanced
                   ? "Hide advanced fields"
                   : "Show advanced fields"}
-              </button>
+              </Button>
             )}
           </div>
         </div>

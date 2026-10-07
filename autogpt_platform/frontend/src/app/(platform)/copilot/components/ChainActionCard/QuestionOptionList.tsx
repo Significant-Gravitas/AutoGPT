@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { PencilEdit02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { useEffect, useRef } from "react";
@@ -103,15 +104,19 @@ export function QuestionOptionList({
                 <Icon icon={Tick02Icon} size={16} className="shrink-0" />
               )}
             </button>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-sm"
+              withTooltip={false}
+              unmask={false}
               aria-label={`Edit ${option}`}
               title="Edit before sending"
               onClick={() => onEdit(option)}
-              className="absolute right-2 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-xl text-zinc-400 transition-colors hover:bg-zinc-200/60 hover:text-zinc-700"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl text-zinc-400 hover:border-transparent hover:bg-zinc-200/60 hover:text-zinc-700"
             >
               <Icon icon={PencilEdit02Icon} size={16} />
-            </button>
+            </Button>
           </div>
         );
       })}

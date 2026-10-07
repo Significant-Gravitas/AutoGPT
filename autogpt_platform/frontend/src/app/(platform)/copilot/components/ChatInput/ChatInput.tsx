@@ -10,8 +10,9 @@ import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
 import {
   Tooltip,
   TooltipContent,
+  TooltipPortal,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
@@ -526,7 +527,9 @@ export function ChatInput({
                     className={sendButtonClass}
                   />
                 </TooltipTrigger>
-                <TooltipContent side="top">Stop</TooltipContent>
+                <TooltipPortal>
+                  <TooltipContent side="top">Stop</TooltipContent>
+                </TooltipPortal>
               </Tooltip>
             ) : hideSubmitWhenEmpty && !canSend ? null : (
               <PromptInputSubmit

@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { http, HttpResponse } from "msw";
@@ -52,7 +53,9 @@ const meta: Meta<typeof ArtifactPanel> = {
       <TooltipProvider>
         <div className="flex h-[800px] w-full bg-sidebar">
           <div className="flex-1 bg-zinc-50 p-8">
-            <p className="text-sm text-zinc-500">Chat area</p>
+            <Text variant="body" as="p" tone="muted">
+              Chat area
+            </Text>
           </div>
           <Story />
         </div>
@@ -107,7 +110,7 @@ export const OpenWithHTMLArtifact: Story = {
       handlers: [
         http.get(`${PROXY_BASE}/html-panel/download`, () => {
           return HttpResponse.text(
-            `<!DOCTYPE html><html><body class="p-8 font-sans"><h1 class="text-2xl font-bold text-indigo-600">Dashboard</h1><p class="mt-2 text-gray-600">HTML artifact in the panel.</p></body></html>`,
+            `<!DOCTYPE html><html><body class="p-8 font-sans"><h1 class="text-2xl font-bold text-purple-600">Dashboard</h1><p class="mt-2 text-zinc-600">HTML artifact in the panel.</p></body></html>`,
           );
         }),
       ],

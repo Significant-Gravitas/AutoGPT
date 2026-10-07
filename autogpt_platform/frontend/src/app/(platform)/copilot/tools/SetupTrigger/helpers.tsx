@@ -150,5 +150,5 @@ export function ToolIcon({
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return <Icon icon={WebhookIcon} size={14} className="text-neutral-400" />;
+  return <Icon icon={WebhookIcon} size={14} className="text-zinc-400" />;
 }

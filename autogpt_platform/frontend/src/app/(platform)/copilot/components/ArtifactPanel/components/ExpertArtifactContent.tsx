@@ -3,6 +3,7 @@
 import { useGetExpert } from "@/app/api/__generated__/endpoints/experts/experts";
 import { okData } from "@/app/api/helpers";
 import { swatchClassFor } from "@/app/(platform)/raise/components/ColorStep/helpers";
+import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import type { ExpertArtifact } from "../../../store";
@@ -25,9 +26,15 @@ function Section({ title, text }: SectionProps) {
   return (
     <section>
       <div className={LABEL}>{title}</div>
-      <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-600">
+      <Text
+        variant="body"
+        as="p"
+        tone="secondary"
+        unmask={false}
+        className="whitespace-pre-line leading-relaxed"
+      >
         {text}
-      </p>
+      </Text>
     </section>
   );
 }
@@ -79,18 +86,38 @@ export function ExpertArtifactContent({ expert: artifact }: Props) {
           size={48}
         />
         <div className="min-w-0">
-          <p className="truncate text-base font-semibold text-zinc-900">
+          <Text
+            variant="large-semibold"
+            as="p"
+            tone="primary"
+            unmask={false}
+            className="truncate"
+          >
             {expert.name}
-          </p>
+          </Text>
           {expert.role && (
-            <p className="truncate text-sm text-zinc-500">{expert.role}</p>
+            <Text
+              variant="body"
+              as="p"
+              tone="muted"
+              unmask={false}
+              className="truncate"
+            >
+              {expert.role}
+            </Text>
           )}
         </div>
       </div>
       {expert.tagline && (
-        <p className="text-sm leading-relaxed text-zinc-700">
+        <Text
+          variant="body"
+          as="p"
+          tone="secondary"
+          unmask={false}
+          className="leading-relaxed"
+        >
           {expert.tagline}
-        </p>
+        </Text>
       )}
       <Section title="Status" text={status} />
       {expert.kind && <Section title="Kind" text={KIND_LABELS[expert.kind]} />}

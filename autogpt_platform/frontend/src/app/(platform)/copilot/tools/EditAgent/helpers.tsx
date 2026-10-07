@@ -112,9 +112,7 @@ export function ToolIcon({
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return (
-    <Icon icon={PencilEdit01Icon} size={14} className="text-neutral-400" />
-  );
+  return <Icon icon={PencilEdit01Icon} size={14} className="text-zinc-400" />;
 }
 
 export function AccordionIcon() {

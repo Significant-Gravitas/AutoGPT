@@ -73,7 +73,7 @@ export function WorkspaceFilePicker({
               onChange={(e) => picker.setSearchTerm(e.target.value)}
               placeholder="Search files"
               className="w-full pl-12"
-              wrapperClassName="!mb-0"
+              wrapperClassName="mb-0"
             />
           </div>
 
@@ -90,12 +90,13 @@ export function WorkspaceFilePicker({
                     variant="small-medium"
                     as="span"
                     className="text-zinc-700"
+                    unmask={false}
                   >
                     Only {who}&rsquo;s files
                   </Text>
                 </label>
               </div>
-              <Text variant="small" className="text-zinc-500">
+              <Text variant="small" className="text-zinc-500" unmask={false}>
                 {picker.expertOnly
                   ? `From your chats with ${who}`
                   : "Plus your own files and folders"}

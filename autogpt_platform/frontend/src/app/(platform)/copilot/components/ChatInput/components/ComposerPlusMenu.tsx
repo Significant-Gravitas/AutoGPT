@@ -75,7 +75,7 @@ export function ComposerPlusMenu({
             <Icon icon={PlusSignIcon} className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="min-w-[14rem]">
+        <DropdownMenuContent align="start" className="min-w-56">
           <DropdownMenuItem
             disabled={isAtCap}
             onSelect={() => {

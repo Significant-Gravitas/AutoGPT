@@ -2,6 +2,7 @@
 
 import { CodeIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { MAX_RENDERED_DIFF_ROWS, parseUnifiedDiff } from "./fileDiffHelpers";
 
 interface Props {
@@ -84,9 +85,15 @@ export function FileDiff({ file, diff }: Props) {
           </div>
         ))}
         {truncated && (
-          <p className="px-3 py-2 text-center text-xs text-zinc-500">
+          <Text
+            variant="small"
+            as="p"
+            tone="muted"
+            unmask={false}
+            className="px-3 py-2 text-center font-mono leading-5"
+          >
             Diff preview truncated after {MAX_RENDERED_DIFF_ROWS} lines
-          </p>
+          </Text>
         )}
       </div>
     </div>

@@ -1,8 +1,8 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
-import { Button as ShadcnButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { Text } from "@/components/atoms/Text/Text";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -109,22 +109,23 @@ export function MobileDrawer() {
                   <UsagePopover />
                   <NotificationToggle />
                   {isChatSearchEnabled ? (
-                    <ShadcnButton
+                    <Button
                       type="button"
                       variant="ghost"
                       size="icon-sm"
                       aria-label={
                         isSearchOpen ? "Close search" : "Search chats"
                       }
+                      withTooltip={false}
                       onClick={() => setSearchOpen(!isSearchOpen)}
-                      className="rounded-full text-zinc-600 hover:bg-zinc-100"
+                      className="rounded-full text-zinc-600 hover:border-transparent hover:bg-zinc-100"
                     >
                       {isSearchOpen ? (
                         <Icon icon={Cancel01Icon} className="h-4 w-4" />
                       ) : (
                         <Icon icon={Search01Icon} className="h-4 w-4" />
                       )}
-                    </ShadcnButton>
+                    </Button>
                   ) : null}
                   <Button
                     variant="icon"
@@ -200,22 +201,26 @@ export function MobileDrawer() {
                       }}
                     />
                   ) : (
-                    <p className="py-4 text-center text-sm text-neutral-500">
+                    <Text
+                      variant="body"
+                      tone="muted"
+                      className="py-4 text-center"
+                    >
                       No chats found
-                    </p>
+                    </Text>
                   )}
                 </div>
               ) : isLoading ? (
                 <div className="flex items-center justify-center py-4">
                   <Icon
                     icon={Loading03Icon}
-                    className="h-5 w-5 animate-spin text-neutral-400"
+                    className="h-5 w-5 animate-spin text-zinc-400"
                   />
                 </div>
               ) : sessions.length === 0 ? (
-                <p className="py-4 text-center text-sm text-neutral-500">
+                <Text variant="body" tone="muted" className="py-4 text-center">
                   No conversations yet
-                </p>
+                </Text>
               ) : (
                 sessions.map((session) => (
                   <button
@@ -265,7 +270,7 @@ export function MobileDrawer() {
                   onClick={() => loadMore()}
                   loading={isLoadingMore}
                   disabled={isLoadingMore}
-                  className="mt-2 w-full justify-center text-neutral-500"
+                  className="mt-2 w-full justify-center text-zinc-500"
                 >
                   {isLoadingMore ? "Loading…" : "Load older chats"}
                 </Button>

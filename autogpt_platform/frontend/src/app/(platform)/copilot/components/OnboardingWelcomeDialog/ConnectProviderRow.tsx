@@ -43,7 +43,7 @@ export function ConnectProviderRow({
       {broken ? (
         <div
           aria-hidden
-          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-[12px] font-semibold uppercase text-zinc-600"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-xs font-semibold uppercase text-zinc-600"
         >
           {provider.name?.charAt(0) ?? provider.id.charAt(0)}
         </div>
@@ -60,7 +60,7 @@ export function ConnectProviderRow({
       )}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-[14px] font-medium leading-[22px] text-zinc-800">
+          <span className="truncate text-sm font-medium leading-[22px] text-zinc-800">
             {provider.name}
           </span>
           {/* Connected mark beside the title — the + stays because a
@@ -69,12 +69,12 @@ export function ConnectProviderRow({
             <Icon
               icon={CheckmarkCircle02Icon}
               size={15}
-              className="shrink-0 text-emerald-500"
+              className="shrink-0 text-green-500"
             />
           )}
         </span>
         {description && (
-          <span className="truncate text-[12px] leading-[16px] text-zinc-500">
+          <span className="truncate text-xs leading-4 text-zinc-500">
             {description}
           </span>
         )}

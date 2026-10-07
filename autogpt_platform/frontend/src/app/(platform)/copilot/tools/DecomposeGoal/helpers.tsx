@@ -124,7 +124,7 @@ export function ToolIcon({
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return <Icon icon={CheckListIcon} size={14} className="text-neutral-400" />;
+  return <Icon icon={CheckListIcon} size={14} className="text-zinc-400" />;
 }
 
 export function AccordionIcon() {
@@ -138,7 +138,7 @@ export function StepStatusIcon({ status }: { status: string }) {
         <Icon
           icon={CheckmarkCircle02Icon}
           size={18}
-          className="text-emerald-500"
+          className="text-green-500"
           aria-label="completed"
         />
       );
@@ -165,7 +165,7 @@ export function StepStatusIcon({ status }: { status: string }) {
         <Icon
           icon={CircleDashedIcon}
           size={18}
-          className="text-neutral-400"
+          className="text-zinc-400"
           aria-label="pending"
         />
       );

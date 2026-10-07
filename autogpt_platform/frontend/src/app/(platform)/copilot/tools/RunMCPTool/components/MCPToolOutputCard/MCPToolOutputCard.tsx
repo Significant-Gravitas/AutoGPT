@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import {
   ContentCard,
   ContentCardTitle,
@@ -71,9 +72,15 @@ export function MCPToolOutputCard({ output }: Props) {
             {resultText}
           </ContentCodeBlock>
         ) : (
-          <p className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap break-words text-sm text-zinc-800">
+          <Text
+            variant="body"
+            as="p"
+            tone="primary"
+            unmask={false}
+            className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap break-words"
+          >
             {resultText}
-          </p>
+          </Text>
         )}
       </ContentCard>
     </ContentGrid>

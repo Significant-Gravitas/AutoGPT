@@ -19,7 +19,7 @@ export function StepItem({ index, description, blockName, status }: Props) {
         <StepStatusIcon status={status} />
       </div>
       <div className="min-w-0 flex-1">
-        <Text variant="body-medium" className="text-sm text-foreground">
+        <Text variant="body-medium" as="p" tone="primary" unmask={false}>
           {index + 1}. {description}
         </Text>
         {blockName && (
@@ -27,7 +27,10 @@ export function StepItem({ index, description, blockName, status }: Props) {
             <Icon icon={CubeIcon} size={12} className="text-muted-foreground" />
             <Text
               variant="small"
-              className="font-mono text-xs text-muted-foreground"
+              as="p"
+              tone="muted"
+              unmask={false}
+              className="font-mono"
             >
               {blockName}
             </Text>

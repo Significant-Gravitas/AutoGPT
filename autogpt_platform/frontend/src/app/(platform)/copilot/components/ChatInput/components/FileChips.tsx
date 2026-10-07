@@ -121,7 +121,7 @@ export function FileChips({
                         stacked && "text-zinc-400",
                       )}
                     />
-                    <span className="max-w-[160px] truncate">{name}</span>
+                    <span className="max-w-40 truncate">{name}</span>
                     {count ? (
                       <span className="shrink-0 text-zinc-500">· {count}</span>
                     ) : null}

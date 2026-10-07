@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/atoms/Button/Button";
 
 import {
   ContentCard,
@@ -25,12 +26,15 @@ export function BlockInputCard({ inputData }: Props) {
 
   return (
     <div>
-      <button
-        className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+      <Button
+        variant="ghost"
+        size="xs"
+        unmask={false}
+        className="h-auto px-0 font-normal text-muted-foreground hover:border-transparent hover:bg-transparent hover:text-foreground"
         onClick={() => setExpanded((prev) => !prev)}
       >
         {expanded ? "Hide inputs" : `Show inputs (${entries.length})`}
-      </button>
+      </Button>
       {expanded && (
         <ContentGrid className="mb-2 mt-2">
           {entries.map(([key, value]) => (

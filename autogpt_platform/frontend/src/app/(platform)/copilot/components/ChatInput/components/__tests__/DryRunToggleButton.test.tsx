@@ -6,7 +6,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { DryRunToggleButton } from "../DryRunToggleButton";
 
 afterEach(cleanup);

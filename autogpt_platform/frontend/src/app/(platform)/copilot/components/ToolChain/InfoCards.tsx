@@ -8,7 +8,9 @@ import {
   ConnectIcon,
   MessageQuestionIcon,
 } from "@hugeicons/core-free-icons";
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { useContext } from "react";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { CardProviderIcon } from "./BlockCards";
@@ -149,13 +151,25 @@ export function QuestionsCard({ questions }: QuestionsCardProps) {
             className="mt-0.5 shrink-0 text-zinc-400"
           />
           <div className="min-w-0">
-            <p className="text-[13px] text-zinc-700">
+            <Text
+              variant="body"
+              as="p"
+              tone="secondary"
+              unmask={false}
+              className="text-[13px]"
+            >
               {str(entry, "question") ?? inline(entry)}
-            </p>
+            </Text>
             {str(entry, "example") && (
-              <p className="truncate text-xs text-zinc-400">
+              <Text
+                variant="small"
+                as="p"
+                tone="muted"
+                unmask={false}
+                className="truncate"
+              >
                 e.g. {str(entry, "example")}
-              </p>
+              </Text>
             )}
           </div>
         </div>
@@ -179,8 +193,18 @@ export function SetupCard({ output, provider }: SetupCardProps) {
         />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-zinc-800">{name}</p>
-        <p className="truncate text-xs text-zinc-500">Connection required</p>
+        <Text
+          variant="body-medium"
+          as="p"
+          tone="primary"
+          unmask={false}
+          className="truncate text-[13px]"
+        >
+          {name}
+        </Text>
+        <Text variant="small" as="p" tone="muted" className="truncate">
+          Connection required
+        </Text>
       </div>
     </div>
   );
@@ -196,11 +220,25 @@ export function SkillCard({ output }: OutputProps) {
         <Icon icon={BookBookmarkIcon} size={15} className="text-zinc-600" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-zinc-800">{name}</p>
+        <Text
+          variant="body-medium"
+          as="p"
+          tone="primary"
+          unmask={false}
+          className="truncate text-[13px]"
+        >
+          {name}
+        </Text>
         {str(output, "description") && (
-          <p className="truncate text-xs text-zinc-500">
+          <Text
+            variant="small"
+            as="p"
+            tone="muted"
+            unmask={false}
+            className="truncate"
+          >
             {str(output, "description")}
-          </p>
+          </Text>
         )}
       </div>
       {triggers[0] && (
@@ -219,20 +257,32 @@ export function SuggestedGoalCard({ output }: OutputProps) {
 
   return (
     <div className={`${CARD} ${HALF} flex flex-col gap-2 p-3`}>
-      <p className="text-[13px] font-medium text-zinc-800">{goal}</p>
+      <Text
+        variant="body-medium"
+        as="p"
+        tone="primary"
+        unmask={false}
+        className="text-[13px]"
+      >
+        {goal}
+      </Text>
       {str(output, "reason") && (
-        <p className="text-xs text-zinc-500">{str(output, "reason")}</p>
+        <Text variant="small" as="p" tone="muted" unmask={false}>
+          {str(output, "reason")}
+        </Text>
       )}
       {actions && (
-        <button
+        <Button
           type="button"
-          className="w-fit rounded-lg bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-zinc-700"
+          variant="primary"
+          size="xs"
+          className="w-fit rounded-lg border-zinc-900 bg-zinc-900 hover:border-zinc-700 hover:bg-zinc-700"
           onClick={() =>
             actions.onSend(`Please create an agent with this goal: ${goal}`)
           }
         >
           Use this goal
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -252,21 +302,29 @@ export function TriggerSetupCard({ output }: OutputProps) {
 
   return (
     <div className={`${CARD} ${HALF} flex flex-col gap-2 p-3`}>
-      <p className="text-[13px] text-zinc-700">
+      <Text
+        variant="body"
+        as="p"
+        tone="secondary"
+        unmask={false}
+        className="text-[13px]"
+      >
         {str(output, "message", "name") ?? "Trigger is ready"}
-      </p>
+      </Text>
       {url && (
         <div className="flex items-center gap-2 rounded-lg bg-zinc-50 p-2 ring-1 ring-zinc-200/70">
           <code className="ph-no-capture min-w-0 flex-1 break-all text-xs text-zinc-600">
             {url}
           </code>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             onClick={handleCopy}
-            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-200"
+            className="h-6 shrink-0 px-2 text-zinc-600 hover:border-zinc-200 hover:bg-zinc-200"
           >
             Copy
-          </button>
+          </Button>
         </div>
       )}
     </div>

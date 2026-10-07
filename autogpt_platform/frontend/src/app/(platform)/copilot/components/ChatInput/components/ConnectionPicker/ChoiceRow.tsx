@@ -63,7 +63,7 @@ export function ChoiceRow({
     <div
       className={cn(
         "flex w-full items-center gap-3 px-3 py-2.5 transition-colors",
-        "has-[button:focus-visible]:bg-neutral-50 hover:bg-neutral-50",
+        "has-[button:focus-visible]:bg-zinc-50 hover:bg-zinc-50",
       )}
     >
       <button

@@ -22,7 +22,7 @@ describe("VoiceTrace", () => {
 
     render(
       <StrictMode>
-        <VoiceTrace source="mic" color="bg-emerald-500" />
+        <VoiceTrace source="mic" color="bg-green-500" />
       </StrictMode>,
     );
     takeMicLevel.mockClear();
@@ -38,7 +38,7 @@ describe("VoiceTrace", () => {
 
     const { container } = render(
       <StrictMode>
-        <VoiceTrace source="mic" color="bg-emerald-500" />
+        <VoiceTrace source="mic" color="bg-green-500" />
       </StrictMode>,
     );
     act(() => void vi.advanceTimersByTime(TICK_MS * 20));
@@ -66,12 +66,12 @@ describe("VoiceTrace colour", () => {
     );
     act(() => void vi.advanceTimersByTime(TICK_MS * 5));
 
-    rerender(<VoiceTrace source="mic" color="bg-emerald-500" />);
+    rerender(<VoiceTrace source="mic" color="bg-green-500" />);
     act(() => void vi.advanceTimersByTime(TICK_MS * 2));
 
     const colors = [
       ...container.querySelectorAll<HTMLElement>("span[style]"),
-    ].map((c) => (c.className.includes("bg-emerald-500") ? "mic" : "tts"));
+    ].map((c) => (c.className.includes("bg-green-500") ? "mic" : "tts"));
     expect(colors.slice(-2)).toEqual(["mic", "mic"]);
     expect(colors.slice(-7, -2)).toEqual(["tts", "tts", "tts", "tts", "tts"]);
     vi.useRealTimers();

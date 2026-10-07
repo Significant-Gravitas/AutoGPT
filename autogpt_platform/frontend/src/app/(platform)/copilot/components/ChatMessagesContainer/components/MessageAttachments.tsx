@@ -19,6 +19,7 @@ import {
   LinkSquare01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import Link from "next/link";
 import { folderSummary } from "@/app/(platform)/artifacts/components/WorkspaceFolders/folderTree";
 import type { WorkspaceFolderPartData } from "../../../helpers/workspaceAttachments";
@@ -96,13 +97,13 @@ export function MessageAttachments({
             className={`inline-block rounded-lg border p-1.5 ${
               isUser
                 ? "border-purple-300 bg-purple-50"
-                : "border-neutral-200 bg-neutral-50"
+                : "border-zinc-200 bg-zinc-50"
             }`}
           >
             {rendered}
             <div
               className={`mt-1 flex items-center gap-1 px-0.5 text-xs ${
-                isUser ? "text-zinc-600" : "text-neutral-500"
+                isUser ? "text-zinc-600" : "text-zinc-500"
               }`}
             >
               <span className="truncate">{file.filename || "file"}</span>
@@ -127,15 +128,27 @@ export function MessageAttachments({
               <div className="flex min-w-0 items-center gap-2">
                 <Icon
                   icon={File02Icon}
-                  className="h-5 w-5 shrink-0 text-neutral-400"
+                  className="h-5 w-5 shrink-0 text-zinc-400"
                 />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-zinc-800">
+                  <Text
+                    variant="body-medium"
+                    as="p"
+                    tone="primary"
+                    unmask={false}
+                    className="truncate"
+                  >
                     {file.filename || "file"}
-                  </p>
-                  <p className="mt-0.5 truncate font-mono text-xs text-zinc-800">
+                  </Text>
+                  <Text
+                    variant="small"
+                    as="p"
+                    tone="primary"
+                    unmask={false}
+                    className="mt-0.5 truncate font-mono"
+                  >
                     {file.mediaType || "file"}
-                  </p>
+                  </Text>
                 </div>
               </div>
               {file.url && (
@@ -159,7 +172,7 @@ export function MessageAttachments({
                     href={file.url}
                     download
                     aria-label="Download file"
-                    className="shrink-0 text-neutral-400 hover:text-neutral-600"
+                    className="shrink-0 text-zinc-400 hover:text-zinc-600"
                   >
                     <Icon icon={Download04Icon} className="h-5 w-5" />
                   </a>
@@ -169,7 +182,7 @@ export function MessageAttachments({
               <div className="flex items-center gap-2">
                 <Icon
                   icon={File02Icon}
-                  className="h-5 w-5 shrink-0 text-neutral-400"
+                  className="h-5 w-5 shrink-0 text-zinc-400"
                 />
                 <div className="min-w-0">
                   <ContentCardTitle>{file.filename || "file"}</ContentCardTitle>

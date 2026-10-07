@@ -9,6 +9,7 @@ import { downloadArtifact } from "../ArtifactPanel/downloadArtifact";
 import { classifyArtifact } from "../ArtifactPanel/helpers";
 import { ArrowRight01Icon, Download01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   artifact: ArtifactRef;
@@ -81,15 +82,21 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
           className="shrink-0 text-zinc-400"
         />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-zinc-900">
+          <Text
+            variant="body-medium"
+            as="p"
+            tone="primary"
+            unmask={false}
+            className="truncate"
+          >
             {artifact.title}
-          </p>
-          <p className="text-xs text-zinc-400">
+          </Text>
+          <Text variant="small" as="p" tone="muted" unmask={false}>
             {classification.label}
             {artifact.sizeBytes
               ? ` \u2022 ${formatSize(artifact.sizeBytes)}`
               : ""}
-          </p>
+          </Text>
         </div>
         <Icon
           icon={Download01Icon}
@@ -106,7 +113,7 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
       onClick={() => openArtifact(artifact)}
       className={cn(
         "my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border bg-white px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-zinc-50",
-        isActive ? "border-violet-300 bg-violet-50/50" : "border-zinc-200",
+        isActive ? "border-purple-300 bg-purple-50/50" : "border-zinc-200",
       )}
     >
       <Icon
@@ -114,20 +121,26 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
         size={20}
         className={cn(
           "shrink-0",
-          isActive ? "text-violet-500" : "text-zinc-400",
+          isActive ? "text-purple-500" : "text-zinc-400",
         )}
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-zinc-900">
+        <Text
+          variant="body-medium"
+          as="p"
+          tone="primary"
+          unmask={false}
+          className="truncate"
+        >
           {artifact.title}
-        </p>
-        <p className="text-xs text-zinc-400">
+        </Text>
+        <Text variant="small" as="p" tone="muted" unmask={false}>
           <span
             className={cn(
               "inline-block rounded-full px-1.5 py-0.5 text-xs font-medium",
               artifact.origin === "user-upload"
                 ? "bg-blue-50 text-blue-500"
-                : "bg-violet-50 text-violet-500",
+                : "bg-purple-50 text-purple-500",
             )}
           >
             {classification.label}
@@ -135,14 +148,14 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
           {artifact.sizeBytes
             ? ` \u2022 ${formatSize(artifact.sizeBytes)}`
             : ""}
-        </p>
+        </Text>
       </div>
       <Icon
         icon={ArrowRight01Icon}
         size={16}
         className={cn(
           "shrink-0",
-          isActive ? "text-violet-400" : "text-zinc-300",
+          isActive ? "text-purple-400" : "text-zinc-300",
         )}
       />
     </button>

@@ -6,6 +6,7 @@ import {
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   label: string;
@@ -44,10 +45,24 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
           MAX
         </span>
       </div>
-      <p className="mb-2 mt-5 text-lg font-medium leading-snug tracking-tight text-zinc-900">
+      <Text
+        variant="large-medium"
+        as="p"
+        tone="primary"
+        unmask={false}
+        className="mb-2 mt-5 text-lg leading-snug tracking-tight"
+      >
         Unlock {name} with Max.
-      </p>
-      <p className="text-xs leading-relaxed text-zinc-600">{reason}</p>
+      </Text>
+      <Text
+        variant="small"
+        as="p"
+        tone="secondary"
+        unmask={false}
+        className="leading-relaxed"
+      >
+        {reason}
+      </Text>
       <Button
         as="NextLink"
         href={href}
