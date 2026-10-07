@@ -54,3 +54,29 @@ export const Error: Story = {
     ),
   },
 };
+
+export const Success: Story = {
+  args: {
+    variant: "success",
+    children: (
+      <>
+        <AlertTitle>Saved</AlertTitle>
+        <AlertDescription>Your agent is published.</AlertDescription>
+      </>
+    ),
+  },
+};
+
+export const Info: Story = {
+  args: {
+    variant: "info",
+    children: (
+      <>
+        <AlertTitle>Scheduled maintenance</AlertTitle>
+        <AlertDescription>
+          Runs pause for ten minutes on Sunday at 02:00 UTC.
+        </AlertDescription>
+      </>
+    ),
+  },
+};

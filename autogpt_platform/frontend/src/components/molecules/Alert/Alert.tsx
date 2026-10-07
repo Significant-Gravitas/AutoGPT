@@ -3,6 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import {
   Alert02Icon,
   CancelCircleIcon,
+  CheckmarkCircle02Icon,
   InformationCircleIcon,
 } from "@hugeicons/core-free-icons";
 
@@ -10,15 +11,16 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 
 const alertVariants = cva(
-  "relative w-full rounded-lg border border-zinc-200 px-4 py-3 text-sm [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-1/2 [&>svg]:-translate-y-1/2 [&>svg]:text-zinc-800 [&>svg~*]:pl-7",
+  "relative w-full rounded-lg border px-4 py-3 text-sm text-card-foreground [&>svg]:absolute [&>svg]:top-1/2 [&>svg]:left-4 [&>svg]:-translate-y-1/2 [&>svg~*]:pl-7",
   {
     variants: {
       variant: {
-        default: "bg-white text-zinc-800 [&>svg]:text-purple-500",
-        warning:
-          "bg-orange-50/50 border-yellow-300 text-zinc-800 [&>svg]:text-orange-600",
+        default: "border-border bg-card [&>svg]:text-accent",
+        info: "border-border bg-info-foreground [&>svg]:text-info",
+        success: "border-success/30 bg-success/10 [&>svg]:text-success",
+        warning: "border-warning/40 bg-warning/10 [&>svg]:text-warning",
         error:
-          "bg-red-100/50 border-red-300 text-zinc-800 [&>svg]:text-red-500",
+          "border-destructive/30 bg-destructive/10 [&>svg]:text-destructive",
       },
     },
     defaultVariants: {
@@ -29,6 +31,8 @@ const alertVariants = cva(
 
 const variantIcons = {
   default: InformationCircleIcon,
+  info: InformationCircleIcon,
+  success: CheckmarkCircle02Icon,
   warning: Alert02Icon,
   error: CancelCircleIcon,
 } as const;

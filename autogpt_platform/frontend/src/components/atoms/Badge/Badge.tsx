@@ -10,11 +10,13 @@ interface BadgeProps {
   className?: string;
 }
 
+// Fill and ring from the semantic tokens. Text uses the 700/800 step of the
+// same hue: the token colours are below 4.5:1 on their own tint.
 const badgeVariants: Record<BadgeVariant, string> = {
-  success: "bg-green-50 text-green-700 ring-green-600/20",
-  error: "bg-red-50 text-red-700 ring-red-600/10",
-  warning: "bg-yellow-50 text-yellow-800 ring-yellow-500/20",
-  info: "bg-zinc-50 text-zinc-600 ring-zinc-500/10",
+  success: "bg-success/10 text-green-700 ring-success/20",
+  error: "bg-destructive/10 text-red-700 ring-destructive/20",
+  warning: "bg-warning/10 text-yellow-800 ring-warning/30",
+  info: "bg-info-foreground text-info ring-info/10",
 };
 
 const badgeSizes: Record<BadgeSize, string> = {
@@ -31,8 +33,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md font-sans font-medium ring-1 ring-inset",
-        "overflow-hidden",
+        "inline-flex max-w-full items-center gap-1.5 rounded-md font-sans font-medium ring-1 ring-inset",
         badgeSizes[size],
         badgeVariants[variant],
         className,

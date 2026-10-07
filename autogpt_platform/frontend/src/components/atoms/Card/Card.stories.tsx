@@ -13,7 +13,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "A white surface with large rounded corners, a medium shadow and 1.5rem padding. It has no variants: pass `className` to change width, padding or layout.",
+          "A card surface (bg-card) with a border, 16px corners (rounded-xl), a small shadow and 1.5rem padding. It has no variants: pass `className` to change width, padding or layout.",
       },
     },
   },
