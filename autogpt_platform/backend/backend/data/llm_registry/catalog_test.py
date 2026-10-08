@@ -211,6 +211,24 @@ def test_claude_sonnet_5_5_bills_at_authored_rates():
     assert s55_entry.context_window == 200000
 
 
+def test_claude_haiku_5_5_bills_at_authored_rates():
+    """Claude Haiku 5.5 (OpenRouter live base tier $0.10/$0.50 per 1M) —
+    flat tier and per-1M projections must match the authored catalog entry."""
+    haiku = LLMModel("claude-haiku-5-5")
+    assert haiku is LLMModel.CLAUDE_5_5_HAIKU
+    assert MODEL_COST[haiku] == 1
+    assert TOKEN_COST[haiku].model_dump() == {
+        "input": 15.0,
+        "output": 75.0,
+        "cache_read": 1.5,
+        "cache_creation": 18.75,
+    }
+    assert MODEL_METADATA[haiku].max_output_tokens == 128000
+    haiku_entry = next(m for m in CATALOG.models if m.slug == "claude-haiku-5-5")
+    assert haiku_entry.price_tier == 2
+    assert haiku_entry.context_window == 200000
+
+
 def test_claude_opus_5_bills_at_authored_rates():
     opus = LLMModel("claude-opus-5")
     assert MODEL_COST[opus] == 14
