@@ -1,5 +1,5 @@
 import { screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEST_BACKEND_BASE_URL } from "../sse-helpers";
 import {
   createBackendSim,
@@ -68,7 +68,7 @@ afterEach(() => {
 
 describe("stream drift — a second connection onto a live turn", () => {
   it(
-    "W1: a tab shown again after 30 s resumes over the stream it never lost",
+    "W1: a tab shown again after 30 s resumes from its cursor and paints once",
     { timeout: 60_000 },
     async () => {
       const sim = createBackendSim([{ turn: toolTurn }]);
@@ -80,8 +80,9 @@ describe("stream drift — a second connection onto a live turn", () => {
         timeout: 5000,
       });
 
-      // Desktop browsers keep a hidden tab's fetch open, so the POST stream is
-      // still healthy when the wake re-sync fires.
+      // Desktop browsers keep a hidden tab's fetch open, but by the clock the
+      // stream has missed three heartbeats, so the wake reconnects. The new
+      // connection reads on from the last applied entry.
       vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
       setTabVisibility("hidden");
       vi.setSystemTime(Date.now() + 31_000);
@@ -97,10 +98,9 @@ describe("stream drift — a second connection onto a live turn", () => {
           painted,
           toast: toastMock,
         }),
-        // The resume replays the turn into the list while the POST stream
-        // still writes it: both copies of the first block are on screen.
-        { today: ["paintedTwice"] },
+        {},
       );
+      expect(sim.resumes).toEqual([{ turn: "drift-turn-0", after: "9-0" }]);
     },
   );
 
@@ -119,7 +119,8 @@ describe("stream drift — a second connection onto a live turn", () => {
 
       vi.useFakeTimers({ shouldAdvanceTime: true });
       sim.publish(TOOL_CALL_OPEN - FIRST_TEXT_BLOCK_DONE);
-      // The route writes a heartbeat comment every 10 s; the parser drops them.
+      // The route writes a heartbeat comment every 10 s: a silent tool is a
+      // live stream, so nothing reconnects.
       await vi.advanceTimersByTimeAsync(70_000);
       sim.publish();
 
@@ -130,10 +131,9 @@ describe("stream drift — a second connection onto a live turn", () => {
           painted,
           toast: toastMock,
         }),
-        // The 60 s stall watchdog reads the silence as a dead stream and
-        // reconnects with a toast.
-        { today: ["connectionToast"] },
+        {},
       );
+      expect(sim.resumes).toEqual([]);
     },
   );
 });
@@ -153,6 +153,8 @@ describe("stream drift — a stream that ends while its turn runs on", () => {
       });
 
       // Simulated: the cut is a clean close with no finish, whatever the age.
+      // One reconnect reads on from the cursor; the turn's head is not
+      // replayed.
       sim.cutOpenConnections();
       await waitForConnections(sim, 2);
       await turnKeepsRunning();
@@ -165,11 +167,9 @@ describe("stream drift — a stream that ends while its turn runs on", () => {
           painted,
           toast: toastMock,
         }),
-        // Two resumes attach to one running turn: the once-per-mount resume,
-        // and the post-finish probe's reconnect with "Connection lost".
-        // Neither aborts the other, so the first block is painted three times.
-        { today: ["connectionToast", "paintedTwice"] },
+        {},
       );
+      expect(sim.resumes).toEqual([{ turn: "drift-turn-0", after: "9-0" }]);
     },
   );
 
@@ -188,7 +188,8 @@ describe("stream drift — a stream that ends while its turn runs on", () => {
       renderAgainst(sim);
       await sendPrompt(sim, toolTurn);
       const painted = sampleTranscripts();
-      // The first turn's end starts the continuation before its finish lands.
+      // The first turn's end starts the continuation before its finish lands;
+      // the post-finish probe finds it and attaches with a fresh parser.
       sim.publish();
       await waitForConnections(sim, 2);
       await turnKeepsRunning();
@@ -201,8 +202,7 @@ describe("stream drift — a stream that ends while its turn runs on", () => {
           painted,
           toast: toastMock,
         }),
-        // The probe cannot tell the new turn from a dropped stream (#15044).
-        { today: ["connectionToast"] },
+        {},
       );
     },
   );

@@ -5,13 +5,17 @@ import { useConnectedProvidersStore } from "./connectedProvidersStore";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import {
   createCopilotTransport,
+  type CopilotChatTransport,
   type MutableValue,
 } from "./copilotStreamTransport";
 import type { CopilotLlmModel } from "./store";
 
 interface CopilotChatRuntime {
   chat: Chat<UIMessage>;
+  transport: CopilotChatTransport;
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
+  /** The turn the user stopped; never auto-resumed until the next send. */
+  stoppedTurnId: string | null;
   onFinish?: (args: {
     isDisconnect?: boolean;
     isAbort?: boolean;
@@ -77,12 +81,10 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   };
   const callbacks: Pick<CopilotChatRuntime, "onFinish" | "onError" | "onData"> =
     {};
+  const transport = createCopilotTransport({ sessionId, copilotModelRef });
   const chat = new Chat<UIMessage>({
     id: sessionId,
-    transport: createCopilotTransport({
-      sessionId,
-      copilotModelRef,
-    }),
+    transport,
     onFinish: (args) => {
       if (args.isDisconnect) {
         markChatRuntimeDisconnected(sessionId);
@@ -101,7 +103,9 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   });
   const runtime = {
     chat,
+    transport,
     copilotModelRef,
+    stoppedTurnId: null as string | null,
     get onData() {
       return callbacks.onData;
     },
@@ -135,6 +139,7 @@ export function shouldReloadCopilotChatRuntime(sessionId: string) {
 }
 
 export function resetCopilotChatRuntime(sessionId: string) {
+  copilotChatRuntimes.get(sessionId)?.transport.activeStream?.close();
   copilotChatRuntimes.delete(sessionId);
   useCopilotStreamStore.getState().clearSession(sessionId);
   useConnectedProvidersStore.getState().clearSession(sessionId);
@@ -142,6 +147,9 @@ export function resetCopilotChatRuntime(sessionId: string) {
 }
 
 export function resetCopilotChatRegistry() {
+  copilotChatRuntimes.forEach((runtime) =>
+    runtime.transport.activeStream?.close(),
+  );
   copilotChatRuntimes.clear();
   useCopilotChatRuntimeStore.getState().resetAll();
 }

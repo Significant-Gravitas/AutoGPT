@@ -7,6 +7,7 @@ import { http, HttpResponse } from "msw";
 import fs from "node:fs";
 import path from "node:path";
 import { expect } from "vitest";
+import { compareEntryIds } from "../../stream/turnConverter";
 import {
   renderHost,
   TEST_BACKEND_BASE_URL,
@@ -17,6 +18,7 @@ import {
 export type Row = SessionDetailResponseMessagesItem;
 
 export interface RecordedTurn {
+  /** `id` is the stored entry's; a comment frame carries none on the wire. */
   frames: { id: string; sse: string }[];
   rows: Row[];
 }
@@ -57,8 +59,11 @@ interface TurnPlan {
 
 /**
  * The backend as the chat sees it: a turn's frames published one by one into
- * a stream every connection replays from its first held entry, and a session
- * GET whose rows and `active_stream` follow the turn.
+ * its stream, and a session GET whose rows and `active_stream` follow the
+ * turn. A GET naming a turn serves that turn's entries after its `after`
+ * cursor, or refuses as the route does: 409 when entries after the cursor
+ * were trimmed, 410 for a turn it never ran. A GET without one replays the
+ * running turn from its first held entry, as older clients read it.
  */
 export function createBackendSim(plans: TurnPlan[]) {
   const state = {
@@ -71,6 +76,7 @@ export function createBackendSim(plans: TurnPlan[]) {
   const published = new Map<number, number>();
   const connections: { closed: boolean; cut: () => void }[] = [];
   const wakers = new Set<() => void>();
+  const resumes: Record<string, string>[] = [];
 
   function startTurn(index: number) {
     state.turnIndex = index;
@@ -106,9 +112,9 @@ export function createBackendSim(plans: TurnPlan[]) {
     wakers.forEach((wake) => wake());
   }
 
-  function open(turnIndex: number) {
+  function open(turnIndex: number, from: number) {
     const frames = plans[turnIndex].turn.frames;
-    let index = state.trimmedBefore;
+    let index = from;
     let cutRequested = false;
     let wake: (() => void) | null = null;
     const connection = {
@@ -130,7 +136,7 @@ export function createBackendSim(plans: TurnPlan[]) {
         while (!cutRequested) {
           if (index < (published.get(turnIndex) ?? 0)) {
             const frame = frames[index++];
-            controller.enqueue(encoder.encode(frame.sse));
+            controller.enqueue(encoder.encode(onTurn(frame.sse, turnIndex)));
             if (isFinish(frame)) {
               controller.enqueue(encoder.encode("data: [DONE]\n\n"));
               close(controller);
@@ -166,13 +172,38 @@ export function createBackendSim(plans: TurnPlan[]) {
     handlers: [
       http.post(STREAM_URL, () => {
         startTurn(state.turnIndex + 1);
-        return open(state.turnIndex);
+        return open(state.turnIndex, 0);
       }),
-      http.get(STREAM_URL, () => {
-        if (!state.running) return new HttpResponse(null, { status: 204 });
-        return open(state.turnIndex);
+      http.get(STREAM_URL, ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        resumes.push(Object.fromEntries(params));
+        const turn = params.get("turn");
+        if (turn === null) {
+          if (!state.running) return new HttpResponse(null, { status: 204 });
+          return open(state.turnIndex, state.trimmedBefore);
+        }
+        const index = turnIndexOf(turn);
+        if (index === null || !published.has(index)) {
+          return HttpResponse.json({ reason: "expired" }, { status: 410 });
+        }
+        const frames = plans[index].turn.frames;
+        const after = params.get("after") ?? "0-0";
+        const from = frames.findIndex((f) => compareEntryIds(f.id, after) > 0);
+        const start = from === -1 ? frames.length : from;
+        if (index === state.turnIndex && start < state.trimmedBefore) {
+          return HttpResponse.json(
+            {
+              reason: "trimmed",
+              checkpoint: checkpointAt(frames[state.trimmedBefore]),
+            },
+            { status: 409 },
+          );
+        }
+        return open(index, start);
       }),
     ],
+    /** The query of every GET, in order. */
+    resumes,
     connections,
     /** Mount mid-turn: the turn is already running when the page loads. */
     beginRunning(index = 0) {
@@ -199,7 +230,7 @@ export function createBackendSim(plans: TurnPlan[]) {
         messages: numbered(state.rows),
         active_stream: state.running
           ? {
-              turn_id: `drift-turn-${state.turnIndex}`,
+              turn_id: turnIdOf(state.turnIndex),
               last_message_id: "0-0",
               started_at: state.startedAt,
             }
@@ -268,6 +299,32 @@ function isFinish(frame: { sse: string }) {
 function frameData(frame: { sse: string }) {
   const line = frame.sse.split("\n").find((l) => l.startsWith("data: "));
   return line ? line.slice("data: ".length) : null;
+}
+
+function turnIdOf(index: number) {
+  return `drift-turn-${index}`;
+}
+
+function turnIndexOf(turnId: string) {
+  const match = /^drift-turn-(\d+)$/.exec(turnId);
+  return match ? Number(match[1]) : null;
+}
+
+/** Recorded frames name one turn; each turn the plan runs gets its own id. */
+function onTurn(sse: string, index: number) {
+  return sse.replace(/^id: [^\n]*:/, `id: ${turnIdOf(index)}:`);
+}
+
+/** The refusal's checkpoint: the first held entry, when it is one. */
+function checkpointAt(frame: { id: string; sse: string } | undefined) {
+  const data = frame ? frameData(frame) : null;
+  const chunk = data ? JSON.parse(data) : null;
+  if (chunk?.type !== "data-checkpoint") return null;
+  return {
+    entry_id: frame!.id,
+    rows: chunk.data.rows,
+    sequence: chunk.data.sequence,
+  };
 }
 
 function leadingUserRows(rows: Row[]) {

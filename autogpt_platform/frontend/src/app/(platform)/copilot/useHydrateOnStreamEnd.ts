@@ -3,7 +3,6 @@ import type { UIMessage } from "ai";
 import { useEffect, useRef } from "react";
 
 import {
-  deduplicateMessages,
   hasInProgressAssistantParts,
   resolveInterruptedMessage,
 } from "./helpers";
@@ -94,24 +93,29 @@ function preservePromotedUserBubbles(
 }
 
 /**
- * A stopped turn is finalised client-side — ``useCopilotStop`` appends the
- * cancellation marker — and the backend persists nothing for it, so a blind
- * force-replace drops the partial answer and the marker with it, and the error
- * banner that marker suppresses takes the stopped card's place. Re-attach the
- * local bubble while the hydrated view still ends on the user's prompt.
+ * Merge, never just replace: a reply the user watched stream in stays on
+ * screen while the refetched rows still end on its prompt. That is a turn the
+ * user stopped (``useCopilotStop`` appends the cancellation marker and the
+ * backend persists nothing for it), or a reply whose final persist failed.
+ * Dropping it would flash the streamed text away, and for a stop the error
+ * banner the marker suppresses would take the stopped card's place.
  */
-function preserveStoppedAssistantMessage(
+function preserveUnpersistedReply(
   prev: UIMessage[],
   hydrated: UIMessage[],
 ): UIMessage[] {
-  const stopped = prev[prev.length - 1];
-  if (stopped?.role !== "assistant") return hydrated;
-  const isStopped = stopped.parts.some(
+  const reply = prev[prev.length - 1];
+  const prompt = prev[prev.length - 2];
+  if (reply?.role !== "assistant" || prompt?.role !== "user") return hydrated;
+  const lastHydrated = hydrated[hydrated.length - 1];
+  if (lastHydrated?.role !== "user") return hydrated;
+  const isStopped = reply.parts.some(
     (part) => part.type === "text" && part.text.includes(CANCELLED_MARKER),
   );
-  if (!isStopped) return hydrated;
-  if (hydrated[hydrated.length - 1]?.role !== "user") return hydrated;
-  return [...hydrated, stopped];
+  if (!isStopped && getMessageText(lastHydrated) !== getMessageText(prompt)) {
+    return hydrated;
+  }
+  return [...hydrated, reply];
 }
 
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
@@ -151,6 +155,12 @@ interface Args {
    * immediately take over. Hold the replace until the probe settles.
    */
   isFinishProbing: boolean;
+  /**
+   * Once the stream finished: true when its folded rows reproduced the
+   * turn's last checkpoint digest, so the screen already shows what the
+   * database holds and the end-of-turn hydrate is skipped.
+   */
+  turnVerified?: boolean | null;
   setMessages: (
     updater: UIMessage[] | ((prev: UIMessage[]) => UIMessage[]),
   ) => void;
@@ -162,9 +172,11 @@ export function _resetInterruptedToastLedgerForTests() {
 }
 
 /**
- * After a stream ends, replace the in-memory AI SDK messages with the
- * definitive DB state, then keep length-gated top-ups working for later
- * pagination / sync events.
+ * After a stream ends, merge the definitive DB state into the in-memory AI
+ * SDK messages, then keep length-gated top-ups working for later pagination /
+ * sync events. A turn whose streamed rows matched its last checkpoint digest
+ * (`turnVerified`) is already what the database holds: its content is never
+ * taken from a view that lacks it.
  *
  * **The tricky bit** (hence this being its own hook): `status` flips to
  * "ready" BEFORE the post-turn refetch completes — there's a ~500 ms delay
@@ -192,6 +204,7 @@ export function useHydrateOnStreamEnd({
   isReconnectScheduled,
   hasActiveStream,
   isFinishProbing,
+  turnVerified = null,
   setMessages,
 }: Args) {
   const prevStatusRef = useRef(status);
@@ -217,7 +230,7 @@ export function useHydrateOnStreamEnd({
     if (status === "streaming" || status === "submitted") return;
     if (isReconnectScheduled) return;
 
-    const deduped = deduplicateMessages(hydratedMessages);
+    const deduped = hydratedMessages;
     const needsZombieRecovery =
       !hasActiveStream &&
       hasInProgressAssistantParts(deduped[deduped.length - 1]);
@@ -270,17 +283,19 @@ export function useHydrateOnStreamEnd({
       // session refetch — either way this effect re-fires and the replace
       // lands once the backend goes idle, so no timeout fallback is needed.
       if (hasActiveStream) return;
+      needsForceHydrateRef.current = false;
+      staleRefAtStreamEnd.current = null;
+      // A verified turn is already on screen exactly as persisted; the view
+      // only lends it the rows' ids and timestamps, and one that does not
+      // hold the reply yet (a lagging read, a failed persist) lends nothing.
+      if (turnVerified && finalized[finalized.length - 1]?.role !== "assistant")
+        return;
       setMessages((prev) =>
         preservePromotedUserBubbles(
           prev,
-          preserveStoppedAssistantMessage(
-            prev,
-            retainOlderHistory(prev, finalized),
-          ),
+          preserveUnpersistedReply(prev, retainOlderHistory(prev, finalized)),
         ),
       );
-      needsForceHydrateRef.current = false;
-      staleRefAtStreamEnd.current = null;
       return;
     }
 
@@ -293,5 +308,6 @@ export function useHydrateOnStreamEnd({
     isReconnectScheduled,
     hasActiveStream,
     isFinishProbing,
+    turnVerified,
   ]);
 }

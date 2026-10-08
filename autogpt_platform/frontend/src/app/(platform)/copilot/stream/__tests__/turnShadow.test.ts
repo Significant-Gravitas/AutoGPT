@@ -1,10 +1,12 @@
 import * as Sentry from "@sentry/nextjs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { readSseFrames } from "../sseClient";
 import {
   compareShadowWithSession,
-  createShadowFetch,
   getShadowLog,
+  observeShadowEnd,
+  observeShadowEntry,
   resetShadows,
   setStreamShadowRate,
 } from "../turnShadow";
@@ -24,14 +26,22 @@ beforeEach(() => {
   vi.mocked(Sentry.captureMessage).mockClear();
 });
 
+/** One connection's worth of SSE, as the turn stream hands it to the shadow. */
+async function feed(sse: string, { session = SESSION, byClient = false } = {}) {
+  let turnId: string | null = null;
+  await readSseFrames(new Response(sse).body!, (frame) => {
+    if (frame.kind !== "entry") return;
+    turnId = frame.entry.turn;
+    observeShadowEntry(session, frame.entry);
+  });
+  observeShadowEnd(session, turnId, byClient);
+}
+
 async function stream(sse: string) {
-  const shadowFetch = createShadowFetch(SESSION, async () => new Response(sse));
-  const response = await shadowFetch("http://x/stream", { method: "POST" });
-  const text = await response.text();
+  await feed(sse);
   await vi.waitFor(() =>
     expect(getShadowLog(SESSION)?.status).toBe("finished"),
   );
-  return text;
 }
 
 function driftKinds() {
@@ -44,8 +54,8 @@ function driftKinds() {
 }
 
 describe("the stream shadow", () => {
-  it("hands the chat the stream untouched and reports nothing for a turn that matches", async () => {
-    expect(await stream(body)).toBe(body);
+  it("reports nothing for a turn that matches", async () => {
+    await stream(body);
     compareShadowWithSession(SESSION, {
       messages: turn.rows,
       active_stream: null,
@@ -93,8 +103,7 @@ describe("the stream shadow", () => {
   it("keeps a finished turn's check when the next turn starts before the view arrives", async () => {
     await stream(body);
     const next = body.replaceAll("drift-turn:", "next-turn:");
-    const nextTurn = createShadowFetch(SESSION, async () => new Response(next));
-    await (await nextTurn("http://x/stream", {})).text();
+    await feed(next);
     await vi.waitFor(() =>
       expect(getShadowLog(SESSION)?.turnId).toBe("next-turn"),
     );
@@ -108,8 +117,7 @@ describe("the stream shadow", () => {
 
   it("keeps a shadow for the most recent sessions only", async () => {
     for (const id of ["s-1", "s-2", "s-3", "s-4", "s-5", "s-6"]) {
-      const shadowFetch = createShadowFetch(id, async () => new Response(body));
-      await (await shadowFetch("http://x/stream", {})).text();
+      await feed(body, { session: id });
       await vi.waitFor(() => expect(getShadowLog(id)?.status).toBe("finished"));
     }
     expect(getShadowLog("s-1")).toBeNull();
@@ -118,16 +126,13 @@ describe("the stream shadow", () => {
 
   it("leaves a session the flag does not sample untouched", async () => {
     setStreamShadowRate(0);
-    const original = new Response(body);
-    const shadowFetch = createShadowFetch(SESSION, async () => original);
-    expect(await shadowFetch("http://x/stream", {})).toBe(original);
+    await feed(body);
     expect(getShadowLog(SESSION)).toBeNull();
   });
 
   it("reports a turn the server finished while its stream ended before finish", async () => {
-    const cut = createShadowFetch(SESSION, async () => new Response(cutBody));
-    await (await cut("http://x/stream", {})).text();
-    await vi.waitFor(() => expect(getShadowLog(SESSION)?.rows).toHaveLength(1));
+    await feed(cutBody);
+    expect(getShadowLog(SESSION)?.rows).toHaveLength(1);
     compareShadowWithSession(SESSION, {
       messages: turn.rows,
       active_stream: { turn_id: "drift-turn" },
@@ -141,29 +146,13 @@ describe("the stream shadow", () => {
   });
 
   it("reports a turn the client stopped as stopped", async () => {
-    const encoder = new TextEncoder();
-    const source = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(encoder.encode(cutBody));
-      },
-    });
-    const abort = new AbortController();
-    const shadowFetch = createShadowFetch(
-      SESSION,
-      async () => new Response(source),
-    );
-    await shadowFetch("http://x/stream", { signal: abort.signal });
-    await vi.waitFor(() => expect(getShadowLog(SESSION)?.rows).toHaveLength(1));
-    abort.abort();
-    await vi.waitFor(() => {
-      compareShadowWithSession(SESSION, { messages: [], active_stream: null });
-      expect(driftKinds()).toEqual(["stopped"]);
-    });
+    await feed(cutBody, { byClient: true });
+    compareShadowWithSession(SESSION, { messages: [], active_stream: null });
+    expect(driftKinds()).toEqual(["stopped"]);
   });
 
   it("checks a cut turn as finished once a resume delivers its end", async () => {
-    const cut = createShadowFetch(SESSION, async () => new Response(cutBody));
-    await (await cut("http://x/stream", {})).text();
+    await feed(cutBody);
     await stream(body);
     compareShadowWithSession(SESSION, {
       messages: turn.rows,
@@ -186,11 +175,7 @@ describe("the stream shadow", () => {
     const tail = turn.sse.slice(
       turn.sse.findIndex((f) => f.includes("tool-output-available")),
     );
-    const shadowFetch = createShadowFetch(
-      SESSION,
-      async () => new Response(tail.join("")),
-    );
-    await (await shadowFetch("http://x/stream", {})).text();
+    await feed(tail.join(""));
     await vi.waitFor(() =>
       expect(getShadowLog(SESSION)?.status).toBe("finished"),
     );
@@ -200,20 +185,5 @@ describe("the stream shadow", () => {
     });
     expect(getShadowLog(SESSION)?.protocolErrors.length).toBeGreaterThan(0);
     expect(driftKinds()).toEqual([]);
-  });
-
-  it("stops reading when the chat cancels its branch, so the connection closes", async () => {
-    const cancelled = vi.fn();
-    const source = new ReadableStream<Uint8Array>({
-      pull: () => new Promise(() => {}),
-      cancel: cancelled,
-    });
-    const shadowFetch = createShadowFetch(
-      SESSION,
-      async () => new Response(source),
-    );
-    const response = await shadowFetch("http://x/stream", {});
-    await response.body!.cancel();
-    await vi.waitFor(() => expect(cancelled).toHaveBeenCalled());
   });
 });

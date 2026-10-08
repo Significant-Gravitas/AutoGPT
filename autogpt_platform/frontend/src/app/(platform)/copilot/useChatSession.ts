@@ -194,6 +194,9 @@ export function useChatSession({
     return !!freshSessionData?.active_stream;
   }, [freshSessionData]);
 
+  // The running turn's id: the stream lifecycle resumes exactly that turn.
+  const activeTurnId = freshSessionData?.active_stream?.turn_id ?? null;
+
   // Backend-reported start time of the active turn. Used to seed the
   // elapsed-time counter on mount so restored sessions show honest
   // "time since the backend started the turn" rather than "time since
@@ -431,6 +434,7 @@ export function useChatSession({
     rawSessionMessages,
     historicalTurnStats,
     activeTurnStartMessageId,
+    activeTurnId,
     hasActiveStream,
     activeStreamStartedAt,
     hasMoreMessages,

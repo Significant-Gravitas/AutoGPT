@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEST_BACKEND_BASE_URL } from "../sse-helpers";
 import {
   createBackendSim,
@@ -75,8 +75,11 @@ describe("stream drift — what the stream and the rows hold", () => {
       const sim = createBackendSim([{ turn: toolTurn }]);
       sim.beginRunning();
       sim.publish(TOOL_OUTPUT_DONE);
-      // Simulated: the length cap dropped the stream's first entries, so the
-      // replay opens on a text-delta whose text-start is gone.
+      // Simulated: the stream lost its first entries and kept no checkpoint
+      // at its head, so the cursor read is refused (409, no checkpoint) and
+      // the chat falls back to the replay the stream still holds. It opens on
+      // a text-delta whose text-start is gone: the parser never sees it, the
+      // rest renders, and the turn's end repairs the head from the rows.
       sim.trimHead(SECOND_DELTA);
       renderAgainst(sim);
       const painted = sampleTranscripts();
@@ -96,12 +99,9 @@ describe("stream drift — what the stream and the rows hold", () => {
           missingWhileRunning,
           quietMs: 8000,
         }),
-        // The parser throws on the orphan delta and every reconnect replays
-        // the same head, so nothing of the running turn renders and the
-        // reconnects announce "Connection lost". Only the turn's end repairs
-        // the transcript, from the rows.
-        { today: ["connectionToast", "missingWhileRunning"] },
+        {},
       );
+      expect(sim.resumes).toEqual([{ turn: "drift-turn-0", after: "0-0" }, {}]);
     },
   );
 
@@ -118,15 +118,14 @@ describe("stream drift — what the stream and the rows hold", () => {
       const painted = sampleTranscripts();
       await waitForConnections(sim, 1);
       // Heartbeats keep arriving every 10 s: the connection is alive, only
-      // the turn is dead, and only the server can say so.
+      // the turn is dead, and only the server can say so. Nothing reconnects.
       await vi.advanceTimersByTimeAsync(60_000);
 
       expectDrift(
         await reportDrift({ sim, turns: [], painted, toast: toastMock }),
-        // The 6 s restore watchdog sees no content, reconnects three times and
-        // ends on "Unable to reconnect. Please refresh the page."
-        { today: ["connectionToast"] },
+        {},
       );
+      expect(sim.resumes).toEqual([{ turn: "drift-turn-0", after: "0-0" }]);
     },
   );
 
@@ -141,6 +140,9 @@ describe("stream drift — what the stream and the rows hold", () => {
       renderAgainst(sim);
       await sendPrompt(sim, textTurn);
       const painted = sampleTranscripts();
+      // The folded rows reproduce the turn's checkpoint digest, so a session
+      // view without the reply lends it nothing: the reply stays. The rows
+      // are the fault here, so a reload is no oracle for this case.
       sim.publish();
 
       expectDrift(
@@ -150,10 +152,7 @@ describe("stream drift — what the stream and the rows hold", () => {
           painted,
           toast: toastMock,
         }),
-        // The end-of-turn hydrate replaces the list with rows that lack the
-        // reply, so it vanishes in front of the user. The rows are the fault
-        // here, so a reload is no oracle for this case.
-        { today: ["lostStreamedText"], unchecked: ["differsFromReload"] },
+        { unchecked: ["differsFromReload"] },
       );
     },
   );

@@ -1,21 +1,21 @@
 import * as Sentry from "@sentry/nextjs";
 
-import { readSseFrames } from "./sseClient";
 import { applyEntry, jsonEqual, type StreamEntry } from "./turnConverter";
 import {
   emptyTurnLog,
   logRowFromPersisted,
   parseJsonLoose,
+  sha256Hex,
   type LogRow,
   type PersistedRow,
   type TurnLog,
 } from "./turnLog";
 
 /**
- * Shadow mode: the stream the AI SDK renders is also folded by our converter,
- * which is checked against the server at every checkpoint and against the
- * persisted rows once the turn is over. It renders nothing and reports drift
- * to Sentry; any failure in it degrades to silence.
+ * Drift observability: a sampled session's entries, as the chat applies them,
+ * are folded again here and checked against the server at every checkpoint
+ * and against the persisted rows once the turn is over. It renders nothing
+ * and reports drift to Sentry; any failure in it degrades to silence.
  */
 interface ShadowTurn {
   log: TurnLog;
@@ -47,44 +47,18 @@ export function setStreamShadowRate(rate: unknown) {
       : 0;
 }
 
-/** Wrap the transport's fetch so a sampled session's stream responses are teed into the shadow. */
-export function createShadowFetch(
+/** Fold one entry the chat applied into the session's shadow, when sampled. */
+export function observeShadowEntry(sessionId: string, entry: StreamEntry) {
+  if (isSampled(sessionId)) applyShadowEntry(sessionId, entry);
+}
+
+/** A connection of a sampled session ended; `byClient` when the chat closed it. */
+export function observeShadowEnd(
   sessionId: string,
-  inner: typeof fetch = (input, init) => fetch(input, init),
-): typeof fetch {
-  return async (input, init) => {
-    const response = await inner(input, init);
-    if (!response.ok || !response.body || !isSampled(sessionId)) {
-      return response;
-    }
-    const [main, tap] = response.body.tee();
-    const stopTap = new AbortController();
-    const stop = () => stopTap.abort();
-    init?.signal?.addEventListener("abort", stop);
-    let turnId: string | null = null;
-    void readSseFrames(
-      tap,
-      (frame) => {
-        if (frame.kind !== "entry") return;
-        turnId = frame.entry.turn;
-        applyShadowEntry(sessionId, frame.entry);
-      },
-      stopTap.signal,
-    )
-      .catch(() => {})
-      .finally(() => {
-        init?.signal?.removeEventListener("abort", stop);
-        markEnded(sessionId, turnId, stopTap.signal.aborted);
-      });
-    return new Response(
-      onCancel(main, () => stopTap.abort()),
-      {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-      },
-    );
-  };
+  turnId: string | null,
+  byClient: boolean,
+) {
+  if (isSampled(sessionId)) markEnded(sessionId, turnId, byClient);
 }
 
 export function applyShadowEntry(sessionId: string, entry: StreamEntry) {
@@ -293,32 +267,5 @@ function reportDrift(
     level: "warning",
     tags: { stream_drift: kind },
     extra: { turnId: log.turnId, cursor: log.cursor, ...extra },
-  });
-}
-
-// `crypto.subtle` exists only in secure contexts; a plain-HTTP LAN origin skips the check.
-async function sha256Hex(text: string): Promise<string | null> {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) return null;
-  const hash = await subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(hash), (b) =>
-    b.toString(16).padStart(2, "0"),
-  ).join("");
-}
-
-// A tee branch outlives its sibling: when the SDK cancels the body, the tap
-// must stop too or it holds the connection open.
-function onCancel(stream: ReadableStream<Uint8Array>, cancelled: () => void) {
-  const reader = stream.getReader();
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      const { done, value } = await reader.read();
-      if (done) controller.close();
-      else controller.enqueue(value);
-    },
-    cancel(reason) {
-      cancelled();
-      return reader.cancel(reason);
-    },
   });
 }
