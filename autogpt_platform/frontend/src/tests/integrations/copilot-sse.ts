@@ -24,15 +24,23 @@ interface StreamChunksOptions {
    * ReadableStream is not always invoked on abort in test environments).
    */
   abortSignal?: AbortSignal;
+  /** The turn whose entries these are: every frame carries `id: <turn>:<n>-0`,
+   *  as the route writes it. A fresh turn per response by default. */
+  turnId?: string;
+  /** Serve only the entries after this cursor, as a resume at a cursor does. */
+  after?: string | null;
 }
+
+let turnCounter = 0;
 
 export function streamSseResponse(
   chunks: UIMessageChunk[],
   options: StreamChunksOptions = {},
 ) {
   const { delayMsBetweenChunks = 0, perChunkDelaysMs, abortSignal } = options;
+  const turnId = options.turnId ?? `sse-turn-${++turnCounter}`;
   const encoder = new TextEncoder();
-  let nextIndex = 0;
+  let nextIndex = options.after ? Number(options.after.split("-")[0]) : 0;
   let cancelled = false;
   let pendingTimer: ReturnType<typeof setTimeout> | undefined;
   let pendingResolve: (() => void) | undefined;
@@ -94,7 +102,11 @@ export function streamSseResponse(
         return;
       }
       const chunk = chunks[nextIndex++];
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+      controller.enqueue(
+        encoder.encode(
+          `id: ${turnId}:${nextIndex}-0\ndata: ${JSON.stringify(chunk)}\n\n`,
+        ),
+      );
     },
     cancel() {
       abortNow();
@@ -144,18 +156,22 @@ export function copilotStreamHandler({
   );
 }
 
+/** A resume names its turn and cursor; one without them replays the whole turn. */
 export function copilotResumeHandler({
   baseUrl,
   sessionId,
   chunks,
   ...streamOptions
 }: CopilotStreamHandlerOptions): HttpHandler {
-  return http.get(streamUrl(baseUrl, sessionId), ({ request }) =>
-    streamSseResponse(chunks, {
+  return http.get(streamUrl(baseUrl, sessionId), ({ request }) => {
+    const params = new URL(request.url).searchParams;
+    return streamSseResponse(chunks, {
+      turnId: params.get("turn") ?? undefined,
+      after: params.get("after"),
       ...streamOptions,
       abortSignal: request.signal,
-    }),
-  );
+    });
+  });
 }
 
 interface CopilotErrorHandlerOptions {

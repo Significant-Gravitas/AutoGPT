@@ -339,6 +339,7 @@ async def _apply_hire(
             user_id,
             preview.template_id,
             preview.name or None,
+            "copilot",
         )
     except Exception as e:
         return _hire_failure_response(e, session_id)

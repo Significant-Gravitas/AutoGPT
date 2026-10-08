@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.platform_linking.models import (
+    ChatTurnHandle,
     EnsureSessionResult,
     TurnDenial,
     WorkspaceArtifact,
@@ -540,6 +541,25 @@ class TestBatching:
             [("Bently", "user-1", "first")],
             [("Later", "u2", "follow-up")],
         ]
+        assert "target-1" not in handler._targets
+
+    @pytest.mark.asyncio
+    async def test_a_turn_a_card_woke_mid_reply_streams_after_that_reply(self):
+        handler = MessageHandler(_api())
+        state = TargetState()
+        handler._targets["target-1"] = state
+        woken = ChatTurnHandle(session_id="s", turn_id="woken", user_id="u")
+        streamed: list[tuple[list, ChatTurnHandle | None]] = []
+
+        async def fake_stream_batch(batch, ctx, ad, tid, turn=None, **_):
+            streamed.append((list(batch), turn))
+            if len(streamed) == 1:
+                state.follows.append(woken)
+
+        handler._stream_batch = fake_stream_batch  # type: ignore[method-assign]
+        await handler._enqueue_and_process(_ctx(text="first"), _adapter(), "target-1")
+
+        assert streamed == [([("Bently", "user-1", "first")], None), ([], woken)]
         assert "target-1" not in handler._targets
 
     @pytest.mark.asyncio

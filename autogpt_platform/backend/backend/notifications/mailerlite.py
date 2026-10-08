@@ -15,6 +15,17 @@ transition:
 4. ENTER and LEAVE · the trial group: both owned here. It holds exactly the
    customers currently on a trial, so any MailerLite automation on it may send
    mail but must never move people in or out.
+5. ENTER · the checkout openers group: owned here. Everyone who opened Stripe
+   checkout joins it, and nobody else enters MailerLite through us: a signup
+   alone does not create a subscriber. GTM segments it for outreach.
+
+Someone who opted out of marketing, or whom a signal places in Iran or Russia,
+enters none of these. Every write below upserts the subscriber, a removal or a
+field update included, so nothing is queued for them at all (`consent.py`) and
+the backfills leave them out. The consumer also re-reads the opt-out right
+before each write, which drops a change queued just before the refusal. The
+one exception is `unsubscribe`, which carries the refusal itself to someone
+MailerLite already has, and never creates a subscriber.
 
 Subscriber fields (`SubscriberField`) are the backend's alone: every write
 comes from here, and MailerLite automations only read them.
@@ -32,13 +43,14 @@ import logging
 from collections.abc import Mapping
 
 from backend.data.notifications import SubscriberField
+from backend.notifications.audience_enrichment import merge_with_held
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
 
-def _pseudonym(email: str) -> str:
+def pseudonym(email: str) -> str:
     """A stable, non-reversible handle for logs.
 
     A subscriber's address is personal data; putting it in a log line or an
@@ -53,8 +65,12 @@ settings = Settings()
 
 API_BASE = settings.config.mailerlite_api_url.rstrip("/")
 _OK_STATUSES = (200, 201, 202, 204)
+# Subscriber statuses MailerLite sends nothing to, so an unsubscribe has
+# nothing left to do. The API cannot set them back to active either.
+_NOT_MAILED_STATUSES = ("unsubscribed", "bounced", "junk")
 
-# The type MailerLite stores each field as. A date is written YYYY-MM-DD.
+# The type MailerLite stores each of our custom fields as, which is also what
+# `ensure_fields` creates. A date is written YYYY-MM-DD.
 FIELD_TYPES: dict[SubscriberField, str] = {
     SubscriberField.STATUS: "text",
     SubscriberField.SIGNUP: "date",
@@ -62,13 +78,31 @@ FIELD_TYPES: dict[SubscriberField, str] = {
     SubscriberField.SUBSCRIPTION_STARTED: "date",
     SubscriberField.SUBSCRIPTION_CANCELED: "date",
     SubscriberField.SUBSCRIPTION_ENDED: "date",
+    SubscriberField.CHECKOUT_OPENED: "date",
+    SubscriberField.EMAIL_TYPE: "text",
+    SubscriberField.SIGNIN_METHOD: "text",
+    SubscriberField.ROLE: "text",
+    SubscriberField.ROLE_OTHER: "text",
+    SubscriberField.COUNTRY_CODE: "text",
+    SubscriberField.COUNTRY_SOURCE: "text",
+    SubscriberField.EXCLUDE_DE_AT: "text",
 }
+
+# MailerLite's own fields: written like ours, but never created.
+BUILT_IN_FIELD_TYPES: dict[SubscriberField, str] = {SubscriberField.COUNTRY: "text"}
+
+
+def field_type(field: SubscriberField) -> str:
+    return FIELD_TYPES.get(field) or BUILT_IN_FIELD_TYPES[field]
+
 
 Fields = Mapping[SubscriberField, str | None]
 
 # Set once this process has seen every field exist, so it is checked once,
 # not on every write.
 _fields_ready = False
+# Logged once: without a checkout group, checkout openers are dropped.
+_checkout_off_logged = False
 
 
 class MailerLiteNotConfigured(RuntimeError):
@@ -144,18 +178,99 @@ async def update_fields(email: str, fields: Fields | None = None) -> None:
 
 
 async def record_signup(email: str, fields: Fields | None = None) -> None:
-    """A new account's fields. `signed` is where every subscriber starts, so
-    it never replaces a status MailerLite already holds: the signup is queued
-    in the background, and a checkout queued before it must not be undone.
-    The audience queue is worked one message at a time, so nothing of ours
-    writes between the read and the write."""
+    """A signup queued before signups stopped being sent here. It only fills
+    in someone MailerLite already has: a signup alone must not create a
+    subscriber, since only checkout openers belong in MailerLite. `signed` is
+    where every subscriber starts, so it never replaces a status MailerLite
+    already holds. The audience queue is worked one message at a time, so
+    nothing of ours writes between the read and the write."""
     if not fields:
         return
     _require_token()
-    held = (await _find_subscriber(email) or {}).get("fields") or {}
-    if held.get(SubscriberField.STATUS.value):
+    subscriber = await _find_subscriber(email)
+    if subscriber is None:
+        return
+    if (subscriber.get("fields") or {}).get(SubscriberField.STATUS.value):
         fields = {k: v for k, v in fields.items() if k != SubscriberField.STATUS}
     await update_fields(email, fields)
+
+
+async def record_onboarding_profile(email: str, fields: Fields | None = None) -> None:
+    """The onboarding answers. On cloud the paywall comes first, so they are
+    given once the person is a checkout opener: they fill in someone MailerLite
+    already has and never create a subscriber, since only checkout openers
+    belong in MailerLite. Anyone who answers before opening checkout gets their
+    role with the checkout event instead (`checkout_audience`), and
+    onboarding-role-backfill fills in anyone missed."""
+    if not fields:
+        return
+    _require_token()
+    if await _find_subscriber(email) is None:
+        logger.info(
+            "No MailerLite subscriber for %s; onboarding profile not written",
+            pseudonym(email),
+        )
+        return
+    await update_fields(email, fields)
+    logger.info(f"Wrote the onboarding profile of {pseudonym(email)} to MailerLite")
+
+
+async def record_checkout_opened(email: str, fields: Fields | None = None) -> None:
+    """Someone opened Stripe checkout: into the checkout openers group, with
+    the fields GTM segments on. Whatever MailerLite already holds that is
+    better than ours stays (`audience_enrichment.merge_with_held`): the audience
+    queue is worked one message at a time, so nothing of ours writes between
+    the read and the write.
+
+    Without a checkout group the change is dropped rather than dead-lettered:
+    the group is how this is switched on, and the backfill brings in anyone
+    opened while it was off."""
+    group_id = settings.config.mailerlite_checkout_group_id
+    if not group_id:
+        global _checkout_off_logged
+        if not _checkout_off_logged:
+            logger.warning(
+                "MAILERLITE_CHECKOUT_GROUP_ID is not set; dropping checkout openers"
+            )
+            _checkout_off_logged = True
+        return
+    _require_token()
+    held = (await _find_subscriber(email) or {}).get("fields") or {}
+    await _add_to_group(
+        email, group_id, "checkout openers", merge_with_held(fields or {}, held)
+    )
+
+
+async def unsubscribe(email: str, fields: Fields | None = None) -> None:
+    """The account refused marketing: mark the subscriber unsubscribed so no
+    campaign or automation reaches them. Someone MailerLite does not have is
+    left alone, since creating a subscriber is exactly what the refusal rules
+    out, and so is one MailerLite already does not mail. `fields` is ignored:
+    nothing else is written for someone who refused.
+
+    An update by subscriber ID (`PUT /subscribers/{id}`), not the upsert the
+    other writes use, so it can never create anyone."""
+    _require_token()
+    subscriber = await _find_subscriber(email)
+    if subscriber is None or not subscriber.get("id"):
+        logger.info(
+            f"No MailerLite subscriber for {pseudonym(email)}; nothing to unsubscribe"
+        )
+        return
+    if subscriber.get("status") in _NOT_MAILED_STATUSES:
+        return
+    response = await _client().put(
+        f"{API_BASE}/subscribers/{subscriber['id']}",
+        headers=_headers(),
+        json={"status": "unsubscribed"},
+    )
+    # 404 means the subscriber was deleted since the lookup: nobody to mail.
+    if response.status not in _OK_STATUSES and response.status != 404:
+        raise MailerLiteError(
+            f"Unsubscribing MailerLite subscriber {pseudonym(email)} failed with "
+            f"{response.status}"
+        )
+    logger.info(f"Unsubscribed {pseudonym(email)} in MailerLite")
 
 
 async def ensure_fields() -> list[SubscriberField]:
@@ -229,7 +344,7 @@ async def _remove_from_group(
     subscriber_id = await _find_subscriber_id(email)
     if subscriber_id is None:
         logger.info(
-            "No MailerLite subscriber for %s; nothing to remove", _pseudonym(email)
+            "No MailerLite subscriber for %s; nothing to remove", pseudonym(email)
         )
         return
 
@@ -240,10 +355,10 @@ async def _remove_from_group(
     # 404 means they are already out of the group, which is the desired state.
     if response.status not in _OK_STATUSES and response.status != 404:
         raise MailerLiteError(
-            f"Removing subscriber {_pseudonym(email)} from the {description} group "
+            f"Removing subscriber {pseudonym(email)} from the {description} group "
             f"failed with {response.status}"
         )
-    logger.info(f"Removed {_pseudonym(email)} from the MailerLite {description} group")
+    logger.info(f"Removed {pseudonym(email)} from the MailerLite {description} group")
 
 
 async def _add_to_group(
@@ -258,7 +373,7 @@ async def _add_to_group(
         await ensure_fields()
         body["fields"] = _payload(fields)
     await _upsert(email, body, f"{description} group")
-    logger.info("Added %s to the MailerLite %s group", _pseudonym(email), description)
+    logger.info("Added %s to the MailerLite %s group", pseudonym(email), description)
 
 
 async def _upsert(email: str, body: dict, description: str) -> None:
@@ -267,7 +382,7 @@ async def _upsert(email: str, body: dict, description: str) -> None:
     )
     if response.status not in _OK_STATUSES:
         raise MailerLiteError(
-            f"MailerLite {description} for subscriber {_pseudonym(email)} "
+            f"MailerLite {description} for subscriber {pseudonym(email)} "
             f"failed with {response.status}"
         )
 
@@ -288,7 +403,7 @@ async def _find_subscriber(email: str) -> dict | None:
         return None
     if response.status not in _OK_STATUSES:
         raise MailerLiteError(
-            f"Looking up MailerLite subscriber {_pseudonym(email)} failed with "
+            f"Looking up MailerLite subscriber {pseudonym(email)} failed with "
             f"{response.status}"
         )
     return (response.json() or {}).get("data") or {}
