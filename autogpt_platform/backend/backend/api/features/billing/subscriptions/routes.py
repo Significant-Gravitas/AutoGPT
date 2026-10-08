@@ -59,6 +59,7 @@ from backend.notifications.queue import queue_pass_work
 from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
 from backend.util.feature_flag import Flag, evaluate_feature_flag
+from backend.util.product_analytics import track_checkout_started
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,10 @@ class SubscriptionTierRequest(BaseModel):
     success_url: str = ""
     cancel_url: str = ""
     billing_cycle: Literal["monthly", "yearly"] = "monthly"
+    surface: Optional[Literal["onboarding", "paywall_gate", "billing"]] = Field(
+        default=None,
+        description="Where the plan was picked; analytics only.",
+    )
 
 
 class SubscriptionStatusResponse(BaseModel):
@@ -642,6 +647,13 @@ async def update_subscription_tier(
                 "Please try again or contact support."
             ),
         )
+    await track_checkout_started(
+        user_id=user_id,
+        checkout_kind="subscription",
+        surface=request.surface,
+        subscription_tier=tier.value,
+        billing_cycle=request.billing_cycle,
+    )
 
     if url:
         checkout_audience.schedule_checkout_opened(user_id, ip_country=country)
@@ -829,10 +841,14 @@ async def stripe_webhook(request: Request):
             # `customer.subscription.created` fires at signup too; listening to
             # both would double-send.
             if event_type == "checkout.session.completed":
-                await _notify_checkout_completed(data_object)
                 # The billing address is the strongest country signal, and
-                # it only exists once checkout completes. Never raises.
+                # it only exists once checkout completes. First, so that an
+                # Iranian or Russian one is on record before the trial notice
+                # queues its MailerLite change. It raises only when such a
+                # country could not be recorded, so Stripe retries the event
+                # instead of the notice going out without it.
                 await checkout_audience.record_checkout_completed(data_object)
+                await _notify_checkout_completed(data_object)
 
         if event_type in (
             "customer.subscription.created",

@@ -26,6 +26,7 @@ drift.  ``_extract_cost_usd`` mirrors the baseline service's
 
 import logging
 import math
+import re
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -56,7 +57,10 @@ _DEEP_MAX_TOKENS = _QUICK_MAX_TOKENS * 4
 
 _DEFAULT_MAX_RESULTS = 5
 _HARD_MAX_RESULTS = 20
-_SNIPPET_MAX_CHARS = 500
+
+# Sonar cites sources inline as ``[n]``; ``n`` is the 1-based position
+# of the source in the response's ``url_citation`` annotations.
+_CITATION_MARKER = re.compile(r"\[(\d{1,3})\]")
 
 # OpenRouter-specific extra_body flag that embeds the real generation
 # cost into the response usage object.  Same dict shape the baseline
@@ -80,8 +84,9 @@ class WebSearchTool(BaseTool):
     def description(self) -> str:
         return (
             "Search the web for live info (news, recent docs). Returns a "
-            "synthesised answer grounded in fresh page content plus "
-            "{title, url, snippet} citations — read the answer first "
+            "synthesised answer grounded in fresh page content, citing "
+            "sources as [n], plus {n, title, url} for every source it "
+            "cites — read the answer first "
             "before reaching for web_fetch. Set deep=true when the user "
             "asks for research / comparison / in-depth analysis; leave "
             "deep=false for quick fact lookups. Prefer one targeted "
@@ -100,8 +105,10 @@ class WebSearchTool(BaseTool):
                 "max_results": {
                     "type": "integer",
                     "description": (
-                        f"Max results (default {_DEFAULT_MAX_RESULTS}, "
-                        f"cap {_HARD_MAX_RESULTS})."
+                        "Minimum number of sources to return (default "
+                        f"{_DEFAULT_MAX_RESULTS}, capped at {_HARD_MAX_RESULTS}). "
+                        "It is a floor, not a limit: every source the answer "
+                        "cites is always returned, even beyond this number."
                     ),
                     "default": _DEFAULT_MAX_RESULTS,
                 },
@@ -145,7 +152,7 @@ class WebSearchTool(BaseTool):
                 message="Please provide a non-empty search query.",
                 error="missing_query",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         try:
             max_results = int(max_results)
@@ -161,7 +168,7 @@ class WebSearchTool(BaseTool):
                 ),
                 error="web_search_not_configured",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         client = AsyncOpenAI(
             api_key=_chat_config.api_key, base_url=_chat_config.base_url
@@ -187,7 +194,7 @@ class WebSearchTool(BaseTool):
                 message=f"Web search failed: {exc}",
                 error="web_search_failed",
                 session_id=session_id,
-            )
+            ).from_outside(str(exc))
 
         answer = _extract_answer(resp)
         results = _extract_results(resp, limit=max_results)
@@ -214,7 +221,7 @@ class WebSearchTool(BaseTool):
             results=results,
             search_requests=1 if results else 0,
             session_id=session_id,
-        )
+        ).from_outside(answer, results)
 
 
 def _extract_answer(resp: ChatCompletion) -> str:
@@ -232,37 +239,49 @@ def _extract_answer(resp: ChatCompletion) -> str:
 
 
 def _extract_results(resp: ChatCompletion, *, limit: int) -> list[WebSearchResult]:
-    """Pull ``url_citation`` annotations from the response.
+    """Return the sources the answer cites, each with its ``[n]`` number.
 
-    Shared across both tiers — OpenRouter normalises the annotation
-    schema across Perplexity's sonar models into
-    ``Annotation.url_citation`` (typed in ``openai.types.chat``).  The
-    ``content`` snippet is an OpenRouter extension on the otherwise-
-    typed ``AnnotationURLCitation``; pydantic stashes unknown fields in
-    ``model_extra``, which we read there rather than via ``getattr``.
+    OpenRouter passes Perplexity's whole source list through as
+    ``url_citation`` annotations (``openai.types.chat``), in the order
+    the answer numbers them: annotation i is ``[i+1]``.  Their
+    ``start_index``/``end_index`` are always 0 and no page snippet comes
+    with them, so the answer's ``[n]`` markers are the only link between
+    a claim and its source.
+
+    Every source the answer cites is returned (up to
+    ``_HARD_MAX_RESULTS``), so no marker is left without its source.
+    When the answer cites fewer than ``limit``, the first uncited
+    sources fill the list up to ``limit``.  Markers with no matching
+    annotation are dropped; two numbers that share a URL each keep
+    their own entry, so every cited number still resolves.
     """
     if not resp.choices:
         return []
-    annotations = resp.choices[0].message.annotations or []
-    out: list[WebSearchResult] = []
-    for ann in annotations:
-        if len(out) >= limit:
-            break
-        if ann.type != "url_citation":
-            continue
-        citation = ann.url_citation
-        extras = citation.model_extra or {}
-        snippet_raw = extras.get("content")
-        snippet = (snippet_raw or "")[:_SNIPPET_MAX_CHARS] if snippet_raw else ""
-        out.append(
-            WebSearchResult(
-                title=citation.title,
-                url=citation.url,
-                snippet=snippet,
-                page_age=None,
-            )
+    message = resp.choices[0].message
+    sources = [
+        ann.url_citation
+        for ann in message.annotations or []
+        if ann.type == "url_citation"
+    ]
+    cited = _cited_numbers(message.content or "", len(sources))
+    if len(cited) > _HARD_MAX_RESULTS:
+        logger.info(
+            f"[web_search] answer cites {len(cited)} sources; "
+            f"returning the first {_HARD_MAX_RESULTS}"
         )
-    return out
+        cited = cited[:_HARD_MAX_RESULTS]
+    uncited = [n for n in range(1, len(sources) + 1) if n not in cited]
+    numbers = sorted(cited + uncited[: max(0, limit - len(cited))])
+    return [
+        WebSearchResult(n=n, title=sources[n - 1].title, url=sources[n - 1].url)
+        for n in numbers
+    ]
+
+
+def _cited_numbers(answer: str, source_count: int) -> list[int]:
+    """Distinct ``[n]`` numbers in ``answer`` that name a source, ascending."""
+    found = {int(m) for m in _CITATION_MARKER.findall(answer)}
+    return sorted(n for n in found if 1 <= n <= source_count)
 
 
 def _extract_cost_usd(usage: CompletionUsage | None) -> float | None:

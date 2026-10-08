@@ -113,6 +113,12 @@ EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
     # Security
     "bash_exec": "sandboxed shell on platform infrastructure",
     "start_desktop": "sandboxed desktop on platform infrastructure",
+    # Presets and triggers are left out of v2 until they get their own resource
+    "list_presets": "presets are not part of the v2 surface",
+    "update_preset": "presets are not part of the v2 surface",
+    "delete_preset": "presets are not part of the v2 surface",
+    "list_agent_triggers": "triggers are not part of the v2 surface",
+    "setup_agent_webhook_trigger": "triggers are not part of the v2 surface",
     # Not yet classified for external use
     "pause_schedule": "not yet reviewed for external use",
     "resume_schedule": "not yet reviewed for external use",

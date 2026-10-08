@@ -147,8 +147,7 @@ validation) and is `null` otherwise.
 
 ## Retrying a run
 
-`POST /library/agents/{id}/runs` and `POST /library/presets/{id}/runs` take an
-`Idempotency-Key` header. Repeating a request with the same value returns the run
+`POST /library/agents/{id}/runs` takes an `Idempotency-Key` header. Repeating a request with the same value returns the run
 the first one started instead of starting a second one and charging for it again.
 A retry sent while the first request is still in flight gets `409`; retry once it
 completes. Keys are scoped to the caller and expire after 24 hours.
@@ -204,9 +203,9 @@ When creating API keys or using OAuth, request only the scopes your application 
 | `READ_BLOCK` | Read block definitions |
 | `READ_STORE` | Read your own marketplace submissions |
 | `WRITE_STORE` | Create, update, and delete marketplace submissions |
-| `READ_LIBRARY` | List library agents, folders, and presets |
-| `WRITE_LIBRARY` | Fork agents, add marketplace agents to your library, manage folders and presets |
-| `RUN_AGENT` | Run agents and presets from your library |
+| `READ_LIBRARY` | List library agents and folders |
+| `WRITE_LIBRARY` | Fork agents, add marketplace agents to your library, manage folders |
+| `RUN_AGENT` | Run agents from your library |
 | `READ_RUN` | List and get agent run details |
 | `WRITE_RUN` | Stop and delete runs |
 | `SHARE_RUN` | Share and unshare agent runs |
@@ -228,7 +227,6 @@ A few endpoints require two scopes at once:
 | Endpoint | Scopes |
 |----------|--------|
 | `POST /schedules` | `WRITE_SCHEDULE` + `RUN_AGENT` |
-| `POST /library/presets/setup-trigger` | `WRITE_LIBRARY` + `RUN_AGENT` |
 | `POST /runs/{run_id}/share` | `READ_RUN` + `SHARE_RUN` |
 | `DELETE /runs/{run_id}/share` | `READ_RUN` + `SHARE_RUN` |
 

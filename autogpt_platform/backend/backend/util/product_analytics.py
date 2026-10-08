@@ -42,7 +42,7 @@ count a copilot-started run through the chat turn that asked for it, so a
 task is ``agent_run_started`` with ``via`` other than ``copilot``, plus
 every ``chat_message_sent``. Event names live in
 ``backend.util.posthog_events``; the full list and the task filter are in
-``docs/platform/tracking-plan.md``.
+``docs/engineering/tracking-plan.md``.
 
 Every emitter is best-effort: tracking can never break the work it describes.
 """
@@ -53,6 +53,8 @@ from collections.abc import Iterable
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
+from backend.data.experiments import list_assignments
+from backend.data.onboarding_role import OnboardingRole
 from backend.util import posthog_client
 from backend.util.posthog_events import PostHogEvent
 
@@ -333,6 +335,125 @@ def track_integration_connected(
             "credential_type": _enum_value(credential_type),
             "method": method,
         },
+    )
+
+
+CheckoutKind = Literal["subscription", "top_up", "trial"]
+
+
+def track_signup_completed(*, user_id: str, signup_method: str | None) -> None:
+    """The user row was just created. ``signup_method`` is the auth provider."""
+    track(user_id, PostHogEvent.SIGNUP_COMPLETED, {"signup_method": signup_method})
+
+
+def track_onboarding_completed(*, user_id: str) -> None:
+    track(user_id, PostHogEvent.ONBOARDING_COMPLETED)
+
+
+def set_onboarding_role(
+    *, user_id: str, role: OnboardingRole, keep_existing: bool = False
+) -> None:
+    """The role picked in onboarding as person properties, so funnels and
+    retention can be split by it. Other's text is cleared for any other pick.
+    `keep_existing` is for the backfill: a role PostHog already holds is the
+    newer pick, so it is left alone."""
+    person = {"onboarding_role": role.label, "onboarding_role_other": role.other}
+    posthog_client.capture(
+        user_id,
+        PostHogEvent.SET_PERSON_PROPERTIES,
+        {"$set_once" if keep_existing else "$set": person},
+    )
+
+
+async def track_checkout_started(
+    *,
+    user_id: str,
+    checkout_kind: CheckoutKind,
+    surface: str | None = None,
+    subscription_tier: str | None = None,
+    billing_cycle: str | None = None,
+) -> None:
+    """A Stripe Checkout session was created and the user is sent to it.
+
+    Carries the user's recorded experiment arms as ``$feature/<key>``, the
+    property PostHog experiments read, so the pricing test can use this
+    server-side event as a goal just like the browser's own events.
+    """
+    try:
+        arms = await _experiment_arm_properties(user_id)
+    except Exception:
+        logger.warning("Failed to read experiment arms for user %s", user_id)
+        arms = {}
+    track(
+        user_id,
+        PostHogEvent.CHECKOUT_STARTED,
+        {
+            **arms,
+            "checkout_kind": checkout_kind,
+            "surface": surface,
+            "subscription_tier": _enum_value(subscription_tier),
+            "billing_cycle": billing_cycle,
+        },
+    )
+
+
+async def _experiment_arm_properties(user_id: str) -> dict[str, str]:
+    return {
+        f"$feature/{assignment.experiment_key}": assignment.variant
+        for assignment in await list_assignments(user_id)
+    }
+
+
+def track_subscription_ended(
+    *,
+    user_id: str,
+    subscription_tier: str | None,
+    billing_cycle: str | None,
+    reason: str | None,
+) -> None:
+    track(
+        user_id,
+        PostHogEvent.SUBSCRIPTION_ENDED,
+        {
+            "subscription_tier": subscription_tier,
+            "billing_cycle": billing_cycle,
+            "reason": reason,
+        },
+    )
+
+
+def track_listing_added_to_library(
+    *,
+    user_id: str,
+    store_listing_version_id: str,
+    graph_id: str,
+    library_agent_id: str,
+) -> None:
+    """Deduplicated on the library entry: two concurrent adds of the same
+    listing both reach here, the loser having restored the winner's row."""
+    track(
+        user_id,
+        PostHogEvent.LISTING_ADDED_TO_LIBRARY,
+        {
+            "store_listing_version_id": store_listing_version_id,
+            "graph_id": graph_id,
+            "library_agent_id": library_agent_id,
+        },
+        dedup_key=library_agent_id,
+    )
+
+
+def track_listing_downloaded(
+    *,
+    user_id: str | None,
+    store_listing_version_id: str,
+    graph_id: str,
+) -> None:
+    """A signed-out download has no user, so ``track`` drops it."""
+    track(
+        user_id,
+        PostHogEvent.LISTING_DOWNLOADED,
+        {"store_listing_version_id": store_listing_version_id, "graph_id": graph_id},
     )
 
 

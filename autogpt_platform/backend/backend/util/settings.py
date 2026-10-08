@@ -1,9 +1,10 @@
+import functools
 import json
 import logging
 import os
 import re
 from enum import Enum
-from typing import Any, Dict, Generic, List, Literal, Set, Tuple, Type, TypeVar
+from typing import Any, Dict, Generic, List, Literal, Self, Set, Tuple, Type, TypeVar
 
 from pydantic import (
     AliasChoices,
@@ -12,6 +13,7 @@ from pydantic import (
     PrivateAttr,
     ValidationInfo,
     field_validator,
+    model_validator,
 )
 from pydantic_settings import (
     BaseSettings,
@@ -23,6 +25,16 @@ from pydantic_settings import (
 from backend.util.data import get_data_path
 
 logger = logging.getLogger(__name__)
+
+
+@functools.cache
+def _warn_single_bucket() -> None:
+    logger.warning(
+        "Private user data and public media share the legacy "
+        "MEDIA_GCS_BUCKET_NAME bucket. Configure PRIVATE_USER_DATA_BUCKET and "
+        "PUBLIC_SITE_MEDIA_BUCKET to keep user data out of the public bucket."
+    )
+
 
 T = TypeVar("T", bound=BaseSettings)
 
@@ -343,6 +355,38 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
     )
 
+    # Auth identity <-> platform User invariant monitoring
+    auth_identity_orphan_sweep_enabled: bool = Field(
+        default=False,
+        description=(
+            "Run the sweep that heals auth identities with no platform User row. "
+            "Off by default: its first run backfills every such identity, and "
+            "each heal counts as a sign-up in PostHog."
+        ),
+    )
+    auth_identity_orphan_check_interval_secs: int = Field(
+        default=15 * 60,
+        ge=60,
+        description=(
+            "Interval in seconds between sweeps for auth identities that have no "
+            "platform User row. Each sweep heals what it finds and alerts."
+        ),
+    )
+    auth_identity_orphan_grace_secs: int = Field(
+        default=5 * 60,
+        ge=0,
+        description=(
+            "Age in seconds an auth identity must reach before it counts as "
+            "orphaned, so a sign-up still in flight is not flagged or healed early."
+        ),
+    )
+    auth_identity_orphan_check_limit: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description="Maximum orphaned auth identities healed per sweep.",
+    )
+
     # Execution Accuracy Monitoring
     execution_accuracy_check_interval_hours: int = Field(
         default=24,
@@ -490,8 +534,65 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     media_gcs_bucket_name: str = Field(
         default="",
-        description="The name of the Google Cloud Storage bucket for media files",
+        description="Legacy single GCS bucket for public media and private user "
+        "data. Split deployments should configure public_site_media_bucket and "
+        "private_user_data_bucket.",
     )
+
+    public_site_media_bucket: str = Field(
+        default="",
+        description="GCS bucket for approved marketplace media and OAuth app logos",
+    )
+
+    private_user_data_bucket: str = Field(
+        default="",
+        description="Private GCS bucket for user media, workspaces, transcripts, "
+        "and temporary uploads",
+    )
+
+    @property
+    def resolved_public_site_media_bucket(self) -> str:
+        return self.public_site_media_bucket or self.media_gcs_bucket_name
+
+    @property
+    def resolved_private_user_data_bucket(self) -> str:
+        return self.private_user_data_bucket or self.media_gcs_bucket_name
+
+    @model_validator(mode="after")
+    def validate_cloud_storage_bucket_separation(self) -> Self:
+        split_configured = bool(
+            self.public_site_media_bucket or self.private_user_data_bucket
+        )
+        if not split_configured:
+            if self.media_gcs_bucket_name:
+                _warn_single_bucket()
+            return self
+        if self.behave_as != BehaveAs.CLOUD:
+            return self
+        if not self.public_site_media_bucket or not self.private_user_data_bucket:
+            raise ValueError(
+                "Cloud deployments must configure both PUBLIC_SITE_MEDIA_BUCKET "
+                "and PRIVATE_USER_DATA_BUCKET"
+            )
+        if self.public_site_media_bucket == self.private_user_data_bucket:
+            raise ValueError(
+                "PUBLIC_SITE_MEDIA_BUCKET and PRIVATE_USER_DATA_BUCKET must be different"
+            )
+        if self.public_site_media_bucket == self.media_gcs_bucket_name:
+            raise ValueError(
+                "PUBLIC_SITE_MEDIA_BUCKET must not be the legacy "
+                "MEDIA_GCS_BUCKET_NAME bucket, which holds private user data"
+            )
+        if (
+            self.media_gcs_bucket_name
+            and self.private_user_data_bucket != self.media_gcs_bucket_name
+        ):
+            raise ValueError(
+                "PRIVATE_USER_DATA_BUCKET must remain the legacy "
+                "MEDIA_GCS_BUCKET_NAME bucket until stored bucket-qualified "
+                "paths are migrated; clear MEDIA_GCS_BUCKET_NAME after migration"
+            )
+        return self
 
     workspace_storage_dir: str = Field(
         default="",
@@ -573,6 +674,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     product_sender_email: str = Field(
         default="AutoGPT <notify@agpt.co>",
         description="Sender for the Briefing, Alert and Verdict families",
+    )
+    billing_reply_to_email: str = Field(
+        default="contact@agpt.co",
+        description="Shared inbox for replies to billing and account service messages",
+    )
+    product_reply_to_email: str = Field(
+        default="hello@agpt.co",
+        description="Reply-to address for Briefing, Alert and Verdict notifications",
     )
     ops_sender_email: str = Field(
         default="AutoGPT Platform <platform@agpt.co>",
@@ -1029,6 +1138,13 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     mailerlite_api_token: str = Field(
         default="",
         description="MailerLite API token used to manage tour and changelog audiences",
+    )
+    mailerlite_webhook_secret: str = Field(
+        default="",
+        description=(
+            "Signing secret of the MailerLite webhook that reports unsubscribes. "
+            "Blank refuses every call to that webhook."
+        ),
     )
 
     unsubscribe_secret_key: str = Field(

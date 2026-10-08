@@ -196,6 +196,72 @@ def _make_log() -> CoPilotLogMetadata:
     return CoPilotLogMetadata(logger=logging.getLogger("test-copilot"))
 
 
+class TestExecuteAsyncScheduledTurnContext:
+    """The executor hands a scheduled turn's ``unattended`` flag and
+    credential pins to the tools through per-turn contextvars (SECRT-2804).
+    Every tool test sets those directly, so this seam is checked here."""
+
+    @staticmethod
+    async def _seen_by_the_turn(entry: CoPilotExecutionEntry) -> dict:
+        from backend.copilot.context import is_unattended_turn
+        from backend.copilot.credential_selection import turn_credential_pins
+
+        seen: dict = {}
+
+        def stream(**_kwargs):
+            seen["unattended"] = is_unattended_turn()
+            seen["pins"] = dict(turn_credential_pins())
+            return MagicMock()
+
+        with (
+            patch(
+                "backend.copilot.executor.processor.ChatConfig",
+                return_value=MagicMock(test_mode=True),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_chat_completion_dummy",
+                side_effect=stream,
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+                return_value=_TrackedStream(events=[]),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=ChatSession.new("user-1", dry_run=False)),
+            ),
+        ):
+            await asyncio.create_task(
+                CoPilotProcessor()._execute_async(
+                    entry, threading.Event(), MagicMock(), _make_log()
+                )
+            )
+        return seen
+
+    @pytest.mark.asyncio
+    async def test_a_scheduled_turn_runs_unattended_on_its_pins(self) -> None:
+        from backend.copilot.credential_selection import CredentialPin
+
+        pin = CredentialPin(id="exa-new", title="Work key")
+        entry = _make_entry().model_copy(
+            update={"unattended": True, "credential_pins": {"exa": pin}}
+        )
+
+        seen = await self._seen_by_the_turn(entry)
+
+        assert seen == {"unattended": True, "pins": {"exa": pin}}
+
+    @pytest.mark.asyncio
+    async def test_a_typed_turn_is_watched_and_has_no_pins(self) -> None:
+        seen = await self._seen_by_the_turn(_make_entry())
+
+        assert seen == {"unattended": False, "pins": {}}
+
+
 class TestExecuteAsyncAclose:
     """``_execute_async`` must call ``aclose`` on the published stream both
     when the loop exits naturally and when ``cancel`` is set mid-stream —

@@ -29,7 +29,6 @@ from starlette.routing import Match
 
 from backend.api.external.middleware import resolve_auth_info
 from backend.api.external.v2.errors import add_v2_exception_handlers
-from backend.api.external.v2.models import AgentTriggerSetupRequest
 from backend.api.external.v2.pagination import (
     MAX_PAGE,
     Page,
@@ -190,47 +189,6 @@ async def test_a_review_id_from_another_run_is_rejected(
 
     assert exc_info.value.status_code == 404
     assert "node-from-another-run" in str(exc_info.value.detail)
-
-
-async def test_trigger_setup_calls_the_service_not_the_internal_route_handler(
-    mocker: pytest_mock.MockFixture,
-):
-    """A `Security()` default reaches a direct call as a sentinel, not a value.
-
-    The internal handler takes `user_id: str = Security(...)`; calling it from
-    here worked only while nothing else in its signature was a dependency.
-    """
-    from backend.api.features.library.routes import presets as internal_presets
-
-    from .library import presets as v2_presets
-
-    service = mocker.patch.object(
-        v2_presets, "setup_triggered_preset", new=mock.AsyncMock()
-    )
-    mocker.patch.object(
-        v2_presets.experts_db, "resolve_expert_for_graph", new=mock.AsyncMock()
-    )
-    mocker.patch.object(
-        v2_presets.AgentPreset, "from_internal", return_value=mock.Mock()
-    )
-    internal = mocker.patch.object(
-        internal_presets, "setup_trigger", new=mock.AsyncMock()
-    )
-
-    await v2_presets.setup_trigger(
-        request=AgentTriggerSetupRequest(
-            name="n",
-            description="d",
-            graph_id="graph-1",
-            graph_version=1,
-            trigger_config={},
-            credentials_inputs={},
-        ),
-        auth=_tenant,
-    )
-
-    internal.assert_not_awaited()
-    assert service.await_args.kwargs["user_id"] == _tenant.user_id
 
 
 async def test_deleting_an_unknown_schedule_is_a_404_by_type_not_by_message(
@@ -579,16 +537,13 @@ def test_every_post_declares_whether_it_creates_or_enqueues():
         "create_folder": 201,
         "create_graph": 201,
         "create_schedule": 201,
-        "create_preset": 201,
         "create_submission": 201,
-        "setup_trigger": 201,
         "fork_library_agent": 201,
         "add_agent_to_library": 201,
         "enable_sharing": 201,
         "upload_file": 201,
         "upload_submission_media": 201,
         "execute_agent": 202,
-        "run_preset": 202,
         "stop_run": 202,
         "submit_reviews": 202,
         "move_folder": 200,
