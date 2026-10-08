@@ -129,7 +129,13 @@ test("disables unavailable blocks and explains why on hover", async () => {
     </TooltipProvider>,
   );
 
-  const button = screen.getByRole("button", { name: /disabled/i });
+  const trigger = screen.getByRole("button", {
+    name: /missing local configuration/i,
+  });
+  expect(trigger.getAttribute("role")).toBe("button");
+  expect(trigger.getAttribute("aria-disabled")).toBe("true");
+
+  const button = trigger.querySelector("button") as HTMLButtonElement;
   expect(button).toHaveProperty("disabled", true);
 
   // A disabled button never fires userEvent clicks; force one to cover the
@@ -139,7 +145,7 @@ test("disables unavailable blocks and explains why on hover", async () => {
 
   expect(addBlockWithPlacement).not.toHaveBeenCalled();
 
-  await user.hover(button.parentElement!);
+  await user.hover(trigger);
 
   expect((await screen.findByRole("tooltip")).textContent).toContain(
     "Missing local configuration",

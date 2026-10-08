@@ -178,7 +178,17 @@ export const Block: BlockComponent = ({
       {isDisabled ? (
         <Tooltip delayDuration={100}>
           <TooltipTrigger asChild>
-            <span className="block w-full" tabIndex={0}>
+            <span
+              className="block w-full"
+              role="button"
+              tabIndex={0}
+              aria-disabled="true"
+              aria-label={
+                blockData.disabledReason
+                  ? `${title || "Block"}: ${blockData.disabledReason}`
+                  : `${title || "Block"} (unavailable)`
+              }
+            >
               {button}
             </span>
           </TooltipTrigger>
