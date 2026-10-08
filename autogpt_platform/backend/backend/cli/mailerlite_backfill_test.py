@@ -210,3 +210,23 @@ async def test_checkout_sessions_fill_in_customers_without_an_address(monkeypatc
     monkeypatch.setattr("backend.data.stripe_client.stripe_call", call)
     monkeypatch.setattr("backend.data.stripe_client.stripe_list_items", listed)
     assert await cli.stripe_billing_countries() == {"cus_a": "US", "cus_b": "RU"}
+
+
+@pytest.mark.asyncio
+async def test_sessions_already_listed_are_not_listed_again(monkeypatch):
+    customers = [SimpleNamespace(id="cus_a", get=lambda k: None)]
+    sessions = [
+        {"customer": "cus_a", "customer_details": {"address": {"country": "IR"}}}
+    ]
+
+    async def listed(page):
+        for item in page:
+            yield item
+
+    async def call(fn, **_):
+        assert fn == stripe.Customer.list_async, "sessions were listed again"
+        return customers
+
+    monkeypatch.setattr("backend.data.stripe_client.stripe_call", call)
+    monkeypatch.setattr("backend.data.stripe_client.stripe_list_items", listed)
+    assert await cli.stripe_billing_countries(sessions) == {"cus_a": "IR"}

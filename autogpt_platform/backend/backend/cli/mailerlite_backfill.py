@@ -213,12 +213,15 @@ async def _stripe_subscriptions() -> "dict[str, list[Subscription]]":
     return subscriptions
 
 
-async def stripe_billing_countries() -> dict[str, str]:
+async def stripe_billing_countries(
+    sessions: list[dict] | None = None,
+) -> dict[str, str]:
     """Every Stripe customer's billing country, by customer ID: the
     Customer's address, else one a Checkout Session collected. Checkouts
     from before they set `customer_update` never copied the address onto
     the Customer. An Iranian or Russian country from any of them wins, so
-    the exclusion sees it (`consent.py`)."""
+    the exclusion sees it (`consent.py`). Pass `sessions` when they are
+    already listed."""
     import stripe
 
     from backend.data.stripe_client import stripe_call, stripe_list_items
@@ -231,12 +234,21 @@ async def stripe_billing_countries() -> dict[str, str]:
     async for customer in stripe_list_items(page):
         country = (customer.get("address") or {}).get("country")
         _keep_country(countries, customer.id, country)
-    page = await stripe_call(stripe.checkout.Session.list_async, limit=100)
-    async for session in stripe_list_items(page):
+    for session in sessions if sessions is not None else await _checkout_sessions():
         customer = session.get("customer")
         if isinstance(customer, str):
             _keep_country(countries, customer, billing_country(session))
     return countries
+
+
+async def _checkout_sessions() -> list[dict]:
+    """Every Stripe Checkout Session."""
+    import stripe
+
+    from backend.data.stripe_client import stripe_call, stripe_list_items
+
+    page = await stripe_call(stripe.checkout.Session.list_async, limit=100)
+    return [session async for session in stripe_list_items(page)]
 
 
 def _keep_country(
@@ -408,7 +420,6 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
     import stripe
 
     from backend.data.db import connect, disconnect
-    from backend.data.stripe_client import stripe_call, stripe_list_items
     from backend.data.user import is_marketing_opted_out
     from backend.notifications import checkout_backfill, mailerlite
     from backend.notifications import mailerlite_field_backfill as field_backfill
@@ -430,15 +441,15 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
         raise click.ClickException(str(e))
 
     stripe.api_key = settings.secrets.stripe_api_key
+    # Listed once, for the first opens and the billing countries alike.
+    sessions = await _checkout_sessions()
     first_open: dict[str, int] = {}
-    page = await stripe_call(stripe.checkout.Session.list_async, limit=100)
-    async for session in stripe_list_items(page):
+    for session in sessions:
         customer = session.get("customer")
         if isinstance(customer, str):
-            first_open[customer] = min(
-                first_open.get(customer, session.created), session.created
-            )
-    billing_countries = await stripe_billing_countries()
+            created = int(session["created"])
+            first_open[customer] = min(first_open.get(customer, created), created)
+    billing_countries = await stripe_billing_countries(sessions)
     subscriptions = await _stripe_subscriptions()
 
     await connect()
