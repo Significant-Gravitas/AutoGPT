@@ -5,7 +5,7 @@ Linear OAuth handler implementation.
 import base64
 import json
 import time
-from typing import Optional
+from typing import ClassVar, Optional
 from urllib.parse import urlencode
 
 from backend.sdk import (
@@ -35,6 +35,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
     # Provider name will be set dynamically by the SDK when registered
     # We use a placeholder that will be replaced by AutoRegistry.register_provider()
     PROVIDER_NAME = ProviderName("linear")
+    ROTATES_REFRESH_TOKEN: ClassVar[bool] = True
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id

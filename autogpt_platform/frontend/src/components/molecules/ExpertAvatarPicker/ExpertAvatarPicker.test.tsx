@@ -1,12 +1,13 @@
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { SUBMISSION_MEDIA_MAX_SIZE_MB } from "@/lib/direct-upload";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 import { StrictMode } from "react";
 import { ExpertAvatarPicker } from "./ExpertAvatarPicker";
 
-import { DEFAULT_EXPERT_AVATAR_URL } from "../ExpertAvatar/helpers";
+import { defaultAvatarUrl } from "./helpers";
 
 function completesAs(url: string, requests: unknown[] = []) {
   return [
@@ -27,21 +28,15 @@ function completesAs(url: string, requests: unknown[] = []) {
   ];
 }
 
-test("auto-generates on mount, showing the General artwork until it lands", async () => {
+test("generates only on request, keeping the default until it lands", async () => {
   const onPick = vi.fn();
   server.use(...completesAs("https://cdn.test/generated.png"));
-  render(
-    <ExpertAvatarPicker
-      name="Nova"
-      category="finance"
-      autoGenerate
-      onPick={onPick}
-    />,
-  );
-  await screen.findByRole("status");
+  render(<ExpertAvatarPicker name="Nova" category="finance" onPick={onPick} />);
   expect(
     screen.getByRole("img", { name: "Nova, AI Expert" }).getAttribute("src"),
-  ).toContain("expert-general-01");
+  ).toContain(defaultAvatarUrl("finance", "Nova").split("/")[3]);
+  expect(screen.queryByRole("status")).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Regenerate" }));
 
   await waitFor(() =>
     expect(
@@ -55,20 +50,17 @@ test("auto-generates on mount, showing the General artwork until it lands", asyn
   expect(onPick).toHaveBeenCalledWith("https://cdn.test/generated.png");
 });
 
-test("StrictMode starts one automatic job and still allows regeneration", async () => {
+test("StrictMode does not generate until asked", async () => {
   const requests: unknown[] = [];
   server.use(...completesAs("https://cdn.test/generated.png", requests));
   render(
     <StrictMode>
-      <ExpertAvatarPicker
-        name="Nova"
-        category="finance"
-        autoGenerate
-        onPick={vi.fn()}
-      />
+      <ExpertAvatarPicker name="Nova" category="finance" onPick={vi.fn()} />
     </StrictMode>,
   );
 
+  expect(requests).toHaveLength(0);
+  await userEvent.click(screen.getByRole("button", { name: "Regenerate" }));
   await waitFor(() =>
     expect(
       screen.getByRole("img", { name: "Nova" }).getAttribute("src"),
@@ -105,7 +97,7 @@ test("regenerating rolls every trait but the category", async () => {
   }
 });
 
-test("a failed generation leaves the General artwork ready to keep", async () => {
+test("a failed generation leaves the category artwork ready to keep", async () => {
   const onPick = vi.fn();
   server.use(
     http.post("*/api/experts/avatars/generations", () =>
@@ -119,21 +111,15 @@ test("a failed generation leaves the General artwork ready to keep", async () =>
       }),
     ),
   );
-  render(
-    <ExpertAvatarPicker
-      name="Nova"
-      category="finance"
-      autoGenerate
-      onPick={onPick}
-    />,
-  );
+  render(<ExpertAvatarPicker name="Nova" category="finance" onPick={onPick} />);
+  await userEvent.click(screen.getByRole("button", { name: "Regenerate" }));
   expect((await screen.findByRole("alert")).textContent).toContain(
     "Could not generate avatar",
   );
   await userEvent.click(
     screen.getByRole("button", { name: "Use this avatar" }),
   );
-  expect(onPick).toHaveBeenCalledWith(DEFAULT_EXPERT_AVATAR_URL);
+  expect(onPick).toHaveBeenCalledWith(defaultAvatarUrl("finance", "Nova"));
 });
 
 test("an existing avatar is kept until a generation replaces it", async () => {
@@ -189,7 +175,7 @@ test("uploads remain previews until chosen", async () => {
   expect(onPick).toHaveBeenCalledWith("https://cdn.test/upload.png");
 });
 
-test("rejects oversized uploads before making a request", async () => {
+test("rejects uploads above the private media limit before making a request", async () => {
   const upload = vi.fn();
   server.use(
     http.post("*/api/store/submissions/media", () => {
@@ -201,13 +187,39 @@ test("rejects oversized uploads before making a request", async () => {
     <ExpertAvatarPicker name="Nova" category="content" onPick={vi.fn()} />,
   );
   const file = new File(["png"], "avatar.png", { type: "image/png" });
-  Object.defineProperty(file, "size", { value: 6 * 1024 * 1024 });
+  Object.defineProperty(file, "size", {
+    value: SUBMISSION_MEDIA_MAX_SIZE_MB * 1024 * 1024 + 1,
+  });
   await userEvent.upload(screen.getByLabelText("Upload avatar"), file);
-  expect((await screen.findByRole("alert")).textContent).toContain("under 5MB");
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    `Maximum size is ${SUBMISSION_MEDIA_MAX_SIZE_MB}MB`,
+  );
   expect(upload).not.toHaveBeenCalled();
 });
 
-test("a pending generation disables uploads and confirmation", async () => {
+test("accepts uploads at the private media limit", async () => {
+  const upload = vi.fn();
+  server.use(
+    http.post("*/api/store/submissions/media", () => {
+      upload();
+      return HttpResponse.json("https://cdn.test/upload.png");
+    }),
+  );
+  render(
+    <ExpertAvatarPicker name="Nova" category="content" onPick={vi.fn()} />,
+  );
+  const file = new File(["png"], "avatar.png", { type: "image/png" });
+  Object.defineProperty(file, "size", {
+    value: SUBMISSION_MEDIA_MAX_SIZE_MB * 1024 * 1024,
+  });
+
+  await userEvent.upload(screen.getByLabelText("Upload avatar"), file);
+
+  await waitFor(() => expect(upload).toHaveBeenCalledOnce());
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("a pending generation allows uploads and confirmation", async () => {
   server.use(
     http.post("*/api/experts/avatars/generations", () =>
       HttpResponse.json(
@@ -220,24 +232,20 @@ test("a pending generation disables uploads and confirmation", async () => {
     ),
   );
   render(
-    <ExpertAvatarPicker
-      name="Nova"
-      category="content"
-      autoGenerate
-      onPick={vi.fn()}
-    />,
+    <ExpertAvatarPicker name="Nova" category="content" onPick={vi.fn()} />,
   );
+  await userEvent.click(screen.getByRole("button", { name: "Regenerate" }));
   await screen.findByRole("status");
   expect(
     (screen.getByLabelText("Upload avatar") as HTMLInputElement).disabled,
-  ).toBe(true);
+  ).toBe(false);
   expect(
     (
       screen.getByRole("button", {
         name: "Use this avatar",
       }) as HTMLButtonElement
     ).disabled,
-  ).toBe(true);
+  ).toBe(false);
 });
 
 test("offers one avatar with no catalog or trait controls", () => {

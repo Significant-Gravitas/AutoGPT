@@ -1,5 +1,7 @@
+import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { CredentialsMetaResponseType } from "@/app/api/__generated__/models/credentialsMetaResponseType";
+import { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
 
 export type CredentialType = CredentialsMetaResponseType;
 
@@ -11,6 +13,10 @@ export interface CredentialView {
   username: string | null;
   host: string | null;
   isManaged: boolean;
+  /** A vendor sign-in (MCP) rather than a block credential. */
+  isSignIn: boolean;
+  /** Set when the vendor also has blocks, which this sign-in does not cover. */
+  blocksNote: string | null;
 }
 
 export interface ProviderGroupView {
@@ -47,7 +53,6 @@ const PROVIDER_DISPLAY_NAME_OVERRIDES: Record<string, string> = {
   ideogram: "Ideogram",
   jina: "Jina",
   linkedin: "LinkedIn",
-  mcp: "MCP",
   twitter: "X",
   zerobounce: "ZeroBounce",
 };
@@ -62,6 +67,40 @@ export function formatProviderName(slug: unknown): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+export interface ServiceRef {
+  provider: string;
+  service?: string;
+  service_name?: string | null;
+  service_icon?: string | null;
+}
+
+// The backend names the service behind every credential and provider; these
+// read it with the one display alias the backend does not know about.
+export function serviceKey(ref: ServiceRef): string {
+  const key = ref.service || ref.provider;
+  return key === "codex" ? "openai" : key;
+}
+
+export function serviceName(ref: ServiceRef): string {
+  return ref.service_name || formatProviderName(serviceKey(ref));
+}
+
+export function serviceIcon(ref: ServiceRef): string {
+  return ref.service_icon || serviceKey(ref);
+}
+
+export function groupServiceIdentity(refs: ServiceRef[]) {
+  const named = refs.find((ref) => ref.service_name) ?? refs[0];
+  const withIcon = refs.find((ref) => ref.service_icon) ?? refs[0];
+  return { name: serviceName(named), icon: serviceIcon(withIcon) };
+}
+
+export function serviceLabelFromIcon(id: string): string {
+  return id.startsWith("mcp:")
+    ? id.slice("mcp:".length)
+    : formatProviderName(id);
 }
 
 export function formatMaskedValue(credential: CredentialView): string {
@@ -86,51 +125,19 @@ export function stripProviderPrefix(title: string, provider: string): string {
     : title;
 }
 
-const MCP_PROVIDER = "mcp";
-
-// Labels that route the request rather than name the service behind it.
-const MCP_HOST_NOISE = new Set(["mcp", "api", "www", "server"]);
-
-function toHostname(value: string): string | null {
-  try {
-    const url = new URL(value.includes("://") ? value : `https://${value}`);
-    return url.hostname || null;
-  } catch {
-    return null;
-  }
-}
-
-function mcpServiceName(value: string): string | null {
-  const host = toHostname(value);
-  if (!host) return null;
-  // Drop the TLD, then the routing noise, so ``mcp.sentry.dev`` reads as the
-  // service a person recognises rather than the URL we happen to call.
-  const name = host
-    .split(".")
-    .filter(Boolean)
-    .slice(0, -1)
-    .find((label) => !MCP_HOST_NOISE.has(label));
-  return name ? formatProviderName(name) : null;
-}
-
-// The credential's own name, said the way a person would. MCP credentials are
-// titled after the server URL, which is the one case where the stored title is
-// an address rather than a name.
 export function formatCredentialName(title: string, provider: string): string {
-  const stripped = stripProviderPrefix(title, provider);
-  if (provider !== MCP_PROVIDER) return stripped;
-  return mcpServiceName(stripped) ?? stripped;
+  return stripProviderPrefix(title, provider);
 }
 
-// Where the credential comes from, for the line under its name.
-export function formatCredentialSource(provider: string): string {
-  return provider === MCP_PROVIDER
-    ? "MCP server"
-    : formatProviderName(provider);
-}
+const SIGN_IN_PROVIDER = "mcp";
 
-function toCredentialView(cred: CredentialsMetaResponse): CredentialView {
-  const rawTitle = cred.title ?? formatProviderName(cred.provider);
+function toCredentialView(
+  cred: CredentialsMetaResponse,
+  serviceLabel: string,
+  hasBlocks: boolean,
+): CredentialView {
+  const rawTitle = cred.title ?? serviceName(cred);
+  const isSignIn = cred.provider === SIGN_IN_PROVIDER;
   return {
     id: cred.id,
     provider: cred.provider,
@@ -139,27 +146,46 @@ function toCredentialView(cred: CredentialsMetaResponse): CredentialView {
     username: cred.username ?? null,
     host: cred.host ?? null,
     isManaged: cred.is_managed ?? false,
+    isSignIn,
+    blocksNote:
+      isSignIn && hasBlocks
+        ? `${serviceLabel} blocks in agents need their own connection.`
+        : null,
   };
+}
+
+// The services a block provider covers, so a sign-in for one of them can say
+// it does not connect those blocks.
+export function blockServiceKeys(providers: ProviderMetadata[]): Set<string> {
+  return new Set(
+    providers
+      .filter((item) => !item.mcp_server)
+      .map((item) =>
+        serviceKey({ provider: item.name, service: item.service }),
+      ),
+  );
 }
 
 export function groupCredentialsByProvider(
   credentials: CredentialsMetaResponse[],
+  blockServices: ReadonlySet<string> = new Set(),
 ): ProviderGroupView[] {
-  const byProvider = new Map<string, CredentialView[]>();
+  const byService = new Map<string, CredentialsMetaResponse[]>();
   for (const cred of credentials) {
-    const displayProvider =
-      cred.provider === "codex" ? "openai" : cred.provider;
-    const list = byProvider.get(displayProvider) ?? [];
-    list.push(toCredentialView(cred));
-    byProvider.set(displayProvider, list);
+    const key = serviceKey(cred);
+    byService.set(key, [...(byService.get(key) ?? []), cred]);
   }
 
   const groups: ProviderGroupView[] = [];
-  for (const [provider, creds] of byProvider) {
+  for (const [id, creds] of byService) {
+    const identity = groupServiceIdentity(creds);
     groups.push({
-      id: provider,
-      name: formatProviderName(provider),
-      credentials: creds,
+      id,
+      name: identity.name,
+      logoUrl: integrationIconSrc(identity.icon) ?? undefined,
+      credentials: creds.map((cred) =>
+        toCredentialView(cred, identity.name, blockServices.has(id)),
+      ),
     });
   }
   groups.sort((a, b) => a.name.localeCompare(b.name));

@@ -1,5 +1,6 @@
 import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
 import { getListCopilotSkillsMockHandler } from "@/app/api/__generated__/endpoints/skills/skills.msw";
+import { MANAGED_IDENTITIES } from "@/components/molecules/ExpertAvatar/helpers";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import {
@@ -152,12 +153,58 @@ test("the area beat answers the color first and asks for a job title", async () 
   expect(requests).toHaveLength(0);
 });
 
-test("the avatar is generated in the area picked at the start", async () => {
+test.each([
+  "marketing",
+  "sales",
+  "finance",
+  "support",
+  "operations",
+  "research",
+  "content",
+  "development",
+  "general",
+] as const)(
+  "%s starts with a ready-made avatar without generating",
+  async (category) => {
+    const requests: unknown[] = [];
+    server.use(...generationHandlers(requests));
+    seedAtAvatar(category);
+    renderRaise();
+    const confirm = await screen.findByRole("button", {
+      name: "Use this avatar",
+    });
+    expect((confirm as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByRole("status")).toBeNull();
+    const candidates = MANAGED_IDENTITIES.filter(
+      (identity) =>
+        identity.visual_category === category ||
+        identity.categories.includes(category),
+    );
+    const preview = screen
+      .getByRole("img", { name: "Maria, AI Expert" })
+      .getAttribute("src");
+    expect(candidates.some((identity) => preview?.includes(identity.id))).toBe(
+      true,
+    );
+    await userEvent.click(confirm);
+    await waitFor(() =>
+      expect(
+        candidates.some((identity) => identity.url === loadDraft().avatarUrl),
+      ).toBe(true),
+    );
+    expect(requests).toHaveLength(0);
+  },
+);
+
+test("regeneration uses the area picked at the start", async () => {
   const requests: unknown[] = [];
   server.use(...generationHandlers(requests));
   seedAtAvatar("finance");
   renderRaise();
 
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Regenerate" }),
+  );
   await waitFor(() => expect(requests).toHaveLength(1));
   expect(requests[0]).toMatchObject({ category: "finance" });
 });
@@ -166,6 +213,9 @@ test("the generated avatar is saved only after confirmation", async () => {
   server.use(...generationHandlers());
   seedAtAvatar("finance");
   renderRaise();
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Regenerate" }),
+  );
 
   await waitFor(() =>
     expect(
@@ -189,6 +239,9 @@ test("regenerating asks for another avatar in the same category", async () => {
   seedAtAvatar("finance");
   renderRaise();
 
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Regenerate" }),
+  );
   await waitFor(() => expect(requests).toHaveLength(1));
   await userEvent.click(
     await screen.findByRole("button", { name: "Regenerate" }),

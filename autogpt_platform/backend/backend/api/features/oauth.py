@@ -19,7 +19,7 @@ import os
 import uuid
 from datetime import datetime
 from typing import Literal, Optional
-from urllib.parse import urlencode
+from urllib.parse import unquote, urlencode, urlparse
 
 from autogpt_libs.auth import get_user_id
 from fastapi import APIRouter, Body, HTTPException, Security, UploadFile, status
@@ -637,9 +637,6 @@ async def update_app_logo(
             detail="OAuth App not found",
         )
 
-    # Delete the current app logo file (if any and it's in our cloud storage)
-    await _delete_app_current_logo_file(app)
-
     updated_app = await update_oauth_application(
         app_id=app_id,
         owner_id=user_id,
@@ -651,6 +648,9 @@ async def update_app_logo(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found or you don't have permission to update it",
         )
+
+    if app.logo_url != request.logo_url:
+        await _delete_app_current_logo_file(app)
 
     logger.info(
         f"OAuth app {updated_app.name} (#{app_id}) logo updated by user #{user_id}"
@@ -696,7 +696,7 @@ async def upload_app_logo(
         )
 
     # Check GCS configuration
-    if not settings.config.media_gcs_bucket_name:
+    if not settings.config.resolved_public_site_media_bucket:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Media storage is not configured",
@@ -775,7 +775,7 @@ async def upload_app_logo(
     # Upload to GCS
     try:
         async with async_storage.Storage() as async_client:
-            bucket_name = settings.config.media_gcs_bucket_name
+            bucket_name = settings.config.resolved_public_site_media_bucket
 
             await async_client.upload(
                 bucket_name, storage_path, file_bytes, content_type=content_type
@@ -788,9 +788,6 @@ async def upload_app_logo(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to upload logo",
         )
-
-    # Delete the current app logo file (if any and it's in our cloud storage)
-    await _delete_app_current_logo_file(app)
 
     # Update the app with the new logo URL
     updated_app = await update_oauth_application(
@@ -805,6 +802,8 @@ async def upload_app_logo(
             detail="Application not found or you don't have permission to update it",
         )
 
+    await _delete_app_current_logo_file(app)
+
     logger.info(
         f"OAuth app {updated_app.name} (#{app_id}) logo uploaded by user #{user_id}"
     )
@@ -816,18 +815,35 @@ async def _delete_app_current_logo_file(app: OAuthApplicationInfo):
     """
     Delete the current logo file for the given app, if there is one in our cloud storage
     """
-    bucket_name = settings.config.media_gcs_bucket_name
-    storage_base_url = f"https://storage.googleapis.com/{bucket_name}/"
+    if not app.logo_url:
+        return
 
-    if app.logo_url and app.logo_url.startswith(storage_base_url):
-        # Parse blob path from URL: https://storage.googleapis.com/{bucket}/{path}
-        old_path = app.logo_url.replace(storage_base_url, "")
-        try:
-            async with async_storage.Storage() as async_client:
-                await async_client.delete(bucket_name, old_path)
-            logger.info(f"Deleted old logo for OAuth app #{app.id}: {old_path}")
-        except Exception as e:
-            # Log but don't fail - the new logo was uploaded successfully
-            logger.warning(
-                f"Failed to delete old logo for OAuth app #{app.id}: {e}", exc_info=e
-            )
+    parsed = urlparse(app.logo_url)
+    if parsed.scheme != "https" or parsed.netloc != "storage.googleapis.com":
+        return
+
+    bucket_and_path = unquote(parsed.path).lstrip("/").split("/", 1)
+    if len(bucket_and_path) != 2:
+        return
+    bucket_name, object_path = bucket_and_path
+
+    allowed_buckets = {
+        settings.config.resolved_public_site_media_bucket,
+        settings.config.resolved_private_user_data_bucket,
+        settings.config.media_gcs_bucket_name,
+    }
+    allowed_buckets.discard("")
+    expected_prefix = f"oauth-apps/{app.id}/logo/"
+    if bucket_name not in allowed_buckets or not object_path.startswith(
+        expected_prefix
+    ):
+        return
+
+    try:
+        async with async_storage.Storage() as async_client:
+            await async_client.delete(bucket_name, object_path)
+        logger.info(f"Deleted old logo for OAuth app #{app.id}: {object_path}")
+    except Exception as e:
+        logger.warning(
+            f"Failed to delete old logo for OAuth app #{app.id}: {e}", exc_info=e
+        )

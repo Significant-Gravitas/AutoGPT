@@ -355,6 +355,50 @@ class TestClaudeCodeTmpdir:
 
 
 # ---------------------------------------------------------------------------
+# CLAUDE_CODE_DISABLE_BACKGROUND_TASKS — sub-agents run in the foreground
+# ---------------------------------------------------------------------------
+
+
+class TestBackgroundTasksDisabled:
+    """A background sub-agent is killed when the turn closes the CLI, so every
+    mode must keep sub-agents in the foreground (subagent_turn_end_test.py)."""
+
+    @pytest.mark.parametrize(
+        "overrides, kwargs",
+        [
+            pytest.param({"use_openrouter": False}, {}, id="direct"),
+            pytest.param(
+                {
+                    "use_openrouter": True,
+                    "api_key": "sk-or-test-key",
+                    "base_url": "https://openrouter.ai/api/v1",
+                },
+                {},
+                id="openrouter",
+            ),
+            pytest.param({"use_claude_code_subscription": True}, {}, id="subscription"),
+            pytest.param(
+                {"use_openrouter": False},
+                {
+                    "codex_gateway_url": "http://127.0.0.1:43210",
+                    "codex_gateway_token": "loopback-capability",
+                },
+                id="codex-gateway",
+            ),
+        ],
+    )
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_set_in_every_mode(self, _mock_validate, overrides, kwargs):
+        cfg = _make_config(**overrides)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(**kwargs)
+
+        assert result["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
+
+
+# ---------------------------------------------------------------------------
 # CLAUDE_AUTOCOMPACT_PCT_OVERRIDE — Moonshot gate
 # ---------------------------------------------------------------------------
 

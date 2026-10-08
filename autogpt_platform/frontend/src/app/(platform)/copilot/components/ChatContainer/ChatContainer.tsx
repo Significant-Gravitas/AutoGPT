@@ -5,7 +5,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { cn } from "@/lib/utils";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
@@ -15,6 +15,7 @@ import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
+import { NewChatOnboarding } from "../ExpertOnboardingCard/NewChatOnboarding";
 import { EmptySession } from "../EmptySession/EmptySession";
 import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
@@ -22,7 +23,7 @@ import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
-import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
+import { useShareChatExpert } from "../ContextPanel/useShareChatExpert";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SessionNotFound } from "./components/SessionNotFound";
 import { SharedChatNotice } from "./components/SharedChatNotice";
@@ -40,10 +41,10 @@ import type { ExpertIdentity } from "../../useExpertMap";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { updateHistoryBreakdown } from "../../tokenDevtool/store";
 import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
-import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import type { SentFrom } from "../../sentFrom";
 import type { AutopilotMode } from "../../autopilotModeStore";
 import { AutopilotModeSelector } from "../ChatInput/components/AutopilotModeSelector/AutopilotModeSelector";
+import { describeSendFailure } from "../ChatInput/helpers";
 import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
 import {
   getKickoffAttemptToken,
@@ -165,9 +166,6 @@ export const ChatContainer = ({
   hasFloatingControls,
 }: ChatContainerProps) => {
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
-  // The composer and the message column only slide aside while the floating
-  // files card is shown; this host is the one that mounts the card.
-  const areFilesOpen = useAreWorkspaceFileCardsOpen();
   useAutoOpenArtifacts({
     sessionId,
     messages,
@@ -201,6 +199,11 @@ export const ChatContainer = ({
     ? expertIdentity
     : null;
   const isExpertArchived = archivedExpertIdentity !== null;
+  const chatExpert =
+    !isResolvingExpertIdentity && expertIdentity && !expertIdentity.isArchived
+      ? { id: expertIdentity.id, name: expertIdentity.name }
+      : null;
+  useShareChatExpert(chatExpert);
   const isSendLocked = isExpertArchived || !!isResolvingExpertIdentity;
   // NO_OP is module-level so a locked composer keeps a stable function identity
   // across renders — otherwise every consumer of `guardedOnSend` (the actions
@@ -275,42 +278,58 @@ export const ChatContainer = ({
   }
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
-  const handleRetry = useCallback(() => {
-    const lastRow = [...messages].reverse().find((m) => m.role === "user");
-    // A turn an answered card started failed after the call ran: resuming it
-    // must not re-send the request that led to the call.
-    if (lastRow && isHeldCallRow(lastRow)) {
-      guardedOnSend(CONTINUE_AFTER_HELD_CALL);
-      return;
-    }
-    const lastUserMsg = lastRow;
-    const lastText = lastUserMsg?.parts
-      .filter(
-        (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
-      )
-      .map((p) => p.text)
-      .join("");
-    if (lastText) {
-      const kickoffExpertId = lastUserMsg
-        ? getKickoffExpertId(lastUserMsg)
-        : null;
-      const kickoffAttemptToken = lastUserMsg
-        ? getKickoffAttemptToken(lastUserMsg)
-        : null;
-      guardedOnSend(
-        kickoffExpertId ? stripLegacyKickoffMarker(lastText) : lastText,
-        undefined,
-        undefined,
-        kickoffExpertId
-          ? {
-              kind: "expert_kickoff",
-              expertId: kickoffExpertId,
-              ...(kickoffAttemptToken
-                ? { attemptToken: kickoffAttemptToken }
-                : {}),
-            }
-          : undefined,
-      );
+  const isRetryingRef = useRef(false);
+  const handleRetry = useCallback(async () => {
+    if (isRetryingRef.current) return;
+    isRetryingRef.current = true;
+    try {
+      const lastRow = [...messages].reverse().find((m) => m.role === "user");
+      // A turn an answered card started failed after the call ran: resuming it
+      // must not re-send the request that led to the call.
+      if (lastRow && isHeldCallRow(lastRow)) {
+        await guardedOnSend(CONTINUE_AFTER_HELD_CALL);
+        return;
+      }
+      const lastUserMsg = lastRow;
+      const lastText = lastUserMsg?.parts
+        .filter(
+          (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
+        )
+        .map((p) => p.text)
+        .join("");
+      if (lastText) {
+        const kickoffExpertId = lastUserMsg
+          ? getKickoffExpertId(lastUserMsg)
+          : null;
+        const kickoffAttemptToken = lastUserMsg
+          ? getKickoffAttemptToken(lastUserMsg)
+          : null;
+        await guardedOnSend(
+          kickoffExpertId ? stripLegacyKickoffMarker(lastText) : lastText,
+          undefined,
+          undefined,
+          kickoffExpertId
+            ? {
+                kind: "expert_kickoff",
+                expertId: kickoffExpertId,
+                ...(kickoffAttemptToken
+                  ? { attemptToken: kickoffAttemptToken }
+                  : {}),
+              }
+            : undefined,
+        );
+      }
+    } catch (error) {
+      toast({
+        title: "Couldn't retry message",
+        description: describeSendFailure(
+          error,
+          "your previous message is still in the chat",
+        ),
+        variant: "destructive",
+      });
+    } finally {
+      isRetryingRef.current = false;
     }
   }, [guardedOnSend, messages]);
 
@@ -328,36 +347,47 @@ export const ChatContainer = ({
             {sessionId && isSessionNotFound ? (
               <SessionNotFound />
             ) : sessionId ? (
-              <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
+              <div className="relative flex h-full min-h-0 w-full flex-col bg-white">
                 <div className="absolute right-0 top-0 z-30">
-                  <ContextPanelToggle sessionId={sessionId} />
+                  <ContextPanelToggle
+                    sessionId={sessionId}
+                    expert={chatExpert}
+                  />
                 </div>
-                <WorkspaceFileCards sessionId={sessionId} />
-                <ChatMessagesContainer
-                  messages={messages}
-                  status={status}
-                  error={error}
-                  isLoading={isLoadingSession}
-                  isRestoringActiveSession={isRestoringActiveSession}
-                  restoreStatusMessage={restoreStatusMessage}
-                  activeStreamStartedAt={activeStreamStartedAt}
-                  sessionID={sessionId}
-                  sessionChatStatus={sessionChatStatus}
-                  sessionSentFrom={sessionSentFrom}
-                  hasMoreMessages={hasMoreMessages}
-                  isLoadingMore={isLoadingMore}
-                  onLoadMore={onLoadMore}
-                  onRetry={handleRetry}
-                  turnStats={turnStats}
-                  queuedMessages={queuedMessages}
-                  pendingSend={pendingSend}
-                  bottomContentPadding={usageCardHeight}
-                  expertIdentity={expertIdentity}
-                  isResolvingExpertIdentity={isResolvingExpertIdentity}
-                  hasFloatingControls={hasFloatingControls}
-                  canOpenActivity
-                  areFilesOpen={areFilesOpen}
-                />
+                <NewChatOnboarding
+                  expertId={expertIdentity?.id ?? null}
+                  enabled={
+                    messages.length === 0 &&
+                    !isInputDisabled &&
+                    !isStreaming &&
+                    !isCreatingSession &&
+                    !isExpertArchived
+                  }
+                >
+                  <ChatMessagesContainer
+                    messages={messages}
+                    status={status}
+                    error={error}
+                    isLoading={isLoadingSession}
+                    isRestoringActiveSession={isRestoringActiveSession}
+                    restoreStatusMessage={restoreStatusMessage}
+                    activeStreamStartedAt={activeStreamStartedAt}
+                    sessionID={sessionId}
+                    sessionChatStatus={sessionChatStatus}
+                    sessionSentFrom={sessionSentFrom}
+                    hasMoreMessages={hasMoreMessages}
+                    isLoadingMore={isLoadingMore}
+                    onLoadMore={onLoadMore}
+                    onRetry={handleRetry}
+                    turnStats={turnStats}
+                    queuedMessages={queuedMessages}
+                    pendingSend={pendingSend}
+                    bottomContentPadding={usageCardHeight}
+                    expertIdentity={expertIdentity}
+                    isResolvingExpertIdentity={isResolvingExpertIdentity}
+                    hasFloatingControls={hasFloatingControls}
+                  />
+                </NewChatOnboarding>
                 {archivedExpertIdentity ? (
                   <ArchivedExpertNotice
                     expertName={archivedExpertIdentity.name}
@@ -368,10 +398,7 @@ export const ChatContainer = ({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.3 }}
-                    className={cn(
-                      "ease-[cubic-bezier(0.32,0.72,0,1)] relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
-                      areFilesOpen && "xl:-translate-x-40",
-                    )}
+                    className="relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2"
                   >
                     {isLimitReached && (
                       <div
@@ -381,9 +408,9 @@ export const ChatContainer = ({
                         <div
                           aria-hidden="true"
                           data-testid="usage-limit-backdrop"
-                          className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(250,250,250,0.96)_0%,rgba(250,250,250,0.9)_42%,rgba(250,250,250,0.58)_68%,rgba(250,250,250,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
+                          className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.9)_42%,rgba(255,255,255,0.58)_68%,rgba(255,255,255,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
                         >
-                          <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-[#fafafa]/80 blur-2xl" />
+                          <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-white/80 blur-2xl" />
                           <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
                         </div>
                         <div className="pointer-events-auto relative px-3">

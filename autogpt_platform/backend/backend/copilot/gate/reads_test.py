@@ -5,16 +5,18 @@ SDK wrapper for the rest — with only the judge and the review rows faked. The
 rows go through ``sanitize_json`` as Postgres's JSON column does.
 """
 
+import asyncio
 import base64
 import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.copilot.context import set_turn_unattended
 from backend.copilot.gate import held, reads
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate.content import ContentVerdict
@@ -757,3 +759,622 @@ async def test_a_skills_copy_in_the_sandbox_is_still_judged(rows):
     with patch(f"{_READS}.judge_content", _judge(_HELD)):
         result = await wrapper({"path": "/home/user/skills/report/SKILL.md"})
     assert _MARKER not in json.dumps(result) and len(rows.rows) == 1
+
+
+async def test_the_platforms_sign_in_card_reaches_the_chat_unjudged(rows):
+    """The card a block with no connected key answers with is the platform's
+    own text; held, the chat got a stub where the sign-in button should be."""
+    from backend.blocks.search import GetWeatherInformationBlock
+    from backend.copilot.capabilities.models import CapabilityEntry, Implementation
+    from backend.copilot.tools.run_capability import RunCapabilityTool
+
+    block_id = GetWeatherInformationBlock().id
+    entry = CapabilityEntry(
+        id="openweathermap",
+        kind="block",
+        name="Get Weather Information",
+        purpose="weather",
+        implementations=[Implementation(kind="block", ref=block_id)],
+    )
+    judge = _judge(_HELD)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        _no_action_gate(),
+        patch(
+            "backend.copilot.tools.run_capability.resolve_session_entry",
+            AsyncMock(return_value=entry),
+        ),
+        patch(
+            "backend.copilot.tools.utils.get_user_credentials",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.tools.utils.selected_credentials",
+            AsyncMock(return_value=None),
+        ),
+    ):
+        result = await _call(
+            RunCapabilityTool(),
+            _session(),
+            {"id": "openweathermap", "input": {"location": "Amsterdam"}},
+        )
+
+    judge.assert_not_awaited()
+    card = json.loads(result.output)
+    assert card["type"] == ResponseType.SETUP_REQUIREMENTS
+    assert "credentials" in card["setup_info"]["user_readiness"]["missing_credentials"]
+    assert rows.rows == {}
+
+
+async def test_a_sign_in_card_quoting_the_providers_refusal_is_judged(rows):
+    from backend.copilot.tools.models import (
+        CredentialRejection,
+        SetupInfo,
+        SetupRequirementsResponse,
+        UserReadiness,
+    )
+
+    class _Rejected(_Fetch):
+        async def _execute(self, user_id, session, **kwargs):
+            return SetupRequirementsResponse(
+                message="The service rejected the saved credential.",
+                setup_info=SetupInfo(
+                    agent_id="b",
+                    agent_name="B",
+                    user_readiness=UserReadiness(),
+                    requirements={},
+                ),
+                rejection=CredentialRejection(provider="p", detail=_MARKER),
+            )
+
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge), _no_action_gate():
+        result = await _call(_Rejected("", name="run_capability"), _session())
+    assert _MARKER in judge.await_args.kwargs["text"]
+    assert _MARKER not in result.output and len(rows.rows) == 1
+
+
+async def test_a_blocks_own_output_is_still_judged(rows):
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge), _no_action_gate():
+        result = await _call(_Fetch(_MARKER, name="run_capability"), _session())
+    assert _MARKER in judge.await_args.kwargs["text"]
+    assert _MARKER not in result.output and len(rows.rows) == 1
+
+
+def _no_action_gate():
+    return patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, False)))
+
+
+# What a producer declares came from outside AutoGPT is all the judge reads.
+
+_STORE_VALUE = "1ff065e9-88e8-4358-9d82-8dc91f622ba9"
+_MCP_URL = "https://mcp.example.com/mcp"
+
+
+def _capability(kind: str, ref: str):
+    from backend.copilot.capabilities.models import CapabilityEntry, Implementation
+
+    return CapabilityEntry(
+        id="cap",
+        kind=kind,
+        name="cap",
+        purpose="cap",
+        implementations=[Implementation(kind=kind, ref=ref)],
+    )
+
+
+def _resolves_to(entry):
+    return patch(
+        "backend.copilot.tools.run_capability.resolve_session_entry",
+        AsyncMock(return_value=entry),
+    )
+
+
+def _mcp_server(client):
+    from contextlib import ExitStack
+
+    stack = ExitStack()
+    for name, value in (
+        ("validate_url_host", AsyncMock()),
+        ("auto_lookup_mcp_credential", AsyncMock(return_value=None)),
+        ("MCPClient", lambda *a, **k: client),
+    ):
+        stack.enter_context(patch(f"backend.copilot.tools.run_mcp_tool.{name}", value))
+    return stack
+
+
+async def _run_capability(args: dict[str, Any]) -> StreamToolOutputAvailable:
+    from backend.copilot.tools.run_capability import RunCapabilityTool
+
+    return await _call(RunCapabilityTool(), _session(), args)
+
+
+@pytest.mark.parametrize(
+    "kind, ref",
+    [
+        ("block", _STORE_VALUE),
+        ("tool", "connect_integration"),
+        ("mcp_server", _MCP_URL),
+    ],
+)
+async def test_a_validate_only_answer_is_the_platforms_own_words_and_not_judged(
+    rows, kind, ref
+):
+    """A platform tool's validate_only answer ends "Call again without
+    validate_only to run.": the platform's own instruction, never judged."""
+    from backend.copilot.tools import TOOL_REGISTRY
+
+    judge = _judge(_HELD)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        _no_action_gate(),
+        _resolves_to(_capability(kind, ref)),
+        patch(
+            "backend.copilot.tools.run_capability.configured_tool",
+            TOOL_REGISTRY.get,
+        ),
+    ):
+        result = await _run_capability(
+            {"id": "cap", "input": {}, "validate_only": True}
+        )
+
+    judge.assert_not_awaited()
+    assert result.success and rows.rows == {}
+    if kind == "tool":
+        assert "Call again without validate_only to run." in result.output
+
+
+async def test_an_mcp_tools_description_is_judged_and_the_listing_around_it_is_not(
+    rows,
+):
+    """A server's tool descriptions reach the model through discovery."""
+    from backend.blocks.mcp.client import MCPTool
+
+    client = AsyncMock()
+    client.list_tools = AsyncMock(
+        return_value=[MCPTool(name="send_mail", description=_MARKER, input_schema={})]
+    )
+    judge = _judge(_HELD)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        _no_action_gate(),
+        _resolves_to(_capability("mcp_server", _MCP_URL)),
+        _mcp_server(client),
+    ):
+        result = await _run_capability({"id": "cap", "input": {}})
+
+    judged = judge.await_args.kwargs["text"]
+    assert _MARKER in judged and "send_mail" in judged
+    assert "Do NOT re-run discovery" not in judged
+    assert _MARKER not in result.output and len(rows.rows) == 1
+
+
+async def test_a_blocks_output_is_judged_without_the_platforms_message(rows):
+    workspace = AsyncMock()
+    workspace.get_or_create_workspace = AsyncMock(return_value=SimpleNamespace(id="w"))
+    users = AsyncMock()
+    users.get_user_by_id = AsyncMock(return_value=SimpleNamespace(timezone="UTC"))
+    judge = _judge(_HELD)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        # Approved, so the block runs without its own review pause.
+        patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, True))),
+        _resolves_to(_capability("block", _STORE_VALUE)),
+        patch("backend.copilot.tools.helpers.workspace_db", lambda: workspace),
+        patch("backend.copilot.tools.helpers.user_db", lambda: users),
+    ):
+        result = await _run_capability({"id": "cap", "input": {"input": _MARKER}})
+
+    judged = judge.await_args.kwargs["text"]
+    assert _MARKER in judged and "executed successfully" not in judged
+    assert _MARKER not in result.output and len(rows.rows) == 1
+
+
+async def test_an_mcp_tools_result_is_judged_without_the_platforms_message(rows):
+    from backend.blocks.mcp.client import MCPCallResult
+
+    client = AsyncMock()
+    client.call_tool = AsyncMock(
+        return_value=MCPCallResult(content=[{"type": "text", "text": _MARKER}])
+    )
+    judge = _judge(_HELD)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        _no_action_gate(),
+        _resolves_to(_capability("mcp_server", _MCP_URL)),
+        _mcp_server(client),
+    ):
+        result = await _run_capability(
+            {"id": "cap", "input": {"tool": "read_inbox", "arguments": {}}}
+        )
+
+    judged = judge.await_args.kwargs["text"]
+    assert _MARKER in judged and "executed successfully" not in judged
+    assert _MARKER not in result.output and len(rows.rows) == 1
+
+
+async def test_an_mcp_error_is_judged_without_the_hint_the_platform_adds(rows):
+    """The hint repeats the tool name the model asked for; only the server's
+    error and its tool names are outside bytes."""
+    from backend.blocks.mcp.client import MCPCallResult, MCPTool
+
+    client = AsyncMock()
+    client.call_tool = AsyncMock(
+        return_value=MCPCallResult(
+            content=[{"type": "text", "text": _MARKER}], is_error=True
+        )
+    )
+    client.list_tools = AsyncMock(
+        return_value=[MCPTool(name="send_mail", description="", input_schema={})]
+    )
+    judge = _judge(_HELD)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        _no_action_gate(),
+        _resolves_to(_capability("mcp_server", _MCP_URL)),
+        _mcp_server(client),
+    ):
+        result = await _run_capability(
+            {"id": "cap", "input": {"tool": "read_inbox", "arguments": {}}}
+        )
+
+    judged = judge.await_args.kwargs["text"]
+    assert _MARKER in judged and "send_mail" in judged
+    assert "read_inbox" not in judged and "No tool named" not in judged
+    assert _MARKER not in result.output and len(rows.rows) == 1
+
+
+async def test_an_mcp_sign_in_card_is_not_judged_but_the_providers_refusal_in_one_is(
+    rows,
+):
+    """The refusal sits inside the card's own message: only it is judged."""
+    from backend.copilot.tools.models import CredentialRejection
+    from backend.copilot.tools.run_mcp_tool import RunMCPToolTool
+
+    class _Card(_Fetch):
+        def __init__(self, rejection):
+            super().__init__("", name="run_capability")
+            self.rejection = rejection
+
+        async def _execute(self, user_id, session, **kwargs):
+            return await RunMCPToolTool()._build_setup_requirements(
+                _MCP_URL, session.session_id, rejection=self.rejection
+            )
+
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge), _no_action_gate():
+        signed_out = await _call(_Card(None), _session())
+        judge.assert_not_awaited()
+        refused = await _call(
+            _Card(CredentialRejection(provider="mcp", detail=_MARKER, status_code=401)),
+            _session(),
+        )
+
+    assert json.loads(signed_out.output)["type"] == ResponseType.SETUP_REQUIREMENTS
+    assert judge.await_args.kwargs["text"] == _MARKER
+    assert _MARKER not in refused.output and len(rows.rows) == 1
+
+
+class _Declared(_Fetch):
+    """A read whose producer declares ``parts`` (None: declares nothing)."""
+
+    def __init__(self, content: str, parts: tuple[Any, ...] | None, **kwargs):
+        super().__init__(content, **kwargs)
+        self.parts = parts
+
+    async def _execute(self, user_id, session, **kwargs):
+        page = _Page(message="Call again without validate_only.", content=self.content)
+        return page if self.parts is None else page.from_outside(*self.parts)
+
+
+@pytest.mark.parametrize(
+    "parts, whole",
+    [
+        (None, True),
+        (("a sentence this page never says",), True),
+        ((_MARKER,), False),
+        ((_MARKER,) * (reads._MAX_OUTSIDE_VALUES + 1), True),
+        ((object(),), True),
+    ],
+    ids=["undeclared", "declared-but-absent", "declared", "over-budget", "unreadable"],
+)
+async def test_a_result_is_judged_whole_unless_its_declaration_holds(
+    rows, parts, whole
+):
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge):
+        result = await _call(_Declared(_MARKER, parts), _session())
+
+    whole_output = _Page(
+        message="Call again without validate_only.", content=_MARKER
+    ).model_dump_json(exclude_none=True)
+    assert judge.await_args.kwargs["text"] == (whole_output if whole else _MARKER)
+    assert _MARKER not in result.output and len(rows.rows) == 1
+
+
+async def test_every_image_is_judged_whatever_its_producer_declared(rows):
+    """AutoGPT writes no images, so declaring a result its own narrows only
+    its text."""
+
+    class _Picture(_Fetch):
+        async def _execute(self, user_id, session, **kwargs):
+            return _WorkspaceFile(
+                message="Here is the page.",
+                mime_type="image/png",
+                content_base64="iVBOR",
+            ).from_outside()
+
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge):
+        result = await _call(_Picture(""), _session())
+
+    judge.assert_awaited_once()
+    (image,) = judge.await_args.kwargs["images"]
+    assert image.data_base64 == "iVBOR"
+    assert "iVBOR" not in result.output and len(rows.rows) == 1
+
+
+async def test_a_declared_part_is_judged_as_the_json_the_model_reads(rows):
+    part = f'"{_MARKER}"\n\\ — é'
+    judge = _judge(_CLEAN)
+    with patch(f"{_READS}.judge_content", judge):
+        await _call(_Declared(part, (part,)), _session())
+    assert judge.await_args.kwargs["text"] == json.dumps(part, ensure_ascii=False)[1:-1]
+
+
+@pytest.mark.parametrize(
+    "tool_name, args",
+    [
+        ("bash_exec", {"command": f"cat > x.mjs <<'EOF'\n{_MARKER}\nEOF\nnode x.mjs"}),
+        ("web_search", {"query": _MARKER}),
+    ],
+)
+async def test_the_judge_never_reads_the_models_own_words(rows, tool_name, args):
+    """The source line sits inside the judge's fence of outside bytes, so a
+    command or query there was judged as the page's own text."""
+    from backend.copilot.tools.bash_exec import _build_completion_response
+
+    class _Ran(_Fetch):
+        async def _execute(self, user_id, session, **kwargs):
+            return _build_completion_response("ok", "", 0, [], None)
+
+    judge = _judge(_CLEAN)
+    with patch(f"{_READS}.judge_content", judge), _no_action_gate():
+        await _call(_Ran("", name=tool_name), _session(), args)
+
+    assert judge.await_args.kwargs["text"] == "ok"
+    assert _MARKER not in judge.await_args.kwargs["source"]
+
+
+async def test_a_declared_part_the_cap_cut_is_judged_as_cut(rows):
+    """Past the SDK's 70K cap the model reads the part's head and tail; the
+    judge reads exactly those, never the middle nobody saw."""
+    part = f"{_MARKER} " + "m" * 40_000 + "NOT-SEEN" + "n" * 40_000 + " tail words"
+    session = _session()
+    set_execution_context("user-1", session)
+    wrapper = _make_truncating_wrapper(
+        create_tool_handler(_Declared(part, (part,))), "web_fetch"
+    )
+    judge = _judge(_CLEAN)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        patch(
+            "backend.copilot.sdk.tool_adapter.resolve_tool_dispatch", lambda *_: None
+        ),
+    ):
+        to_model = _text_from_mcp_result(await wrapper({"url": "u"}))
+
+    head, tail = judge.await_args.kwargs["text"].split("\n")
+    assert head.startswith(_MARKER) and tail.endswith(" tail words")
+    assert head in to_model and tail in to_model
+    assert "NOT-SEEN" not in head + tail and "validate_only" not in head + tail
+
+
+def test_a_short_stray_match_of_a_cut_parts_head_is_not_judged_as_the_part():
+    """Away from the cap's marker, a head this short is the view's own words."""
+    part = "Call again tomorrow " + "x" * 200
+    view = 'The platform says: "Call again later."'
+    assert reads.outside_view((part,), full=json.dumps(part), text=view) == ""
+
+
+async def test_a_declared_part_in_a_digest_is_judged_as_its_outline_shows_it(rows):
+    """A large ``run_capability`` result reaches the model as an outline whose
+    scalars are cut at the head, beside the platform's retrieval instructions."""
+
+    class _Digested(_Declared):
+        digest_large_output = True
+
+    part = f"é{_MARKER} " + "z" * 9_000
+    manager = AsyncMock()
+    workspace = AsyncMock()
+    workspace.get_or_create_workspace = AsyncMock(return_value=SimpleNamespace(id="w"))
+    judge = _judge(_CLEAN)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        patch("backend.copilot.tools.base.workspace_db", lambda: workspace),
+        patch("backend.copilot.tools.base.WorkspaceManager", lambda *a: manager),
+    ):
+        result = await _call(_Digested(part, (part,)), _session())
+
+    judged = judge.await_args.kwargs["text"]
+    assert judged.startswith(f"é{_MARKER}") and len(judged) < len(part)
+    assert all(piece in result.output for piece in judged.split("\n"))
+    assert "read_workspace_file" not in judged and "validate_only" not in judged
+
+
+async def test_the_persisted_copy_of_a_cut_read_is_judged_when_read_back(rows):
+    """The part a cap cut from the first view is still in the persisted file;
+    a window of it read back either way is judged whole."""
+    part = "a" * 50_000 + f" {_MARKER} " + "b" * 50_000
+    manager = AsyncMock()
+    workspace = AsyncMock()
+    workspace.get_or_create_workspace = AsyncMock(return_value=SimpleNamespace(id="w"))
+
+    async def judge(*, source, text, images):
+        return _HELD if _MARKER in text else _CLEAN
+
+    session = _session()
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        patch("backend.copilot.tools.base.workspace_db", lambda: workspace),
+        patch("backend.copilot.tools.base.WorkspaceManager", lambda *a: manager),
+    ):
+        first = await _call(_Declared(part, (part,)), session)
+        assert first.success and rows.rows == {}
+        persisted = manager.write_file.await_args.kwargs["content"].decode()
+        assert _MARKER in persisted and _MARKER not in first.output
+        window = persisted[45_000:55_000]
+
+        read_back = await _call(
+            _Fetch(window, name="read_workspace_file"),
+            session,
+            {"path": "tool-outputs/call-1.json"},
+        )
+
+        async def read_tool_result(args):
+            return {"content": [{"type": "text", "text": window}], "isError": False}
+
+        set_execution_context("user-1", session)
+        wrapper = _make_truncating_wrapper(
+            read_tool_result, "read_tool_result", required_args=["file_path"]
+        )
+        sandbox_read = await wrapper({"file_path": "tool-outputs/call-1.json"})
+
+    assert _MARKER not in read_back.output and _MARKER not in json.dumps(sandbox_read)
+    assert len(rows.rows) == 2
+
+
+async def test_a_sandbox_files_lines_are_judged_and_an_empty_grep_is_not(
+    rows, tmp_path
+):
+    from backend.copilot.sdk import e2b_file_tools
+
+    (tmp_path / "notes.md").write_text(f"{_MARKER}\n")
+    sandbox = SimpleNamespace(
+        commands=SimpleNamespace(run=AsyncMock(return_value=SimpleNamespace(stdout="")))
+    )
+    session = _session()
+    set_execution_context("user-1", session)
+    read = _make_truncating_wrapper(
+        e2b_file_tools._handle_read_file, "read_file", required_args=["file_path"]
+    )
+    grep = _make_truncating_wrapper(
+        e2b_file_tools._handle_grep, "grep", required_args=["pattern"]
+    )
+    judge = _judge(_HELD)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        patch.object(e2b_file_tools, "get_sdk_cwd", lambda: str(tmp_path)),
+        patch.object(e2b_file_tools, "_get_sandbox", lambda: None),
+    ):
+        held_read = await read({"file_path": str(tmp_path / "notes.md")})
+    assert judge.await_args.kwargs["text"] == f"     1\t{_MARKER}\n"
+    assert _MARKER not in json.dumps(held_read) and len(rows.rows) == 1
+
+    judge.reset_mock()
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        patch.object(e2b_file_tools, "_get_sandbox", lambda: sandbox),
+        # The double holds no login files for run_internal to check.
+        patch(
+            "backend.util.sandbox_login.changed_login_files",
+            AsyncMock(return_value={}),
+        ),
+    ):
+        empty = await grep({"pattern": "nothing"})
+    judge.assert_not_awaited()
+    assert "No matches found." in _text_from_mcp_result(empty)
+
+
+# A scheduled turn's step that could not run answers with the platform's own
+# instructions for the reply; held, the reply never says the step was skipped.
+
+
+async def _agent_without_credentials() -> ToolResponseBase | None:
+    from backend.copilot.tools.run_agent import RunAgentInput, RunAgentTool
+
+    graph = MagicMock(id="graph-1", version=1, input_schema={})
+    graph.name = "Daily Scraper"
+    with (
+        patch(
+            "backend.copilot.tools.run_agent.match_user_credentials_to_graph",
+            AsyncMock(return_value=({}, ["credentials"])),
+        ),
+        patch(
+            "backend.copilot.tools.run_agent.build_missing_credentials_from_graph",
+            return_value={"credentials": {"provider": "firecrawl"}},
+        ),
+    ):
+        _, response = await RunAgentTool()._check_prerequisites(
+            graph, "user-1", RunAgentInput(), "session-1"
+        )
+    return response
+
+
+async def _block_credential_rejected() -> ToolResponseBase:
+    from backend.blocks.search import GetWeatherInformationBlock
+    from backend.copilot.tools.helpers import _credential_rejected_response
+    from backend.util.request import HTTPClientError
+
+    block = GetWeatherInformationBlock()
+    return _credential_rejected_response(
+        block=block,
+        block_id=block.id,
+        input_data={},
+        matched_credentials={},
+        session_id="session-1",
+        status_code=401,
+        exc=HTTPClientError("HTTP 401", 401),
+    )
+
+
+async def _pinned_account_gone() -> ToolResponseBase:
+    from backend.copilot.credential_selection import (
+        CredentialPin,
+        set_turn_credential_pins,
+    )
+    from backend.copilot.tools.helpers import unattended_missing_credentials_error
+
+    set_turn_credential_pins({"exa": CredentialPin(id="cred-1", title="Work Exa")})
+    with patch(
+        "backend.copilot.tools.helpers.get_user_credentials",
+        AsyncMock(return_value=[]),
+    ):
+        return await unattended_missing_credentials_error(
+            "Block 'Search'",
+            {"credentials": {"provider": "exa"}},
+            "session-1",
+            "user-1",
+            None,
+        )
+
+
+@pytest.mark.parametrize(
+    "tool_name, produce, error",
+    [
+        ("run_agent", _agent_without_credentials, "missing_credentials"),
+        ("run_capability", _block_credential_rejected, "credential_rejected"),
+        ("run_capability", _pinned_account_gone, "pinned_credential_missing"),
+    ],
+)
+async def test_a_scheduled_turns_skipped_step_reaches_the_model_unjudged(
+    rows, tool_name, produce, error
+):
+    class _Unattended(_Fetch):
+        async def _execute(self, user_id, session, **kwargs):
+            return await produce()
+
+    session = _session()
+
+    async def turn():
+        # Fired by the scheduler into the user's own chat, so the gate is on.
+        set_turn_unattended(session, scheduled=True)
+        return await _call(_Unattended("", name=tool_name), session)
+
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge), _no_action_gate():
+        result = await asyncio.create_task(turn())
+
+    judge.assert_not_awaited()
+    assert json.loads(result.output)["error"] == error and rows.rows == {}
