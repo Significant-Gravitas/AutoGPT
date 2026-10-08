@@ -6,11 +6,14 @@ from unittest.mock import MagicMock
 
 import pytest
 import pytest_mock
+from mcp.types import ListToolsRequest
+from prisma.enums import APIKeyPermission
 
 from backend.api.external.v2.mcp_server import (
     EXTERNAL_USE_EXCLUSIONS,
     UNSCOPED_EXTERNAL_TOOLS,
     _create_tool_handler,
+    create_mcp_server,
 )
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.tools import TOOL_REGISTRY
@@ -37,6 +40,32 @@ def test_exclusion_list_has_no_stale_or_contradictory_entries():
     assert (
         not contradictory
     ), f"Tools both opted in and excluded (drop one): {sorted(contradictory)}"
+
+
+@pytest.mark.asyncio
+async def test_tools_list_leaves_out_tools_the_caller_has_no_scope_for(
+    mocker: pytest_mock.MockerFixture,
+):
+    granted = {APIKeyPermission.READ_LIBRARY}
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=SimpleNamespace(scopes=[p.value for p in granted]),
+    )
+    exposed = {
+        name: set(perms)
+        for name, t in TOOL_REGISTRY.items()
+        for allowed, perms in [t.allow_external_use]
+        if allowed
+    }
+    server = create_mcp_server()
+
+    result = await server._mcp_server.request_handlers[ListToolsRequest](
+        ListToolsRequest(method="tools/list")
+    )
+
+    listed = {t.name for t in result.root.tools}
+    assert listed == {name for name, perms in exposed.items() if perms <= granted}
+    assert listed < set(exposed)
 
 
 def test_exposed_tools_declare_permissions_as_a_sequence():
