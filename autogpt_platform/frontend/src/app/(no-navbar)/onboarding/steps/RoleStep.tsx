@@ -8,6 +8,7 @@ import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/Autopilo
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { SelectableCard } from "../components/SelectableCard";
+import { OTHER_ROLE_MAX_LENGTH } from "../helpers";
 import { useOnboardingWizardStore } from "../store";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
@@ -22,9 +23,6 @@ import {
 } from "@hugeicons/core-free-icons";
 
 const ICON_SIZE = 20;
-
-// The profile submit rejects a longer role, and the whole profile is then lost.
-const OTHER_ROLE_MAX_LENGTH = 100;
 
 const ROLES = [
   {
