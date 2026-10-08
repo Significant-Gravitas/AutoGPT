@@ -179,6 +179,7 @@ from backend.data.user import (
     get_briefing_candidate,
     get_briefing_candidates,
     get_user_by_id,
+    get_user_copilot_heartbeat,
     get_user_credentials,
     get_user_default_chat_route,
     get_user_email_by_id,
@@ -380,6 +381,8 @@ class DatabaseManager(AppService):
     get_user_by_id = _(get_user_by_id)
     # The scheduler routes unattended chats by the user's saved default.
     get_user_default_chat_route = _(get_user_default_chat_route)
+    # The heartbeat cron (scheduler, Prisma-less) reads the user's settings.
+    get_user_copilot_heartbeat = _(get_user_copilot_heartbeat)
     get_user_subscription_tier = _(get_user_subscription_tier)
     get_subscription_trial = _(get_subscription_trial)
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
@@ -822,6 +825,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
     get_user_default_chat_route = d.get_user_default_chat_route
+    get_user_copilot_heartbeat = d.get_user_copilot_heartbeat
     get_user_subscription_tier = d.get_user_subscription_tier
     get_subscription_trial = d.get_subscription_trial
     sync_subscription_from_stripe = d.sync_subscription_from_stripe

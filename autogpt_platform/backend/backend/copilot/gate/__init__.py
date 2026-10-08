@@ -6,8 +6,16 @@ Ordering is the design, cheapest and most certain first:
 2. an approval for exactly these args     -> ALLOW, consumed single-use
 3. what the call acts on: a block, workflow or MCP tool's own effect, or
    the tool's; a call that runs nothing never asks
-4. the user's rule on that subject in this chat -> allow, judge or ask
-5. otherwise the mode's verdict for that effect: run, ask, or the supervisor
+4. a saved allow rule on that subject     -> ALLOW ("Always allow" and its
+   variants; a ``once`` rule is spent here)
+5. a saved decline on that subject        -> ask, saying the user declined
+6. otherwise the mode's verdict for that effect (or a ``judge`` rule):
+   run, ask, or the supervisor
+
+Saved rules are resolved before 4 and 5 by ``chat_rules.rule_for``: the
+narrowest scope on record decides and a later answer replaces an earlier one,
+a decline revokes every wider allow, and a delegated chat inherits the
+declines of the chats above it but none of their allows.
 
 The supervisor is last because it is the least trusted step: it can only turn
 a run into a question, never the reverse.
@@ -19,6 +27,7 @@ from typing import Any, Awaitable, Callable
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
 
+from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
 from backend.platform_linking.models import Platform
@@ -174,12 +183,11 @@ async def check_action(
     mode = resolve_mode(session)
     # Only a subject that can be parked can carry a rule, so reads and
     # workspace work skip the Redis round trip.
-    hit = (
-        await chat_rules.rule_for(session_id, rule_key, user_id, session.expert_id)
-        if effect in PARKABLE
-        else None
-    )
+    hit = await _saved_rule(session, rule_key, user_id) if effect in PARKABLE else None
     rule = hit.rule if hit else None
+    if rule == "allow":
+        # The user's own "Always allow" outranks the mode and the supervisor.
+        return ALLOW
     # A judge rule covers irreversible subjects too: the user chose the supervisor.
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
     estimate = subject.estimate if subject is not None else estimate_for(tool_name)
@@ -264,6 +272,26 @@ async def _park(
         return Decision(allowed=False, reason=_UNRECORDABLE)
     return Decision(
         allowed=False, reason=reason, review_id=call.review_id, headline=headline
+    )
+
+
+async def _saved_rule(
+    session: ChatSession, rule_key: str, user_id: str
+) -> chat_rules.RuleHit | None:
+    parent = session.metadata.delegated_by_session_id
+    ancestors = (
+        await chat_rules.ancestors_of(session.session_id, parent, user_id)
+        if parent
+        else []
+    )
+    envelope = get_current_envelope()
+    return await chat_rules.rule_for(
+        session.session_id,
+        rule_key,
+        user_id,
+        session.expert_id,
+        ancestors=ancestors,
+        turn_id=envelope.tree_id if envelope else None,
     )
 
 

@@ -1,4 +1,5 @@
-from datetime import date
+import json
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -11,12 +12,21 @@ from backend.copilot.gate import chat_rules, held
 class _Redis:
     def __init__(self, data: dict[str, str] | None = None) -> None:
         self.data = data or {}
+        self.ttls: dict[str, int | None] = {}
 
     async def setex(self, key: str, ttl: int, value: str) -> None:
         self.data[key] = value
+        self.ttls[key] = ttl
+
+    async def set(self, key: str, value: str) -> None:
+        self.data[key] = value
+        self.ttls[key] = None
 
     async def get(self, key: str) -> str | None:
         return self.data.get(key)
+
+    async def delete(self, *keys: str) -> int:
+        return sum(1 for key in keys if self.data.pop(key, None) is not None)
 
 
 @pytest.fixture
@@ -169,3 +179,166 @@ async def _set(scope: str, rule: chat_rules.ChatRule) -> None:
 async def _rule(session_id: str, key: str, expert_id: str | None = None):
     hit = await chat_rules.rule_for(session_id, key, "u", expert_id)
     return hit.rule if hit else None
+
+
+# --- Allow rules with a lifetime ("Always allow" and its variants) ---
+
+
+async def _grant(
+    rule: chat_rules.ChatRule = "allow",
+    session_id: str = "s",
+    expert_id: str | None = "frankie",
+    **grant,
+) -> None:
+    await chat_rules.set_granted_rule(
+        session_id, "u", expert_id, "mcp:h/t", rule, chat_rules.AllowGrant(**grant)
+    )
+
+
+async def _hit(session_id: str = "s", **kwargs) -> chat_rules.RuleHit | None:
+    return await chat_rules.rule_for(session_id, "mcp:h/t", "u", "frankie", **kwargs)
+
+
+async def test_always_allow_defaults_to_this_chat_for_good(redis):
+    await _grant()
+    hit = await _hit()
+    assert hit is not None and hit.rule == "allow"
+    assert (hit.scope, hit.lifetime) == ("chat", "always")
+    assert await _hit("other-chat") is None
+
+
+async def test_once_is_spent_by_the_first_call_it_covers(redis):
+    await _grant(lifetime="once")
+    first = await _hit()
+    assert first is not None and first.rule == "allow"
+    assert await _hit() is None
+
+
+async def test_a_spent_once_falls_through_to_a_wider_rule(redis):
+    await chat_rules.set_scoped_rule("team", "u", None, "mcp:h/t", "judge")
+    await _grant(lifetime="once")
+    assert (await _hit()).rule == "allow"
+    hit = await _hit()
+    assert hit is not None and (hit.rule, hit.scope) == ("judge", "team")
+
+
+async def test_a_turn_rule_holds_for_the_task_that_first_uses_it(redis):
+    await _grant(lifetime="turn")
+    assert (await _hit(turn_id="task-1")).rule == "allow"
+    assert (await _hit(turn_id="task-1")).rule == "allow"
+    assert await _hit(turn_id="task-2") is None
+    # Gone once another task met it, so the first task cannot get it back.
+    assert await _hit(turn_id="task-1") is None
+
+
+async def test_a_turn_rule_with_no_task_to_bind_is_spent_like_once(redis):
+    await _grant(lifetime="turn")
+    assert (await _hit()).rule == "allow"
+    assert await _hit() is None
+
+
+async def test_a_ttl_rule_expires_after_its_hours(redis):
+    await _grant(scope="team", lifetime="ttl", ttl_hours=2)
+    key = chat_rules._scoped_key("team", "u", None, "mcp:h/t")
+    assert redis.ttls[key] == 2 * 60 * 60
+    hit = await _hit("other-chat")
+    assert hit is not None and (hit.rule, hit.scope, hit.lifetime) == (
+        "allow",
+        "team",
+        "ttl",
+    )
+    stored = json.loads(redis.data[key])
+    stored["expires_at"] = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+    redis.data[key] = json.dumps(stored)
+    assert await _hit("other-chat") is None
+    assert key not in redis.data
+
+
+async def test_always_at_a_wider_scope_never_ages_out(redis):
+    await _grant(scope="expert", lifetime="always")
+    key = chat_rules._scoped_key("expert", "u", "frankie", "mcp:h/t")
+    assert redis.ttls[key] is None
+    hit = await _hit("other-chat")
+    assert hit is not None and (hit.scope, hit.lifetime) == ("expert", "always")
+
+
+@pytest.mark.parametrize("lifetime", ["once", "turn", "chat"])
+async def test_a_chat_bound_lifetime_never_widens_past_its_chat(redis, lifetime):
+    await _grant(scope="team", lifetime=lifetime)
+    assert not any(":team:" in key for key in redis.data)
+    assert await _hit("other-chat", turn_id="t") is None
+
+
+async def test_a_decline_replaces_an_always_allow_at_every_scope(redis):
+    await _grant(scope="expert", lifetime="always")
+    await _grant()
+    await chat_rules.set_ask("s", "mcp:h/t", "u", "frankie")
+    assert (await _hit()).rule == "ask"
+    assert (await _hit("other-chat")).rule == "ask"
+
+
+async def test_a_later_always_allow_in_this_chat_replaces_its_decline(redis):
+    await chat_rules.set_ask("s", "mcp:h/t", "u", "frankie")
+    await _grant()
+    assert (await _hit()).rule == "allow"
+
+
+async def test_a_delegated_chat_inherits_declines_but_not_allows(redis):
+    await chat_rules.set_ask("parent", "mcp:h/t", "u", None)
+    await _grant(session_id="child")
+    hit = await _hit("child", ancestors=["parent"])
+    assert hit is not None and hit.rule == "ask" and hit.inherited
+    assert hit.reason == chat_rules.INHERITED
+
+    await _grant(session_id="parent-2")
+    assert await _hit("child-2", ancestors=["parent-2"]) is None
+
+
+async def test_a_delegated_chat_may_be_stricter_than_its_parent(redis):
+    await _grant(session_id="parent")
+    await chat_rules.set_ask("child", "mcp:h/t", "u", None)
+    assert (await _hit("child", ancestors=["parent"])).rule == "ask"
+
+
+async def test_the_chain_of_parents_is_walked_and_bounded():
+    chain = {
+        "c1": "c2",
+        "c2": "c3",
+        "c3": "c4",
+        "c4": "c5",
+    }
+
+    async def meta(session_id: str, user_id: str):
+        return SimpleNamespace(
+            metadata=SimpleNamespace(delegated_by_session_id=chain.get(session_id))
+        )
+
+    with patch.object(chat_rules, "get_chat_session_metadata", meta):
+        assert await chat_rules.ancestors_of("c0", "c1", "u") == ["c1", "c2", "c3"]
+
+
+async def test_an_answer_with_a_grant_saves_its_lifetime(redis):
+    with patch.object(
+        chat_rules,
+        "get_chat_session_metadata",
+        AsyncMock(return_value=SimpleNamespace(expert_id="frankie")),
+    ):
+        await chat_rules.set_answer_rules(
+            "s",
+            "u",
+            {"a": _row(ReviewStatus.APPROVED), "b": _row(ReviewStatus.APPROVED)},
+            {"a": "allow", "b": "allow"},
+            {"a": "mcp:h/t", "b": "mcp:h/other"},
+            {"a": "expert", "b": "chat"},
+            {"a": chat_rules.AllowGrant(scope="expert", lifetime="ttl", ttl_hours=3)},
+        )
+    hit = await _hit("other-chat")
+    assert hit is not None and (hit.scope, hit.lifetime) == ("expert", "ttl")
+    # Without a grant the rule is the legacy chat-long one.
+    legacy = await chat_rules.rule_for("s", "mcp:h/other", "u", "frankie")
+    assert legacy is not None and (legacy.rule, legacy.lifetime) == ("allow", None)
+
+
+def test_an_unreadable_stored_rule_asks():
+    stored = chat_rules._parse("{not json", legacy_scoped=False)
+    assert stored.rule == "ask"

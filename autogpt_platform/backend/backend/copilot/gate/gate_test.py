@@ -501,3 +501,112 @@ async def test_the_judge_reads_the_users_words_not_the_first_turn_prefix(
     assert words in request
     assert "<available_skills>" not in request
     assert "<user_context>" not in request
+
+
+# --- Saved allow rules ("Always allow") in the ordering ---
+
+
+@pytest.mark.parametrize("mode", _MODES)
+async def test_a_saved_allow_runs_before_the_mode_and_the_supervisor(
+    gate_on, clean_session_state, mode
+):
+    supervisor = AsyncMock(return_value=Judgement(allowed=False, reason="unsure"))
+    open_review = AsyncMock(return_value=Headline(ask="Run it"))
+    with (
+        patch(
+            f"{_GATE}.chat_rules.rule_for",
+            AsyncMock(return_value=chat_rules.RuleHit(rule="allow")),
+        ),
+        patch(f"{_GATE}.supervise", supervisor),
+        patch(f"{_GATE}.review_store.open_review", open_review),
+    ):
+        for tool in ("post_to_chat_platform", "bash_exec", "delete_folder"):
+            decision = await check_action(tool, {"n": 1}, "u", _session(mode))
+            assert decision.allowed, tool
+    supervisor.assert_not_awaited()
+    open_review.assert_not_awaited()
+
+
+async def test_a_single_use_approval_is_consulted_before_any_saved_rule(
+    gate_on, clean_session_state
+):
+    rule_for = AsyncMock(return_value=chat_rules.RuleHit(rule="ask"))
+    with (
+        patch(
+            f"{_GATE}.review_store.find_review",
+            AsyncMock(return_value=_row(ReviewStatus.APPROVED)),
+        ),
+        patch(f"{_GATE}.review_store.consume", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.chat_rules.rule_for", rule_for),
+    ):
+        decision = await check_action("post_to_chat_platform", {}, "u", _session())
+    assert decision.allowed and decision.approved
+    rule_for.assert_not_awaited()
+
+
+async def test_a_saved_decline_still_asks_where_no_allow_is_saved(
+    gate_on, clean_session_state
+):
+    with patch(
+        f"{_GATE}.chat_rules.rule_for",
+        AsyncMock(return_value=chat_rules.RuleHit(rule="ask")),
+    ):
+        decision = await check_action(
+            "post_to_chat_platform", {}, "u", _session("unsupervised")
+        )
+    assert not decision.allowed
+    assert decision.reason == chat_rules.DECLINED
+
+
+async def test_a_delegated_chat_reads_its_parents_and_its_task(
+    gate_on, clean_session_state
+):
+    session = _session()
+    session.metadata.delegated_by_session_id = "parent"
+    rule_for = AsyncMock(return_value=None)
+    ancestors = AsyncMock(return_value=["parent", "grandparent"])
+    envelope = SimpleNamespace(tree_id="task-7")
+    with (
+        patch(f"{_GATE}.chat_rules.rule_for", rule_for),
+        patch(f"{_GATE}.chat_rules.ancestors_of", ancestors),
+        patch(f"{_GATE}.get_current_envelope", return_value=envelope),
+    ):
+        await check_action("post_to_chat_platform", {}, "u", session)
+    ancestors.assert_awaited_once_with("session-1", "parent", "u")
+    kwargs = rule_for.await_args.kwargs
+    assert kwargs["ancestors"] == ["parent", "grandparent"]
+    assert kwargs["turn_id"] == "task-7"
+
+
+async def test_a_parents_decline_holds_in_the_chat_it_delegated_to(
+    gate_on, clean_session_state
+):
+    """End to end on the real store: a model cannot route around a decline by
+    handing the call to a sub-session that the user said yes to."""
+    store = _Redis()
+    child = _session("unsupervised")
+    child.metadata.delegated_by_session_id = "parent"
+    with (
+        patch(f"{_GATE}.chat_rules.get_redis_async", AsyncMock(return_value=store)),
+        patch(f"{_GATE}.chat_rules.rule_for", _REAL_RULE_FOR),
+        patch(
+            f"{_GATE}.chat_rules.get_chat_session_metadata",
+            AsyncMock(
+                return_value=SimpleNamespace(
+                    metadata=SimpleNamespace(delegated_by_session_id=None)
+                )
+            ),
+        ),
+    ):
+        await chat_rules.set_rule("parent", "post_to_chat_platform", "ask")
+        await chat_rules.set_granted_rule(
+            "session-1",
+            "u",
+            None,
+            "post_to_chat_platform",
+            "allow",
+            chat_rules.AllowGrant(),
+        )
+        decision = await check_action("post_to_chat_platform", {}, "u", child)
+    assert not decision.allowed
+    assert decision.reason == chat_rules.INHERITED

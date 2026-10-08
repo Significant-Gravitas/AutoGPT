@@ -11,13 +11,14 @@ import hashlib
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Sequence
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel
 
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.constants import (
+    AUTOPILOT_NAME,
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
 )
@@ -28,6 +29,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.sharing.models import _redact_secret_keys
 from backend.data.db_accessors import review_db
 
+from .chat_rules import DEFAULT_LIFETIME, DEFAULT_SCOPE, Lifetime, Scope
 from .classifier import DecidedBy
 from .headline import Headline, headline_for
 from .policy import DEFAULT_MODE, PARKABLE, effect_for, is_irreversible
@@ -60,6 +62,31 @@ class Subject(BaseModel):
 class FieldLabel(BaseModel):
     key: str
     label: str
+
+
+AnswerId = Literal["approve", "always_allow", "judge", "reject"]
+
+
+class AnswerOption(BaseModel):
+    """One button on the card and what answering with it does, derived from
+    the payload's ``chat_rules_allowed`` by :func:`answer_options` so the web
+    card and the channel card offer the same buttons.
+
+    ``approve`` is "Allow once": this exact call runs, no rule is saved.
+    ``always_allow`` approves and saves an allow rule on the card's subject at
+    ``scope`` for ``lifetime``; the web answers it with ``ReviewItem``'s
+    ``chat_rule="allow"``, ``chat_rule_scope`` and ``chat_rule_lifetime``,
+    and may offer the other scopes and lifetimes as variants of it.
+    ``reject`` is "Deny", which also makes the subject ask for the rest of
+    the chat.
+    """
+
+    id: AnswerId
+    label: str
+    approved: bool
+    rule: Literal["allow", "judge"] | None = None
+    scope: Scope | None = None
+    lifetime: Lifetime | None = None
 
 
 class GateReviewPayload(BaseModel):
@@ -167,6 +194,36 @@ def review_payload(
         ),
         spend=spend,
     ).model_dump()
+
+
+def answer_options(rules_allowed: Sequence[str]) -> list[AnswerOption]:
+    """Allow once, then Always allow when the card can rule on its subject,
+    then the judge rule when offered, then Deny."""
+    options = [AnswerOption(id="approve", label="Allow once", approved=True)]
+    if "allow" in rules_allowed:
+        options.append(
+            AnswerOption(
+                id="always_allow",
+                label="Always allow",
+                approved=True,
+                rule="allow",
+                scope=DEFAULT_SCOPE,
+                lifetime=DEFAULT_LIFETIME,
+            )
+        )
+    if "judge" in rules_allowed:
+        options.append(
+            AnswerOption(
+                id="judge",
+                label=f"Let {AUTOPILOT_NAME} judge in this chat",
+                approved=True,
+                rule="judge",
+                scope="chat",
+                lifetime="chat",
+            )
+        )
+    options.append(AnswerOption(id="reject", label="Deny", approved=False))
+    return options
 
 
 def is_spend_card(review: PendingHumanReviewModel) -> bool:

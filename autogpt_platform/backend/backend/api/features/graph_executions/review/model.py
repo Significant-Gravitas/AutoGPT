@@ -173,6 +173,23 @@ class ReviewItem(BaseModel):
             "Expert (or Otto), or every Expert on the user's team."
         ),
     )
+    chat_rule_lifetime: Literal["once", "turn", "chat", "ttl", "always"] | None = Field(
+        default=None,
+        description=(
+            "How long chat_rule holds, as the card's answer_options name "
+            "it: 'once' (the next matching call), 'turn' (the task that "
+            "first uses it), 'chat', 'ttl' (chat_rule_ttl_hours) or "
+            "'always'. 'Always allow' sends 'always'. Omitted: as long as "
+            "the chat. once, turn and chat hold in this chat whatever "
+            "chat_rule_scope says."
+        ),
+    )
+    chat_rule_ttl_hours: int | None = Field(
+        default=None,
+        ge=1,
+        le=24 * 365,
+        description="Hours a 'ttl' chat_rule holds; defaults to 24.",
+    )
 
     @field_validator("reviewed_data")
     @classmethod

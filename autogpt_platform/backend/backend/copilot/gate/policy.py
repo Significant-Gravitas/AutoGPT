@@ -81,6 +81,8 @@ _WORKSPACE = frozenset(
     {
         "TodoWrite",
         "add_understanding",
+        # Records a heartbeat's answer; the runner delivers it, not the call.
+        "heartbeat_respond",
         "memory_store",
         "start_desktop",
         "store_skill",

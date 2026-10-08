@@ -119,6 +119,7 @@ ToolName = Literal[
     "get_doc_page",
     "get_platform_info",
     "get_sub_session_result",
+    "heartbeat_respond",
     "grant_expert_credential",
     "handoff_to_expert",
     "hire_expert",

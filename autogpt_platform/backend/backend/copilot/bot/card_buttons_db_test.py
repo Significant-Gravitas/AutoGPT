@@ -482,7 +482,7 @@ async def test_a_rule_lost_after_the_answer_lands_still_starts_the_turn(
             one_linked.server_id,
             one_linked.owner,
             card.token,
-            card.options.index("Approve for this chat"),
+            card.options.index("Always allow"),
         )
 
     lost.assert_awaited_once()
@@ -516,10 +516,10 @@ async def test_the_card_offers_the_web_cards_choices_and_each_sets_its_rule(
 ):
     session, review_id, card = await _held_card(one_linked, test_user_id)
     assert card.options == [
-        "Approve",
-        "Approve for this chat",
+        "Allow once",
+        "Always allow",
         "Let Otto judge in this chat",
-        "Reject",
+        "Deny",
     ]
     assert card.text.startswith("⏸️ **Post a message**")
     platform = Platform(one_linked.platform.upper())
@@ -548,7 +548,7 @@ async def test_a_rule_set_from_the_channel_holds_only_in_that_bot_chat(
     """Anyone in the channel may click, so no click may change how the owner's
     own web chats ask."""
     _, _, first = await _held_card(one_linked, test_user_id)
-    rules = [o for o in first.options if o not in ("Approve", "Reject")]
+    rules = [o for o in first.options if o not in ("Allow once", "Deny")]
     platform = Platform(one_linked.platform.upper())
     judged_safe = AsyncMock(return_value=MagicMock(allowed=True))
     redis = await get_redis_async()
