@@ -256,6 +256,10 @@ async def suspend_api_key(
     if organization_id and api_key.organizationId != organization_id:
         raise NotAuthorizedError("You do not have permission to suspend this API key.")
 
+    # REVOKED is terminal: suspending would overwrite it (keeping revokedAt).
+    if api_key.status == APIKeyStatus.REVOKED:
+        raise ValueError("API key has been revoked and can't be suspended.")
+
     updated_api_key = await PrismaAPIKey.prisma().update(
         where=selector, data={"status": APIKeyStatus.SUSPENDED}
     )
@@ -303,6 +307,9 @@ async def update_api_key_permissions(
 
     if organization_id and api_key.organizationId != organization_id:
         raise NotAuthorizedError("You do not have permission to update this API key.")
+
+    if api_key.status == APIKeyStatus.REVOKED:
+        raise ValueError("API key has been revoked and can't be changed.")
 
     updated_api_key = await PrismaAPIKey.prisma().update(
         where={"id": key_id},
