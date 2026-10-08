@@ -1,11 +1,10 @@
 import type { ComponentProps } from "react";
-import { ModeSelector } from "./ModeSelector";
+import Link from "next/link";
 import { ConversationMessages } from "./ConversationMessages";
 import { MessageComposer } from "./MessageComposer";
 
 interface Props
-  extends ComponentProps<typeof ModeSelector>,
-    ComponentProps<typeof ConversationMessages>,
+  extends ComponentProps<typeof ConversationMessages>,
     ComponentProps<typeof MessageComposer> {}
 
 export function ConversationPanel(props: Props) {
@@ -20,7 +19,18 @@ export function ConversationPanel(props: Props) {
         </span>
         <span className="text-[10px] text-zinc-400">YOU + OTTO</span>
       </div>
-      <ModeSelector {...props} />
+      <div className="space-y-2 border-b border-zinc-100 px-5 py-3 text-xs leading-relaxed text-zinc-500">
+        <p>
+          Explore prepared examples here. Generate views from your own data in
+          your Copilot conversation.
+        </p>
+        <Link
+          href="/copilot"
+          className="inline-block font-medium text-purple-600 underline underline-offset-2"
+        >
+          Continue in Copilot →
+        </Link>
+      </div>
       <ConversationMessages {...props} />
       <MessageComposer {...props} />
     </section>

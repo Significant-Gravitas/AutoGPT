@@ -16,7 +16,6 @@ interface Props {
   source: string;
   isStreaming: boolean;
   revision: number;
-  mode: "sample" | "live";
   onAction: (event: ActionEvent) => void;
   onReplay: () => void;
 }
@@ -26,7 +25,6 @@ export function WorkspacePanel({
   source,
   isStreaming,
   revision,
-  mode,
   onAction,
   onReplay,
 }: Props) {
@@ -57,7 +55,7 @@ export function WorkspacePanel({
           ))}
         </div>
         <div className="flex items-center gap-1">
-          {mode === "sample" && (
+          {
             <Button
               variant="ghost"
               size="icon-xs"
@@ -67,7 +65,7 @@ export function WorkspacePanel({
             >
               <Icon icon={ReplayIcon} size={15} />
             </Button>
-          )}
+          }
           <Button
             variant="ghost"
             size="xs"
@@ -132,11 +130,7 @@ export function WorkspacePanel({
           />
           {isStreaming ? "Streaming response" : "Ready to explore"}
         </span>
-        <span>
-          {mode === "sample"
-            ? "Sample data · no connected accounts"
-            : "AI-generated · review before use"}
-        </span>
+        <span>Sample data · no connected accounts</span>
       </div>
     </section>
   );

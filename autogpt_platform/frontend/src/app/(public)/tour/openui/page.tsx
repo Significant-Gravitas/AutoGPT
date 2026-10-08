@@ -10,5 +10,5 @@ export const metadata: Metadata = {
 
 export default function OpenUIDemoPage() {
   if (!isOpenUIEnabled()) notFound();
-  return <OpenUILab standalone liveAvailable={false} />;
+  return <OpenUILab standalone />;
 }

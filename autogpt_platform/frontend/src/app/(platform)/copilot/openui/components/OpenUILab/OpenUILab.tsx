@@ -11,11 +11,10 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   standalone?: boolean;
-  liveAvailable: boolean;
 }
 
-export function OpenUILab({ standalone = false, liveAvailable }: Props) {
-  const lab = useOpenUILab(liveAvailable);
+export function OpenUILab({ standalone = false }: Props) {
+  const lab = useOpenUILab();
   const [mobileView, setMobileView] = useState("Workspace");
   return (
     <div
@@ -65,10 +64,6 @@ export function OpenUILab({ standalone = false, liveAvailable }: Props) {
               messages={lab.messages}
               prompt={lab.prompt}
               onPrompt={lab.setPrompt}
-              mode={lab.mode}
-              onMode={lab.changeMode}
-              liveAvailable={liveAvailable}
-              standalone={standalone}
               isStreaming={lab.isStreaming}
               suggestions={lab.scenario.suggestions}
               onSend={lab.send}
@@ -87,7 +82,6 @@ export function OpenUILab({ standalone = false, liveAvailable }: Props) {
               source={lab.source}
               isStreaming={lab.isStreaming}
               revision={lab.revision}
-              mode={lab.sourceMode}
               onAction={lab.handleAction}
               onReplay={lab.replay}
             />

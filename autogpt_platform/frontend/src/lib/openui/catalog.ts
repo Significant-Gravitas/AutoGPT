@@ -149,10 +149,10 @@ export const MAX_SOURCE_LENGTH = 60_000;
 export function getSystemPrompt() {
   return catalog.prompt({
     preamble:
-      "You create interactive workspaces for AutoGPT. Respond only with OpenUI Lang, using the supplied component library. This is an experimental workspace, not an agent execution environment.",
+      "Create an interactive view inside the current AutoGPT Copilot conversation. The source argument must contain only OpenUI Lang using this component library, without Markdown fences or JavaScript.",
     additionalRules: [
       "Start with root = Workspace(...). Use references to sections defined in later statements so the workspace streams progressively.",
-      "Only use data supplied by the user or the current workspace. Mark hypothetical or example data clearly in the workspace description. Never invent live account metrics, research, or sources.",
+      "Only use data supplied by the user or retrieved by tools in this conversation. Mark hypothetical or example data clearly in the workspace description. Never invent live account metrics, research, or sources.",
       "When asked to revise the workspace, return a complete replacement program, not a patch.",
       "Actions and form submissions only continue this conversation. Do not claim to send emails, run agents, publish, or save anything to the platform.",
       "Prefer 3-5 sections. Use a chart for trends, a table for comparisons, a form for missing inputs, and a checklist for plans.",

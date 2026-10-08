@@ -35,7 +35,6 @@
     "defaults"
   ],
   "dependencies": {
-    "@ai-sdk/openai-compatible": "2.0.81",
     "@ai-sdk/react": "3.0.61",
     "@better-auth/core": "1.6.22",
     "@faker-js/faker": "10.0.0",

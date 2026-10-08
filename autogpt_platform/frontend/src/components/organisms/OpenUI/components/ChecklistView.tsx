@@ -1,21 +1,35 @@
-import type { ComponentRenderProps } from "@openuidev/react-lang";
+import {
+  useStateField,
+  type ComponentRenderProps,
+} from "@openuidev/react-lang";
 import type { z } from "zod/v4";
 import type { Checklist } from "@/lib/openui/catalog";
-import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useOpenUIDisabled } from "../interactionContext";
 
 export function ChecklistView({
   props,
+  statementId,
 }: ComponentRenderProps<z.infer<typeof Checklist.props>>) {
-  const [completed, setCompleted] = useState<Set<number>>(new Set());
+  const field = useStateField<number[]>(
+    `checklist:${statementId ?? props.title}`,
+    [],
+  );
+  const completed = new Set<number>(
+    Array.isArray(field.value)
+      ? field.value.filter(
+          (value): value is number => typeof value === "number",
+        )
+      : [],
+  );
+  const disabled = useOpenUIDisabled();
   const items = props.items?.slice(0, 12) ?? [];
   function toggle(index: number) {
-    setCompleted((current) => {
-      const next = new Set(current);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
+    if (disabled) return;
+    const next = new Set(completed);
+    if (next.has(index)) next.delete(index);
+    else next.add(index);
+    field.setValue([...next]);
   }
   return (
     <section className="rounded-xl border border-zinc-200 bg-white p-5">
@@ -33,6 +47,7 @@ export function ChecklistView({
           >
             <input
               type="checkbox"
+              disabled={disabled}
               checked={completed.has(index)}
               onChange={() => toggle(index)}
               className="mt-0.5 size-4 shrink-0 accent-purple-500"

@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 interface Props {
   messages: LabMessage[];
   isStreaming: boolean;
-  mode: "sample" | "live";
 }
 
 function Message({ message }: { message: LabMessage }) {
@@ -37,7 +36,7 @@ function Message({ message }: { message: LabMessage }) {
   );
 }
 
-export function ConversationMessages({ messages, isStreaming, mode }: Props) {
+export function ConversationMessages({ messages, isStreaming }: Props) {
   const log = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (log.current)
@@ -60,9 +59,7 @@ export function ConversationMessages({ messages, isStreaming, mode }: Props) {
           role="status"
           className="text-xs text-purple-600 motion-safe:animate-pulse"
         >
-          {mode === "sample"
-            ? "Rendering the sample…"
-            : "Creating your workspace…"}
+          Rendering the sample…
         </p>
       )}
     </div>

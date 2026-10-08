@@ -9,6 +9,24 @@ handling the distinction between:
 from functools import cache
 
 from backend.blocks.desktop._api import DISPLAY
+from backend.copilot.config import ChatConfig
+
+
+def get_openui_supplement() -> str:
+    if not ChatConfig().openui_enabled:
+        return ""
+    return """
+
+### Interactive views
+When a chart, comparison, editable brief, or checklist would help, use
+`describe_capability(id="tool:render_ui")` to get the OpenUI component library,
+then `run_capability(id="tool:render_ui", input={source, summary})` to display it.
+Retrieve actual data with tools first; never fabricate account metrics or sources.
+Use ordinary text for simple answers. Include a short plain-text reply for clients
+that cannot display interactive views. Forms and buttons send user follow-ups to
+this conversation; they do not execute tasks or bypass approval requirements.
+"""
+
 
 # Workflow rules appended to the system prompt on every copilot turn
 # (baseline appends directly; SDK appends via the storage-supplement
@@ -575,7 +593,7 @@ When a tool output contains `<tool-output-truncated workspace_path="...">`, the
 full output is in workspace storage (NOT on the local filesystem). To access it:
 - Use `read_workspace_file(path="...", offset=..., length=50000)` for reading sections.
 - To process in the sandbox, use `read_workspace_file(path="...", save_to_path="{working_dir}/file.json")` first, then use `bash_exec` on the local copy.
-{SHARED_TOOL_NOTES}{extra_notes}"""
+{SHARED_TOOL_NOTES}{get_openui_supplement()}{extra_notes}"""
 
 
 # Pre-built supplements for common environments

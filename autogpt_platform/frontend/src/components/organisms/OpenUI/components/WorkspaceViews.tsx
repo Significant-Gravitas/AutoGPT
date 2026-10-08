@@ -6,6 +6,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ArrowUpRight01Icon, Idea01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
+import { useOpenUIDisabled } from "../interactionContext";
 
 export function WorkspaceView({
   props,
@@ -90,11 +91,12 @@ export function ActionView({
 }: ComponentRenderProps<z.infer<typeof catalog.FollowUp.props>>) {
   const triggerAction = useTriggerAction();
   const isStreaming = useIsStreaming();
+  const disabled = useOpenUIDisabled();
   return (
     <Button
       size="small"
       variant="secondary"
-      disabled={isStreaming}
+      disabled={isStreaming || disabled}
       onClick={() => triggerAction(props.message)}
       rightIcon={<Icon icon={ArrowUpRight01Icon} size={16} />}
       unmask={false}

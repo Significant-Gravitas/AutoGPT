@@ -7,8 +7,6 @@ import { ArrowUp02Icon, StopIcon } from "@hugeicons/core-free-icons";
 interface Props {
   prompt: string;
   onPrompt: (value: string) => void;
-  mode: "sample" | "live";
-  liveAvailable: boolean;
   isStreaming: boolean;
   suggestions: readonly string[];
   onSend: (message: string) => void;
@@ -49,19 +47,13 @@ export function MessageComposer(props: Props) {
           value={props.prompt}
           onChange={(event) => props.onPrompt(event.target.value)}
           onKeyDown={props.onKeyDown}
-          placeholder={
-            props.mode === "sample"
-              ? "Try a suggested follow-up…"
-              : "What should your workspace show?"
-          }
+          placeholder="Try a suggested follow-up…"
           maxLength={4000}
           className="!resize-none !border-0 !bg-transparent !pb-12 !text-xs !shadow-none !ring-0"
         />
         <div className="absolute inset-x-3 bottom-2 flex items-center justify-between">
           <span className="text-[10px] text-zinc-400">
-            {props.mode === "sample"
-              ? "Prepared example · sample data"
-              : "Live AI · your request"}
+            Prepared example · sample data
           </span>
           {props.isStreaming ? (
             <Button
@@ -78,10 +70,7 @@ export function MessageComposer(props: Props) {
               type="submit"
               size="icon-xs"
               aria-label="Send message"
-              disabled={
-                !props.prompt.trim() ||
-                (props.mode === "live" && !props.liveAvailable)
-              }
+              disabled={!props.prompt.trim()}
             >
               <Icon icon={ArrowUp02Icon} size={16} />
             </Button>

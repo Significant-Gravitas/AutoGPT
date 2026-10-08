@@ -5,7 +5,7 @@ import { OpenUILab } from "../components/OpenUILab/OpenUILab";
 
 describe("OpenUI lab", () => {
   it("renders the sample through OpenUI and switches between UI and source", async () => {
-    render(<OpenUILab standalone liveAvailable={false} />);
+    render(<OpenUILab standalone />);
     expect(await screen.findByText("Your agents, at a glance")).toBeDefined();
     expect(screen.getByText("1,284")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Source" }));
@@ -17,7 +17,7 @@ describe("OpenUI lab", () => {
   });
 
   it("turns a generated action into a new workspace", async () => {
-    render(<OpenUILab standalone liveAvailable={false} />);
+    render(<OpenUILab standalone />);
     const workspace = within(
       screen.getByRole("region", { name: "Generated workspace" }),
     );
@@ -37,7 +37,7 @@ describe("OpenUI lab", () => {
   });
 
   it("filters generated table data and preserves the results when sorting", async () => {
-    render(<OpenUILab standalone liveAvailable={false} />);
+    render(<OpenUILab standalone />);
     fireEvent.change(
       await screen.findByLabelText("Filter Your top performers"),
       { target: { value: "researcher" } },
@@ -49,7 +49,7 @@ describe("OpenUI lab", () => {
   });
 
   it("does not submit Enter while an IME is composing", async () => {
-    render(<OpenUILab standalone liveAvailable={false} />);
+    render(<OpenUILab standalone />);
     const input = screen.getByLabelText("Message");
     fireEvent.change(input, { target: { value: "Investigate failed runs" } });
     fireEvent.keyDown(input, { key: "Enter", isComposing: true, keyCode: 229 });
@@ -60,7 +60,7 @@ describe("OpenUI lab", () => {
   });
 
   it("renders an editable brief and feeds its values into a sample plan", async () => {
-    render(<OpenUILab standalone liveAvailable={false} />);
+    render(<OpenUILab standalone />);
     fireEvent.click(screen.getByRole("button", { name: /Campaign planner/ }));
     const audience = await screen.findByLabelText(
       "Audience",
@@ -91,18 +91,19 @@ describe("OpenUI lab", () => {
     const task = await screen.findByRole("checkbox", {
       name: /Define the offer/,
     });
+    await waitFor(() => expect(task.hasAttribute("disabled")).toBe(false));
     fireEvent.click(task);
     expect((task as HTMLInputElement).checked).toBe(true);
   });
 
   it("explains the sample limitation instead of pretending to generate arbitrary requests", async () => {
-    render(<OpenUILab standalone liveAvailable={false} />);
+    render(<OpenUILab standalone />);
     fireEvent.change(screen.getByLabelText("Message"), {
       target: { value: "Design an underwater observatory" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     expect(await screen.findByRole("alert")).toBeDefined();
-    expect(screen.getByRole("alert").textContent).toContain("Live AI");
+    expect(screen.getByRole("alert").textContent).toContain("Copilot");
     expect(screen.getByText("1,284")).toBeDefined();
   });
 });

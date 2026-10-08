@@ -191,6 +191,11 @@ CopilotLLMModel = Literal["standard", "advanced"]
 class ChatConfig(BaseSettings):
     """Configuration for the chat system."""
 
+    openui_enabled: bool = Field(
+        default=False,
+        description="Enable experimental interactive views inside Copilot responses.",
+    )
+
     # Chat model tiers — a 2×2 of (path, tier).  ``path`` = ``CopilotMode``
     # (``"fast"`` → baseline OpenAI-compat / any OpenRouter model;
     # ``"extended_thinking"`` → Claude Agent SDK, Anthropic-only CLI).

@@ -7,7 +7,7 @@ import {
 } from "@/lib/openui/scenarios";
 import { isKey } from "@/lib/keyboard";
 import { useWorkspaceGeneration } from "./useWorkspaceGeneration";
-import { getActionFields } from "./helpers";
+import { getActionFields } from "@/lib/openui/actions";
 
 export interface LabMessage {
   role: "user" | "assistant";
@@ -24,9 +24,8 @@ function initialMessages(scenario: Scenario): LabMessage[] {
   ];
 }
 
-export function useOpenUILab(liveAvailable: boolean) {
+export function useOpenUILab() {
   const [scenario, setScenario] = useState<Scenario>(scenarios[0]);
-  const [mode, setMode] = useState<"sample" | "live">("sample");
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<LabMessage[]>(
     initialMessages(scenarios[0]),
@@ -35,34 +34,25 @@ export function useOpenUILab(liveAvailable: boolean) {
 
   async function send(message: string, fields: Record<string, unknown> = {}) {
     if (!message.trim() || generation.isStreaming) return;
-    const sample =
-      mode === "sample" ? getSampleResponse(message, fields) : null;
-    if (mode === "sample" && !sample) {
+    const sample = getSampleResponse(message, fields);
+    if (!sample) {
       generation.setError(
-        "Sample mode replays prepared examples. Try a suggested follow-up, or switch to Live AI for your own requests.",
+        "This preview replays prepared examples. Try a suggested follow-up, or continue in Copilot for your own requests.",
       );
       return;
     }
-    if (mode === "live" && !liveAvailable) {
-      generation.setError(
-        "Live AI is not configured in this environment. Sample mode is ready to explore.",
-      );
-      return;
-    }
+
     setMessages((current) => [
       ...current.slice(-6),
       { role: "user", text: message },
     ]);
     setPrompt("");
-    if (await generation.generate(message, sample, fields)) {
+    if (await generation.generate(sample)) {
       setMessages((current) => [
         ...current,
         {
           role: "assistant",
-          text:
-            mode === "sample"
-              ? "The next sample is ready. Try the controls in your workspace."
-              : "Your workspace is ready. You can refine it with another request.",
+          text: "The next sample is ready. Try the controls in your workspace.",
         },
       ]);
     }
@@ -70,17 +60,10 @@ export function useOpenUILab(liveAvailable: boolean) {
 
   function selectScenario(next: Scenario) {
     setScenario(next);
-    setMode("sample");
     setPrompt("");
     setMessages(initialMessages(next));
     generation.reset(next.source);
-    void generation.generate(next.prompt, next.source);
-  }
-
-  function changeMode(next: "sample" | "live") {
-    generation.stop();
-    generation.setError(null);
-    setMode(next);
+    void generation.generate(next.source);
   }
 
   function handleSubmit(event: FormEvent) {
@@ -103,19 +86,17 @@ export function useOpenUILab(liveAvailable: boolean) {
       );
   }
   function replay() {
-    void generation.generate("Replay sample", generation.source);
+    void generation.generate(generation.source);
   }
 
   return {
     scenario,
-    mode,
     prompt,
     setPrompt,
     messages,
     ...generation,
     send,
     selectScenario,
-    changeMode,
     handleSubmit,
     handleKeyDown,
     handleAction,
