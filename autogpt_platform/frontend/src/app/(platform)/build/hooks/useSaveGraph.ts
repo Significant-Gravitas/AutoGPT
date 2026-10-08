@@ -77,8 +77,8 @@ export const useSaveGraph = ({
           onSuccess?.(data);
           if (showToast) {
             toast({
-              title: "Graph saved successfully",
-              description: "The graph has been saved successfully.",
+              title: "Workflow saved successfully",
+              description: "The workflow has been saved successfully.",
               variant: "default",
             });
           }
@@ -86,7 +86,7 @@ export const useSaveGraph = ({
         onError: (error) => {
           onError?.(error);
           toast({
-            title: "Error saving graph",
+            title: "Error saving workflow",
             description:
               (error as any).message ?? "An unexpected error occurred.",
             variant: "destructive",
@@ -113,8 +113,8 @@ export const useSaveGraph = ({
           onSuccess?.(data);
           if (showToast) {
             toast({
-              title: "Graph saved successfully",
-              description: "The graph has been saved successfully.",
+              title: "Workflow saved successfully",
+              description: "The workflow has been saved successfully.",
               variant: "default",
             });
           }
@@ -122,7 +122,7 @@ export const useSaveGraph = ({
         onError: (error) => {
           onError?.(error);
           toast({
-            title: "Error saving graph",
+            title: "Error saving workflow",
             description:
               (error as any).message ?? "An unexpected error occurred.",
             variant: "destructive",
@@ -142,7 +142,7 @@ export const useSaveGraph = ({
           name:
             values?.name ||
             graph.name ||
-            `New Agent ${new Date().toISOString()}`,
+            `New Workflow ${new Date().toISOString()}`,
           description: values?.description ?? graph.description ?? "",
           nodes: graphNodes,
           links: graphLinks,
@@ -152,7 +152,7 @@ export const useSaveGraph = ({
           if (showToast) {
             toast({
               title: "No changes to save",
-              description: "The graph is the same as the saved version.",
+              description: "The workflow is the same as the saved version.",
               variant: "default",
             });
           }
@@ -171,7 +171,7 @@ export const useSaveGraph = ({
         return graphData;
       } else {
         const data: Graph = {
-          name: values?.name || `New Agent ${new Date().toISOString()}`,
+          name: values?.name || `New Workflow ${new Date().toISOString()}`,
           description: values?.description || "",
           nodes: graphNodes,
           links: graphLinks,

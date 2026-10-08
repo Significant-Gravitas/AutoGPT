@@ -389,7 +389,7 @@ export function MCPToolDialog({
           <DialogDescription>
             {step === "url"
               ? "Enter the URL of an MCP server to discover its available tools."
-              : `Found ${tools.length} tool${tools.length !== 1 ? "s" : ""}. Select one to add to your agent.`}
+              : `Found ${tools.length} tool${tools.length !== 1 ? "s" : ""}. Select one to add to your workflow.`}
           </DialogDescription>
         </DialogHeader>
 

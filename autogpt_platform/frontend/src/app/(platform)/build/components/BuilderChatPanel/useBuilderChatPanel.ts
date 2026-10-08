@@ -260,7 +260,7 @@ export function useBuilderChatPanel({
         const response = (await createNewGraph({
           data: {
             graph: {
-              name: `New Agent ${new Date().toISOString()}`,
+              name: `New Workflow ${new Date().toISOString()}`,
               description: "",
               nodes: [],
               links: [],
@@ -283,7 +283,7 @@ export function useBuilderChatPanel({
         setBootstrapError("failed_to_bootstrap_agent");
         toast({
           variant: "destructive",
-          title: "Could not create a blank agent",
+          title: "Could not create a blank workflow",
           description: "Please try again.",
         });
       } finally {

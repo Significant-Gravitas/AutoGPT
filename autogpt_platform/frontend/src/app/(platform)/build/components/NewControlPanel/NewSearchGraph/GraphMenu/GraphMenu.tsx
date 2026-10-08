@@ -70,7 +70,7 @@ export function GraphSearchMenu() {
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side="right">
-          Search Graph ({isMac ? "Cmd" : "Ctrl"}+F)
+          Search Workflow ({isMac ? "Cmd" : "Ctrl"}+F)
         </TooltipContent>
       </Tooltip>
 

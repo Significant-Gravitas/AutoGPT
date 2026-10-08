@@ -12,10 +12,10 @@ import { banner } from "../styles";
 export const createRunSteps = (tour: any): StepOptions[] => [
   {
     id: "press-run",
-    title: "Run Your Agent",
+    title: "Run Your Workflow",
     text: `
       <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Your agent is saved and ready! Now let's <strong>run it</strong> to see it in action.</p>
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Your workflow is saved and ready! Now let's <strong>run it</strong> to see it in action.</p>
         ${banner(ICONS.ClickIcon, "Click the Run button", "action")}
       </div>
     `,

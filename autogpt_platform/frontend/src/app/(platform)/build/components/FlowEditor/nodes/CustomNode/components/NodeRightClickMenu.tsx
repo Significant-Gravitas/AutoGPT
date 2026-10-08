@@ -95,7 +95,7 @@ export function NodeRightClickMenu({ nodeId, subGraphID, children }: Props) {
                 size={20}
                 className="mr-2 dark:text-gray-100"
               />
-              <span className="dark:text-gray-100">Open agent</span>
+              <span className="dark:text-gray-100">Open workflow</span>
             </SecondaryMenuItem>
             <SecondaryMenuSeparator />
           </>

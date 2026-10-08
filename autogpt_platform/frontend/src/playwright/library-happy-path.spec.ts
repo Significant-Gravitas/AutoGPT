@@ -403,7 +403,7 @@ test("library happy path: user can edit a saved agent from Library and keep chan
 
   await builderPage.getByTestId("save-control-save-button").click();
   const saveAgentButton = builderPage.getByRole("button", {
-    name: "Save Agent",
+    name: "Save Workflow",
   });
   if (await saveAgentButton.isVisible({ timeout: 3000 }).catch(() => false)) {
     await expect(saveAgentButton).toBeEnabled({ timeout: 10000 });

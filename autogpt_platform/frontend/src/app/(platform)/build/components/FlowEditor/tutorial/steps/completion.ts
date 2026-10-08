@@ -6,7 +6,7 @@ export const createCompletionSteps = (tour: any): StepOptions[] => [
     title: "Congratulations! 🎉",
     text: `
       <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">You have successfully created and run your first agent flow!</p>
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">You have successfully created and run your first workflow!</p>
         
         <div class="mt-3 p-3 bg-green-50 ring-1 ring-green-200 rounded-2xl">
           <p class="text-sm font-medium text-green-600 m-0">You learned how to:</p>
@@ -15,7 +15,7 @@ export const createCompletionSteps = (tour: any): StepOptions[] => [
             <li>• Understand input and output handles</li>
             <li>• Configure block values</li>
             <li>• Connect blocks together</li>
-            <li>• Save and run your agent</li>
+            <li>• Save and run your workflow</li>
             <li>• View execution status and output</li>
           </ul>
         </div>

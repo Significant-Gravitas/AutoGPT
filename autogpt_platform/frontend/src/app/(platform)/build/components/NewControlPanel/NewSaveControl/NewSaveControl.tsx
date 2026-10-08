@@ -67,7 +67,7 @@ export const NewSaveControl = () => {
                         id="name"
                         label="Name"
                         size="small"
-                        placeholder="Enter your agent name"
+                        placeholder="Enter your workflow name"
                         data-id="save-control-name-input"
                         data-testid="save-control-name-input"
                         maxLength={100}
@@ -85,7 +85,7 @@ export const NewSaveControl = () => {
                         id="description"
                         size="small"
                         label="Description"
-                        placeholder="Your agent description"
+                        placeholder="Your workflow description"
                         data-id="save-control-description-input"
                         data-testid="save-control-description-input"
                         maxLength={500}
@@ -122,7 +122,7 @@ export const NewSaveControl = () => {
                   disabled={isSaving}
                   loading={isSaving}
                 >
-                  Save Agent
+                  Save Workflow
                 </Button>
               </CardFooter>
             </form>

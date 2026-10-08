@@ -133,7 +133,9 @@ describe("BuilderChatPanel", () => {
       }),
     );
     render(<BuilderChatPanel />);
-    expect(screen.getByText(/Could not create a blank agent/i)).toBeDefined();
+    expect(
+      screen.getByText(/Could not create a blank workflow/i),
+    ).toBeDefined();
     const retry = screen.getByRole("button", { name: /Retry/i });
     fireEvent.click(retry);
     expect(retryBootstrap).toHaveBeenCalledOnce();

@@ -49,15 +49,15 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
     title: "The Block Menu",
     text: `
       <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">This is the <strong>Block Menu</strong> — your toolbox for building agents.</p>
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">This is the <strong>Block Menu</strong> — your toolbox for building workflows.</p>
         <p class="text-sm font-medium leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.5rem;">Here you'll find:</p>
         <ul>
           <li><strong>Input Blocks</strong> — Entry points for data</li>
           <li><strong>Action Blocks</strong> — Processing and AI operations</li>
           <li><strong>Output Blocks</strong> — Results and responses</li>
           <li><strong>Integrations</strong> — Third-party service blocks</li>
-          <li><strong>Library Agents</strong> — Your personal agents</li>
-          <li><strong>Marketplace Agents</strong> — Community agents</li>
+          <li><strong>Library Workflows</strong> — Your personal workflows</li>
+          <li><strong>Marketplace Workflows</strong> — Community workflows</li>
         </ul>
       </div>
     `,

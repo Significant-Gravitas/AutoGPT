@@ -143,7 +143,7 @@ export function IncompatibleUpdateDialog({
           <Alert variant="warning">
             <AlertDescription>
               If you proceed, you&apos;ll need to remove the broken connections
-              before you can save or run your agent.
+              before you can save or run your workflow.
             </AlertDescription>
           </Alert>
 
