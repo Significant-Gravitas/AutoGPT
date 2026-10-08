@@ -34,6 +34,8 @@ def graph_cleanup():
         ("  Dentist  ", "Other", "Dentist", "Other"),
         ("marketing", "Other", "marketing", "Other"),
         ("x" * 99 + " yz", "Other", "x" * 99, "Other"),
+        # Passes the route's min_length but never comes from the wizard.
+        ("   ", "Other", None, "Other"),
     ],
 )
 def test_the_answer_is_an_option_or_others_text(answer, choice, other, label):
