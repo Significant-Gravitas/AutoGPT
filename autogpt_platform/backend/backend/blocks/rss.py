@@ -150,12 +150,17 @@ class ReadRSSFeedBlock(Block):
             all_entries = []
 
             for entry in feed["entries"]:
-                pub_date = datetime(*entry["published_parsed"][:6], tzinfo=timezone.utc)
+                parsed_date = entry.get("published_parsed") or entry.get(
+                    "updated_parsed"
+                )
+                if not parsed_date:
+                    continue
+                pub_date = datetime(*parsed_date[:6], tzinfo=timezone.utc)
 
                 if pub_date > start_time:
                     rss_entry = RSSEntry(
-                        title=entry["title"],
-                        link=entry["link"],
+                        title=entry.get("title", ""),
+                        link=entry.get("link", ""),
                         description=entry.get("summary", ""),
                         pub_date=pub_date,
                         author=entry.get("author", ""),
