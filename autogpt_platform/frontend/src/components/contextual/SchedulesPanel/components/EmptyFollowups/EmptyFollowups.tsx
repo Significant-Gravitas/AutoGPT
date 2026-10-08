@@ -15,9 +15,9 @@ export function EmptyFollowups() {
         Nothing scheduled yet
       </Text>
       <Text variant="body" className="max-w-md !text-zinc-500">
-        Your experts&apos; scheduled follow-ups and recurring agent runs show up
-        here. Select <strong>New scheduled task</strong> to set one up, or
-        schedule an agent from the builder.
+        Your experts&apos; scheduled follow-ups and recurring workflow runs show
+        up here. Select <strong>New scheduled task</strong> to set one up, or
+        schedule a workflow from the builder.
       </Text>
     </div>
   );

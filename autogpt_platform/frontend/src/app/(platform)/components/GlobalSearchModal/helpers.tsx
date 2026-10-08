@@ -72,7 +72,7 @@ function resolveIcon(
 }
 
 const BUCKET_LABEL: Record<BucketKey, string> = {
-  agents: "Agents",
+  agents: "Workflows",
   files: "Files",
   chats: "Chats",
 };

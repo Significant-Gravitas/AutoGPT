@@ -96,8 +96,8 @@ export function ActivityDropdown({
               <div className="relative w-full">
                 <Input
                   id="agent-search"
-                  label="Search agents"
-                  placeholder="Search runs by agent name..."
+                  label="Search workflows"
+                  placeholder="Search runs by workflow name..."
                   hideLabel
                   size="small"
                   value={searchQuery}
@@ -124,11 +124,11 @@ export function ActivityDropdown({
             <div className={cn(styles.headerContainer, newLayout && "py-0.5")}>
               {newLayout ? (
                 <span className="text-xs font-medium uppercase text-neutral-500">
-                  Agent Activity
+                  Workflow Activity
                 </span>
               ) : (
                 <Text variant="large-semibold" className="!text-black">
-                  Agent Activity
+                  Workflow Activity
                 </Text>
               )}
               {withSearch ? (
@@ -136,7 +136,7 @@ export function ActivityDropdown({
                   variant="ghost"
                   size="small"
                   onClick={toggleSearch}
-                  aria-label="Search agents"
+                  aria-label="Search workflows"
                   className={cn(
                     "hover:border-transparent hover:bg-transparent",
                     newLayout
@@ -178,13 +178,13 @@ export function ActivityDropdown({
             <div className="flex flex-col items-center justify-center">
               <Text variant="body-medium" className="!text-black">
                 {searchQuery
-                  ? "No matching agents found"
+                  ? "No matching workflows found"
                   : "No recent runs to show yet"}
               </Text>
               <Text variant="body" className="!text-zinc-500">
                 {searchQuery
                   ? "Try another search term"
-                  : "Start an agent to get updates"}
+                  : "Start a workflow to get updates"}
               </Text>
             </div>
           </div>

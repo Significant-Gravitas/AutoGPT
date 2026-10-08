@@ -35,7 +35,7 @@ export function NowNext({ dashboard, className }: Props) {
         {dashboard.upcoming_tasks.length === 0 ? (
           <HomeTileEmpty
             title="Nothing is scheduled"
-            description="Your agents are ready when you are."
+            description="Your team is ready when you are."
             className="min-h-0 gap-4 py-6"
           />
         ) : (

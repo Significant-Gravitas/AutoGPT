@@ -60,7 +60,7 @@ export function Navbar() {
   // ARTIFACTS_PAGE), not the top nav — it's an entry point, not a product.
   const actualLoggedInLinks = [
     { name: "Home", href: "/home" },
-    { name: "Agents", href: "/library" },
+    { name: "Workflows", href: "/library" },
     ...loggedInLinks,
   ];
 

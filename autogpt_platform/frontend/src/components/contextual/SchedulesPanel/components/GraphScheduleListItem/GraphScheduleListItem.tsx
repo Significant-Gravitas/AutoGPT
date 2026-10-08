@@ -105,7 +105,7 @@ export function GraphScheduleListItem({
               className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700"
               data-testid="schedule-kind-badge"
             >
-              Agent run
+              Workflow run
             </span>
           </div>
         </div>
@@ -140,7 +140,7 @@ export function GraphScheduleListItem({
       <Dialog
         controlled={{ isOpen: isViewOpen, set: closeView }}
         styling={{ maxWidth: "26rem" }}
-        title="Scheduled agent run"
+        title="Scheduled workflow run"
       >
         <Dialog.Content>
           <div className="flex flex-col gap-5">
@@ -157,7 +157,7 @@ export function GraphScheduleListItem({
                   {agentLabel}
                 </Text>
                 <Text variant="small" className="!text-zinc-500">
-                  Recurring agent run
+                  Recurring workflow run
                 </Text>
               </div>
             </div>
@@ -170,7 +170,7 @@ export function GraphScheduleListItem({
               <ScheduleMetaRow label="Repeats" value={recurrenceLabel} />
               <ScheduleMetaRow label="Schedule name" value={schedule.name} />
               <ScheduleMetaRow
-                label="Graph"
+                label="Workflow"
                 value={`${schedule.graph_id} · v${schedule.graph_version}`}
                 mono
               />
@@ -182,13 +182,14 @@ export function GraphScheduleListItem({
       <Dialog
         controlled={{ isOpen: isDeleteOpen, set: closeDelete }}
         styling={{ maxWidth: "32rem" }}
-        title="Delete scheduled agent run"
+        title="Delete scheduled workflow run"
       >
         <Dialog.Content>
           <div className="flex flex-col gap-4">
             <Text variant="large">
-              Delete this scheduled agent run? The agent will stop running on
-              this schedule and you can recreate it from the builder if needed.
+              Delete this scheduled workflow run? The workflow will stop running
+              on this schedule and you can recreate it from the builder if
+              needed.
             </Text>
             <Dialog.Footer>
               <Button

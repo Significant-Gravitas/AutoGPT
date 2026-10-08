@@ -29,7 +29,7 @@ export function AgentActivityDropdown() {
         <button
           className={`group relative h-[2.5rem] w-[2.5rem] rounded-full p-2 transition-colors hover:bg-white ${isOpen ? "bg-white" : ""}`}
           data-testid="agent-activity-button"
-          aria-label="View Agent Activity"
+          aria-label="View Workflow Activity"
         >
           <Icon icon={Pulse01Icon} size={22} className="text-black" />
 
@@ -49,7 +49,7 @@ export function AgentActivityDropdown() {
                 className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block"
               >
                 <Text variant="body-medium">
-                  {activeCount} active agent{activeCount > 1 ? "s" : ""}
+                  {activeCount} active workflow{activeCount > 1 ? "s" : ""}
                 </Text>
               </div>
             </>

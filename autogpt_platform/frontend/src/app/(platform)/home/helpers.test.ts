@@ -25,7 +25,7 @@ describe("getHomeStatusLine", () => {
 
   it("leads with decisions and active work", () => {
     expect(getHomeStatusLine(dashboard)).toBe(
-      "2 decisions waiting · 1 agent is working now",
+      "2 decisions waiting · 1 workflow is running now",
     );
   });
 

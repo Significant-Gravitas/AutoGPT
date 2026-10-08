@@ -208,13 +208,13 @@ describe("FollowupsPage", () => {
 
     // Followup row still renders.
     expect(await screen.findByText("First follow-up message")).toBeDefined();
-    // Graph-kind row renders with its agent name + the "Agent run" badge.
+    // Graph-kind row renders with its agent name + the "Workflow run" badge.
     expect(screen.getByText("Nightly cleanup")).toBeDefined();
     const graphRow = screen.getByTestId("schedule-row");
     expect(graphRow.getAttribute("data-schedule-kind")).toBe("graph");
     expect(
       within(graphRow).getByTestId("schedule-kind-badge").textContent,
-    ).toBe("Agent run");
+    ).toBe("Workflow run");
   });
 
   test("shows a destructive toast when the delete API fails", async () => {
@@ -282,7 +282,7 @@ describe("FollowupsPage", () => {
     expect(within(onceRow).getByText("Runs once")).toBeDefined();
   });
 
-  test("graph row: agentLabel falls back to schedule name then 'Scheduled agent' when agent_name missing", async () => {
+  test("graph row: agentLabel falls back to schedule name then 'Scheduled workflow' when agent_name missing", async () => {
     server.use(
       getListCopilotFollowupSchedulesMockHandler([]),
       getGetV1ListExecutionSchedulesForAUserMockHandler([
@@ -303,9 +303,9 @@ describe("FollowupsPage", () => {
 
     // Second-tier fallback: schedule name renders when agent_name is empty.
     expect(await screen.findByText("My schedule name")).toBeDefined();
-    // Final fallback: the literal "Scheduled agent" renders when BOTH
+    // Final fallback: the literal "Scheduled workflow" renders when BOTH
     // agent_name and name are empty.
-    expect(screen.getByText("Scheduled agent")).toBeDefined();
+    expect(screen.getByText("Scheduled workflow")).toBeDefined();
   });
 
   test("graph row: clicking View opens the dialog with graph metadata", async () => {
@@ -414,7 +414,7 @@ describe("FollowupsPage", () => {
 
     const empty = await screen.findByTestId("followups-empty");
     expect(empty.textContent).toContain("Nothing scheduled yet");
-    expect(empty.textContent).toContain("schedule an agent from the builder");
+    expect(empty.textContent).toContain("schedule a workflow from the builder");
   });
 
   test("copilot follow-up rows show a New chat badge when they fire into a new chat", async () => {

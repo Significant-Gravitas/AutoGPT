@@ -32,38 +32,38 @@ export function getTaskGroups(state: UserOnboarding | null): TaskGroup[] {
         },
         {
           id: "MARKETPLACE_ADD_AGENT",
-          name: "Get an agent from the marketplace",
+          name: "Get a workflow from the marketplace",
           amount: 1,
           details:
-            "Search for an agent in the Marketplace and add it to your Library",
+            "Search for a workflow in the Marketplace and add it to your Library",
           video: "/onboarding/marketplace-add.mp4",
         },
         {
           id: "LIBRARY_RUN_AGENT",
-          name: "Open the Library page and run an agent",
+          name: "Open the Library page and run a workflow",
           amount: 1,
-          details: "Go to the Library, open an agent you want, and run it",
+          details: "Go to the Library, open a workflow you want, and run it",
           video: "/onboarding/agent-run.mp4",
         },
       ],
     },
     {
       name: "Consistency Challenge",
-      details: "Build your rhythm and make agents part of your routine.",
+      details: "Build your rhythm and make workflows part of your routine.",
       tasks: [
         {
           id: "SCHEDULE_AGENT",
-          name: "Schedule your first agent",
+          name: "Schedule your first workflow",
           amount: 1,
-          details: "Schedule an agent to run on a recurring basis",
+          details: "Schedule a workflow to run on a recurring basis",
           video: "/onboarding/agent-schedule.mp4",
         },
         {
           id: "RUN_3_DAYS",
-          name: "Run agents 3 days in a row",
+          name: "Run workflows 3 days in a row",
           amount: 1,
           details:
-            "Run any agents from the Library or Builder for 3 days in a row",
+            "Run any workflows from the Library or Builder for 3 days in a row",
           progress: {
             current: state?.consecutiveRunDays || 0,
             target: 3,
@@ -77,17 +77,17 @@ export function getTaskGroups(state: UserOnboarding | null): TaskGroup[] {
       tasks: [
         {
           id: "TRIGGER_WEBHOOK",
-          name: "Trigger an agent via webhook",
+          name: "Trigger a workflow via webhook",
           amount: 1,
           details:
-            "In the Builder, go to Settings and copy the Webhook URL. Use it to trigger your agent from another app.",
+            "In the Builder, go to Settings and copy the Webhook URL. Use it to trigger your workflow from another app.",
         },
         {
           id: "RUN_14_DAYS",
-          name: "Run agents 14 days in a row",
+          name: "Run workflows 14 days in a row",
           amount: 1,
           details:
-            "Run any agents from the Library or Builder for 14 days in a row",
+            "Run any workflows from the Library or Builder for 14 days in a row",
           progress: {
             current: state?.consecutiveRunDays || 0,
             target: 14,
@@ -95,9 +95,9 @@ export function getTaskGroups(state: UserOnboarding | null): TaskGroup[] {
         },
         {
           id: "RUN_AGENTS_100",
-          name: "Complete 100 agent runs",
+          name: "Complete 100 workflow runs",
           amount: 1,
-          details: "Let your agents run and complete 100 tasks in total",
+          details: "Let your workflows run and complete 100 tasks in total",
           progress: {
             current: state?.agentRuns || 0,
             target: 100,
