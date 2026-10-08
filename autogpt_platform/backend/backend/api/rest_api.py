@@ -97,6 +97,7 @@ from backend.util.workspace_storage import shutdown_workspace_storage
 from .external.fastapi_app import external_api
 from .external.v2.mcp_server import (
     WELL_KNOWN_PROTECTED_RESOURCE_PATH,
+    mcp_mount,
     protected_resource_metadata,
 )
 from .features.analytics import router as analytics_router
@@ -190,8 +191,9 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
 
-    with feature_flag_context():
-        yield
+    async with mcp_mount.running():
+        with feature_flag_context():
+            yield
 
     try:
         from backend.api.features.integrations.codex import codex_login_coordinator

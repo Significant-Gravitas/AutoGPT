@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Literal, Optional, Self, TypeAlias
 from pydantic import BaseModel, Field, JsonValue, field_validator
 
 import backend.blocks._base as block_types
+from backend.data.model import CredentialsMetaInput
 
 if TYPE_CHECKING:
     from backend.api.features.graph_executions.review.model import (
@@ -424,8 +425,12 @@ class AgentRunScheduleCreateRequest(BaseModel):
     inputs: dict[str, Any] = Field(
         default_factory=dict, description="Input values for each scheduled run"
     )
-    credentials_inputs: dict[str, Any] = Field(
-        default_factory=dict, description="Credentials for the schedule"
+    credentials_inputs: dict[str, CredentialsMetaInput] = Field(
+        default_factory=dict,
+        description=(
+            "Credentials for each scheduled run, keyed by the `field_name` of each "
+            "of the graph's credential requirements"
+        ),
     )
     graph_version: Optional[int] = Field(
         default=None, description="Graph version (default: active version)"
@@ -538,8 +543,12 @@ class AgentRunRequest(BaseModel):
     inputs: dict[str, Any] = Field(
         default_factory=dict, description="Input values for the agent"
     )
-    credentials_inputs: dict[str, Any] = Field(
-        default_factory=dict, description="Credentials for the agent"
+    credentials_inputs: dict[str, CredentialsMetaInput] = Field(
+        default_factory=dict,
+        description=(
+            "Credentials for the agent, keyed by the `field_name` of each of its "
+            "credential requirements"
+        ),
     )
 
 

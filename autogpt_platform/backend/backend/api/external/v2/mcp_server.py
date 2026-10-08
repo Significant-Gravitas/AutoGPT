@@ -13,7 +13,8 @@ required permissions are satisfied by the caller's API key / OAuth token.
 """
 
 import logging
-from typing import Any, Sequence
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Sequence
 
 import pydantic
 from mcp.server.auth.middleware.auth_context import get_access_token
@@ -24,11 +25,15 @@ from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.server import Context
 from mcp.server.fastmcp.tools.base import Tool as MCPTool
 from mcp.server.fastmcp.utilities.func_metadata import ArgModelBase, FuncMetadata
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.shared.auth import ProtectedResourceMetadata
 from prisma.enums import APIKeyPermission
 from pydantic import AnyHttpUrl
+from starlette import status
 from starlette.applications import Starlette
+from starlette.types import Receive, Scope, Send
 
+from backend.api.external.v2.errors import error_response
 from backend.api.external.v2.tenancy import resolve_credential_tenancy
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.tool_adapter import _build_input_schema, _execute_tool_sync
@@ -184,6 +189,13 @@ def create_mcp_server() -> FastMCP:
         tools=tools,
         stateless_http=True,
         streamable_http_path="/",
+        # FastMCP's default only admits localhost Host headers: DNS-rebinding
+        # protection for an unauthenticated server on a developer's machine.
+        # This one answers on the platform's public hosts and needs a bearer
+        # credential on every request, which a rebinding page cannot supply.
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=False
+        ),
     )
 
 
@@ -212,6 +224,42 @@ def protected_resource_metadata() -> ProtectedResourceMetadata:
 
 def _platform_base_url() -> str:
     return Settings().config.platform_base_url or "https://platform.agpt.co"
+
+
+class MCPMount:
+    """The `/mcp` mount: serves the MCP app the host app's lifespan runs.
+
+    Starlette never runs a mounted app's lifespan, and FastMCP's is what starts
+    the session manager every request goes through; mounted directly, every
+    request was a 500 ("Task group is not initialized"). The host app enters
+    `running()` from its own lifespan instead. Each entry builds a new server,
+    because a session manager can only be run once.
+    """
+
+    def __init__(self) -> None:
+        self._app: Starlette | None = None
+
+    @asynccontextmanager
+    async def running(self) -> AsyncIterator[None]:
+        app = create_mcp_app()
+        async with app.router.lifespan_context(app):
+            self._app = app
+            try:
+                yield
+            finally:
+                self._app = None
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if self._app is None:
+            response = error_response(
+                status.HTTP_503_SERVICE_UNAVAILABLE, "The MCP server is not running"
+            )
+            await response(scope, receive, send)
+            return
+        await self._app(scope, receive, send)
+
+
+mcp_mount = MCPMount()
 
 
 # ---------------------------------------------------------------------------
