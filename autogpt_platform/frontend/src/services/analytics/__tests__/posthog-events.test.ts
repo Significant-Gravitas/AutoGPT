@@ -45,6 +45,7 @@ const LIVE_EVENT_NAMES = [
   "intro_followup_sent",
   "intro_path",
   "later_dump_completed",
+  "marketing_opted_out",
   "onboarding_step_viewed",
   "paywall_viewed",
   "plan_selected",

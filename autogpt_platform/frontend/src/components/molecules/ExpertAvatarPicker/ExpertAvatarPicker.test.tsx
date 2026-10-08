@@ -1,5 +1,6 @@
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { SUBMISSION_MEDIA_MAX_SIZE_MB } from "@/lib/direct-upload";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
@@ -174,7 +175,7 @@ test("uploads remain previews until chosen", async () => {
   expect(onPick).toHaveBeenCalledWith("https://cdn.test/upload.png");
 });
 
-test("rejects oversized uploads before making a request", async () => {
+test("rejects uploads above the private media limit before making a request", async () => {
   const upload = vi.fn();
   server.use(
     http.post("*/api/store/submissions/media", () => {
@@ -186,10 +187,36 @@ test("rejects oversized uploads before making a request", async () => {
     <ExpertAvatarPicker name="Nova" category="content" onPick={vi.fn()} />,
   );
   const file = new File(["png"], "avatar.png", { type: "image/png" });
-  Object.defineProperty(file, "size", { value: 6 * 1024 * 1024 });
+  Object.defineProperty(file, "size", {
+    value: SUBMISSION_MEDIA_MAX_SIZE_MB * 1024 * 1024 + 1,
+  });
   await userEvent.upload(screen.getByLabelText("Upload avatar"), file);
-  expect((await screen.findByRole("alert")).textContent).toContain("under 5MB");
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    `Maximum size is ${SUBMISSION_MEDIA_MAX_SIZE_MB}MB`,
+  );
   expect(upload).not.toHaveBeenCalled();
+});
+
+test("accepts uploads at the private media limit", async () => {
+  const upload = vi.fn();
+  server.use(
+    http.post("*/api/store/submissions/media", () => {
+      upload();
+      return HttpResponse.json("https://cdn.test/upload.png");
+    }),
+  );
+  render(
+    <ExpertAvatarPicker name="Nova" category="content" onPick={vi.fn()} />,
+  );
+  const file = new File(["png"], "avatar.png", { type: "image/png" });
+  Object.defineProperty(file, "size", {
+    value: SUBMISSION_MEDIA_MAX_SIZE_MB * 1024 * 1024,
+  });
+
+  await userEvent.upload(screen.getByLabelText("Upload avatar"), file);
+
+  await waitFor(() => expect(upload).toHaveBeenCalledOnce());
+  expect(screen.queryByRole("alert")).toBeNull();
 });
 
 test("a pending generation allows uploads and confirmation", async () => {

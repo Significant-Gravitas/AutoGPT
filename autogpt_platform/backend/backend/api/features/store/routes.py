@@ -598,8 +598,10 @@ async def upload_submission_media(
                 for content_type in local_media.CONTENT_TYPE_EXTENSIONS
             },
         },
+        307: {"description": "Short-lived signed download URL"},
         404: {"description": "Media not found"},
         416: {"description": "Requested range is not satisfiable"},
+        503: {"description": "Private media is temporarily unavailable"},
     },
     tags=["store", "private"],
 )
@@ -609,7 +611,7 @@ async def get_private_submission_media(
     filename: str,
     request: fastapi.Request,
     user: autogpt_libs.auth.User = Security(autogpt_libs.auth.requires_user),
-) -> fastapi.responses.StreamingResponse:
+) -> fastapi.Response:
     """
     Serve a user's private media to them, to members of an organization they
     share, and to admins. Anyone else gets a 404, as if it did not exist.
@@ -630,9 +632,32 @@ async def get_private_submission_media(
         "Accept-Ranges": "bytes",
     }
     total_size = _private_media_size(metadata)
+    range_header = request.headers.get("range")
+    if (
+        range_header is None
+        and total_size > submission_media.PRIVATE_MEDIA_PROXY_BUFFER_BYTES
+    ):
+        try:
+            redirect_url = await submission_media.signed_url(
+                owner_user_id, media_type, filename
+            )
+        except Exception as error:
+            logger.error("Failed to sign oversized private media", exc_info=True)
+            raise fastapi.HTTPException(
+                status_code=503,
+                detail="Private media is temporarily unavailable",
+                headers=headers,
+            ) from error
+        if redirect_url:
+            return fastapi.responses.RedirectResponse(
+                redirect_url,
+                status_code=307,
+                headers=headers,
+            )
+
     byte_range: tuple[int, int] | None = None
     status_code = 200
-    if range_header := request.headers.get("range"):
+    if range_header:
         try:
             byte_range = _parse_private_media_range(range_header, total_size)
         except ValueError:

@@ -3,6 +3,7 @@ each of the three checkout routes and the completed-checkout webhook, and none
 of it can cost the checkout or fail the webhook."""
 
 import inspect
+import logging
 import re
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -22,7 +23,9 @@ from backend.data.notifications import (
     SubscriberField,
 )
 from backend.data.subscription_trial_checkout import TrialUnavailable
-from backend.notifications import subscriber_fields
+from backend.notifications import consent, subscriber_fields
+from backend.notifications.consent_test import _cached_before_consent
+from backend.notifications.mailerlite import pseudonym
 
 EMAIL = "sam@example.com"
 CREATED = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
@@ -53,7 +56,10 @@ def queued(monkeypatch):
         "get_user_by_id",
         AsyncMock(
             return_value=SimpleNamespace(
-                email=EMAIL, created_at=CREATED, timezone="Europe/Vienna"
+                email=EMAIL,
+                created_at=CREATED,
+                timezone="Europe/Vienna",
+                marketing_opt_out_at=None,
             )
         ),
     )
@@ -83,6 +89,73 @@ async def test_a_failure_never_reaches_the_checkout(queued, monkeypatch):
         checkout_audience, "get_user_by_id", AsyncMock(side_effect=RuntimeError("db"))
     )
     await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
+    queued.assert_not_awaited()
+
+
+def _opt_out(monkeypatch) -> tuple[AsyncMock, AsyncMock]:
+    """The account refused marketing at signup."""
+    lookup = AsyncMock(
+        return_value=SimpleNamespace(
+            email=EMAIL,
+            created_at=CREATED,
+            timezone="Europe/Vienna",
+            marketing_opt_out_at=CREATED,
+        )
+    )
+    providers = AsyncMock(return_value=["credential"])
+    monkeypatch.setattr(checkout_audience, "get_user_by_id", lookup)
+    monkeypatch.setattr(checkout_audience, "signin_providers", providers)
+    return lookup, providers
+
+
+@pytest.mark.asyncio
+async def test_an_opted_out_opener_is_never_queued(queued, monkeypatch, caplog):
+    _, providers = _opt_out(monkeypatch)
+    with caplog.at_level(logging.DEBUG, logger=consent.__name__):
+        await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
+    queued.assert_not_awaited()
+    providers.assert_not_awaited()
+    assert pseudonym(EMAIL) in caplog.text
+    assert EMAIL not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_opener_cached_before_the_consent_fields_queues_nothing(
+    queued, monkeypatch, caplog
+):
+    """During a rolling deploy the shared cache can hand back a user pickled by
+    the previous release, with no opt-out to read. It is skipped, not reported
+    as a failed checkout."""
+    monkeypatch.setattr(
+        checkout_audience,
+        "get_user_by_id",
+        AsyncMock(return_value=_cached_before_consent()),
+    )
+    with caplog.at_level(logging.DEBUG, logger=checkout_audience.__name__):
+        await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
+    queued.assert_not_awaited()
+    assert [r for r in caplog.records if r.levelno >= logging.ERROR] == []
+
+
+@pytest.mark.asyncio
+async def test_an_opted_out_customers_completed_checkout_queues_nothing(
+    queued, monkeypatch
+):
+    lookup, _ = _opt_out(monkeypatch)
+    with patch(
+        "prisma.models.User.prisma",
+        return_value=_user_prisma(SimpleNamespace(id="user-1")),
+    ):
+        await checkout_audience.record_checkout_completed(
+            {
+                "customer": "cus_1",
+                "created": 1788305400,
+                "customer_details": {"address": {"country": "DE"}},
+            }
+        )
+    for task in list(checkout_audience._tasks):
+        await task
+    lookup.assert_awaited_once_with("user-1")
     queued.assert_not_awaited()
 
 
