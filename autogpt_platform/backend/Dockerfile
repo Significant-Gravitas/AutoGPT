@@ -73,7 +73,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # links libatomic.so.1 — without it `node` exits 127 and migrate crash-loops.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.13 \
-    python3-pip \
+    python3.13-venv \
     ca-certificates \
     libatomic1 \
     && rm -rf /var/lib/apt/lists/*
@@ -86,8 +86,11 @@ COPY --from=builder /usr/bin/npm /usr/bin/npm
 # Copy Prisma binaries
 COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
 
-# Install prisma-client-py directly (much smaller than copying full venv)
-RUN pip3 install prisma>=0.15.0 --break-system-packages
+# Install prisma-client-py directly (much smaller than copying full venv).
+# Pinned to poetry.lock's version, which the engine binaries above were fetched for.
+RUN python3.13 -m venv /opt/prisma \
+    && /opt/prisma/bin/pip install --no-cache-dir prisma==0.15.0
+ENV PATH=/opt/prisma/bin:$PATH
 
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
