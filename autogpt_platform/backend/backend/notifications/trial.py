@@ -88,7 +88,7 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if not await claim_once(claim):
         return True
     try:
-        await queue_trial_audience_change(kind, user_id, user.email, current)
+        await queue_trial_audience_change(kind, user, current)
         result = await queue_notification_async(
             NotificationEventModel[TrialUpdateData](
                 user_id=user_id, type=NotificationType.TRIAL_UPDATE, data=data
@@ -100,7 +100,7 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
         await release_claim(claim)
         raise
     if kind == "converted":
-        await join_paying_audience(user_id, user.email)
+        await join_paying_audience(user)
     _track_billing_event(
         TRIAL_NOTICE_EVENTS[kind],
         user_id,

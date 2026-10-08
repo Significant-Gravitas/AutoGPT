@@ -241,7 +241,12 @@ test("retains paid checkout, Google Ads value, and DataFast metadata while a tri
   expect(gtag).toContainEqual([
     "event",
     "conversion",
-    { send_to: "AW-123/BC", value: 50, currency: "USD" },
+    {
+      send_to: "AW-123/BC",
+      value: 50,
+      currency: "USD",
+      event_callback: expect.any(Function),
+    },
   ]);
   expect(checkoutLocation.assign).not.toHaveBeenCalled();
 });

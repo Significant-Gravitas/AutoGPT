@@ -339,6 +339,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Get Person Detail](block-integrations/apollo/person.md#get-person-detail) | Get detailed person data with Apollo API, including email reveal |
 | [Get Wikipedia Summary](block-integrations/search.md#get-wikipedia-summary) | This block fetches the summary of a given topic from Wikipedia |
 | [Google Maps Search](block-integrations/search.md#google-maps-search) | This block searches for local businesses using Google Maps API |
+| [Hacker News Get Item](block-integrations/hacker_news/items.md#hacker-news-get-item) | Get a Hacker News story, comment, poll or job by its id or link, with its comments as a list in reading order |
+| [Hacker News Get Stories](block-integrations/hacker_news/stories.md#hacker-news-get-stories) | Get the top (front page), new, best, Ask HN, Show HN or job stories from Hacker News, in the order Hacker News ranks them |
+| [Hacker News Get User](block-integrations/hacker_news/users.md#hacker-news-get-user) | Get a Hacker News user's profile by username: karma, when the account was created, the about text and how many items they have posted |
+| [Hacker News Search](block-integrations/hacker_news/search.md#hacker-news-search) | Search Hacker News stories and comments by keyword, author, date, points or linked domain, sorted by relevance or newest first |
 | [Search Filter Typeahead](block-integrations/dataforb2b/typeahead.md#search-filter-typeahead) | Resolve the exact filter value (company, industry, job title, skill, school, investor, location, category) for people and company searches with DataForB2B |
 | [Search Organizations](block-integrations/apollo/organization.md#search-organizations) | Search for organizations in Apollo |
 | [Search People](block-integrations/apollo/people.md#search-people) | Search for people in Apollo |
@@ -573,6 +577,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Get Notification Thread](block-integrations/github/notifications.md#github-get-notification-thread) | This block fetches a single GitHub notification thread |
 | [Github Get PR Review Comments](block-integrations/github/reviews.md#github-get-pr-review-comments) | This block gets all review comments from a GitHub pull request or from a specific review |
 | [Github Get Repository Info](block-integrations/github/repo.md#github-get-repository-info) | This block retrieves metadata about a GitHub repository |
+| [Github Get Repository Traffic](block-integrations/github/traffic.md#github-get-repository-traffic) | Get a GitHub repository's views and clones over the last 14 days, with unique visitors and cloners, plus its top referring sites and most viewed pages |
 | [Github Get Repository Tree](block-integrations/github/repo_files.md#github-get-repository-tree) | This block lists the entire file tree of a GitHub repository recursively |
 | [Github Get User Info](block-integrations/github/users.md#github-get-user-info) | This block fetches information about a GitHub user, or about the authenticated user (yourself) if no username is given |
 | [Github Issues Trigger](block-integrations/github/triggers.md#github-issues-trigger) | This block triggers on GitHub issues events |

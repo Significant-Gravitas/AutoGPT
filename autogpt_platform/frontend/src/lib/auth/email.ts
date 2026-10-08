@@ -1,7 +1,11 @@
 import { environment } from "@/services/environment";
 import { mintServiceToken } from "./service-token";
 
-export type AuthEmailType = "reset_password" | "verify_email" | "change_email";
+export type AuthEmailType =
+  | "reset_password"
+  | "verify_email"
+  | "change_email"
+  | "set_password";
 
 interface SendAuthEmailArgs {
   to: string;

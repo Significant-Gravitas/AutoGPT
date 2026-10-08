@@ -1,6 +1,10 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import {
+  EMAIL_VERIFICATION_NOTICE_PARAM,
+  getEmailVerificationNotice,
+} from "@/lib/auth/email-verification";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
@@ -23,11 +27,17 @@ export function useLoginPage() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState<string | null>(
+    null,
+  );
   const isCloudEnv = environment.isCloud();
 
   // Same-origin redirect target; off-site values are dropped so a crafted
   // `/login?next=https://phishing.site` cannot redirect users elsewhere.
   const nextUrl = sanitizeAuthNext(searchParams.get("next"));
+  const verificationNotice = getEmailVerificationNotice(
+    searchParams.get(EMAIL_VERIFICATION_NOTICE_PARAM),
+  );
 
   // Only honour explicit `?next=` deep links here. Generic "already logged in
   // on /login, get me out" is handled by OnboardingProvider so the user lands
@@ -97,7 +107,14 @@ export function useLoginPage() {
     }
 
     try {
-      const result = await loginAction(data.email, data.password);
+      const result = await loginAction(data.email, data.password, nextUrl);
+
+      if (result.error === "email_not_verified" && result.email) {
+        setVerificationEmail(result.email);
+        setIsLoading(false);
+        setIsLoggingIn(false);
+        return;
+      }
 
       if (!result.success) {
         throw new Error(result.error || "Login failed");
@@ -125,6 +142,9 @@ export function useLoginPage() {
   return {
     form,
     feedback,
+    nextUrl,
+    verificationEmail,
+    verificationNotice,
     user,
     isLoading,
     isGoogleLoading,
@@ -134,5 +154,6 @@ export function useLoginPage() {
     handleSubmit: form.handleSubmit(handleLogin),
     handleProviderLogin,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
+    handleBackToLogin: () => setVerificationEmail(null),
   };
 }

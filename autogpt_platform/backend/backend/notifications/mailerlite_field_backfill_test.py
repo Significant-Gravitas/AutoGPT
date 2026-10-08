@@ -292,3 +292,24 @@ def test_without_create_only_existing_subscribers_are_planned():
     )
     assert [c.person.email for c in plan.changes] == ["held@x.io"]
     assert not any(c.new for c in plan.changes)
+
+
+@pytest.mark.parametrize("create", [True, False])
+def test_an_opted_out_person_is_counted_and_never_written(create):
+    """A field write creates the subscriber, so someone who refused marketing
+    is left out even when MailerLite already holds them with stale fields."""
+    opted_out = _person("out@x.io", _paid("active")).model_copy(
+        update={"marketing_opt_out_at": CREATED}
+    )
+    plan = backfill.plan(
+        [opted_out, _person("held@x.io", _paid("active"))],
+        {
+            "out@x.io": {"subscription_status": "signed"},
+            "held@x.io": {"subscription_status": "signed"},
+        },
+        create=create,
+    )
+    assert [c.person.email for c in plan.changes] == ["held@x.io"]
+    assert plan.opted_out == 1
+    assert plan.invalid == 0
+    assert plan.statuses[S.SUBSCRIBED] == 1
