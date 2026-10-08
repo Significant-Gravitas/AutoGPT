@@ -582,7 +582,7 @@ class BrowserNavigateTool(BaseTool):
                 message="Please provide a URL to navigate to.",
                 error="missing_url",
                 session_id=session_name,
-            )
+            ).from_outside()
 
         try:
             await validate_url_host(url)
@@ -591,7 +591,7 @@ class BrowserNavigateTool(BaseTool):
                 message=str(e),
                 error="blocked_url",
                 session_id=session_name,
-            )
+            ).from_outside()
 
         # Restore browser state from cloud if this is a different pod
         if user_id:
@@ -607,7 +607,7 @@ class BrowserNavigateTool(BaseTool):
                 message="Failed to navigate to URL.",
                 error="navigation_failed",
                 session_id=session_name,
-            )
+            ).from_outside()
 
         # Wait for page to settle (best-effort: some SPAs never reach networkidle)
         wait_rc, _, wait_err = await _run(session_name, "wait", "--load", wait_for)
@@ -630,7 +630,7 @@ class BrowserNavigateTool(BaseTool):
             title=title_out.strip(),
             snapshot=snapshot,
             session_id=session_name,
-        )
+        ).from_outside(snapshot, title_out.strip(), url_out.strip() or url)
 
         # Persist browser state to cloud for cross-pod continuity
         if user_id:
@@ -752,7 +752,7 @@ class BrowserActTool(BaseTool):
                 message="Please specify an action.",
                 error="missing_action",
                 session_id=session_name,
-            )
+            ).from_outside()
 
         # Build the agent-browser command args
         if action in _NO_TARGET_ACTIONS:
@@ -767,7 +767,7 @@ class BrowserActTool(BaseTool):
                     message="'press' requires a 'value' (key name, e.g. 'Enter').",
                     error="missing_value",
                     session_id=session_name,
-                )
+                ).from_outside()
             cmd_args = ["press", value]
 
         elif action in _TARGET_ONLY_ACTIONS:
@@ -776,7 +776,7 @@ class BrowserActTool(BaseTool):
                     message=f"'{action}' requires a 'target' element.",
                     error="missing_target",
                     session_id=session_name,
-                )
+                ).from_outside()
             cmd_args = [action, target]
 
         elif action in _TARGET_VALUE_ACTIONS:
@@ -785,7 +785,7 @@ class BrowserActTool(BaseTool):
                     message=f"'{action}' requires both 'target' and 'value'.",
                     error="missing_params",
                     session_id=session_name,
-                )
+                ).from_outside()
             cmd_args = [action, target, value]
 
         elif action in _WAIT_ACTIONS:
@@ -797,7 +797,7 @@ class BrowserActTool(BaseTool):
                     ),
                     error="missing_target",
                     session_id=session_name,
-                )
+                ).from_outside()
             cmd_args = ["wait", target]
 
         else:
@@ -805,7 +805,7 @@ class BrowserActTool(BaseTool):
                 message=f"Unsupported action: {action}",
                 error="invalid_action",
                 session_id=session_name,
-            )
+            ).from_outside()
 
         # Restore browser state from cloud if this is a different pod
         if user_id:
@@ -818,7 +818,7 @@ class BrowserActTool(BaseTool):
                 message=f"Action '{action}' failed.",
                 error="action_failed",
                 session_id=session_name,
-            )
+            ).from_outside()
 
         # Allow the page to settle after interaction (best-effort: SPAs may not idle)
         settle_rc, _, settle_err = await _run(
@@ -838,7 +838,7 @@ class BrowserActTool(BaseTool):
             current_url=url_out.strip(),
             snapshot=snapshot,
             session_id=session_name,
-        )
+        ).from_outside(snapshot, url_out.strip())
 
         # Persist browser state to cloud for cross-pod continuity
         if user_id:
@@ -936,7 +936,7 @@ class BrowserScreenshotTool(BaseTool):
                     message="Failed to take screenshot.",
                     error="screenshot_failed",
                     session_id=session_name,
-                )
+                ).from_outside()
 
             with open(tmp_path, "rb") as f:
                 png_bytes = f.read()
@@ -965,14 +965,14 @@ class BrowserScreenshotTool(BaseTool):
                 message="Screenshot taken but failed to save to workspace.",
                 error="workspace_write_failed",
                 session_id=session_name,
-            )
+            ).from_outside()
 
         result = BrowserScreenshotResponse(
             message=f"Screenshot saved to workspace as '{filename}'. Use read_workspace_file with file_id='{write_resp.file_id}' to retrieve it.",
             file_id=write_resp.file_id,
             filename=filename,
             session_id=session_name,
-        )
+        ).from_outside()
 
         # Persist browser state to cloud for cross-pod continuity
         if user_id:

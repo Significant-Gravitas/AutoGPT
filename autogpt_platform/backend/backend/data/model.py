@@ -98,6 +98,20 @@ class User(BaseModel):
         description="User timezone (IANA timezone identifier or 'not-set')",
     )
 
+    # Consent captured at signup (see record_signup_consent).
+    terms_accepted_at: Optional[datetime] = Field(
+        None, description="When the user accepted the terms and privacy policy"
+    )
+    terms_version: Optional[str] = Field(
+        None, description="Version of the terms and privacy policy accepted"
+    )
+    marketing_opt_out_at: Optional[datetime] = Field(
+        None, description="When the user opted out of marketing email"
+    )
+    marketing_opt_out_source: Optional[str] = Field(
+        None, description="Where the marketing opt-out came from"
+    )
+
     # Default Otto connection for chats nobody routed explicitly. Kept as
     # plain strings here: the data layer stores the choice, the copilot layer
     # decides what a given value means (and treats one it doesn't recognise as
@@ -157,6 +171,10 @@ class User(BaseModel):
             alerts_enabled=prisma_user.alertsEnabled,
             notify_on_store_verdict=prisma_user.notifyOnStoreVerdict,
             timezone=prisma_user.timezone or USER_TIMEZONE_NOT_SET,
+            terms_accepted_at=prisma_user.termsAcceptedAt,
+            terms_version=prisma_user.termsVersion,
+            marketing_opt_out_at=prisma_user.marketingOptOutAt,
+            marketing_opt_out_source=prisma_user.marketingOptOutSource,
             default_chat_auth_provider=prisma_user.defaultChatAuthProvider,
             default_chat_credential_id=prisma_user.defaultChatCredentialId,
         )

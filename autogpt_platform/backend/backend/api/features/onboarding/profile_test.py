@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import httpx
@@ -7,10 +7,13 @@ from autogpt_libs.auth import get_user_id, requires_user
 
 from backend.api.features.onboarding import routes
 from backend.api.features.onboarding.routes import router
+from backend.data.onboarding_role import OnboardingRole
 from backend.data.understanding import BusinessUnderstanding, BusinessUnderstandingInput
 
 app = fastapi.FastAPI()
 app.include_router(router)
+
+USER_ID = "user-1"
 
 
 @pytest.fixture
@@ -33,9 +36,19 @@ def profile_dependencies(mocker):
 
 
 @pytest.fixture(autouse=True)
+def role_writes(mocker):
+    """The kept pick's copy, and its MailerLite and PostHog writes."""
+    return {
+        "save": mocker.patch.object(routes, "save_onboarding_role", new=AsyncMock()),
+        "queue": mocker.patch.object(routes, "queue_onboarding_role", new=AsyncMock()),
+        "posthog": mocker.patch.object(routes, "set_onboarding_role", new=MagicMock()),
+    }
+
+
+@pytest.fixture(autouse=True)
 def setup_app_auth():
     async def authenticated_user():
-        return "user-1"
+        return USER_ID
 
     async def authenticated():
         return None
@@ -75,6 +88,66 @@ async def test_onboarding_profile_success(mocker, client):
     assert response.status_code == 200
     mock_extract.assert_awaited_once()
     mock_upsert.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "user_role, kept",
+    [
+        ("Founder/CEO", OnboardingRole(choice="Founder/CEO")),
+        ("Dentist", OnboardingRole(choice="Other", other="Dentist")),
+    ],
+)
+async def test_the_pick_is_kept_and_sent_to_mailerlite_and_posthog(
+    mocker, role_writes, user_role, kept, client
+):
+    # The extraction's own idea of the role, which AutoPilot-side rewrites
+    # look like; the kept pick comes from the request.
+    mocker.patch.object(
+        routes,
+        "extract_business_understanding",
+        new=AsyncMock(
+            return_value=BusinessUnderstandingInput.model_construct(
+                user_role="decision maker"
+            )
+        ),
+    )
+    mocker.patch.object(routes, "upsert_business_understanding", new=AsyncMock())
+    response = await client.post(
+        "/onboarding/profile",
+        json={
+            "user_name": "John",
+            "user_role": user_role,
+            "pain_points": ["Finding leads"],
+        },
+    )
+    assert response.status_code == 200
+    role_writes["save"].assert_awaited_once_with(USER_ID, kept)
+    role_writes["queue"].assert_awaited_once_with(USER_ID, kept)
+    role_writes["posthog"].assert_called_once_with(user_id=USER_ID, role=kept)
+
+
+async def test_an_unchanged_profile_still_keeps_the_pick(
+    profile_dependencies, role_writes, client
+):
+    """A retry after a lost write, or a profile first saved before the pick
+    was kept, still keeps it."""
+    existing, _ = profile_dependencies
+    existing.return_value = BusinessUnderstanding.model_construct(
+        user_name="John", user_role="Dentist", pain_points=["Finding leads"]
+    )
+    response = await client.post(
+        "/onboarding/profile",
+        json={
+            "user_name": "John",
+            "user_role": "Dentist",
+            "pain_points": ["Finding leads"],
+        },
+    )
+    assert response.status_code == 200
+    kept = OnboardingRole(choice="Other", other="Dentist")
+    role_writes["save"].assert_awaited_once_with(USER_ID, kept)
+    role_writes["queue"].assert_awaited_once_with(USER_ID, kept)
+    role_writes["posthog"].assert_called_once_with(user_id=USER_ID, role=kept)
 
 
 async def test_onboarding_profile_missing_fields(client):

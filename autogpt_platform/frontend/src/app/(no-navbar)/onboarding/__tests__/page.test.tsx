@@ -295,9 +295,7 @@ describe("onboarding before payment", () => {
         ),
       );
       fireEvent.click(screen.getByTestId("step-preparing"));
-      await waitFor(() =>
-        expect(routerReplace).toHaveBeenCalledWith("/copilot"),
-      );
+      await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
       expect(completeStep).toHaveBeenCalledWith({
         step: "ONBOARDING_COMPLETE",
       });
@@ -386,7 +384,10 @@ describe("onboarding before payment", () => {
   it("redirects completed users without rendering or resaving their draft", async () => {
     completed = true;
     render(<OnboardingPage />);
-    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/copilot"));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
+    // /copilot redirects to /home, and that second navigation from this page
+    // crashes the App Router (#15155).
+    expect(routerReplace).not.toHaveBeenCalledWith("/copilot");
     expect(screen.queryByTestId("step-role")).toBeNull();
     expect(patchState).not.toHaveBeenCalled();
   });
@@ -398,7 +399,7 @@ describe("onboarding before payment", () => {
     render(<OnboardingPage />);
     fireEvent.click(await screen.findByTestId("step-preparing"));
     expect(await screen.findByText(/couldn't finish setting up/)).toBeDefined();
-    expect(routerReplace).not.toHaveBeenCalledWith("/copilot");
+    expect(routerReplace).not.toHaveBeenCalledWith("/home");
     expect(localStorage.getItem(progressStorageKey("u1"))).not.toBeNull();
   });
 });
@@ -609,7 +610,7 @@ it("reports onboarding completion to Google Ads once after confirmed completion"
   const finish = await screen.findByTestId("step-preparing");
   fireEvent.click(finish);
   fireEvent.click(finish);
-  await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/copilot"));
+  await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
   expect(calls.filter((call) => call[1] === "conversion")).toHaveLength(1);
   expect(completeStep).toHaveBeenCalledOnce();
 });
@@ -648,7 +649,7 @@ it.each(["", "Other"])(
     fireEvent.click(screen.getByTestId("step-role"));
     fireEvent.click(await screen.findByTestId("step-painpoints"));
     fireEvent.click(await screen.findByTestId("step-preparing"));
-    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/copilot"));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
     expect(submitProfile).toHaveBeenCalledWith(
       expect.objectContaining({ user_role: "Design" }),
       expect.anything(),
@@ -692,10 +693,10 @@ describe("profile saving before completion", () => {
     });
     expect(submitProfile).toHaveBeenCalledOnce();
     expect(completeStep).not.toHaveBeenCalled();
-    expect(routerReplace).not.toHaveBeenCalledWith("/copilot");
+    expect(routerReplace).not.toHaveBeenCalledWith("/home");
     expect(localStorage.getItem(progressStorageKey("u1"))).not.toBeNull();
     await act(async () => release?.({ status: 200 }));
-    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/copilot"));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
     expect(submitProfile).toHaveBeenCalledOnce();
     expect(completeStep).toHaveBeenCalledOnce();
     expect(localStorage.getItem(progressStorageKey("u1"))).toBeNull();
@@ -716,13 +717,11 @@ describe("profile saving before completion", () => {
       fireEvent.click(screen.getByTestId("step-preparing"));
       await waitFor(() => expect(submitProfile).toHaveBeenCalledTimes(2));
       expect(completeStep).not.toHaveBeenCalled();
-      expect(routerReplace).not.toHaveBeenCalledWith("/copilot");
+      expect(routerReplace).not.toHaveBeenCalledWith("/home");
       expect(localStorage.getItem(progressStorageKey("u1"))).not.toBeNull();
       submitProfile.mockResolvedValue({ status: 200 });
       fireEvent.click(screen.getByRole("button", { name: /try again/i }));
-      await waitFor(() =>
-        expect(routerReplace).toHaveBeenCalledWith("/copilot"),
-      );
+      await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
       expect(submitProfile).toHaveBeenCalledTimes(3);
       expect(completeStep).toHaveBeenCalledOnce();
     },
@@ -749,7 +748,7 @@ describe("profile saving before completion", () => {
     expect(await screen.findByTestId("step-role")).toBeDefined();
     await act(async () => release?.({ status: 200 }));
     expect(completeStep).not.toHaveBeenCalled();
-    expect(routerReplace).not.toHaveBeenCalledWith("/copilot");
+    expect(routerReplace).not.toHaveBeenCalledWith("/home");
     expect(useOnboardingWizardStore.getState().userID).toBe("u2");
     expect(localStorage.getItem(progressStorageKey("u1"))).not.toBeNull();
   });
@@ -780,7 +779,7 @@ it("lets a new account finish while the previous account's profile save is outst
   await waitFor(() => expect(submitProfile).toHaveBeenCalledTimes(2));
   fireEvent.click(await screen.findByTestId("step-preparing"));
   await waitFor(() => expect(completeStep).toHaveBeenCalledOnce());
-  expect(routerReplace).toHaveBeenCalledWith("/copilot");
+  expect(routerReplace).toHaveBeenCalledWith("/home");
   await act(async () => release?.({ status: 200 }));
   expect(completeStep).toHaveBeenCalledOnce();
   expect(screen.queryByText(/couldn't save your profile/i)).toBeNull();

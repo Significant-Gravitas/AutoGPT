@@ -20,6 +20,10 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: "/api/store/submissions/media/:path*",
+        destination: "/api/proxy/api/store/submissions/media/:path*",
+      },
+      {
         source: "/api/store/media/:path*",
         destination: "/api/proxy/api/store/media/:path*",
       },

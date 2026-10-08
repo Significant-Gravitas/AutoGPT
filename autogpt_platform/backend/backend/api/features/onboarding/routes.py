@@ -20,6 +20,8 @@ from backend.data.onboarding import (
     reset_user_onboarding,
     update_user_onboarding,
 )
+from backend.data.onboarding_audience import queue_onboarding_role
+from backend.data.onboarding_role import OnboardingRole, save_onboarding_role
 from backend.data.onboarding_wizard import OnboardingWizardConflict
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
@@ -27,6 +29,7 @@ from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
 )
+from backend.util.product_analytics import set_onboarding_role
 
 # Tags stay per-route: /onboarding/completed publishes ["onboarding", "public"]
 # while the other six publish ["onboarding"].
@@ -141,6 +144,7 @@ async def submit_onboarding_profile(
         and existing.user_role == data.user_role
         and existing.pain_points == data.pain_points
     ):
+        await _keep_role(user_id, data.user_role)
         return {"status": "ok"}
     await enforce_personalization_budget(user_id)
     formatted = format_onboarding_for_extraction(
@@ -161,5 +165,16 @@ async def submit_onboarding_profile(
         understanding_input.pain_points = data.pain_points
 
     await upsert_business_understanding(user_id, understanding_input)
+    await _keep_role(user_id, data.user_role)
 
     return {"status": "ok"}
+
+
+async def _keep_role(user_id: str, answer: str) -> None:
+    """Keep the pick apart from the understanding, whose copy AutoPilot
+    rewrites, and send it to MailerLite and PostHog. An unchanged profile
+    keeps it too, so a retry repairs a write an earlier attempt lost."""
+    role = OnboardingRole.from_answer(answer)
+    await save_onboarding_role(user_id, role)
+    await queue_onboarding_role(user_id, role)
+    set_onboarding_role(user_id=user_id, role=role)

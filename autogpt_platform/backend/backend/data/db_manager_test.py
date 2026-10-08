@@ -22,3 +22,8 @@ def test_bot_analytics_methods_registered() -> None:
 def test_add_store_agent_rpc_request_schema_is_constructible() -> None:
     manager = DatabaseManager()
     manager._create_fastapi_endpoint(manager.add_store_agent_to_library)
+
+
+def test_the_audience_consumer_can_read_the_opt_out() -> None:
+    assert hasattr(DatabaseManager, "is_marketing_opted_out")
+    assert hasattr(DatabaseManagerAsyncClient, "is_marketing_opted_out")

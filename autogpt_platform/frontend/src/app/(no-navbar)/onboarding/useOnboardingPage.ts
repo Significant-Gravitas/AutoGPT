@@ -120,7 +120,7 @@ export function useOnboardingPage() {
         email: user?.email,
       });
       progress.finish();
-      router.replace("/copilot");
+      router.replace("/home");
     } catch {
       if (!isCurrent()) return;
       setCompletionError({

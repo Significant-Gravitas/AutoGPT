@@ -134,20 +134,24 @@ async def test_saving_draft_scopes_user_and_never_completes_or_rewards(
 @pytest.mark.asyncio(loop_scope="function")
 async def test_reading_draft_scopes_each_authenticated_user(mocker):
     prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
-    prisma.return_value.upsert = AsyncMock()
+    prisma.return_value.find_unique = AsyncMock(return_value=None)
 
-    await get_user_onboarding("user-one")
-    await get_user_onboarding("user-two")
+    first = await get_user_onboarding("user-one")
+    second = await get_user_onboarding("user-two")
 
-    calls = prisma.return_value.upsert.call_args_list
+    calls = prisma.return_value.find_unique.call_args_list
     assert [call.kwargs["where"] for call in calls] == [
         {"userId": "user-one"},
         {"userId": "user-two"},
     ]
-    assert [call.kwargs["data"]["create"]["userId"] for call in calls] == [
+    # Reads create nothing: a user with no row reads as an empty draft at the
+    # column's starting revision, which the first save then matches.
+    assert (first.userId, first.wizardProgress, first.wizardRevision) == (
         "user-one",
-        "user-two",
-    ]
+        None,
+        0,
+    )
+    assert second.userId == "user-two"
 
 
 @pytest.mark.asyncio(loop_scope="function")

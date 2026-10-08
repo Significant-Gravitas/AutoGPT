@@ -78,7 +78,7 @@ export function useWizardProgress({
       if (!isCurrent()) return;
       if (result.kind === "complete") {
         clearLocalProgress(userID!);
-        router.replace("/copilot");
+        router.replace("/home");
         return;
       }
       if (result.kind === "conflict") {
