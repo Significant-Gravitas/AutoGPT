@@ -1,1 +1,0 @@
-ALTER TABLE "Expert" ADD COLUMN "categories" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

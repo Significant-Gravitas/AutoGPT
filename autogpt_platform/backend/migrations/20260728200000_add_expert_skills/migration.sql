@@ -1,2 +1,0 @@
--- AlterTable
-ALTER TABLE "Expert" ADD COLUMN "skills" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

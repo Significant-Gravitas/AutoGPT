@@ -1,4 +1,0 @@
-onlyBuiltDependencies:
-  - "@vercel/speed-insights"
-  - esbuild
-  - msw
