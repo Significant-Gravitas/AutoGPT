@@ -1748,6 +1748,7 @@ async def get_graph_all_versions(
     limit: int = MAX_GRAPH_VERSIONS_FETCH,
     team_id: str | None = None,
     organization_id: str | None = None,
+    include_subgraphs: bool = False,
 ) -> list[GraphModel]:
     where_clause: AgentGraphWhereInput = {"id": graph_id}
     if organization_id is not None:
@@ -1776,7 +1777,15 @@ async def get_graph_all_versions(
     if not graph_versions:
         return []
 
-    versions = [GraphModel.from_db(graph) for graph in graph_versions]
+    sub_graphs = (
+        await asyncio.gather(*(get_sub_graphs(g) for g in graph_versions))
+        if include_subgraphs
+        else [None] * len(graph_versions)
+    )
+    versions = [
+        GraphModel.from_db(graph, sub_graphs=subs)
+        for graph, subs in zip(graph_versions, sub_graphs)
+    ]
     for version in versions:
         if version.user_id != user_id:
             # A teammate reading the history: only the owner sees the files
