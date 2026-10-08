@@ -334,6 +334,13 @@ model UserOnboarding {
   lastRunAt                     DateTime?
   consecutiveRunDays            Int       @default(0)
 
+  // The role picked in the wizard: one of RoleStep's option IDs, or "Other"
+  // with the typed text in roleOther. Written only by POST /onboarding/profile:
+  // AutoPilot rewrites the copy in CoPilotUnderstanding, so that is no record
+  // of the pick (backend/data/onboarding_role.py).
+  role      String?
+  roleOther String?
+
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

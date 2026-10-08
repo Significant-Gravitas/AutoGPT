@@ -22,6 +22,7 @@ from backend.data.notifications import (
     NotificationResult,
     SubscriberField,
 )
+from backend.data.onboarding_role import OnboardingRole
 from backend.data.subscription_trial_checkout import TrialUnavailable
 from backend.notifications import consent, subscriber_fields
 from backend.notifications.consent_test import _cached_before_consent
@@ -66,6 +67,11 @@ def queued(monkeypatch):
     monkeypatch.setattr(
         checkout_audience, "signin_providers", AsyncMock(return_value=["credential"])
     )
+    monkeypatch.setattr(
+        checkout_audience,
+        "get_onboarding_role",
+        AsyncMock(return_value=OnboardingRole(choice="Marketing")),
+    )
     return queue
 
 
@@ -79,8 +85,67 @@ async def test_opening_checkout_queues_the_enriched_change(queued):
     assert event.fields[SubscriberField.COUNTRY_CODE] == "US"
     assert event.fields[SubscriberField.COUNTRY_SOURCE] == "ip"
     assert event.fields[SubscriberField.SIGNIN_METHOD] == "email"
+    assert event.fields[SubscriberField.ROLE] == "Marketing"
     # The IP says US, but the browser sits in Vienna.
     assert event.fields[SubscriberField.EXCLUDE_DE_AT] == "yes"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "role",
+    [
+        AsyncMock(return_value=None),
+        AsyncMock(side_effect=RuntimeError("db down")),
+    ],
+    ids=["not-picked-yet", "unreadable"],
+)
+async def test_an_opener_without_a_readable_role_is_still_queued(
+    queued, monkeypatch, role
+):
+    monkeypatch.setattr(checkout_audience, "get_onboarding_role", role)
+    await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
+    event = queued.await_args.args[0]
+    assert event.action is AudienceAction.CHECKOUT_OPENED
+    assert SubscriberField.ROLE not in event.fields
+    assert SubscriberField.ROLE_OTHER not in event.fields
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "countries",
+    [dict(ip_country="RU"), dict(stripe_country="IR"), dict(ip_country="ir")],
+)
+async def test_an_opener_seen_in_iran_or_russia_is_never_queued(
+    queued, monkeypatch, caplog, countries
+):
+    providers = AsyncMock(return_value=["credential"])
+    monkeypatch.setattr(checkout_audience, "signin_providers", providers)
+    with caplog.at_level(logging.DEBUG, logger=consent.__name__):
+        await checkout_audience.queue_checkout_opened("user-1", **countries)
+    queued.assert_not_awaited()
+    providers.assert_not_awaited()
+    assert pseudonym(EMAIL) in caplog.text
+    assert EMAIL not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_opener_whose_browser_sits_in_moscow_is_never_queued(
+    queued, monkeypatch
+):
+    monkeypatch.setattr(
+        checkout_audience,
+        "get_user_by_id",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                email=EMAIL,
+                created_at=CREATED,
+                timezone="Europe/Moscow",
+                marketing_opt_out_at=None,
+            )
+        ),
+    )
+    await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
+    queued.assert_not_awaited()
 
 
 @pytest.mark.asyncio

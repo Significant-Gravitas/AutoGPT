@@ -961,6 +961,7 @@ class TestGetBillingEmailRecipient:
             email="user@example.com",
             welcomeEmailSentAt=None,
             marketingOptOutAt=opted_out_at,
+            timezone="Europe/London",
         )
         row.name = "User"
 
@@ -977,6 +978,7 @@ class TestGetBillingEmailRecipient:
             name="User",
             welcome_email_sent_at=None,
             marketing_opt_out_at=opted_out_at,
+            timezone="Europe/London",
         )
 
 

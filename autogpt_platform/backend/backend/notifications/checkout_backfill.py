@@ -4,8 +4,8 @@ fields GTM segments on (`audience_enrichment`).
 
 Only accounts with at least one Stripe Checkout Session are openers. Nobody
 else is written, so the accounts that never reached checkout stay out of
-MailerLite. An opener who opted out of marketing stays out too (`consent.py`):
-they are counted, never planned.
+MailerLite. An opener who opted out of marketing, or whom a signal places in
+Iran or Russia, stays out too (`consent.py`): they are counted, never planned.
 
 Each person is written with one subscriber upsert, one at a time and paced,
 never a /batch: MailerLite processes an upsert-only batch as an import, and
@@ -28,7 +28,11 @@ from collections.abc import Awaitable, Callable, Mapping
 from pydantic import BaseModel
 
 from backend.data.notifications import SubscriberField
-from backend.notifications.audience_enrichment import checkout_fields, merge_with_held
+from backend.notifications.audience_enrichment import (
+    checkout_fields,
+    merge_with_held,
+    points_at_excluded_country,
+)
 from backend.notifications.consent import marketing_allowed
 from backend.notifications.mailerlite import (
     API_BASE,
@@ -86,6 +90,8 @@ class OpenerPlan(BaseModel):
     invalid: int
     # Openers who refused marketing, left out of the plan and the tallies.
     opted_out: int
+    # Openers a signal places in Iran or Russia, left out the same way.
+    excluded_country: int
     # What the openers end up with, for the report.
     country_sources: dict[str, int]
     countries: dict[str, int]
@@ -114,7 +120,7 @@ def plan(
     openers: list[Opener], current: Current, members: Mapping[str, str]
 ) -> OpenerPlan:
     changes: list[OpenerChange] = []
-    invalid = opted_out = 0
+    invalid = opted_out = excluded_country = 0
     sources: Counter[str] = Counter()
     countries: Counter[str] = Counter()
     email_types: Counter[str] = Counter()
@@ -125,6 +131,13 @@ def plan(
             opted_out += 1
             continue
         email = opener.person.email
+        if points_at_excluded_country(
+            email=email,
+            timezone=opener.person.timezone,
+            countries=(opener.stripe_country,),
+        ):
+            excluded_country += 1
+            continue
         if not _valid(email):
             invalid += 1
             continue
@@ -150,6 +163,7 @@ def plan(
         openers=len(openers),
         invalid=invalid,
         opted_out=opted_out,
+        excluded_country=excluded_country,
         country_sources=dict(sources),
         countries=dict(countries),
         email_types=dict(email_types),

@@ -9,8 +9,9 @@ strongest country it has seen (`audience_enrichment.merge_with_held`).
 It runs in the background and never raises. A checkout must not wait on, or
 fail because of, MailerLite bookkeeping; the backfill catches anyone missed.
 
-Nothing is queued for an account that opted out of marketing: it never enters
-MailerLite (`notifications/consent.py`).
+Nothing is queued for an account that opted out of marketing, or that any
+signal places in Iran or Russia, the IP and billing countries included: it
+never enters MailerLite (`notifications/consent.py`).
 """
 
 import asyncio
@@ -21,8 +22,9 @@ import prisma.models
 
 from backend.data.db import query_raw_with_schema
 from backend.data.notifications import AudienceAction
+from backend.data.onboarding_role import OnboardingRole, get_onboarding_role
 from backend.data.user import get_user_by_id
-from backend.notifications.audience_enrichment import checkout_fields
+from backend.notifications.audience_enrichment import billing_country, checkout_fields
 from backend.notifications.consent import audience_change_allowed
 from backend.notifications.subscriber_fields import queue_fields
 
@@ -65,7 +67,9 @@ async def queue_checkout_opened(
 ) -> None:
     try:
         user = await get_user_by_id(user_id)
-        if not audience_change_allowed(user, AudienceAction.CHECKOUT_OPENED):
+        if not audience_change_allowed(
+            user, AudienceAction.CHECKOUT_OPENED, (ip_country, stripe_country)
+        ):
             return
         fields = checkout_fields(
             email=user.email,
@@ -75,6 +79,7 @@ async def queue_checkout_opened(
             timezone=user.timezone,
             stripe_country=stripe_country,
             ip_country=ip_country,
+            role=await _role(user_id),
         )
         await queue_fields(user_id, user.email, fields, AudienceAction.CHECKOUT_OPENED)
     except Exception:
@@ -96,10 +101,9 @@ async def record_checkout_completed(session: dict) -> None:
         if user is None:
             # An organization's customer, or one whose account is gone.
             return
-        address = (session.get("customer_details") or {}).get("address") or {}
         schedule_checkout_opened(
             user.id,
-            stripe_country=address.get("country"),
+            stripe_country=billing_country(session),
             opened_at=session.get("created"),
         )
     except Exception:
@@ -115,3 +119,13 @@ async def signin_providers(user_id: str) -> list[str]:
         user_id,
     )
     return [str(row["provider"]) for row in rows if row.get("provider")]
+
+
+async def _role(user_id: str) -> OnboardingRole | None:
+    """The role picked in onboarding, if there is one yet. A failed read
+    costs the opener their role, never their checkout event."""
+    try:
+        return await get_onboarding_role(user_id)
+    except Exception:
+        logger.warning(f"Could not read the onboarding role of {user_id}")
+        return None

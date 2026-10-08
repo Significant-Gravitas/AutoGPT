@@ -124,3 +124,36 @@ def test_every_report_counts_the_opted_out(capsys):
     assert "skip_opted_out: 1" in out
     assert out.count("opted out of marketing (skipped): 1") == 2
     assert "out@example.com" not in out
+
+
+def test_every_report_counts_anyone_placed_in_iran_or_russia(capsys):
+    person = Person(
+        user_id="ru",
+        email="ru@example.com",
+        created_at=CREATED,
+        subscriptions=[Subscription(status="active")],
+        stripe_customer_id="cus_ru",
+        timezone="Europe/Moscow",
+    )
+    customer = cli._customer(person)
+    assert customer.timezone == "Europe/Moscow"
+    cli._report(
+        [
+            mailerlite_backfill.decide(
+                customer, Audience(tour={}, changelog={}, trial={}), trial_enabled=True
+            )
+        ],
+        unmatched=0,
+    )
+    cli._report_fields(field_backfill.plan([person], {}, create=False), 1)
+    cli._report_checkout(
+        checkout_backfill.plan(
+            [checkout_backfill.Opener(person=person, opened_at=1788305400)], {}, {}
+        ),
+        sessions_unlinked=0,
+        customers_without_session=0,
+    )
+    out = capsys.readouterr().out
+    assert "skip_excluded_country: 1" in out
+    assert out.count("placed in Iran or Russia (skipped): 1") == 2
+    assert "ru@example.com" not in out

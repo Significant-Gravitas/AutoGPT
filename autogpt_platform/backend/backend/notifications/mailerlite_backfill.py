@@ -10,8 +10,9 @@ the tour group is left alone: they are either mid-tour, and must not get the
 changelog yet, or they finished it and MailerLite's automation has already
 moved them across.
 
-A customer who opted out of marketing is left out entirely, removals
-included: they never enter MailerLite (`consent.py`).
+A customer who opted out of marketing, or whom a signal places in Iran or
+Russia, is left out entirely, removals included: they never enter MailerLite
+(`consent.py`).
 
 Idempotent by construction: current membership is read first, so a second run
 finds nothing to do and a failed call is simply picked up by the next run.
@@ -27,6 +28,7 @@ from urllib.parse import urlencode
 
 from pydantic import BaseModel
 
+from backend.notifications.audience_enrichment import points_at_excluded_country
 from backend.notifications.consent import marketing_allowed
 from backend.notifications.mailerlite import (
     API_BASE,
@@ -72,6 +74,7 @@ class Decision(str, Enum):
     SKIP_NO_TRIAL_GROUP = "skip_no_trial_group"
     SKIP_UNSETTLED = "skip_unsettled"
     SKIP_OPTED_OUT = "skip_opted_out"
+    SKIP_EXCLUDED_COUNTRY = "skip_excluded_country"
     ALREADY_CORRECT = "already_correct"
 
 
@@ -109,6 +112,8 @@ class Customer(BaseModel):
     subscriptions: list[Subscription]
     # Set when they refused marketing: they must never enter MailerLite.
     marketing_opt_out_at: datetime | None = None
+    # The browser's IANA timezone, which may place them in Iran or Russia.
+    timezone: str | None = None
 
 
 class Audience(BaseModel):
@@ -168,6 +173,12 @@ def decide(
     if not marketing_allowed(customer):
         return PlannedChange(
             customer=customer, standing=standing, decisions=[Decision.SKIP_OPTED_OUT]
+        )
+    if points_at_excluded_country(email=customer.email, timezone=customer.timezone):
+        return PlannedChange(
+            customer=customer,
+            standing=standing,
+            decisions=[Decision.SKIP_EXCLUDED_COUNTRY],
         )
     email = customer.email.strip().lower()
     in_tour = email in audience.tour

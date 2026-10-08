@@ -342,3 +342,24 @@ async def test_an_opted_out_opener_is_never_written(monkeypatch):
     assert result == (1, 0, 0)
     written = [c.kwargs["json"]["email"] for c in client.post.await_args_list]
     assert written == ["sam@acme.com"]
+
+
+@pytest.mark.parametrize(
+    "excluded",
+    [
+        _opener(email="ru@acme.com", stripe_country="RU", timezone="Europe/London"),
+        _opener(email="ir@acme.com", timezone="Asia/Tehran"),
+        _opener(email="sam@firma.ru"),
+    ],
+    ids=["billing", "timezone", "email"],
+)
+def test_an_opener_placed_in_iran_or_russia_is_counted_but_never_planned(excluded):
+    email = excluded.person.email
+    plan = checkout_backfill.plan(
+        [excluded, _opener()], current={email: {}}, members={}
+    )
+    assert [c.opener.person.email for c in plan.changes] == ["sam@acme.com"]
+    assert plan.openers == 2
+    assert plan.excluded_country == 1
+    assert plan.opted_out == 0
+    assert plan.countries == {"IN": 1}

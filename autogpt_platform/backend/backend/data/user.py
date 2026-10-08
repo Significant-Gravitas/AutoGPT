@@ -1252,6 +1252,8 @@ class BillingEmailRecipient(BaseModel):
     # Set when the customer refused marketing: billing emails still go out,
     # MailerLite never hears of them (notifications/consent.py).
     marketing_opt_out_at: datetime | None = None
+    # The browser's IANA timezone, one of the signals consent.py reads.
+    timezone: str | None = None
 
 
 async def get_billing_email_recipient(
@@ -1271,6 +1273,7 @@ async def get_billing_email_recipient(
             name=row.name,
             welcome_email_sent_at=row.welcomeEmailSentAt,
             marketing_opt_out_at=row.marketingOptOutAt,
+            timezone=row.timezone,
         )
     except Exception as e:
         raise DatabaseError(

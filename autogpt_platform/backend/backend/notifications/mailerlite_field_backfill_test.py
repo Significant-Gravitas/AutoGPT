@@ -313,3 +313,28 @@ def test_an_opted_out_person_is_counted_and_never_written(create):
     assert plan.opted_out == 1
     assert plan.invalid == 0
     assert plan.statuses[S.SUBSCRIBED] == 1
+
+
+@pytest.mark.parametrize(
+    "excluded",
+    [
+        _person("out@x.io", _paid("active")).model_copy(
+            update={"timezone": "Europe/Moscow"}
+        ),
+        _person("out@firma.ir", _paid("active")),
+    ],
+    ids=["timezone", "email"],
+)
+def test_a_person_placed_in_iran_or_russia_is_counted_and_never_written(excluded):
+    plan = backfill.plan(
+        [excluded, _person("held@x.io", _paid("active"))],
+        {
+            excluded.email: {"subscription_status": "signed"},
+            "held@x.io": {"subscription_status": "signed"},
+        },
+        create=False,
+    )
+    assert [c.person.email for c in plan.changes] == ["held@x.io"]
+    assert plan.excluded_country == 1
+    assert plan.opted_out == 0
+    assert plan.statuses[S.SUBSCRIBED] == 1

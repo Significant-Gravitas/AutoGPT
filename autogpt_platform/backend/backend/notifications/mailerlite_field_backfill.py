@@ -5,8 +5,8 @@ events, so this works out each account's fields from scratch: the signup date
 from our database, the rest from Stripe, by the rules in `subscriber_fields.py`.
 Only accounts with a Stripe customer are given (see `cli/mailerlite_backfill`):
 MailerLite holds checkout openers, not every signup. An account that opted out
-of marketing is never written, since a field write creates the subscriber
-(`consent.py`).
+of marketing, or that a signal places in Iran or Russia, is never written,
+since a field write creates the subscriber (`consent.py`).
 
 Resumable by construction: the fields MailerLite already holds are read first
 and only the difference is written, so an interrupted or repeated run picks up
@@ -22,6 +22,7 @@ from urllib.parse import urlencode
 from pydantic import BaseModel, EmailStr, TypeAdapter, ValidationError
 
 from backend.data.notifications import SubscriberField, SubscriptionStatus
+from backend.notifications.audience_enrichment import points_at_excluded_country
 from backend.notifications.consent import marketing_allowed
 from backend.notifications.mailerlite import (
     API_BASE,
@@ -82,6 +83,8 @@ class FieldPlan(BaseModel):
     invalid: int
     # People who refused marketing, left out of the plan and the statuses.
     opted_out: int
+    # People a signal places in Iran or Russia, left out the same way.
+    excluded_country: int
 
 
 def standing(subscriptions: list[Subscription]) -> tuple[SubscriptionStatus, Fields]:
@@ -142,10 +145,14 @@ def plan(people: list[Person], current: Current, *, create: bool = True) -> Fiel
         changes=[],
         invalid=0,
         opted_out=0,
+        excluded_country=0,
     )
     for person in people:
         if not marketing_allowed(person):
             result.opted_out += 1
+            continue
+        if points_at_excluded_country(email=person.email, timezone=person.timezone):
+            result.excluded_country += 1
             continue
         if not _valid(person.email):
             result.invalid += 1

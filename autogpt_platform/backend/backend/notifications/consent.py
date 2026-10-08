@@ -2,18 +2,21 @@
 
 Someone who refused marketing (on the signup page; later, by unsubscribing from
 an email or in settings) is never written to MailerLite: no subscriber, no
-group, no fields, and no "opted out" placeholder either. Every MailerLite write
-upserts the subscriber, a group removal or a field update included (see
-`mailerlite.py`), so every path that queues an audience change asks
-`marketing_allowed` first, and the backfills leave such accounts out of their
-plan. Billing and account emails are service mail and are not affected.
+group, no fields, and no "opted out" placeholder either. Nor is anyone a signal
+places in Iran or Russia (`audience_enrichment.points_at_excluded_country`).
+Every MailerLite write upserts the subscriber, a group removal or a field update
+included (see `mailerlite.py`), so every path that queues an audience change asks
+`audience_change_allowed` first, and the backfills leave such accounts out of
+their plan. Billing and account emails are service mail and are not affected.
 """
 
 import logging
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Protocol
 
 from backend.data.notifications import AudienceAction
+from backend.notifications.audience_enrichment import points_at_excluded_country
 from backend.notifications.mailerlite import pseudonym
 
 logger = logging.getLogger(__name__)
@@ -36,6 +39,9 @@ class MarketingContact(MarketingConsent, Protocol):
     @property
     def email(self) -> str: ...
 
+    @property
+    def timezone(self) -> str | None: ...
+
 
 def marketing_allowed(user: MarketingConsent) -> bool:
     # Shared-cache entries can outlive a rolling deploy. A user pickled by the
@@ -46,16 +52,36 @@ def marketing_allowed(user: MarketingConsent) -> bool:
     return getattr(user, "marketing_opt_out_at", _MISSING) is None
 
 
-def audience_change_allowed(user: MarketingContact, action: AudienceAction) -> bool:
-    """Whether `action` may be queued for this account. A refusal is logged."""
-    if marketing_allowed(user):
-        return True
-    log_opted_out_skip(user.email, action.value)
-    return False
+def audience_change_allowed(
+    user: MarketingContact,
+    action: AudienceAction,
+    countries: Iterable[str | None] = (),
+) -> bool:
+    """Whether `action` may be queued for this account. `countries` are the
+    ones the caller saw it in, such as the visitor's IP country or a Stripe
+    billing address. A refusal is logged."""
+    if not marketing_allowed(user):
+        log_opted_out_skip(user.email, action.value)
+        return False
+    if points_at_excluded_country(
+        email=user.email, timezone=user.timezone, countries=countries
+    ):
+        log_excluded_skip(user.email, action.value)
+        return False
+    return True
 
 
 def log_opted_out_skip(email: str, what: str) -> None:
     """At debug level and by pseudonym, so the address never reaches a log."""
     logger.debug(
         "Skipping MailerLite %s for %s: opted out of marketing", what, pseudonym(email)
+    )
+
+
+def log_excluded_skip(email: str, what: str) -> None:
+    """Like an opt-out: at debug level and by pseudonym."""
+    logger.debug(
+        "Skipping MailerLite %s for %s: placed in an excluded country",
+        what,
+        pseudonym(email),
     )

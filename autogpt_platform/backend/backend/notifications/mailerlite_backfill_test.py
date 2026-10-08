@@ -468,3 +468,24 @@ async def test_apply_never_writes_an_opted_out_customer(
     ]
     assert sum(result.succeeded.values()) == 1
     assert sum(result.failed.values()) == 0
+
+
+# ── placed in Iran or Russia ───────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "customer",
+    [
+        _customer("a@x.io", "active").model_copy(update={"timezone": "Asia/Tehran"}),
+        _customer("a@firma.ru", "active"),
+        _customer("a@x.io", "canceled").model_copy(
+            update={"timezone": "Europe/Moscow"}
+        ),
+    ],
+    ids=["paying-in-tehran", "russian-address", "churned-in-moscow"],
+)
+def test_a_customer_placed_in_iran_or_russia_is_only_ever_skipped(customer):
+    audience = _audience(changelog=[customer.email])
+    change = mailerlite_backfill.decide(customer, audience, trial_enabled=True)
+    assert change.decisions == [Decision.SKIP_EXCLUDED_COUNTRY]
+    assert Decision.SKIP_EXCLUDED_COUNTRY not in mailerlite_backfill.CHANGES
