@@ -26,7 +26,7 @@ def load_all_blocks() -> dict[str, type["AnyBlockSchema"]]:
     current_dir = Path(__file__).parent
     modules = []
     for f in current_dir.rglob("*.py"):
-        if not f.is_file() or f.name == "__init__.py" or f.name.startswith("test_"):
+        if not f.is_file() or f.name == "__init__.py" or _is_test_module(f.name):
             continue
 
         # Skip examples directory if not enabled
@@ -110,6 +110,18 @@ def load_all_blocks() -> dict[str, type["AnyBlockSchema"]]:
             filtered_blocks[block_id] = block_cls
 
     return filtered_blocks
+
+
+def _is_test_module(file_name: str) -> bool:
+    # Test files import pytest and backend.util.test (which builds the whole
+    # REST app), so loading them at runtime costs startup time and memory.
+    # Block modules that need shared fixtures (e.g. `_test.py`) still import
+    # them directly.
+    return (
+        file_name.startswith("test_")
+        or file_name.endswith("_test.py")
+        or file_name == "conftest.py"
+    )
 
 
 def _all_subclasses(cls: type[T]) -> list[type[T]]:
