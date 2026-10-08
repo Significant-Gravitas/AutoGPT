@@ -9,7 +9,12 @@ import {
 import { Label } from "@/components/__legacy__/ui/label";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Button } from "@/components/__legacy__/ui/button";
-import { CronFrequency, makeCronExpression } from "@/lib/cron-expression-utils";
+import {
+  CronFrequency,
+  CUSTOM_INTERVAL_MAX,
+  clampCustomIntervalValue,
+  makeCronExpression,
+} from "@/lib/cron-expression-utils";
 
 const weekDays = [
   { label: "Su", value: 0 },
@@ -268,12 +273,16 @@ export function CronScheduler({
             <Input
               type="number"
               min="1"
+              max={CUSTOM_INTERVAL_MAX[customInterval.unit]}
               className="w-20"
               value={customInterval.value}
               onChange={(e) =>
                 setCustomInterval({
                   ...customInterval,
-                  value: parseInt(e.target.value),
+                  value: clampCustomIntervalValue(
+                    customInterval.unit,
+                    parseInt(e.target.value),
+                  ),
                 })
               }
             />

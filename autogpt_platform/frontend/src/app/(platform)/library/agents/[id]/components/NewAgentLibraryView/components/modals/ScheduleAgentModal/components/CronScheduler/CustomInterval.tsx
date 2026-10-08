@@ -3,6 +3,10 @@
 import React from "react";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
+import {
+  CUSTOM_INTERVAL_MAX,
+  clampCustomIntervalValue,
+} from "@/lib/cron-expression-utils";
 
 export function CustomInterval({
   value,
@@ -18,9 +22,16 @@ export function CustomInterval({
         label="Every"
         type="number"
         min={1}
+        max={CUSTOM_INTERVAL_MAX[value.unit]}
         value={value.value}
         onChange={(e) =>
-          onChange({ ...value, value: parseInt(e.target.value || "1") })
+          onChange({
+            ...value,
+            value: clampCustomIntervalValue(
+              value.unit,
+              parseInt(e.target.value),
+            ),
+          })
         }
         className="max-w-24"
         size="small"
@@ -30,7 +41,13 @@ export function CustomInterval({
         label="Interval"
         size="small"
         value={value.unit}
-        onValueChange={(v) => onChange({ ...value, unit: v as any })}
+        onValueChange={(v) => {
+          const unit = v as "minutes" | "hours" | "days";
+          onChange({
+            unit,
+            value: clampCustomIntervalValue(unit, value.value),
+          });
+        }}
         options={[
           { label: "Minutes", value: "minutes" },
           { label: "Hours", value: "hours" },
