@@ -6,13 +6,13 @@ from typing import Any, Literal
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
-from backend.api.features.library.db import get_library_agent
 from backend.api.features.schedule_visibility import (
     hidden_expert_ids,
     is_visible_schedule,
 )
 from backend.copilot.model import ChatSession
 from backend.data.activity_event import ActivityEventDraft
+from backend.data.db_accessors import library_db
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -190,7 +190,7 @@ class ListSchedulesTool(BaseTool):
         # Resolve library_agent_id → graph_id (also verifies ownership)
         if library_agent_id:
             try:
-                lib_agent = await get_library_agent(
+                lib_agent = await library_db().get_library_agent(
                     id=library_agent_id, user_id=user_id
                 )
             except NotFoundError as e:

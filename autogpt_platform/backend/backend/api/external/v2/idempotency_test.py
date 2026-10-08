@@ -168,17 +168,11 @@ def test_a_blank_header_is_no_key(sent: Optional[str], expected: Optional[str]) 
     assert idempotency_key(sent) == expected
 
 
-def test_both_run_endpoints_accept_the_header() -> None:
-    """A key on one endpoint and not the other is worse than none on either."""
+def test_the_run_endpoint_accepts_the_header() -> None:
     from .app import v2_app
 
-    schema = v2_app.openapi()
-    for path in (
-        "/library/agents/{agent_id}/runs",
-        "/library/presets/{preset_id}/runs",
-    ):
-        names = {p["name"] for p in schema["paths"][path]["post"].get("parameters", [])}
-        assert IDEMPOTENCY_HEADER in names, f"{path} takes no {IDEMPOTENCY_HEADER}"
+    post = v2_app.openapi()["paths"]["/library/agents/{agent_id}/runs"]["post"]
+    assert IDEMPOTENCY_HEADER in {p["name"] for p in post.get("parameters", [])}
 
 
 @pytest.fixture
@@ -209,8 +203,6 @@ def test_the_header_parameter_defaults_to_no_key_when_called_directly() -> None:
     import inspect
 
     from .library.agents import execute_agent
-    from .library.presets import run_preset
 
-    for handler in (execute_agent, run_preset):
-        default = inspect.signature(handler).parameters["idempotency"].default
-        assert default is None, f"{handler.__name__} defaults to {default!r}"
+    default = inspect.signature(execute_agent).parameters["idempotency"].default
+    assert default is None, f"execute_agent defaults to {default!r}"

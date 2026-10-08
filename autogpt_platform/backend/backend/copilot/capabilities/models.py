@@ -63,6 +63,9 @@ class CapabilityEntry(BaseModel):
     id: str
     kind: CapabilityKindName
     klass: CapabilityClass = "service"
+    # The vendor behind the entry, the same for a block and the MCP server
+    # of one service.  None for primitives and tools.
+    service: str | None = None
     name: str
     purpose: str = Field(max_length=PURPOSE_MAX_CHARS)
     # Everything the source says about the capability, for the index only:

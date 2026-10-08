@@ -23,9 +23,6 @@ if TYPE_CHECKING:
         PendingHumanReviewModel,
     )
     from backend.api.features.library.model import LibraryAgent as _LibraryAgent
-    from backend.api.features.library.model import (
-        LibraryAgentPreset as _LibraryAgentPreset,
-    )
     from backend.api.features.library.model import LibraryFolder as _LibraryFolder
     from backend.api.features.library.model import (
         LibraryFolderTree as _LibraryFolderTree,
@@ -448,13 +445,7 @@ class AgentRunScheduleCreateRequest(BaseModel):
 
 
 class TriggerSetupInfo(BaseModel):
-    """
-    Trigger configuration requirements for agents that support webhook triggers.
-
-    Use `config_schema` and `credentials_input_name` to populate the
-    `trigger_config` and `agent_credentials` fields when calling
-    ``POST /library/presets/setup-trigger``.
-    """
+    """Trigger configuration requirements for agents that support webhook triggers."""
 
     provider: str = Field(description="Trigger provider (e.g. 'github')")
     config_schema: dict[str, Any] = Field(
@@ -635,92 +626,6 @@ class LibraryFolderMoveRequest(BaseModel):
 
     target_parent_id: Optional[str] = Field(
         default=None, description="Target parent folder ID (null = root)"
-    )
-
-
-# ============================================================================
-# Preset Models
-# ============================================================================
-
-
-class AgentPreset(TenantedResource):
-    """A saved preset configuration for running an agent."""
-
-    id: str
-    graph_id: str
-    graph_version: int
-    name: str
-    description: str
-    is_active: bool
-    inputs: dict[str, Any]
-    webhook_id: Optional[str] = Field(
-        default=None,
-        description="Webhook ID if this preset is triggered by a webhook",
-    )
-    created_at: datetime
-    updated_at: datetime
-
-    @classmethod
-    def from_internal(cls, p: _LibraryAgentPreset) -> Self:
-        return cls(
-            id=p.id,
-            graph_id=p.graph_id,
-            graph_version=p.graph_version,
-            name=p.name,
-            description=p.description,
-            is_active=p.is_active,
-            inputs=p.inputs,
-            webhook_id=p.webhook_id,
-            created_at=p.created_at,
-            updated_at=p.updated_at,
-            organization_id=p.organization_id,
-            team_id=p.team_id,
-        )
-
-
-class AgentPresetCreateRequest(BaseModel):
-    """Request to create a preset."""
-
-    graph_id: str = Field(description="Graph ID")
-    graph_version: int = Field(description="Graph version")
-    name: str = Field(description="Preset name")
-    description: str = Field(default="", description="Preset description")
-    inputs: dict[str, Any] = Field(default_factory=dict, description="Input values")
-    credentials_inputs: dict[str, Any] = Field(
-        default_factory=dict, description="Credential references"
-    )
-    is_active: bool = Field(default=True, description="Whether the preset is active")
-
-
-class AgentPresetUpdateRequest(BaseModel):
-    """Request to update a preset."""
-
-    name: Optional[str] = None
-    description: Optional[str] = None
-    inputs: Optional[dict[str, Any]] = None
-    credentials_inputs: Optional[dict[str, Any]] = None
-    is_active: Optional[bool] = None
-
-
-class AgentTriggerSetupRequest(BaseModel):
-    """Request to set up a webhook-triggered preset."""
-
-    name: str = Field(description="Preset name")
-    description: str = Field(default="", description="Preset description")
-    graph_id: str = Field(description="Graph ID")
-    graph_version: int = Field(description="Graph version")
-    trigger_config: dict[str, Any] = Field(description="Trigger block configuration")
-    credentials_inputs: dict[str, Any] = Field(
-        default_factory=dict, description="Credential references"
-    )
-
-
-class AgentPresetRunRequest(BaseModel):
-    """Request to run an agent preset with optional overrides."""
-
-    inputs: dict[str, Any] = Field(default_factory=dict, description="Input overrides")
-    credentials_inputs: dict[str, Any] = Field(
-        default_factory=dict, description="Credential overrides"
     )
 
 

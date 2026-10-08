@@ -1,0 +1,26 @@
+{"id": "1-0", "data": {"type": "data-status", "message": "Message received…"}}
+{"id": "2-0", "data": {"type": "data-status", "message": "Setting up your environment…"}}
+{"id": "3-0", "data": {"type": "data-status", "message": "Restoring your session…"}}
+{"id": "4-0", "data": {"type": "start", "messageId": "00000000-0000-4000-8000-000000000001", "sessionId": "drift-session"}}
+{"id": "5-0", "data": {"type": "data-status", "message": "Preparing conversation context…"}}
+{"id": "6-0", "data": {"type": "data-status", "message": "Starting the assistant…"}}
+{"id": "7-0", "data": {"type": "data-status", "message": "Reading your message…"}}
+{"id": "8-0", "data": {"type": "start-step"}}
+{"id": "9-0", "data": {"type": "text-start", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "10-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000002", "delta": "Release 1.2 adds sharing."}}
+{"id": "11-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "12-0", "data": {"type": "finish-step"}}
+{"id": "13-0", "data": {"type": "data-checkpoint", "rows": 1, "sequence": 3, "digest": "171cf7547b79de2f13e2cbd3830a9773ac270ed1582c197f54309a03334f9490"}}
+{"id": "14-0", "data": {"type": "data-status", "message": "Restoring your session…"}}
+{"id": "15-0", "data": {"type": "start", "messageId": "00000000-0000-4000-8000-000000000003", "sessionId": "drift-session"}}
+{"id": "16-0", "data": {"type": "data-pending-drained", "drainedCount": 2, "messages": [{"id": "00000000-0000-4000-8000-000000000004", "content": "Mention the new export."}, {"id": "00000000-0000-4000-8000-000000000005", "content": "And keep it to one line."}]}}
+{"id": "17-0", "data": {"type": "data-status", "message": "Preparing conversation context…"}}
+{"id": "18-0", "data": {"type": "data-status", "message": "Starting the assistant…"}}
+{"id": "19-0", "data": {"type": "data-status", "message": "Reading your message…"}}
+{"id": "20-0", "data": {"type": "start-step"}}
+{"id": "21-0", "data": {"type": "text-start", "id": "00000000-0000-4000-8000-000000000006"}}
+{"id": "22-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000006", "delta": "Release 1.2 adds export."}}
+{"id": "23-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000006"}}
+{"id": "24-0", "data": {"type": "finish-step"}}
+{"id": "25-0", "data": {"type": "data-checkpoint", "rows": 4, "sequence": 3, "digest": "521c7f41fc4422cc340a62705856626b6688e80cfc508568012639a152b8a1ce"}}
+{"id": "26-0", "data": {"type": "finish"}}
