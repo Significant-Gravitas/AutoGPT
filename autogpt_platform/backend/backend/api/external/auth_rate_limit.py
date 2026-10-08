@@ -6,7 +6,7 @@ therefore burn CPU/memory even though they always return 401. Post-auth
 route quotas (see open PR #14545) never run on that path.
 
 This module puts a fixed-window Redis counter **in front of** Scrypt, keyed
-by client IP and key head, so abusive bursts get HTTP 429 before unbounded
+by client IP (ASGI peer, not ``X-Forwarded-For``) and key head, so abusive bursts get HTTP 429 before unbounded
 crypto work. Successful authentications under normal rates still pass.
 
 Availability: Redis trouble **fails open** with a short deadline (same
@@ -24,10 +24,10 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import fastapi
+from autogpt_libs.api_key.keysmith import APIKeySmith
 from fastapi import Request
 from redis.exceptions import RedisClusterException, RedisError
 
-from autogpt_libs.api_key.keysmith import APIKeySmith
 from backend.data.redis_client import get_redis_async
 from backend.monitoring.instrumentation import record_rate_limit_hit
 
@@ -58,22 +58,19 @@ _SAFE_IP = re.compile(r"^[0-9A-Fa-f.:]{1,64}$")
 
 
 def client_ip_from_request(request: Request) -> str:
-    """Best-effort client IP for rate-limit bucketing.
+    """Client IP for rate-limit bucketing.
 
-    Prefer the first ``X-Forwarded-For`` hop when present (typical behind a
-    reverse proxy), else the ASGI client host. Spoofable without a trusted
-    proxy — still useful as one dimension alongside the key head.
+    Uses only the ASGI peer address (``request.client.host``). The
+    ``X-Forwarded-For`` header is caller-controlled unless a trusted proxy
+    rewrites it, so keying on it would let an attacker rotate the header to
+    get a fresh bucket per request. Deployments behind a trusted reverse proxy
+    should enable uvicorn's ``proxy_headers`` / ``forwarded_allow_ips``, which
+    rewrites ``request.client`` from the proxy's header safely.
     """
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        first = forwarded.split(",", 1)[0].strip()
-        if first and _SAFE_IP.match(first):
-            return first
     if request.client and request.client.host:
         host = request.client.host
         if _SAFE_IP.match(host):
             return host
-        return "unknown"
     return "unknown"
 
 
@@ -115,8 +112,14 @@ async def _incr_window(key: str, window_seconds: int) -> int:
     )
 
 
-async def _incr_with_deadline(key: str, window_seconds: int) -> int | None:
-    """Increment or return ``None`` when Redis cannot answer in time / at all."""
+async def _incr_with_deadline(
+    key: str, window_seconds: int, *, bucket: str
+) -> int | None:
+    """Increment or return ``None`` when Redis cannot answer in time / at all.
+
+    ``bucket`` is a static label for logs; the Redis key itself is derived
+    from the presented API key's head and must never be logged.
+    """
     try:
         return await asyncio.wait_for(
             _incr_window(key, window_seconds),
@@ -131,9 +134,9 @@ async def _incr_with_deadline(key: str, window_seconds: int) -> int | None:
         ValueError,
     ) as e:
         logger.warning(
-            "API-key auth rate-limit check failed open for key %s: %s",
-            key,
-            e,
+            "API-key auth rate-limit check (%s bucket) failed open: %s",
+            bucket,
+            type(e).__name__,
         )
         return None
 
@@ -172,6 +175,7 @@ async def enforce_api_key_validate_rate_limit(
     ip_count = await _incr_with_deadline(
         _ip_key(ip, now=now),
         AUTH_VALIDATE_WINDOW_SECONDS,
+        bucket="ip",
     )
     if ip_count is not None and ip_count > AUTH_VALIDATE_IP_MAX_REQUESTS:
         logger.info(
@@ -192,12 +196,13 @@ async def enforce_api_key_validate_rate_limit(
     head_count = await _incr_with_deadline(
         _head_key(ip, head, now=now),
         AUTH_VALIDATE_WINDOW_SECONDS,
+        bucket="head",
     )
     if head_count is not None and head_count > AUTH_VALIDATE_MAX_REQUESTS:
+        # Do not log the key head: it is a prefix of the presented secret.
         logger.info(
-            "API-key auth head rate limit hit for %s head=%s (count=%s)",
+            "API-key auth per-key-prefix rate limit hit for %s (count=%s)",
             ip,
-            head,
             head_count,
         )
         _raise_429(

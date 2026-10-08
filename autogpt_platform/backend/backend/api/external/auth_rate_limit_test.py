@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -85,9 +84,27 @@ def test_key_head_from_plaintext_requires_prefix_and_length():
     assert rate_limit.key_head_from_plaintext("agpt_abcXXXX") == "agpt_abc"
 
 
-def test_client_ip_prefers_forwarded_for():
+def test_client_ip_ignores_spoofed_forwarded_for():
+    """A caller-supplied X-Forwarded-For must not change the limiter identity,
+    otherwise rotating the header yields a fresh bucket per request."""
     req = _request(ip="10.0.0.1", forwarded="198.51.100.7, 10.0.0.1")
-    assert rate_limit.client_ip_from_request(req) == "198.51.100.7"
+    assert rate_limit.client_ip_from_request(req) == "10.0.0.1"
+
+
+@pytest.mark.asyncio
+async def test_rotating_forwarded_for_does_not_bypass_head_cap(fake_redis, mocker):
+    mocker.patch.object(rate_limit, "AUTH_VALIDATE_MAX_REQUESTS", 2)
+    mocker.patch.object(rate_limit, "AUTH_VALIDATE_IP_MAX_REQUESTS", 1000)
+    key = "agpt_abcXXXXXrest"
+    for i in range(2):
+        await rate_limit.enforce_api_key_validate_rate_limit(
+            _request(forwarded=f"198.51.100.{i}"), key
+        )
+    with pytest.raises(fastapi.HTTPException) as exc_info:
+        await rate_limit.enforce_api_key_validate_rate_limit(
+            _request(forwarded="198.51.100.99"), key
+        )
+    assert exc_info.value.status_code == 429
 
 
 def test_client_ip_falls_back_to_asgi_client():
@@ -286,3 +303,42 @@ async def test_abuse_burst_stops_scrypt_after_threshold(fake_redis, mocker):
         await middleware.require_api_key(req, api_key=key)
     assert exc.value.status_code == 429
     assert validate.await_count == 5  # not hammered past threshold
+
+
+# ---------------------------------------------------------------------------
+# Candidate lookup (no truncation of colliding heads)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_validate_api_key_checks_every_key_sharing_a_head(mocker):
+    """Six ACTIVE keys share a head; the valid one is last. It must still
+    authenticate (the lookup must not truncate the candidate list)."""
+    from backend.data.auth import api_key as api_key_mod
+
+    records = [MagicMock(name=f"rec{i}") for i in range(6)]
+
+    async def find_many(*, where, take=None, **_kwargs):
+        return records[:take] if take is not None else list(records)
+
+    prisma_client = MagicMock()
+    prisma_client.find_many = AsyncMock(side_effect=find_many)
+    mocker.patch.object(api_key_mod.PrismaAPIKey, "prisma", return_value=prisma_client)
+
+    candidates = []
+    for i, rec in enumerate(records):
+        cand = MagicMock()
+        cand.salt = "salt"
+        cand.match.return_value = i == 5
+        cand.without_hash.return_value = f"info-{i}"
+        candidates.append(cand)
+    by_rec = dict(zip(map(id, records), candidates))
+    mocker.patch.object(
+        api_key_mod.APIKeyInfoWithHash,
+        "from_db",
+        side_effect=lambda rec: by_rec[id(rec)],
+    )
+
+    result = await api_key_mod.validate_api_key("agpt_abcVALIDKEYrest")
+    assert result == "info-5"
+    assert "take" not in prisma_client.find_many.await_args.kwargs
