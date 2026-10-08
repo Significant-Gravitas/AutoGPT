@@ -21,6 +21,7 @@ from prisma.enums import BriefingFrequency
 
 from backend.data.alerts import MaturedAlertPage
 from backend.data.notifications import NotificationPreference
+from backend.notifications import notifications as delivery
 
 NOW = datetime(2026, 8, 3, 7, 30, tzinfo=timezone.utc)
 
@@ -61,6 +62,7 @@ def make_db_client(**overrides) -> SimpleNamespace:
             )
         ),
         get_user_by_id=AsyncMock(return_value=None),
+        is_marketing_opted_out=AsyncMock(return_value=False),
         get_user_email_verification=AsyncMock(return_value=True),
         # Alert conditions
         get_users_with_matured_alerts=AsyncMock(
@@ -92,3 +94,16 @@ def make_db_client(**overrides) -> SimpleNamespace:
 @pytest.fixture
 def db_client() -> SimpleNamespace:
     return make_db_client()
+
+
+@pytest.fixture(autouse=True)
+def audience_consent(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+    """The audience consumer re-reads the opt-out before every MailerLite
+    write. Opted in unless a test says otherwise, so the suites about what
+    MailerLite receives need no database; set `is_marketing_opted_out` on the
+    returned client to change it."""
+    client = make_db_client()
+    monkeypatch.setattr(
+        delivery, "get_database_manager_async_client", lambda **_: client
+    )
+    return client

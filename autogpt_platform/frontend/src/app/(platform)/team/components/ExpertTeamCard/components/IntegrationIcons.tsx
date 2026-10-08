@@ -6,7 +6,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import { serviceLabelFromIcon } from "@/components/contextual/IntegrationsPanel/helpers";
 import Image from "next/image";
 import { useState } from "react";
 
@@ -25,7 +25,7 @@ export function IntegrationIcons({ expertName, providers }: Props) {
   if (providers.length === 0) return null;
   const shown = providers.slice(0, VISIBLE_LOGOS);
   const hidden = providers.slice(VISIBLE_LOGOS);
-  const hiddenNames = hidden.map(formatProviderName).join(", ");
+  const hiddenNames = hidden.map(serviceLabelFromIcon).join(", ");
 
   return (
     <ul aria-label="Integrations" className="flex shrink-0 items-center gap-1">
@@ -38,7 +38,7 @@ export function IntegrationIcons({ expertName, providers }: Props) {
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              {expertName} has access to your {formatProviderName(provider)}{" "}
+              {expertName} has access to your {serviceLabelFromIcon(provider)}{" "}
               account
             </TooltipContent>
           </Tooltip>
@@ -71,7 +71,7 @@ interface LogoProps {
 
 function ProviderLogo({ provider }: LogoProps) {
   const [isBroken, setIsBroken] = useState(false);
-  const name = formatProviderName(provider);
+  const name = serviceLabelFromIcon(provider);
 
   if (isBroken) {
     return (

@@ -117,6 +117,16 @@ class TestCredentialsSurfacingGuardrails:
         assert "Connecting is not running" in result
         assert "The card asks for credentials, not inputs" in result
 
+    def test_prompt_states_the_one_connect_convention(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert 'input={"connect": true}' in result
+        assert "for any capability" in result
+
+    def test_prompt_tells_experts_the_vendor_integration_comes_first(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "own integration is listed first" in result
+        assert "only for an action it does not offer" in result
+
 
 class TestToolDiscoveryPriorityAntiPattern:
     """The Discovery section must forbid claiming a capability gap without

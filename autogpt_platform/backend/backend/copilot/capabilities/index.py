@@ -143,6 +143,7 @@ class CapabilityIndex:
         permissions: "CopilotPermissions | None" = None,
         limit: int = DEFAULT_LIMIT,
         fallback_limit: int = DEFAULT_FALLBACK_LIMIT,
+        prefer_mcp: bool = False,
     ) -> SearchResult:
         """Ranked entries for *query*.
 
@@ -160,6 +161,7 @@ class CapabilityIndex:
             permissions=permissions,
             limit=limit,
             fallback_limit=fallback_limit,
+            prefer_mcp=prefer_mcp,
         )
         if kind is not None and result.query:
             self._add_other_kinds(
@@ -168,6 +170,7 @@ class CapabilityIndex:
                 kind=kind,
                 connections=connections,
                 permissions=permissions,
+                prefer_mcp=prefer_mcp,
             )
         return result
 
@@ -181,6 +184,7 @@ class CapabilityIndex:
         permissions: "CopilotPermissions | None",
         limit: int,
         fallback_limit: int,
+        prefer_mcp: bool = False,
     ) -> SearchResult:
         query = " ".join((query or "").split())
         if not query:
@@ -250,6 +254,9 @@ class CapabilityIndex:
         hits += _ranked(
             [to_hit(idx, "search") for idx in main],
             lift=service_indices is not None,
+            mcp_first=prefer_mcp
+            and service_indices is not None
+            and any(self.entries[idx].kind == "mcp_server" for idx in main),
         )
         return SearchResult(
             query=query, hits=hits[:limit], fallback=fallback, service=service
@@ -263,6 +270,7 @@ class CapabilityIndex:
         kind: CapabilityKindName,
         connections: ConnectionState | None,
         permissions: "CopilotPermissions | None",
+        prefer_mcp: bool,
     ) -> None:
         """Fill ``result.other_kinds`` from the same search without *kind*.
 
@@ -287,6 +295,7 @@ class CapabilityIndex:
             permissions=permissions,
             limit=len(self.entries),
             fallback_limit=0,
+            prefer_mcp=prefer_mcp,
         )
         hidden = sorted(
             (
@@ -514,7 +523,9 @@ def _service_tags(entry: CapabilityEntry) -> Iterable[str]:
         yield from (tag.lower() for tag in entry.tags[marker + 1 :])
 
 
-def _ranked(hits: list[SearchHit], *, lift: bool = False) -> list[SearchHit]:
+def _ranked(
+    hits: list[SearchHit], *, lift: bool = False, mcp_first: bool = False
+) -> list[SearchHit]:
     """Coverage first, then a connected capability, then a platform tool,
     then the class-weighted BM25 score (``score`` already carries the weight).
 
@@ -548,7 +559,49 @@ def _ranked(hits: list[SearchHit], *, lift: bool = False) -> list[SearchHit]:
     connected entry carried whole families of connected blocks over a
     first-party tool that matched the query better. Nothing is pushed down, so
     a job with no connected server ranks exactly as it did before.
+
+    ``mcp_first`` is for an expert chat that named a service and found its
+    MCP server: connection leads, and within a tier the service's MCP server
+    comes before its blocks, which stay listed for what the server cannot do.
+    It replaces the order above, *lift* included.
     """
+    if mcp_first:
+        ranked = sorted(
+            hits,
+            key=lambda h: (
+                tier(h.entry, h.connected),
+                -h.coverage,
+                h.entry.kind != "tool",
+                -h.score,
+                h.entry.name.lower(),
+            ),
+        )
+        service_hits: dict[str, list[SearchHit]] = defaultdict(list)
+        for hit in ranked:
+            if hit.entry.service:
+                service_hits[hit.entry.service].append(hit)
+        for service, entries in service_hits.items():
+            service_hits[service] = sorted(
+                entries,
+                key=lambda h: (
+                    tier(h.entry, h.connected),
+                    h.entry.kind != "mcp_server",
+                    -h.coverage,
+                    h.entry.kind != "tool",
+                    -h.score,
+                    h.entry.name.lower(),
+                ),
+            )
+        offsets: dict[str, int] = defaultdict(int)
+        result: list[SearchHit] = []
+        for hit in ranked:
+            service = hit.entry.service
+            if not service:
+                result.append(hit)
+                continue
+            result.append(service_hits[service][offsets[service]])
+            offsets[service] += 1
+        return result
     best = max((h.coverage for h in hits), default=0.0)
 
     def key(hit: SearchHit) -> tuple[float, int, int, float, str]:

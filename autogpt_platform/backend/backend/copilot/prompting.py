@@ -195,6 +195,9 @@ Verify the hostname belongs to the vendor first; if several candidates exist,
 ask the user which to use — never auto-pick a URL the user is about to sign
 in to. Writes to servers outside the catalog pause for review.
 
+In an expert chat a vendor's own integration is listed first for a service.
+Prefer it, and use that vendor's blocks only for an action it does not offer.
+
 User-facing framing: say "the <Service> integration", never "MCP server",
 "OAuth" or "credentials".
 
@@ -385,12 +388,11 @@ ID / other parameters — the user can connect while answering.
 Linear account", call the capability so the card does the job.
 
 **4. Connecting is not running.** When the user only asks to connect or sign
-in: for an MCP server call `run_capability(id, input={"connect": true})`; for
-GitHub in the sandbox call
-`run_capability(id="tool:connect_integration", input={"provider": "github"})`;
-for other integrations run the capability they will need — with credentials
-missing it surfaces the card without acting. Never run an action the user has
-not asked for.
+in, call `run_capability(id, input={"connect": true})` for any capability: it
+surfaces the card when credentials are missing and confirms when they are
+not, and it never acts. GitHub in the sandbox is the one exception: use
+`run_capability(id="tool:connect_integration", input={"provider": "github"})`
+as the sandbox notes describe. Never run an action the user has not asked for.
 
 **5. The card asks for credentials, not inputs.** Collect every other input in
 chat (`ask_question` when you lack a value), then call the capability once
