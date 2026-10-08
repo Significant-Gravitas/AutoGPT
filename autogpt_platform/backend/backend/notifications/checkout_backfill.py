@@ -29,7 +29,7 @@ from pydantic import BaseModel
 
 from backend.data.notifications import SubscriberField
 from backend.notifications.audience_enrichment import checkout_fields, merge_with_held
-from backend.notifications.consent import marketing_allowed
+from backend.notifications.consent import KeptOut, marketing_allowed
 from backend.notifications.mailerlite import (
     API_BASE,
     _client,
@@ -186,15 +186,18 @@ async def apply(
     on_progress: Callable[[int, int], None] | None = None,
     *,
     refresh: Callable[[str], Awaitable[list[Subscription]]] | None = None,
+    kept_out: KeptOut | None = None,
 ) -> tuple[int, int, int]:
-    """Visit each planned opener: read them again from MailerLite and, with
-    `refresh`, their subscriptions again from Stripe, and write what they
-    still need as one subscriber upsert into the group. The status the plan
-    took from Stripe hours earlier is never written over a newer one.
+    """Visit each planned opener: with `kept_out`, check they may still enter
+    MailerLite, since they may have opted out or been seen in Iran or Russia
+    since the plan; read them again from MailerLite and, with `refresh`,
+    their subscriptions again from Stripe; and write what they still need as
+    one subscriber upsert into the group. The status the plan took from
+    Stripe hours earlier is never written over a newer one.
 
     Returns (succeeded, failed, skipped); a failure is logged with
     MailerLite's reason and left for the next run, and someone who needs
-    nothing any more is skipped."""
+    nothing any more, or may no longer be written, is skipped."""
     succeeded = failed = skipped = 0
     for index, change in enumerate(changes):
         if index:
@@ -204,6 +207,9 @@ async def apply(
         email = change.opener.person.email
         opener = change.opener
         try:
+            if kept_out and await kept_out(opener.person.user_id):
+                skipped += 1
+                continue
             if refresh and opener.person.stripe_customer_id:
                 person = opener.person.model_copy(
                     update={

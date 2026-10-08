@@ -29,7 +29,7 @@ from urllib.parse import urlencode
 from pydantic import BaseModel
 
 from backend.notifications.audience_enrichment import points_at_excluded_country
-from backend.notifications.consent import marketing_allowed
+from backend.notifications.consent import KeptOut, marketing_allowed
 from backend.notifications.mailerlite import (
     API_BASE,
     MailerLiteError,
@@ -137,6 +137,8 @@ class PlannedChange(BaseModel):
 class ApplyResult(BaseModel):
     succeeded: dict[Decision, int]
     failed: dict[Decision, int]
+    # Opted out or seen in Iran or Russia since the plan: not written.
+    skipped: int = 0
 
 
 class BatchAnswer(BaseModel):
@@ -232,7 +234,14 @@ async def read_audience() -> Audience:
     )
 
 
-async def apply(changes: list[PlannedChange], audience: Audience) -> ApplyResult:
+async def apply(
+    changes: list[PlannedChange],
+    audience: Audience,
+    *,
+    kept_out: KeptOut | None = None,
+) -> ApplyResult:
+    """With `kept_out`, each batch first drops anyone who may no longer be
+    written: they opted out or were seen in Iran or Russia since the plan."""
     result = ApplyResult(
         succeeded={d: 0 for d in CHANGES}, failed={d: 0 for d in CHANGES}
     )
@@ -245,6 +254,12 @@ async def apply(changes: list[PlannedChange], audience: Audience) -> ApplyResult
     for index, (decision, chunk) in enumerate(batches):
         if index:
             await asyncio.sleep(_interval_before(decision))
+        if kept_out:
+            allowed = [c for c in chunk if not await kept_out(c.customer.user_id)]
+            result.skipped += len(chunk) - len(allowed)
+            chunk = allowed
+        if not chunk:
+            continue
         answers = await _send_batch(
             [_call_for(decision, c.customer.email, audience) for c in chunk]
         )

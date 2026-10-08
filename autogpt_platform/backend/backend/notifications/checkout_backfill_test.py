@@ -249,7 +249,7 @@ async def test_a_failed_write_is_counted_and_the_run_goes_on(monkeypatch, caplog
 ACTIVE = [Subscription(id="sub_1", status="active", start_date=OPENED)]
 
 
-async def _apply_with(monkeypatch, plan, *, held, refresh):
+async def _apply_with(monkeypatch, plan, *, held, refresh, kept_out=None):
     monkeypatch.setattr(checkout_backfill.asyncio, "sleep", AsyncMock())
     client = MagicMock(post=AsyncMock(return_value=MagicMock(status=200)))
     with (
@@ -259,7 +259,7 @@ async def _apply_with(monkeypatch, plan, *, held, refresh):
         ),
     ):
         result = await checkout_backfill.apply(
-            plan.changes, "grp_checkout", refresh=refresh
+            plan.changes, "grp_checkout", refresh=refresh, kept_out=kept_out
         )
     return result, client
 
@@ -365,3 +365,31 @@ def test_an_opener_placed_in_iran_or_russia_is_counted_but_never_planned(exclude
     assert plan.excluded_country == 1
     assert plan.opted_out == 0
     assert plan.countries == {"IN": 1}
+
+
+@pytest.mark.asyncio
+async def test_an_opener_who_may_no_longer_be_written_is_skipped(monkeypatch):
+    """The plan is old by the time a paced run reaches someone: an opt-out or
+    an Iranian or Russian checkout since then is read right before the write."""
+    plan = checkout_backfill.plan([_opener()], current={}, members={})
+    kept_out = AsyncMock(return_value=True)
+    result, client = await _apply_with(
+        monkeypatch, plan, held=None, refresh=None, kept_out=kept_out
+    )
+    assert result == (0, 0, 1)
+    kept_out.assert_awaited_once_with("user-1")
+    client.post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_account_is_retried_later_not_written(monkeypatch):
+    plan = checkout_backfill.plan([_opener()], current={}, members={})
+    result, client = await _apply_with(
+        monkeypatch,
+        plan,
+        held=None,
+        refresh=None,
+        kept_out=AsyncMock(side_effect=RuntimeError("db down")),
+    )
+    assert result == (0, 1, 0)
+    client.post.assert_not_awaited()

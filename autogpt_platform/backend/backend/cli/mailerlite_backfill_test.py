@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import click
 import pytest
+import stripe
 from click.testing import CliRunner
 
 from backend.cli import mailerlite_backfill as cli
@@ -165,3 +166,47 @@ def test_every_report_counts_anyone_placed_in_iran_or_russia(capsys):
     assert "skip_excluded_country: 1" in out
     assert out.count("placed in Iran or Russia (skipped): 1") == 2
     assert "ru@example.com" not in out
+
+
+@pytest.mark.parametrize(
+    "seen, kept",
+    [
+        # The Customer's address first; a session only fills a gap.
+        ([("cus_1", "US"), ("cus_1", "GB")], "US"),
+        ([("cus_1", None), ("cus_1", "GB")], "GB"),
+        # An older checkout billed to Russia, while the Customer has a
+        # different address now: the exclusion must still see it.
+        ([("cus_1", "US"), ("cus_1", "RU")], "RU"),
+        ([("cus_1", "IR"), ("cus_1", "US")], "IR"),
+    ],
+)
+def test_a_billing_country_from_any_source_is_kept_when_it_excludes(seen, kept):
+    countries: dict[str, str] = {}
+    for customer_id, country in seen:
+        cli._keep_country(countries, customer_id, country)
+    assert countries == {"cus_1": kept}
+
+
+@pytest.mark.asyncio
+async def test_checkout_sessions_fill_in_customers_without_an_address(monkeypatch):
+    """Checkouts before `customer_update` never copied the billing address
+    onto the Customer, so the sessions are read too."""
+    customers = [
+        SimpleNamespace(id="cus_a", get=lambda k: {"country": "US"}),
+        SimpleNamespace(id="cus_b", get=lambda k: None),
+    ]
+    sessions = [
+        {"customer": "cus_b", "customer_details": {"address": {"country": "RU"}}},
+        {"customer": None, "customer_details": {"address": {"country": "IR"}}},
+    ]
+
+    async def listed(page):
+        for item in page:
+            yield item
+
+    async def call(fn, **_):
+        return customers if fn == stripe.Customer.list_async else sessions
+
+    monkeypatch.setattr("backend.data.stripe_client.stripe_call", call)
+    monkeypatch.setattr("backend.data.stripe_client.stripe_list_items", listed)
+    assert await cli.stripe_billing_countries() == {"cus_a": "US", "cus_b": "RU"}

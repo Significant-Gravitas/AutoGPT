@@ -15,8 +15,9 @@ a signal places in Iran or Russia (`consent.py`). PostHog is analytics, not
 marketing, so it gets every reliable pick.
 
 Each MailerLite write is one update by subscriber ID, one at a time and paced
-like `checkout_backfill`, after reading the subscriber again: the live code
-keeps writing while a run lasts, and a role it wrote meanwhile stays.
+like `checkout_backfill`, after checking the account may still be written and
+reading the subscriber again: the live code keeps writing while a run lasts,
+and a role it wrote meanwhile stays.
 """
 
 import asyncio
@@ -33,7 +34,7 @@ from backend.notifications.audience_enrichment import (
     points_at_excluded_country,
     role_fields,
 )
-from backend.notifications.consent import marketing_allowed
+from backend.notifications.consent import KeptOut, marketing_allowed
 from backend.notifications.mailerlite import (
     API_BASE,
     _client,
@@ -182,17 +183,20 @@ async def send_to_posthog(assignments: list[RoleAssignment]) -> None:
 async def apply(
     changes: list[RoleAssignment],
     on_progress: Callable[[int, int], None] | None = None,
+    *,
+    kept_out: KeptOut | None = None,
 ) -> tuple[int, int, int]:
     """Returns (succeeded, failed, skipped). A failure is logged with
-    MailerLite's reason and left for the next run; someone who has gone, or
-    has a role by now, is skipped."""
+    MailerLite's reason and left for the next run. Someone who has gone, has
+    a role by now, or with `kept_out` may no longer be written (opted out or
+    seen in Iran or Russia since the plan) is skipped."""
     succeeded = failed = skipped = 0
     for index, change in enumerate(changes):
         if index:
             await asyncio.sleep(WRITE_INTERVAL_SECONDS)
         if on_progress and index and index % 100 == 0:
             on_progress(index, len(changes))
-        outcome = await _write(change)
+        outcome = await _write(change, kept_out)
         if outcome is None:
             skipped += 1
         elif outcome:
@@ -204,10 +208,12 @@ async def apply(
     return succeeded, failed, skipped
 
 
-async def _write(change: RoleAssignment) -> bool | None:
+async def _write(change: RoleAssignment, kept_out: KeptOut | None) -> bool | None:
     """True once written, False on a failure, None when there is nothing to
     write any more."""
     try:
+        if kept_out and await kept_out(change.user_id):
+            return None
         subscriber = await _find_subscriber(change.email)
         if subscriber is None or not subscriber.get("id"):
             return None

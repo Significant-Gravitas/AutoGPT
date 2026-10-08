@@ -23,7 +23,7 @@ from pydantic import BaseModel, EmailStr, TypeAdapter, ValidationError
 
 from backend.data.notifications import SubscriberField, SubscriptionStatus
 from backend.notifications.audience_enrichment import points_at_excluded_country
-from backend.notifications.consent import marketing_allowed
+from backend.notifications.consent import KeptOut, marketing_allowed
 from backend.notifications.mailerlite import (
     API_BASE,
     MailerLiteError,
@@ -217,16 +217,25 @@ async def read_current() -> Current:
 async def apply(
     changes: list[FieldChange],
     on_progress: Callable[[int, int], None] | None = None,
-) -> tuple[int, int]:
+    *,
+    kept_out: KeptOut | None = None,
+) -> tuple[int, int, int]:
     """Write each change as a subscriber upsert, fifty to a batch, paced for
-    MailerLite's import limit. Returns (succeeded, failed); a failure is left
-    for the next run."""
-    succeeded = failed = 0
+    MailerLite's import limit. With `kept_out`, each batch first drops anyone
+    who may no longer be written: they opted out or were seen in Iran or
+    Russia since the plan. Returns (succeeded, failed, skipped); a failure is
+    left for the next run."""
+    succeeded = failed = skipped = 0
     for start in range(0, len(changes), BATCH_SIZE):
         if start:
             await asyncio.sleep(UPSERT_BATCH_INTERVAL_SECONDS)
         chunk = changes[start : start + BATCH_SIZE]
-        answers = await _send_batch([_upsert(c) for c in chunk])
+        done = start + len(chunk)
+        if kept_out:
+            allowed = [c for c in chunk if not await kept_out(c.person.user_id)]
+            skipped += len(chunk) - len(allowed)
+            chunk = allowed
+        answers = await _send_batch([_upsert(c) for c in chunk]) if chunk else []
         for change, answer in zip(chunk, answers):
             if answer.code in (200, 201, 202, 204):
                 succeeded += 1
@@ -237,8 +246,8 @@ async def apply(
                 "the next run retries it"
             )
         if on_progress:
-            on_progress(start + len(chunk), len(changes))
-    return succeeded, failed
+            on_progress(done, len(changes))
+    return succeeded, failed, skipped
 
 
 def _upsert(change: FieldChange) -> dict:

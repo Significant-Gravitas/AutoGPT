@@ -182,7 +182,7 @@ async def test_apply_batches_upserts_at_the_import_pace(configured, monkeypatch)
     changes = backfill.plan([_person(f"p{i}@x.io") for i in range(120)], {}).changes
     progress = []
 
-    ok, failed = await backfill.apply(changes, lambda d, t: progress.append(d))
+    ok, failed, skipped = await backfill.apply(changes, lambda d, t: progress.append(d))
 
     batches = [c.kwargs["json"]["requests"] for c in client.post.await_args_list]
     assert [len(b) for b in batches] == [50, 50, 20]
@@ -197,8 +197,31 @@ async def test_apply_batches_upserts_at_the_import_pace(configured, monkeypatch)
     assert [c.args[0] for c in configured.await_args_list] == [
         mailerlite_backfill.UPSERT_BATCH_INTERVAL_SECONDS
     ] * 2
-    assert (ok, failed) == (120, 0)
+    assert (ok, failed, skipped) == (120, 0, 0)
     assert progress == [50, 100, 120]
+
+
+@pytest.mark.asyncio
+async def test_apply_drops_anyone_who_may_no_longer_be_written(configured, monkeypatch):
+    """The plan is hours old by its last batch: someone who opted out or was
+    seen in Iran or Russia since then is checked out right before the write."""
+    client = MagicMock()
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _response(
+            200,
+            {"responses": [{"code": 200} for _ in kw["json"]["requests"]]},
+        )
+    )
+    monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
+    people = [_person("in@x.io"), _person("out@x.io")]
+    changes = backfill.plan(people, {}).changes
+
+    async def kept_out(user_id: str) -> bool:
+        return user_id == "u-out@x.io"
+
+    assert await backfill.apply(changes, kept_out=kept_out) == (1, 0, 1)
+    (batch,) = [c.kwargs["json"]["requests"] for c in client.post.await_args_list]
+    assert [r["body"]["email"] for r in batch] == ["in@x.io"]
 
 
 @pytest.mark.asyncio
@@ -216,7 +239,7 @@ async def test_apply_counts_a_refused_upsert_without_logging_the_address(
     monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
     changes = backfill.plan([_person("bad@x.io")], {}).changes
 
-    assert await backfill.apply(changes) == (0, 1)
+    assert await backfill.apply(changes) == (0, 1, 0)
     assert "bad@x.io" not in caplog.text
     assert " at .io with 422 " in caplog.text
     assert "The given data was invalid." in caplog.text

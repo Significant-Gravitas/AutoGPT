@@ -17,7 +17,7 @@ billing event queues without that country.
 """
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import datetime
 from typing import Protocol
 
@@ -29,6 +29,11 @@ logger = logging.getLogger(__name__)
 
 # Never a stored value, so a missing attribute cannot pass for an unset one.
 _MISSING = object()
+
+# Whether an account, by id, must stay out of MailerLite now, read fresh from
+# the database (`data.user.is_marketing_opted_out`). The backfills call it
+# right before each write, since a run lasts hours and their plan is older.
+KeptOut = Callable[[str], Awaitable[bool]]
 
 
 class MarketingConsent(Protocol):

@@ -279,6 +279,43 @@ async def test_a_checkout_billed_to_russia_is_recorded_before_it_returns(
     ]
 
 
+_BILLED_TO_RUSSIA = {
+    "customer": "cus_1",
+    "created": 1788305400,
+    "customer_details": {"address": {"country": "RU"}},
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "lookup, record",
+    [
+        (SimpleNamespace(id="user-1"), AsyncMock(side_effect=RuntimeError("db"))),
+        (RuntimeError("db down"), AsyncMock()),
+    ],
+    ids=["record-failed", "lookup-failed"],
+)
+async def test_a_russian_billing_country_that_cannot_be_recorded_fails_the_webhook(
+    monkeypatch, lookup, record
+):
+    """Stripe then retries the event, rather than the webhook queueing a
+    trial notice whose MailerLite change nothing would stop."""
+    schedule = MagicMock()
+    monkeypatch.setattr(checkout_audience, "record_excluded_country", record)
+    monkeypatch.setattr(checkout_audience, "schedule_checkout_opened", schedule)
+    users = (
+        MagicMock(find_first=AsyncMock(side_effect=lookup))
+        if isinstance(lookup, Exception)
+        else _user_prisma(lookup)
+    )
+    with (
+        patch("prisma.models.User.prisma", return_value=users),
+        pytest.raises(RuntimeError),
+    ):
+        await checkout_audience.record_checkout_completed(_BILLED_TO_RUSSIA)
+    schedule.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_a_completed_checkout_sends_its_billing_country(monkeypatch):
     schedule = MagicMock()

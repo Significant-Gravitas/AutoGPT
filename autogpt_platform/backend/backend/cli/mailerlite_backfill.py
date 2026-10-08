@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from backend.notifications.mailerlite_field_backfill import FieldPlan, Person
 
 _ACCOUNT_PAGE = 5000
+_SKIPPED_SINCE_PLAN = "opted out or seen in Iran or Russia since the plan (skipped)"
 
 
 @click.command(name="mailerlite-backfill")
@@ -126,6 +127,7 @@ async def _run(
     *, apply: bool, yes: bool, fields_only: bool, groups_only: bool = False
 ) -> None:
     from backend.data.db import connect, disconnect
+    from backend.data.user import is_marketing_opted_out
     from backend.notifications import mailerlite, mailerlite_backfill
     from backend.notifications import mailerlite_field_backfill as field_backfill
     from backend.notifications.mailerlite import MailerLiteNotConfigured
@@ -168,17 +170,30 @@ async def _run(
             f"\nWrite {due} group changes and {len(fields.changes)} field updates?",
             abort=True,
         )
-    if due and audience is not None:
-        result = await mailerlite_backfill.apply(changes, audience)
-        for decision in CHANGES:
-            click.echo(
-                f"{decision.value}: {result.succeeded[decision]} ok, "
-                f"{result.failed[decision]} failed"
+    # Connected again for the writes: each is checked against the account as
+    # it is now, since the plan is older (`consent.KeptOut`).
+    await connect()
+    try:
+        if due and audience is not None:
+            result = await mailerlite_backfill.apply(
+                changes, audience, kept_out=is_marketing_opted_out
             )
-    if fields.changes:
-        await mailerlite.ensure_fields()
-        ok, failed = await field_backfill.apply(fields.changes, _progress)
-        click.echo(f"fields: {ok} ok, {failed} failed")
+            for decision in CHANGES:
+                click.echo(
+                    f"{decision.value}: {result.succeeded[decision]} ok, "
+                    f"{result.failed[decision]} failed"
+                )
+            click.echo(f"{_SKIPPED_SINCE_PLAN}: {result.skipped}")
+        if fields.changes:
+            await mailerlite.ensure_fields()
+            ok, failed, skipped = await field_backfill.apply(
+                fields.changes, _progress, kept_out=is_marketing_opted_out
+            )
+            click.echo(
+                f"fields: {ok} ok, {failed} failed, {skipped} {_SKIPPED_SINCE_PLAN}"
+            )
+    finally:
+        await disconnect()
 
 
 async def _stripe_subscriptions() -> "dict[str, list[Subscription]]":
@@ -199,10 +214,15 @@ async def _stripe_subscriptions() -> "dict[str, list[Subscription]]":
 
 
 async def stripe_billing_countries() -> dict[str, str]:
-    """Every Stripe customer's billing address country, by customer ID."""
+    """Every Stripe customer's billing country, by customer ID: the
+    Customer's address, else one a Checkout Session collected. Checkouts
+    from before they set `customer_update` never copied the address onto
+    the Customer. An Iranian or Russian country from any of them wins, so
+    the exclusion sees it (`consent.py`)."""
     import stripe
 
     from backend.data.stripe_client import stripe_call, stripe_list_items
+    from backend.notifications.audience_enrichment import billing_country
     from backend.util.settings import Settings
 
     stripe.api_key = Settings().secrets.stripe_api_key
@@ -210,9 +230,27 @@ async def stripe_billing_countries() -> dict[str, str]:
     page = await stripe_call(stripe.Customer.list_async, limit=100)
     async for customer in stripe_list_items(page):
         country = (customer.get("address") or {}).get("country")
-        if country:
-            countries[customer.id] = str(country)
+        _keep_country(countries, customer.id, country)
+    page = await stripe_call(stripe.checkout.Session.list_async, limit=100)
+    async for session in stripe_list_items(page):
+        customer = session.get("customer")
+        if isinstance(customer, str):
+            _keep_country(countries, customer, billing_country(session))
     return countries
+
+
+def _keep_country(
+    countries: dict[str, str], customer_id: str, country: str | None
+) -> None:
+    """Hold `country` for the customer unless it already has one, or the one
+    it has is not excluded and this one is."""
+    from backend.notifications.audience_enrichment import excluded_country
+
+    if not country:
+        return
+    held = countries.get(customer_id)
+    if held is None or (excluded_country((country,)) and not excluded_country((held,))):
+        countries[customer_id] = str(country)
 
 
 def _subscription(sub) -> "Subscription":
@@ -371,6 +409,7 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
 
     from backend.data.db import connect, disconnect
     from backend.data.stripe_client import stripe_call, stripe_list_items
+    from backend.data.user import is_marketing_opted_out
     from backend.notifications import checkout_backfill, mailerlite
     from backend.notifications import mailerlite_field_backfill as field_backfill
     from backend.notifications.mailerlite import MailerLiteNotConfigured
@@ -439,9 +478,19 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
         )
     await mailerlite.ensure_fields()
     converted = {s.id for p in people for s in p.subscriptions if s.converted}
-    ok, failed, skipped = await checkout_backfill.apply(
-        plan.changes, group_id, _checkout_progress, refresh=_refresher(converted)
-    )
+    # Connected again for the writes: each opener is checked against the
+    # account as it is now, since the plan is older (`consent.KeptOut`).
+    await connect()
+    try:
+        ok, failed, skipped = await checkout_backfill.apply(
+            plan.changes,
+            group_id,
+            _checkout_progress,
+            refresh=_refresher(converted),
+            kept_out=is_marketing_opted_out,
+        )
+    finally:
+        await disconnect()
     _finish_checkout(ok, failed, skipped)
 
 
@@ -450,7 +499,8 @@ def _finish_checkout(ok: int, failed: int, skipped: int) -> None:
     on past each failure, but a Job or script must not read a partial run as
     done. A rerun retries only what is left."""
     click.echo(
-        f"checkout openers: {ok} ok, {failed} failed, {skipped} already up to date"
+        f"checkout openers: {ok} ok, {failed} failed, {skipped} already up to "
+        "date or no longer to be written"
     )
     if failed:
         raise click.ClickException(

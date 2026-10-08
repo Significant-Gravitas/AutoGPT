@@ -55,6 +55,7 @@ def onboarding_role_backfill_command(apply: bool, yes: bool):
 async def _run(*, apply: bool, yes: bool) -> None:
     from backend.cli.mailerlite_backfill import stripe_billing_countries
     from backend.data.db import connect, disconnect
+    from backend.data.user import is_marketing_opted_out
     from backend.notifications import mailerlite
     from backend.notifications import mailerlite_field_backfill as field_backfill
     from backend.notifications import role_backfill
@@ -96,7 +97,15 @@ async def _run(*, apply: bool, yes: bool) -> None:
     click.echo(f"PostHog: {len(plan.posthog)} sent")
     if plan.mailerlite:
         await mailerlite.ensure_fields()
-        ok, failed, skipped = await role_backfill.apply(plan.mailerlite, _progress)
+        # Connected again for the writes: each subscriber is checked against
+        # the account as it is now, since the plan is older.
+        await connect()
+        try:
+            ok, failed, skipped = await role_backfill.apply(
+                plan.mailerlite, _progress, kept_out=is_marketing_opted_out
+            )
+        finally:
+            await disconnect()
         _finish(ok, failed, skipped)
 
 
@@ -152,7 +161,10 @@ def _finish(ok: int, failed: int, skipped: int) -> None:
     """Report the run, and fail it when anyone was not written, so a Job or
     script never reads a partial run as done. A rerun retries only what is
     left."""
-    click.echo(f"MailerLite: {ok} ok, {failed} failed, {skipped} no longer needed")
+    click.echo(
+        f"MailerLite: {ok} ok, {failed} failed, {skipped} no longer needed or "
+        "no longer to be written"
+    )
     if failed:
         raise click.ClickException(
             f"{failed} MailerLite subscribers were not written (the log says "

@@ -174,3 +174,22 @@ async def test_posthog_must_be_configured(monkeypatch):
     monkeypatch.setattr(role_backfill, "get_posthog_client", lambda: None)
     with pytest.raises(RuntimeError, match="PostHog is not configured"):
         await role_backfill.send_to_posthog([_assignment()])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kept_out, outcome",
+    [
+        (AsyncMock(return_value=True), (0, 0, 1)),
+        (AsyncMock(side_effect=RuntimeError("db down")), (0, 1, 0)),
+    ],
+    ids=["kept-out-since-the-plan", "unreadable"],
+)
+async def test_an_account_checked_out_before_the_write_is_never_written(
+    mailerlite, kept_out, outcome
+):
+    client, lookup = mailerlite
+    assert await role_backfill.apply([_assignment()], kept_out=kept_out) == outcome
+    kept_out.assert_awaited_once_with("u-1")
+    lookup.assert_not_awaited()
+    client.put.assert_not_awaited()

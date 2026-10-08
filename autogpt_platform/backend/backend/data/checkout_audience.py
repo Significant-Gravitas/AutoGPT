@@ -98,8 +98,14 @@ async def record_checkout_completed(session: dict) -> None:
     signal, which also catches a German or Austrian buyer whose IP and
     timezone did not say so. An Iranian or Russian one is recorded before
     this returns, so the webhook runs it before queueing the trial notice,
-    whose MailerLite change can only be stopped by that record. Never raises:
-    the webhook must not fail on it."""
+    whose MailerLite change can only be stopped by that record.
+
+    So it raises when such a country could not be recorded: the webhook fails
+    and Stripe retries it, rather than queue the trial notice anyway. Any
+    other failure is logged: the webhook must not fail on MailerLite
+    bookkeeping."""
+    country = billing_country(session)
+    excluded = excluded_country((country,))
     try:
         customer = session.get("customer")
         customer_id = customer if isinstance(customer, str) else None
@@ -111,12 +117,14 @@ async def record_checkout_completed(session: dict) -> None:
         if user is None:
             # An organization's customer, or one whose account is gone.
             return
-        country = billing_country(session)
-        await _record_excluded_country(user.id, (country,))
+        if excluded:
+            await record_excluded_country(user.id, excluded)
         schedule_checkout_opened(
             user.id, stripe_country=country, opened_at=session.get("created")
         )
     except Exception:
+        if excluded:
+            raise
         logger.exception("Could not record the MailerLite checkout completion")
 
 
