@@ -432,11 +432,15 @@ async def consume_authorization_code(
         ):
             raise InvalidGrantError("PKCE verification failed")
 
-    # Mark code as used
-    await PrismaOAuthAuthorizationCode.prisma().update(
-        where={"code": code},
+    # Atomically claim the code. The usedAt check above is a fast path on a
+    # stale read; two concurrent redeems can both pass it, so the write itself
+    # must only succeed for the request that flips usedAt from NULL.
+    claimed = await PrismaOAuthAuthorizationCode.prisma().update_many(
+        where={"code": code, "applicationId": application_id, "usedAt": None},
         data={"usedAt": now},
     )
+    if claimed == 0:
+        raise InvalidGrantError("authorization code already used")
 
     return auth_code.userId, [APIPermission(s) for s in auth_code.scopes]
 

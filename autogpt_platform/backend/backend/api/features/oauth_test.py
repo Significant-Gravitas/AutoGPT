@@ -632,6 +632,49 @@ async def test_authorization_code_cannot_be_reused(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_authorization_code_concurrent_redeem_succeeds_once(
+    test_user: str,
+    test_oauth_app: dict,
+):
+    """Two concurrent redeems of one code must not both succeed (#15287).
+
+    The check-then-write in consume_authorization_code let both callers read
+    usedAt=NULL and both mint tokens. Runs against the real DB.
+    """
+    from prisma.enums import APIKeyPermission as APIPermission
+
+    from backend.data.auth.oauth import (
+        InvalidGrantError,
+        consume_authorization_code,
+        create_authorization_code,
+    )
+
+    for _ in range(20):
+        code_info = await create_authorization_code(
+            application_id=test_oauth_app["id"],
+            user_id=test_user,
+            scopes=[APIPermission.EXECUTE_GRAPH],
+            redirect_uri=test_oauth_app["redirect_uri"],
+        )
+        results = await asyncio.gather(
+            *(
+                consume_authorization_code(
+                    code=code_info.code,
+                    application_id=test_oauth_app["id"],
+                    redirect_uri=test_oauth_app["redirect_uri"],
+                )
+                for _ in range(2)
+            ),
+            return_exceptions=True,
+        )
+        successes = [r for r in results if isinstance(r, tuple)]
+        failures = [r for r in results if isinstance(r, InvalidGrantError)]
+        assert len(successes) == 1, results
+        assert len(failures) == 1, results
+        assert successes[0][0] == test_user
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_token_exchange_with_invalid_client_secret(
     client: httpx.AsyncClient,
     test_user: str,
