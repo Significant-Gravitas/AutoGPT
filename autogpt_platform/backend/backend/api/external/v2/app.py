@@ -11,7 +11,7 @@ from backend.api.utils.openapi import sort_openapi
 
 from .errors import add_v2_exception_handlers
 from .global_rate_limit import GlobalRateLimitMiddleware
-from .mcp_server import create_mcp_app
+from .mcp_server import mcp_mount
 from .routes import v2_router
 
 DESCRIPTION = """
@@ -122,8 +122,9 @@ v2_app.include_router(v2_router)
 # so we must register them here for the v2 API specifically.
 add_v2_exception_handlers(v2_app)
 
-# Mount MCP server (Copilot tools via Streamable HTTP)
-v2_app.mount("/mcp", create_mcp_app())
+# MCP server (Copilot tools via Streamable HTTP). The platform app's lifespan
+# runs it; see `MCPMount`.
+v2_app.mount("/mcp", mcp_mount)
 
 # Sort OpenAPI schema to eliminate diff on refactors
 sort_openapi(v2_app)
