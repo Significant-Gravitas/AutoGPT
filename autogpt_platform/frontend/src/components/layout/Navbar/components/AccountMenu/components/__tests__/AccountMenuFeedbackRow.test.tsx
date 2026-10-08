@@ -18,15 +18,16 @@ vi.mock("@/components/ui/sidebar", () => ({
   useOptionalSidebar: () => mockSidebar.current,
 }));
 
-vi.mock("@/lib/auth/actions", () => ({
-  getCurrentUser: vi
-    .fn()
-    .mockResolvedValue({ user: { email: "user@example.com" } }),
+const mockAuth = vi.hoisted(() => ({
+  getCurrentUser: vi.fn(),
 }));
 
-vi.mock("@sentry/nextjs", () => ({
-  getReplay: vi.fn(() => ({ getReplayId: () => "replay-123" })),
+const mockSentry = vi.hoisted(() => ({
+  getReplay: vi.fn(),
 }));
+
+vi.mock("@/lib/auth/actions", () => mockAuth);
+vi.mock("@sentry/nextjs", () => mockSentry);
 
 async function renderRow() {
   render(<AccountMenuFeedbackRow />);
@@ -37,6 +38,11 @@ async function renderRow() {
 describe("AccountMenuFeedbackRow", () => {
   beforeEach(() => {
     mockSidebar.current = null;
+    mockAuth.getCurrentUser.mockResolvedValue({
+      user: { email: "user@example.com" },
+    });
+    mockSentry.getReplay.mockReturnValue({ getReplayId: () => "replay-123" });
+    window.history.replaceState({}, "", "/library?sort=updatedAt");
   });
 
   test("renders a Give feedback button wired to the Tally feedback form", async () => {
@@ -49,7 +55,21 @@ describe("AccountMenuFeedbackRow", () => {
     expect(button.getAttribute("data-sentry-replay-url")).toBe(
       "https://significant-gravitas.sentry.io/replays/replay-123/",
     );
+    expect(button.getAttribute("data-page-url")).toBe(
+      `${window.location.origin}/library`,
+    );
     expect(button.getAttribute("data-is-authenticated")).toBe("true");
+  });
+
+  test("marks values that are not known yet", async () => {
+    mockSentry.getReplay.mockReturnValue(undefined);
+    mockAuth.getCurrentUser.mockReturnValue(new Promise(() => {}));
+    const button = await renderRow();
+
+    expect(button.getAttribute("data-sentry-replay-id")).toBe(
+      "not-initialized",
+    );
+    expect(button.getAttribute("data-is-authenticated")).toBe("unknown");
   });
 
   test("closes the mobile sidebar sheet so the Tally popup is usable", async () => {

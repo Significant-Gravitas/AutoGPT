@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { useTallyPopup } from "@/components/molecules/TallyPoup/useTallyPopup";
+import { useTallyContext } from "@/components/molecules/TallyPoup/useTallyPopup";
 import { useOptionalSidebar } from "@/components/ui/sidebar";
 import { HelpCircleIcon } from "@hugeicons/core-free-icons";
 
@@ -11,7 +11,7 @@ const rowClasses =
   "group relative flex w-full items-center gap-3 rounded-lg py-2 pl-3 pr-2 text-left text-sm font-normal text-neutral-700 outline-none transition-colors duration-200 ease-out hover:bg-neutral-100 focus-visible:bg-neutral-100 focus-visible:outline-none";
 
 export function AccountMenuFeedbackRow() {
-  const { state } = useTallyPopup();
+  const tally = useTallyContext();
   const sidebar = useOptionalSidebar();
 
   function handleClick() {
@@ -23,19 +23,18 @@ export function AccountMenuFeedbackRow() {
       type="button"
       className={rowClasses}
       onClick={handleClick}
-      data-testid="account-menu-feedback-trigger"
       data-tally-open={FEEDBACK_TALLY_FORM_ID}
       data-tally-emoji-text="👋"
       data-tally-emoji-animation="wave"
-      data-sentry-replay-id={state.sentryReplayId || "not-initialized"}
-      data-sentry-replay-url={state.replayUrl || "not-initialized"}
+      data-sentry-replay-id={tally.sentryReplayId || "not-initialized"}
+      data-sentry-replay-url={tally.replayUrl || "not-initialized"}
       data-page-url={
-        state.pageUrl ? state.pageUrl.split("?")[0] : "not-initialized"
+        tally.pageUrl ? tally.pageUrl.split("?")[0] : "not-initialized"
       }
       data-is-authenticated={
-        state.isAuthenticated === null
+        tally.isAuthenticated === null
           ? "unknown"
-          : String(state.isAuthenticated)
+          : String(tally.isAuthenticated)
       }
     >
       <span

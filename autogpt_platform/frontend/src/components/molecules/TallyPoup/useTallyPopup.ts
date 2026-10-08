@@ -3,8 +3,7 @@ import { useEffect, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { getCurrentUser } from "@/lib/auth/actions";
 
-export function useTallyPopup() {
-  const [isFormVisible, setIsFormVisible] = useState(false);
+export function useTallyContext() {
   const [sentryReplayId, setSentryReplayId] = useState("");
   const [replayUrl, setReplayUrl] = useState("");
   const [pageUrl, setPageUrl] = useState("");
@@ -40,6 +39,20 @@ export function useTallyPopup() {
       setUserEmail(user?.email || "");
     });
   }, [pathname]);
+
+  return {
+    sentryReplayId,
+    replayUrl,
+    pageUrl,
+    userAgent,
+    isAuthenticated,
+    userEmail,
+  };
+}
+
+export function useTallyPopup() {
+  const context = useTallyContext();
+  const [isFormVisible, setIsFormVisible] = useState(false);
 
   useEffect(() => {
     // Load Tally script
@@ -99,13 +112,8 @@ export function useTallyPopup() {
 
   return {
     state: {
-      sentryReplayId,
-      replayUrl,
-      pageUrl,
-      userAgent,
-      isAuthenticated,
+      ...context,
       isFormVisible,
-      userEmail,
     },
     handlers: {},
   };

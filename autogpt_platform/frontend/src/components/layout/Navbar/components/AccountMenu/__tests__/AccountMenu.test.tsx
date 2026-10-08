@@ -203,11 +203,27 @@ describe("AccountMenu", () => {
     );
 
     const activity = screen.getByTestId("account-menu-activity-trigger");
-    const feedback = screen.getByTestId("account-menu-feedback-trigger");
+    const feedback = screen.getByRole("button", { name: "Give feedback" });
 
     expect(feedback.getAttribute("data-tally-open")).toBe("3yx2L0");
     expect(activity.closest("li")?.nextElementSibling).toBe(
       feedback.closest("li"),
+    );
+  });
+
+  test("new layout gives feedback without loading another Tally script", () => {
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+        newLayout
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Give feedback" })).toBeDefined();
+    expect(document.querySelectorAll('script[src*="tally.so"]')).toHaveLength(
+      0,
     );
   });
 
@@ -222,6 +238,6 @@ describe("AccountMenu", () => {
 
     expect(screen.queryByTestId("account-menu-org-trigger")).toBeNull();
     expect(screen.queryByTestId("account-menu-activity-trigger")).toBeNull();
-    expect(screen.queryByTestId("account-menu-feedback-trigger")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Give feedback" })).toBeNull();
   });
 });
