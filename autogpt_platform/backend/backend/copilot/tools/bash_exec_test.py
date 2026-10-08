@@ -2,7 +2,9 @@
 
 import asyncio
 import itertools
+import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -934,6 +936,39 @@ def test_kill_tree_script_holds_while_other_processes_exit():
     finally:
         churn.kill()
         churn.wait(timeout=10)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="reads /proc")
+def test_kill_tree_script_kills_children_forked_while_it_stops_them():
+    # A child forked between a listing and its STOP outlived a single pass; the
+    # outer shell's `; :` keeps the forking loop a child rather than p itself.
+    shell = subprocess.Popen(
+        ["bash", "-c", 'bash -c "while :; do sleep 30 & sleep 0.005; done"; :'],
+        start_new_session=True,
+    )
+    try:
+        time.sleep(0.3)
+        subprocess.run(
+            ["bash", "-c", _KILL_TREE_SCRIPT.replace("__PID__", str(shell.pid))],
+            check=True,
+            timeout=10,
+        )
+        assert [p for p in _session(shell.pid) if p != shell.pid and _alive(p)] == []
+    finally:
+        os.killpg(shell.pid, signal.SIGKILL)
+        shell.wait(timeout=10)
+
+
+def _session(sid: int) -> list[int]:
+    found = []
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            fields = stat.read_text().rsplit(") ", 1)[1].split()
+        except (OSError, IndexError):
+            continue
+        if int(fields[3]) == sid:
+            found.append(int(stat.parent.name))
+    return found
 
 
 def _kill_tree_of_sleep_then_echo() -> None:

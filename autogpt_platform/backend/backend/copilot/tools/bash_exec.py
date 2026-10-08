@@ -80,7 +80,8 @@ _HUNG_CAP_MARGIN_SECONDS = 120
 # /proc is read through cat because awk aborts on an input file that vanished
 # after the glob expanded, which any process exiting meanwhile causes, and the
 # listing would then come back empty. A child can fork between a listing and
-# its STOP, so the stopping repeats until the listing holds still.
+# its STOP, so the stopping repeats until the listing holds still; if it never
+# does, whatever forked after the last listing may survive, so that exits 1 too.
 _KILL_TREE_SCRIPT = r"""
 p=__PID__
 kill -STOP "$p" 2>/dev/null || exit 0
@@ -94,12 +95,13 @@ under() {
                         q[++n] = k; if (state[k] != "Z") print k } } }
   ' | sort -n
 }
-kids=
+kids= settled=
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  now=$(under); [ "$now" = "$kids" ] && break
+  now=$(under); [ "$now" = "$kids" ] && settled=1 && break
   kids=$now; [ -n "$kids" ] && kill -STOP $kids 2>/dev/null
 done
 [ -n "$kids" ] && kill -KILL $kids 2>/dev/null
+[ -n "$settled" ] || exit 1
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   [ -z "$(under)" ] && exit 0
   sleep 0.1
