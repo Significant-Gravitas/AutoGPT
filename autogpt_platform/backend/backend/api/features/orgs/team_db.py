@@ -2,8 +2,10 @@
 
 import logging
 
+from prisma.errors import UniqueViolationError
+
 from backend.data.db import prisma
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import ConflictError, NotFoundError
 
 from .team_model import TeamMemberResponse, TeamResponse
 
@@ -136,6 +138,13 @@ async def leave_team(ws_id: str, user_id: str) -> None:
     if ws.isDefault:
         raise ValueError("Cannot leave the default workspace")
 
+    await _assert_not_last_admin(
+        ws_id,
+        user_id,
+        "The last workspace admin cannot leave. "
+        "Promote another member to admin first.",
+    )
+
     await prisma.teammember.delete_many(where={"teamId": ws_id, "userId": user_id})
 
 
@@ -177,17 +186,30 @@ async def add_team_member(
     if org_member is None:
         raise ValueError(f"User {user_id} is not a member of the organization")
 
-    member = await prisma.teammember.create(
-        data={
-            "teamId": ws_id,
-            "userId": user_id,
-            "isAdmin": is_admin,
-            "isBillingManager": is_billing_manager,
-            "status": "ACTIVE",
-            "invitedByUserId": invited_by,
-        },
-        include={"User": True},
+    already_member = ConflictError(
+        f"User {user_id} is already a member of workspace {ws_id}"
     )
+    existing = await prisma.teammember.find_unique(
+        where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
+    )
+    if existing:
+        raise already_member
+
+    try:
+        member = await prisma.teammember.create(
+            data={
+                "teamId": ws_id,
+                "userId": user_id,
+                "isAdmin": is_admin,
+                "isBillingManager": is_billing_manager,
+                "status": "ACTIVE",
+                "invitedByUserId": invited_by,
+            },
+            include={"User": True},
+        )
+    except UniqueViolationError as e:
+        # Lost a race with a concurrent add of the same user.
+        raise already_member from e
     return TeamMemberResponse.from_db(member)
 
 
@@ -198,6 +220,20 @@ async def update_team_member(
     is_billing_manager: bool | None,
 ) -> TeamMemberResponse:
     """Update a workspace member's role flags."""
+    member = await prisma.teammember.find_unique(
+        where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
+    )
+    if member is None:
+        raise NotFoundError(f"User {user_id} is not a member of workspace {ws_id}")
+
+    if is_admin is False and member.isAdmin:
+        await _assert_not_last_admin(
+            ws_id,
+            user_id,
+            "Cannot demote the last workspace admin. "
+            "Promote another member to admin first.",
+        )
+
     update_data: dict = {}
     if is_admin is not None:
         update_data["isAdmin"] = is_admin
@@ -211,7 +247,12 @@ async def update_team_member(
         )
 
     members = await list_team_members(ws_id)
-    return next(m for m in members if m.user_id == user_id)
+    updated = next((m for m in members if m.user_id == user_id), None)
+    if updated is None:
+        raise NotFoundError(
+            f"User {user_id} is not an active member of workspace {ws_id}"
+        )
+    return updated
 
 
 async def remove_team_member(ws_id: str, user_id: str) -> None:
@@ -219,7 +260,24 @@ async def remove_team_member(ws_id: str, user_id: str) -> None:
 
     Guards against removing the last admin — workspace would become unmanageable.
     """
-    # Check if this would remove the last admin
+    await _assert_not_last_admin(
+        ws_id,
+        user_id,
+        "Cannot remove the last workspace admin. "
+        "Promote another member to admin first.",
+    )
+
+    await prisma.teammember.delete(
+        where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
+    )
+
+
+async def _assert_not_last_admin(ws_id: str, user_id: str, message: str) -> None:
+    """Raise ValueError (400) if ``user_id`` is the workspace's only admin.
+
+    Shared by remove, leave and demote so none of them can leave a workspace
+    with members but no admin.
+    """
     member = await prisma.teammember.find_unique(
         where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
     )
@@ -228,11 +286,4 @@ async def remove_team_member(ws_id: str, user_id: str) -> None:
             where={"teamId": ws_id, "isAdmin": True, "status": "ACTIVE"}
         )
         if admin_count <= 1:
-            raise ValueError(
-                "Cannot remove the last workspace admin. "
-                "Promote another member to admin first."
-            )
-
-    await prisma.teammember.delete(
-        where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
-    )
+            raise ValueError(message)
