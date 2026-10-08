@@ -163,3 +163,44 @@ async def test_skip_columns_without_header_uses_the_same_indices():
     rows = await read_rows(contents="1,2,3", has_header=False, skip_columns=["0", "2"])
 
     assert rows == [{"1": "2"}]
+
+
+# --- #15269: StopIteration / IndexError on short or ragged CSVs ------------
+
+
+@pytest.mark.asyncio
+async def test_skip_rows_past_the_end_yields_no_rows():
+    rows = await read_rows(contents="a,b\n1,2", skip_rows=5)
+
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_header_only_blank_input_yields_no_rows():
+    rows = await read_rows(contents="\n")
+
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_row_longer_than_header_keeps_extra_values():
+    rows = await read_rows(contents="a,b\n1,2,3\n4,5")
+
+    assert rows == [{"a": "1", "b": "2", "column_3": "3"}, {"a": "4", "b": "5"}]
+
+
+# --- #15270: duplicate headers overwrite, blank lines become {} -----------
+
+
+@pytest.mark.asyncio
+async def test_duplicate_and_blank_header_names_do_not_overwrite():
+    rows = await read_rows(contents="a,a,,a\n1,2,3,4")
+
+    assert rows == [{"a": "1", "a_2": "2", "column_3": "3", "a_3": "4"}]
+
+
+@pytest.mark.asyncio
+async def test_blank_lines_are_not_rows():
+    rows = await read_rows(contents="a,b\n1,2\n\n3,4\n")
+
+    assert rows == [{"a": "1", "b": "2"}, {"a": "3", "b": "4"}]
