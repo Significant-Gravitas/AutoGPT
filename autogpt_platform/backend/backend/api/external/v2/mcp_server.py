@@ -20,6 +20,7 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.server import Context
 from mcp.server.fastmcp.tools.base import Tool as MCPTool
 from mcp.server.fastmcp.utilities.func_metadata import ArgModelBase, FuncMetadata
@@ -297,7 +298,11 @@ def _create_tool_handler(
         for block in result.get("content", []):
             if block.get("type") == "text":
                 parts.append(block["text"])
-        return "\n".join(parts) if parts else ""
+        text = "\n".join(parts)
+        # A refusal or failure must reach the client as one, not as a result.
+        if result.get("isError"):
+            raise ToolError(text)
+        return text
 
     return handler
 
