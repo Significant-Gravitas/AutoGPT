@@ -376,13 +376,23 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
 
     turn_id = str(uuid4())
 
-    await stream_registry.create_session(
+    registered = await stream_registry.create_session(
         session_id=session_id,
         user_id=owner_user_id,
         tool_call_id=CHAT_TOOL_CALL_ID,
         tool_name=CHAT_TOOL_NAME,
         turn_id=turn_id,
     )
+    if registered.turn_id != turn_id:
+        # A turn of this session is still running; enqueueing another would
+        # start one whose stream nobody follows. The message is saved, so the
+        # next turn reads it.
+        logger.info(
+            "Bot message for session %s arrived while turn %s runs",
+            session_id,
+            registered.turn_id,
+        )
+        raise DuplicateChatMessageError("A reply is already in progress.")
 
     org_id, team_id = await orgs_db().get_user_default_team(owner_user_id)
     await enqueue_copilot_turn(

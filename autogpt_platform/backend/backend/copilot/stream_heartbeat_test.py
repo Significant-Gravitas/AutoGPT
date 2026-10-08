@@ -15,6 +15,7 @@ import pytest_asyncio
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamFinish,
+    StreamHeartbeat,
     StreamStatus,
     StreamTextDelta,
 )
@@ -313,3 +314,58 @@ async def test_wrap_underlying_stream_closed_on_early_consumer_exit():
     await gen.aclose()  # exit early
     await asyncio.sleep(0.05)  # let cleanup propagate
     assert closed, "Underlying stream was not closed on early consumer exit"
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_runs_on_a_fixed_cadence_past_the_last_tier():
+    """The tiers fire once per silent gap; the heartbeat keeps going for the
+    whole turn, so the turn's TTLs stay refreshed however long it is silent."""
+    now = 0.0
+
+    def clock() -> float:
+        return now
+
+    statuses: list[float] = []
+    heartbeats: list[float] = []
+
+    async def emit_status(_status: StreamStatus) -> None:
+        statuses.append(now)
+
+    async def emit_heartbeat(_heartbeat: StreamHeartbeat) -> None:
+        heartbeats.append(now)
+
+    async with SilenceWatchdog(
+        emit_status=emit_status,
+        emit_heartbeat=emit_heartbeat,
+        schedule=[(5.0, "Working on it…")],
+        suppression_window_s=0.0,
+        heartbeat_interval_s=10.0,
+        tick_s=0.001,
+        clock=clock,
+    ):
+        while now < 100.0:
+            now += 1.0
+            await asyncio.sleep(0.005)
+
+    assert len(statuses) == 1
+    assert heartbeats[:3] == [10.0, 20.0, 30.0]
+    assert max(b - a for a, b in zip([0.0, *heartbeats], heartbeats)) <= 11.0
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_does_not_reset_the_silence_tiers():
+    """A heartbeat is transport, not activity: the tiers still escalate."""
+    events = [(0.0, StreamTextDelta(id="t1", delta="a")), (0.25, StreamFinish())]
+    received = []
+    async for event in wrap_stream_with_heartbeat(
+        _delayed_stream(events),
+        schedule=[(0.05, "Working on it…"), (0.12, "Still working…")],
+        tick_s=0.01,
+        suppression_window_s=0.0,
+        heartbeat_interval_s=0.02,
+    ):
+        received.append(event)
+
+    messages = [e.message for e in received if isinstance(e, StreamStatus)]
+    assert messages == ["Working on it…", "Still working…"]
+    assert any(isinstance(e, StreamHeartbeat) for e in received)

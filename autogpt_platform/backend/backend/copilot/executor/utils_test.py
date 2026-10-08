@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import stream_registry
+from backend.copilot.active_turns import TurnAlreadyRunning
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.executor import utils
 from backend.copilot.executor.utils import (
@@ -363,3 +365,56 @@ class TestNarrowPermissions:
         assert merged is not None
         assert merged.tools_exclude is False
         assert merged.effective_allowed_tools(ALL_TOOL_NAMES) == {"read_workspace_file"}
+
+
+@pytest.mark.asyncio
+async def test_dispatch_turn_refuses_a_session_whose_turn_is_running() -> None:
+    """The registry kept the running turn's meta: nothing is enqueued, the
+    slot is not kept, and the rollback leaves that turn's meta alone."""
+    slot = MagicMock()
+    enqueue = AsyncMock()
+    delete_meta = AsyncMock()
+    with (
+        patch.object(utils, "admit_turn", new=AsyncMock()),
+        patch.object(utils, "release_turn", new=AsyncMock()),
+        patch.object(utils, "enqueue_copilot_turn", new=enqueue),
+        patch.object(
+            stream_registry,
+            "create_session",
+            new=AsyncMock(return_value=MagicMock(turn_id="running")),
+        ),
+        patch.object(stream_registry, "delete_session_meta", new=delete_meta),
+    ):
+        with pytest.raises(TurnAlreadyRunning):
+            await utils.dispatch_turn(
+                slot, session_id="s1", user_id="u1", turn_id="new", message="hi"
+            )
+
+    enqueue.assert_not_awaited()
+    slot.keep.assert_not_called()
+    delete_meta.assert_awaited_once_with("s1", "new")
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_follows_the_running_turn_when_refused() -> None:
+    slot = MagicMock(admitted=False)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch("backend.copilot.model.append_and_save_message", new=AsyncMock()),
+        patch("backend.copilot.tracking.track_user_message", new=MagicMock()),
+        patch.object(
+            utils,
+            "dispatch_turn",
+            new=AsyncMock(side_effect=TurnAlreadyRunning("s1", "running")),
+        ),
+    ):
+        turn_id = await utils.schedule_chat_turn(
+            session_id="s1", user_id="u1", message="hello"
+        )
+
+    assert turn_id is None

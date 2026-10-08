@@ -29,6 +29,11 @@ def _request(**overrides) -> BotChatRequest:
     return BotChatRequest(**defaults)
 
 
+def _registers_the_turn() -> AsyncMock:
+    """``create_session`` registering the turn it was given."""
+    return AsyncMock(side_effect=lambda **kwargs: MagicMock(turn_id=kwargs["turn_id"]))
+
+
 class TestStartChatTurn:
     @pytest.fixture(autouse=True)
     def _mock_org_lookup(self):
@@ -90,7 +95,7 @@ class TestStartChatTurn:
                 new=AsyncMock(),
             ) as mock_enqueue,
         ):
-            mock_stream_registry.create_session = AsyncMock()
+            mock_stream_registry.create_session = _registers_the_turn()
 
             with pytest.raises(DuplicateChatMessageError):
                 await start_chat_turn(_request())
@@ -126,7 +131,7 @@ class TestStartChatTurn:
                 new=AsyncMock(),
             ) as mock_enqueue,
         ):
-            mock_stream_registry.create_session = AsyncMock()
+            mock_stream_registry.create_session = _registers_the_turn()
             handle = await start_chat_turn(_request())
 
         assert handle.session_id == "sess-new"
@@ -176,11 +181,46 @@ class TestStartChatTurn:
                 new=AsyncMock(),
             ),
         ):
-            mock_stream_registry.create_session = AsyncMock()
+            mock_stream_registry.create_session = _registers_the_turn()
             handle = await start_chat_turn(_request(session_id="deleted-session"))
 
         assert handle.session_id == "sess-fresh"
         mock_create.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_message_while_a_turn_runs_starts_no_turn(self):
+        db_mock = MagicMock()
+        db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
+        session = MagicMock(session_id="sess-busy")
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.get_chat_session",
+                new=AsyncMock(return_value=session),
+            ),
+            patch(
+                "backend.platform_linking.chat.append_and_save_message",
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "backend.platform_linking.chat.stream_registry"
+            ) as mock_stream_registry,
+            patch(
+                "backend.platform_linking.chat.enqueue_copilot_turn",
+                new=AsyncMock(),
+            ) as mock_enqueue,
+        ):
+            # The registry keeps the running turn's meta and returns it.
+            mock_stream_registry.create_session = AsyncMock(
+                return_value=MagicMock(turn_id="the-running-turn")
+            )
+            with pytest.raises(DuplicateChatMessageError):
+                await start_chat_turn(_request(session_id="sess-busy"))
+
+        mock_enqueue.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_attachment_turn_with_missing_session_raises(self):
@@ -251,7 +291,7 @@ class TestStartChatTurn:
                 new=mock_enqueue,
             ),
         ):
-            mock_stream_registry.create_session = AsyncMock()
+            mock_stream_registry.create_session = _registers_the_turn()
             handle = await start_chat_turn(
                 _request(
                     platform_server_id="guild-1",
@@ -350,7 +390,7 @@ class TestStartChatTurn:
                 new=mock_enqueue,
             ),
         ):
-            mock_stream_registry.create_session = AsyncMock()
+            mock_stream_registry.create_session = _registers_the_turn()
             handle = await start_chat_turn(_request(session_id="expert-session"))
 
         assert handle.session_id == "expert-session"

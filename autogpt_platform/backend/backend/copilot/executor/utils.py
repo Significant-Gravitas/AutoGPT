@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from backend.copilot.active_turns import (
     ConcurrentTurnLimitError,
+    TurnAlreadyRunning,
     TurnSlot,
     acquire_turn_slot,
     get_inflight_turn_limit,
@@ -604,13 +605,17 @@ async def dispatch_turn(
         # tree's node count, so anything that can raise between there and the
         # finally must be covered by ``release_turn``.
         permissions = _narrow_permissions(permissions, envelope)
-        await stream_registry.create_session(
+        registered = await stream_registry.create_session(
             session_id=session_id,
             user_id=user_id,
             tool_call_id=tool_call_id,
             tool_name=tool_name,
             turn_id=turn_id,
         )
+        if registered.turn_id != turn_id:
+            # Another turn of this session is still running; enqueueing this
+            # one would start a turn whose stream nobody follows.
+            raise TurnAlreadyRunning(session_id, registered.turn_id)
         await enqueue_copilot_turn(
             session_id=session_id,
             user_id=user_id,
@@ -638,7 +643,9 @@ async def dispatch_turn(
         if not committed:
             await release_turn(envelope)
             try:
-                await stream_registry.delete_session_meta(session_id)
+                # Only this turn's meta: a refused dispatch must not remove
+                # the meta of the turn that is running.
+                await stream_registry.delete_session_meta(session_id, turn_id)
             except BaseException:
                 # Already in a failure path — log + swallow so the
                 # original exception/cancellation isn't masked.
@@ -800,23 +807,33 @@ async def schedule_chat_turn(
             return None
 
         turn_id = str(uuid4())
-        await dispatch_turn(
-            slot,
-            session_id=session_id,
-            user_id=user_id,
-            turn_id=turn_id,
-            message=message,
-            is_user_message=is_user_message,
-            context=context,
-            file_ids=file_ids,
-            organization_id=organization_id,
-            team_id=team_id,
-            model=model,
-            llm_auth_provider=llm_auth_provider,
-            llm_credential_id=llm_credential_id,
-            permissions=permissions,
-            request_arrival_at=request_arrival_at,
-        )
+        try:
+            await dispatch_turn(
+                slot,
+                session_id=session_id,
+                user_id=user_id,
+                turn_id=turn_id,
+                message=message,
+                is_user_message=is_user_message,
+                context=context,
+                file_ids=file_ids,
+                organization_id=organization_id,
+                team_id=team_id,
+                model=model,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
+                permissions=permissions,
+                request_arrival_at=request_arrival_at,
+            )
+        except TurnAlreadyRunning as refused:
+            # A race past the route's in-flight check: the message is saved,
+            # and the caller follows the turn that is running, as for a
+            # duplicate. It is in the history the next turn reads.
+            logger.warning(
+                f"Turn not started for session {session_id}: turn "
+                f"{refused.running_turn_id} is still running"
+            )
+            return None
         return turn_id
 
 

@@ -31,6 +31,7 @@ from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
+from backend.copilot.turn_lease import TurnLease
 from backend.data.model import OAuth2Credentials
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
@@ -423,12 +424,21 @@ class CoPilotProcessor:
         )
         log.info("Starting execution")
         start_time = time.monotonic()
+        # Before the turn publishes anything: its first publish marks it
+        # claimed, and a claimed turn without a lease reads as dead.
+        lease = TurnLease(entry.turn_id, str(cluster_lock.owner_id))
+        lease.acquire()
         try:
-            self._execute(entry, cancel, cluster_lock, log)
+            self._execute(entry, cancel, cluster_lock, log, lease=lease)
         finally:
-            sync_fail_close_session(
-                entry.session_id, entry.turn_id, log, self.execution_loop
-            )
+            try:
+                sync_fail_close_session(
+                    entry.session_id, entry.turn_id, log, self.execution_loop
+                )
+            finally:
+                # After the fail-close: by then the turn no longer reads as
+                # running, so the lease going cannot make it look dead.
+                lease.release()
             elapsed = time.monotonic() - start_time
             log.info(f"Execution completed in {elapsed:.2f}s")
 
@@ -438,6 +448,7 @@ class CoPilotProcessor:
         cancel: threading.Event,
         cluster_lock: ClusterLock,
         log: CoPilotLogMetadata,
+        lease: TurnLease | None = None,
     ):
         """Submit the async turn to ``self.execution_loop`` and drive it.
 
@@ -532,6 +543,8 @@ class CoPilotProcessor:
                         return
                     log_cancel_wait()
                 cluster_lock.refresh()
+                if lease is not None:
+                    lease.refresh()
 
     async def _execute_async(
         self,

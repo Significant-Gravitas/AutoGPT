@@ -41,7 +41,10 @@ def mock_session_lookup():
 async def test_queue_branch_timeout_zero_returns_immediately():
     """Busy + timeout=0 → no registry, no enqueue, no wait, queued result."""
     queue_mock = AsyncMock(return_value=_QR())
-    create_session = AsyncMock()
+    # Registers the turn it is given, as create_session does on an idle chat.
+    create_session = AsyncMock(
+        side_effect=lambda **kwargs: MagicMock(turn_id=kwargs["turn_id"])
+    )
     enqueue = AsyncMock()
     wait_result = AsyncMock()
 
@@ -128,7 +131,10 @@ async def test_queue_branch_positive_timeout_rides_inflight_turn():
     """Busy + timeout>0 → push buffer, subscribe to in-flight turn, return
     its aggregated result with ``queued=True`` annotation."""
     queue_mock = AsyncMock(return_value=_QR())
-    create_session = AsyncMock()
+    # Registers the turn it is given, as create_session does on an idle chat.
+    create_session = AsyncMock(
+        side_effect=lambda **kwargs: MagicMock(turn_id=kwargs["turn_id"])
+    )
     enqueue = AsyncMock()
     observed = SessionResult()
     observed.response_text = "final answer from in-flight turn"
@@ -182,7 +188,10 @@ async def test_queue_branch_positive_timeout_rides_inflight_turn():
 @pytest.mark.asyncio
 async def test_idle_session_enqueues_normally():
     """Idle session → registry session created, enqueued, drain waits."""
-    create_session = AsyncMock()
+    # Registers the turn it is given, as create_session does on an idle chat.
+    create_session = AsyncMock(
+        side_effect=lambda **kwargs: MagicMock(turn_id=kwargs["turn_id"])
+    )
     enqueue = AsyncMock()
     wait_result = AsyncMock(return_value=("completed", SessionResult()))
     idle_db = MagicMock()
@@ -239,7 +248,10 @@ async def test_idle_session_concurrent_turn_cap_returns_rejected_outcome():
     empty transcript."""
     from backend.copilot.active_turns import ConcurrentTurnLimitError
 
-    create_session = AsyncMock()
+    # Registers the turn it is given, as create_session does on an idle chat.
+    create_session = AsyncMock(
+        side_effect=lambda **kwargs: MagicMock(turn_id=kwargs["turn_id"])
+    )
     enqueue = AsyncMock()
     wait_result = AsyncMock()
 

@@ -1,9 +1,7 @@
 """Backend causes of chat state drifting from server state, via the real registry.
 
-Each live cause is a strict expected failure whose reason names it: CI stays
-green while the bug is there, and the test turns red once a fix makes it
-pass. ``raises=AssertionError`` keeps a harness error from passing as the bug.
-The completion writers' turn guard (#14974) is already pinned by
+Each test pins a cause that has been fixed; its docstring names it. The
+completion writers' turn guard (#14974) is pinned by
 ``stream_registry_test.py::TestCompletionOnRealRedis``.
 """
 
@@ -22,6 +20,7 @@ from backend.copilot import stream_heartbeat, stream_registry
 from backend.copilot.baseline import service as baseline
 from backend.copilot.executor.manager import CoPilotExecutor
 from backend.copilot.executor.utils import CoPilotExecutionEntry, get_session_lock_key
+from backend.copilot.markers import is_error_marker
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import (
     StreamBaseResponse,
@@ -65,18 +64,11 @@ async def turn_id():
 
 
 @requires_redis
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "W2: create_session overwrites the meta of a turn that is still "
-        "running, so every reader follows the new turn and the running one "
-        "streams to nobody"
-    ),
-)
 async def test_a_dispatch_does_not_take_over_a_running_turns_meta(
     session_id: str,
 ) -> None:
+    """W2: create_session overwrote the meta of a turn that was still running, so
+    every reader followed the new turn and the running one streamed to nobody."""
     await stream_registry.create_session(session_id, None, "", "", turn_id="a")
     # A second POST let through acquire_turn_slot's refresh branch.
     await stream_registry.create_session(session_id, None, "", "", turn_id="b")
@@ -86,17 +78,11 @@ async def test_a_dispatch_does_not_take_over_a_running_turns_meta(
 
 
 @requires_redis
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "W3: a turn whose executor died reads as running until its meta "
-        "expires, up to an hour; the lapsed cluster lock is never consulted"
-    ),
-)
 async def test_a_turn_whose_executor_died_is_not_reported_running(
     session_id: str, turn_id: str
 ) -> None:
+    """W3: a turn whose executor died read as running until its meta expired, up
+    to an hour; now its lapsed executor lease ends it as failed."""
     await stream_registry.create_session(session_id, None, "", "", turn_id=turn_id)
     # The executor publishes this only after taking the cluster lock.
     await stream_registry.publish_chunk(
@@ -144,18 +130,12 @@ async def test_a_resume_of_a_long_running_turn_replays_whole_blocks(
 _PAST_THE_OLD_CAP = 10_500
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "W6: after the silence watchdog's last tier a silent turn publishes "
-        "nothing, so nothing refreshes the session meta's TTL and it expires "
-        "under a live turn"
-    ),
-)
 async def test_a_silent_turn_keeps_publishing_within_the_stream_ttl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """W6: after the silence watchdog's last tier a silent turn published nothing,
+    so nothing refreshed the session meta's TTL and it expired under a live
+    turn; the fixed-interval heartbeat now runs for the whole turn."""
     ttl = stream_registry.config.stream_ttl
     now = 0.0
 
@@ -199,18 +179,13 @@ async def test_a_silent_turn_keeps_publishing_within_the_stream_ttl(
 
 
 @requires_redis
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "Approval wake: the end-of-turn wake dispatches the follow-up turn while "
-        "the ending turn is still registered, and the executor drops it as a "
-        "duplicate without closing it, so the chat reads running forever"
-    ),
-)
 async def test_a_turn_the_executor_drops_is_not_left_running(
     session_id: str, turn_id: str
 ) -> None:
+    """Approval wake: the end-of-turn wake dispatches the follow-up turn while the
+    ending turn is still registered; the executor dropped it as a duplicate
+    without closing it, so the chat read running forever. It now goes back to
+    the queue once the ending turn has left."""
     # held.wake -> dispatch_turn writes the follow-up turn's meta, then enqueues it.
     await stream_registry.create_session(session_id, None, "", "", turn_id=turn_id)
     executor = CoPilotExecutor()
@@ -241,18 +216,12 @@ async def test_a_turn_the_executor_drops_is_not_left_running(
     ), "the executor dropped the turn and it still reads running"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "W8: the baseline engine logs and swallows a failed final persist, so "
-        "the turn finishes as a success and the streamed reply is not in the "
-        "rows the client hydrates from"
-    ),
-)
 async def test_a_reply_that_failed_to_persist_ends_the_turn_in_error(
     monkeypatch: pytest.MonkeyPatch, baseline_io: list[ChatSession]
 ) -> None:
+    """W8: the baseline engine logged and swallowed a failed final persist, so the
+    turn finished as a success and the streamed reply was missing from the
+    rows the client hydrates from."""
     monkeypatch.setattr(
         baseline,
         "call_provider_stream",
@@ -268,6 +237,37 @@ async def test_a_reply_that_failed_to_persist_ends_the_turn_in_error(
     if streamed != "The answer is 42." or not persist.await_count:
         pytest.fail("harness: the reply should stream and its persist should run")
     assert any(isinstance(event, StreamError) for event in events)
+
+
+async def test_a_reply_that_failed_to_persist_leaves_an_error_marker(
+    monkeypatch: pytest.MonkeyPatch, baseline_io: list[ChatSession]
+) -> None:
+    """W8: a reload shows the failure, not the question alone, once the
+    database is back for the marker's own write."""
+    monkeypatch.setattr(
+        baseline,
+        "call_provider_stream",
+        AsyncMock(return_value=provider_round(["The answer ", "is 42."])),
+    )
+    saved: list[ChatSession] = []
+
+    async def persist(session: ChatSession) -> ChatSession:
+        if not saved:
+            saved.append(session)
+            raise ConnectionError("database unavailable")
+        saved.append(session.model_copy(deep=True))
+        return session
+
+    monkeypatch.setattr(baseline, "upsert_chat_session", persist)
+
+    turn = baseline_turn(session_with_prompt("Why?"), str(uuid.uuid4()))
+    events = [event async for event in turn]
+
+    assert len(saved) == 2
+    last = saved[-1].messages[-1]
+    assert is_error_marker(last)
+    assert baseline.REPLY_NOT_SAVED_MESSAGE in (last.content or "")
+    assert [e.code for e in events if isinstance(e, StreamError)] == ["persist_failed"]
 
 
 async def _reads_running(session_id: str) -> bool:

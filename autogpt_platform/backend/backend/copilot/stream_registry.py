@@ -68,11 +68,24 @@ from .response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
+from .stream_disconnect import ListenerDisconnects
+from .turn_lease import turn_lease_held
 
 logger = logging.getLogger(__name__)
 
 # The error a turn ends with when the user stopped it.
 CANCELLED_MESSAGE = "Operation cancelled"
+# The error a turn ends with when its executor stopped holding it.
+EXECUTOR_LOST_MESSAGE = (
+    "The assistant stopped unexpectedly before finishing. Please try again."
+)
+# The SSE transport heartbeat: one comment frame this often for as long as a
+# subscriber follows a live turn, whatever the turn itself is doing. The
+# client counts a stream as dead after missing three.
+TRANSPORT_HEARTBEAT_INTERVAL_S = 10.0
+# How long one blocking XREAD waits at most before the listener checks the
+# turn's status again.
+_LISTENER_POLL_MS = 5000
 config = ChatConfig()
 _notification_bus = AsyncRedisNotificationEventBus()
 
@@ -119,6 +132,9 @@ _local_sessions: dict[str, asyncio.Task] = {}
 # Track listener tasks per subscriber queue for cleanup
 # Maps queue id() to (session_id, asyncio.Task) for proper cleanup on unsubscribe
 _listener_sessions: dict[int, tuple[str, asyncio.Task]] = {}
+# When each listener above started (wall clock), so a disconnect broadcast
+# only stops the listeners that already existed when it was sent.
+_listener_started_at: dict[int, float] = {}
 
 # Timeout for putting chunks into subscriber queues (seconds)
 # If the queue is full and doesn't drain within this time, send an overflow error
@@ -237,7 +253,13 @@ async def create_session(
         blocking: If True, HTTP request is waiting for completion
 
     Returns:
-        The created ActiveSession instance (metadata only)
+        The created ActiveSession instance (metadata only). When a different
+        turn of the session is still running, nothing is written and that
+        turn's session is returned instead: overwriting its meta would make
+        every reader follow the new turn while the running one streams to
+        nobody. Callers compare ``turn_id`` (see ``dispatch_turn``). A
+        running turn that is in fact dead (stale, or its executor's lease
+        lapsed) is ended as failed first, and does not block the new one.
     """
     start_time = time.perf_counter()
 
@@ -266,7 +288,7 @@ async def create_session(
 
     # Store metadata in Redis
     redis_start = time.perf_counter()
-    redis = await get_redis_async()
+    redis: Any = await get_redis_async()
     redis_time = (time.perf_counter() - redis_start) * 1000
     logger.info(
         f"[TIMING] get_redis_async took {redis_time:.1f}ms",
@@ -275,28 +297,47 @@ async def create_session(
 
     meta_key = _get_session_meta_key(session_id)
     # No need to delete old stream — each turn_id is a fresh UUID
+    existing: dict[Any, Any] = await redis.hgetall(meta_key)
+    if existing:
+        await _close_if_dead(redis, session_id, existing)
 
     hset_start = time.perf_counter()
-    await redis.hset(  # type: ignore[misc]
+    mapping = {
+        "session_id": session_id,
+        "user_id": user_id or "",
+        "tool_call_id": tool_call_id,
+        "tool_name": tool_name,
+        "turn_id": turn_id,
+        "blocking": "1" if blocking else "0",
+        "status": session.status,
+        "created_at": session.created_at.isoformat(),
+        # Set by the executor's first publish; reset for every new turn.
+        "claimed": "",
+    }
+    running_turn = await redis.eval(
+        _CREATE_META_LUA,
+        1,
         meta_key,
-        mapping={
-            "session_id": session_id,
-            "user_id": user_id or "",
-            "tool_call_id": tool_call_id,
-            "tool_name": tool_name,
-            "turn_id": turn_id,
-            "blocking": "1" if blocking else "0",
-            "status": session.status,
-            "created_at": session.created_at.isoformat(),
-        },
+        turn_id,
+        config.stream_ttl,
+        *(item for pair in mapping.items() for item in pair),
     )
     hset_time = (time.perf_counter() - hset_start) * 1000
     logger.info(
         f"[TIMING] redis.hset took {hset_time:.1f}ms",
         extra={"json_fields": {**log_meta, "duration_ms": hset_time}},
     )
+    if running_turn:
+        logger.warning(
+            f"create_session refused turn {turn_id} of session {session_id}: "
+            f"turn {running_turn} is still running",
+            extra={"json_fields": log_meta},
+        )
+        current: dict[Any, Any] = await redis.hgetall(meta_key)
+        running = _parse_session_meta(current, session_id)
+        running.turn_id = _as_text(running_turn)
+        return running
 
-    await redis.expire(meta_key, config.stream_ttl)
     if turn_id:
         await _write_turn_meta(redis, turn_id, "session_id", session_id)
 
@@ -309,29 +350,76 @@ async def create_session(
     return session
 
 
+# Write a turn's session meta unless a different turn is still running there.
+# Returns '' when written, otherwise the running turn's id.
+#
+#   KEYS[1]  session meta key
+#   ARGV[1]  the new turn's id
+#   ARGV[2]  TTL seconds
+#   ARGV[3:] field, value, field, value, ...
+_CREATE_META_LUA = """
+if redis.call('HGET', KEYS[1], 'status') == 'running' then
+    local running = redis.call('HGET', KEYS[1], 'turn_id')
+    if running and running ~= '' and running ~= ARGV[1] then
+        return running
+    end
+end
+redis.call('HSET', KEYS[1], unpack(ARGV, 3))
+redis.call('EXPIRE', KEYS[1], ARGV[2])
+return ''
+"""
+
+# Mark the session meta claimed by an executor, if it still names this turn.
+#
+#   KEYS[1]  session meta key
+#   ARGV[1]  turn id
+_CLAIM_META_LUA = """
+if redis.call('HGET', KEYS[1], 'turn_id') == ARGV[1] then
+    redis.call('HSET', KEYS[1], 'claimed', '1')
+end
+return 0
+"""
+
+# Delete the session meta only while it still names this turn.
+_DELETE_META_LUA = """
+if redis.call('HGET', KEYS[1], 'turn_id') == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
+
+
 _meta_ttl_refresh_at: dict[str, float] = {}
-"""Tracks the last time the session meta key TTL was refreshed.
+"""Tracks, per turn, the last time the turn's TTLs were refreshed.
 
 Used by `publish_chunk` to avoid refreshing on every single chunk
-(expensive). Refreshes at most once every 60 seconds per session.
+(expensive). Refreshes at most once every 60 seconds per turn.
 """
 
 _META_TTL_REFRESH_INTERVAL = 60  # seconds
 
 
-async def delete_session_meta(session_id: str) -> None:
+async def delete_session_meta(session_id: str, turn_id: str = "") -> None:
     """Delete a session's Redis meta entry — used by the dispatcher's
     rollback path when ``create_session`` succeeded but the subsequent
     RabbitMQ enqueue failed.  Without this, the session sits with
     ``status='running'`` in Redis until TTL and ``is_turn_in_flight``
     keeps reporting True even though no executor will pick the turn up.
 
+    With ``turn_id``, only a meta that still names that turn is deleted, so
+    a dispatch that ``create_session`` refused never removes the meta of
+    the turn that is running.
+
     Best-effort: a Redis error here only delays the cleanup to TTL
     expiry, which is the same window we had before this helper existed.
     """
     try:
-        redis = await get_redis_async()
-        await redis.delete(_get_session_meta_key(session_id))
+        redis: Any = await get_redis_async()
+        meta_key = _get_session_meta_key(session_id)
+        if turn_id:
+            await redis.eval(_DELETE_META_LUA, 1, meta_key, turn_id)
+        else:
+            await redis.delete(meta_key)
     except RedisError as exc:
         logger.warning(
             "delete_session_meta: redis cleanup failed for session=%s: %s",
@@ -355,15 +443,33 @@ async def publish_chunk(
         chunk: The stream response chunk to publish
         session_id: Chat session ID — when provided, the session meta key
             TTL is refreshed periodically to prevent expiration during
-            long-running turns (see SECRT-2178).
+            long-running turns (see SECRT-2178). Only the executor running
+            the turn passes it: its first such publish also marks the meta
+            claimed, which is what lets a reader treat a lapsed executor
+            lease as a dead turn (see ``turn_lease``).
+
+    A ``StreamHeartbeat`` is not stored: it only refreshes the TTLs, so a
+    silent turn stays alive without filling its stream with entries.
 
     Returns:
-        The Redis Stream message ID
+        The Redis Stream message ID ("0-0" for a heartbeat)
     """
     start_time = time.perf_counter()
     chunk_type = type(chunk).__name__
-    chunk_json = chunk.model_dump_json()
     message_id = "0-0"
+
+    if isinstance(chunk, StreamHeartbeat):
+        if session_id:
+            try:
+                redis = await get_redis_async()
+                await _refresh_turn_ttls(redis, session_id, turn_id)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to refresh the TTLs of turn {turn_id} on heartbeat: {e}"
+                )
+        return message_id
+
+    chunk_json = chunk.model_dump_json()
 
     # Build log metadata
     log_meta = {
@@ -393,23 +499,8 @@ async def publish_chunk(
         # Set TTL on stream to match session metadata TTL
         await redis.expire(stream_key, config.stream_ttl)
 
-        # Periodically refresh session-related TTLs so they don't expire
-        # during long-running turns. Without this, turns exceeding stream_ttl
-        # (default 1h) lose their "running" status and stream data, making
-        # the session invisible to the resume endpoint (empty on page reload).
-        # Both meta key AND stream key are refreshed: the stream key's expire
-        # above only fires when publish_chunk is called, but during long
-        # sub-agent gaps (task_progress events don't produce chunks), neither
-        # key gets refreshed.
         if session_id:
-            now = time.perf_counter()
-            last_refresh = _meta_ttl_refresh_at.get(session_id, 0)
-            if now - last_refresh >= _META_TTL_REFRESH_INTERVAL:
-                meta_key = _get_session_meta_key(session_id)
-                await redis.expire(meta_key, config.stream_ttl)
-                await redis.expire(stream_key, config.stream_ttl)
-                await redis.expire(_get_turn_meta_key(turn_id), config.stream_ttl)
-                _meta_ttl_refresh_at[session_id] = now
+            await _refresh_turn_ttls(redis, session_id, turn_id)
 
         total_time = (time.perf_counter() - start_time) * 1000
         # Only log timing for significant chunks or slow operations
@@ -445,6 +536,28 @@ async def publish_chunk(
         )
 
     return message_id
+
+
+async def _refresh_turn_ttls(redis: Any, session_id: str, turn_id: str) -> None:
+    """Periodically refresh session-related TTLs so they don't expire
+    during long-running turns. Without this, turns exceeding stream_ttl
+    (default 1h) lose their "running" status and stream data, making
+    the session invisible to the resume endpoint (empty on page reload).
+
+    The meta, the stream and the turn meta are all refreshed, at most once
+    every ``_META_TTL_REFRESH_INTERVAL`` per turn; the watchdog's heartbeat
+    calls this every few seconds even while the turn publishes nothing.
+    """
+    now = time.monotonic()
+    last_refresh = _meta_ttl_refresh_at.get(turn_id)
+    if last_refresh is not None and now - last_refresh < _META_TTL_REFRESH_INTERVAL:
+        return
+    meta_key = _get_session_meta_key(session_id)
+    await redis.eval(_CLAIM_META_LUA, 1, meta_key, turn_id)
+    await redis.expire(meta_key, config.stream_ttl)
+    await redis.expire(_get_turn_stream_key(turn_id), config.stream_ttl)
+    await redis.expire(_get_turn_meta_key(turn_id), config.stream_ttl)
+    _meta_ttl_refresh_at[turn_id] = now
 
 
 async def _write_turn_meta(redis: Any, turn_id: str, field: str, value: str) -> None:
@@ -688,6 +801,8 @@ def _start_listener(
         _stream_listener(session_id, queue, last_id, log_meta, turn_id)
     )
     _listener_sessions[id(queue)] = (session_id, listener_task)
+    _listener_started_at[id(queue)] = time.time()
+    _listener_disconnects.ensure_subscribed()
 
 
 def _chunk_from_fields(fields: dict[str, str]) -> StreamBaseResponse | None:
@@ -753,15 +868,20 @@ async def _stream_listener(
         redis: Any = await get_redis_async()
         stream_key = _get_turn_stream_key(turn_id)
         current_id = last_replayed_id
+        next_heartbeat_at = time.monotonic() + TRANSPORT_HEARTBEAT_INTERVAL_S
 
         while True:
-            # Block for up to 5 seconds waiting for new messages
-            # This allows periodic checking if session is still running
-            # Short timeout prevents frontend timeout (12s) while waiting for heartbeats (15s)
+            # Block until the next heartbeat is due, and for at most
+            # _LISTENER_POLL_MS so a turn that ended without its finish
+            # reaching the stream is noticed through its meta.
             xread_start = time.perf_counter()
             xread_count += 1
             entries = _stream_entries(
-                await redis.xread({stream_key: current_id}, block=5000, count=100)
+                await redis.xread(
+                    {stream_key: current_id},
+                    block=_listener_block_ms(next_heartbeat_at),
+                    count=100,
+                )
             )
             xread_time = (time.perf_counter() - xread_start) * 1000
 
@@ -792,36 +912,17 @@ async def _stream_listener(
                     },
                 )
 
-            if not entries:
-                # Timeout - stop once the meta is gone (TTL), not running, or
-                # names a later turn.
-                meta_key = _get_session_meta_key(session_id)
-                status, meta_turn_id = await redis.hmget(
-                    meta_key, ["status", "turn_id"]
-                )
-                if status != "running" or (meta_turn_id and meta_turn_id != turn_id):
-                    try:
-                        await asyncio.wait_for(
-                            subscriber_queue.put((None, StreamFinish())),
-                            timeout=QUEUE_PUT_TIMEOUT,
-                        )
-                    except asyncio.TimeoutError:
-                        logger.warning(
-                            f"Timeout delivering finish event for session {session_id}"
-                        )
-                    break
-                # Session still running - send heartbeat to keep connection alive
-                # This prevents frontend timeout (12s) during long-running operations
+            if not entries and await _listener_turn_over(redis, session_id, turn_id):
                 try:
                     await asyncio.wait_for(
-                        subscriber_queue.put((None, StreamHeartbeat())),
+                        subscriber_queue.put((None, StreamFinish())),
                         timeout=QUEUE_PUT_TIMEOUT,
                     )
                 except asyncio.TimeoutError:
                     logger.warning(
-                        f"Timeout delivering heartbeat for session {session_id}"
+                        f"Timeout delivering finish event for session {session_id}"
                     )
-                continue
+                break
 
             for _stream_name, stream_messages in entries:
                 for msg_id, msg_data in stream_messages:
@@ -871,7 +972,10 @@ async def _stream_listener(
                                         code="QUEUE_OVERFLOW",
                                         details={
                                             "last_delivered_id": last_delivered_id,
-                                            "recovery_hint": f"Reconnect with last_message_id={last_delivered_id}",
+                                            "recovery_hint": (
+                                                f"Reconnect with turn={turn_id}"
+                                                f"&after={last_delivered_id}"
+                                            ),
                                         },
                                     )
                                     subscriber_queue.put_nowait((None, overflow_error))
@@ -901,6 +1005,20 @@ async def _stream_listener(
                             f"Error processing stream message: {e}",
                             extra={"json_fields": {**log_meta, "error": str(e)}},
                         )
+
+            # The transport heartbeat runs on a fixed cadence while the turn
+            # lives, whether or not entries are flowing.
+            if time.monotonic() >= next_heartbeat_at:
+                next_heartbeat_at = time.monotonic() + TRANSPORT_HEARTBEAT_INTERVAL_S
+                try:
+                    await asyncio.wait_for(
+                        subscriber_queue.put((None, StreamHeartbeat())),
+                        timeout=QUEUE_PUT_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"Timeout delivering heartbeat for session {session_id}"
+                    )
 
     except asyncio.CancelledError:
         elapsed = (time.perf_counter() - start_time) * 1000
@@ -949,6 +1067,79 @@ async def _stream_listener(
             },
         )
         _listener_sessions.pop(queue_id, None)
+        _listener_started_at.pop(queue_id, None)
+
+
+def _listener_block_ms(next_heartbeat_at: float) -> int:
+    until_heartbeat_ms = int((next_heartbeat_at - time.monotonic()) * 1000)
+    return max(1, min(_LISTENER_POLL_MS, until_heartbeat_ms))
+
+
+async def _listener_turn_over(redis: Any, session_id: str, turn_id: str) -> bool:
+    """Whether a listener on ``turn_id`` should stop: the meta is gone (TTL),
+    not running, or names a later turn.
+
+    A running turn whose executor lost its lease is ended here as failed;
+    its error and finish then reach the listener as ordinary entries.
+    """
+    status, meta_turn_id, claimed = await redis.hmget(
+        _get_session_meta_key(session_id), ["status", "turn_id", "claimed"]
+    )
+    if status != "running" or (meta_turn_id and meta_turn_id != turn_id):
+        return True
+    if claimed == "1" and not await turn_lease_held(redis, turn_id):
+        await _end_lost_turn(session_id, turn_id)
+    return False
+
+
+async def _close_if_dead(redis: Any, session_id: str, meta: dict[Any, Any]) -> bool:
+    """End a turn the meta says is running but nothing runs any more:
+    past the longest a turn may run, or claimed by an executor whose lease
+    lapsed. Returns whether it was ended. Both end as failed through
+    ``mark_session_completed``, which publishes the error and the finish.
+    """
+    if meta.get("status") != "running":
+        return False
+    turn_id = _parse_session_meta(meta, session_id).turn_id
+    age_seconds = _running_for_seconds(meta)
+    stale_threshold = COPILOT_CONSUMER_TIMEOUT_SECONDS + 300  # + 5min buffer
+    if age_seconds is not None and age_seconds > stale_threshold:
+        logger.warning(
+            f"[STALE_SESSION] Auto-completing stale session {session_id[:8]}... "
+            f"(running for {age_seconds:.0f}s, threshold: {stale_threshold}s)"
+        )
+        await mark_session_completed(
+            session_id,
+            error_message=f"Session timed out after {age_seconds:.0f}s",
+            turn_id=turn_id,
+        )
+        return True
+    if meta.get("claimed") == "1" and not await turn_lease_held(redis, turn_id):
+        await _end_lost_turn(session_id, turn_id)
+        return True
+    return False
+
+
+async def _end_lost_turn(session_id: str, turn_id: str) -> None:
+    logger.warning(
+        f"[EXECUTOR_LOST] Turn {turn_id} of session {session_id[:8]}... reads "
+        "running but its executor's lease lapsed; ending it as failed"
+    )
+    await mark_session_completed(
+        session_id, error_message=EXECUTOR_LOST_MESSAGE, turn_id=turn_id
+    )
+
+
+def _running_for_seconds(meta: dict[Any, Any]) -> float | None:
+    created_at_str = meta.get("created_at")
+    if not created_at_str:
+        return None
+    try:
+        created_at = datetime.fromisoformat(created_at_str)
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Failed to parse created_at: {e}")
+        return None
+    return (datetime.now(timezone.utc) - created_at).total_seconds()
 
 
 async def mark_session_completed(
@@ -1000,7 +1191,7 @@ async def mark_session_completed(
     )
 
     # Clean up the in-memory TTL refresh tracker to prevent unbounded growth.
-    _meta_ttl_refresh_at.pop(session_id, None)
+    _meta_ttl_refresh_at.pop(turn_id, None)
 
     if not swapped:
         logger.debug(f"Session {session_id} already completed/failed, skipping")
@@ -1251,29 +1442,11 @@ async def get_active_session(
     if session_user_id and user_id != session_user_id:
         return None, "0-0"
 
-    # Check if session is stale (running beyond tool timeout + buffer).
-    # Auto-complete it to prevent infinite polling loops.
-    # A turn can legitimately run up to COPILOT_CONSUMER_TIMEOUT_SECONDS, so we
-    # add a 5-minute buffer to avoid false positives during legitimate operations.
-    created_at_str = meta.get("created_at")
-    if created_at_str:
-        try:
-            created_at = datetime.fromisoformat(created_at_str)
-            age_seconds = (datetime.now(timezone.utc) - created_at).total_seconds()
-            stale_threshold = COPILOT_CONSUMER_TIMEOUT_SECONDS + 300  # + 5min buffer
-            if age_seconds > stale_threshold:
-                logger.warning(
-                    f"[STALE_SESSION] Auto-completing stale session {session_id[:8]}... "
-                    f"(running for {age_seconds:.0f}s, threshold: {stale_threshold}s)"
-                )
-                await mark_session_completed(
-                    session_id,
-                    error_message=f"Session timed out after {age_seconds:.0f}s",
-                    turn_id=_parse_session_meta(meta, session_id).turn_id,
-                )
-                return None, "0-0"
-        except (ValueError, TypeError) as e:
-            logger.warning(f"Failed to parse created_at: {e}")
+    # A turn past the longest a turn may run (COPILOT_CONSUMER_TIMEOUT_SECONDS
+    # plus a buffer), or one whose executor's lease lapsed, is not running:
+    # end it as failed so the client stops polling a turn nobody runs.
+    if await _close_if_dead(redis, session_id, meta):
+        return None, "0-0"
 
     session = _parse_session_meta(meta, session_id)
     session.checkpoint = await _read_checkpoint(redis, session.turn_id)
@@ -1340,7 +1513,11 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
     chunk_class = CHUNK_TYPE_TO_CLASS.get(chunk_type)
 
     if chunk_class is None:
-        logger.warning(f"Unknown chunk type: {chunk_type}")
+        # Published but never served: a part missing from CHUNK_TYPE_TO_CLASS.
+        logger.warning(
+            f"Dropping a stream entry of unknown chunk type {chunk_type!r}; "
+            "add it to CHUNK_TYPE_TO_CLASS"
+        )
         return None
 
     try:
@@ -1377,6 +1554,7 @@ async def unsubscribe_from_session(
     """
     queue_id = id(subscriber_queue)
     listener_entry = _listener_sessions.pop(queue_id, None)
+    _listener_started_at.pop(queue_id, None)
 
     if listener_entry is None:
         logger.debug(
@@ -1419,34 +1597,40 @@ async def unsubscribe_from_session(
 
 
 async def disconnect_all_listeners(session_id: str) -> int:
-    """Cancel every active listener task for *session_id*.
+    """Cancel every active listener task for *session_id*, on every pod.
 
     Called when the frontend switches away from a session and wants the
     backend to release resources immediately rather than waiting for the
-    XREAD timeout.
+    turn to end.
 
-    Scope / limitations (best-effort optimisation, not a correctness primitive):
-    - Pod-local: ``_listener_sessions`` is in-memory. If the DELETE request
-      lands on a different worker than the one serving the SSE, no listener
-      is cancelled here — the SSE worker still releases on its XREAD timeout.
-    - Session-scoped (not subscriber-scoped): cancels every active listener
-      for the session on this pod. In the rare case a single user opens two
-      SSE connections to the same session on the same pod (e.g. two tabs),
-      both would be torn down. Cross-pod, subscriber-scoped cancellation
-      would require a Redis pub/sub fan-out with per-listener tokens; that
-      is not implemented here because the XREAD timeout already bounds the
-      worst case.
+    This pod's listeners are cancelled here; every other pod's through a
+    Redis pub/sub broadcast (see ``stream_disconnect``), since the SSE is
+    rarely served by the pod that takes the DELETE. Only listeners that
+    existed when the request was made are cancelled, on any pod.
 
-    Returns the number of listener tasks that were cancelled.
+    Session-scoped (not subscriber-scoped): a user with two tabs on the same
+    session loses both tabs' listeners. Best-effort: a lost broadcast leaves
+    the other pods' listeners to end with their turn.
+
+    Returns the number of this pod's listener tasks that were cancelled.
     """
+    cancelled = await _cancel_local_listeners(session_id, time.time())
+    await _listener_disconnects.broadcast(session_id)
+    return cancelled
+
+
+async def _cancel_local_listeners(session_id: str, started_before: float) -> int:
     to_cancel: list[tuple[int, asyncio.Task]] = [
         (qid, task)
         for qid, (sid, task) in list(_listener_sessions.items())
-        if sid == session_id and not task.done()
+        if sid == session_id
+        and not task.done()
+        and _listener_started_at.get(qid, 0.0) <= started_before
     ]
 
     for qid, task in to_cancel:
         _listener_sessions.pop(qid, None)
+        _listener_started_at.pop(qid, None)
         task.cancel()
 
     cancelled = 0
@@ -1463,3 +1647,6 @@ async def disconnect_all_listeners(session_id: str) -> int:
     if cancelled:
         logger.info(f"Disconnected {cancelled} listener(s) for session {session_id}")
     return cancelled
+
+
+_listener_disconnects = ListenerDisconnects(_cancel_local_listeners)

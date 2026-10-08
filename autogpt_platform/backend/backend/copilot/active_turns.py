@@ -98,6 +98,24 @@ class ConcurrentTurnLimitError(Exception):
         super().__init__(message or running_turn_limit_message())
 
 
+class TurnAlreadyRunning(ConcurrentTurnLimitError):
+    """Another turn of this session is still running, so a new one cannot
+    start now; the stream registry never takes over a running turn's meta.
+
+    A :class:`ConcurrentTurnLimitError` so callers that cannot start a turn
+    at the cap handle this the same way: the queue dispatcher leaves the
+    session queued, and a caller without a queue reports it.
+    """
+
+    def __init__(self, session_id: str, running_turn_id: str) -> None:
+        super().__init__(
+            "This chat is still working on a reply. Wait for it to finish, "
+            "then try again."
+        )
+        self.session_id = session_id
+        self.running_turn_id = running_turn_id
+
+
 async def count_running_turns(user_id: str) -> int:
     """User's current running-turn count."""
     return await chat_db().count_chat_sessions_by_status(

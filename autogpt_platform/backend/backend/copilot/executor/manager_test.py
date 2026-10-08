@@ -8,7 +8,7 @@ pin its retry/give-up contract.
 
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from time import sleep as original_sleep
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -16,7 +16,10 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 
 from backend.copilot.engine_switch import CONTINUATION_MESSAGE, SwitchRequest
-from backend.copilot.executor.utils import COPILOT_CANCEL_QUEUE_PREFIX
+from backend.copilot.executor.utils import (
+    COPILOT_CANCEL_QUEUE_PREFIX,
+    CoPilotExecutionEntry,
+)
 
 from .manager import (
     _SWITCH_DISPATCH_ATTEMPTS,
@@ -279,3 +282,44 @@ def test_cancel_consumer_consumes_the_queue_it_just_declared():
     declared = channel.queue_declare.call_args.kwargs["queue"]
     assert declared.startswith(COPILOT_CANCEL_QUEUE_PREFIX)
     assert channel.basic_consume.call_args.kwargs["queue"] == declared
+
+
+def _run_message(executor: CoPilotExecutor, turn_id: str) -> MagicMock:
+    channel = MagicMock(is_open=True)
+    channel.connection.add_callback_threadsafe.side_effect = lambda ack: ack()
+    entry = CoPilotExecutionEntry(
+        session_id="sess-1", turn_id=turn_id, user_id=None, message="hi"
+    )
+    executor._handle_run_message(
+        channel,
+        MagicMock(delivery_tag=7),
+        MagicMock(),
+        entry.model_dump_json().encode(),
+    )
+    return channel
+
+
+def _busy_executor(running_turn: str):
+    executor = CoPilotExecutor()
+    running: Future = Future()
+    executor.active_tasks["sess-1"] = (running, threading.Event())
+    executor._active_turn_ids["sess-1"] = running_turn
+    return executor, running
+
+
+def test_a_redelivery_of_the_running_turn_is_dropped():
+    executor, _ = _busy_executor("turn-a")
+
+    channel = _run_message(executor, "turn-a")
+
+    channel.basic_nack.assert_called_once_with(7, requeue=False)
+
+
+def test_the_sessions_next_turn_waits_for_the_running_one_to_leave():
+    executor, running = _busy_executor("turn-a")
+
+    channel = _run_message(executor, "turn-b")
+
+    channel.basic_nack.assert_not_called()
+    running.set_result(None)
+    channel.basic_nack.assert_called_once_with(7, requeue=True)
