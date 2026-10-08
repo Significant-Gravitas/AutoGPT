@@ -15,6 +15,8 @@ from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.capabilities.ranking import ConnectionState
 from backend.copilot.capabilities.registry import get_registry
 from backend.copilot.capabilities.sources import expert_entries
+from backend.copilot.gate import review as review_store
+from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.model import ChatSessionMetadata
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools import (
@@ -24,6 +26,7 @@ from backend.copilot.tools import (
 )
 
 from ._test_data import make_session
+from .base import BaseTool
 from .describe_capability import DescribeCapabilityTool
 from .find_capability import FindCapabilityTool
 from .hire_expert import HireExpertTool
@@ -172,6 +175,31 @@ async def test_run_capability_itself_describes_an_expert_and_hires_no_one(
     assert isinstance(result, CapabilityDetailsResponse)
     assert "calls hire_expert" in result.message
     hire.assert_not_awaited()
+
+
+async def test_an_expert_ids_validate_only_answer_is_not_held_by_the_judge(team):
+    # The answer quotes hire_expert's own instructions to the model; judged
+    # whole, the content judge would hold the platform's words as a page's.
+    session = make_session(USER)
+    session.metadata.autopilot_mode = "auto"
+    judge = AsyncMock(return_value=ContentVerdict(held=False))
+    with (
+        patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
+        patch.object(review_store, "find_review", AsyncMock(return_value=None)),
+        patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, False))),
+        patch("backend.copilot.gate.reads.judge_content", judge),
+    ):
+        result = await RunCapabilityTool().execute(
+            USER,
+            session,
+            "call-1",
+            id="expert:tpl-jules",
+            input={},
+            validate_only=True,
+        )
+
+    assert result.success and "calls hire_expert" in result.output
+    judge.assert_not_awaited()
 
 
 @pytest.mark.parametrize("expert_id", [None, "exp-1"])

@@ -175,7 +175,9 @@ def describe_expert(entry: CapabilityEntry, session_id: str) -> ToolResponseBase
     dispatch = expert_dispatch(entry.id)
     tool = configured_tool(dispatch[0]) if dispatch else None
     if dispatch is None or tool is None:
-        return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session_id)
+        return ErrorResponse(
+            message=UNKNOWN_ID_HINT, session_id=session_id
+        ).from_outside()
     name, bound = dispatch
     if gate_denied(name):
         return gate_denied_error(name, session_id)
@@ -188,7 +190,7 @@ def describe_expert(entry: CapabilityEntry, session_id: str) -> ToolResponseBase
         capability=entry.listing(),
         parameters=_without_properties(tool.parameters, set(bound)),
         session_id=session_id,
-    )
+    ).from_outside()
 
 
 def _without_properties(schema: dict[str, Any], names: set[str]) -> dict[str, Any]:
