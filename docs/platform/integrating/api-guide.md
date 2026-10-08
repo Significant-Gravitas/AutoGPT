@@ -1,235 +1,82 @@
-# AutoGPT Platform External API Guide
+---
+description: >-
+  Run, build and manage AutoGPT agents from your own code. One REST API, the
+  same on AutoGPT Cloud and on a self-hosted instance.
+icon: code
+---
 
-The AutoGPT Platform provides an External API that allows you to programmatically interact with agents, blocks, the marketplace, and more.
+# AutoGPT Platform API
 
-## API Documentation
+The AutoGPT Platform API lets your code do what you do in the AutoGPT web app: run agents from your library, read their outputs, build new agents, schedule them, answer their human-in-the-loop reviews, and manage files and credentials. The same API ships with AutoGPT Cloud and with every self-hosted instance, so an integration written against one works against the other by changing a single URL.
 
-Full API documentation with interactive examples is available at:
+This section documents **API v2**. v1 is deprecated and stops working on **2026-12-31**; see [Migrate from v1](migrate-from-v1.md).
 
-- **Main**: [https://backend.agpt.co/external-api/docs](https://backend.agpt.co/external-api/docs)
-- **v2 API**: [https://backend.agpt.co/external-api/v2/docs](https://backend.agpt.co/external-api/v2/docs)
-- **v1 API**: [https://backend.agpt.co/external-api/v1/docs](https://backend.agpt.co/external-api/v1/docs)
+## Start here
 
-The Swagger UI documentation includes all available endpoints, request/response schemas, and allows you to try out API calls directly.
+<table data-view="cards"><thead><tr><th></th><th></th><th data-hidden data-card-target data-type="content-ref"></th></tr></thead><tbody><tr><td><strong>Quickstart</strong></td><td>Make your first call and run an agent in about five minutes.</td><td><a href="quickstart.md">quickstart.md</a></td></tr><tr><td><strong>Build with AI coding agents</strong></td><td>Copy-paste prompts, llms.txt and MCP set-up for Claude Code, Codex, Cursor and others.</td><td><a href="ai-coding-agents.md">ai-coding-agents.md</a></td></tr><tr><td><strong>Run agents</strong></td><td>Inputs, credentials, the run lifecycle, outputs, reviews, schedules and files.</td><td><a href="running-agents.md">running-agents.md</a></td></tr><tr><td><strong>Build agents</strong></td><td>Create and version agent graphs from code.</td><td><a href="building-agents.md">building-agents.md</a></td></tr><tr><td><strong>MCP server</strong></td><td>Give Claude, Cursor or any MCP client tools to find, build and run agents.</td><td><a href="mcp-server.md">mcp-server.md</a></td></tr><tr><td><strong>API reference</strong></td><td>Every endpoint, parameter and response, generated from the OpenAPI spec.</td><td><a href="api-reference.md">api-reference.md</a></td></tr></tbody></table>
 
-**Recommendation**: New integrations should use the v2 API.
+## Base URL
 
-## Authentication Methods
+Every endpoint in these docs is relative to the base URL of your instance. Put it in `AUTOGPT_API_URL` and every example on this site works unchanged.
 
-The External API supports two authentication methods:
+| Where AutoGPT runs | Base URL (`AUTOGPT_API_URL`) | Create API keys at |
+| --- | --- | --- |
+| AutoGPT Cloud | `https://backend.agpt.co/external-api/v2` | [platform.agpt.co/settings/api-keys](https://platform.agpt.co/settings/api-keys) |
+| Self-hosted with Docker Compose | `http://localhost:8006/external-api/v2` | `http://localhost:3000/settings/api-keys` |
+| Self-hosted single container | `http://localhost:3000/_agpt/external-api/v2` | `http://localhost:3000/settings/api-keys` |
 
-### 1. API Keys
+Self-hosted on another machine or domain? Replace `localhost` and the port with yours. [Cloud and self-hosted](environments.md) explains how to find and check the right URL.
 
-API keys are the simplest way to authenticate. Generate an API key from your AutoGPT Platform account settings and include it in your requests using the `X-API-Key` header:
+## Your first request
 
-```bash
-# List available blocks
-curl -H "X-API-Key: YOUR_API_KEY" \
-  https://backend.agpt.co/external-api/v1/blocks
-```
-
-API keys are ideal for:
-- Server-to-server integrations
-- Personal scripts and automation
-- Backend services
-
-### Organizations and teams
-
-Every v2 request acts inside exactly one organization. An API key is created in
-an organization and carries it for its whole life, so the key itself decides
-which organization's agents, runs and credits you reach — there is no
-per-request organization parameter. A key created before organizations existed
-acts in your personal organization, which is what a personal account already
-is.
-
-`GET /external-api/v2/me` reports the organization and team a key acts in:
+Create an API key with the **Identity** permission, then:
 
 ```bash
-curl -H "X-API-Key: YOUR_API_KEY" https://backend.agpt.co/external-api/v2/me
+export AUTOGPT_API_URL="https://backend.agpt.co/external-api/v2"
+export AUTOGPT_API_KEY="agpt_..."
+
+curl -s "$AUTOGPT_API_URL/me" -H "X-API-Key: $AUTOGPT_API_KEY"
 ```
 
-To act inside one team of that organization, either pin the key to a team when
-you create it, or send `X-Team-Id` on the request:
+The response names the account, organization and permissions the key acts with. The [Quickstart](quickstart.md) continues from here to a finished agent run.
 
-```bash
-curl -H "X-API-Key: YOUR_API_KEY" -H "X-Team-Id: TEAM_ID" \
-  https://backend.agpt.co/external-api/v2/library/agents
-```
+## How the API works
 
-A key already pinned to a team rejects an `X-Team-Id` naming a different one.
-Without either, the request acts organization-wide, and what it creates is
-visible to every member of the organization.
+* **Authentication.** Send an API key in the `X-API-Key` header, or an API key or OAuth access token as `Authorization: Bearer`. Each key carries only the permissions you grant it. See [Authentication and permissions](authentication.md).
+* **Organizations.** Every request acts inside one organization, fixed by the key. Add `X-Team-Id` to act inside one of its teams.
+* **Running agents.** You run agents that are in your library. A run is asynchronous: starting one returns `202` and a run ID, and you poll the run until it reaches a final status. See [Run agents](running-agents.md).
+* **One list shape.** Every list endpoint takes `limit` and `cursor` and returns `{"items", "next_cursor", "total_count"}`.
+* **One error shape.** Every non-2xx response is `{"error": {"code", "message", "details"}}`. Branch on `code`.
+* **Limits.** 200 requests per minute per user, plus lower limits on a few expensive endpoints. Every response carries `X-RateLimit-*` headers.
+* **Safe retries.** Send an `Idempotency-Key` when you start a run, and a retry returns the original run instead of starting (and paying for) a second one.
 
-Resources you create carry the organization and team you acted in, and runs are
-billed to that organization's balance. To work across several organizations,
-create one key per organization.
+[Errors, rate limits, and pagination](api-conventions.md) covers these conventions in full.
 
-### 2. OAuth 2.0 (Single Sign-On)
+## Machine-readable resources
 
-For applications that need to act on behalf of users, use OAuth 2.0. This allows users to authorize your application to access their AutoGPT resources.
+For tools and AI agents, everything on this site is available as plain text:
 
-To get started:
+| Resource | URL |
+| --- | --- |
+| OpenAPI 3.1 spec (served by every instance) | `$AUTOGPT_API_URL/openapi.json`, e.g. [backend.agpt.co/external-api/v2/openapi.json](https://backend.agpt.co/external-api/v2/openapi.json) |
+| Interactive API explorer (served by every instance) | `$AUTOGPT_API_URL/docs` (Swagger UI) and `$AUTOGPT_API_URL/redoc` |
+| Index of every docs page, for LLMs | [agpt.co/docs/llms.txt](https://agpt.co/docs/llms.txt) |
+| Every docs page in one file | [agpt.co/docs/llms-full.txt](https://agpt.co/docs/llms-full.txt) |
+| Any docs page as Markdown | Append `.md` to its URL |
+| Docs search for AI agents (MCP) | `https://agpt.co/docs/~gitbook/mcp` |
+| The platform's own MCP server | `$AUTOGPT_API_URL/mcp`, see [MCP server](mcp-server.md) |
 
-1. Register an OAuth application (contact platform administrator)
-2. Implement the OAuth flow as described in the [OAuth Guide](oauth-guide.md)
-3. Go through the OAuth flow to authorize your app and obtain an access token
-4. Make API requests with the access token in the `Authorization: Bearer` header:
+## Versions
 
-```bash
-curl -H "Authorization: Bearer agpt_xt_..." \
-  https://backend.agpt.co/external-api/v1/blocks
-```
+| Version | Status | Path |
+| --- | --- | --- |
+| **v2** | Current. Use it for everything new. | `/external-api/v2/...` |
+| v1 | Deprecated. Stops working on 2026-12-31. | `/external-api/v1/...` |
 
-OAuth is ideal for:
+Within v2, changes are additive: new endpoints, new optional parameters and new response fields can appear at any time, so ignore fields you don't recognise. Anything that would break a working integration ships as a new version.
 
-- Third-party applications
-- "Sign in with AutoGPT" (SSO, Single Sign-On) functionality
-- Applications that need user-specific permissions
+## Get help
 
-See the [OAuth Integration Guide](oauth-guide.md) for complete OAuth implementation details.
-
-## Rate Limits
-
-The v2 API enforces rate limits to ensure fair usage:
-
-| Scope                        | Limit                            |
-|------------------------------|----------------------------------|
-| **Global (authenticated)**   | 200 requests per minute per user |
-| **Global (unauthenticated)** | 5 requests per minute per IP     |
-
-Some endpoints have additional per-endpoint limits (e.g. agent execution, file uploads, search). These are documented on each endpoint in the [v2 API docs](https://backend.agpt.co/external-api/v2/docs).
-
-When a rate limit is exceeded, the API returns HTTP `429 Too Many Requests` with a JSON body:
-
-```json
-{
-  "error": {
-    "code": "rate_limit_exceeded",
-    "message": "Rate limit exceeded (200 requests per 60s). Try again shortly.",
-    "details": null
-  }
-}
-```
-
-The numbers in the message are those of the limit that was hit.
-
-## Errors
-
-Every v2 response that is not 2xx has the same body:
-
-```json
-{
-  "error": {
-    "code": "not_found",
-    "message": "Run #abc123 not found",
-    "details": null
-  }
-}
-```
-
-`code` is a stable snake_case identifier — branch on it rather than on `message`,
-which is written for humans and may be reworded. `details` carries structured
-context when the failure has any (a `422` lists the fields that failed
-validation) and is `null` otherwise.
-
-| `code` | Status |
-|--------|--------|
-| `bad_request` | 400 |
-| `unauthorized` | 401 |
-| `payment_required` | 402 |
-| `forbidden` | 403 |
-| `not_found` | 404 |
-| `conflict` | 409 |
-| `validation_error` | 422 |
-| `rate_limit_exceeded` | 429 |
-| `internal_error` | 500 |
-| `service_unavailable` | 503 |
-
-## Pagination
-
-Every list endpoint takes the same two query parameters and returns the same
-envelope:
-
-| Parameter | |
-|-----------|--|
-| `limit` | Items per page. 1-100, default 20. |
-| `cursor` | The previous response's `next_cursor`. Omit for the first page. |
-
-```json
-{
-  "items": [],
-  "next_cursor": "eyJ2IjoxLCJrIjoicCIsInAiOjJ9",
-  "total_count": 137
-}
-```
-
-Pass `next_cursor` back as `cursor` for the next page; it is `null` on the last
-page. Cursors are opaque — do not parse or construct them, and do not carry one
-from one endpoint to another: a cursor that did not come from this endpoint's
-last response is rejected with `400 bad_request`.
-
-`total_count` is the number of items matching the request across all pages. It
-is present on every list endpoint, and `null` on the two where the source cannot
-report one: `/credits/invoices` (Stripe does not return a total) and
-`/credits/transactions` (the history groups raw rows, so a row count would not
-match what paging yields).
-
-
-## Available Scopes
-
-When creating API keys or using OAuth, request only the scopes your application needs.
-
-### v2 Scopes
-
-| Scope | Description |
-|-------|-------------|
-| `READ_GRAPH` | Read graph definitions, versions, and the blocks a graph uses |
-| `WRITE_GRAPH` | Create and update graphs, set the active version, change graph settings |
-| `READ_BLOCK` | Read block definitions |
-| `READ_STORE` | Read your own marketplace submissions |
-| `WRITE_STORE` | Create, update, and delete marketplace submissions |
-| `READ_LIBRARY` | List library agents and folders |
-| `WRITE_LIBRARY` | Fork agents, add marketplace agents to your library, manage folders |
-| `RUN_AGENT` | Run agents from your library |
-| `READ_RUN` | List and get agent run details |
-| `WRITE_RUN` | Stop and delete runs |
-| `SHARE_RUN` | Share and unshare agent runs |
-| `READ_RUN_REVIEW` | List human-in-the-loop reviews |
-| `WRITE_RUN_REVIEW` | Submit human-in-the-loop review responses |
-| `READ_SCHEDULE` | List execution schedules |
-| `WRITE_SCHEDULE` | Create and delete schedules |
-| `READ_CREDITS` | Get credit balance, transactions, invoices, and cost summaries |
-| `READ_INTEGRATIONS` | List integration credentials |
-| `MANAGE_INTEGRATIONS` | Create integration credentials |
-| `DELETE_INTEGRATIONS` | Delete integration credentials |
-| `IDENTITY` | Read who the credentials act as, and in which organization (`GET /me`) |
-| `READ_FILES` | List and download workspace files |
-| `WRITE_FILES` | Upload and delete workspace files |
-| `USE_TOOLS` | Use MCP tools that spend platform resources: web search, web fetch, feature requests |
-
-A few endpoints require two scopes at once:
-
-| Endpoint | Scopes |
-|----------|--------|
-| `POST /graphs/{graph_id}/schedules` | `WRITE_SCHEDULE` + `RUN_AGENT` |
-| `POST /runs/{run_id}/share` | `READ_RUN` + `SHARE_RUN` |
-| `DELETE /runs/{run_id}/share` | `READ_RUN` + `SHARE_RUN` |
-
-Public marketplace reads (`GET /marketplace/agents`, `/creators`, and their detail
-routes) require valid credentials but no particular scope, and so does `GET /search`
-over public content. Searching your own content costs the scope that endpoint costs:
-`content_types=LIBRARY_AGENT` needs `READ_LIBRARY`, `WORKSPACE_FILE` needs `READ_FILES`.
-
-### Legacy Scopes (v1 only)
-
-| Scope | Description |
-|-------|-------------|
-| `EXECUTE_GRAPH` | Execute graphs directly (use `RUN_AGENT` in v2) |
-| `EXECUTE_BLOCK` | Execute individual blocks |
-
-## Support
-
-For issues or questions about API integration:
-
-- Open an issue on [GitHub](https://github.com/Significant-Gravitas/AutoGPT)
-- Check the [Swagger documentation](https://backend.agpt.co/external-api/docs)
+* Report bugs and request endpoints on [GitHub](https://github.com/Significant-Gravitas/AutoGPT/issues).
+* Ask questions in the [AutoGPT Discord](https://discord.com/invite/autogpt).
+* Building a product for other AutoGPT users? Use [OAuth](oauth-guide.md) instead of asking users for API keys.
