@@ -55,9 +55,8 @@ class ExpertOnboardingTool(BaseTool):
             "Open your onboarding card on your first turn after being hired: "
             f"a one-line greeting plus {MIN_STEPS}-{MAX_STEPS} short "
             "multiple-choice questions that settle what the user wants from "
-            "you and which services you need. Keep every word short: the "
-            "user reads it in seconds or not at all. Ask for nothing else on "
-            "that turn, and do not start work until the answers come back."
+            "you and which services you need. Ask for nothing else on that "
+            "turn, and do not start work until the answers come back."
         )
 
     @property
@@ -93,10 +92,9 @@ class ExpertOnboardingTool(BaseTool):
                                 "items": {"type": "string"},
                                 "description": (
                                     f"2-{MAX_OPTIONS} answers the user can "
-                                    "tap, 1-5 words each. Make them concrete "
-                                    "and specific to your role — the point "
-                                    "is that answering costs no typing. "
-                                    "Exactly one is chosen. Leave out "
+                                    "tap, 1-5 words each, concrete and "
+                                    "specific to your role. Exactly one is "
+                                    "chosen. Leave out "
                                     "'not sure', 'later' and 'skip' answers: "
                                     "the card already offers Other and Skip."
                                 ),
@@ -110,10 +108,8 @@ class ExpertOnboardingTool(BaseTool):
                     },
                     "description": (
                         f"{MIN_STEPS}-{MAX_STEPS} questions, shown one per "
-                        "step, all about your own role and the workflows "
-                        "installed on you. Ask only what you need before you "
-                        "can start; anything else can wait for the "
-                        "conversation."
+                        "step, about your role and installed workflows. Ask "
+                        "only what you need before you can start."
                     ),
                 },
             },
