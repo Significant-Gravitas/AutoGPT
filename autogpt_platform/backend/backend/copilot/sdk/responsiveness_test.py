@@ -196,6 +196,10 @@ async def test_expert_identity_failure_precedes_memory_read_and_write():
             "backend.copilot.model.chat_db",
             MagicMock(return_value=MagicMock(clear_session_pending_question=_clear_db)),
         ),
+        patch(
+            "backend.copilot.model.invalidate_session_cache",
+            new=AsyncMock(),
+        ),
         pytest.raises(ExpertSessionUnavailableError),
     ):
         async for _ in stream_chat_completion_sdk(
@@ -242,6 +246,10 @@ async def test_tags_only_message_rejects_before_clear_pending_and_identity():
         patch(
             "backend.copilot.model.chat_db",
             MagicMock(return_value=MagicMock(clear_session_pending_question=clear_db)),
+        ),
+        patch(
+            "backend.copilot.model.invalidate_session_cache",
+            new=AsyncMock(),
         ),
     ):
         events = [

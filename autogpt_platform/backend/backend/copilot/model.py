@@ -344,6 +344,10 @@ async def clear_pending_question(session: "ChatSessionInfo") -> None:
         await chat_db().clear_session_pending_question(
             session.session_id, session.user_id
         )
+        # Drop the Redis copy too: a reject path (e.g. identity validation)
+        # can return before the turn's session upsert re-caches, and
+        # get_chat_session would otherwise serve the stale pending_question.
+        await invalidate_session_cache(session.session_id)
     except Exception as e:
         logger.warning(
             f"Could not clear pending question for {session.session_id}: {e}"

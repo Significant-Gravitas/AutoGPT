@@ -228,6 +228,10 @@ async def test_autopilot_origin_mismatch_clears_pending_question():
             "backend.copilot.model.chat_db",
             MagicMock(return_value=MagicMock(clear_session_pending_question=clear_db)),
         ),
+        patch(
+            "backend.copilot.model.invalidate_session_cache",
+            new=AsyncMock(),
+        ),
         patch.object(block, "execute_copilot", execute_copilot),
     ):
         outputs = [

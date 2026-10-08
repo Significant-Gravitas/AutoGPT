@@ -376,6 +376,9 @@ class TestRunSubSession:
             "backend.copilot.model.chat_db",
             MagicMock(return_value=MagicMock(clear_session_pending_question=clear_db)),
         )
+        monkeypatch.setattr(
+            "backend.copilot.model.invalidate_session_cache", AsyncMock()
+        )
 
         result = await RunSubSessionTool()._execute(
             user_id="alice",

@@ -4747,7 +4747,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
     # Reject tags-only / whitespace-only user turns before clearing pending
     # or running identity (empty_prompt).
-    if is_user_message and message is not None and not message.strip():
+    # Auto-continue calls (continued_pending) carry already-drained rows and
+    # must not bail out here, or those drained messages would be lost.
+    if (
+        is_user_message
+        and not continued_pending
+        and message is not None
+        and not message.strip()
+    ):
         yield StreamError(
             errorText="Message cannot be empty.",
             code="empty_prompt",
@@ -5449,6 +5456,22 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             if last_user:
                 current_message = last_user[-1].content or ""
 
+        # Strip BEFORE empty_prompt so tags-only history/resume content is
+        # rejected. On --resume, current_message may come from session history
+        # which was already sanitized on the original turn; strip again as
+        # defence-in-depth. Validate here, BEFORE the destructive pending
+        # drain below: returning empty_prompt after the drain would drop the
+        # queued messages (they never reach persist_pending_as_user_rows and
+        # ``finally`` does not re-queue them).
+        current_message = strip_user_context_tags(current_message)
+
+        if not current_message.strip():
+            yield StreamError(
+                errorText="Message cannot be empty.",
+                code="empty_prompt",
+            )
+            return
+
         # Capture the message count *before* draining so _build_query_message
         # can compute the gap slice without including the newly-drained pending
         # messages.  Pending messages are both appended to session.messages AND
@@ -5497,19 +5520,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # ``inject_user_context`` below — see the comment near that
             # call.  At this point ``current_message`` is still the
             # original turn-starting send (no pending text yet).
-
-        # Strip BEFORE empty_prompt so tags-only history/resume content is
-        # rejected. On --resume, current_message may come from session history
-        # which was already sanitized on the original turn; strip again as
-        # defence-in-depth.
-        current_message = strip_user_context_tags(current_message)
-
-        if not current_message.strip():
-            yield StreamError(
-                errorText="Message cannot be empty.",
-                code="empty_prompt",
-            )
-            return
 
         # On the first turn inject user context into the message before building
         # the query so that _build_query_message sees the full prefixed content.

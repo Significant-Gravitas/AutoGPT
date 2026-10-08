@@ -493,6 +493,7 @@ async def test_replying_clears_the_pending_question(
     with (
         patch("backend.copilot.tools.ask_question.chat_db", MagicMock(return_value=db)),
         patch("backend.copilot.model.chat_db", MagicMock(return_value=db)),
+        patch("backend.copilot.model.invalidate_session_cache", new=AsyncMock()),
     ):
         await tool._execute(
             user_id=None,
