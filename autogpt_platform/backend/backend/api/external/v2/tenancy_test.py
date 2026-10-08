@@ -415,33 +415,6 @@ async def test_org_a_key_cannot_delete_an_org_b_library_agent(
 
 
 @pytest.mark.asyncio
-async def test_org_a_key_cannot_execute_an_org_b_preset(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    from .library.presets import execute_preset
-
-    mocker.patch(
-        "backend.api.external.v2.library.presets.get_credit_model",
-        new_callable=AsyncMock,
-        return_value=Mock(get_credits=AsyncMock(return_value=100)),
-    )
-    mocker.patch(
-        "backend.api.features.library.db.get_preset",
-        new_callable=AsyncMock,
-        return_value=Mock(organization_id=ORG_B),
-    )
-    add_execution = mocker.patch(
-        "backend.executor.utils.add_graph_execution",
-        new_callable=AsyncMock,
-        return_value=_run(),
-    )
-
-    with pytest.raises(NotFoundError):
-        await execute_preset(preset_id="p-1", auth=_key_for(ORG_A))
-    add_execution.assert_not_awaited()
-
-
-@pytest.mark.asyncio
 async def test_org_a_key_cannot_delete_an_org_b_folder(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -540,28 +513,20 @@ async def test_untagged_rows_stay_reachable(
 
 
 @pytest.mark.asyncio
-async def test_preset_and_review_listing_are_scoped_to_the_key_org(
+async def test_review_listing_is_scoped_to_the_key_org(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """These list by user id underneath, so the org has to reach the query."""
-    from .library.presets import list_presets
+    """This lists by user id underneath, so the org has to reach the query."""
     from .runs import list_reviews
 
-    presets = mocker.patch(
-        "backend.api.features.library.db.list_presets",
-        new_callable=AsyncMock,
-        return_value=Mock(presets=[], pagination=Mock(total_items=0)),
-    )
     reviews = mocker.patch(
         "backend.data.human_review.get_reviews",
         new_callable=AsyncMock,
         return_value=([], Mock(total_items=0)),
     )
 
-    await list_presets(graph_id=None, page=_page(), auth=_key_for(ORG_A))
     await list_reviews(run_id=None, status=None, page=_page(), auth=_key_for(ORG_A))
 
-    assert presets.await_args.kwargs["organization_id"] == ORG_A
     assert reviews.await_args.kwargs["organization_id"] == ORG_A
 
 

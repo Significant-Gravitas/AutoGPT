@@ -90,14 +90,7 @@ v2_app = FastAPI(
         },
         {
             "name": "library",
-            "description": (
-                "Manage your agent library (agents and presets), "
-                "execute agents, organize with folders"
-            ),
-        },
-        {
-            "name": "presets",
-            "description": "Agent execution presets with webhook triggers",
+            "description": "Manage your agent library, execute agents, organize with folders",
         },
         {
             "name": "runs",
