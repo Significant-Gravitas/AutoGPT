@@ -147,7 +147,13 @@ class ExpertOnboardingTool(BaseTool):
             )
 
         greeting = kwargs.get("greeting")
-        if not isinstance(greeting, str) or not greeting.strip():
+        if not isinstance(greeting, str):
+            raise ValueError("expert_onboarding requires a non-empty 'greeting'")
+        # Cap before the regex: its leading ``\s*`` backtracks quadratically
+        # over a long run of spaces. Checked after the strip, so a greeting
+        # that was nothing but dashes counts as empty too.
+        greeting = _strip_dashes(greeting.strip()[:MAX_GREETING_LENGTH])
+        if not greeting:
             raise ValueError("expert_onboarding requires a non-empty 'greeting'")
 
         raw_steps = kwargs.get("steps", [])
@@ -164,9 +170,7 @@ class ExpertOnboardingTool(BaseTool):
             message="; ".join(step.question for step in steps),
             session_id=session.session_id,
             expert_id=expert_id,
-            # Cap before the regex: its leading ``\s*`` backtracks
-            # quadratically over a long run of spaces.
-            greeting=_strip_dashes(greeting.strip()[:MAX_GREETING_LENGTH]),
+            greeting=greeting,
             steps=steps,
         )
 

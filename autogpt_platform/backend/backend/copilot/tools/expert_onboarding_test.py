@@ -302,10 +302,13 @@ def test_schema_declares_the_step_range(tool: ExpertOnboardingTool):
 
 
 @pytest.mark.asyncio
-async def test_rejects_empty_greeting(tool: ExpertOnboardingTool, session: ChatSession):
+@pytest.mark.parametrize("greeting", ["   ", " — ", "–, —"])
+async def test_rejects_empty_greeting(
+    tool: ExpertOnboardingTool, session: ChatSession, greeting: str
+):
     with pytest.raises(ValueError):
         await tool._execute(
-            user_id="test-user", session=session, greeting="   ", steps=steps()
+            user_id="test-user", session=session, greeting=greeting, steps=steps()
         )
 
 
