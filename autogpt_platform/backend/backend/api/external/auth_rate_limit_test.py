@@ -306,39 +306,98 @@ async def test_abuse_burst_stops_scrypt_after_threshold(fake_redis, mocker):
 
 
 # ---------------------------------------------------------------------------
-# Candidate lookup (no truncation of colliding heads)
+# Candidate lookup: bounded verification work without dropping valid keys
 # ---------------------------------------------------------------------------
 
+_HEAD = "agpt_abc"
 
-@pytest.mark.asyncio
-async def test_validate_api_key_checks_every_key_sharing_a_head(mocker):
-    """Six ACTIVE keys share a head; the valid one is last. It must still
-    authenticate (the lookup must not truncate the candidate list)."""
-    from backend.data.auth import api_key as api_key_mod
 
-    records = [MagicMock(name=f"rec{i}") for i in range(6)]
+def _patch_key_store(mocker, api_key_mod, tails, valid_index):
+    """Fake APIKey store: one record per tail, all sharing ``_HEAD``.
+
+    ``find_many`` honours the ``head``/``tail``/``take`` filters like Prisma.
+    Returns (prisma_client, candidates) so tests can count ``match`` calls
+    (each one is a Scrypt verification).
+    """
+    records = []
+    candidates = {}
+    for i, tail in enumerate(tails):
+        rec = MagicMock(name=f"rec{i}")
+        rec.head = _HEAD
+        rec.tail = tail
+        cand = MagicMock()
+        cand.salt = "salt"
+        cand.match.return_value = i == valid_index
+        cand.without_hash.return_value = f"info-{i}"
+        records.append(rec)
+        candidates[id(rec)] = cand
 
     async def find_many(*, where, take=None, **_kwargs):
-        return records[:take] if take is not None else list(records)
+        rows = [
+            r
+            for r in records
+            if r.head == where["head"]
+            and ("tail" not in where or r.tail == where["tail"])
+        ]
+        return rows[:take] if take is not None else rows
 
     prisma_client = MagicMock()
     prisma_client.find_many = AsyncMock(side_effect=find_many)
     mocker.patch.object(api_key_mod.PrismaAPIKey, "prisma", return_value=prisma_client)
-
-    candidates = []
-    for i, rec in enumerate(records):
-        cand = MagicMock()
-        cand.salt = "salt"
-        cand.match.return_value = i == 5
-        cand.without_hash.return_value = f"info-{i}"
-        candidates.append(cand)
-    by_rec = dict(zip(map(id, records), candidates))
     mocker.patch.object(
         api_key_mod.APIKeyInfoWithHash,
         "from_db",
-        side_effect=lambda rec: by_rec[id(rec)],
+        side_effect=lambda rec: candidates[id(rec)],
     )
+    return prisma_client, [candidates[id(r)] for r in records]
 
-    result = await api_key_mod.validate_api_key("agpt_abcVALIDKEYrest")
+
+@pytest.mark.asyncio
+async def test_sixth_key_sharing_a_head_authenticates_with_one_verification(mocker):
+    """Six ACTIVE keys share a head; the valid one is last. It must still
+    authenticate, and only the head+tail candidate is Scrypt-verified."""
+    from backend.data.auth import api_key as api_key_mod
+
+    tails = [f"TAIL000{i}" for i in range(6)]
+    _, cands = _patch_key_store(mocker, api_key_mod, tails, valid_index=5)
+
+    result = await api_key_mod.validate_api_key(f"{_HEAD}MIDDLE{tails[5]}")
+
     assert result == "info-5"
-    assert "take" not in prisma_client.find_many.await_args.kwargs
+    assert sum(c.match.call_count for c in cands) == 1
+    assert cands[5].match.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_guessed_key_with_populated_head_runs_no_scrypt(mocker):
+    """A garbage key whose head collides with many real keys but whose tail
+    matches none must be rejected without any hash verification."""
+    from backend.data.auth import api_key as api_key_mod
+
+    tails = [f"TAIL000{i}" for i in range(50)]
+    _, cands = _patch_key_store(mocker, api_key_mod, tails, valid_index=-1)
+
+    result = await api_key_mod.validate_api_key(f"{_HEAD}MIDDLEGUESSED!")
+
+    assert result is None
+    assert sum(c.match.call_count for c in cands) == 0
+
+
+@pytest.mark.asyncio
+async def test_verification_work_is_capped_per_request(mocker):
+    """Even if many active keys shared both head and tail, a single request
+    verifies at most MAX_API_KEY_VERIFY_CANDIDATES hashes."""
+    from backend.data.auth import api_key as api_key_mod
+
+    cap = api_key_mod.MAX_API_KEY_VERIFY_CANDIDATES
+    tails = ["SAMETAIL"] * (cap * 4)
+    prisma_client, cands = _patch_key_store(mocker, api_key_mod, tails, valid_index=-1)
+
+    result = await api_key_mod.validate_api_key(f"{_HEAD}MIDDLESAMETAIL")
+
+    assert result is None
+    assert sum(c.match.call_count for c in cands) == cap
+    kwargs = prisma_client.find_many.await_args.kwargs
+    assert kwargs["where"]["head"] == _HEAD
+    assert kwargs["where"]["tail"] == "SAMETAIL"
+    assert kwargs["take"] == cap + 1
