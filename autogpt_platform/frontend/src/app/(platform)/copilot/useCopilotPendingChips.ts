@@ -1,4 +1,5 @@
 import { getV2GetPendingMessages } from "@/app/api/__generated__/endpoints/chat/chat";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -187,7 +188,7 @@ function usePeekOnBoundary({
     const inFlightIds = new Set(
       (sessionChanged ? [] : queueRef.current).map((entry) => entry.id),
     );
-    void getV2GetPendingMessages(sessionId).then((res) => {
+    const peek = getV2GetPendingMessages(sessionId).then((res) => {
       if (prevSessionIdRef.current !== requestSessionId) return;
       if (peekSeq !== latestPeekSeqRef.current) return;
       if (res.status !== 200) return;
@@ -245,7 +246,15 @@ function usePeekOnBoundary({
         return [...fromServer, ...queuedDuringWindow];
       });
     });
+    void peek.catch(ignoreMissingSession);
   }, [sessionId, status, queueRef, setQueue]);
+}
+
+// A deleted chat, or another account's, answers 404: nothing is pending. Any
+// other failure is rethrown, so it still reaches Sentry as before.
+function ignoreMissingSession(error: unknown) {
+  if (error instanceof ApiError && error.status === 404) return;
+  throw error;
 }
 
 // ── 2. Auto-continue promotion ─────────────────────────────────────────
