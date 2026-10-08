@@ -254,51 +254,65 @@ class SendDiscordMessageBlock(Block):
 
         @client.event
         async def on_ready():
-            print(f"Logged in as {client.user}")
-            channel = None
-
-            # Try to parse as channel ID first
+            # discord.py runs event handlers as tasks and only logs their
+            # exceptions, so anything raised here never reaches client.start().
+            # Always close the client, or start() runs until the block cap.
             try:
-                channel_id = int(channel_name)
-                channel = client.get_channel(channel_id)
-            except ValueError:
-                # Not a valid ID, will try name lookup
-                pass
+                print(f"Logged in as {client.user}")
+                channel = None
 
-            # If not found by ID (or not an ID), try name lookup
-            if not channel:
-                for guild in client.guilds:
-                    if server_name and guild.name != server_name:
-                        continue
-                    for ch in guild.text_channels:
-                        if ch.name == channel_name:
-                            channel = ch
+                # Try to parse as channel ID first
+                try:
+                    channel_id = int(channel_name)
+                    channel = client.get_channel(channel_id)
+                except ValueError:
+                    # Not a valid ID, will try name lookup
+                    pass
+
+                # If not found by ID (or not an ID), try name lookup
+                if not channel:
+                    for guild in client.guilds:
+                        if server_name and guild.name != server_name:
+                            continue
+                        for ch in guild.text_channels:
+                            if ch.name == channel_name:
+                                channel = ch
+                                break
+                        if channel:
                             break
-                    if channel:
-                        break
 
-            if not channel:
-                result["status"] = f"Channel not found: {channel_name}"
-                await client.close()
-                return
+                if not channel:
+                    result["status"] = f"Channel not found: {channel_name}"
+                    return
 
-            # Type check - ensure it's a text channel that can send messages
-            if not hasattr(channel, "send"):
+                # Type check - ensure it's a text channel that can send messages
+                if not hasattr(channel, "send"):
+                    result["status"] = (
+                        f"Channel {channel_name} cannot receive messages (not a text channel)"
+                    )
+                    return
+
+                # Split message into chunks if it exceeds 2000 characters
+                chunks = self.chunk_message(message_content)
+                last_message = None
+                for chunk in chunks:
+                    last_message = await channel.send(chunk)  # type: ignore
+                if last_message is None:
+                    result["status"] = "Error: no message was sent"
+                    return
+                result["status"] = "Message sent"
+                result["message_id"] = str(last_message.id)
+                result["channel_id"] = str(channel.id)
+            except discord.errors.Forbidden as e:
                 result["status"] = (
-                    f"Channel {channel_name} cannot receive messages (not a text channel)"
+                    f"Error: bot lacks permission to send to {channel_name}: {e}"
                 )
+            except discord.errors.HTTPException as e:
+                result["status"] = f"Error sending message: {e}"
+            except Exception as e:
+                result["status"] = f"Error sending message: {e}"
+            finally:
                 await client.close()
-                return
-
-            # Split message into chunks if it exceeds 2000 characters
-            chunks = self.chunk_message(message_content)
-            last_message = None
-            for chunk in chunks:
-                last_message = await channel.send(chunk)  # type: ignore
-            result["status"] = "Message sent"
-            result["message_id"] = str(last_message.id) if last_message else ""
-            result["channel_id"] = str(channel.id)
-            await client.close()
 
         await client.start(token)
         return result
@@ -310,6 +324,10 @@ class SendDiscordMessageBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        # Empty content produces no chunks (nothing is sent) and whitespace-only
+        # content is rejected by Discord; fail before logging in.
+        if not input_data.message_content.strip():
+            raise ValueError("Message content is empty")
         try:
             result = await self.send_message(
                 token=credentials.api_key.get_secret_value(),
