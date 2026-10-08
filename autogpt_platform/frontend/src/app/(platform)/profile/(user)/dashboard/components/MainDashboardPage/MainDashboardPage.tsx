@@ -32,7 +32,7 @@ export const MainDashboardPage = () => {
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-6">
           <Text variant="h1" size="h3">
-            Agent dashboard
+            Workflow dashboard
           </Text>
           <div className="space-y-2">
             <Text
@@ -40,11 +40,11 @@ export const MainDashboardPage = () => {
               size="large-medium"
               className="text-neutral-900 dark:text-neutral-100"
             >
-              Submit a New Agent
+              Submit a New Workflow
             </Text>
             <Text variant="body" size="small">
-              Select from the list of agents you currently have, or upload from
-              your local machine.
+              Select from the list of workflows you currently have, or upload
+              from your local machine.
             </Text>
           </div>
         </div>
@@ -57,7 +57,7 @@ export const MainDashboardPage = () => {
               size="small"
               onClick={onOpenSubmitModal}
             >
-              Submit agent
+              Submit workflow
             </Button>
           }
         />
@@ -72,7 +72,7 @@ export const MainDashboardPage = () => {
           size="large-medium"
           className="mb-4 text-neutral-900 dark:text-neutral-100"
         >
-          Your uploaded agents
+          Your uploaded workflows
         </Text>
 
         {error ? (

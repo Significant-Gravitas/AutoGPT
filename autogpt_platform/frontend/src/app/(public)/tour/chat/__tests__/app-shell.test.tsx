@@ -112,7 +112,7 @@ describe("Tour chat app shell", () => {
     expect(
       screen.getByRole("link", { name: "AutoGPT" }).getAttribute("href"),
     ).toBe("/marketplace");
-    for (const label of ["New Task", "Search", "Agents", "Build", "Files"]) {
+    for (const label of ["New Task", "Search", "Workflows", "Build", "Files"]) {
       const item = screen.getByRole("button", { name: label });
       expect(item.getAttribute("aria-disabled")).toBe("true");
     }

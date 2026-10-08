@@ -34,7 +34,7 @@ export const SearchFilterChips: React.FC<SearchFilterChipsProps> = ({
     ...(expertsCount === undefined
       ? []
       : [{ label: "Experts", count: expertsCount, value: "experts" }]),
-    { label: "Agents", count: agentsCount, value: "agents" },
+    { label: "Workflows", count: agentsCount, value: "agents" },
     ...(skillsCount === undefined
       ? []
       : [{ label: "Skills", count: skillsCount, value: "skills" }]),

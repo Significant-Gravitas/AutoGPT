@@ -77,14 +77,14 @@ export function AgentSelectStep({
     return (
       <div className="mx-auto flex w-full flex-col">
         <StepHeader
-          title="Choose an agent"
-          description="Pick the saved agent version you want to send to marketplace review."
+          title="Choose a workflow"
+          description="Pick the saved workflow version you want to send to marketplace review."
           currentStep="select"
         />
         <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[18px] border border-rose-100 bg-rose-50 px-6 py-8 text-center">
           <Icon icon={AlertCircleIcon} size={32} className="text-rose-600" />
           <Text variant="large-medium" className="text-rose-900">
-            We could not load your agents
+            We could not load your workflows
           </Text>
           <Text variant="body" className="max-w-[420px] text-rose-700">
             Refresh the list and try again. Your current marketplace submissions
@@ -110,8 +110,8 @@ export function AgentSelectStep({
   return (
     <div className="mx-auto flex w-full flex-col">
       <StepHeader
-        title="Choose an agent"
-        description="Pick the saved agent version you want to send to marketplace review."
+        title="Choose a workflow"
+        description="Pick the saved workflow version you want to send to marketplace review."
         currentStep="select"
       />
 
@@ -121,11 +121,11 @@ export function AgentSelectStep({
             <Icon icon={PlusSignIcon} size={20} />
           </div>
           <Text variant="large-medium" className="text-textBlack">
-            No publishable agents yet
+            No publishable workflows yet
           </Text>
           <Text variant="body" className="max-w-[460px] text-zinc-600">
-            Create and save an agent in the builder. It will appear here when a
-            version is ready to submit.
+            Create and save a workflow in the builder. It will appear here when
+            a version is ready to submit.
           </Text>
           <Button onClick={onOpenBuilder}>Open builder</Button>
         </div>
@@ -136,8 +136,8 @@ export function AgentSelectStep({
               <SearchInput
                 value={searchInput}
                 onChange={setSearchInput}
-                placeholder="Search your agents"
-                aria-label="Search your agents"
+                placeholder="Search your workflows"
+                aria-label="Search your workflows"
                 maxLength={100}
                 loading={isFetching || isDebouncingSearch}
                 size="small"
@@ -146,7 +146,7 @@ export function AgentSelectStep({
             <div className="w-full sm:w-[220px]">
               <Select
                 id="agent-sort"
-                label="Sort agents"
+                label="Sort workflows"
                 hideLabel
                 size="small"
                 value={sortBy}
@@ -158,7 +158,7 @@ export function AgentSelectStep({
           </div>
 
           <div className="mt-1 flex-grow overflow-hidden pb-3">
-            <h3 className="sr-only">List of agents</h3>
+            <h3 className="sr-only">List of workflows</h3>
             <div
               className={cn(
                 scrollbarStyles,
@@ -169,7 +169,7 @@ export function AgentSelectStep({
               aria-busy={isFetching}
             >
               <div id="agentListHeading" className="sr-only">
-                Scrollable list of agents
+                Scrollable list of workflows
               </div>
               {isLoading ? (
                 <div className="grid grid-cols-1 gap-2 p-1 sm:grid-cols-2">
@@ -191,7 +191,7 @@ export function AgentSelectStep({
                   data-testid="agent-search-no-matches"
                 >
                   <Text variant="body-medium" className="text-textBlack">
-                    No agents match &ldquo;{debouncedSearch}&rdquo;
+                    No workflows match &ldquo;{debouncedSearch}&rdquo;
                   </Text>
                   <Text variant="small" className="text-zinc-500">
                     Try a different name or clear the search.

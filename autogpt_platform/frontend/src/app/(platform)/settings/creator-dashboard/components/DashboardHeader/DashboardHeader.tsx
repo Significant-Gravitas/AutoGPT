@@ -39,7 +39,7 @@ export function DashboardHeader({
         </Text>
         <Text variant="body" className="mt-3 max-w-[640px] text-zinc-700">
           Track your store submissions, see how they perform, and ship updates
-          for the agents you publish.
+          for the workflows you publish.
         </Text>
       </div>
 
@@ -54,7 +54,7 @@ export function DashboardHeader({
             onClick={onOpenSubmit}
             leftIcon={<Icon icon={PlusSignIcon} size={18} />}
           >
-            Submit agent
+            Submit workflow
           </Button>
         }
       />

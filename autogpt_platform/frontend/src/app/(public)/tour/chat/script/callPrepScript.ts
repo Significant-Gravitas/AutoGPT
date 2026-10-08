@@ -53,7 +53,7 @@ export const callPrepScript: TourScript = [
         delayMs: 500,
         part: {
           type: "text",
-          text: "Building your agent — picking blocks, wiring them up, setting the trigger.",
+          text: "Building your workflow — picking blocks, wiring them up, setting the trigger.",
         },
       },
       {

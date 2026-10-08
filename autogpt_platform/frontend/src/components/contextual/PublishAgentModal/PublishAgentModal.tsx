@@ -143,7 +143,7 @@ export function PublishAgentModal({
   return (
     <>
       <Dialog
-        title="Publish Agent"
+        title="Publish Workflow"
         styling={{
           maxWidth: "48rem",
           marginRight: "0.5rem",
@@ -165,7 +165,7 @@ export function PublishAgentModal({
       >
         {showTrigger && (
           <Dialog.Trigger>
-            {trigger || <Button size="small">Publish Agent</Button>}
+            {trigger || <Button size="small">Publish Workflow</Button>}
           </Dialog.Trigger>
         )}
         <Dialog.Content>

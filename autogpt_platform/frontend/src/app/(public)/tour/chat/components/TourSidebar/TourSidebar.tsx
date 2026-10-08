@@ -108,7 +108,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
               <SidebarGroupContent>
                 <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
                   <DisabledMenuItem icon={Search01Icon} label="Search" />
-                  <DisabledMenuItem icon={GridViewIcon} label="Agents" />
+                  <DisabledMenuItem icon={GridViewIcon} label="Workflows" />
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       asChild

@@ -91,10 +91,10 @@ describe("MarketplaceTabIntro", () => {
     document.body.appendChild(featured);
 
     render(<MarketplaceTabIntro />);
-    expect(await screen.findByText("Agents ready to work.")).toBeDefined();
+    expect(await screen.findByText("Workflows ready to work.")).toBeDefined();
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Browse featured agents" }),
+      screen.getByRole("button", { name: "Browse featured workflows" }),
     );
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
@@ -114,29 +114,29 @@ describe("MarketplaceTabIntro", () => {
     document.body.appendChild(listing);
 
     render(<MarketplaceTabIntro />);
-    await screen.findByText("Agents ready to work.");
+    await screen.findByText("Workflows ready to work.");
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Browse featured agents" }),
+      screen.getByRole("button", { name: "Browse featured workflows" }),
     );
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     await waitFor(() =>
-      expect(screen.queryByText("Agents ready to work.")).toBeNull(),
+      expect(screen.queryByText("Workflows ready to work.")).toBeNull(),
     );
     listing.remove();
   });
 
   it("still closes when there is nothing to scroll to at all", async () => {
     render(<MarketplaceTabIntro />);
-    await screen.findByText("Agents ready to work.");
+    await screen.findByText("Workflows ready to work.");
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Browse featured agents" }),
+      screen.getByRole("button", { name: "Browse featured workflows" }),
     );
 
     await waitFor(() =>
-      expect(screen.queryByText("Agents ready to work.")).toBeNull(),
+      expect(screen.queryByText("Workflows ready to work.")).toBeNull(),
     );
   });
 });

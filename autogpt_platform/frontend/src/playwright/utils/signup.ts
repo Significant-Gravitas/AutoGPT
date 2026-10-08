@@ -77,7 +77,7 @@ export async function signupTestUser(
     } else if (ignoreOnboarding || currentUrl.includes("/marketplace")) {
       await page
         .getByText(
-          "Bringing you AI agents designed by thinkers from around the world",
+          "Bringing you AI workflows designed by thinkers from around the world",
         )
         .first()
         .waitFor({ state: "visible", timeout: 10000 });

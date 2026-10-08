@@ -235,8 +235,8 @@ describe("migration notice with production first-visit tutorials", () => {
     [
       "/marketplace",
       MarketplaceTabIntro,
-      "Agents ready to work.",
-      "Browse featured agents",
+      "Workflows ready to work.",
+      "Browse featured workflows",
       "MARKETPLACE_TAB_INTRO",
     ],
     [

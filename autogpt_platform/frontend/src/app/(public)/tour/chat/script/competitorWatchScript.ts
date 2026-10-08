@@ -54,7 +54,7 @@ export const competitorWatchScript: TourScript = [
         delayMs: 500,
         part: {
           type: "text",
-          text: "Building your agent — picking blocks, wiring them up, setting the schedule.",
+          text: "Building your workflow — picking blocks, wiring them up, setting the schedule.",
         },
       },
       {
@@ -91,7 +91,7 @@ export const competitorWatchScript: TourScript = [
         delayMs: 600,
         part: {
           type: "text",
-          text: "Your agent is live — it'll email you the moment that price moves again. 🎉",
+          text: "Your workflow is live — it'll email you the moment that price moves again. 🎉",
         },
       },
     ],

@@ -19,7 +19,7 @@ export const metadata: Metadata = {
         url: OG_IMAGE,
         width: 1200,
         height: 630,
-        alt: "AutoGPT tour — an agent built, run and delivering its first result",
+        alt: "AutoGPT tour — a workflow built, run and delivering its first result",
       },
     ],
   },

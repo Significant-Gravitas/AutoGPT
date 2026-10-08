@@ -430,7 +430,7 @@ describe("SettingsCreatorDashboardPage", () => {
     fireEvent.click(viewItem);
   });
 
-  test("clicking Submit agent triggers the publish modal flow", async () => {
+  test("clicking Submit workflow triggers the publish modal flow", async () => {
     server.use(getGetV2ListMySubmissionsMockHandler(makeResponse([])));
 
     render(<SettingsCreatorDashboardPage />);

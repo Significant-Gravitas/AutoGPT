@@ -10,7 +10,7 @@ type Props = {
 };
 
 const steps = [
-  { key: "select", label: "Agent" },
+  { key: "select", label: "Workflow" },
   { key: "info", label: "Listing" },
   { key: "review", label: "Review" },
 ] as const;
@@ -27,7 +27,7 @@ export function StepStrip({ currentStep }: Props) {
     <div className="flex flex-col gap-6 px-1 pb-6 sm:px-2">
       <div className="flex items-center gap-2 pr-12">
         <Text variant="lead-medium" as="span" className="text-textBlack">
-          Publish agent
+          Publish workflow
         </Text>
       </div>
 
