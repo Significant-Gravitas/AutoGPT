@@ -29,7 +29,7 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
     <section className="flex flex-col gap-2 lg:mt-[1rem]">
       <div className="flex items-baseline justify-between gap-2 lg:mb-[.5rem]">
         <Text variant="body-medium" className="text-neutral-800">
-          Spend by agent
+          Spend by workflow
         </Text>
         <Text variant="small" className="text-neutral-400">
           % of monthly spend
@@ -38,7 +38,8 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
       <ul className="flex flex-col gap-4">
         {visible.map((rollup) => {
           const agent = agentLookup.get(rollup.graph_id);
-          const label = agent?.name ?? `Agent ${rollup.graph_id.slice(0, 8)}`;
+          const label =
+            agent?.name ?? `Workflow ${rollup.graph_id.slice(0, 8)}`;
           const share = totalCents > 0 ? rollup.cost_cents / totalCents : 0;
           const sharePct = Math.round(share * 100);
           const widthPct = Math.max(2, sharePct);

@@ -65,17 +65,23 @@ describe("getAgentStatusLabel", () => {
 describe("getEmptyMessage", () => {
   it("uses task terminology for completed and scheduled tabs", () => {
     expect(getEmptyMessage("completed")).toBe("No recently completed tasks");
-    expect(getEmptyMessage("scheduled")).toBe("No agents with scheduled tasks");
+    expect(getEmptyMessage("scheduled")).toBe(
+      "No workflows with scheduled tasks",
+    );
   });
 
   it("returns the matching message for each known tab", () => {
-    expect(getEmptyMessage("running")).toBe("No agents running right now");
-    expect(getEmptyMessage("attention")).toBe("No agents that need attention");
-    expect(getEmptyMessage("listening")).toBe("No agents listening for events");
-    expect(getEmptyMessage("idle")).toBe("No idle agents");
+    expect(getEmptyMessage("running")).toBe("No workflows running right now");
+    expect(getEmptyMessage("attention")).toBe(
+      "No workflows that need attention",
+    );
+    expect(getEmptyMessage("listening")).toBe(
+      "No workflows listening for events",
+    );
+    expect(getEmptyMessage("idle")).toBe("No idle workflows");
   });
 
   it("falls back to a generic message for an unmapped tab", () => {
-    expect(getEmptyMessage("healthy")).toBe("No agents in this category");
+    expect(getEmptyMessage("healthy")).toBe("No workflows in this category");
   });
 });

@@ -30,7 +30,7 @@ export function TopRunsList({ runs, agentLookup }: Props) {
       <ul className="flex flex-col divide-y divide-zinc-100 rounded-medium border border-zinc-100 bg-white">
         {visible.map((run) => {
           const agent = agentLookup.get(run.graph_id);
-          const label = agent?.name ?? `Agent ${run.graph_id.slice(0, 8)}`;
+          const label = agent?.name ?? `Workflow ${run.graph_id.slice(0, 8)}`;
           const href = agent
             ? `/library/agents/${agent.libraryAgentId}?activeItem=${run.execution_id}`
             : null;

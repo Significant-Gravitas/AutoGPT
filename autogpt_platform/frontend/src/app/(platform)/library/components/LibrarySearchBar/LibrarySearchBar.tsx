@@ -25,14 +25,14 @@ export function LibrarySearchBar({ setSearchTerm }: Props) {
       />
 
       <Input
-        label="Search agents"
+        label="Search workflows"
         id="library-search-bar"
         hideLabel
         onChange={handleSearchInput}
         className="min-w-[18rem] pl-12 lg:min-w-[30rem]"
         type="text"
         data-testid="library-textbox"
-        placeholder="Search agents"
+        placeholder="Search workflows"
       />
     </div>
   );

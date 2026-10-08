@@ -72,13 +72,13 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
         });
 
         toast({
-          title: "Agent duplicated",
+          title: "Workflow duplicated",
           description: `${result.data.name} has been created.`,
         });
       }
     } catch (error: unknown) {
       toast({
-        title: "Failed to duplicate agent",
+        title: "Failed to duplicate workflow",
         description:
           error instanceof Error
             ? error.message
@@ -105,7 +105,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
 
       toast({
         title: "Removed from folder",
-        description: "Agent has been moved back to your library.",
+        description: "Workflow has been moved back to your library.",
       });
     } catch (error: unknown) {
       toast({
@@ -133,12 +133,12 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
       });
 
-      toast({ title: "Agent deleted" });
+      toast({ title: "Workflow deleted" });
       setShowDeleteDialog(false);
       router.push("/library");
     } catch (error: unknown) {
       toast({
-        title: "Failed to delete agent",
+        title: "Failed to delete workflow",
         description:
           error instanceof Error
             ? error.message
@@ -176,7 +176,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
                   data-testid="library-agent-card-open-in-builder-link"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  Edit agent
+                  Edit workflow
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -190,7 +190,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
             disabled={isDuplicatingAgent}
             className="flex items-center gap-2"
           >
-            Duplicate agent
+            Duplicate workflow
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -225,7 +225,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
             }}
             className="flex items-center gap-2 text-red-600 focus:bg-red-50 focus:text-red-600"
           >
-            Delete agent
+            Delete workflow
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -236,13 +236,13 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
           set: setShowDeleteDialog,
         }}
         styling={{ maxWidth: "32rem" }}
-        title="Delete agent"
+        title="Delete workflow"
       >
         <Dialog.Content>
           <div>
             <Text variant="large">
-              Are you sure you want to delete this agent? This action cannot be
-              undone.
+              Are you sure you want to delete this workflow? This action cannot
+              be undone.
             </Text>
             <Dialog.Footer>
               <Button
@@ -257,7 +257,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
                 onClick={handleDeleteAgent}
                 loading={isDeletingAgent}
               >
-                Delete Agent
+                Delete Workflow
               </Button>
             </Dialog.Footer>
           </div>

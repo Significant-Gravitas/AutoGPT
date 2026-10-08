@@ -317,7 +317,7 @@ export function EmptySchedules() {
         </Text>
         <Text variant="large" className="text-zinc-700">
           Create a new run, and you&apos;ll have the option to schedule your
-          agent to run automatically.
+          workflow to run automatically.
         </Text>
       </div>
     </div>

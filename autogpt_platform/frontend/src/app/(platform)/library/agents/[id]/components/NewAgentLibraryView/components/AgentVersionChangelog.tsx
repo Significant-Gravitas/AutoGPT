@@ -116,7 +116,7 @@ export function AgentVersionChangelog({
                 className="text-neutral-600 dark:text-neutral-400"
               >
                 View changes and updates across different versions of this
-                agent.
+                workflow.
               </Text>
               {agentVersions.map(renderVersionItem)}
             </div>
@@ -126,7 +126,7 @@ export function AgentVersionChangelog({
                 variant="body"
                 className="text-neutral-600 dark:text-neutral-400"
               >
-                No version history available for this agent.
+                No version history available for this workflow.
               </Text>
             </div>
           )}

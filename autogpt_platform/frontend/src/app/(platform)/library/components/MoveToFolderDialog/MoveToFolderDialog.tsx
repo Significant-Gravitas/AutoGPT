@@ -51,14 +51,14 @@ export function MoveToFolderDialog({
         setIsOpen(false);
         setSearch("");
         toast({
-          title: "Agent moved",
+          title: "Workflow moved",
           description: `"${agentName}" has been moved.`,
         });
       },
       onError: () => {
         toast({
           title: "Error",
-          description: "Failed to move agent. Please try again.",
+          description: "Failed to move workflow. Please try again.",
           variant: "destructive",
         });
       },
@@ -155,7 +155,9 @@ export function MoveToFolderDialog({
                       <Text variant="small-medium">{folder.name}</Text>
                       <Text variant="small" className="text-zinc-400">
                         {folder.agent_count ?? 0}{" "}
-                        {(folder.agent_count ?? 0) === 1 ? "agent" : "agents"}
+                        {(folder.agent_count ?? 0) === 1
+                          ? "workflow"
+                          : "workflows"}
                       </Text>
                     </div>
                   </Button>

@@ -316,8 +316,8 @@ export function EmptyTriggers() {
           No triggers yet
         </Text>
         <Text variant="large" className="text-zinc-700">
-          Set up automatic triggers for your agent to run tasks automatically —
-          they&apos;ll show up here.
+          Set up automatic triggers for your workflow to run tasks automatically
+          — they&apos;ll show up here.
         </Text>
       </div>
     </div>

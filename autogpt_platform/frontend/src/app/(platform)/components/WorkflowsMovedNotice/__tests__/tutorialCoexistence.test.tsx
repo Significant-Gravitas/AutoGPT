@@ -197,7 +197,7 @@ describe("migration notice with production first-visit tutorials", () => {
     expectOnlyDialog("Your mission control.");
     expectNoWrites();
     await userEvent.click(
-      screen.getByRole("button", { name: "See my agents" }),
+      screen.getByRole("button", { name: "See my workflows" }),
     );
     await waitFor(() =>
       expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0),
@@ -221,7 +221,7 @@ describe("migration notice with production first-visit tutorials", () => {
       expectOnlyDialog("Your mission control.");
       expectNoWrites();
       await userEvent.click(
-        screen.getByRole("button", { name: "See my agents" }),
+        screen.getByRole("button", { name: "See my workflows" }),
       );
       expect(context.completeStep).toHaveBeenCalledExactlyOnceWith(
         "AGENTS_TAB_INTRO",

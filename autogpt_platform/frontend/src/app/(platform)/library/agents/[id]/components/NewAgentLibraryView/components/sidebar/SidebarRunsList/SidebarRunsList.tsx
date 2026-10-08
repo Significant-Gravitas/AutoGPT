@@ -200,7 +200,7 @@ export function SidebarRunsList({
             ) : (
               <div className="flex min-h-[50vh] flex-col items-center justify-center">
                 <Text variant="large" className="text-zinc-700">
-                  No scheduled agents
+                  No scheduled workflows
                 </Text>
               </div>
             )}
@@ -242,7 +242,7 @@ export function SidebarRunsList({
               {triggerAgents.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <Text variant="body-medium" className="px-1 !text-zinc-500">
-                    Trigger Agents
+                    Trigger Workflows
                   </Text>
                   <div className="flex flex-nowrap items-center justify-start gap-4 lg:flex-col lg:gap-3">
                     {triggerAgents.map((triggerAgent) => (
@@ -275,7 +275,7 @@ export function SidebarRunsList({
                     No triggers set up
                   </Text>
                   <Text variant="body" className="!text-zinc-500">
-                    Ask an expert to set up a trigger for this agent (e.g.
+                    Ask an expert to set up a trigger for this workflow (e.g.
                     &ldquo;run this when a new email arrives&rdquo;).
                   </Text>
                 </div>

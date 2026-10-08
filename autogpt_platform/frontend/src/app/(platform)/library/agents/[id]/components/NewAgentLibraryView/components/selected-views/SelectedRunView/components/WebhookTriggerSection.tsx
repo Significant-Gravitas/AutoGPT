@@ -83,7 +83,7 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
           </div>
         ) : (
           <Text variant="body" className="text-muted-foreground">
-            This agent trigger is{" "}
+            This workflow trigger is{" "}
             {preset.is_active
               ? "ready. When a trigger is received, it will run with the provided settings."
               : "disabled. It will not respond to triggers until you enable it."}

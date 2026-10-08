@@ -40,8 +40,8 @@ export function LibraryEmptyState() {
         </motion.div>
         <motion.div {...fadeUp(0.36)}>
           <Text variant="body" className="text-zinc-500">
-            Build your own agent from scratch, or grab one from the marketplace
-            to get started.
+            Build your own workflow from scratch, or grab one from the
+            marketplace to get started.
           </Text>
         </motion.div>
       </div>
@@ -55,7 +55,7 @@ export function LibraryEmptyState() {
             size="large"
             leftIcon={<Icon icon={PlusSignIcon} className="h-4 w-4" />}
           >
-            Build an agent
+            Build a workflow
           </Button>
         </motion.div>
         <motion.div {...fadeUp(0.5)}>

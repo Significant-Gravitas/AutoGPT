@@ -68,7 +68,7 @@ describe("AgentsTabIntro", () => {
     ).toBeDefined();
 
     await userEvent.click(
-      screen.getByRole("button", { name: "See my agents" }),
+      screen.getByRole("button", { name: "See my workflows" }),
     );
 
     await waitFor(() =>

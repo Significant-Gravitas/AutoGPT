@@ -91,7 +91,7 @@ export class LibraryPage extends BasePage {
   async searchAgents(searchTerm: string): Promise<void> {
     console.log(`searching for agents with term: ${searchTerm}`);
     const { getRole } = getSelectors(this.page);
-    const searchInput = getRole("textbox", "Search agents");
+    const searchInput = getRole("textbox", "Search workflows");
     await searchInput.fill(searchTerm);
     await expect(searchInput).toHaveValue(searchTerm);
   }
@@ -101,7 +101,7 @@ export class LibraryPage extends BasePage {
     // Look for the clear button (X icon)
     const clearButton = this.page.locator(".lucide.lucide-x");
     const searchInput = this.page.getByRole("textbox", {
-      name: "Search agents",
+      name: "Search workflows",
     });
     if (await clearButton.isVisible()) {
       await clearButton.click();
@@ -145,8 +145,8 @@ export class LibraryPage extends BasePage {
       timeout: 5_000,
     });
 
-    // Click the "AutoGPT agent" tab
-    await this.page.getByRole("tab", { name: "AutoGPT agent" }).click();
+    // Click the "AutoGPT workflow" tab
+    await this.page.getByRole("tab", { name: "AutoGPT workflow" }).click();
   }
 
   async closeUploadDialog(): Promise<void> {
@@ -175,12 +175,12 @@ export class LibraryPage extends BasePage {
 
     // Fill agent name
     await this.page
-      .getByRole("textbox", { name: "Agent name" })
+      .getByRole("textbox", { name: "Workflow name" })
       .fill(agentName);
 
     // Fill description
     await this.page
-      .getByRole("textbox", { name: "Agent description" })
+      .getByRole("textbox", { name: "Workflow description" })
       .fill(description);
   }
 
@@ -266,7 +266,7 @@ export class LibraryPage extends BasePage {
       .getByTestId("library-agent-card")
       .filter({ hasText: agent.name });
 
-    // The "Edit agent" link is inside the three-dot dropdown menu.
+    // The "Edit workflow" link is inside the three-dot dropdown menu.
     // Open the menu first, then click the builder link.
     const menuTrigger = agentCard.getByRole("button", {
       name: "More actions",
@@ -305,7 +305,7 @@ export class LibraryPage extends BasePage {
     console.log(`getting search input value`);
     try {
       const searchInput = this.page.getByRole("textbox", {
-        name: "Search agents",
+        name: "Search workflows",
       });
       return await searchInput.inputValue();
     } catch {
@@ -490,7 +490,9 @@ export async function clickRunButton(page: Page): Promise<void> {
   const setupTaskButton = page.getByRole("button", {
     name: /Setup your task/i,
   });
-  const newTaskButton = page.getByRole("button", { name: /^New agent task$/i });
+  const newTaskButton = page.getByRole("button", {
+    name: /^New workflow task$/i,
+  });
   const rerunTaskButton = page.getByRole("button", { name: /Rerun task/i });
   const runNowButton = page.getByRole("button", { name: /Run now/i });
   const actionButtons = [
@@ -804,7 +806,7 @@ async function getVisibleAgentDetailSurface(page: Page): Promise<string> {
   const visibleSurfaces: Array<[string, Locator]> = [
     [
       "about-agent",
-      page.getByText("About this agent", { exact: true }).first(),
+      page.getByText("About this workflow", { exact: true }).first(),
     ],
     [
       "setup-task",
@@ -812,7 +814,7 @@ async function getVisibleAgentDetailSurface(page: Page): Promise<string> {
     ],
     [
       "new-task",
-      page.getByRole("button", { name: /^New agent task$/i }).first(),
+      page.getByRole("button", { name: /^New workflow task$/i }).first(),
     ],
     ["scheduled-tab", page.getByRole("tab", { name: /^Scheduled$/i }).first()],
   ];
@@ -1136,7 +1138,7 @@ export async function importAgentFromFile(
         }
 
         const uploadFailed = await page
-          .getByText("Error Uploading agent")
+          .getByText("Error Uploading workflow")
           .isVisible()
           .catch(() => false);
         if (uploadFailed) {
@@ -1237,7 +1239,11 @@ async function waitForExportActionSurface(
     .poll(
       async () => {
         if (
-          await getFirstVisibleLocator(page, "button", "Export agent to file")
+          await getFirstVisibleLocator(
+            page,
+            "button",
+            "Export workflow to file",
+          )
         ) {
           return "direct";
         }
@@ -1252,7 +1258,7 @@ async function waitForExportActionSurface(
     )
     .not.toBe("pending");
 
-  if (await getFirstVisibleLocator(page, "button", "Export agent to file")) {
+  if (await getFirstVisibleLocator(page, "button", "Export workflow to file")) {
     return "direct";
   }
 
@@ -1284,7 +1290,7 @@ export async function clickExportAgent(page: Page): Promise<void> {
     const directExportButton = await getFirstVisibleLocator(
       page,
       "button",
-      "Export agent to file",
+      "Export workflow to file",
     );
     if (!directExportButton) {
       throw new Error(
@@ -1311,7 +1317,7 @@ export async function clickExportAgent(page: Page): Promise<void> {
     const exportMenuItem = await getFirstVisibleLocator(
       page,
       "menuitem",
-      "Export agent to file",
+      "Export workflow to file",
     );
     if (exportMenuItem) {
       await exportMenuItem.click({ timeout: 15000 });

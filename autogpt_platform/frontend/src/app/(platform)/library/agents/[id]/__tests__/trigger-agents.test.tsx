@@ -223,7 +223,7 @@ describe("Library agent view — trigger agents", () => {
       ).toBeDefined();
       expect(screen.getByRole("button", { name: /try again/i })).toBeDefined();
       const newTaskButton = screen.getByRole("button", {
-        name: "New agent task",
+        name: "New workflow task",
       });
       await waitFor(() => {
         expect(newTaskButton.hasAttribute("disabled")).toBe(false);
@@ -319,7 +319,7 @@ describe("Library agent view — trigger agents", () => {
     expect(screen.queryByRole("tab", { name: /triggers/i })).toBeNull();
   });
 
-  test("shows trigger agent in 'Trigger Agents' subsection when one exists", async () => {
+  test("shows trigger agent in 'Trigger Workflows' subsection when one exists", async () => {
     const triggerAgent = getGetV2GetLibraryAgentResponseMock({
       id: TRIGGER_ID,
       graph_id: TRIGGER_GRAPH_ID,
@@ -338,13 +338,13 @@ describe("Library agent view — trigger agents", () => {
     renderWithInitialParams(<NewAgentLibraryView />, "activeTab=triggers");
 
     await screen.findByText("Parent Agent");
-    await screen.findByText("Trigger Agents");
+    await screen.findByText("Trigger Workflows");
     const rows = await screen.findAllByText("Email Watcher");
     expect(rows.length).toBeGreaterThan(0);
     expect(screen.queryByText("Webhook Triggers")).toBeNull();
   });
 
-  test("shows both 'Webhook Triggers' and 'Trigger Agents' subsections when both exist", async () => {
+  test("shows both 'Webhook Triggers' and 'Trigger Workflows' subsections when both exist", async () => {
     const triggerAgent = getGetV2GetLibraryAgentResponseMock({
       id: TRIGGER_ID,
       graph_id: TRIGGER_GRAPH_ID,
@@ -363,7 +363,7 @@ describe("Library agent view — trigger agents", () => {
 
     await screen.findByText("Parent Agent");
     await screen.findByText("Webhook Triggers");
-    await screen.findByText("Trigger Agents");
+    await screen.findByText("Trigger Workflows");
     expect((await screen.findAllByText("RSS Watcher")).length).toBeGreaterThan(
       0,
     );
@@ -1036,10 +1036,10 @@ describe("Library agent view — trigger agents", () => {
 
     // On the Templates tab the shared preset query's error must still
     // surface — the tab guard only suppresses it elsewhere.
-    await screen.findByText(/when retrieving agent/i);
+    await screen.findByText(/when retrieving workflow/i);
   });
 
-  test("when generic-trigger-agents flag is off, hides 'Trigger Agents' subsection and skips the trigger-agents fetch", async () => {
+  test("when generic-trigger-agents flag is off, hides 'Trigger Workflows' subsection and skips the trigger-agents fetch", async () => {
     mockUseGetFlag.mockReturnValue(false);
 
     let triggerAgentsCallCount = 0;
@@ -1067,9 +1067,9 @@ describe("Library agent view — trigger agents", () => {
 
     await screen.findByText("Parent Agent");
     await screen.findByText("Webhook Triggers");
-    // The "Trigger Agents" subsection must not render and the row name
+    // The "Trigger Workflows" subsection must not render and the row name
     // must be absent.
-    expect(screen.queryByText("Trigger Agents")).toBeNull();
+    expect(screen.queryByText("Trigger Workflows")).toBeNull();
     expect(screen.queryByText("Hidden Watcher")).toBeNull();
     // And the GET .../triggers request never fires.
     expect(triggerAgentsCallCount).toBe(0);

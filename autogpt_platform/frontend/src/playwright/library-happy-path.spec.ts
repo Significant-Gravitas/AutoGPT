@@ -385,7 +385,7 @@ test("library happy path: user can edit a saved agent from Library and keep chan
     .context()
     .waitForEvent("page", { timeout: 10000 })
     .catch(() => null);
-  // "Edit agent" link is inside the three-dot dropdown menu
+  // "Edit workflow" link is inside the three-dot dropdown menu
   await agentCard.getByRole("button", { name: "More actions" }).first().click();
   await page
     .getByTestId("library-agent-card-open-in-builder-link")
@@ -504,7 +504,9 @@ test("library happy path: user can delete a completed task from the run sidebar"
   // Sidebar should drop the only run, returning the page to initial
   // task-entry state.
   await expect(
-    page.getByRole("button", { name: /^(Setup your task|New agent task)$/i }),
+    page.getByRole("button", {
+      name: /^(Setup your task|New workflow task)$/i,
+    }),
   ).toBeVisible({ timeout: 15000 });
 });
 

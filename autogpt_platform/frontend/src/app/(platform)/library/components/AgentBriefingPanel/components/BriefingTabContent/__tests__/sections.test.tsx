@@ -102,6 +102,6 @@ describe("AgentListSection", () => {
   it("shows the empty message when no agent matches the tab", () => {
     server.use(getGetV1ListAllExecutionsMockHandler200([]));
     render(<AgentListSection activeTab="idle" agents={[]} />);
-    expect(screen.getByText("No idle agents")).toBeDefined();
+    expect(screen.getByText("No idle workflows")).toBeDefined();
   });
 });

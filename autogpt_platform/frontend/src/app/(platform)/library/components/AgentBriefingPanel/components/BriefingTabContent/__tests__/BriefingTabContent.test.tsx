@@ -109,7 +109,7 @@ describe("BriefingTabContent — dispatching", () => {
         <BriefingTabContent activeTab={tab} agents={[]} />,
       );
       expect(
-        screen.getByText(/No agents|No recently completed/i),
+        screen.getByText(/No workflows|No recently completed/i),
       ).toBeDefined();
       unmount();
     }
@@ -197,7 +197,7 @@ describe("BriefingTabContent — CostsBreakdown", () => {
     // Headline stats
     expect(screen.getByText("$42.50")).toBeDefined();
     expect(screen.getByText("Most expensive tasks")).toBeDefined();
-    expect(screen.getByText("Spend by agent")).toBeDefined();
+    expect(screen.getByText("Spend by workflow")).toBeDefined();
 
     // Agent names resolved via graph_id lookup
     expect(screen.getAllByText("Alpha").length).toBeGreaterThanOrEqual(1);
@@ -242,7 +242,7 @@ describe("BriefingTabContent — CostsBreakdown", () => {
     fireEvent.click(
       screen.getByRole("button", { name: /see costs breakdown/i }),
     );
-    expect(screen.getByText(/Agent deadbeef/)).toBeDefined();
+    expect(screen.getByText(/Workflow deadbeef/)).toBeDefined();
   });
 
   it("computes Avg / run from billable_run_count, not run_count", () => {
