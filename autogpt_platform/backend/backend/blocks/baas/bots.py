@@ -11,6 +11,7 @@ from backend.sdk import (
     BlockCategory,
     BlockCost,
     BlockCostType,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -85,6 +86,7 @@ class BaasBotJoinMeetingBlock(Block):
             input_schema=self.Input,
             output_schema=self.Output,
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -177,6 +179,7 @@ class BaasBotFetchMeetingDataBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -232,6 +235,7 @@ class BaasBotDeleteRecordingBlock(Block):
             input_schema=self.Input,
             output_schema=self.Output,
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

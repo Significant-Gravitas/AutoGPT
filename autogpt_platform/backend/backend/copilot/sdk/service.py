@@ -31,6 +31,7 @@ from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    ResultError,
     ResultMessage,
     StreamEvent,
     TextBlock,
@@ -52,6 +53,7 @@ from backend.copilot.model_router import (
     resolve_model_route,
 )
 from backend.copilot.budget_signal import build_turn_budget_block
+from backend.copilot.feedback_db import RATEABLE_ROLES
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
@@ -69,6 +71,12 @@ from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
 from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
+from backend.util.llm.provider_billing import (
+    PROVIDER_UNAVAILABLE_CODE,
+    PROVIDER_UNAVAILABLE_MESSAGE,
+    is_provider_out_of_credits,
+    report_provider_out_of_credits,
+)
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.prompt import (
     DEFAULT_COMPRESSION_RESERVE,
@@ -82,6 +90,7 @@ from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
     FRIENDLY_TRANSIENT_MSG,
+    HUNG_TOOL_CAP_SECONDS,
     STREAM_ERROR_MARKER,
     STREAM_INCOMPLETE_MARKER,
     STREAM_LOCK_PREFIX,
@@ -108,11 +117,13 @@ from ..model import (
 from ..pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
+    drained_rows_entry,
     pending_texts_from,
     persist_pending_as_user_rows,
     persist_session_safe,
 )
 from ..pending_messages import (
+    PendingMessage,
     drain_pending_for_persist,
     push_pending_message,
 )
@@ -140,12 +151,14 @@ from ..rate_limit import (
 )
 from ..response_model import (
     StreamBaseResponse,
+    StreamCheckpoint,
     StreamCompactionProgress,
     StreamError,
     StreamFinish,
     StreamProviderFailure,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamPendingDrained,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -174,6 +187,7 @@ from ..service import (
     inject_user_context,
     strip_user_context_tags,
 )
+from ..stream_checkpoint import turn_checkpoint
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
 from ..tools import (
@@ -185,6 +199,7 @@ from ..tools import (
 )
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
+from ..tools.seen_capabilities import build_seen_capabilities_notice
 from ..tools.session_context import build_session_context
 from ..tools.skills import build_skills_context, build_skills_update_notice
 from ..tracking import track_user_message
@@ -272,7 +287,7 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 # Two regimes: no tool pending → 30 min (SDK genuinely idle); tool pending →
 # 2 h hard cap (lets long sub-AutoPilots run, still backstops a hung tool).
 _IDLE_TIMEOUT_SECONDS = 30 * 60
-_HUNG_TOOL_CAP_SECONDS = 2 * 60 * 60
+_HUNG_TOOL_CAP_SECONDS = HUNG_TOOL_CAP_SECONDS
 
 # Floor on the per-query SDK budget — too small and the CLI refuses to
 # start a turn at all.  Caller (``_resolve_dynamic_max_budget_usd``) clamps
@@ -342,6 +357,9 @@ class _SDKLoopState:
     # error context would be silently dropped.
     stream_error_msg: str | None = None
     stream_error_code: str | None = None
+    # A billing refusal was seen; the loop reads on only to the
+    # ``ResultMessage``, which carries the usage of the rounds already served.
+    provider_refused: bool = False
 
 
 async def _open_sdk_compaction_row(
@@ -428,6 +446,8 @@ async def _consume_sdk_until_done(
 
             # Threshold flips to the long cap while a tool is pending; clock never resets.
             idle_seconds = time.monotonic() - loop_state.last_real_msg_time
+            if loop_state.provider_refused and idle_seconds >= _HEARTBEAT_INTERVAL:
+                break
             threshold = _idle_timeout_threshold(state.adapter)
             if idle_seconds >= threshold:
                 unresolved_tool_names = sorted(
@@ -511,6 +531,35 @@ async def _consume_sdk_until_done(
             observed = getattr(sdk_msg, "model", None)
             if isinstance(observed, str) and observed:
                 state.observed_model = observed
+
+        if loop_state.provider_refused:
+            if isinstance(sdk_msg, ResultMessage):
+                _record_result_usage(sdk_msg, state, ctx.log_prefix)
+                break
+            continue
+
+        # Checked before the message reaches the adapter, which would
+        # otherwise stream the provider's "buy more credits" text as the reply.
+        refusal = _platform_out_of_credits_refusal(sdk_msg, ctx)
+        if refusal is not None:
+            report_provider_out_of_credits(
+                provider=config.effective_transport,
+                model=state.observed_model or getattr(state.options, "model", None),
+                surface="copilot_sdk",
+                error=refusal,
+                session_id=ctx.session_id,
+            )
+            # Not yielded here: the consumer stops at the first StreamError and
+            # closes this generator, so the outer loop yields it only after
+            # the history marker carrying this message is written.
+            loop_state.stream_error_msg = PROVIDER_UNAVAILABLE_MESSAGE
+            loop_state.stream_error_code = PROVIDER_UNAVAILABLE_CODE
+            loop_state.ended_with_stream_error = True
+            if isinstance(sdk_msg, ResultMessage):
+                _record_result_usage(sdk_msg, state, ctx.log_prefix)
+                break
+            loop_state.provider_refused = True
+            continue
 
         # Log AssistantMessage API errors (e.g. invalid_request)
         # so we can debug Anthropic API 400s surfaced by the CLI.
@@ -649,66 +698,7 @@ async def _consume_sdk_until_done(
             if _is_prompt_too_long(RuntimeError(sdk_msg.result or "")):
                 raise RuntimeError("Prompt is too long")
 
-            # Capture token usage from ResultMessage.
-            # Anthropic reports cached tokens separately:
-            #   input_tokens = uncached only
-            #   cache_read_input_tokens = served from cache
-            #   cache_creation_input_tokens = written to cache
-            if sdk_msg.usage:
-                # Use `or 0` instead of a default in .get() because
-                # OpenRouter may include the key with a null value (e.g.
-                # {"cache_read_input_tokens": null}) for models that don't
-                # yet report cache tokens, making .get("key", 0) return
-                # None rather than the fallback 0.
-                state.usage.prompt_tokens += sdk_msg.usage.get("input_tokens") or 0
-                state.usage.cache_read_tokens += (
-                    sdk_msg.usage.get("cache_read_input_tokens") or 0
-                )
-                state.usage.cache_creation_tokens += (
-                    sdk_msg.usage.get("cache_creation_input_tokens") or 0
-                )
-                state.usage.completion_tokens += sdk_msg.usage.get("output_tokens") or 0
-                logger.info(
-                    "%s Token usage: uncached=%d, cache_read=%d, "
-                    "cache_create=%d, output=%d",
-                    ctx.log_prefix,
-                    state.usage.prompt_tokens,
-                    state.usage.cache_read_tokens,
-                    state.usage.cache_creation_tokens,
-                    state.usage.completion_tokens,
-                )
-            if sdk_msg.total_cost_usd is not None:
-                # Default: trust the CLI-reported value.  Accurate for
-                # Anthropic models (the CLI's bundled pricing table is
-                # Anthropic-authored), and becomes the sync-path cost
-                # when the reconcile is disabled or fails.
-                # Prefer the ACTUALLY executed model
-                # (``state.observed_model`` from ``AssistantMessage.model``)
-                # over the requested primary (``state.options.model``)
-                # so a fallback activation doesn't mis-route pricing.
-                active_model = state.observed_model or getattr(
-                    state.options, "model", None
-                )
-                if _is_moonshot_model(active_model):
-                    # Moonshot slug — the CLI doesn't know Moonshot's
-                    # rate card and silently bills at Sonnet rates
-                    # (~5x over-charge).  Replace with the rate-card
-                    # estimate so the in-stream ``cost_usd`` and the
-                    # reconcile's lookup-fail fallback reflect
-                    # reality.  Reconcile
-                    # (``record_turn_cost_from_openrouter``) still
-                    # overrides this value when every gen-ID lookup
-                    # succeeds.
-                    state.usage.cost_usd = _override_cost_for_moonshot(
-                        model=active_model,
-                        sdk_reported_usd=sdk_msg.total_cost_usd,
-                        prompt_tokens=state.usage.prompt_tokens,
-                        completion_tokens=state.usage.completion_tokens,
-                        cache_read_tokens=state.usage.cache_read_tokens,
-                        cache_creation_tokens=state.usage.cache_creation_tokens,
-                    )
-                else:
-                    state.usage.cost_usd = sdk_msg.total_cost_usd
+            _record_result_usage(sdk_msg, state, ctx.log_prefix)
 
         # Emit compaction end if SDK finished compacting.
         # Sync TranscriptBuilder with the CLI's active context.
@@ -827,18 +817,6 @@ async def _consume_sdk_until_done(
                 skip_strip=response is tail_delta,
             )
             if dispatched is not None:
-                # Persistence (via _dispatch_response) always runs so the
-                # session transcript keeps role='reasoning' rows; the
-                # wire is gated so UI can suppress rendering.
-                if not state.adapter.render_reasoning_in_ui and isinstance(
-                    dispatched,
-                    (
-                        StreamReasoningStart,
-                        StreamReasoningDelta,
-                        StreamReasoningEnd,
-                    ),
-                ):
-                    continue
                 # The envelope goes out just ahead of the error it explains,
                 # so a client acting on it has it in hand before the turn is
                 # reported failed. Same contract as the baseline path.
@@ -883,6 +861,7 @@ async def _consume_sdk_until_done(
                     # watermark excludes them and the next turn's
                     # detect_gap picks them up as gap-fill.
                     state.midturn_user_rows += len(followup_drained)
+                    yield drained_rows_entry(followup_drained)
 
         # Append assistant entry AFTER convert_message so that
         # any stashed tool results from the previous turn are
@@ -924,6 +903,7 @@ async def _consume_sdk_until_done(
             loop_state.msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
             or (now - loop_state.last_flush_time) >= _FLUSH_INTERVAL_SECONDS
         ):
+            checkpoint = None
             try:
                 await asyncio.shield(upsert_chat_session(ctx.session))
                 logger.debug(
@@ -933,6 +913,7 @@ async def _consume_sdk_until_done(
                     loop_state.msgs_since_flush,
                     now - loop_state.last_flush_time,
                 )
+                checkpoint = turn_checkpoint(ctx.session.messages, ctx.turn_start)
             except Exception as flush_err:
                 logger.warning(
                     "%s Intermediate flush failed: %s",
@@ -941,6 +922,8 @@ async def _consume_sdk_until_done(
                 )
             loop_state.last_flush_time = now
             loop_state.msgs_since_flush = 0
+            if checkpoint is not None:
+                yield checkpoint
 
         # --- Building-mode switch (enter_agent_building_mode) ---
         # Restart the attempt with the guide in the system prompt.
@@ -1033,10 +1016,13 @@ def _intermediate_flush_blocked(
     has_unsealed_assistant = (
         acc.has_appended_assistant and not acc.accumulated_tool_calls
     )
-    has_open_block = (adapter.has_started_text and not adapter.has_ended_text) or (
+    return has_pending_tools or has_unsealed_assistant or _has_open_block(adapter)
+
+
+def _has_open_block(adapter: SDKResponseAdapter) -> bool:
+    return (adapter.has_started_text and not adapter.has_ended_text) or (
         adapter.has_started_reasoning and not adapter.has_ended_reasoning
     )
-    return has_pending_tools or has_unsealed_assistant or has_open_block
 
 
 def _hidden_short_names_for_permissions(
@@ -1180,12 +1166,21 @@ _RETRYABLE_STREAM_ERROR_CODES: frozenset[str] = frozenset(
 )
 
 
+# Handled-error codes whose StreamError the outer retry loop yields itself,
+# after it has persisted the history marker, rather than the attempt.
+_OUTER_LOOP_YIELDS_ERROR_CODES: frozenset[str] = frozenset(
+    {"transient_api_error", PROVIDER_UNAVAILABLE_CODE}
+)
+
+
 # Event types that are ephemeral / cosmetic and must NOT be counted toward
 # ``events_yielded`` in the transient-retry loop.  Counting them would prevent
 # the backoff retry from firing because ``_next_transient_backoff`` returns
 # ``None`` when ``events_yielded > 0``.
 _EPHEMERAL_EVENT_TYPES = (
     StreamHeartbeat,
+    StreamCheckpoint,
+    StreamPendingDrained,
     StreamToolDisplayAvailable,
     # Compaction UI events are cosmetic and must not block retry — they're
     # emitted before the SDK query on compacted attempts.
@@ -1244,6 +1239,94 @@ def _friendly_error_text(raw: str) -> str:
             return friendly
     # Fallback: sanitize but keep the original text for debugging
     return f"SDK stream error: {raw}"
+
+
+def _record_result_usage(
+    sdk_msg: ResultMessage, state: "_RetryState", log_prefix: str
+) -> None:
+    """Add the turn's token usage and cost from the CLI's ``ResultMessage``."""
+    # Capture token usage from ResultMessage.
+    # Anthropic reports cached tokens separately:
+    #   input_tokens = uncached only
+    #   cache_read_input_tokens = served from cache
+    #   cache_creation_input_tokens = written to cache
+    if sdk_msg.usage:
+        # Use `or 0` instead of a default in .get() because
+        # OpenRouter may include the key with a null value (e.g.
+        # {"cache_read_input_tokens": null}) for models that don't
+        # yet report cache tokens, making .get("key", 0) return
+        # None rather than the fallback 0.
+        state.usage.prompt_tokens += sdk_msg.usage.get("input_tokens") or 0
+        state.usage.cache_read_tokens += (
+            sdk_msg.usage.get("cache_read_input_tokens") or 0
+        )
+        state.usage.cache_creation_tokens += (
+            sdk_msg.usage.get("cache_creation_input_tokens") or 0
+        )
+        state.usage.completion_tokens += sdk_msg.usage.get("output_tokens") or 0
+        logger.info(
+            "%s Token usage: uncached=%d, cache_read=%d, cache_create=%d, output=%d",
+            log_prefix,
+            state.usage.prompt_tokens,
+            state.usage.cache_read_tokens,
+            state.usage.cache_creation_tokens,
+            state.usage.completion_tokens,
+        )
+    if sdk_msg.total_cost_usd is not None:
+        # Default: trust the CLI-reported value.  Accurate for
+        # Anthropic models (the CLI's bundled pricing table is
+        # Anthropic-authored), and becomes the sync-path cost
+        # when the reconcile is disabled or fails.
+        # Prefer the ACTUALLY executed model
+        # (``state.observed_model`` from ``AssistantMessage.model``)
+        # over the requested primary (``state.options.model``)
+        # so a fallback activation doesn't mis-route pricing.
+        active_model = state.observed_model or getattr(state.options, "model", None)
+        if _is_moonshot_model(active_model):
+            # Moonshot slug — the CLI doesn't know Moonshot's
+            # rate card and silently bills at Sonnet rates
+            # (~5x over-charge).  Replace with the rate-card
+            # estimate so the in-stream ``cost_usd`` and the
+            # reconcile's lookup-fail fallback reflect
+            # reality.  Reconcile
+            # (``record_turn_cost_from_openrouter``) still
+            # overrides this value when every gen-ID lookup
+            # succeeds.
+            state.usage.cost_usd = _override_cost_for_moonshot(
+                model=active_model,
+                sdk_reported_usd=sdk_msg.total_cost_usd,
+                prompt_tokens=state.usage.prompt_tokens,
+                completion_tokens=state.usage.completion_tokens,
+                cache_read_tokens=state.usage.cache_read_tokens,
+                cache_creation_tokens=state.usage.cache_creation_tokens,
+            )
+        else:
+            state.usage.cost_usd = sdk_msg.total_cost_usd
+
+
+def _platform_out_of_credits_refusal(
+    sdk_msg: object, ctx: "_StreamContext"
+) -> str | None:
+    """The CLI's text for a billing refusal on the platform's own account.
+
+    The CLI reports a provider error as an ``AssistantMessage`` carrying
+    ``error`` (content is the provider's wording) and/or an error
+    ``ResultMessage``. A Codex turn runs on the user's own subscription, whose
+    limit is theirs to hear about, so it is left to the gateway's envelope.
+    """
+    if ctx.codex_gateway is not None:
+        return None
+    if isinstance(sdk_msg, AssistantMessage) and sdk_msg.error:
+        text = f"{sdk_msg.error} {sdk_msg.content}"
+        if sdk_msg.error == "billing_error":
+            return text
+    elif isinstance(sdk_msg, ResultMessage) and (
+        sdk_msg.is_error or sdk_msg.subtype in ("error", "error_during_execution")
+    ):
+        text = str(sdk_msg.result or "")
+    else:
+        return None
+    return text if is_provider_out_of_credits(text) else None
 
 
 def _is_prompt_too_long(err: BaseException) -> bool:
@@ -1417,6 +1500,8 @@ class _StreamContext:
     # text, and the gateway holds the last point at which it was typed.
     codex_gateway: "CodexAnthropicGateway | None" = None
     tool_display: SDKToolDisplayBridge | None = None
+    # Index in ``session.messages`` of the stream's first row, for checkpoints.
+    turn_start: int = 0
 
 
 # Per-retry token budgets for the no-transcript (use_resume=False) path.
@@ -1806,7 +1891,6 @@ async def _apply_building_mode_restart(
     state.adapter = SDKResponseAdapter(
         message_id=message_id,
         session_id=session_id,
-        render_reasoning_in_ui=config.render_reasoning_in_ui,
     )
     state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
     if prior_adapter.emitted_real_content_to_wire:
@@ -1915,22 +1999,58 @@ class _FinalFailure:
     retryable: bool
 
 
+def _is_raised_billing_refusal(err: BaseException) -> bool:
+    """A billing refusal that reached us raised rather than streamed.
+
+    Only a typed provider error or the CLI's own error result, which the SDK
+    raises as ``ResultError`` once the CLI exits, is judged; ``str()`` of any
+    other exception can quote the user's input or a page a tool fetched.
+    """
+    if is_provider_out_of_credits(err):
+        return True
+    seen: set[int] = set()
+    current: BaseException | None = err
+    while current is not None and id(current) not in seen:
+        if isinstance(current, ResultError):
+            return current.api_error_status == 402 or is_provider_out_of_credits(
+                current.result
+            )
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False
+
+
 def _classify_final_failure(
     interrupted: _InterruptedAttempt,
     attempts_exhausted: bool,
     transient_exhausted: bool,
     stream_err: BaseException | None,
+    platform_route: bool = True,
 ) -> _FinalFailure | None:
     """Pick the display message, stream code, and retryable flag for the exit.
 
     Returns ``None`` when no failure was recorded (success path) — the caller
     should skip both the history marker and the SSE yield in that case.
+    ``platform_route`` is False on a Codex turn, whose billing refusal is the
+    user's own limit and keeps the provider's wording.
     """
     if interrupted.handled_error is not None:
         return _FinalFailure(
             display_msg=interrupted.handled_error.error_msg,
             code=interrupted.handled_error.code,
             retryable=interrupted.handled_error.retryable,
+        )
+    # Judged before the exhausted-retry verdicts: those come from text
+    # patterns that a billing refusal's wording can also match.
+    if (
+        stream_err is not None
+        and platform_route
+        and _is_raised_billing_refusal(stream_err)
+    ):
+        return _FinalFailure(
+            display_msg=PROVIDER_UNAVAILABLE_MESSAGE,
+            code=PROVIDER_UNAVAILABLE_CODE,
+            retryable=True,
         )
     if attempts_exhausted:
         return _FinalFailure(
@@ -2397,7 +2517,6 @@ async def _do_transient_backoff(
     state.adapter = SDKResponseAdapter(
         message_id=message_id,
         session_id=session_id,
-        render_reasoning_in_ui=config.render_reasoning_in_ui,
     )
     state.usage.reset()
 
@@ -3747,7 +3866,20 @@ def _dispatch_response(
 
     if isinstance(response, StreamReasoningStart):
         acc.reasoning_response = ChatMessage(role="reasoning", content="")
-        ctx.session.messages.append(acc.reasoning_response)
+        messages = ctx.session.messages
+        # The post-tool placeholder pre-created for this message's text goes
+        # after its thinking, in the order the wire carries them.
+        placeholder = acc.assistant_response
+        if (
+            messages
+            and messages[-1] is placeholder
+            and placeholder.sequence is None
+            and not placeholder.content
+            and not placeholder.tool_calls
+        ):
+            messages.insert(len(messages) - 1, acc.reasoning_response)
+        else:
+            messages.append(acc.reasoning_response)
 
     elif isinstance(response, StreamReasoningDelta):
         if acc.reasoning_response is not None:
@@ -3798,6 +3930,12 @@ def _dispatch_response(
         )
 
     elif isinstance(response, StreamToolInputAvailable):
+        # A new assistant row opens after tool results, for a call as for text.
+        if acc.has_tool_results and acc.has_appended_assistant:
+            acc.assistant_response = ChatMessage(role="assistant", content="")
+            acc.accumulated_tool_calls = []
+            acc.has_appended_assistant = False
+            acc.has_tool_results = False
         acc.accumulated_tool_calls.append(
             {
                 "id": response.toolCallId,
@@ -4290,7 +4428,9 @@ async def _run_stream_attempt(
             "Stream error handled",
             error_msg=loop_state.stream_error_msg,
             code=loop_state.stream_error_code,
-            already_yielded=(loop_state.stream_error_code != "transient_api_error"),
+            already_yielded=(
+                loop_state.stream_error_code not in _OUTER_LOOP_YIELDS_ERROR_CODES
+            ),
         )
 
 
@@ -4538,6 +4678,26 @@ async def _maybe_prepend_skills_update(
     return notice + query_message if notice else query_message
 
 
+def _maybe_prepend_seen_capabilities(
+    session: ChatSession,
+    is_user_message: bool,
+    query_message: str,
+) -> str:
+    """Prepend the per-turn ``<seen_capabilities>`` notice, if any.
+
+    Derived from the tool calls persisted in ``session.messages`` so the
+    model is told which ids it already described / ran and which skills it
+    already loaded instead of re-discovering them after a resume or a
+    compaction (SECRT-2791). Same query-only contract as the skills-update
+    notice: never persisted, re-derived every turn, no-op for non-user
+    turns and for a first turn with no history.
+    """
+    if not is_user_message:
+        return query_message
+    notice = build_seen_capabilities_notice(session)
+    return notice + query_message if notice else query_message
+
+
 async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues]
     session_id: str,
     message: str | None = None,
@@ -4553,6 +4713,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     team_id: str | None = None,
     credential_lease: CredentialLease | CodexCredentialLease | None = None,
     message_metadata: dict[str, Any] | None = None,
+    turn_start: int | None = None,
+    continued_pending: list[PendingMessage] | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4644,17 +4806,31 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     if is_user_message and message and message.strip():
         await clear_pending_question(session)
 
-    _user_message_appended = maybe_append_user_message(
-        session, message, is_user_message, message_metadata
-    )
-    if _user_message_appended and is_user_message:
+    continued_entry: StreamPendingDrained | None = None
+    if continued_pending:
+        # An auto-continue call streams into the turn it continues: its user
+        # rows are the drained messages, one each, as a turn-start drain's are.
+        if not await persist_pending_as_user_rows(
+            session,
+            None,
+            continued_pending,
+            log_prefix=f"[SDK][{session_id[:12]}]",
+        ):
+            return  # rolled back and re-queued for the next turn
+        continued_entry = drained_rows_entry(continued_pending)
+        _user_message_appended = False
+    else:
+        _user_message_appended = maybe_append_user_message(
+            session, message, is_user_message, message_metadata
+        )
+    if (_user_message_appended or continued_entry) and is_user_message:
         track_user_message(
             user_id=user_id,
             session_id=session_id,
             message_length=len(message or ""),
             expert_id=session.expert_id,
             origin=session.metadata.origin,
-            surface=session.metadata.source_platform,
+            source_platform=session.metadata.source_platform,
         )
 
     # Structured log prefix: [SDK][<session>][T<turn>]
@@ -4688,6 +4864,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 f"{log_prefix} Eager persist of user message failed; "
                 f"in-memory append rolled back"
             )
+
+    # The stream's rows start after the message that triggered it.
+    if turn_start is None:
+        turn_start = len(session.messages)
 
     # Generate title for new sessions (first user message)
     if is_user_message and not session.title:
@@ -4787,6 +4967,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # the loop (post-stream upload guards, finally-block bookkeeping) sees a
     # bound name even when the loop never enters its happy path.
     ended_with_stream_error = False
+    final_checkpoint: StreamCheckpoint | None = None
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -4971,6 +5152,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         restore_context_messages = _restore.context_messages
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
+        if continued_entry is not None:
+            yield continued_entry
 
         set_execution_context(
             user_id,
@@ -5235,7 +5418,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         adapter = SDKResponseAdapter(
             message_id=message_id,
             session_id=session_id,
-            render_reasoning_in_ui=config.render_reasoning_in_ui,
         )
 
         # Propagate user_id/session_id as OTEL context attributes so the
@@ -5432,6 +5614,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 log_prefix=log_prefix,
             )
             if persisted_ok:
+                yield drained_rows_entry(pending_messages)
                 current_message = combine_pending_with_current(
                     pending_messages,
                     current_message,
@@ -5506,6 +5689,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         query_message = await _maybe_prepend_skills_update(
             session, user_id, is_user_message, query_message
         )
+        # Already-seen capability record — same query-only contract.
+        query_message = _maybe_prepend_seen_capabilities(
+            session, is_user_message, query_message
+        )
 
         # When running without --resume and no prior transcript in storage,
         # seed the transcript builder from compressed DB messages so that
@@ -5542,6 +5729,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             lock=lock,
             codex_gateway=codex_gateway,
             tool_display=tool_display_bridge,
+            turn_start=turn_start,
         )
 
         # ---------------------------------------------------------------
@@ -5704,11 +5892,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 state.query_message = await _maybe_prepend_skills_update(
                     session, user_id, is_user_message, state.query_message
                 )
+                state.query_message = _maybe_prepend_seen_capabilities(
+                    session, is_user_message, state.query_message
+                )
                 prior_adapter = state.adapter
                 state.adapter = SDKResponseAdapter(
                     message_id=message_id,
                     session_id=session_id,
-                    render_reasoning_in_ui=config.render_reasoning_in_ui,
                 )
                 # Carry the per-turn re-prompt cap forward so a transient
                 # retry mid-turn does not unlock another re-prompt round.
@@ -5938,8 +6128,24 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # the re-yield in that case.
         if ended_with_stream_error:
             failure = _classify_final_failure(
-                interrupted, attempts_exhausted, transient_exhausted, stream_err
+                interrupted,
+                attempts_exhausted,
+                transient_exhausted,
+                stream_err,
+                platform_route=stream_ctx.codex_gateway is None,
             )
+            if (
+                failure is not None
+                and failure.code == PROVIDER_UNAVAILABLE_CODE
+                and interrupted.handled_error is None
+            ):
+                report_provider_out_of_credits(
+                    provider=config.effective_transport,
+                    model=state.observed_model if state is not None else None,
+                    surface="copilot_sdk",
+                    error=stream_err or "",
+                    session_id=session_id,
+                )
             if failure is not None:
                 provider_failure = _provider_failure_for(stream_ctx)
                 cleanup_events: list[StreamBaseResponse] = []
@@ -6291,6 +6497,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 actual_model=state.observed_model if state is not None else None,
                 routing_source=routing_source,
             )
+            _stamp_turn_trace_id(
+                session.messages,
+                start_index=pre_turn_message_count,
+                trace_id=langfuse_trace_id,
+            )
             # What this turn ran on, recorded on the turn rather than read
             # back off the session later, so a route change cannot rewrite it.
             stamp_segment(
@@ -6305,6 +6516,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     log_prefix,
                     len(session.messages),
                 )
+                if turn_start is not None and not (
+                    state is not None and _has_open_block(state.adapter)
+                ):
+                    final_checkpoint = turn_checkpoint(session.messages, turn_start)
             except Exception as persist_err:
                 logger.error(
                     "%s Failed to persist session in finally: %s",
@@ -6471,6 +6686,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             turn_error,
         )
 
+    # Yielded here, not in ``finally``: an async generator cannot yield while
+    # it is being closed, and a closed turn has nobody left to read it.
+    if final_checkpoint is not None:
+        yield final_checkpoint
+
     # -------------------------------------------------------------------------
     # Auto-continue: drain any messages the user queued AFTER the turn-start
     # drain window and process them as a new turn automatically.
@@ -6539,6 +6759,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     organization_id=organization_id,
                     team_id=team_id,
                     credential_lease=credential_lease,
+                    turn_start=turn_start,
+                    continued_pending=_auto_pending_messages,
                 ):
                     if _first_auto_event:
                         _first_auto_event = False
@@ -6695,4 +6917,28 @@ def _stamp_turn_messages(
                 # Row already flushed to the DB mid-turn — flag it so the
                 # save path back-fills the columns (insert only covers
                 # unsequenced rows).
+                msg.stamps_pending_save = True
+
+
+def _stamp_turn_trace_id(
+    messages: list[ChatMessage],
+    *,
+    start_index: int,
+    trace_id: str | None,
+) -> None:
+    """Record the turn's Langfuse trace on the reply rows it wrote.
+
+    A thumbs up/down on the reply is scored against this trace (see
+    ``backend.copilot.feedback``). Every rateable role is stamped: the UI
+    names a reply bubble after its last assistant *or* reasoning row, and a
+    rating of either must find the trace. Bounded to the turn and never
+    overwriting, exactly like ``_stamp_turn_messages``; rows flushed mid-turn
+    ride the same stamps back-fill.
+    """
+    if not trace_id:
+        return
+    for msg in messages[start_index:]:
+        if msg.role in RATEABLE_ROLES and msg.langfuse_trace_id is None:
+            msg.langfuse_trace_id = trace_id
+            if msg.sequence is not None:
                 msg.stamps_pending_save = True

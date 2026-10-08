@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot import woken_turns
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.model import ChatSession
 from backend.copilot.pending_messages import PendingMessage
@@ -27,11 +28,13 @@ from backend.util.encryption import JSONCryptor
 
 from . import chat_rules
 from . import review as review_store
+from .policy import PARKABLE, effect_for
 
 if TYPE_CHECKING:
     from backend.api.features.graph_executions.review.model import (
         PendingHumanReviewModel,
     )
+    from backend.copilot.model import ChatMessage
     from backend.copilot.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -47,10 +50,20 @@ _MAX_RESULT_CHARS = 120_000
 Outcome = Literal["approved", "rejected", "expired", "closed", "unknown"]
 
 WAKE_MESSAGE = "I answered an action that was waiting for my approval."
+# Metadata on the user rows an answered card writes: the wake, and each result.
+_WAKE_KEY = "held_calls_answered"
+_RESULT_KEY = "held_call"
 _RESEND = (
     "Nothing ran: the approved action's details were lost before it could run. "
     "Tell the user, and ask them to send the request again if it is still needed."
 )
+
+
+def is_answer_row(message: "ChatMessage") -> bool:
+    """A user row the gate wrote for an answered card, not something the user typed."""
+    return bool(message.metadata) and (
+        _WAKE_KEY in message.metadata or _RESULT_KEY in message.metadata
+    )
 
 
 class HeldResult(PendingMessage):
@@ -65,6 +78,8 @@ class HeldCall(BaseModel):
     tool_name: str
     tool_call_id: str
     args: dict[str, Any]
+    # What a rejection sets to ask for the rest of the chat; the tool when None.
+    rule_key: str | None = None
     held_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     # Rebuilt from a card whose stored copy of the arguments no longer binds.
     lost: bool = False
@@ -90,6 +105,35 @@ async def remember(session_id: str, call: HeldCall) -> bool:
             f"Gate could not store held call {call.review_id}", exc_info=True
         )
         return False
+
+
+async def rule_key(session_id: str, review_id: str, tool_name: str) -> str:
+    """What a rejection of this card sets to ask: its subject, else its tool."""
+    call = (await _held(session_id)).get(review_id)
+    return (call.rule_key if call else None) or tool_name
+
+
+async def subject_keys(session_id: str, review_ids: list[str]) -> dict[str, str]:
+    """The key each held card can set a rule on; a held read or a money card
+    has none."""
+    if not review_ids:
+        return {}
+    try:
+        held = await _held(session_id)
+    except Exception:
+        # The approval still lands; only the rule is lost.
+        logger.warning(
+            f"Held calls unreadable for session {session_id}; approving without a rule",
+            exc_info=True,
+        )
+        return {}
+    return {
+        review_id: call.rule_key
+        for review_id in review_ids
+        if (call := held.get(review_id))
+        and call.rule_key
+        and (call.rule_key != call.tool_name or effect_for(call.tool_name) in PARKABLE)
+    }
 
 
 async def forget(session_id: str, review_id: str) -> None:
@@ -184,7 +228,7 @@ async def wake(
         if info is None or info.user_id != user_id:
             return
         permissions = resolve_session_permissions(info)
-        metadata = {"held_calls_answered": True}
+        metadata = {_WAKE_KEY: True}
         try:
             async with acquire_turn_slot(user_id, session_id) as slot:
                 # Not admitted: a turn is already running, and its end wakes us.
@@ -203,11 +247,12 @@ async def wake(
                     is None
                 ):
                     return
+                turn_id = str(uuid.uuid4())
                 await dispatch_turn(
                     slot,
                     session_id=session_id,
                     user_id=user_id,
-                    turn_id=str(uuid.uuid4()),
+                    turn_id=turn_id,
                     message=WAKE_MESSAGE,
                     organization_id=info.organization_id,
                     team_id=info.team_id,
@@ -215,6 +260,10 @@ async def wake(
                     llm_credential_id=info.metadata.llm_credential_id,
                     permissions=permissions,
                     message_metadata=metadata,
+                )
+                # A channel that answered one of these follows this turn.
+                await woken_turns.record(
+                    session_id, [c.review_id for c in calls], turn_id
                 )
         except ConcurrentTurnLimitError:
             await try_enqueue_turn(
@@ -283,7 +332,7 @@ def _result_row(call: HeldCall, output: str, outcome: Outcome) -> PendingMessage
             f"{output}\n</held_call_result>"
         ),
         metadata={
-            "held_call": {
+            _RESULT_KEY: {
                 "review_id": call.review_id,
                 "tool_name": call.tool_name,
                 "tool_call_id": call.tool_call_id,
@@ -301,9 +350,19 @@ async def _outcome(
     row = rows.get(call.review_id)
     if row is None or row.status == ReviewStatus.WAITING:
         return "closed", "Nothing ran: this card is no longer open."
+    # Deferred: reads imports this package's __init__, which imports this module.
+    from .reads import answered_read, is_held_read
+
+    if is_held_read(call.review_id):
+        return await answered_read(user_id, row)
     if row.status == ReviewStatus.REJECTED:
         await review_store.consume(call.review_id, user_id)
-        await chat_rules.set_ask(session.session_id, call.tool_name)
+        await chat_rules.set_ask(
+            session.session_id,
+            call.rule_key or call.tool_name,
+            user_id,
+            session.expert_id,
+        )
         return "rejected", (
             "Nothing ran: the user declined this action. Do not retry it or "
             "reach the same effect another way."

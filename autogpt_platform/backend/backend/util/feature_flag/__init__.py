@@ -260,10 +260,10 @@ def initialize_feature_flags() -> None:
     if backend is not FeatureFlagBackend.POSTHOG:
         initialize_launchdarkly()
     if backend is not FeatureFlagBackend.LAUNCHDARKLY:
-        if not settings.secrets.posthog_personal_api_key:
+        if not settings.secrets.posthog_secret_key:
             logger.warning(
                 f"Feature flag backend is {backend.value} without "
-                "POSTHOG_PERSONAL_API_KEY: every flag read becomes a remote "
+                "POSTHOG_SECRET_KEY: every flag read becomes a remote "
                 "/flags call instead of an in-process evaluation"
             )
         posthog.initialize_posthog_flags()
@@ -591,7 +591,7 @@ def _probe_posthog(
 
     The shadow answer is never served, so awaiting it would only add PostHog's
     latency to the request path — up to a 3s remote ``/flags`` call wherever
-    ``POSTHOG_PERSONAL_API_KEY`` is unset and local evaluation is off.
+    ``POSTHOG_SECRET_KEY`` is unset and local evaluation is off.
     """
     if _shadow_evaluations_stopped:
         return

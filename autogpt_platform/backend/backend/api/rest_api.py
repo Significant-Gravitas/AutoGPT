@@ -36,6 +36,7 @@ import backend.api.features.blocks.routes as blocks_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
+import backend.api.features.chat.feedback as chat_feedback
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.chat.speech as chat_speech
@@ -49,6 +50,7 @@ import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
+import backend.api.features.mailerlite.routes as mailerlite_routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.memory.routes as memory_routes
 import backend.api.features.oauth
@@ -568,7 +570,17 @@ app.include_router(
     prefix="/api/email",
 )
 app.include_router(
+    mailerlite_routes.router,
+    tags=["v1", "email"],
+    prefix="/api/email",
+)
+app.include_router(
     chat_routes.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_feedback.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
 )

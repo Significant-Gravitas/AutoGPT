@@ -176,6 +176,12 @@ def test_list_expert_templates_forwards_search_and_category(
         return_value=[],
     )
 
+    mocker.patch.object(
+        prisma.models.ExpertSkillListing,
+        "prisma",
+        return_value=SimpleNamespace(find_many=AsyncMock(return_value=[])),
+    )
+
     response = client.get(
         "/experts/templates", params={"search_query": "Maria", "category": "marketing"}
     )
@@ -284,7 +290,41 @@ def test_hire_expert_returns_expert(
     assert response.status_code == 200
     data = response.json()
     assert data["expert"]["id"] == "expert-1"
-    mock_hire.assert_awaited_once_with(test_user_id, "template-1", None)
+    mock_hire.assert_awaited_once_with(test_user_id, "template-1", None, None)
+
+
+def test_hire_expert_passes_the_hiring_surface_through(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_hire = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.hire_expert",
+        new_callable=AsyncMock,
+        return_value=HireResult(expert=_make_expert()),
+    )
+
+    response = client.post(
+        "/experts", json={"template_id": "template-1", "surface": "onboarding"}
+    )
+
+    assert response.status_code == 200
+    mock_hire.assert_awaited_once_with(test_user_id, "template-1", None, "onboarding")
+
+
+def test_hire_expert_rejects_an_unknown_surface(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_hire = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.hire_expert",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/experts", json={"template_id": "template-1", "surface": "somewhere"}
+    )
+
+    assert response.status_code == 422
+    mock_hire.assert_not_awaited()
 
 
 def test_hire_expert_twice_returns_same_expert_id(
@@ -1066,8 +1106,109 @@ def test_update_expert_skills_replaces_the_list(
     assert response.status_code == 200
     assert response.json()["skills"] == ["Deep Research", "SEO"]
     mock_update.assert_awaited_once_with(
-        test_user_id, "expert-1", ["Deep Research", "SEO"], marketplace_listing_ids=[]
+        test_user_id,
+        "expert-1",
+        ["Deep Research", "SEO"],
+        marketplace_listing_ids=[],
+        remove=[],
     )
+
+
+def test_update_expert_skills_passes_explicit_removals_through(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+        return_value=_make_expert(name="Maria", skills=[]),
+    )
+
+    response = client.put("/experts/expert-1/skills", json={"remove": [" SEO ", "seo"]})
+
+    assert response.status_code == 200
+    mock_update.assert_awaited_once_with(
+        test_user_id, "expert-1", [], marketplace_listing_ids=[], remove=["SEO"]
+    )
+
+
+def test_update_expert_skills_dedupes_names_by_skill_key(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+        return_value=_make_expert(name="Maria", skills=[]),
+    )
+
+    response = client.put(
+        "/experts/expert-1/skills",
+        json={"remove": ["Deep Research", "deep_research", "deep-research"]},
+    )
+
+    assert response.status_code == 200
+    mock_update.assert_awaited_once_with(
+        test_user_id,
+        "expert-1",
+        [],
+        marketplace_listing_ids=[],
+        remove=["Deep Research"],
+    )
+
+
+def test_update_expert_skills_returns_400_when_a_listing_is_also_removed(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+        side_effect=ValueError("Skills cannot be both attached and removed: SEO"),
+    )
+
+    response = client.put(
+        "/experts/expert-1/skills",
+        json={"marketplace_listing_ids": ["listing-1"], "remove": ["SEO"]},
+    )
+
+    assert response.status_code == 400
+    assert "both attached and removed" in response.json()["detail"]
+
+
+def test_update_expert_skills_rejects_a_name_both_added_and_removed(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+    )
+
+    response = client.put(
+        "/experts/expert-1/skills", json={"skills": ["SEO"], "remove": ["seo"]}
+    )
+
+    assert response.status_code == 422
+    mock_update.assert_not_awaited()
+
+
+def test_update_expert_skills_rejects_a_contradiction_spelled_two_ways(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The removal loop matches names by skill_name_key (case, spaces,
+    underscores and hyphens folded), so the contradiction check must too, or
+    "Deep Research" + remove "deep_research" would pass and then be removed."""
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+    )
+
+    response = client.put(
+        "/experts/expert-1/skills",
+        json={"skills": ["Deep Research"], "remove": ["deep_research"]},
+    )
+
+    assert response.status_code == 422
+    mock_update.assert_not_awaited()
 
 
 def test_update_expert_skills_unknown_skill_returns_404(

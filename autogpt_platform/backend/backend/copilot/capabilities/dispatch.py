@@ -33,7 +33,8 @@ def resolve_tool_dispatch(
     tool_name: str, args: Mapping[str, Any] | None
 ) -> DispatchedToolCall | None:
     """The platform tool a ``run_capability`` call runs, or None when the call
-    is not one — another tool, a block or MCP id, or ``validate_only``.
+    is not one — another tool, a block or MCP id, ``validate_only``, or a
+    ``connect`` call.
 
     A ``skill:<name>`` id is the ``read_skill`` call that loads the skill,
     with the name taken from the id, so a skill found by search is loaded
@@ -66,5 +67,8 @@ def resolve_tool_dispatch(
     if payload is not None and not isinstance(payload, Mapping):
         # Coercing it to {} would run the tool on its defaults; the dispatcher
         # owns the "input must be an object" answer, so leave the call to it.
+        return None
+    if payload and payload.get("connect"):
+        # A tool has nothing to connect; the dispatcher describes it instead.
         return None
     return DispatchedToolCall(tool, name, {**dict(payload or {}), **bound})

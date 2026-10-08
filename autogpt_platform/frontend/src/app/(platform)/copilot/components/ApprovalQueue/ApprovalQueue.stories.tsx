@@ -10,12 +10,21 @@ import { toChainRow } from "../ToolChain/helpers";
 import { AttentionRow } from "../../../home/components/NeedsYou/components/AttentionRow";
 import { ApprovalQueue } from "./ApprovalQueue";
 import { toApprovalItem } from "./helpers";
+import { useHeldAnswersStore } from "./heldAnswersStore";
 import {
+  createAgent,
   deleteFolder,
   folder,
+  heldRead,
   heldReview,
   mail,
+  referenceCard,
+  mcpTool,
+  realCardSchemaHandler,
+  realCards,
   shell,
+  spendCard,
+  workflow,
 } from "./__tests__/fixtures";
 
 function answerAfter(ms: number, status = 200) {
@@ -59,12 +68,135 @@ export const TwoOnTheSameSubject: Story = {
   args: queueOf([folder("a", "Q3 reports", 6), folder("b", "Invoices", 5)]),
 };
 
-export const IrreversibleWithInputs: Story = { args: queueOf([mail()]) };
+const GMAIL_SCHEMA = http.get("*/api/builder/blocks/batch", () =>
+  HttpResponse.json([
+    {
+      id: "b-gmail",
+      name: "GmailSendBlock",
+      inputSchema: {
+        type: "object",
+        required: ["to", "subject"],
+        properties: {
+          to: { type: "array", title: "To" },
+          subject: { type: "string", title: "Subject" },
+          body: { type: "string", title: "Body" },
+        },
+      },
+    },
+  ]),
+);
+
+export const IrreversibleWithInputs: Story = {
+  args: queueOf([mail()]),
+  parameters: { msw: { handlers: [GMAIL_SCHEMA, answerAfter(600_000)] } },
+};
+
+// As the server sends it: no chat rule is offered for a block yet.
+export const BlockCard: Story = {
+  args: queueOf([mail("mail", [])]),
+  parameters: { msw: { handlers: [GMAIL_SCHEMA, answerAfter(600_000)] } },
+};
+
+export const WorkflowRun: Story = { args: queueOf([workflow()]) };
+
+// The Approve menu: the chat rules the server allows on this subject.
+export const RuleMenu: Story = {
+  args: { ...queueOf([mcpTool()]), expertName: "Frankie" },
+};
+
+export const RuleMenuWithOtto: Story = { args: queueOf([mcpTool()]) };
+
+// A bare tool's card rules on the tool itself.
+export const RuleMenuOnATool: Story = { args: queueOf([createAgent()]) };
+
+// A paid read over the task's spend ceiling.
+export const OverTheSpendCeiling: Story = { args: queueOf([spendCard()]) };
+
+export const BlockChainRow: StoryObj = {
+  render: () => {
+    const part = {
+      type: "tool-run_capability",
+      state: "output-available",
+      toolCallId: "call-gmail",
+      input: { id: "b-gmail", input: { to: ["dana@acme.com"] } },
+      output: {
+        type: "approval_required",
+        tool_name: "run_capability",
+        review_id: "copilot-node-gate-run_capability:gmail",
+        ask: "Run",
+        object: "Gmail Send",
+      },
+    } as MessagePart;
+    const row = applyHeldOutcome(toChainRow(part, 0)!, new Map());
+    return <ChainRowView row={row} isLast />;
+  },
+};
 
 export const SupervisorCouldNotVouch: Story = { args: queueOf([shell()]) };
 
 export const IdentifiedOnlyById: Story = {
   args: queueOf([deleteFolder("f1", "f-111"), deleteFolder("f2", "f-222")]),
+};
+
+// Ids the server resolved to names and pages when the call was held.
+export const NamedFolder: Story = {
+  args: queueOf([referenceCard("Delete folder")]),
+};
+
+export const NamedAgentList: Story = {
+  args: queueOf([referenceCard("Move agents")]),
+};
+
+export const NamedSchedule: Story = {
+  args: queueOf([referenceCard("Pause schedule")]),
+};
+
+export const NamedTemplate: Story = {
+  args: queueOf([referenceCard("Hire expert")]),
+};
+
+export const NamedChat: Story = {
+  args: queueOf([referenceCard("Message chat")]),
+};
+
+export const NamedCredential: Story = {
+  args: queueOf([referenceCard("Grant credential")]),
+};
+
+export const NamedAgent: Story = {
+  args: queueOf([referenceCard("Edit agent")]),
+};
+
+export const NamedTemplatePreset: Story = {
+  args: queueOf([referenceCard("Update template")]),
+};
+
+export const NamedTrigger: Story = {
+  args: queueOf([referenceCard("Delete trigger")]),
+};
+
+export const NamedRoutine: Story = {
+  args: queueOf([referenceCard("Schedule routine")]),
+};
+
+export const NamedMarketplaceAgent: Story = {
+  args: queueOf([referenceCard("Install workflow")]),
+};
+
+export const NamedWorkflow: Story = {
+  args: queueOf([referenceCard("Remove workflow")]),
+};
+
+export const NamedTeamChange: Story = {
+  args: queueOf([referenceCard("Confirm team change")]),
+};
+
+export const NamedFile: Story = {
+  args: queueOf([referenceCard("Delete file")]),
+};
+
+export const UnresolvedId: Story = {
+  args: queueOf([referenceCard("Unresolved id")]),
 };
 
 export const FiveWaiting: Story = {
@@ -111,7 +243,7 @@ const HELD_PART = (id: string, name: string): MessagePart =>
       type: "approval_required",
       tool_name: "create_folder",
       review_id: `copilot-node-gate-create_folder:${id}`,
-      ask: "Create folder",
+      ask: "Create library folder",
       object: name,
     },
   }) as MessagePart;
@@ -135,13 +267,106 @@ export const ChainRows: StoryObj = {
           type: "approval_required",
           tool_name: "create_folder",
           review_id: null,
-          ask: "Create folder",
+          ask: "Create library folder",
         },
       } as MessagePart,
     ];
     const rows = parts.map((part, i) =>
       applyHeldOutcome(toChainRow(part, i)!, OUTCOMES),
     );
+    return (
+      <div className="flex flex-col">
+        {rows.map((row, i) => (
+          <ChainRowView
+            key={row.key}
+            row={row}
+            isLast={i === rows.length - 1}
+          />
+        ))}
+      </div>
+    );
+  },
+};
+
+// Approve the card: the row above it shows the answer at the click.
+export const RowFlipsAtTheClick: StoryObj = {
+  parameters: { msw: { handlers: [answerAfter(0)] } },
+  render: function Render() {
+    const answers = useHeldAnswersStore((state) => state.answers);
+    const row = applyHeldOutcome(
+      toChainRow(HELD_PART("a", "Q3 reports"), 0)!,
+      new Map(),
+      answers,
+    );
+    return (
+      <div className="flex flex-col gap-4">
+        <ChainRowView row={row} isLast />
+        <ApprovalQueue {...queueOf([folder("a", "Q3 reports")])} />
+      </div>
+    );
+  },
+};
+
+export const HeldRead: Story = {
+  args: queueOf([heldRead("r", "docs.northwind.io/billing")]),
+};
+
+export const HeldReadBesideAnAction: Story = {
+  args: queueOf([
+    folder("a", "Q3 reports", 6),
+    heldRead("r", "docs.northwind.io/billing"),
+  ]),
+};
+
+// The judge failed (timeout, gateway error): no verdict, so no quote.
+export const HeldReadUnchecked: Story = {
+  args: queueOf([
+    (() => {
+      const review = heldRead("u", "status.acme.dev");
+      const payload = review.payload as Record<string, unknown>;
+      return { ...review, payload: { ...payload, judged: false, passage: "" } };
+    })(),
+  ]),
+};
+
+// Answered at once, so clicking leaves the Released / Kept out receipt.
+export const HeldReadAnswered: Story = {
+  args: queueOf([
+    heldRead("a", "docs.northwind.io/billing"),
+    heldRead("b", "pastebin.example/raw/x1"),
+  ]),
+  parameters: { msw: { handlers: [answerAfter(0)] } },
+};
+
+const READ_PART = (id: string, url: string) =>
+  ({
+    type: "tool-web_fetch",
+    state: "output-available",
+    toolCallId: `read-${id}`,
+    input: { url },
+    output: {
+      type: "approval_required",
+      tool_name: "web_fetch",
+      review_id: `copilot-node-gate-read-web_fetch:${id}`,
+      ask: "Read",
+      object: url,
+    },
+  }) as MessagePart;
+
+const READ_OUTCOMES = new Map<string, HeldOutcome>([
+  ["read-b", { outcome: "approved", output: { message: "fetched" } }],
+  ["read-c", { outcome: "rejected", output: "" }],
+  ["read-d", { outcome: "unknown", output: "" }],
+]);
+
+export const HeldReadChainRows: StoryObj = {
+  render: () => {
+    const rows = [
+      READ_PART("a", "docs.northwind.io/billing"),
+      READ_PART("b", "status.acme.dev"),
+      READ_PART("c", "pastebin.example/raw/x1"),
+      READ_PART("d", "files.acme.dev/q3.csv"),
+    ].map((part, i) => applyHeldOutcome(toChainRow(part, i)!, READ_OUTCOMES));
     return (
       <div className="flex flex-col">
         {rows.map((row, i) => (
@@ -188,7 +413,7 @@ function homeRow(
 export const HomeRowBefore: StoryObj = {
   render: () =>
     homeRow(
-      "Create folder — Ask First is on for this chat, so this action needs your approval.",
+      "Create library folder — Ask First is on for this chat, so this action needs your approval.",
       "Otto is waiting for your approval.",
       "Review",
     ),
@@ -197,9 +422,31 @@ export const HomeRowBefore: StoryObj = {
 export const HomeRowAfter: StoryObj = {
   render: () =>
     homeRow(
-      "Create folder “Q3 reports”",
+      "Create library folder “Q3 reports”",
       "Otto is waiting for your approval.",
       "Open chat",
-      { ask: "Create folder", object: "Q3 reports" },
+      { ask: "Create library folder", object: "Q3 reports" },
     ),
 };
+
+// Real registry blocks, their payloads built by the server's own builder and
+// their real input schemas served as the API serves them.
+function realStory(name: string): Story {
+  const cards = realCards();
+  const card = cards.find((c) => c.story === name)!;
+  return {
+    args: queueOf([card.review]),
+    parameters: {
+      msw: { handlers: [realCardSchemaHandler(cards), answerAfter(600_000)] },
+    },
+  };
+}
+
+export const RealGmailSend = realStory("Gmail Send");
+export const RealGoogleSheetsUpdateRow = realStory("Google Sheets Update Row");
+export const RealExecuteCodeStep = realStory("Execute Code Step");
+export const RealSendWebRequest = realStory("Send Web Request");
+export const RealPostToX = realStory("Post To X");
+export const RealWorkflow = realStory("Workflow");
+export const RealSandboxCommand = realStory("Sandbox Command");
+export const RealGmailNewsletter = realStory("Gmail Newsletter");

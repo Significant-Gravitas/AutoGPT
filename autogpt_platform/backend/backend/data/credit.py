@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-import posthog
 import stripe
 from prisma.enums import (
     CreditRefundRequestStatus,
@@ -36,6 +35,7 @@ from backend.data.model import (
 from backend.data.model import User as AppUser
 from backend.data.model import UserTransaction
 from backend.data.notifications import NotificationEventModel, OpsData
+from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_checkout import (
     ensure_no_unconverted_trial,
@@ -45,12 +45,14 @@ from backend.data.subscription_checkout import (
 from backend.data.subscription_trial_stripe import reconcile_trial_subscription
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.queue import queue_notification_async
+from backend.util import posthog_client
 from backend.util.cache import cached
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.json import SafeJson, dumps
 from backend.util.metrics import DiscordChannel, discord_send_alert
 from backend.util.models import Pagination
+from backend.util.posthog_events import PostHogEvent
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
 
@@ -60,9 +62,6 @@ if TYPE_CHECKING:
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
-if settings.secrets.posthog_api_key:
-    posthog.api_key = settings.secrets.posthog_api_key
-    posthog.host = settings.secrets.posthog_host
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
@@ -369,10 +368,23 @@ class UserCreditBase(ABC):
         pass
 
     @staticmethod
-    async def create_billing_portal_session(user_id: str) -> str:
+    async def create_billing_portal_session(user_id: str) -> str | None:
+        """Return a Stripe billing-portal URL, or None when there is nothing
+        to manage.
+
+        The billing page requests this on load, so it must NOT create a Stripe
+        Customer as a side effect (same contract as ``list_invoices``). A user
+        with no customer has no card, invoices, or subscription to manage, and
+        creating one here would make an admin-granted plan look Stripe-billed
+        to the reconciliation sweep, which would then revoke it to NO_TIER.
+        Checkout still provisions the customer when the user actually buys.
+        """
+        user = await get_user_by_id(user_id)
+        if not user.stripe_customer_id:
+            return None
         session = await stripe_call(
             stripe.billing_portal.Session.create_async,
-            customer=await get_stripe_customer_id(user_id),
+            customer=user.stripe_customer_id,
             return_url=base_url + "/settings/billing",
         )
         return session.url
@@ -753,7 +765,7 @@ class UserCredit(UserCreditBase):
         what the person on call triages by, and every timestamp is absolute —
         the email is read hours later."""
         now = datetime.now(tz=timezone.utc)
-        stamp = f"{now.day} {now.strftime('%B')} at {now.strftime('%H:%M')}"
+        stamp = f"{now.day} {now.strftime('%b %Y')} at {now.strftime('%H:%M')} UTC"
         await queue_notification_async(
             NotificationEventModel[OpsData](
                 user_id=user.id,
@@ -1110,6 +1122,7 @@ class UserCredit(UserCreditBase):
 
         successful_transaction = None
         new_transaction_key = None
+        charged: stripe.PaymentIntent | None = None
         for payment_method in payment_methods:
             if transaction_type == CreditTransactionType.CARD_CHECK:
                 setup_intent = await stripe_call(
@@ -1147,6 +1160,7 @@ class UserCredit(UserCreditBase):
                         {"payment_intent": payment_intent}
                     )
                     new_transaction_key = payment_intent.id
+                    charged = payment_intent
                     break
 
         if not successful_transaction:
@@ -1165,11 +1179,13 @@ class UserCredit(UserCreditBase):
         # webhook/retry replays don't double-emit.
         if activation is not None and amount > 0:
             _track_billing_event(
-                "credit_topup_success",
+                PostHogEvent.TOPUP_COMPLETED,
                 user_id,
                 {
                     "amount_credits": amount,
                     "top_up_type": top_up_type.value,
+                    "amount_cents": charged.amount if charged else None,
+                    "currency": charged.currency if charged else None,
                 },
             )
 
@@ -1308,11 +1324,13 @@ class UserCredit(UserCreditBase):
             )
             if activation is not None:
                 _track_billing_event(
-                    "credit_topup_success",
+                    PostHogEvent.TOPUP_COMPLETED,
                     credit_transaction.userId,
                     {
                         "amount_credits": credit_transaction.amount,
                         "top_up_type": "CHECKOUT",
+                        "amount_cents": checkout_session.amount_total,
+                        "currency": checkout_session.currency,
                     },
                 )
 
@@ -1549,6 +1567,8 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
 async def set_subscription_tier(
     user_id: str,
     tier: SubscriptionTier,
+    *,
+    track_lifecycle: bool = True,
 ) -> None:
     """Set the user's subscription tier."""
     data: UserUpdateInput = {
@@ -1556,6 +1576,8 @@ async def set_subscription_tier(
     }
     await User.prisma().update(where={"id": user_id}, data=data)
     invalidate_subscription_caches(user_id)
+    if track_lifecycle:
+        schedule_posthog_lifecycle_sync(user_id)
 
 
 def invalidate_subscription_caches(user_id: str) -> None:
@@ -1573,10 +1595,18 @@ def invalidate_subscription_caches(user_id: str) -> None:
     get_pending_subscription_change.cache_delete(user_id)
 
 
+# Stripe stamps ``cancellation_details.reason = "cancellation_requested"`` on
+# any cancel made through the API, including ours after a failed renewal the
+# balance could not cover. This comment on that cancel is what lets the
+# ``customer.subscription.deleted`` handler report it as involuntary churn.
+PAYMENT_FAILURE_CANCELLATION_COMMENT = "autogpt:payment_failed"
+
+
 async def _cancel_customer_subscriptions(
     customer_id: str,
     exclude_sub_id: str | None = None,
     at_period_end: bool = False,
+    cancellation_comment: str | None = None,
 ) -> int:
     """Cancel all billable Stripe subscriptions for a customer, optionally excluding one.
 
@@ -1589,6 +1619,9 @@ async def _cancel_customer_subscriptions(
 
     Uses the async Stripe client. Raises stripe.StripeError on list/cancel failure so callers
     that need strict consistency can react; cleanup callers can catch and log instead.
+
+    ``cancellation_comment`` is set as ``cancellation_details.comment`` on an
+    immediate cancel, where the subscription's deletion webhook can read it.
 
     Returns the number of subscriptions cancelled/scheduled for cancellation.
     """
@@ -1633,14 +1666,31 @@ async def _cancel_customer_subscriptions(
                 canceled = await stripe_call(
                     stripe.Subscription.cancel_async,
                     sub_id,
-                    invoice_now=False,
-                    prorate=False,
+                    **_cancel_params(cancellation_comment, trial=True),
                 )
                 if (sub.get("metadata") or {}).get("trial_enrollment_id"):
                     await sync_subscription_from_stripe(dict(canceled))
             else:
-                await stripe_call(stripe.Subscription.cancel_async, sub_id)
+                await stripe_call(
+                    stripe.Subscription.cancel_async,
+                    sub_id,
+                    **_cancel_params(cancellation_comment, trial=False),
+                )
     return len(seen_ids)
+
+
+def _cancel_params(
+    cancellation_comment: str | None, *, trial: bool
+) -> stripe.Subscription.CancelParams:
+    """A trial ends without an invoice or proration; a comment, when given,
+    becomes ``cancellation_details.comment``."""
+    params: stripe.Subscription.CancelParams = {}
+    if trial:
+        params["invoice_now"] = False
+        params["prorate"] = False
+    if cancellation_comment:
+        params["cancellation_details"] = {"comment": cancellation_comment}
+    return params
 
 
 async def cancel_stripe_subscription(user_id: str) -> bool:
@@ -1675,7 +1725,7 @@ async def cancel_stripe_subscription(user_id: str) -> bool:
             get_pending_subscription_change.cache_delete(user_id)
             current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
             _track_billing_event(
-                "subscription_cancellation_scheduled",
+                PostHogEvent.SUBSCRIPTION_CANCELLATION_SCHEDULED,
                 user_id,
                 {"subscription_tier": current_tier.value},
             )
@@ -2180,9 +2230,10 @@ async def modify_stripe_subscription_for_tier(
         # the DB flip fails, so gating here avoids double-firing on success.
         if db_flip_succeeded and is_tier_upgrade(current_tier, tier):
             _track_billing_event(
-                "subscription_upgraded",
+                PostHogEvent.SUBSCRIPTION_CHANGED,
                 user_id,
                 {
+                    "change_type": "upgrade",
                     "previous_subscription_tier": current_tier.value,
                     "subscription_tier": tier.value,
                     "billing_cycle": billing_cycle,
@@ -2511,6 +2562,11 @@ def _is_stripe_reconcilable(user: AppUser) -> bool:
     and are not on ENTERPRISE. Manual/admin grants are modeled as a paid tier
     with no Stripe customer, or as ENTERPRISE — both are managed out-of-band and
     must never be auto-revoked by Stripe reconciliation.
+
+    That model only holds while read paths never provision a customer: anything
+    the billing page requests on load (``create_billing_portal_session``,
+    ``list_invoices``) must return empty for a user without one, otherwise an
+    admin grant becomes reconcilable and the sweep revokes it (SECRT-2770).
     """
     return (
         user.stripe_customer_id is not None
@@ -2694,7 +2750,9 @@ async def _cleanup_stale_subscriptions(customer_id: str, new_sub_id: str) -> Non
         )
 
 
-async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
+async def sync_subscription_from_stripe(
+    stripe_subscription: dict, *, track_lifecycle: bool = True
+) -> None:
     """Update User.subscriptionTier from a Stripe subscription object.
 
     Expected shape of stripe_subscription (subset of Stripe's Subscription object):
@@ -2702,7 +2760,22 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         status:   str                  — "active" | "trialing" | "canceled" | ...
         id:       str                  — Stripe subscription ID
         items.data[].price.id: str     — Stripe price ID identifying the tier
+
+    Every ``customer.subscription.*`` webhook and every trial transition ends
+    up here, so this is also where the PostHog lifecycle properties are
+    refreshed (in the background, from the customer's current state).
+    ``track_lifecycle=False`` is for the periodic tier sweep, which would
+    otherwise fan out one Stripe call per trial; the daily lifecycle sweep
+    covers those users.
     """
+    await _sync_subscription_tier_from_stripe(stripe_subscription)
+    if track_lifecycle:
+        schedule_posthog_lifecycle_sync(
+            stripe_customer_id=stripe_subscription.get("customer")
+        )
+
+
+async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None:
     customer_id = stripe_subscription.get("customer")
     if not customer_id:
         logger.warning(
@@ -2867,15 +2940,18 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         # A future improvement would be to write the new tier first, then
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
-    await set_subscription_tier(user.id, tier)
+    # The wrapper schedules the lifecycle sync (or, for the tier sweep, doesn't),
+    # so the tier write mustn't schedule a second one.
+    await set_subscription_tier(user.id, tier, track_lifecycle=False)
     if is_tier_upgrade(current_tier, tier):
         billing_cycle = (
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None
         )
         _track_billing_event(
-            "subscription_upgraded",
+            PostHogEvent.SUBSCRIPTION_CHANGED,
             user.id,
             {
+                "change_type": "upgrade",
                 "previous_subscription_tier": current_tier.value,
                 "subscription_tier": tier.value,
                 "billing_cycle": billing_cycle,
@@ -2947,7 +3023,7 @@ def _invoice_subscription_id(invoice: dict) -> str:
     return legacy if isinstance(legacy, str) and legacy else ""
 
 
-TIER_RECONCILIATION_DISCREPANCY_EVENT = "subscription_tier_reconciliation_discrepancy"
+TIER_RECONCILIATION_DISCREPANCY_EVENT = PostHogEvent.SUBSCRIPTION_TIER_RECONCILED
 
 
 def log_tier_reconciliation_discrepancy(
@@ -3008,28 +3084,19 @@ async def alert_tier_reconciliation_discrepancy(message: str) -> None:
 
 
 def _track_billing_event(
-    event: str, distinct_id: str, properties: dict[str, Any]
+    event: PostHogEvent,
+    distinct_id: str,
+    properties: dict[str, Any],
+    *,
+    dedup_key: str | None = None,
 ) -> None:
-    if not settings.secrets.posthog_api_key:
-        return
-
-    try:
-        posthog.capture(
-            event=event,
-            distinct_id=distinct_id,
-            properties=properties,
-        )
-    except Exception:
-        logger.warning(
-            "failed to track billing event %s for user %s",
-            event,
-            distinct_id,
-            exc_info=True,
-        )
+    # The shared client, never the posthog module's globals: another library
+    # (graphiti-core) configures those for its own telemetry (SECRT-2710).
+    posthog_client.capture(distinct_id, event, properties, dedup_key=dedup_key)
 
 
 async def _track_subscription_payment_success(user: User, invoice: dict) -> None:
-    if not settings.secrets.posthog_api_key:
+    if posthog_client.get_posthog_client() is None:
         return
 
     try:
@@ -3042,13 +3109,20 @@ async def _track_subscription_payment_success(user: User, invoice: dict) -> None
             await get_user_billing_cycle(user.id) or "monthly"
         )
 
-        posthog.capture(
-            event="subscription_payment_success",
-            distinct_id=user.id,
-            properties={
+        _track_billing_event(
+            PostHogEvent.PAYMENT_SUCCEEDED,
+            user.id,
+            {
                 "subscription_tier": tier,
                 "billing_cycle": billing_cycle,
+                "amount_cents": invoice.get("amount_paid"),
+                "currency": invoice.get("currency"),
             },
+            # One invoice is one payment: Stripe delivers both
+            # invoice.payment_succeeded and invoice_payment.paid for it, and
+            # redelivers either on a failed handler, so the revenue sum would
+            # count it twice without this.
+            dedup_key=invoice.get("id") or None,
         )
     except Exception:
         logger.warning(
@@ -3180,7 +3254,9 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
             sub_id,
         )
         try:
-            await _cancel_customer_subscriptions(customer_id)
+            await _cancel_customer_subscriptions(
+                customer_id, cancellation_comment=PAYMENT_FAILURE_CANCELLATION_COMMENT
+            )
         except stripe.StripeError:
             logger.warning(
                 "handle_subscription_payment_failure: failed to cancel Stripe sub %s"

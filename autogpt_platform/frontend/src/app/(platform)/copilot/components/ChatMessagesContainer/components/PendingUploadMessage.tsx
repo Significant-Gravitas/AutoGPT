@@ -1,5 +1,6 @@
 "use client";
 
+import { CredentialMentionText } from "../../CredentialMention/CredentialMentionText";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
@@ -101,7 +102,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
             )}
           >
             <div className="whitespace-pre-wrap break-words">
-              {pendingSend.text}
+              <CredentialMentionText text={pendingSend.text} />
             </div>
           </MessageContent>
         )}

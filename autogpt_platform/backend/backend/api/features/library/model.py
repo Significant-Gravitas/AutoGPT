@@ -263,6 +263,11 @@ class LibraryAgent(pydantic.BaseModel):
             raise ValueError("Associated Agent record is required.")
 
         graph = GraphModel.from_db(agent.AgentGraph, sub_graphs=sub_graphs)
+        if agent.AgentGraph.userId != agent.userId:
+            # Someone else's agent in this user's library (e.g. from the
+            # marketplace): its input defaults mustn't carry the owner's
+            # picked files or the credentials embedded in them.
+            graph.clear_auto_credentials()
 
         created_at = agent.createdAt
 

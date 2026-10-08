@@ -19,7 +19,7 @@ autogpt-libs = { path = "../autogpt_libs", develop = true }
 bcrypt = "^5.0.0"
 bleach = { extras = ["css"], version = "^6.2.0" }
 cachetools = "^5.5.0"
-claude-agent-sdk = "^0.2.146"  # 2.1.98+ fixes the --resume + excludeDynamicSections crash that used to force a per-turn 33K cache write. CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 strips the context-management beta, which OpenRouter rejects. See sdk_compat_test.py.
+claude-agent-sdk = "^0.2.159"  # Bundled CLI 2.1.284+ is required for claude-sonnet-5-5 (2.1.280+ for claude-opus-5-5); the lock pins 0.2.161. 2.1.98+ fixes the --resume + excludeDynamicSections crash that used to force a per-turn 33K cache write. CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 strips the context-management beta, which OpenRouter rejects. See sdk_compat_test.py.
 click = "^8.2.0"
 cryptography = ">=46,<51"
 discord-py = "^2.5.2"
@@ -70,7 +70,7 @@ python-multipart = ">=0.0.22,<0.0.33"
 redis = "^8.1.0"
 regex = ">=2025.9.18,<2027.0.0"
 replicate = "^1.0.6"
-sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlalchemy"], version = "^2.44.0"}
+sentry-sdk = {extras = ["anthropic", "fastapi", "openai", "sqlalchemy"], version = "^2.44.0"}
 slack-sdk = "^3.41.0"
 sqlalchemy = "^2.0.40"
 strenum = "^0.4.9"
@@ -154,6 +154,7 @@ gen-prisma-stub = "scripts.gen_prisma_types_stub:main"
 brain-dump-eval = "backend.api.features.onboarding_dump.brain_dump_eval:main"
 expert-style-eval = "backend.copilot.eval.style.runner:main"
 oauth-tool = "backend.cli.oauth_tool:cli"
+publish-skills-catalog = "backend.cli.publish_skills_catalog:main"
 
 [tool.isort]
 profile = "black"
@@ -199,6 +200,7 @@ markers = [
     "supplementary: tests kept for coverage but superseded by integration tests",
     "integration: end-to-end tests that require a live database (skipped in CI)",
     "slow: tests that take more than a few seconds (e.g. spin up an isolated docker stack)",
+    "real_login_chain: checks a sandbox's login files for real instead of reading them as unchanged",
 ]
 filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning:discord.player",

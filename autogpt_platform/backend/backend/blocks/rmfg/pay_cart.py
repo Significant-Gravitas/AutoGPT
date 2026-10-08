@@ -6,6 +6,7 @@ so this is a sensitive action that the platform asks a person to approve.
 
 from backend.sdk import (
     Block,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     CredentialsMetaInput,
@@ -95,6 +96,7 @@ class RMFGPayCartBlock(Block):
                 ("checked_out", True),
             ],
             test_mock={"pay_cart": lambda *args, **kwargs: TEST_PAID_CART},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

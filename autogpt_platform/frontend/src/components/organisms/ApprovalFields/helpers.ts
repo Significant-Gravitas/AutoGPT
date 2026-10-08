@@ -1,3 +1,6 @@
+import { formatDistanceToNow } from "date-fns";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+
 export const REDACTED = "[redacted]";
 export const MAX_FIELDS = 6;
 export const CLAMP_LINES = 3;
@@ -23,6 +26,49 @@ export interface FieldSpec {
   label: string;
 }
 
+// What an id argument names, resolved by the server when the call was held.
+export interface Reference {
+  key: string;
+  entity: string;
+  id: string;
+  name: string | null;
+  href: string | null;
+  // The hover card: the thing's family, its own prose, and short facts.
+  kind: string | null;
+  description: string | null;
+  meta: Fact[];
+  avatarURL: string | null;
+  avatarColor: string | null;
+  skills: string[];
+  summary: string | null;
+}
+
+// A card fact: `text` as stored, or a cadence or time the card words for the viewer.
+export interface Fact {
+  text: string;
+  cron: string | null;
+  label: string | null;
+  at: string | null;
+}
+
+export function factText(fact: Fact) {
+  if (fact.cron) return cronText(fact.cron) ?? fact.text;
+  if (fact.label && fact.at) {
+    const at = new Date(fact.at);
+    if (!Number.isNaN(at.getTime()))
+      return `${fact.label} ${formatDistanceToNow(at, { addSuffix: true })}`;
+  }
+  return fact.text;
+}
+
+function cronText(cron: string) {
+  try {
+    return humanizeCronExpression(cron);
+  } catch {
+    return null;
+  }
+}
+
 export function fieldKind(key: string, value: unknown): FieldKind {
   if (value === REDACTED) return "secret";
   if (Array.isArray(value)) {
@@ -36,7 +82,7 @@ export function fieldKind(key: string, value: unknown): FieldKind {
       : "json";
   }
   const text = String(value);
-  if (CODE_KEYS.has(key)) return "code";
+  if (CODE_KEYS.has(key) || key.endsWith("_code")) return "code";
   if (text.length > CLAMP_CHARS || lineCount(text) > CLAMP_LINES) return "long";
   return "short";
 }
@@ -47,6 +93,7 @@ interface VisibleKeysArgs {
   hiddenKeys: string[];
   // Show ids when nothing else would tell this call from another.
   idsWhenAlone: boolean;
+  references?: Reference[];
 }
 
 export function visibleKeys({
@@ -54,11 +101,15 @@ export function visibleKeys({
   values,
   hiddenKeys,
   idsWhenAlone,
+  references = [],
 }: VisibleKeysArgs) {
   const present = [...new Set(keys)].filter(
     (key) => !hiddenKeys.includes(key) && hasValue(values[key]),
   );
-  const named = present.filter((key) => !isIdKey(key));
+  // An id argument the server looked up is shown whatever it found: its names,
+  // or the raw ids when none resolved, even beside a named headline.
+  const referenced = new Set(references.map((ref) => ref.key));
+  const named = present.filter((key) => !isIdKey(key) || referenced.has(key));
   return named.length > 0 || !idsWhenAlone ? named : present;
 }
 
@@ -89,7 +140,13 @@ export function lineCount(text: string) {
 }
 
 export function humanize(key: string) {
-  const words = key.replace(/_/g, " ").trim();
+  const words = key
+    .replace(/_/g, " ")
+    .replace(
+      /([a-z])([A-Z])/g,
+      (_, a: string, b: string) => `${a} ${b.toLowerCase()}`,
+    )
+    .trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 

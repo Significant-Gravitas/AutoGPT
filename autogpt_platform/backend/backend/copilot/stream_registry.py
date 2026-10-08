@@ -23,7 +23,8 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 import orjson
-from redis.exceptions import RedisError
+from pydantic import BaseModel, ValidationError
+from redis.exceptions import RedisError, ResponseError
 
 from backend.api.model import CopilotCompletionPayload
 from backend.copilot.active_turns import release_turn_slot
@@ -43,6 +44,7 @@ from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS, get_session_lock_k
 from .response_model import (
     ResponseType,
     StreamBaseResponse,
+    StreamCheckpoint,
     StreamCompactionProgress,
     StreamError,
     StreamFinish,
@@ -75,6 +77,9 @@ config = ChatConfig()
 _notification_bus = AsyncRedisNotificationEventBus()
 
 StreamEntries = list[tuple[str, list[tuple[str, dict[str, str]]]]]
+StreamEntry = tuple[str | None, StreamBaseResponse]
+"""A chunk and its SSE id ``<turn_id>:<entry_id>``; None for one the registry
+made up (a heartbeat, or the end of a stream that stopped without a finish)."""
 
 
 def _as_text(value: bytes | str | None) -> str:
@@ -120,6 +125,26 @@ _listener_sessions: dict[int, tuple[str, asyncio.Task]] = {}
 QUEUE_PUT_TIMEOUT = 5.0
 
 
+class TurnCheckpoint(BaseModel):
+    """Where a turn's last ``data-checkpoint`` sits in its stream."""
+
+    entry_id: str
+    rows: int
+    sequence: int
+
+
+class TurnStreamGone(Exception):
+    """The turn's stream expired, or the turn is not this user's session's."""
+
+
+class TurnStreamTrimmed(Exception):
+    """Entries after the cursor were trimmed away; resume from ``checkpoint``."""
+
+    def __init__(self, checkpoint: TurnCheckpoint | None):
+        super().__init__("entries after the cursor were trimmed")
+        self.checkpoint = checkpoint
+
+
 @dataclass
 class ActiveSession:
     """Represents an active streaming session (metadata only, no in-memory queues)."""
@@ -133,6 +158,7 @@ class ActiveSession:
     status: Literal["running", "completed", "failed"] = "running"
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     asyncio_task: asyncio.Task | None = None
+    checkpoint: TurnCheckpoint | None = None
 
 
 def _get_session_meta_key(session_id: str) -> str:
@@ -154,6 +180,15 @@ def get_session_meta_key(session_id: str) -> str:
 def _get_turn_stream_key(turn_id: str) -> str:
     """Get Redis key for turn message stream (keyed by turn_id for per-turn isolation)."""
     return f"{config.turn_stream_prefix}{turn_id}"
+
+
+def _get_turn_meta_key(turn_id: str) -> str:
+    """The turn's own hash: its ``session_id`` and last ``checkpoint``.
+
+    Per turn rather than in the session meta, which the next turn overwrites
+    while this turn's stream is still readable.
+    """
+    return f"{config.turn_stream_prefix}{turn_id}:meta"
 
 
 def _parse_session_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveSession:
@@ -262,6 +297,8 @@ async def create_session(
     )
 
     await redis.expire(meta_key, config.stream_ttl)
+    if turn_id:
+        await _write_turn_meta(redis, turn_id, "session_id", session_id)
 
     total_time = (time.perf_counter() - start_time) * 1000
     logger.info(
@@ -339,15 +376,19 @@ async def publish_chunk(
         redis = await get_redis_async()
         stream_key = _get_turn_stream_key(turn_id)
 
-        # Write to Redis Stream for persistence and real-time delivery
+        # Never trimmed while the turn runs: a resume must find whole blocks.
+        # ``mark_session_completed`` trims it to the last checkpoint.
         xadd_start = time.perf_counter()
-        raw_id = await redis.xadd(
-            stream_key,
-            {"data": chunk_json},
-            maxlen=config.stream_max_length,
-        )
+        raw_id = await redis.xadd(stream_key, {"data": chunk_json})
         xadd_time = (time.perf_counter() - xadd_start) * 1000
         message_id = raw_id if isinstance(raw_id, str) else raw_id.decode()
+        if isinstance(chunk, StreamCheckpoint):
+            record = TurnCheckpoint(
+                entry_id=message_id, rows=chunk.rows, sequence=chunk.sequence
+            )
+            await _write_turn_meta(
+                redis, turn_id, "checkpoint", record.model_dump_json()
+            )
 
         # Set TTL on stream to match session metadata TTL
         await redis.expire(stream_key, config.stream_ttl)
@@ -367,6 +408,7 @@ async def publish_chunk(
                 meta_key = _get_session_meta_key(session_id)
                 await redis.expire(meta_key, config.stream_ttl)
                 await redis.expire(stream_key, config.stream_ttl)
+                await redis.expire(_get_turn_meta_key(turn_id), config.stream_ttl)
                 _meta_ttl_refresh_at[session_id] = now
 
         total_time = (time.perf_counter() - start_time) * 1000
@@ -403,6 +445,12 @@ async def publish_chunk(
         )
 
     return message_id
+
+
+async def _write_turn_meta(redis: Any, turn_id: str, field: str, value: str) -> None:
+    key = _get_turn_meta_key(turn_id)
+    await redis.hset(key, field, value)
+    await redis.expire(key, config.stream_ttl)
 
 
 async def stream_and_publish(
@@ -467,186 +515,206 @@ async def subscribe_to_session(
     session_id: str,
     user_id: str | None,
     last_message_id: str = "0-0",
-) -> asyncio.Queue[StreamBaseResponse] | None:
-    """Subscribe to a session's stream with replay of missed messages.
+) -> asyncio.Queue[StreamEntry] | None:
+    """Subscribe to the session's current turn, replaying every stored entry
+    after ``last_message_id`` and then following the live ones.
 
-    This is fully stateless - uses Redis Stream for replay and pub/sub for live updates.
-
-    Args:
-        session_id: Session ID to subscribe to
-        user_id: User ID for ownership validation
-        last_message_id: Last Redis Stream message ID received ("0-0" for full replay)
-
-    Returns:
-        An asyncio Queue that will receive stream chunks, or None if session not found
-        or user doesn't have access
+    Returns None if the session is not found or the user does not own it. A
+    turn that is no longer running ends with a made-up ``StreamFinish`` unless
+    its stored tail holds the real one.
     """
     start_time = time.perf_counter()
-
-    # Build log metadata
     log_meta = {"component": "StreamRegistry", "session_id": session_id}
     if user_id:
         log_meta["user_id"] = user_id
 
-    logger.info(
-        f"[TIMING] subscribe_to_session STARTED, session={session_id}, user={user_id}, last_msg={last_message_id}",
-        extra={"json_fields": {**log_meta, "last_message_id": last_message_id}},
-    )
-
-    redis_start = time.perf_counter()
     redis = await get_redis_async()
-    meta_key = _get_session_meta_key(session_id)
-    meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
-    hgetall_time = (time.perf_counter() - redis_start) * 1000
-    logger.info(
-        f"[TIMING] Redis hgetall took {hgetall_time:.1f}ms",
-        extra={"json_fields": {**log_meta, "duration_ms": hgetall_time}},
-    )
-
-    # RACE CONDITION FIX: If session not found, retry with backoff.
-    # Duplicate requests skip create_session and subscribe immediately; the
-    # original request's create_session (a Redis hset) may not have completed
-    # yet. 3 × 100ms gives a 300ms window which covers DB-write latency on the
-    # original request before the hset even starts.
-    if not meta:
-        _max_retries = 3
-        _retry_delay = 0.1  # 100ms per attempt
-        for attempt in range(_max_retries):
-            logger.warning(
-                f"[TIMING] Session not found (attempt {attempt + 1}/{_max_retries}), "
-                f"retrying after {int(_retry_delay * 1000)}ms",
-                extra={"json_fields": {**log_meta, "attempt": attempt + 1}},
-            )
-            await asyncio.sleep(_retry_delay)
-            meta = await redis.hgetall(meta_key)  # type: ignore[misc]
-            if meta:
-                logger.info(
-                    f"[TIMING] Session found after {attempt + 1} retries",
-                    extra={"json_fields": {**log_meta, "attempts": attempt + 1}},
-                )
-                break
-        else:
-            elapsed = (time.perf_counter() - start_time) * 1000
-            logger.info(
-                f"[TIMING] Session still not found in Redis after {_max_retries} retries "
-                f"({elapsed:.1f}ms total)",
-                extra={
-                    "json_fields": {
-                        **log_meta,
-                        "elapsed_ms": elapsed,
-                        "reason": "session_not_found_after_retry",
-                    }
-                },
-            )
-            return None
-
-    # Note: Redis client uses decode_responses=True, so keys are strings
-    session_status = meta.get("status", "")
-    session_user_id = meta.get("user_id", "") or None
-    log_meta["session_id"] = meta.get("session_id", "")
-
-    # Validate ownership - if session has an owner, requester must match
-    if session_user_id:
-        if user_id != session_user_id:
-            logger.warning(
-                f"[TIMING] Access denied: user {user_id} tried to access session owned by {session_user_id}",
-                extra={
-                    "json_fields": {
-                        **log_meta,
-                        "session_owner": session_user_id,
-                        "reason": "access_denied",
-                    }
-                },
-            )
-            return None
+    meta = await _read_meta_with_retry(redis, session_id, log_meta)
+    if not meta or not _owned_by(meta, user_id, log_meta):
+        return None
 
     session = _parse_session_meta(meta, session_id)
-    subscriber_queue: asyncio.Queue[StreamBaseResponse] = asyncio.Queue()
-    stream_key = _get_turn_stream_key(session.turn_id)
-
-    # Replay batch capped by ``stream_replay_count``.
-    xread_start = time.perf_counter()
-    messages = await redis.xread(
-        {stream_key: last_message_id}, block=None, count=config.stream_replay_count
-    )
-    xread_time = (time.perf_counter() - xread_start) * 1000
-    logger.info(
-        f"[TIMING] Redis xread (replay) took {xread_time:.1f}ms, status={session_status}",
-        extra={
-            "json_fields": {
-                **log_meta,
-                "duration_ms": xread_time,
-                "session_status": session_status,
-            }
-        },
-    )
-
-    replayed_count = 0
-    replay_last_id = last_message_id
-    for _stream_name, stream_messages in _stream_entries(messages):
-        for msg_id, msg_data in stream_messages:
-            replay_last_id = msg_id
-            # Note: Redis client uses decode_responses=True, so keys are strings
-            if "data" in msg_data:
-                try:
-                    chunk_data = orjson.loads(msg_data["data"])
-                    chunk = _reconstruct_chunk(chunk_data)
-                    if chunk:
-                        await subscriber_queue.put(chunk)
-                        replayed_count += 1
-                except Exception as e:
-                    logger.warning(f"Failed to replay message: {e}")
-
-    logger.info(
-        f"[TIMING] Replayed {replayed_count} messages, last_id={replay_last_id}",
-        extra={
-            "json_fields": {
-                **log_meta,
-                "n_messages_replayed": replayed_count,
-                "replay_last_id": replay_last_id,
-            }
-        },
-    )
-
-    # Step 2: If session is still running, start stream listener for live updates
-    if session_status == "running":
-        logger.info(
-            "[TIMING] Session still running, starting _stream_listener",
-            extra={"json_fields": {**log_meta, "session_status": session_status}},
-        )
-        listener_task = asyncio.create_task(
-            _stream_listener(
-                session_id, subscriber_queue, replay_last_id, log_meta, session.turn_id
-            )
-        )
-        # Track listener task for cleanup on unsubscribe
-        _listener_sessions[id(subscriber_queue)] = (session_id, listener_task)
-    else:
-        # Session is completed/failed - add finish marker
-        logger.info(
-            f"[TIMING] Session already {session_status}, adding StreamFinish",
-            extra={"json_fields": {**log_meta, "session_status": session_status}},
-        )
-        await subscriber_queue.put(StreamFinish())
+    queue: asyncio.Queue[StreamEntry] = asyncio.Queue()
+    last_id, finished = await _replay(redis, session.turn_id, last_message_id, queue)
+    if session.status == "running":
+        _start_listener(session_id, queue, last_id, log_meta, session.turn_id)
+    elif not finished:
+        queue.put_nowait((None, StreamFinish()))
 
     total_time = (time.perf_counter() - start_time) * 1000
     logger.info(
-        f"[TIMING] subscribe_to_session COMPLETED in {total_time:.1f}ms; session={session_id}, "
-        f"n_messages_replayed={replayed_count}",
-        extra={
-            "json_fields": {
-                **log_meta,
-                "total_time_ms": total_time,
-                "n_messages_replayed": replayed_count,
-            }
-        },
+        f"[TIMING] subscribe_to_session COMPLETED in {total_time:.1f}ms; "
+        f"session={session_id}, status={session.status}, "
+        f"n_messages_replayed={queue.qsize()}, last_id={last_id}",
+        extra={"json_fields": {**log_meta, "total_time_ms": total_time}},
     )
-    return subscriber_queue
+    return queue
+
+
+async def subscribe_to_turn(
+    session_id: str,
+    user_id: str | None,
+    turn_id: str,
+    after: str,
+) -> asyncio.Queue[StreamEntry]:
+    """Every stored entry of ``turn_id`` after the cursor ``after``, then its
+    live ones while it runs.
+
+    Nothing is made up: when the stream stops without the turn's real finish
+    the queue ends with ``(None, StreamFinish())``, an end marker only.
+    Raises ``TurnStreamGone`` or ``TurnStreamTrimmed``.
+    """
+    log_meta = {"component": "StreamRegistry", "session_id": session_id}
+    redis: Any = await get_redis_async()
+    meta = await redis.hgetall(_get_session_meta_key(session_id))
+    if not meta or not _owned_by(meta, user_id, log_meta):
+        raise TurnStreamGone()
+    active = _parse_session_meta(meta, session_id)
+    if active.turn_id != turn_id:
+        turn_meta = await redis.hgetall(_get_turn_meta_key(turn_id))
+        if turn_meta.get("session_id") != session_id:
+            raise TurnStreamGone()
+    running = active.turn_id == turn_id and active.status == "running"
+
+    try:
+        info = await redis.xinfo_stream(_get_turn_stream_key(turn_id))
+    except ResponseError:
+        if not running:
+            raise TurnStreamGone()
+        info = None
+    # Only whole prefixes are ever trimmed, so the gap is everything before
+    # the first entry; that entry is the checkpoint the trim kept.
+    if info and info["entries-added"] > info["length"] and info["first-entry"]:
+        first_id, first_fields = info["first-entry"]
+        if _stream_id(after) < _stream_id(first_id):
+            raise TurnStreamTrimmed(_as_checkpoint(first_id, first_fields))
+
+    queue: asyncio.Queue[StreamEntry] = asyncio.Queue()
+    last_id, finished = await _replay(redis, turn_id, after, queue)
+    if not finished:
+        # Also for a turn already marked done: its finish lands just after.
+        _start_listener(session_id, queue, last_id, log_meta, turn_id)
+    return queue
+
+
+def sse_frame(entry: StreamEntry) -> str:
+    """The SSE frame for a queued entry, with its id on the data line.
+
+    A comment frame (heartbeat, usage) gets no id: SSE parsers drop the id of
+    a frame that carries no data.
+    """
+    frame_id, chunk = entry
+    sse = chunk.to_sse()
+    if frame_id is None or not sse.startswith("data:"):
+        return sse
+    return f"id: {frame_id}\n{sse}"
+
+
+async def _read_meta_with_retry(
+    redis: Any, session_id: str, log_meta: dict[str, Any]
+) -> dict[Any, Any]:
+    # A duplicate request can subscribe before the original request's
+    # create_session hset lands; 3 × 100 ms covers that window.
+    meta_key = _get_session_meta_key(session_id)
+    meta: dict[Any, Any] = await redis.hgetall(meta_key)
+    for attempt in range(3):
+        if meta:
+            return meta
+        logger.warning(
+            f"[TIMING] Session not found (attempt {attempt + 1}/3), retrying after 100ms",
+            extra={"json_fields": {**log_meta, "attempt": attempt + 1}},
+        )
+        await asyncio.sleep(0.1)
+        meta = await redis.hgetall(meta_key)
+    if not meta:
+        logger.info(
+            "[TIMING] Session still not found in Redis after 3 retries",
+            extra={
+                "json_fields": {**log_meta, "reason": "session_not_found_after_retry"}
+            },
+        )
+    return meta
+
+
+def _owned_by(
+    meta: dict[Any, Any], user_id: str | None, log_meta: dict[str, Any]
+) -> bool:
+    owner = meta.get("user_id", "") or None
+    if owner and owner != user_id:
+        logger.warning(
+            f"[TIMING] Access denied: user {user_id} tried to access session owned by {owner}",
+            extra={"json_fields": {**log_meta, "reason": "access_denied"}},
+        )
+        return False
+    return True
+
+
+async def _replay(
+    redis: Any, turn_id: str, after: str, queue: asyncio.Queue[StreamEntry]
+) -> tuple[str, bool]:
+    """Queue every stored entry after ``after``, in batches of
+    ``stream_replay_count``; returns the last id and whether the turn's
+    finish was among them."""
+    stream_key = _get_turn_stream_key(turn_id)
+    last_id, finished = after, False
+    while True:
+        batch = [
+            entry
+            for _, entries in _stream_entries(
+                await redis.xread(
+                    {stream_key: last_id}, count=config.stream_replay_count
+                )
+            )
+            for entry in entries
+        ]
+        for entry_id, fields in batch:
+            last_id = entry_id
+            chunk = _chunk_from_fields(fields)
+            if chunk is not None:
+                queue.put_nowait((f"{turn_id}:{entry_id}", chunk))
+                finished = finished or isinstance(chunk, StreamFinish)
+        if len(batch) < config.stream_replay_count:
+            return last_id, finished
+
+
+def _start_listener(
+    session_id: str,
+    queue: asyncio.Queue[StreamEntry],
+    last_id: str,
+    log_meta: dict[str, Any],
+    turn_id: str,
+) -> None:
+    listener_task = asyncio.create_task(
+        _stream_listener(session_id, queue, last_id, log_meta, turn_id)
+    )
+    _listener_sessions[id(queue)] = (session_id, listener_task)
+
+
+def _chunk_from_fields(fields: dict[str, str]) -> StreamBaseResponse | None:
+    if "data" not in fields:
+        return None
+    try:
+        return _reconstruct_chunk(orjson.loads(fields["data"]))
+    except orjson.JSONDecodeError as e:
+        logger.warning(f"Failed to decode stream entry: {e}")
+        return None
+
+
+def _as_checkpoint(entry_id: str, fields: dict[str, str]) -> TurnCheckpoint | None:
+    chunk = _chunk_from_fields(fields)
+    if not isinstance(chunk, StreamCheckpoint):
+        return None
+    return TurnCheckpoint(entry_id=entry_id, rows=chunk.rows, sequence=chunk.sequence)
+
+
+def _stream_id(entry_id: str) -> tuple[int, int]:
+    ms, _, seq = entry_id.partition("-")
+    return int(ms), int(seq or 0)
 
 
 async def _stream_listener(
     session_id: str,
-    subscriber_queue: asyncio.Queue[StreamBaseResponse],
+    subscriber_queue: asyncio.Queue[StreamEntry],
     last_replayed_id: str,
     log_meta: dict | None = None,
     turn_id: str = "",
@@ -682,7 +750,7 @@ async def _stream_listener(
     xread_count = 0
 
     try:
-        redis = await get_redis_async()
+        redis: Any = await get_redis_async()
         stream_key = _get_turn_stream_key(turn_id)
         current_id = last_replayed_id
 
@@ -725,14 +793,16 @@ async def _stream_listener(
                 )
 
             if not entries:
-                # Timeout - check if session is still running
+                # Timeout - stop once the meta is gone (TTL), not running, or
+                # names a later turn.
                 meta_key = _get_session_meta_key(session_id)
-                status = await redis.hget(meta_key, "status")  # type: ignore[misc]
-                # Stop if session metadata is gone (TTL expired) or status is not "running"
-                if status != "running":
+                status, meta_turn_id = await redis.hmget(
+                    meta_key, ["status", "turn_id"]
+                )
+                if status != "running" or (meta_turn_id and meta_turn_id != turn_id):
                     try:
                         await asyncio.wait_for(
-                            subscriber_queue.put(StreamFinish()),
+                            subscriber_queue.put((None, StreamFinish())),
                             timeout=QUEUE_PUT_TIMEOUT,
                         )
                     except asyncio.TimeoutError:
@@ -744,7 +814,7 @@ async def _stream_listener(
                 # This prevents frontend timeout (12s) during long-running operations
                 try:
                     await asyncio.wait_for(
-                        subscriber_queue.put(StreamHeartbeat()),
+                        subscriber_queue.put((None, StreamHeartbeat())),
                         timeout=QUEUE_PUT_TIMEOUT,
                     )
                 except asyncio.TimeoutError:
@@ -757,16 +827,14 @@ async def _stream_listener(
                 for msg_id, msg_data in stream_messages:
                     current_id = msg_id
 
-                    if "data" not in msg_data:
-                        continue
-
                     try:
-                        chunk_data = orjson.loads(msg_data["data"])
-                        chunk = _reconstruct_chunk(chunk_data)
+                        chunk = _chunk_from_fields(msg_data)
                         if chunk:
                             try:
                                 await asyncio.wait_for(
-                                    subscriber_queue.put(chunk),
+                                    subscriber_queue.put(
+                                        (f"{turn_id}:{msg_id}", chunk)
+                                    ),
                                     timeout=QUEUE_PUT_TIMEOUT,
                                 )
                                 # Update last delivered ID on successful delivery
@@ -806,7 +874,7 @@ async def _stream_listener(
                                             "recovery_hint": f"Reconnect with last_message_id={last_delivered_id}",
                                         },
                                     )
-                                    subscriber_queue.put_nowait(overflow_error)
+                                    subscriber_queue.put_nowait((None, overflow_error))
                                 except asyncio.QueueFull:
                                     # Queue is completely stuck, nothing more we can do
                                     logger.error(
@@ -857,7 +925,7 @@ async def _stream_listener(
         # On error, send finish to unblock subscriber
         try:
             await asyncio.wait_for(
-                subscriber_queue.put(StreamFinish()),
+                subscriber_queue.put((None, StreamFinish())),
                 timeout=QUEUE_PUT_TIMEOUT,
             )
         except (asyncio.TimeoutError, asyncio.QueueFull):
@@ -888,6 +956,7 @@ async def mark_session_completed(
     error_message: str | None = None,
     *,
     skip_error_publish: bool = False,
+    turn_id: str = "",
 ) -> bool:
     """Mark a session as completed, then publish StreamFinish.
 
@@ -908,6 +977,8 @@ async def mark_session_completed(
             cancel, which the frontend would otherwise render as "the assistant
             encountered an error", and when the error has already been
             published to the stream (e.g. via stream_and_publish).
+        turn_id: The finishing turn. When given, a session whose meta already
+            belongs to a later turn is left alone.
 
     Returns:
         True if session was newly marked completed, False if already completed/failed
@@ -918,11 +989,14 @@ async def mark_session_completed(
 
     # Resolve turn_id for publishing to the correct stream
     meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
-    turn_id = _parse_session_meta(meta, session_id).turn_id if meta else session_id
+    guard = ("turn_id", turn_id) if turn_id else None
+    if not turn_id:
+        turn_id = _parse_session_meta(meta, session_id).turn_id if meta else session_id
 
-    # Atomic compare-and-swap: only update if status is "running"
+    # Atomic compare-and-swap: only update if status is "running". A turn's end
+    # can wake the next one, so its late safety-net call must not close that.
     swapped = await hash_compare_and_set(
-        redis, meta_key, "status", expected="running", new=status
+        redis, meta_key, "status", expected="running", new=status, guard=guard
     )
 
     # Clean up the in-memory TTL refresh tracker to prevent unbounded growth.
@@ -1032,6 +1106,7 @@ async def mark_session_completed(
             f"Failed to publish StreamFinish for session {session_id}: {e}. "
             "The _stream_listener will detect completion via status polling."
         )
+    await _trim_to_last_checkpoint(redis, turn_id)
 
     # Clean up local session reference if exists
     _local_sessions.pop(session_id, None)
@@ -1059,6 +1134,36 @@ async def mark_session_completed(
                 )
 
     return True
+
+
+async def _trim_to_last_checkpoint(redis: Any, turn_id: str) -> None:
+    """Drop a finished turn's entries before its last checkpoint.
+
+    The tail from a checkpoint is self-contained, so a late resume either
+    finds its cursor or gets that checkpoint to seed from.
+    """
+    try:
+        await redis.expire(_get_turn_meta_key(turn_id), config.stream_ttl)
+        checkpoint = await _read_checkpoint(redis, turn_id)
+        if checkpoint is not None:
+            await redis.xtrim(
+                _get_turn_stream_key(turn_id),
+                minid=checkpoint.entry_id,
+                approximate=False,
+            )
+    except RedisError as e:
+        logger.warning(f"Failed to trim the stream of turn {turn_id}: {e}")
+
+
+async def _read_checkpoint(redis: Any, turn_id: str) -> TurnCheckpoint | None:
+    raw = await redis.hget(_get_turn_meta_key(turn_id), "checkpoint")
+    if not raw:
+        return None
+    try:
+        return TurnCheckpoint.model_validate_json(raw)
+    except ValidationError:
+        logger.warning(f"Unreadable checkpoint for turn {turn_id}: {raw!r}")
+        return None
 
 
 async def get_session(session_id: str) -> ActiveSession | None:
@@ -1164,12 +1269,14 @@ async def get_active_session(
                 await mark_session_completed(
                     session_id,
                     error_message=f"Session timed out after {age_seconds:.0f}s",
+                    turn_id=_parse_session_meta(meta, session_id).turn_id,
                 )
                 return None, "0-0"
         except (ValueError, TypeError) as e:
             logger.warning(f"Failed to parse created_at: {e}")
 
     session = _parse_session_meta(meta, session_id)
+    session.checkpoint = await _read_checkpoint(redis, session.turn_id)
     logger.info(
         f"[SESSION_LOOKUP] Found running session {session_id[:8]}..., turn_id={session.turn_id[:8]}"
     )
@@ -1216,6 +1323,7 @@ CHUNK_TYPE_TO_CLASS: dict[str, type[StreamBaseResponse]] = {
     ResponseType.MODE_CHANGED.value: StreamModeChanged,
     ResponseType.PROVIDER_FAILURE.value: StreamProviderFailure,
     ResponseType.COMPACTION.value: StreamCompactionProgress,
+    ResponseType.CHECKPOINT.value: StreamCheckpoint,
 }
 
 
@@ -1256,7 +1364,7 @@ async def set_session_asyncio_task(session_id: str, asyncio_task: asyncio.Task) 
 
 async def unsubscribe_from_session(
     session_id: str,
-    subscriber_queue: asyncio.Queue[StreamBaseResponse],
+    subscriber_queue: asyncio.Queue[StreamEntry],
 ) -> None:
     """Clean up when a subscriber disconnects.
 
