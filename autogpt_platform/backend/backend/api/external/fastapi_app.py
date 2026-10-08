@@ -30,7 +30,7 @@ integrations, automations, and custom applications.
 **Recommendation**: New integrations should use v2.
 
 For authentication details and usage examples, see the
-[API Integration Guide](https://docs.agpt.co/platform/integrating/api-guide/).
+[API Integration Guide](https://agpt.co/docs/platform/api-and-integrations/api-guide).
 """
 
 external_api = FastAPI(
