@@ -255,6 +255,7 @@ async def list_graph_versions(
         graph_id,
         user_id=auth.user_id,
         organization_id=auth.organization_id,
+        include_subgraphs=True,
     )
     if not graphs:
         raise HTTPException(
