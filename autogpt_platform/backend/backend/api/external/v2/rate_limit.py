@@ -1,5 +1,7 @@
 """V2 External API - Per-Endpoint Rate Limiters"""
 
+from fastapi import Response
+
 from backend.api.utils.rate_limit import RateLimiter
 
 media_upload_limiter = RateLimiter(
@@ -13,3 +15,10 @@ file_upload_limiter = RateLimiter("v2:file_upload", max_requests=20, window_seco
 subscription_limiter = RateLimiter(
     "v2:subscription", max_requests=60, window_seconds=60
 )
+
+
+async def enforce(limiter: RateLimiter, user_id: str, response: Response) -> None:
+    """Apply `limiter` and report its window instead of the global one: it is the
+    narrower cap, so it is the one the caller has to back off on."""
+    if state := await limiter.check(user_id):
+        response.headers.update(state.headers())

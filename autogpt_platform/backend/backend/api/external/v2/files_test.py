@@ -14,13 +14,22 @@ from unittest import mock
 
 import pytest
 import pytest_mock
-from fastapi import HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, Response, UploadFile
+from fastapi.testclient import TestClient
 from prisma.enums import APIKeyPermission
 from starlette.datastructures import Headers
 
-from backend.api.external.v2.files import get_file, list_files, upload_file
+from backend.api.external.v2.files import (
+    file_upload_limiter,
+    file_workspace_router,
+    get_file,
+    list_files,
+    upload_file,
+)
+from backend.api.external.v2.global_rate_limit import GlobalRateLimitMiddleware
 from backend.api.external.v2.pagination import PageRequest
-from backend.api.external.v2.tenancy import TenantContext
+from backend.api.external.v2.tenancy import TenantContext, require_auth
+from backend.api.utils.rate_limit import RateLimitState
 from backend.data.workspace import Workspace, WorkspaceFile
 
 USER_ID = "user-1"
@@ -33,6 +42,7 @@ async def test_an_uploaded_file_is_listed_and_addressable(
 ) -> None:
     """The whole of item 1.9: upload, then find the same file by the id it returned."""
     uploaded = await upload_file(
+        response=Response(),
         file=_upload("report.csv", b"a,b\n1,2\n", "text/csv"),
         overwrite=False,
         auth=_auth(),
@@ -50,6 +60,7 @@ async def test_the_upload_returns_a_uri_agent_file_inputs_accept(
 ) -> None:
     """`workspace://<id>#<mime>` is what `store_media_file` resolves for a run."""
     uploaded = await upload_file(
+        response=Response(),
         file=_upload("clip.mp4", b"\x00\x01", "video/mp4"),
         overwrite=False,
         auth=_auth(),
@@ -61,16 +72,27 @@ async def test_the_upload_returns_a_uri_agent_file_inputs_accept(
 async def test_a_second_upload_of_the_same_name_conflicts_unless_overwritten(
     workspace: dict[str, WorkspaceFile],
 ) -> None:
-    await upload_file(file=_upload("notes.txt", b"one"), overwrite=False, auth=_auth())
+    await upload_file(
+        response=Response(),
+        file=_upload("notes.txt", b"one"),
+        overwrite=False,
+        auth=_auth(),
+    )
 
     with pytest.raises(HTTPException) as raised:
         await upload_file(
-            file=_upload("notes.txt", b"two"), overwrite=False, auth=_auth()
+            response=Response(),
+            file=_upload("notes.txt", b"two"),
+            overwrite=False,
+            auth=_auth(),
         )
     assert raised.value.status_code == 409
 
     replaced = await upload_file(
-        file=_upload("notes.txt", b"two"), overwrite=True, auth=_auth()
+        response=Response(),
+        file=_upload("notes.txt", b"two"),
+        overwrite=True,
+        auth=_auth(),
     )
     assert list(workspace) == [replaced.id]
 
@@ -84,7 +106,10 @@ async def test_an_upload_over_the_storage_quota_is_undone(
 
     with pytest.raises(HTTPException) as raised:
         await upload_file(
-            file=_upload("big.bin", b"0" * 64), overwrite=False, auth=_auth()
+            response=Response(),
+            file=_upload("big.bin", b"0" * 64),
+            overwrite=False,
+            auth=_auth(),
         )
 
     assert raised.value.status_code == 413
@@ -97,6 +122,42 @@ def quota_bytes(mocker: pytest_mock.MockFixture) -> mock.AsyncMock:
         "backend.api.features.workspace.service.get_workspace_storage_limit_bytes",
         new=mock.AsyncMock(return_value=0),
     )
+
+
+def test_a_successful_upload_reports_the_upload_cap_not_the_global_one(
+    workspace: dict[str, WorkspaceFile], mocker: pytest_mock.MockFixture
+) -> None:
+    """Uploads have their own, narrower cap; a client backing off on the global
+    window's numbers would walk into a 429 it was told was far away."""
+    mocker.patch.object(
+        file_upload_limiter,
+        "check",
+        new=mock.AsyncMock(
+            return_value=RateLimitState(limit=20, remaining=19, reset_seconds=300)
+        ),
+    )
+    mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(return_value=mock.Mock(user_id=USER_ID)),
+    )
+    mocker.patch(
+        "backend.api.external.v2.global_rate_limit._authenticated_limiter.check",
+        new=mock.AsyncMock(
+            return_value=RateLimitState(limit=200, remaining=199, reset_seconds=60)
+        ),
+    )
+    app = FastAPI()
+    app.include_router(file_workspace_router, prefix="/files")
+    app.add_middleware(GlobalRateLimitMiddleware)
+    app.dependency_overrides[require_auth] = _auth
+
+    response = TestClient(app).post(
+        "/files/upload", files={"file": ("notes.txt", b"hello")}
+    )
+
+    assert response.status_code == 201
+    assert response.headers.get_list("x-ratelimit-limit") == ["20"]
+    assert response.headers["x-ratelimit-remaining"] == "19"
 
 
 @pytest.fixture
@@ -150,7 +211,7 @@ def workspace(
     )
     mocker.patch(
         "backend.api.external.v2.files.file_upload_limiter.check",
-        new=mock.AsyncMock(),
+        new=mock.AsyncMock(return_value=None),
     )
 
     async def get_workspace(user_id: str) -> Workspace:

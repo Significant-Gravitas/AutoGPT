@@ -291,8 +291,10 @@ async def search_with(
     mocker.patch(
         "backend.api.external.v2.search.search_limiter.check",
         new_callable=mock.AsyncMock,
+        return_value=None,
     )
     return await search(
+        response=fastapi.Response(),
         query="q",
         content_types=content_types,
         category=None,

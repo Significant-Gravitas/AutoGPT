@@ -7,7 +7,7 @@ Cross-domain hybrid search across agents, blocks, and documentation.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from prisma.enums import APIKeyPermission, ContentType
 from starlette import status
 
@@ -15,7 +15,7 @@ from backend.api.features.search.hybrid_search import unified_hybrid_search
 
 from .models import MarketplaceSearchResult, SearchContentType
 from .pagination import Page, PageRequest, page_request
-from .rate_limit import search_limiter
+from .rate_limit import enforce, search_limiter
 from .tenancy import TenantContext, require_auth
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ search_router = APIRouter(tags=["search"])
     operation_id="search",
 )
 async def search(
+    response: Response,
     query: str = Query(description="Search query"),
     content_types: Optional[list[SearchContentType]] = Query(
         default=None, description="Content types to filter by"
@@ -46,7 +47,7 @@ async def search(
 
     **Rate limit:** 30 requests per minute per user.
     """
-    await search_limiter.check(auth.user_id)
+    await enforce(search_limiter, auth.user_id, response)
 
     requested = content_types or PUBLIC_CONTENT_TYPES
     for content_type in requested:

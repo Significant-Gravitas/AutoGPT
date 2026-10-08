@@ -23,7 +23,7 @@ from backend.data.workspace import (
 
 from .models import UploadWorkspaceFileResponse, WorkspaceFileInfo
 from .pagination import Page, PageRequest, page_request
-from .rate_limit import file_upload_limiter
+from .rate_limit import enforce, file_upload_limiter
 from .tenancy import TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
@@ -142,6 +142,7 @@ async def delete_file(
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_file(
+    response: Response,
     file: UploadFile = File(...),
     overwrite: bool = Query(
         default=False, description="Replace an existing file with the same path"
@@ -157,7 +158,7 @@ async def upload_file(
 
     **Rate limit:** 20 requests per 5 minutes per user.
     """
-    await file_upload_limiter.check(auth.user_id)
+    await enforce(file_upload_limiter, auth.user_id, response)
 
     workspace_file = await store_workspace_upload(
         auth.user_id, file, overwrite=overwrite

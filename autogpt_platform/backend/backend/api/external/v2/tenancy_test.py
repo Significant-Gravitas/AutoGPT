@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 import pytest_mock
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 from fastapi.routing import APIRoute
 from prisma.enums import APIKeyPermission
 
@@ -147,6 +147,7 @@ async def test_run_creation_carries_org_and_team(
     )
 
     await execute_agent(
+        response=Response(),
         request=AgentRunRequest(inputs={}),
         agent_id="agent-1",
         auth=_key_for(ORG_A, team_id=TEAM_A),
@@ -386,6 +387,7 @@ async def test_org_a_key_cannot_run_an_org_b_library_agent(
 
     with pytest.raises(NotFoundError):
         await execute_agent(
+            response=Response(),
             request=AgentRunRequest(inputs={}),
             agent_id="la-1",
             auth=_key_for(ORG_A),

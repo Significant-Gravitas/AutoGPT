@@ -113,7 +113,10 @@ def _with_rate_limit_headers(send: Send, state: Optional[RateLimitState]) -> Sen
 
     async def send_with_headers(message: Message) -> None:
         if message["type"] == "http.response.start":
-            message.setdefault("headers", []).extend(encoded)
+            headers = message.setdefault("headers", [])
+            # An endpoint with its own, narrower limiter has already set these.
+            present = {name.lower() for name, _ in headers}
+            headers.extend(h for h in encoded if h[0] not in present)
         await send(message)
 
     return send_with_headers

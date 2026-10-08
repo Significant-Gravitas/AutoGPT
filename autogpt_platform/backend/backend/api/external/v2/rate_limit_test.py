@@ -8,7 +8,7 @@ from unittest import mock
 
 import pytest
 import pytest_mock
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 
 from backend.api.external.v2 import credits
 from backend.api.external.v2.global_rate_limit import (
@@ -116,7 +116,9 @@ async def test_the_subscription_read_is_capped_before_it_reaches_stripe(
     )
 
     with pytest.raises(HTTPException) as raised:
-        await credits.get_subscription_status(auth=mock.Mock(user_id="u1"))
+        await credits.get_subscription_status(
+            response=Response(), auth=mock.Mock(user_id="u1")
+        )
 
     assert raised.value.status_code == 429
     user.assert_not_awaited()

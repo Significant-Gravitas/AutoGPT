@@ -15,6 +15,7 @@ from fastapi import (
     HTTPException,
     Path,
     Query,
+    Response,
     Security,
     UploadFile,
 )
@@ -45,7 +46,7 @@ from .models import (
     MarketplaceUserProfileUpdateRequest,
 )
 from .pagination import Page, PageRequest, page_request
-from .rate_limit import media_upload_limiter
+from .rate_limit import enforce, media_upload_limiter
 from .tenancy import TenantContext, require_auth, require_permission
 
 logger = logging.getLogger(__name__)
@@ -395,6 +396,7 @@ async def delete_submission(
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_submission_media(
+    response: Response,
     file: UploadFile = File(...),
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_STORE)),
 ) -> MarketplaceMediaUploadResponse:
@@ -403,7 +405,7 @@ async def upload_submission_media(
 
     **Rate limit:** 10 requests per 5 minutes per user.
     """
-    await media_upload_limiter.check(auth.user_id)
+    await enforce(media_upload_limiter, auth.user_id, response)
 
     max_size = 10 * 1024 * 1024  # 10MB limit for external API
 
