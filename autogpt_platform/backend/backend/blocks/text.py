@@ -29,7 +29,9 @@ class MatchTextPatternBlock(Block):
     class Input(BlockSchemaInput):
         text: Any = SchemaField(description="Text to match")
         match: str = SchemaField(description="Pattern (Regex) to match")
-        data: Any = SchemaField(description="Data to be forwarded to output")
+        data: Any = SchemaField(
+            description="Data to be forwarded to output", default=None
+        )
         case_sensitive: bool = SchemaField(
             description="Case sensitive match", default=True
         )
@@ -62,7 +64,9 @@ class MatchTextPatternBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        output = input_data.data or input_data.text
+        # Only an unconnected pin (None) falls back to the text; falsy data
+        # like 0, False, "" or [] is forwarded as-is.
+        output = input_data.text if input_data.data is None else input_data.data
         flags = 0
         if not input_data.case_sensitive:
             flags = flags | re.IGNORECASE
@@ -212,64 +216,55 @@ class ExtractTextInformationBlock(Block):
             re.search(dangerous, input_data.pattern) for dangerous in dangerous_patterns
         )
 
+        # Fail loudly on a malformed pattern instead of reporting "no match".
+        try:
+            if is_dangerous:
+                regex.compile(input_data.pattern, flags)
+            else:
+                re.compile(input_data.pattern, flags)
+        except (re.error, regex.error) as e:
+            raise ValueError(f"Invalid regex pattern: {e}") from e
+
+        def collect(found) -> list[str]:
+            collected: list[str] = []
+            for match in found:
+                if len(collected) >= MAX_MATCHES:
+                    break
+                if input_data.group > len(match.groups()):
+                    continue
+                match_text = match.group(input_data.group)
+                # An optional group that didn't take part in this match
+                # (e.g. group 2 of "(a)|(b)" on "a") is None: skip it.
+                if match_text is None:
+                    continue
+                # Limit match length to prevent memory exhaustion
+                collected.append(match_text[:MAX_MATCH_LENGTH])
+            return collected
+
         # Use regex module with timeout for dangerous patterns
         # For safe patterns, use standard re module for compatibility
         try:
-            matches = []
-            match_count = 0
-
             if is_dangerous:
-                # Use regex module with timeout (5 seconds) for dangerous patterns
-                # The regex module supports timeout parameter in finditer
-                try:
-                    for match in regex.finditer(
-                        input_data.pattern, txt, flags=flags, timeout=5.0
-                    ):
-                        if match_count >= MAX_MATCHES:
-                            break
-                        if input_data.group <= len(match.groups()):
-                            match_text = match.group(input_data.group)
-                            # Limit match length to prevent memory exhaustion
-                            if len(match_text) > MAX_MATCH_LENGTH:
-                                match_text = match_text[:MAX_MATCH_LENGTH]
-                            matches.append(match_text)
-                            match_count += 1
-                except regex.error as e:
-                    # Timeout occurred or regex error
-                    if "timeout" in str(e).lower():
-                        # Timeout - return empty results
-                        pass
-                    else:
-                        # Other regex error
-                        raise
+                matches = collect(
+                    regex.finditer(input_data.pattern, txt, flags=flags, timeout=5.0)
+                )
             else:
-                # Use standard re module for non-dangerous patterns
-                for match in re.finditer(input_data.pattern, txt, flags):
-                    if match_count >= MAX_MATCHES:
-                        break
-                    if input_data.group <= len(match.groups()):
-                        match_text = match.group(input_data.group)
-                        # Limit match length to prevent memory exhaustion
-                        if len(match_text) > MAX_MATCH_LENGTH:
-                            match_text = match_text[:MAX_MATCH_LENGTH]
-                        matches.append(match_text)
-                        match_count += 1
+                matches = collect(re.finditer(input_data.pattern, txt, flags))
+        except TimeoutError:
+            # Only a regex timeout means "no usable result"; anything else is a
+            # real error and must surface.
+            matches = []
 
-            if not input_data.find_all:
-                matches = matches[:1]
+        if not input_data.find_all:
+            matches = matches[:1]
 
-            for match in matches:
-                yield "positive", match
-            if not matches:
-                yield "negative", input_data.text
-
-            yield "matched_results", matches
-            yield "matched_count", len(matches)
-        except Exception:
-            # Return empty results on any regex error
+        for match in matches:
+            yield "positive", match
+        if not matches:
             yield "negative", input_data.text
-            yield "matched_results", []
-            yield "matched_count", 0
+
+        yield "matched_results", matches
+        yield "matched_count", len(matches)
 
 
 class FillTextTemplateBlock(Block):
@@ -320,8 +315,9 @@ class FillTextTemplateBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         formatter = text.TextFormatter(autoescape=input_data.escape_html)
-        yield "output", await formatter.format_string(
-            input_data.format, input_data.values
+        yield (
+            "output",
+            await formatter.format_string(input_data.format, input_data.values),
         )
 
 
