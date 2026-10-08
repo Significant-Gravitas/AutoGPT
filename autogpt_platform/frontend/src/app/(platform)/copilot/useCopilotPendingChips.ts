@@ -24,10 +24,16 @@ interface Args {
   sessionId: string | null;
   status: ChatStatus;
   messages: UIMessage[];
-  setMessages: (
+  setMessages?: (
     updater: UIMessage[] | ((prev: UIMessage[]) => UIMessage[]),
   ) => void;
+  /** The stream runtime's promotion; its turn's drained rows stand in for the bubbles. */
+  appendLocalUserRows?: (entries: readonly QueuedMessage[]) => void;
+  /** Drained follow-ups the runtime has rendered; replaces counting drain hints. */
+  drainedCount?: number;
 }
+
+type Promote = (drained: QueuedMessage[], flavour?: PromotionFlavour) => void;
 
 /**
  * Owns the chip lifecycle: keep the local chip list in sync with Redis,
@@ -58,7 +64,14 @@ export function useCopilotPendingChips({
   status,
   messages,
   setMessages,
+  appendLocalUserRows,
+  drainedCount,
 }: Args) {
+  const promote: Promote = (drained, flavour) => {
+    if (appendLocalUserRows) appendLocalUserRows(drained);
+    else if (setMessages)
+      promoteChipsToTrailingBubbles(setMessages, drained, flavour);
+  };
   const [queue, setQueue] = useState<QueuedMessage[]>([]);
   // Stable string view for consumers that only need the texts. Memoised so
   // downstream components don't re-render on identity churn alone.
@@ -73,23 +86,23 @@ export function useCopilotPendingChips({
     queueRef.current = queue;
   }, [queue]);
 
-  usePeekOnBoundary({ sessionId, status, queueRef, setMessages, setQueue });
+  usePeekOnBoundary({ sessionId, status, queueRef, promote, setQueue });
 
   useAutoContinuePromotion({
     sessionId,
     status,
     messages,
     queue,
-    setMessages,
+    promote,
     setQueue,
   });
 
   useMidTurnDrainPromotion({
     sessionId,
     status,
-    messages,
+    drainHintCount: drainedCount ?? countPendingDrainedHints(messages),
     queue,
-    setMessages,
+    promote,
     setQueue,
   });
 
@@ -113,15 +126,17 @@ function usePeekOnBoundary({
   sessionId,
   status,
   queueRef,
-  setMessages,
+  promote,
   setQueue,
 }: {
   sessionId: string | null;
   status: ChatStatus;
   queueRef: { current: QueuedMessage[] };
-  setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
+  promote: Promote;
   setQueue: (updater: QueueUpdater) => void;
 }) {
+  const promoteRef = useRef(promote);
+  promoteRef.current = promote;
   const prevSessionIdRef = useRef<string | null>(sessionId);
   const prevStatusRef = useRef<ChatStatus>(status);
   // Peeks overlap: Strict Mode mounts this effect twice, and two idle edges
@@ -192,9 +207,7 @@ function usePeekOnBoundary({
             const drained = current.filter((entry) =>
               inFlightIds.has(entry.id),
             );
-            if (drained.length > 0) {
-              promoteChipsToTrailingBubbles(setMessages, drained);
-            }
+            if (drained.length > 0) promoteRef.current(drained);
             return current.filter((entry) => !inFlightIds.has(entry.id));
           });
           return;
@@ -258,16 +271,18 @@ function useAutoContinuePromotion({
   status,
   messages,
   queue,
-  setMessages,
+  promote,
   setQueue,
 }: {
   sessionId: string | null;
   status: ChatStatus;
   messages: UIMessage[];
   queue: QueuedMessage[];
-  setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
+  promote: Promote;
   setQueue: (updater: QueueUpdater) => void;
 }) {
+  const promoteRef = useRef(promote);
+  promoteRef.current = promote;
   const prevStatusRef = useRef(status);
   // The opener is the first assistant id observed after a turn starts.
   // Any LATER assistant id in the same chain is the auto-continue.
@@ -319,12 +334,11 @@ function useAutoContinuePromotion({
     void pollBackendAndPromote(
       sessionId,
       queue,
-      setMessages,
+      (drained) => promoteRef.current(drained, "auto-continue"),
       setQueue,
       isCurrentSession,
-      "auto-continue",
     );
-  }, [messages, status, sessionId, queue, setMessages, setQueue]);
+  }, [messages, status, sessionId, queue, setQueue]);
 }
 
 type PromotionFlavour = Parameters<typeof makePromotedUserBubble>[1];
@@ -405,18 +419,20 @@ function isPromotedBubbleFor(
 function useMidTurnDrainPromotion({
   sessionId,
   status,
-  messages,
+  drainHintCount,
   queue,
-  setMessages,
+  promote,
   setQueue,
 }: {
   sessionId: string | null;
   status: ChatStatus;
-  messages: UIMessage[];
+  drainHintCount: number;
   queue: QueuedMessage[];
-  setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
+  promote: Promote;
   setQueue: (updater: QueueUpdater) => void;
 }) {
+  const promoteRef = useRef(promote);
+  promoteRef.current = promote;
   // Live ref tracks the latest sessionId so a poll captured at request
   // time can detect a session switch on resolve.  A cancellation flag
   // would also fire on enqueue (this effect re-runs on every queue
@@ -432,7 +448,6 @@ function useMidTurnDrainPromotion({
   // increasing — replays (AI SDK resume re-emits the parts) leave the
   // count unchanged on a stable render, and the GET re-read keeps a
   // replayed hint idempotent regardless.
-  const drainHintCount = countPendingDrainedHints(messages);
   // Baseline is tracked per session: on a session switch the old session's
   // chips can still be in `queue` for the current commit, so a higher hint
   // count in the new session must not promote stale chips into the new chat.
@@ -458,11 +473,11 @@ function useMidTurnDrainPromotion({
     void pollBackendAndPromote(
       sessionId,
       queue,
-      setMessages,
+      (drained) => promoteRef.current(drained),
       setQueue,
       isCurrentSession,
     );
-  }, [drainHintCount, sessionId, status, queue, setMessages, setQueue]);
+  }, [drainHintCount, sessionId, status, queue, setQueue]);
 
   // Backstop: a slow poll that catches a dropped hint.
   useEffect(() => {
@@ -477,13 +492,13 @@ function useMidTurnDrainPromotion({
       void pollBackendAndPromote(
         sessionId,
         queue,
-        setMessages,
+        (drained) => promoteRef.current(drained),
         setQueue,
         isCurrentSession,
       );
     }, MID_TURN_BACKSTOP_POLL_MS);
     return () => clearInterval(interval);
-  }, [sessionId, status, queue, setMessages, setQueue]);
+  }, [sessionId, status, queue, setQueue]);
 }
 
 // Count ``data-pending-drained`` hint parts the backend emits at each
@@ -502,10 +517,9 @@ function countPendingDrainedHints(messages: UIMessage[]): number {
 async function pollBackendAndPromote(
   sessionId: string,
   snapshotQueue: QueuedMessage[],
-  setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
+  promote: (drained: QueuedMessage[]) => void,
   setQueue: (updater: QueueUpdater) => void,
   isCurrentSession: () => boolean,
-  flavour: PromotionFlavour = "midturn",
 ): Promise<void> {
   let backendCount: number;
   try {
@@ -542,7 +556,7 @@ async function pollBackendAndPromote(
   // keeps the stream flowing, at the cost of showing a count-only follow-up
   // above the work that preceded it until ``useHydrateOnStreamEnd`` snaps
   // the list to the DB order at the end of the turn.
-  promoteChipsToTrailingBubbles(setMessages, drained, flavour);
+  promote(drained);
   // Drop only the drained entries by id; entries appended after the
   // snapshot survive the in-flight poll race.
   setQueue((current) => current.filter((entry) => !drainedIds.has(entry.id)));
