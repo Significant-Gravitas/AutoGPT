@@ -4,6 +4,7 @@ import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import {
   EMAIL_VERIFICATION_NOTICE_PARAM,
   type EmailVerificationNotice,
+  hasMarketingOptOutParam,
 } from "@/lib/auth/email-verification";
 import { getServerSession } from "@/lib/auth/server/getServerSession";
 import { recordSignupConsent } from "@/lib/auth/server/recordSignupConsent";
@@ -78,8 +79,16 @@ export async function GET(request: Request) {
       // this sign-in only. Not taken before provisioning succeeds: a failure
       // redirects to /error and the retry must still carry the refusal.
       // Never throws, so it can't reach the rollback below.
-      const marketingOptOut = await takeMarketingOptOutFlag();
+      const cookieOptOut = await takeMarketingOptOutFlag();
       const accountCreated = wasAccountCreated(createUserResponse);
+      // An email sign-up's refusal comes in its verification link. Only the
+      // account the link creates takes it, so a crafted link can't change an
+      // existing account.
+      const marketingOptOut =
+        cookieOptOut ||
+        (accountCreated &&
+          signupMethod === "email" &&
+          hasMarketingOptOutParam(searchParams));
       if (accountCreated) {
         await scheduleAccountCreatedGoal(signupMethod);
         await markAccountCreated(signupMethod);

@@ -358,14 +358,11 @@ describe("SignupPage", () => {
     },
   );
 
-  test.each([
-    { optOut: true, calls: [[false], [true]] },
-    { optOut: false, calls: [[false]] },
-  ])(
-    "an email signup that must verify its address carries an opt-out ($optOut) to the link",
-    async ({ optOut, calls }) => {
-      // No session yet, so the action records nothing: the emailed link lands
-      // on /auth/callback, which takes the refusal from the cookie.
+  test.each([true, false])(
+    "an email signup that must verify its address leaves no opt-out cookie (opted out: %s)",
+    async (optOut) => {
+      // No session yet, so the action records nothing: the emailed link
+      // itself carries the refusal to /auth/callback (see actions.ts).
       mockSignupAction.mockResolvedValue({
         success: true,
         verificationRequired: true,
@@ -380,7 +377,8 @@ describe("SignupPage", () => {
       fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
 
       expect(await screen.findByText("new@example.com")).toBeDefined();
-      expect(setMarketingOptOutFlag.mock.calls).toEqual(calls);
+      expect(setMarketingOptOutFlag.mock.calls).toEqual([[false]]);
+      expect(mockSignupAction.mock.calls[0][3]).toBe(optOut);
     },
   );
 

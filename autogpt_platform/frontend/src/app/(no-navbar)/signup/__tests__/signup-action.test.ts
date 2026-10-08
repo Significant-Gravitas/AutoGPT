@@ -117,6 +117,16 @@ describe("signup", () => {
     expect(result).toEqual({ success: true, next: "/onboarding" });
   });
 
+  it("puts a marketing refusal in the verification link", async () => {
+    signUpEmailMock.mockResolvedValue({ token: null, user: { id: "user-1" } });
+
+    await signup(email, validPassword, validPassword, true, "/marketplace");
+
+    expect(signUpEmailMock.mock.calls[0][0].body.callbackURL).toBe(
+      "/auth/callback?method=email&next=%2Fmarketplace&marketing_opt_out=1",
+    );
+  });
+
   it("records terms acceptance on the account it just created", async () => {
     signUpEmailMock.mockResolvedValue({
       token: "session-token",
@@ -274,8 +284,14 @@ describe("signup", () => {
   it("carries a safe next path through the verification link", async () => {
     signUpEmailMock.mockResolvedValue({ token: null, user: { id: "user-1" } });
 
-    await signup(email, validPassword, validPassword, true, "/marketplace");
-    await signup(email, validPassword, validPassword, true, "https://evil.com");
+    await signup(email, validPassword, validPassword, false, "/marketplace");
+    await signup(
+      email,
+      validPassword,
+      validPassword,
+      false,
+      "https://evil.com",
+    );
 
     expect(signUpEmailMock.mock.calls[0][0].body.callbackURL).toBe(
       "/auth/callback?method=email&next=%2Fmarketplace",

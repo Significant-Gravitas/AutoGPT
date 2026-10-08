@@ -47,7 +47,10 @@ export async function signup(
           email: parsed.data.email,
           password: parsed.data.password,
           name: parsed.data.email.split("@")[0],
-          callbackURL: getEmailVerificationCallbackURL(next),
+          callbackURL: getEmailVerificationCallbackURL({
+            next,
+            marketingOptOut: parsed.data.marketingOptOut,
+          }),
         },
         headers: await headers(),
       });

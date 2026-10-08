@@ -168,9 +168,8 @@ export function useSignupPage() {
 
       if (result.verificationRequired) {
         // There is no session yet, so the action recorded nothing. The emailed
-        // link lands on /auth/callback, which records the terms and, if the
-        // link is opened in this browser while the cookie lasts, the refusal.
-        if (data.marketingOptOut) setMarketingOptOutFlag(true);
+        // link carries the refusal and lands on /auth/callback, which records
+        // it with the terms.
         setVerificationEmail(result.email);
         setIsLoading(false);
         setIsSigningUp(false);

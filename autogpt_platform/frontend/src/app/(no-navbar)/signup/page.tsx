@@ -59,6 +59,7 @@ export default function SignupPage() {
           email={verificationEmail}
           reason="signup"
           next={safeNextUrl}
+          marketingOptOut={optedOut}
           onBack={handleStartAgain}
         />
       </AuthSplitLayout>

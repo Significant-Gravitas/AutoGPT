@@ -39,7 +39,7 @@ export async function login(
           email: parsed.data.email,
           password: parsed.data.password,
           // Only used for the link Better Auth emails to an unverified user.
-          callbackURL: getEmailVerificationCallbackURL(next),
+          callbackURL: getEmailVerificationCallbackURL({ next }),
         },
         headers: await headers(),
       });

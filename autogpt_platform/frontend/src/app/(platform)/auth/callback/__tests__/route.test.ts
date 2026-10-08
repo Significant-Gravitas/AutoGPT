@@ -338,6 +338,40 @@ describe("auth callback GET — email verification link", () => {
     expect(cookieDeleteMock).toHaveBeenCalledWith("agpt_marketing_opt_out");
   });
 
+  it("records a refusal carried by the link when it creates the account", async () => {
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    await GET(
+      makeCallbackRequest("/auth/callback?method=email&marketing_opt_out=1"),
+    );
+
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledOnce();
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledWith({
+      terms_version: TERMS_VERSION,
+      marketing_opt_out: true,
+    });
+  });
+
+  it.each([
+    ["an existing account", "/auth/callback?method=email&marketing_opt_out=1"],
+    ["a Google sign-in", "/auth/callback?marketing_opt_out=1"],
+  ])("ignores the link's refusal for %s", async (_, path) => {
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    postV1GetOrCreateUserMock.mockResolvedValue(
+      provisioningResponse(path.includes("method=email") ? false : true),
+    );
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    await GET(makeCallbackRequest(path));
+
+    const calls = postV1RecordUserConsentMock.mock.calls;
+    expect(calls.every(([body]) => body.marketing_opt_out === false)).toBe(
+      true,
+    );
+  });
+
   it("does not track an existing account that verifies at its next sign-in", async () => {
     getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
     postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(false));
