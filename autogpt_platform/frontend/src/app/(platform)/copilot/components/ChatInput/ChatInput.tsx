@@ -155,8 +155,8 @@ export function ChatInput({
     toast({
       title: next ? "Test mode enabled" : "Test mode disabled",
       description: next
-        ? "New chats will run agents in test mode."
-        : "New chats will run agents normally.",
+        ? "New chats will run workflows in test mode."
+        : "New chats will run workflows normally.",
     });
   }
 

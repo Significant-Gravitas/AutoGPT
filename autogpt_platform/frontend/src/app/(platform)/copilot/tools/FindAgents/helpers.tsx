@@ -92,7 +92,7 @@ export function getSourceLabelFromToolType(toolType?: FindAgentsToolType): {
   if (toolType === "tool-find_agent") {
     return { source: "marketplace", label: "Marketplace" };
   }
-  return { source: "unknown", label: "Agents" };
+  return { source: "unknown", label: "Workflows" };
 }
 
 export function getAnimationText(part: {
@@ -107,8 +107,8 @@ export function getAnimationText(part: {
   // Action phrase matching legacy ToolCallMessage
   const actionPhrase =
     source === "library"
-      ? "Looking for library agents"
-      : "Looking for agents in the marketplace";
+      ? "Looking for library workflows"
+      : "Looking for workflows in the marketplace";
 
   const queryText = query ? ` matching "${query}"` : "";
 
@@ -123,20 +123,20 @@ export function getAnimationText(part: {
         return `${actionPhrase}${queryText}`;
       }
       if (isNoResultsOutput(output)) {
-        return `No agents found${queryText}`;
+        return `No workflows found${queryText}`;
       }
       if (isAgentsFoundOutput(output)) {
         const count = output.count ?? output.agents?.length ?? 0;
-        return `Found ${count} agent${count === 1 ? "" : "s"}${queryText}`;
+        return `Found ${count} workflow${count === 1 ? "" : "s"}${queryText}`;
       }
       if (isErrorOutput(output)) {
-        return `Error finding agents${queryText}`;
+        return `Error finding workflows${queryText}`;
       }
       return `${actionPhrase}${queryText}`;
     }
 
     case "output-error":
-      return `Error finding agents${queryText}`;
+      return `Error finding workflows${queryText}`;
 
     default:
       return actionPhrase;

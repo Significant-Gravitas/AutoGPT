@@ -33,7 +33,7 @@ export function ExecutionCard({ name, status, href, variant = "run" }: Props) {
       {href && (
         <Link
           href={href}
-          aria-label={variant === "agent" ? "Open agent" : "Open execution"}
+          aria-label={variant === "agent" ? "Open workflow" : "Open execution"}
           className="shrink-0 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
         >
           <Icon icon={LinkSquare01Icon} size={14} />

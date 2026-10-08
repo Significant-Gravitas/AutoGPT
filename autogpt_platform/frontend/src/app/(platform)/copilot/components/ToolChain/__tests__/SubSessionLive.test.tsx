@@ -70,7 +70,7 @@ describe("SubSessionLive", () => {
   afterEach(cleanup);
 
   it.each([
-    ["run_agent", "Daily briefing", "Running agent", "Daily briefing"],
+    ["run_agent", "Daily briefing", "Running workflow", "Daily briefing"],
     [
       "run_block",
       "FillTextTemplateBlock",
@@ -155,8 +155,10 @@ describe("SubSessionLive", () => {
         output={{ status: "running", sub_session_id: "sub-1" }}
       />,
     );
-    expect(await screen.findByText('Ran agent "First workflow"')).toBeDefined();
-    expect(screen.getByText('Ran agent "Second workflow"')).toBeDefined();
+    expect(
+      await screen.findByText('Ran workflow "First workflow"'),
+    ).toBeDefined();
+    expect(screen.getByText('Ran workflow "Second workflow"')).toBeDefined();
   });
 
   it("streams the delegate's recent tools and latest words while running", async () => {

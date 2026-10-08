@@ -4,12 +4,12 @@ import { TOOL_PART_PREFIX } from "./constants";
 const TOOL_TO_CATEGORY: Record<string, string> = {
   find_agent: "search",
   find_library_agent: "search",
-  run_agent: "agent run",
+  run_agent: "workflow run",
   run_block: "action",
   run_capability: "action",
-  create_agent: "agent created",
-  edit_agent: "agent edited",
-  schedule_agent: "agent scheduled",
+  create_agent: "workflow created",
+  edit_agent: "workflow edited",
+  schedule_agent: "workflow scheduled",
 };
 
 const MAX_COUNTERS = 3;
@@ -17,7 +17,7 @@ const MAX_COUNTERS = 3;
 function pluralize(label: string, count: number): string {
   if (count === 1) return label;
 
-  // "agent created" -> "agents created", "agent edited" -> "agents edited"
+  // "workflow created" -> "workflows created", "workflow edited" -> "workflows edited"
   const nounVerbMatch = label.match(
     /^(\w+)\s+(created|edited|scheduled|run)$/i,
   );

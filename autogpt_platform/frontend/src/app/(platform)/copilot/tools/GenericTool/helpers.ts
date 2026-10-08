@@ -27,15 +27,15 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   raise_expert: "Expert raise preview",
   update_expert: "Expert update",
   confirm_expert_change: "Expert change confirmation",
-  run_agent: "Agent",
-  view_agent_output: "Agent output",
+  run_agent: "Workflow",
+  view_agent_output: "Workflow output",
   run_block: "Action",
   run_mcp_tool: "MCP tool",
   find_capability: "Capability search",
   describe_capability: "Capability details",
   run_capability: "Action",
   resume_capability: "Resumed action",
-  get_agent_building_guide: "Agent building guide",
+  get_agent_building_guide: "Workflow building guide",
 };
 
 export function formatToolName(name: string): string {
@@ -287,11 +287,11 @@ export function getAnimationText(
         case "agent":
           if (toolName === TOOL_TASK_OUTPUT)
             return shortSummary
-              ? `Checking agent ${shortSummary}\u2026`
-              : "Checking agent result\u2026";
+              ? `Checking subtask ${shortSummary}\u2026`
+              : "Checking subtask result\u2026";
           return shortSummary
-            ? `Running agent: ${shortSummary}`
-            : "Starting agent\u2026";
+            ? `Running subtask: ${shortSummary}`
+            : "Starting subtask\u2026";
         default:
           return `Running ${formatToolName(toolName)}\u2026`;
       }
@@ -353,8 +353,8 @@ export function getAnimationText(
                 ? (part.output as Record<string, unknown>)
                 : null;
             if (taskOut?.retrieval_status === "timeout")
-              return "Agent still running\u2026";
-            return "Agent result received";
+              return "Subtask still running\u2026";
+            return "Subtask result received";
           }
           const agentOut =
             part.output && typeof part.output === "object"
@@ -362,11 +362,11 @@ export function getAnimationText(
               : null;
           if (agentOut?.isAsync || agentOut?.status === "async_launched")
             return shortSummary
-              ? `Agent started (background): ${shortSummary}`
-              : "Agent started in background";
+              ? `Subtask started (background): ${shortSummary}`
+              : "Subtask started in background";
           return shortSummary
-            ? `Agent completed: ${shortSummary}`
-            : "Agent completed";
+            ? `Subtask completed: ${shortSummary}`
+            : "Subtask completed";
         }
         default:
           return `${formatToolName(toolName)} completed`;

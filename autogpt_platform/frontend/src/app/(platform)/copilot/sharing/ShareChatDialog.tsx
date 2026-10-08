@@ -34,7 +34,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
               credentials you wouldn&apos;t want public.
             </Text>
             <Text variant="small" className="text-amber-900">
-              Sharing is <strong>live</strong>: new messages, agent runs, and
+              Sharing is <strong>live</strong>: new messages, workflow runs, and
               files added after you enable sharing become visible too. Stop
               sharing to revoke access.
             </Text>
@@ -57,7 +57,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
                 </li>
                 {state.autoShareExecutions && (
                   <li>
-                    {state.linkedRunCount} agent{" "}
+                    {state.linkedRunCount} workflow{" "}
                     {state.linkedRunCount === 1 ? "run" : "runs"}
                   </li>
                 )}
@@ -76,7 +76,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
           <div className="flex items-center justify-between gap-3 rounded border border-zinc-200 px-3 py-2.5">
             <div className="min-w-0">
               <Text variant="body" className="font-medium">
-                Share agent runs in this chat
+                Share workflow runs in this chat
               </Text>
               <Text variant="small" className="text-zinc-500">
                 Includes every run from this conversation, including ones that
@@ -87,7 +87,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
               checked={state.autoShareExecutions}
               onCheckedChange={state.setAutoShareExecutions}
               disabled={state.isShared || state.isLoadingState}
-              aria-label="Share agent runs from this chat"
+              aria-label="Share workflow runs from this chat"
             />
           </div>
 

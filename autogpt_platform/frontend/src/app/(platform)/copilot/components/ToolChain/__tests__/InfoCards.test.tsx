@@ -55,7 +55,7 @@ describe("ValidationCard", () => {
   it("shows a valid status for valid graphs", () => {
     render(<ValidationCard output={{ valid: true }} />);
 
-    expect(screen.getByText("Graph is valid")).toBeDefined();
+    expect(screen.getByText("Workflow is valid")).toBeDefined();
   });
 
   it("lists validation errors when present", () => {
@@ -72,7 +72,7 @@ describe("ValidationCard", () => {
   it("shows a generic failure when errors are absent", () => {
     render(<ValidationCard output={{ valid: false }} />);
 
-    expect(screen.getByText("Graph has errors")).toBeDefined();
+    expect(screen.getByText("Workflow has errors")).toBeDefined();
   });
 });
 
@@ -210,7 +210,7 @@ describe("SuggestedGoalCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Use this goal" }));
 
     expect(onSend).toHaveBeenCalledWith(
-      "Please create an agent with this goal: Build a scraper",
+      "Please create a workflow with this goal: Build a scraper",
     );
   });
 

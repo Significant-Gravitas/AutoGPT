@@ -196,7 +196,7 @@ describe("CopilotPage test-mode banner", () => {
   it("does not show test-mode banner when there is no active session", () => {
     render(<CopilotPage />);
     expect(
-      screen.queryByText(/test mode.*this session runs agents/i),
+      screen.queryByText(/test mode.*this session runs workflows/i),
     ).toBeNull();
   });
 
@@ -209,7 +209,7 @@ describe("CopilotPage test-mode banner", () => {
     });
     render(<CopilotPage />);
     expect(
-      screen.queryByText(/test mode.*this session runs agents/i),
+      screen.queryByText(/test mode.*this session runs workflows/i),
     ).toBeNull();
   });
 
@@ -222,7 +222,7 @@ describe("CopilotPage test-mode banner", () => {
     });
     render(<CopilotPage />);
     expect(
-      screen.getByText(/test mode.*this session runs agents/i),
+      screen.getByText(/test mode.*this session runs workflows/i),
     ).toBeDefined();
   });
 
@@ -234,7 +234,7 @@ describe("CopilotPage test-mode banner", () => {
     });
     render(<CopilotPage />);
     expect(
-      screen.queryByText(/test mode.*this session runs agents/i),
+      screen.queryByText(/test mode.*this session runs workflows/i),
     ).toBeNull();
   });
 

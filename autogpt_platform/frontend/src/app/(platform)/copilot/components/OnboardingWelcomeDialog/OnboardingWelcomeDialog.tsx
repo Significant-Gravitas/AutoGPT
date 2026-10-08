@@ -58,7 +58,7 @@ const CARDS: CapabilityCard[] = [
   },
   {
     title: "It remembers everything.",
-    body: "Memory beyond any human brain. It even dreams. Manage it all in the Agents tab.",
+    body: "Memory beyond any human brain. It even dreams.",
     icon: BrainIcon,
   },
 ];

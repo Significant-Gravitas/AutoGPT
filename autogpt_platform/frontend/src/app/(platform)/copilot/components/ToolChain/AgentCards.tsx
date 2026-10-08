@@ -101,7 +101,7 @@ export function AgentListCard({ agents }: AgentListCardProps) {
                 </div>
               )}
             </div>
-            {href && <CardLink href={href} label="Open agent" />}
+            {href && <CardLink href={href} label="Open workflow" />}
           </div>
         );
       })}
@@ -110,7 +110,7 @@ export function AgentListCard({ agents }: AgentListCardProps) {
 }
 
 export function AgentSavedCard({ output }: OutputCardProps) {
-  const name = str(output, "agent_name", "name", "graph_name") ?? "Agent";
+  const name = str(output, "agent_name", "name", "graph_name") ?? "Workflow";
   const version = output.graph_version;
   const libraryLink =
     str(output, "library_agent_link") ??
@@ -146,7 +146,7 @@ export function AgentSavedCard({ output }: OutputCardProps) {
 }
 
 export function AgentPreviewCard({ output }: OutputCardProps) {
-  const name = str(output, "agent_name", "name") ?? "Agent preview";
+  const name = str(output, "agent_name", "name") ?? "Workflow preview";
   const count =
     typeof output.node_count === "number" ? output.node_count : null;
   return (

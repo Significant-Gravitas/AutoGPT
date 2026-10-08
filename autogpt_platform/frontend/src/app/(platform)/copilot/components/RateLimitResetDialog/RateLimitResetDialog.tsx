@@ -79,7 +79,7 @@ export function RateLimitResetDialog({
           {resetTimeLabel && resetTimeLabel !== "now"
             ? ` Resets ${resetTimeLabel}.`
             : ""}{" "}
-          You can still browse, edit agents, and view results &mdash;{" "}
+          You can still browse, edit workflows, and view results &mdash;{" "}
           {bodyTrailer}
         </Text>
         {canContinue && (

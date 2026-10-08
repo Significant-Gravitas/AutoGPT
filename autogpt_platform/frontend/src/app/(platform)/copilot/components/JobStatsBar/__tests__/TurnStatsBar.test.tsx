@@ -118,7 +118,7 @@ describe("TurnStatsBar", () => {
     );
     expect(screen.getByText(/Thought for 4s/)).toBeDefined();
     const bar = container.querySelector("div.mt-2");
-    expect(bar?.textContent).toMatch(/2\s*agents run/);
+    expect(bar?.textContent).toMatch(/2\s*workflows run/);
     expect(bar?.textContent).toMatch(/1\s*action/);
   });
 });

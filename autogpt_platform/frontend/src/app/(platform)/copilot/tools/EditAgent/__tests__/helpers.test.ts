@@ -8,7 +8,7 @@ type Part = {
   output?: unknown;
 };
 
-const LOADING = "Editing agent, this might take a minute";
+const LOADING = "Editing workflow, this might take a minute";
 
 describe("EditAgent getAnimationText", () => {
   it("returns the loading copy while streaming input", () => {
@@ -45,7 +45,7 @@ describe("EditAgent getAnimationText", () => {
 
   it("returns the error copy on error states", () => {
     expect(getAnimationText({ state: "output-error" })).toBe(
-      "Error editing agent",
+      "Error editing workflow",
     );
   });
 });

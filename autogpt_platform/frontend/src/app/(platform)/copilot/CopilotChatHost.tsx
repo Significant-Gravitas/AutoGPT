@@ -74,7 +74,7 @@ export function CopilotChatHost({
       {sessionId && sessionDryRun && (
         <div className="flex items-center justify-center gap-1.5 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
           <Icon icon={FlaskConicalIcon} size={13} />
-          Test mode — this session runs agents as simulation
+          Test mode — this session runs workflows as simulation
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-hidden">

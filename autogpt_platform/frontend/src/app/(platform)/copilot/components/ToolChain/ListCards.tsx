@@ -96,7 +96,7 @@ export function ScheduleList({ schedules }: SchedulesProps) {
             </div>
             {str(schedule, "kind") && (
               <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
-                {str(schedule, "kind") === "copilot_turn" ? "chat" : "agent"}
+                {str(schedule, "kind") === "copilot_turn" ? "chat" : "workflow"}
               </span>
             )}
           </div>
@@ -149,7 +149,7 @@ export function FolderList({ folders }: FoldersProps) {
             </p>
             {count !== null && (
               <span className="shrink-0 text-xs text-zinc-400">
-                {count} agent{count === 1 ? "" : "s"}
+                {count} workflow{count === 1 ? "" : "s"}
               </span>
             )}
           </div>

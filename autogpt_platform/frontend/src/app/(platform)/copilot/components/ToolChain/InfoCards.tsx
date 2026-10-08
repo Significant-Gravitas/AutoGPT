@@ -115,9 +115,9 @@ function strList(value: unknown): string[] {
 
 export function ValidationCard({ output }: OutputProps) {
   const errors = strList(output.errors);
-  if (output.valid === true) return <StatusCard ok label="Graph is valid" />;
+  if (output.valid === true) return <StatusCard ok label="Workflow is valid" />;
   if (errors.length > 0) return <ErrorList errors={errors} />;
-  return <StatusCard ok={false} label="Graph has errors" />;
+  return <StatusCard ok={false} label="Workflow has errors" />;
 }
 
 export function FixResultCard({ output }: OutputProps) {
@@ -228,7 +228,7 @@ export function SuggestedGoalCard({ output }: OutputProps) {
           type="button"
           className="w-fit rounded-lg bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-zinc-700"
           onClick={() =>
-            actions.onSend(`Please create an agent with this goal: ${goal}`)
+            actions.onSend(`Please create a workflow with this goal: ${goal}`)
           }
         >
           Use this goal

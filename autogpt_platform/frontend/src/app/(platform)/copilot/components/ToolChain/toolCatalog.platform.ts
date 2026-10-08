@@ -106,8 +106,8 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   list_agent_triggers: {
     category: "trigger",
-    running: "Listing agent triggers",
-    done: "Listed agent triggers",
+    running: "Listing workflow triggers",
+    done: "Listed workflow triggers",
   },
   setup_agent_webhook_trigger: {
     category: "trigger",
@@ -167,8 +167,8 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   schedule_agent: {
     category: "agent",
-    running: "Scheduling agent",
-    done: "Scheduled agent",
+    running: "Scheduling workflow",
+    done: "Scheduled workflow",
   },
   continue_run_block: {
     category: "block",

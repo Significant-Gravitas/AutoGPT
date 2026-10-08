@@ -91,8 +91,7 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
           Copy error details
         </button>
         <p className="max-w-md text-xs text-zinc-400">
-          Paste this into the chat so the agent can regenerate a working
-          version.
+          Paste this into the chat so Otto can regenerate a working version.
         </p>
       </div>
     );

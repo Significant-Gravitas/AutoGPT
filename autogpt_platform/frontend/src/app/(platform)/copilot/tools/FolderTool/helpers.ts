@@ -155,7 +155,7 @@ export function getAnimationText(part: {
         case "delete_folder":
           return "Deleting folder…";
         case "move_agents_to_folder":
-          return "Moving agents…";
+          return "Moving workflows…";
         default:
           return "Managing folders…";
       }

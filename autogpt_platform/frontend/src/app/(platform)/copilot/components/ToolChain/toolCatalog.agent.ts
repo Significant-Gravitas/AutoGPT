@@ -9,28 +9,28 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   create_agent: {
     category: "agent-build",
-    running: "Creating agent",
-    done: "Created agent",
+    running: "Creating workflow",
+    done: "Created workflow",
   },
   customize_agent: {
     category: "agent-build",
-    running: "Customizing agent",
-    done: "Customized agent",
+    running: "Customizing workflow",
+    done: "Customized workflow",
   },
   edit_agent: {
     category: "agent-build",
-    running: "Editing agent",
-    done: "Edited agent",
+    running: "Editing workflow",
+    done: "Edited workflow",
   },
   validate_agent_graph: {
     category: "agent-build",
-    running: "Validating agent",
-    done: "Validated agent",
+    running: "Validating workflow",
+    done: "Validated workflow",
   },
   fix_agent_graph: {
     category: "agent-build",
-    running: "Fixing agent",
-    done: "Fixed agent",
+    running: "Fixing workflow",
+    done: "Fixed workflow",
   },
   enter_agent_building_mode: {
     category: "agent-build",
@@ -39,8 +39,8 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   get_agent_building_guide: {
     category: "docs",
-    running: "Reading the agent building guide",
-    done: "Read the agent building guide",
+    running: "Reading the workflow building guide",
+    done: "Read the workflow building guide",
   },
   decompose_goal: {
     category: "plan",
@@ -56,8 +56,8 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   find_agent: {
     category: "agent",
-    running: "Finding agents for",
-    done: "Found agents for",
+    running: "Finding workflows for",
+    done: "Found workflows for",
     subject: (input) => quoted(input, "query"),
   },
   find_library_agent: {
@@ -117,20 +117,20 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   move_agents_to_folder: {
     category: "folder",
-    running: "Moving agents to folder",
-    done: "Moved agents to folder",
+    running: "Moving workflows to folder",
+    done: "Moved workflows to folder",
   },
   run_agent: {
     category: "agent",
-    running: "Running agent",
-    done: "Ran agent",
+    running: "Running workflow",
+    done: "Ran workflow",
     subject: (_input, context) =>
       quotedName(getAgentDisplayName(context.displayName, context.output)),
   },
   view_agent_output: {
     category: "agent",
-    running: "Viewing agent output",
-    done: "Viewed agent output",
+    running: "Viewing workflow output",
+    done: "Viewed workflow output",
   },
   run_sub_session: {
     category: "agent",

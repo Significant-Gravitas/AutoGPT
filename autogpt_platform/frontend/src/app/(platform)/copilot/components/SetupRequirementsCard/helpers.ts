@@ -433,8 +433,8 @@ export function buildRunMessage(
  */
 export function buildPreviewRunMessage(needsCredentials: boolean): string {
   return needsCredentials
-    ? "I've configured the required credentials. Please check if everything is ready and proceed with running the agent."
-    : "Please proceed with running the agent.";
+    ? "I've configured the required credentials. Please check if everything is ready and proceed with running the workflow."
+    : "Please proceed with running the workflow.";
 }
 
 /**

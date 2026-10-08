@@ -328,7 +328,7 @@ describe("buildClarificationAnswersMessage", () => {
     );
     expect(result).toContain("> What is your goal?");
     expect(result).toContain("automate tasks");
-    expect(result).toContain("Please proceed with creating the agent.");
+    expect(result).toContain("Please proceed with creating the workflow.");
   });
 
   it("formats answers with edit mode", () => {
@@ -337,7 +337,7 @@ describe("buildClarificationAnswersMessage", () => {
       [{ question: "What should change?", keyword: "goal" }],
       "edit",
     );
-    expect(result).toContain("Please proceed with editing the agent.");
+    expect(result).toContain("Please proceed with editing the workflow.");
   });
 
   it("lists a multi-select answer under its question", () => {

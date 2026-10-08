@@ -72,7 +72,7 @@ describe("formatToolName", () => {
   it("strips redundant 'run_' prefix for other run_* tools", () => {
     // "Running Run agent" reads awkwardly — the override produces
     // "Running Agent".
-    expect(formatToolName("run_agent")).toBe("Agent");
+    expect(formatToolName("run_agent")).toBe("Workflow");
   });
 });
 
@@ -348,7 +348,9 @@ describe("getAnimationText", () => {
       state: "input-available",
       input: { description: "analyze code" },
     });
-    expect(getAnimationText(part, "agent")).toBe("Running agent: analyze code");
+    expect(getAnimationText(part, "agent")).toBe(
+      "Running subtask: analyze code",
+    );
   });
 
   it("shows agent completed for async launch", () => {
@@ -357,7 +359,9 @@ describe("getAnimationText", () => {
       state: "output-available",
       output: { isAsync: true },
     });
-    expect(getAnimationText(part, "agent")).toBe("Agent started in background");
+    expect(getAnimationText(part, "agent")).toBe(
+      "Subtask started in background",
+    );
   });
 
   it("shows default streaming text for unknown tools", () => {
@@ -415,7 +419,7 @@ describe("getAnimationText", () => {
       state: "output-available",
       output: { retrieval_status: "timeout" },
     });
-    expect(getAnimationText(part, "agent")).toBe("Agent still running\u2026");
+    expect(getAnimationText(part, "agent")).toBe("Subtask still running\u2026");
   });
 
   it("shows agent completed with summary for sync agent", () => {
@@ -426,7 +430,7 @@ describe("getAnimationText", () => {
       output: { status: "completed" },
     });
     expect(getAnimationText(part, "agent")).toBe(
-      "Agent completed: analyze code",
+      "Subtask completed: analyze code",
     );
   });
 
@@ -436,7 +440,7 @@ describe("getAnimationText", () => {
       state: "output-available",
       output: {},
     });
-    expect(getAnimationText(part, "agent")).toBe("Agent completed");
+    expect(getAnimationText(part, "agent")).toBe("Subtask completed");
   });
 
   it("shows error text for web search failure", () => {
