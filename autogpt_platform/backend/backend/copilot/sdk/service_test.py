@@ -2098,7 +2098,7 @@ class TestStreamEndedWithoutResultMessage:
         transcript_builder.append_assistant = MagicMock()
         transcript_builder.append_tool_result = MagicMock()
         return _RetryState(
-            options=MagicMock(),
+            options=MagicMock(resume=None),
             query_message="hello",
             compaction_stats=None,
             use_resume=False,

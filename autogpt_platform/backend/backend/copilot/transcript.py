@@ -656,6 +656,26 @@ def cli_session_path(sdk_cwd: str, session_id: str) -> str:
     return os.path.join(projects_base(), encoded_cwd, f"{safe_id}.jsonl")
 
 
+def cli_session_cost_usd(content: str, session_id: str) -> float:
+    """The running cost the CLI restores on ``--resume`` from this session file.
+
+    The CLI resumes from the last ``cost-state`` row whose ``sessionId`` matches,
+    so its ``total_cost_usd`` counts on from this figure (0 with no such row).
+    """
+    for line in reversed(content.splitlines()):
+        if "cost-state" not in line:
+            continue
+        entry = json.loads(line, fallback=None)
+        if (
+            isinstance(entry, dict)
+            and entry.get("type") == "cost-state"
+            and entry.get("sessionId") == session_id
+            and isinstance(entry.get("totalCostUSD"), (int, float))
+        ):
+            return float(entry["totalCostUSD"])
+    return 0.0
+
+
 def _cli_session_storage_path_parts(
     user_id: str, session_id: str
 ) -> tuple[str, str, str]:

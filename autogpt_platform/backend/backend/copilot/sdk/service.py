@@ -204,6 +204,7 @@ from ..transcript import (
     _run_compression,
     TranscriptDownload,
     cleanup_stale_project_dirs,
+    cli_session_cost_usd,
     cli_session_path,
     compact_transcript,
     download_transcript,
@@ -1270,7 +1271,10 @@ def _record_result_usage(
             state.usage.completion_tokens,
         )
     if sdk_msg.total_cost_usd is not None:
-        # Default: trust the CLI-reported value.  Accurate for
+        state.usage.cli_cost_usd += _cli_spend_since_last_result(
+            sdk_msg.total_cost_usd, state.usage, log_prefix
+        )
+        # Default: trust the CLI-priced spend.  Accurate for
         # Anthropic models (the CLI's bundled pricing table is
         # Anthropic-authored), and becomes the sync-path cost
         # when the reconcile is disabled or fails.
@@ -1291,14 +1295,31 @@ def _record_result_usage(
             # succeeds.
             state.usage.cost_usd = _override_cost_for_moonshot(
                 model=active_model,
-                sdk_reported_usd=sdk_msg.total_cost_usd,
+                sdk_reported_usd=state.usage.cli_cost_usd,
                 prompt_tokens=state.usage.prompt_tokens,
                 completion_tokens=state.usage.completion_tokens,
                 cache_read_tokens=state.usage.cache_read_tokens,
                 cache_creation_tokens=state.usage.cache_creation_tokens,
             )
         else:
-            state.usage.cost_usd = sdk_msg.total_cost_usd
+            state.usage.cost_usd = state.usage.cli_cost_usd
+
+
+def _cli_spend_since_last_result(
+    total_cost_usd: float, usage: "_TokenUsage", log_prefix: str
+) -> float:
+    """The part of the CLI's running session total that this result added."""
+    spend = total_cost_usd - usage.cli_session_total_usd
+    if spend < 0:
+        # The CLI did not count on from the total we read, so all of it is new.
+        logger.warning(
+            f"{log_prefix} CLI total_cost_usd ${total_cost_usd:.6f} is below the "
+            f"session total it resumed from (${usage.cli_session_total_usd:.6f}); "
+            "charging the CLI total"
+        )
+        spend = total_cost_usd
+    usage.cli_session_total_usd = total_cost_usd
+    return spend
 
 
 def _platform_out_of_credits_refusal(
@@ -1402,6 +1423,11 @@ class _TokenUsage:
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
     cost_usd: float | None = None
+    # This turn's spend as the CLI prices it, summed over its processes.
+    cli_cost_usd: float = 0.0
+    # The live CLI process's running ``total_cost_usd``, which starts at the
+    # session total it restored on ``--resume``.
+    cli_session_total_usd: float = 0.0
 
     def reset(self) -> None:
         """Reset all accumulators for a new attempt."""
@@ -1410,6 +1436,8 @@ class _TokenUsage:
         self.cache_read_tokens = 0
         self.cache_creation_tokens = 0
         self.cost_usd = None
+        self.cli_cost_usd = 0.0
+        self.cli_session_total_usd = 0.0
 
 
 @dataclass
@@ -4227,6 +4255,9 @@ async def _run_stream_attempt(
     # CLI subprocess spawn + MCP init can take seconds on cold starts —
     # narrate it so the status doesn't sit on the context-prep message.
     yield StreamStatus(message="Starting the assistant…")
+    state.usage.cli_session_total_usd = _resumed_cli_session_cost_usd(
+        ctx.sdk_cwd, state.options.resume, ctx.log_prefix
+    )
     sdk_client = ClaudeSDKClient(options=state.options)
     client = await sdk_client.__aenter__()
     try:
@@ -4424,6 +4455,23 @@ async def _run_stream_attempt(
                 loop_state.stream_error_code not in _OUTER_LOOP_YIELDS_ERROR_CODES
             ),
         )
+
+
+def _resumed_cli_session_cost_usd(
+    sdk_cwd: str, resume: str | None, log_prefix: str
+) -> float:
+    """The session total a CLI launched with ``resume`` counts its cost on from."""
+    if not resume or not sdk_cwd:
+        return 0.0
+    try:
+        content = Path(cli_session_path(sdk_cwd, resume)).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        logger.warning(
+            f"{log_prefix} Could not read the resumed CLI session's cost "
+            f"({type(e).__name__}); this turn may be charged the session total"
+        )
+        return 0.0
+    return cli_session_cost_usd(content, resume)
 
 
 async def _seed_transcript(
