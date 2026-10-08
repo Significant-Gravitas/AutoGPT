@@ -109,6 +109,57 @@ describe("SettingsIntegrationsPage — list", () => {
     expect(screen.getByText("OpenAI")).toBeDefined();
   });
 
+  test("marks a vendor sign-in as for chats and says it does not connect that vendor's blocks", async () => {
+    server.use(
+      getGetV1ListCredentialsMockHandler([
+        makeCred({
+          id: "key",
+          provider: "linear",
+          title: "Linear key",
+          service: "linear",
+          service_icon: "linear",
+        }),
+        makeCred({
+          id: "linear-sign-in",
+          provider: "mcp",
+          type: "oauth2",
+          title: "MCP: mcp.linear.app",
+          service: "linear",
+          service_name: "Linear",
+          service_icon: "linear",
+        }),
+        makeCred({
+          id: "sentry-sign-in",
+          provider: "mcp",
+          type: "oauth2",
+          title: "MCP: mcp.sentry.dev",
+          service: "sentry",
+          service_name: "Sentry",
+          service_icon: "sentry",
+        }),
+      ]),
+      getGetV1ListProvidersMockHandler([
+        makeProvider({
+          name: "linear",
+          supported_auth_types: ["api_key"],
+          service: "linear",
+        }),
+      ]),
+    );
+
+    render(<SettingsIntegrationsPage />);
+
+    expect(
+      await screen.findByText(
+        "Linear blocks in agents need their own connection.",
+      ),
+    ).toBeDefined();
+    expect(screen.getAllByText("For chats")).toHaveLength(2);
+    expect(screen.getByText("API Key")).toBeDefined();
+    // Sentry ships no blocks, so its sign-in has nothing to warn about.
+    expect(screen.queryByText(/Sentry blocks/)).toBeNull();
+  });
+
   test("renders an error card on 401 instead of the empty state", async () => {
     server.use(getGetV1ListCredentialsMockHandler401());
 

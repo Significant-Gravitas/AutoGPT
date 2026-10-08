@@ -33,12 +33,13 @@ INVOICE_PLAN_PATCH = "backend.notifications.lifecycle.plan_from_invoice"
 class _User:
     """Shaped like `BillingEmailRecipient`, which is what the RPC returns."""
 
-    def __init__(self, welcome_sent_at=None, opted_out_at=None):
+    def __init__(self, welcome_sent_at=None, opted_out_at=None, timezone=None):
         self.id = "user-1"
         self.email = "sam@example.com"
         self.name = "Sam Carter"
         self.welcome_email_sent_at = welcome_sent_at
         self.marketing_opt_out_at = opted_out_at
+        self.timezone = timezone
 
 
 def _subscription(**over) -> dict:
@@ -769,6 +770,46 @@ async def test_an_opted_out_churn_emails_but_leaves_mailerlite_alone():
     calls = await _run(
         lambda: lifecycle.on_subscription_deleted(_subscription()),
         _User(opted_out_at=OPTED_OUT),
+    )
+    queued = calls["notify"].await_args.args[0]
+    assert queued.type is NotificationType.SUBSCRIPTION_ENDED
+    calls["audience"].assert_not_called()
+
+
+# ── placed in Iran or Russia ───────────────────────────────────────────────
+#
+# Every billing email still goes out; MailerLite never hears of them.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("welcomed", [False, True], ids=["first", "returning"])
+async def test_a_checkout_billed_to_russia_is_welcomed_but_not_enrolled(welcomed):
+    user = _User(
+        welcome_sent_at=datetime(2026, 1, 1, tzinfo=timezone.utc) if welcomed else None
+    )
+    session = {
+        "customer": CUSTOMER,
+        "customer_details": {"address": {"country": "RU"}},
+    }
+    with patch(
+        "backend.notifications.lifecycle._claim_welcome",
+        AsyncMock(return_value=True),
+    ):
+        calls = await _run(
+            lambda: lifecycle.on_checkout_completed(session, _subscription()),
+            user,
+        )
+    if not welcomed:
+        queued = calls["notify"].await_args.args[0]
+        assert queued.type is NotificationType.SUBSCRIPTION_WELCOME
+    calls["audience"].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_churn_in_tehran_emails_but_leaves_mailerlite_alone():
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(_subscription()),
+        _User(timezone="Asia/Tehran"),
     )
     queued = calls["notify"].await_args.args[0]
     assert queued.type is NotificationType.SUBSCRIPTION_ENDED
