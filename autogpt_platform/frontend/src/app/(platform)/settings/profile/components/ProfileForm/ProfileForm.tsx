@@ -256,7 +256,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           hideLabel
           type="textarea"
           rows={5}
-          placeholder="Tell people what you build, the agents you ship, and what you care about."
+          placeholder="Tell people what you build, the workflows you ship, and what you care about."
           value={formState.description}
           error={errors.description}
           onChange={(e) => onChange("description", e.target.value)}

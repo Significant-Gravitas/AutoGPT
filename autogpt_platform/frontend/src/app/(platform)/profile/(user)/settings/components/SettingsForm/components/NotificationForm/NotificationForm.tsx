@@ -60,7 +60,7 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
                       Briefing
                     </Text>
                     <Text variant="body">
-                      What your agents got done, at around 07:30 your time.
+                      What your workflows got done, at around 07:30 your time.
                       Never sent when nothing ran.
                     </Text>
                   </div>
@@ -117,7 +117,8 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
                       Marketplace reviews
                     </Text>
                     <Text variant="body">
-                      When an agent you submitted is approved or needs changes.
+                      When a workflow you submitted is approved or needs
+                      changes.
                     </Text>
                   </div>
                   <FormControl>

@@ -34,7 +34,7 @@ export function PublicMCPPanel({ serverURL }: Props) {
       {toolCount !== null && (
         <Text variant="small" className="text-zinc-600">
           No connection was saved. Use this server URL when adding MCP tools to
-          an agent.
+          a workflow.
         </Text>
       )}
       {error && (

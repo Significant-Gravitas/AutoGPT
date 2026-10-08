@@ -19,7 +19,7 @@ export function IntegrationsHeader({ onConnect, withTitle = true }: Props) {
           </Text>
         )}
         <Text variant="body" className="mt-4 max-w-[600px] text-[#505057]">
-          Connect AI subscriptions to power your agents, and third-party tools
+          Connect AI subscriptions to power your experts, and third-party tools
           for them to use.
         </Text>
       </div>

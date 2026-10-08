@@ -63,8 +63,8 @@ export function AIConnectionsSection() {
       </Text>
       <Text variant="body" className="mt-2 max-w-[600px] text-[#505057]">
         {hasChoice
-          ? "These power your agents. Pick the one new chats should start on — you can still change it per conversation, and nothing switches on its own."
-          : "These power your agents. Link a subscription and you can choose which one new chats start on."}
+          ? "These power Otto and your experts. Pick the one new chats should start on — you can still change it per conversation, and nothing switches on its own."
+          : "These power Otto and your experts. Link a subscription and you can choose which one new chats start on."}
       </Text>
 
       {isLoading ? (
