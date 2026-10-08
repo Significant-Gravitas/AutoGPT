@@ -44,7 +44,8 @@ class RenderUITool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Present an interactive chart, comparison, checklist, or input form in "
+            "Present an interactive map, timeline, chart, comparison, checklist, "
+            "or input form in "
             "the conversation using existing data. Buttons continue this conversation; "
             "rendering never performs external actions."
         )

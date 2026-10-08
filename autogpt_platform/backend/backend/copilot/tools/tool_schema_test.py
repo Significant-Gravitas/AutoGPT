@@ -259,7 +259,9 @@ from ._test_data import make_session
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
 # OpenUI adds a deferred component library: 82,865 measured, plus existing margin.
-_CHAR_BUDGET = 83_165
+# Maps, timelines, two charts and three typed fields add 2,664 deferred chars.
+# Measured 85,529; preserve the existing 300-char margin. Wire budget is unchanged.
+_CHAR_BUDGET = 85_829
 
 
 @pytest.fixture(scope="module")

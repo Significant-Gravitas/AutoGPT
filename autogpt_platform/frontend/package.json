@@ -29,7 +29,8 @@
     "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"pnpm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && pnpm run test-storybook\"",
     "generate:api": "npx --yes tsx ./scripts/generate-api-queries.ts && orval --config ./orval.config.ts",
     "generate:api:force": "npx --yes tsx ./scripts/generate-api-queries.ts --force && orval --config ./orval.config.ts",
-    "copy:vad-assets": "node ./scripts/copy-vad-assets.mjs"
+    "copy:vad-assets": "node ./scripts/copy-vad-assets.mjs",
+    "generate:openui": "tsx scripts/generate-openui.ts"
   },
   "browserslist": [
     "defaults"
@@ -97,6 +98,7 @@
     "jszip": "3.10.1",
     "katex": "0.16.25",
     "launchdarkly-react-client-sdk": "3.9.0",
+    "leaflet": "1.9.4",
     "lodash": "4.17.21",
     "lucide-react": "0.552.0",
     "motion": "13.2.0",
@@ -152,6 +154,7 @@
     "@testing-library/user-event": "14.6.1",
     "@types/canvas-confetti": "1.9.0",
     "@types/eslint": "8.56.12",
+    "@types/leaflet": "1.9.22",
     "@types/lodash": "4.17.20",
     "@types/node": "26.6.2",
     "@types/pg": "8.20.0",
@@ -180,6 +183,7 @@
     "require-in-the-middle": "8.0.1",
     "storybook": "9.1.5",
     "tailwindcss": "3.4.17",
+    "tsx": "4.20.6",
     "typescript": "5.9.3",
     "vite-tsconfig-paths": "6.0.4",
     "vitest": "4.1.0"

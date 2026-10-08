@@ -1,5 +1,6 @@
 import { createParser } from "@openuidev/lang-core";
 import { catalog, MAX_SOURCE_LENGTH } from "./catalog";
+import { validateWorkspace } from "./validate";
 
 export function parseWorkspace(source: string) {
   if (source.length > MAX_SOURCE_LENGTH)
@@ -18,6 +19,7 @@ export function parseWorkspace(source: string) {
       "The response could not be rendered as a workspace. Try again with a more specific request.",
     );
   }
+  validateWorkspace(result.root);
   return result.root;
 }
 
@@ -39,15 +41,33 @@ function collectText(value: unknown): string[] {
     const props = value.props;
     if (value.typeName === "Metric")
       return [`${props.label}: ${props.value} (${props.detail})`];
-    if (value.typeName === "Field") return [`${props.label}: ${props.value}`];
+    if (
+      ["Field", "SelectField", "DateField", "NumberField"].includes(
+        String(value.typeName),
+      )
+    )
+      return [`${props.label}: ${props.value}`];
     if (value.typeName === "FollowUp") return [`Next step: ${props.label}`];
-    if (value.typeName === "Chart" && Array.isArray(props.points))
+    if (
+      ["Chart", "TrendChart", "DonutChart"].includes(String(value.typeName)) &&
+      Array.isArray(props.points)
+    )
       return [
         String(props.title),
         props.points
           .filter(isRecord)
           .map((point) => `${point.label}: ${point.value} ${props.unit}`)
           .join("\n"),
+      ];
+    if (value.typeName === "Map" && Array.isArray(props.locations))
+      return [
+        String(props.title),
+        ...props.locations
+          .filter(isRecord)
+          .map(
+            (place) =>
+              `${place.name} (${place.latitude}, ${place.longitude}): ${place.detail}`,
+          ),
       ];
     if (
       value.typeName === "DataTable" &&

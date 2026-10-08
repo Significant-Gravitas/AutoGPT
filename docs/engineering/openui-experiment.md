@@ -1,6 +1,6 @@
 # OpenUI in Copilot
 
-An opt-in integration of the [OpenUI React runtime](https://www.openui.com/docs/api-reference/react-lang) into AutoGPT's existing Copilot conversation. The model composes a bounded catalog of AutoGPT components: metrics, charts, searchable and sortable tables, checklists, editable forms, and follow-up buttons.
+An opt-in integration of the [OpenUI React runtime](https://www.openui.com/docs/api-reference/react-lang) into AutoGPT's existing Copilot conversation. The model composes a bounded catalog of 17 AutoGPT components, including interactive maps, timelines, metrics, bar/line/donut charts, searchable and sortable tables, checklists, typed forms, and follow-up buttons.
 
 ## Enable native generation
 
@@ -11,6 +11,7 @@ Example requests:
 - “Use my agent run results to show an interactive performance report. Identify failures and offer a next step.”
 - “Compare the leads from this CSV in a searchable table, with a chart of their scores.”
 - “Help plan a product launch. Give me an editable brief before you build the plan.”
+- “Map these customer locations and propose a visit timeline. Let me change the travel mode, date, and budget in this chat.” Supply coordinates or let Copilot retrieve them through its existing tools.
 
 Otto first retrieves real data through its existing tools. When an interactive view helps, it discovers `tool:render_ui` and calls it through `run_capability`. The component schema is deferred, so ordinary turns do not carry the full library. Both the baseline and Claude SDK engines use their existing dispatch, permissions, stream, persistence, and cost accounting paths. The feature is off by default. Disabling it prevents new views; previously saved views remain readable.
 
@@ -24,6 +25,14 @@ Otto first retrieves real data through its existing tools. When an interactive v
 - Pending views disable actions. Duplicate submissions are suppressed while sending; failed sends preserve edited inputs and allow retry.
 - Shared conversations display the saved source without local drafts and disable conversation actions.
 - Explore/Summary switches preserve inputs. Invalid or unsupported results show their saved summary and offer a normal conversational rebuild request. Rendering errors stay contained within the card.
+
+## Geographic and planning views
+
+`Map` displays up to 50 supplied locations with numbered, keyboard-accessible markers, zoom controls, category/text filtering, a matching place list, and selected-place details. **Discuss this place** submits that location's name, coordinates, category, and detail through the existing conversation. Selection survives a reload in the same tab. Map exploration remains available in shared conversations; discussion actions are disabled there.
+
+The Leaflet bundle loads only for a completed map. Basemap tiles come from OpenStreetMap with visible attribution and browser caching, following its [tile policy](https://operations.osmfoundation.org/policies/tiles/). The map does not request geolocation, geocode addresses, calculate routes, or prefetch offline tiles. Coordinates must come from the user or tools. Place names and details are rendered as text and are not sent to the tile service. If tiles fail, the searchable list and conversation actions remain usable. Review the tile provider's capacity and terms before a broader deployment.
+
+`Timeline` shows dated or timed milestones with done/current/planned states. `TrendChart` supports ordered observations, including negative values; `DonutChart` shows category totals and percentages. Forms can combine `Field`, `SelectField`, `DateField`, and `NumberField`. Numeric bounds and steps use native input validation; dropdown choices and dates retain their types in ordinary chat follow-ups. These controls only collect preferences; they do not schedule or execute work.
 
 ## Sample lab
 
@@ -41,9 +50,9 @@ The lab demonstrates performance → failure investigation, lead research → ou
 
 ## Implementation
 
-- `frontend/src/lib/openui/catalog.ts` is the canonical Zod catalog. After editing it, run `node scripts/generate-openui.mts` in the frontend to update `backend/backend/copilot/tools/openui_library.txt`. A contract test checks exact parity; `--check` can verify it without writing.
+- `frontend/src/lib/openui/catalog.ts`, `catalog-sections.ts`, and `catalog-fields.ts` define the canonical Zod catalog. Run `pnpm generate:openui` in the frontend to update `backend/backend/copilot/tools/openui_library.txt`. A contract test checks exact parity; `pnpm generate:openui --check` verifies it without writing.
 - `backend/copilot/tools/render_ui.py` requires authentication and matching session ownership, checks the feature flag, bounds inputs, and returns a versioned result. It caps encoded output below the existing truncation thresholds. Full OpenUI syntax validation happens in the browser; the backend does not execute the program.
-- `frontend/src/components/organisms/OpenUI` maps the real OpenUI renderer to AutoGPT primitives and Recharts. No generated JavaScript, HTML, arbitrary components, or tool execution is enabled. Completed programs containing queries or mutations are rejected.
+- `frontend/src/components/organisms/OpenUI` maps the real OpenUI renderer to AutoGPT primitives, Recharts, and Leaflet. No generated JavaScript, HTML, arbitrary components, or tool execution is enabled. Completed programs containing queries or mutations are rejected, and component props are validated against the canonical Zod schemas, including geographic bounds and typed field defaults.
 - `frontend/src/app/(platform)/copilot/tools/RenderUI` handles native result rendering, drafts, summary fallback, and conversation follow-ups.
 - Existing `/copilot` authentication and shared-session rules apply; no new protected prefix is introduced.
 - OpenUI is pinned at `0.3.0`. Both Next.js bundlers alias upstream's automatic development widget to a local no-op, avoiding its CDN script and promotional injection while preserving the renderer.
@@ -65,3 +74,9 @@ poetry run format
 Tests exercise real Copilot host streaming and follow-up POSTs on both transport implementations, saved session conversion, shared views, draft restoration under React Strict Mode, failed and duplicate sends, malformed output, and catalog parity. Backend tests exercise discovery, opt-in prompting, authentication, ownership, encoded limits, and the real baseline/SDK dispatch envelopes. Automated tests use prepared model output; smoke-test each deployment against its configured provider.
 
 On October 8, 2026, a private deployment using an authenticated ChatGPT/Codex connection generated a launch review from supplied fictional data in the normal chat. The response included metrics, a chart, a searchable comparison table, a recommendation, a checklist, and an editable form. Changing the audience and budget and submitting the form produced an updated plan in the same conversation. Both generated views, edited inputs, and checklist selections survived a page reload. Table filtering and the actual generated forms were also checked at a 390-pixel viewport. This test found and fixed default field initialization overwriting restored drafts when Strict Mode replays effects; defaults now check the current form state before writing.
+
+The expanded catalog was also tested against the connected model that day. It generated a three-place Chicago map, proposed timeline, and typed preference form from supplied data. All basemap tiles loaded, marker selection and category filtering worked, and **Discuss this place** produced an updated comparison in the same session. Changing travel mode to transit, date to October 12, and budget to 240 survived a reload and produced an updated plan when submitted. A subsequent response rendered the map with a line chart including negative observations and a donut breakdown with the correct total and percentages. Desktop and 390-pixel layouts were inspected without horizontal overflow.
+
+Additional automated coverage exercises real Leaflet markers, tile-failure fallback, map selection restoration, shared-view action restrictions, typed field restoration/submission under Strict Mode, coordinate/date/default validation, antimeridian bounds, and treating marker names as text. The changed backend files pass their focused type check and all 291 tool/schema tests. The repository-wide backend `poetry run format` reaches Pyright but reports errors in the unchanged `scripts/backfill_store_sub_headings.py` (`LiteralString`) and three webapp-testing fixture examples (missing Playwright imports).
+
+Frontend format, lint, and type checks and all pre-commit hooks passed. The full frontend run covered 876 files and 9,546 tests: 9,540 passed, two expected failures, and four failures in unchanged chat/onboarding tests. All 46 tests in those four files passed on a sequential rerun without code changes. The configured backend pre-commit type check also passed; the broader formatter check above includes additional scripts and fixture examples.

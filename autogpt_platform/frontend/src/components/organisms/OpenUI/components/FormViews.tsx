@@ -19,7 +19,7 @@ export function FieldView({
 }: ComponentRenderProps<z.infer<typeof Field.props>>) {
   const id = useId();
   const disabled = useOpenUIDisabled();
-  const field = useFieldView(props.name, props.value);
+  const field = useFieldView(props.name, props.value ?? "");
   return (
     <Input
       id={id}
