@@ -7,8 +7,3 @@ import pytest
 @pytest.fixture(scope="session")
 def server():
     yield None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup():
-    yield

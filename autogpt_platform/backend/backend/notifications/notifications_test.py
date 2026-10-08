@@ -7,7 +7,6 @@ suppress a resend, so an overlap is a duplicate email, not just wasted work.
 """
 
 import asyncio
-from collections.abc import Iterator
 
 import pytest
 
@@ -17,11 +16,6 @@ from backend.notifications.notifications import NotificationManager
 @pytest.fixture(scope="session")
 def server() -> None:
     return None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup() -> Iterator[None]:
-    yield
 
 
 def _manager() -> NotificationManager:

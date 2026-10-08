@@ -29,11 +29,6 @@ def server():
     yield None
 
 
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup():
-    yield
-
-
 def _user(**overrides) -> SimpleNamespace:
     fields = dict(email=EMAIL, timezone="America/Chicago", marketing_opt_out_at=None)
     return SimpleNamespace(**{**fields, **overrides})

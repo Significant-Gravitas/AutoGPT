@@ -14,11 +14,6 @@ def _server_noop():
     return None
 
 
-@pytest.fixture(scope="session", autouse=True, name="graph_cleanup")
-def _graph_cleanup_noop():
-    yield
-
-
 def _model(
     model: str,
     *,

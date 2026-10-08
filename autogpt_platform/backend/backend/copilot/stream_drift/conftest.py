@@ -20,11 +20,6 @@ async def server():  # type: ignore[override]
     return None
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def graph_cleanup():  # type: ignore[override]
-    yield
-
-
 @pytest.fixture
 def baseline_io(
     monkeypatch: pytest.MonkeyPatch, baseline_offline: None

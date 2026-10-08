@@ -1,6 +1,6 @@
 """Local conftest for copilot/tools tests.
 
-Overrides the session-scoped `server` and `graph_cleanup` autouse fixtures from
+Overrides the session-scoped `server` fixture from
 backend/conftest.py so that integration tests in this directory do not trigger
 the full SpinTestServer startup (which requires Postgres + RabbitMQ).
 """
@@ -15,12 +15,6 @@ import pytest_asyncio
 async def server():  # type: ignore[override]
     """No-op server stub — tools tests don't need the full backend."""
     return None
-
-
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def graph_cleanup():  # type: ignore[override]
-    """No-op graph cleanup stub."""
-    yield
 
 
 @pytest.fixture(autouse=True)

@@ -4,7 +4,7 @@ Two responsibilities:
 
 1. **Opt out of the full SpinTestServer.** Mirrors
    ``backend/copilot/tools/conftest.py`` — these tests don't need
-   postgres + rabbitmq + the platform-wide ``graph_cleanup`` autouse.
+   postgres + rabbitmq.
 
 2. **Provide FalkorDB integration fixtures.** Tests marked
    ``@pytest.mark.integration`` use the ``clean_graph`` and
@@ -137,12 +137,6 @@ def stub_graphiti_client():
 async def server():  # type: ignore[override]
     """No-op server stub — graphiti tests don't need the full backend."""
     return None
-
-
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def graph_cleanup():  # type: ignore[override]
-    """No-op graph cleanup stub."""
-    yield
 
 
 @pytest.fixture(scope="session")

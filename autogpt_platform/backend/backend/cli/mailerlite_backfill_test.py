@@ -29,11 +29,6 @@ def server():
     yield None
 
 
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup():
-    yield
-
-
 def test_a_complete_run_reports_and_succeeds(capsys):
     cli._finish_checkout(5, 0, 2)
     out = capsys.readouterr().out

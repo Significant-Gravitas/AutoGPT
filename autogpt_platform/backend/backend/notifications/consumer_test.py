@@ -8,7 +8,6 @@ takes its siblings down with it so a restart cannot double-consume.
 
 import asyncio
 import inspect
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -23,11 +22,6 @@ from backend.notifications.notifications import NotificationManager
 @pytest.fixture(scope="session")
 def server() -> None:
     return None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup() -> Iterator[None]:
-    yield
 
 
 def _manager() -> NotificationManager:
