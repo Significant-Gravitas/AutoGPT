@@ -319,7 +319,7 @@ async def llm_call(
                 error=e,
             )
             if isinstance(e, asyncio.TimeoutError):
-                raise _block_timeout_error(llm_model, max_tokens) from e
+                raise _block_timeout_error(llm_model, max_tokens, timeout) from e
             raise
 
 
@@ -346,6 +346,7 @@ async def _llm_call(
         max_tokens: The maximum number of tokens to generate in the chat completion.
         tools: The tools to use in the chat completion.
         ollama_host: The host for ollama to use.
+        timeout_seconds: Per-attempt timeout in seconds for the provider call.
 
     Returns:
         LLMResponse object containing:
@@ -1030,12 +1031,14 @@ def _log_timeout_outcome(
     )
 
 
-def _block_timeout_error(llm_model: LLMModel, max_tokens: int | None) -> TimeoutError:
+def _block_timeout_error(
+    llm_model: LLMModel, max_tokens: int | None, timeout_seconds: float
+) -> TimeoutError:
     """Provider-agnostic timeout text plus the one remedy only blocks expose."""
     budget = max_tokens or llm_model.max_output_tokens
     hint = f" (currently {budget})" if budget else ""
     return TimeoutError(
-        f"{timeout_error(f'{llm_model.metadata.provider}/{llm_model.value}', LLM_REQUEST_TIMEOUT_SECONDS)}"
+        f"{timeout_error(f'{llm_model.metadata.provider}/{llm_model.value}', timeout_seconds)}"
         f" You can also lower the advanced Max Tokens setting{hint}."
     )
 

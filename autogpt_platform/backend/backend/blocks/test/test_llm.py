@@ -271,6 +271,7 @@ class TestLLMStatsTracking:
         timeouts: list[float] = []
 
         async def mock_llm_call(*args, **kwargs):
+            """Record per-attempt timeout and return a validation-miss response."""
             timeouts.append(kwargs["timeout_seconds"])
             await asyncio.sleep(0.3)  # eat most of the shared budget per attempt
             return llm.LLMResponse(
