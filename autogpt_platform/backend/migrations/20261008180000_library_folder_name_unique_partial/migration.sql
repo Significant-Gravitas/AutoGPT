@@ -8,6 +8,8 @@
 
 -- Rename any live root duplicates so the new root index can be created.
 -- Nested-folder duplicates can't exist under the old composite unique.
+-- The suffix includes part of the row id, so it can't collide with an
+-- existing live root like "Work (2)".
 WITH ranked AS (
   SELECT
     "id",
@@ -20,7 +22,7 @@ WITH ranked AS (
   WHERE "parentId" IS NULL AND "isDeleted" = false
 )
 UPDATE "LibraryFolder" AS f
-SET "name" = f."name" || ' (' || ranked.rn || ')'
+SET "name" = f."name" || ' (' || ranked.rn || '-' || LEFT(f."id", 8) || ')'
 FROM ranked
 WHERE f."id" = ranked."id" AND ranked.rn > 1;
 
