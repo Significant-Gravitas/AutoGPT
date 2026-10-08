@@ -971,7 +971,7 @@ class GraphModel(Graph, GraphMeta):
 
             if block.disabled:
                 raise ValueError(
-                    f"Block {node.block_id} is disabled and cannot be used in graphs"
+                    f"Block {node.block_id} is disabled and cannot be used in workflows"
                 )
 
             node_input_mask = (
@@ -1106,10 +1106,10 @@ class GraphModel(Graph, GraphMeta):
                 if picker_format == "google-drive-picker":
                     remediation = (
                         f"Add an AgentGoogleDriveFileInputBlock node to the "
-                        f"graph and link its 'result' output to "
+                        f"workflow and link its 'result' output to "
                         f"{field_name!r} instead. That block renders a "
                         f"Google Drive picker at run time so whoever runs "
-                        f"the agent supplies their own credentials via the "
+                        f"the workflow supplies their own credentials via the "
                         f"picked file."
                     )
                 else:
@@ -1119,7 +1119,7 @@ class GraphModel(Graph, GraphMeta):
                         f"This field expects a picker-populated object "
                         f"containing a '_credentials_id'. Wire the matching "
                         f"input block for this provider into {field_name!r} "
-                        f"so whoever runs the agent supplies their own "
+                        f"so whoever runs the workflow supplies their own "
                         f"credentials at run time."
                     )
 
@@ -1921,14 +1921,14 @@ async def validate_graph_execution_permissions(
         or await is_graph_published_in_marketplace(graph_id, graph_version)
     ):
         raise GraphNotAccessibleError(
-            f"You do not have access to graph #{graph_id} v{graph_version}: "
+            f"You do not have access to workflow #{graph_id} v{graph_version}: "
             "it is not owned by you, not in your library as a submitted "
             "version, and not available in the Marketplace"
         )
     elif not (
         version_readable_from_library or owner_has_live_library_entry or is_sub_graph
     ):
-        raise GraphNotInLibraryError(f"Graph #{graph_id} is not in your library")
+        raise GraphNotInLibraryError(f"Workflow #{graph_id} is not in your library")
 
     # Step 4: Check execution-specific permissions (raises generic NotAuthorizedError)
     # Additional authorization checks beyond the above:

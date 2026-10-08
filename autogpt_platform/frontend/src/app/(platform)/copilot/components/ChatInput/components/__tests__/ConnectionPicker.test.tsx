@@ -62,7 +62,7 @@ const chatgpt = (over: Partial<AIConnectionOffer> = {}) =>
       tier("standard", "Balanced", null),
       tier("advanced", "Advanced", null),
     ],
-    limitations: ["The agent builder's chat panel always runs on AutoGPT."],
+    limitations: ["The workflow builder's chat panel always runs on AutoGPT."],
     ...over,
   });
 

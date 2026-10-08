@@ -156,7 +156,7 @@ async def get_store_agents(
         )
     except Exception as e:
         logger.error(f"Error getting store agents: {e}")
-        raise DatabaseError("Failed to fetch store agents") from e
+        raise DatabaseError("Failed to fetch store workflows") from e
     # TODO: commenting this out as we concerned about potential db load issues
     # finally:
     #     if search_term:
@@ -310,7 +310,7 @@ async def get_store_agent_details(
 
         if not agent:
             logger.warning(f"Agent not found: {username}/{agent_name}")
-            raise NotFoundError(f"Agent {username}/{agent_name} not found")
+            raise NotFoundError(f"Workflow {username}/{agent_name} not found")
 
         # Fetch changelog data if requested
         changelog_data = None
@@ -341,7 +341,7 @@ async def get_store_agent_details(
         raise
     except Exception as e:
         logger.error(f"Error getting store agent details: {e}")
-        raise DatabaseError("Failed to fetch agent details") from e
+        raise DatabaseError("Failed to fetch workflow details") from e
 
 
 @overload
@@ -400,7 +400,7 @@ async def get_available_graph(
 
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
-        raise DatabaseError("Failed to fetch agent") from e
+        raise DatabaseError("Failed to fetch workflow") from e
 
 
 async def get_store_agent_by_version_id(
@@ -420,7 +420,7 @@ async def get_store_agent_by_version_id(
 
         if not agent:
             logger.warning(f"Agent not found: {store_listing_version_id}")
-            raise NotFoundError(f"Agent {store_listing_version_id} not found")
+            raise NotFoundError(f"Workflow {store_listing_version_id} not found")
 
         logger.debug(f"Found agent details for {store_listing_version_id}")
         return store_model.StoreAgentDetails.from_db(agent)
@@ -428,7 +428,7 @@ async def get_store_agent_by_version_id(
         raise
     except Exception as e:
         logger.error(f"Error getting store agent details: {e}")
-        raise DatabaseError("Failed to fetch agent details") from e
+        raise DatabaseError("Failed to fetch workflow details") from e
 
 
 async def get_store_agent_details_as_admin(
@@ -910,19 +910,19 @@ async def create_store_submission(
             # Provide more user-friendly error message when graph_id is empty
             if not graph_id or graph_id.strip() == "":
                 raise ValueError(
-                    "No agent selected. "
-                    "Please select an agent before submitting to the store."
+                    "No workflow selected. "
+                    "Please select a workflow before submitting to the store."
                 )
             else:
                 raise NotFoundError(
-                    f"Agent #{graph_id} v{graph_version} not found "
+                    f"Workflow #{graph_id} v{graph_version} not found "
                     f"for this user (#{user_id})"
                 )
 
         if not graph.User or not graph.User.Profile:
             logger.warning(f"User #{user_id} does not have a Profile")
             raise PreconditionFailed(
-                "User must create a Marketplace Profile before submitting an agent"
+                "User must create a Marketplace Profile before submitting a workflow"
             )
 
         async with transaction() as tx:
@@ -1023,7 +1023,7 @@ async def create_store_submission(
         if "slug" in error_str.lower():
             logger.debug(f"Slug '{slug}' is already in use by graph #{graph_id}")
             raise store_exceptions.SlugAlreadyInUseError(
-                f"The slug '{slug}' is already in use by another one of your agents. "
+                f"The slug '{slug}' is already in use by another one of your workflows. "
                 "Please choose a different slug."
             ) from exc
         else:
@@ -1409,7 +1409,7 @@ async def get_my_agents(
         )
     except Exception as e:
         logger.error(f"Error getting my agents: {e}")
-        raise DatabaseError("Failed to fetch my agents") from e
+        raise DatabaseError("Failed to fetch my workflows") from e
 
 
 async def get_agent(store_listing_version_id: str) -> GraphModel:

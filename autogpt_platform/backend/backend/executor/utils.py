@@ -851,7 +851,7 @@ async def _construct_starting_node_execution_input(
     n_errors = sum(len(errors) for errors in validation_errors.values())
     if validation_errors:
         raise GraphValidationError(
-            f"Graph validation failed: {n_errors} issues on {n_error_nodes} nodes",
+            f"Workflow validation failed: {n_errors} issues on {n_error_nodes} nodes",
             node_errors=validation_errors,
         )
 
@@ -885,9 +885,9 @@ async def _construct_starting_node_execution_input(
             and "payload" not in input_data
         ):
             raise ValueError(
-                "This agent is triggered by an external event (webhook) "
+                "This workflow is triggered by an external event (webhook) "
                 "and cannot be executed directly. "
-                "Please use the appropriate trigger to run this agent."
+                "Please use the appropriate trigger to run this workflow."
             )
 
         input_data, error = validate_exec(node, input_data, dry_run=dry_run)
@@ -898,7 +898,7 @@ async def _construct_starting_node_execution_input(
 
     if not nodes_input:
         raise ValueError(
-            "No starting nodes found for the graph, make sure an AgentInput or blocks with no inbound links are present as starting nodes."
+            "No starting point found for this workflow. Add an input block, or a block with no incoming links."
         )
 
     return nodes_input, nodes_to_skip
@@ -951,7 +951,7 @@ async def validate_and_construct_node_execution_input(
         skip_access_check=True,
     )
     if not graph:
-        raise GraphNotFoundError(f"Graph #{graph_id} not found.")
+        raise GraphNotFoundError(f"Workflow #{graph_id} not found.")
 
     # Validate that the user has permission to execute this graph
     # This checks both library membership and execution permissions,
@@ -1155,7 +1155,7 @@ async def stop_graph_execution(
         )
 
         if not graph_exec:
-            raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+            raise NotFoundError(f"Workflow run #{graph_exec_id} not found.")
 
         if graph_exec.status in [
             ExecutionStatus.TERMINATED,
@@ -1207,7 +1207,7 @@ async def stop_graph_execution(
             await asyncio.sleep(0.1)
 
     raise TimeoutError(
-        f"Graph execution #{graph_exec_id} will need to take longer than {wait_timeout} seconds to stop. "
+        f"Workflow run #{graph_exec_id} will need to take longer than {wait_timeout} seconds to stop. "
         f"You can check the status of the execution in the UI or try again later."
     )
 
@@ -1408,7 +1408,7 @@ async def _add_graph_execution(
         )
 
     if not bypass_paywall and await is_user_paywalled(user_id):
-        raise UserPaywalledError("A subscription is required to run agents.")
+        raise UserPaywalledError("A subscription is required to run workflows.")
 
     is_new_execution = graph_exec_id is None
     context_expert_id = execution_context.expert_id if execution_context else None
@@ -1439,7 +1439,7 @@ async def _add_graph_execution(
         )
 
         if not graph_exec:
-            raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+            raise NotFoundError(f"Workflow run #{graph_exec_id} not found.")
 
         # A resume rebuilds its context from the graph settings, which would
         # drop the pause the chat that started this run asked for.

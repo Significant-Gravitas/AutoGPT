@@ -446,7 +446,7 @@ async def test_access_store_listing_graph(
             other_user.id,
         )
     assert exc_info.value.status_code == 404
-    assert "Graph" in str(exc_info.value.detail)
+    assert "Workflow" in str(exc_info.value.detail)
 
     # Now we create a store listing
     store_listing = await server.agent_server.test_create_store_listing(

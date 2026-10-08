@@ -783,7 +783,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         except KeyError:
             raise ValueError(
                 f"Model '{discriminator_value}' is not supported. "
-                "It may have been deprecated. Please update your agent configuration."
+                "It may have been deprecated. Please update your workflow configuration."
             )
 
         supported_types = self.supported_types

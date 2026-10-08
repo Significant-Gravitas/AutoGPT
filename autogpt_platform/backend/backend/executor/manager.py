@@ -1159,7 +1159,7 @@ class ExecutionProcessor:
                         user_id=graph_exec.user_id,
                         message=(
                             f"At least {required_balance} credit must be available to run "
-                            f"this agent. {INSUFFICIENT_BALANCE_GUIDANCE}"
+                            f"this workflow. {INSUFFICIENT_BALANCE_GUIDANCE}"
                         ),
                         balance=credit_balance,
                         amount=required_balance,

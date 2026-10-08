@@ -341,7 +341,7 @@ def _limitations(transport: ChatTransportResponse) -> list[str]:
     if transport.auth_provider in {"codex", "microsoft_365_copilot"}:
         # Stated because it is a real edge a user can hit, not a policy note:
         # the builder panel rejects a codex route outright.
-        limitations.append("The agent builder's chat panel always runs on AutoGPT.")
+        limitations.append("The workflow builder's chat panel always runs on AutoGPT.")
     if transport.auth_provider == "microsoft_365_copilot":
         limitations.extend(
             [

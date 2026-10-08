@@ -1942,7 +1942,7 @@ async def get_graph_execution_by_share_token(
         graph_name=(
             execution.AgentGraph.name
             if (execution.AgentGraph and execution.AgentGraph.name)
-            else "Untitled Agent"
+            else "Untitled Workflow"
         ),
         graph_description=(
             execution.AgentGraph.description if execution.AgentGraph else None

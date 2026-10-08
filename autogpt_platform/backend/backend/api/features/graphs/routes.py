@@ -76,7 +76,7 @@ async def get_graph(
         organization_id=ctx.org_id,
     )
     if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
     return graph
 
 
@@ -93,7 +93,7 @@ async def get_graph_all_versions(
         graph_id, user_id=user_id, organization_id=ctx.org_id
     )
     if not graphs:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
     return graphs
 
 
@@ -165,7 +165,7 @@ async def update_graph(
 
     existing_versions = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
     if not existing_versions:
-        raise HTTPException(404, detail=f"Graph #{graph_id} not found")
+        raise HTTPException(404, detail=f"Workflow #{graph_id} not found")
 
     graph.version = max(g.version for g in existing_versions) + 1
     current_active_version = next((v for v in existing_versions if v.is_active), None)
@@ -238,7 +238,9 @@ async def set_graph_active_version(
         graph_id, new_active_version, user_id=user_id
     )
     if not new_active_graph:
-        raise HTTPException(404, f"Graph #{graph_id} v{new_active_version} not found")
+        raise HTTPException(
+            404, f"Workflow #{graph_id} v{new_active_version} not found"
+        )
 
     current_active_graph = await graph_db.get_graph(
         graph_id=graph_id,
@@ -297,7 +299,7 @@ async def update_graph_settings(
         graph_id=graph_id, user_id=user_id
     )
     if not library_agent:
-        raise HTTPException(404, f"Graph #{graph_id} not found in user's library")
+        raise HTTPException(404, f"Workflow #{graph_id} not found in user's library")
 
     updated_agent = await library_db.update_library_agent(
         library_agent_id=library_agent.id,
@@ -344,7 +346,7 @@ async def execute_graph(
         if current_balance <= 0:
             raise HTTPException(
                 status_code=402,
-                detail="Insufficient balance to execute the agent. Please top up your account.",
+                detail="Insufficient balance to execute the workflow. Please top up your account.",
             )
 
     try:

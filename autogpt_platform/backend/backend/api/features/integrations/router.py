@@ -1730,7 +1730,7 @@ async def remove_all_webhooks_for_credentials(
     )
     if any(w.triggered_nodes or w.triggered_presets for w in webhooks) and not force:
         raise NeedConfirmation(
-            "Some webhooks linked to these credentials are still in use by an agent"
+            "Some webhooks linked to these credentials are still in use by a workflow"
         )
     for webhook in webhooks:
         # Unlink all nodes & presets
