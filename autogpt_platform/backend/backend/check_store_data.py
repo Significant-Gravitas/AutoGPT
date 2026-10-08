@@ -95,7 +95,7 @@ async def check_store_data(db):
     LIMIT 10;
     """
 
-    store_agents = await query_raw_with_schema(query, client=db)
+    store_agents = await query_raw_with_schema(query)
     print(f"Total store agents in view: {len(store_agents)}")
 
     if store_agents:
@@ -117,7 +117,7 @@ async def check_store_data(db):
     WHERE "submissionStatus" = 'APPROVED'
     """
 
-    result = await query_raw_with_schema(query, client=db)
+    result = await query_raw_with_schema(query)
     approved_count = result[0]["count"] if result else 0
     print(f"Approved store listing versions: {approved_count}")
 
@@ -128,7 +128,7 @@ async def check_store_data(db):
     WHERE "hasApprovedVersion" = true AND "isDeleted" = false
     """
 
-    result = await query_raw_with_schema(query, client=db)
+    result = await query_raw_with_schema(query)
     has_approved_count = result[0]["count"] if result else 0
     print(f"Store listings with approved versions: {has_approved_count}")
 
@@ -139,7 +139,7 @@ async def check_store_data(db):
     FROM {schema_prefix}"AgentGraphExecution"
     """
 
-    result = await query_raw_with_schema(query, client=db)
+    result = await query_raw_with_schema(query)
     if result:
         print("\nAgent Graph Executions:")
         print(f"  Unique agents with executions: {result[0]['unique_agents']}")

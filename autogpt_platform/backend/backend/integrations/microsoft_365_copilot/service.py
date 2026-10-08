@@ -25,8 +25,8 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.service import strip_user_context_tags
 from backend.copilot.token_tracking import persist_and_record_usage
-from backend.data.db_accessors import user_db
 from backend.data.model import OAuth2Credentials
+from backend.data.user import get_user_by_id
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.oauth.microsoft_365_copilot import (
     Microsoft365CopilotDeviceAuthHandler,
@@ -90,7 +90,7 @@ async def _get_timezone(user_id: str | None) -> str:
     if not user_id:
         return "UTC"
     try:
-        user = await user_db().get_user_by_id(user_id)
+        user = await get_user_by_id(user_id)
     except Exception:
         logger.warning("Could not load user timezone for Microsoft 365 Copilot")
         return "UTC"
