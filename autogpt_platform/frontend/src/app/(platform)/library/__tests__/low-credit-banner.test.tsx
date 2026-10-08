@@ -104,7 +104,11 @@ describe("Library low-credit banner", () => {
 
     renderLibraryWithTopUpPrompt();
 
-    expect(await screen.findByText(/out of automation credits/i)).toBeDefined();
+    expect(
+      await screen.findByText(
+        /out of automation credits\. Top up to keep your workflows running\./i,
+      ),
+    ).toBeDefined();
   });
 
   test("the Top up CTA opens the top-up dialog", async () => {
@@ -123,7 +127,7 @@ describe("Library low-credit banner", () => {
     // The dialog body copy mentions experts, which the banner copy does not —
     // keeps this assertion unambiguous against the banner's own message.
     expect(
-      await screen.findByText(/keep your agents and experts/i),
+      await screen.findByText(/keep your workflows and experts/i),
     ).toBeDefined();
   });
 

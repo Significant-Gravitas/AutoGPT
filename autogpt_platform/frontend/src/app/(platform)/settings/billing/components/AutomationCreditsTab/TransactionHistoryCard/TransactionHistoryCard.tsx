@@ -83,8 +83,8 @@ export function TransactionHistoryCard({ index = 0 }: Props) {
         </div>
       )}
       <Text variant="small" className="px-4 text-zinc-600">
-        Each agent run combines its recorded charges and adjustments. Only runs
-        with credit activity appear here.
+        Each workflow run combines its recorded charges and adjustments. Only
+        runs with credit activity appear here.
       </Text>
     </motion.section>
   );

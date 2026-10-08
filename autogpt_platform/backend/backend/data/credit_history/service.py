@@ -73,7 +73,7 @@ async def get_credit_history(
     )
     for item in transactions:
         if item.activity_type == "agent_run":
-            item.description = item.agent_name or "Agent unavailable"
+            item.description = item.agent_name or "Workflow unavailable"
     has_more = len(rows) > limit
     last = rows[limit - 1] if has_more else None
     return TransactionHistory(
@@ -116,7 +116,7 @@ def _to_item(row: _HistoryRow, user_id: str) -> CreditTransactionItem:
         if row.usage_chat_session_id:
             activity_type, description = "copilot_tools", "Expert tool use"
         elif row.usage_execution_id:
-            activity_type, description = "agent_run", "Agent run"
+            activity_type, description = "agent_run", "Workflow run"
         elif row.usage_has_block:
             activity_type, description = "block_usage", "Block usage"
         else:

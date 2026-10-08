@@ -121,12 +121,12 @@ describe("Transaction history receipts", () => {
       ),
     );
     render(<TransactionHistoryCard />);
-    await screen.findByText("Agent unavailable");
+    await screen.findByText("Workflow unavailable");
     expect(screen.queryByRole("link")).toBeNull();
     fireEvent.click(
-      screen.getByRole("button", { name: /details for Agent unavailable/i }),
+      screen.getByRole("button", { name: /details for Workflow unavailable/i }),
     );
-    expect(screen.getByText("Agent and run unavailable")).toBeDefined();
+    expect(screen.getByText("Workflow and run unavailable")).toBeDefined();
     expect(screen.queryByRole("link", { name: /View task/ })).toBeNull();
   });
 
