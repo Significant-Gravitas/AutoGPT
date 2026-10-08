@@ -106,6 +106,41 @@ async def test_status_never_exposes_internal_spend_or_stripe_identifiers(trial):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "daily,weekly,total,expected",
+    [
+        (100_000_000, 20_000_000, 20_000_000, "lifetime"),
+        (250_000, 1_000_000, 1_000_000, "rolling"),
+        (5_000_000, 1_000_000, 2_000_000, "rolling"),
+        (2_000_000, 2_000_000, 2_000_000, "lifetime"),
+    ],
+)
+async def test_status_exposes_accepted_usage_policy(
+    trial, daily, weekly, total, expected
+):
+    trial = trial.model_copy(
+        update={
+            "status": "active",
+            "offer": trial.offer.model_copy(
+                update={
+                    "daily_cost_limit": daily,
+                    "weekly_cost_limit": weekly,
+                    "total_cost_limit": total,
+                }
+            ),
+        }
+    )
+    with (
+        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=trial)),
+        patch.object(
+            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
+        ),
+    ):
+        status = await routes.get_trial_status(trial.user_id)
+    assert status.model_dump().get("usage_policy") == expected
+
+
+@pytest.mark.asyncio
 async def test_status_exposes_safe_rejection_reason(trial):
     trial = trial.model_copy(
         update={"status": "canceled", "rejection_reason": "intro_offer_already_used"}

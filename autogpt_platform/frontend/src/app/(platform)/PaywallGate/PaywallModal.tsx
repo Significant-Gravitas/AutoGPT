@@ -8,12 +8,10 @@ import { SubscriptionPlans } from "@/components/organisms/SubscriptionPlans/Subs
 import { TrialCardContent } from "@/components/organisms/TrialCard/TrialCard";
 import { Logout03Icon } from "@hugeicons/core-free-icons";
 import { SwitchTierDialog } from "../settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog";
+import { PaywallPlanChoices } from "./components/PaywallPlanChoices";
 import { PaywallHeader } from "./components/PaywallHeader";
 import { usePaywallModal } from "./usePaywallModal";
 
-// Non-dismissable Stripe paywall for NO_TIER users. Renders the same
-// SubscriptionPlans organism as the onboarding paywall, so both surfaces share
-// one visual and one free-trial offer.
 export function PaywallModal() {
   const {
     isLoading,
@@ -31,20 +29,26 @@ export function PaywallModal() {
     confirmPendingTier,
     cancelPendingTier,
     handleLogout,
+    handleClose,
     trial,
     trialOffer,
   } = usePaywallModal();
 
   return (
-    <Dialog forceOpen controlled={{ isOpen: true, set: () => {} }}>
+    <Dialog
+      variant="compact"
+      title="Choose your plan"
+      styling={{ maxWidth: trialOffer ? "1120px" : "700px" }}
+      controlled={{
+        isOpen: true,
+        set: (open) => {
+          if (!open) handleClose();
+        },
+      }}
+    >
       <Dialog.Content>
         <div className="relative flex w-full flex-col items-center gap-4 px-2 py-2">
-          {/* Sticky (not absolute) so the button pins to the top of the
-              dialog's scroll viewport instead of getting clipped or scrolled
-              away when the plan cards overflow on short screens. The negative
-              margin collapses the row's layout space so the title keeps its
-              position. */}
-          <div className="sticky top-0 z-10 -mb-[3.25rem] flex w-full justify-end">
+          <div className="flex w-full justify-start">
             <Button
               variant="ghost"
               size="small"
@@ -58,7 +62,7 @@ export function PaywallModal() {
           <PaywallHeader />
 
           <div className="relative mt-2 w-full">
-            {isLoading ? (
+            {isLoading || trial.isLoading ? (
               <div className="grid w-full grid-cols-1 gap-4 px-[1rem] md:grid-cols-3 md:px-0">
                 <Skeleton className="h-[26rem] rounded-2xl" />
                 <Skeleton className="h-[26rem] rounded-2xl" />
@@ -78,6 +82,20 @@ export function PaywallModal() {
                 >
                   Retry
                 </Button>
+              </div>
+            ) : !trialOffer ? (
+              <div className="space-y-4">
+                <PaywallPlanChoices
+                  plans={plans}
+                  cycle={selectedCycle}
+                  onCycle={setSelectedCycle}
+                  onSelect={handleSelectPlan}
+                  pending={isPending}
+                  selectedTier={selectedTier}
+                />
+                {!trial.trial?.eligible && (
+                  <TrialCardContent returnTo="billing" controller={trial} />
+                )}
               </div>
             ) : (
               <SubscriptionPlans
@@ -105,6 +123,9 @@ export function PaywallModal() {
             )}
           </div>
         </div>
+        <Button variant="ghost" className="mt-3 w-full" onClick={handleClose}>
+          Back to billing
+        </Button>
       </Dialog.Content>
       {pendingTier && pendingTierLabel ? (
         <SwitchTierDialog

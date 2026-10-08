@@ -10,13 +10,10 @@ export function PaywallHeader() {
         variant="h3"
         className="!text-[1.375rem] !leading-[1.6rem] md:!text-[1.75rem] md:!leading-[2.5rem]"
       >
-        Choose the plan that&apos;s right for{" "}
-        <span className="bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
-          you
-        </span>
+        Your next idea starts here.
       </Text>
       <Text variant="body" className="!text-zinc-500">
-        Pick a plan to start working with experts and running agents.
+        Choose the room you need to bring it to life.
       </Text>
       <Link
         href="/tour/chat?utm_source=platform_paywall"
@@ -27,11 +24,7 @@ export function PaywallHeader() {
           icon={PlayCircleIcon}
           className="size-5 shrink-0 text-violet-600"
         />
-        <span>
-          Not sure yet?{" "}
-          <span className="font-semibold text-violet-700">Try it</span> —
-          Instant demo — No signup
-        </span>
+        <span>Explore a quick demo</span>
       </Link>
     </div>
   );

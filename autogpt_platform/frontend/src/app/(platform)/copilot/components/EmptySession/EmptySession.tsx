@@ -169,6 +169,7 @@ export function EmptySession({
               >
                 <ChatInput
                   inputId="chat-input-empty"
+                  draftKey={`new:${selectedExpert?.id ?? expertId ?? "default"}`}
                   stacked
                   voiceToggle={voiceToggle}
                   modeSelector={modeSelector}

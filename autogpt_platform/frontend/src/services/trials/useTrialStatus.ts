@@ -11,6 +11,8 @@ export function useTrialStatus() {
       queryKey: [...getGetTrialsGetTrialStatusQueryKey(), userID],
       enabled: Boolean(userID),
       retry: false,
+      refetchInterval: 30_000,
+      staleTime: 10_000,
       select: (response) =>
         response.status === 200 ? response.data : undefined,
     },

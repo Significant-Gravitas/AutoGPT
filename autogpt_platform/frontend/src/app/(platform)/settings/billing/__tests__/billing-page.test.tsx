@@ -76,7 +76,9 @@ describe("Settings billing page (integration)", () => {
     useDefaultBillingHandlers();
     render(<SettingsBillingPage />);
 
-    expect(screen.getByRole("heading", { name: "Billing" })).toBeDefined();
+    expect(
+      screen.getByRole("heading", { name: "Billing & usage" }),
+    ).toBeDefined();
 
     const subscriptionTab = screen.getByRole("tab", { name: "Subscription" });
     expect(subscriptionTab.getAttribute("data-state")).toBe("active");

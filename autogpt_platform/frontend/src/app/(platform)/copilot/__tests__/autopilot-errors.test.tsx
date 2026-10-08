@@ -1,5 +1,6 @@
 import {
   getGetV2ListChatConnectionsMockHandler200,
+  getGetV2GetCopilotUsageMockHandler200,
   getPutV2ChangeTheConnectionAnExistingChatRunsOnMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
@@ -56,7 +57,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   }),
 }));
 
-const flagState = vi.hoisted(() => ({ experts: false }));
+const flagState = vi.hoisted(() => ({ experts: false, billing: false }));
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
@@ -65,7 +66,11 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     HIRE_EXPERTS: "HIRE_EXPERTS",
   },
   useGetFlag: (flag: string) =>
-    flag === "HIRE_EXPERTS" ? flagState.experts : false,
+    flag === "HIRE_EXPERTS"
+      ? flagState.experts
+      : flag === "ENABLE_PLATFORM_PAYMENT"
+        ? flagState.billing
+        : false,
 }));
 
 beforeEach(() => {
@@ -74,6 +79,7 @@ beforeEach(() => {
   useCopilotUIStore.setState({ initialPrompt: null });
   window.localStorage.clear();
   flagState.experts = false;
+  flagState.billing = false;
 });
 
 afterEach(() => {
@@ -82,7 +88,22 @@ afterEach(() => {
   useCopilotUIStore.setState({ initialPrompt: null });
   window.localStorage.clear();
   flagState.experts = false;
+  flagState.billing = false;
 });
+
+function usageExhaustedAfterSending() {
+  let reads = 0;
+  server.use(
+    getGetV2GetCopilotUsageMockHandler200(() => ({
+      tier: "PRO",
+      daily: {
+        percent_used: reads++ === 0 ? 0 : 100,
+        resets_at: new Date("2099-10-08T00:00:00Z"),
+      },
+      weekly: { percent_used: 40, resets_at: new Date("2099-10-12T00:00:00Z") },
+    })),
+  );
+}
 
 describe("Otto streaming — error paths", () => {
   it.each(["ready", "error"] as const)(
@@ -188,7 +209,7 @@ describe("Otto streaming — error paths", () => {
     // useCopilotStream's rate-limit branch sets rateLimitMessage, which the
     // RateLimitGate translates into a Dialog with this title.
     expect(
-      await screen.findByText(/daily usage limit reached/i, undefined, {
+      await screen.findByText(/We couldn’t check your usage/i, undefined, {
         timeout: 5000,
       }),
     ).toBeDefined();
@@ -223,7 +244,7 @@ describe("Otto streaming — error paths", () => {
     });
 
     expect(
-      await screen.findByText(/daily usage limit reached/i, undefined, {
+      await screen.findByText(/We couldn’t check your usage/i, undefined, {
         timeout: 5000,
       }),
     ).toBeDefined();
@@ -371,6 +392,7 @@ describe("AutoPilot streaming — our usage cap next to a linked subscription", 
   };
 
   it("keeps the plan dialog for our cap and offers the linked subscription beside the upgrade", async () => {
+    flagState.billing = true;
     let switchedTo: unknown = null;
     server.use(
       copilotStreamErrorHandler({
@@ -391,17 +413,18 @@ describe("AutoPilot streaming — our usage cap next to a linked subscription", 
     );
 
     renderHost();
+    usageExhaustedAfterSending();
     await typeAndSend("over the cap");
 
     // Our own cap, so our own dialog: the upgrade path survives ...
     expect(
-      await screen.findByText(/daily usage limit reached/i, undefined, {
+      await screen.findByText(/More room for what’s next/i, undefined, {
         timeout: 5000,
       }),
     ).toBeDefined();
     expect(screen.queryByText(/hit this connection's limit/i)).toBeNull();
     expect(
-      screen.getByRole("button", { name: /upgrade plan|contact us/i }),
+      screen.getByRole("button", { name: /review max upgrade/i }),
     ).toBeDefined();
 
     // ... and the linked subscription is offered next to it, because the cap
@@ -422,11 +445,12 @@ describe("AutoPilot streaming — our usage cap next to a linked subscription", 
       }),
     );
     await waitFor(() =>
-      expect(screen.queryByText(/daily usage limit reached/i)).toBeNull(),
+      expect(screen.queryByText(/More room for what’s next/i)).toBeNull(),
     );
   });
 
   it("offers nothing to continue on when the platform is the only connection", async () => {
+    flagState.billing = true;
     server.use(
       copilotStreamErrorHandler({
         baseUrl: TEST_BACKEND_BASE_URL,
@@ -440,15 +464,16 @@ describe("AutoPilot streaming — our usage cap next to a linked subscription", 
     );
 
     renderHost();
+    usageExhaustedAfterSending();
     await typeAndSend("over the cap");
 
     expect(
-      await screen.findByText(/daily usage limit reached/i, undefined, {
+      await screen.findByText(/More room for what’s next/i, undefined, {
         timeout: 5000,
       }),
     ).toBeDefined();
     expect(
-      screen.getByRole("button", { name: /upgrade plan|contact us/i }),
+      screen.getByRole("button", { name: /review max upgrade/i }),
     ).toBeDefined();
     // The connection that just refused is never offered back. Were it not
     // excluded, "Continue on AutoGPT Platform" would appear once the offers
@@ -500,6 +525,6 @@ describe("AutoPilot streaming — our usage cap next to a linked subscription", 
         timeout: 5000,
       }),
     ).toBeDefined();
-    expect(screen.queryByText(/daily usage limit reached/i)).toBeNull();
+    expect(screen.queryByText(/More room for what’s next/i)).toBeNull();
   });
 });

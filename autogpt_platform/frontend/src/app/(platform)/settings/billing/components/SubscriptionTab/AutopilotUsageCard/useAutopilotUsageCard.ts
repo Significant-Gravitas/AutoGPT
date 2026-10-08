@@ -1,9 +1,7 @@
 "use client";
 
-import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
-import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
-
-import { formatRelativeReset } from "../../../helpers";
+import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
+import { formatRelativeReset, formatShortDate } from "../../../helpers";
 
 export interface UsageWindowView {
   label: string;
@@ -13,34 +11,63 @@ export interface UsageWindowView {
 }
 
 export function useAutopilotUsageCard() {
-  const { data, isLoading } = useGetV2GetCopilotUsage({
-    query: {
-      select: (res) => res.data as CoPilotUsagePublic | undefined,
-      refetchInterval: 30_000,
-      staleTime: 10_000,
-    },
-  });
-
-  const today: UsageWindowView | null = data?.daily
+  const { experience, usage, trial, isLoading, isError, retry } =
+    useUsageExperience();
+  const today: UsageWindowView | null = usage?.daily
     ? {
         label: "Today",
-        percent: Math.round(data.daily.percent_used),
-        ...formatRelativeReset(data.daily.resets_at),
+        percent: usage.daily.percent_used,
+        ...formatRelativeReset(usage.daily.resets_at),
       }
     : null;
-
-  const week: UsageWindowView | null = data?.weekly
+  const week: UsageWindowView | null = usage?.weekly
     ? {
         label: "This Week",
-        percent: Math.round(data.weekly.percent_used),
-        ...formatRelativeReset(data.weekly.resets_at),
+        percent: usage.weekly.percent_used,
+        ...formatRelativeReset(usage.weekly.resets_at),
       }
     : null;
-
+  const showTrialWindow =
+    experience.isLifetimeTrial ||
+    (experience.isActiveTrial && experience.window === "trial");
+  const trialWindow: UsageWindowView | null =
+    showTrialWindow && experience.trialPercent != null
+      ? {
+          label: "Trial usage",
+          percent: experience.trialPercent,
+          prefix: "Trial ends",
+          value: formatShortDate(trial?.ends_at),
+        }
+      : null;
+  const featured = showTrialWindow
+    ? trialWindow
+    : experience.window === "weekly" || !today
+      ? week
+      : today;
+  const secondary = showTrialWindow ? null : featured === week ? today : week;
   return {
+    featured,
+    secondary,
     today,
     week,
     isLoading,
-    hasUsage: Boolean(today || week),
+    isError,
+    retry,
+    isTrial: experience.isActiveTrial,
+    lifetime: experience.isLifetimeTrial,
+    blocked: experience.blocked,
+    inactive: experience.tier === "NO_TIER",
+    paymentFailed:
+      experience.tier === "NO_TIER" &&
+      !trial?.active &&
+      !trial?.converted &&
+      ["past_due", "unpaid"].includes(trial?.status ?? ""),
+    hasUsage: Boolean(featured || secondary),
+    unlimited: Boolean(
+      usage &&
+        !experience.isActiveTrial &&
+        usage.daily === null &&
+        usage.weekly === null,
+    ),
   };
 }

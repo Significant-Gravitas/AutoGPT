@@ -22,13 +22,13 @@ export function PaymentMethodCard({ index = 0 }: Props) {
       {...getSectionMotionProps(index, Boolean(reduceMotion))}
       className="flex w-full flex-col gap-2"
     >
-      <div className="px-4">
+      <div className="sr-only">
         <Text variant="body-medium" as="span" className="text-textBlack">
           Payment method
         </Text>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-zinc-200 bg-white p-5">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-zinc-100 text-zinc-700">
             <Icon icon={CreditCardIcon} size={20} />
