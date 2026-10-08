@@ -272,12 +272,12 @@ def _create_tool_handler(
     async def handler(ctx: Context, **kwargs: Any) -> str:
         access_token = get_access_token()
         if not access_token:
-            return "Authentication required"
+            raise ToolError("Authentication required")
 
         if required_scopes:
             missing = [s for s in required_scopes if s not in access_token.scopes]
             if missing:
-                return f"Missing required permission(s): {', '.join(missing)}"
+                raise ToolError(f"Missing required permission(s): {', '.join(missing)}")
 
         user_id = access_token.client_id
         organization_id, team_id = (

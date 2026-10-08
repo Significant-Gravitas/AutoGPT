@@ -446,9 +446,10 @@ async def get_reviews(
     graph_exec_id: Optional[str] = None,
     status: Optional[ReviewStatus] = None,
     page: int = 1,
-    page_size: int = 25,
+    page_size: Optional[int] = 25,
     organization_id: Optional[str] = None,
     graph_runs_only: bool = False,
+    oldest_first: bool = False,
 ) -> tuple[list[PendingHumanReviewModel], Pagination]:
     """
     Get reviews for a user with pagination, optionally filtered by execution and status.
@@ -458,9 +459,10 @@ async def get_reviews(
         graph_exec_id: Optional graph execution ID to scope to
         status: Optional review status filter
         page: Page number (1-indexed)
-        page_size: Number of reviews per page
+        page_size: Number of reviews per page, or None for every match
         organization_id: Optional org to scope to; also matches untagged rows
         graph_runs_only: Leave out the reviews an AutoPilot chat is waiting on
+        oldest_first: Order by creation ascending instead of newest first
 
     Returns:
         List of reviews and pagination info
@@ -480,14 +482,12 @@ async def get_reviews(
             {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
         ]
 
-    offset = (page - 1) * page_size
-
     total_count = await PendingHumanReview.prisma().count(where=where)
 
     _reviews = await PendingHumanReview.prisma().find_many(
         where=where,
-        order={"createdAt": "desc"},
-        skip=offset,
+        order={"createdAt": "asc" if oldest_first else "desc"},
+        skip=(page - 1) * page_size if page_size else None,
         take=page_size,
     )
 
@@ -497,6 +497,8 @@ async def get_reviews(
         [PendingHumanReviewModel.from_db(r, node_id="") for r in _reviews],
     )
 
+    if page_size is None:
+        page, page_size = 1, max(1, total_count)
     total_pages = max(1, (total_count + page_size - 1) // page_size)
 
     return reviews, Pagination(
@@ -520,11 +522,15 @@ async def get_pending_reviews_for_user(
 async def get_pending_reviews_for_execution(
     graph_exec_id: str, user_id: str
 ) -> list[PendingHumanReviewModel]:
-    """Get all pending reviews for a specific graph execution."""
+    """Every pending review of one graph execution, oldest first."""
     if chat_session_id := legacy_chat_session_id(graph_exec_id):
         return await get_pending_reviews_for_chat_session(chat_session_id, user_id)
     reviews, _ = await get_reviews(
-        user_id=user_id, graph_exec_id=graph_exec_id, status=ReviewStatus.WAITING
+        user_id=user_id,
+        graph_exec_id=graph_exec_id,
+        status=ReviewStatus.WAITING,
+        page_size=None,
+        oldest_first=True,
     )
     return reviews
 
