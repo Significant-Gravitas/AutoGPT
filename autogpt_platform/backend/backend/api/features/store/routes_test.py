@@ -889,3 +889,40 @@ def test_signed_out_download_passes_no_user(mocker: pytest_mock.MockFixture) -> 
 
     assert response.status_code == 200
     assert track.call_args.kwargs["user_id"] is None
+
+
+@pytest.mark.parametrize("score", [0, 6, 1_000_000])
+def test_post_review_rejects_out_of_range_score(
+    mocker: pytest_mock.MockFixture, score: int
+) -> None:
+    """#15304: the API must 422 before the review is written."""
+    mock_create = mocker.patch("backend.api.features.store.db.create_store_review")
+
+    response = client.post(
+        "/agents/creator1/test-agent/review",
+        json={"store_listing_version_id": "test-version-id", "score": score},
+    )
+
+    assert response.status_code == 422
+    mock_create.assert_not_called()
+
+
+def test_post_review_accepts_in_range_score(mocker: pytest_mock.MockFixture) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.store.db.create_store_review",
+        return_value=store_model.StoreReview(score=5, comments="great"),
+    )
+
+    response = client.post(
+        "/agents/creator1/test-agent/review",
+        json={
+            "store_listing_version_id": "test-version-id",
+            "score": 5,
+            "comments": "great",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["score"] == 5
+    mock_create.assert_called_once()
+    assert mock_create.call_args.kwargs["score"] == 5
