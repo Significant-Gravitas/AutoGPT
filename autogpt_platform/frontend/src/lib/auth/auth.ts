@@ -29,6 +29,8 @@ import { JWKS_ALG } from "./service-token";
 import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
 import { mobileAuth } from "./mobile-auth";
+import { mobilePush } from "./mobile-push";
+import { mobilePushStore } from "./mobile-push-store";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
 
@@ -362,6 +364,7 @@ export const auth = betterAuth({
     }),
     supabaseBridge(),
     mobileAuth(),
+    mobilePush(mobilePushStore(authDbPool)),
     // Must be last so cookies set inside server actions stick.
     nextCookies(),
   ],

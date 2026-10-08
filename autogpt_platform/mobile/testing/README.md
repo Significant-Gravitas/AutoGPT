@@ -51,7 +51,7 @@ The fixture mirrors the native handoff shape:
 2. Start redirects to `/auth/mobile` with the same parameters. The fixture skips real account authentication and displays explicit browser consent.
 3. **Connect AutoGPT** sends same-origin `POST /api/auth/mobile/authorize` with JSON `{code_challenge,state,expected_user_id:"fixture-user"}`. It receives `{url:"autogpt://auth/callback?code=...&state=..."}` and navigates there.
 4. Native validates its pending callback and sends `POST /api/auth/mobile/exchange` with JSON `{code,code_verifier}` and an `Origin` header exactly matching its configured origin. Redirects should remain disabled for this exchange.
-5. Exchange responds `200 {"success":true}` with a persistent HttpOnly, SameSite=Lax `better-auth.session_token` cookie (`__Secure-better-auth.session_token` over HTTPS). A second HttpOnly `session_data` cookie with an `Expires` date exercises multiple `Set-Cookie` headers. Native copies the cookies into its webview's persistent cookie store and loads `/copilot` itself.
+5. Exchange responds `200 {"success":true}` with a persistent HttpOnly, SameSite=Lax `better-auth.session_token` cookie (`__Secure-better-auth.session_token` over HTTPS). A second HttpOnly `session_data` cookie with an `Expires` date exercises multiple `Set-Cookie` headers. Native copies the cookies into its webview's persistent cookie store and loads `/mobile` itself.
 
 Codes expire after 90 seconds and are consumed on successful exchange. The in-memory fixture session expires after a day or a server restart. The fixture tests exercise these mechanics; they do not replace the production auth implementation's authorization, revocation, source-session, or security tests.
 

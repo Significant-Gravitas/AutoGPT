@@ -150,6 +150,10 @@ from backend.data.human_review import (
     process_all_reviews_for_execution,
     update_review_processed_status,
 )
+from backend.data.native_push_subscription import (
+    delete_native_push_subscription,
+    get_native_push_subscriptions,
+)
 from backend.data.onboarding import increment_onboarding_runs
 from backend.data.org_credit import get_org_credits as _get_org_credits_raw
 from backend.data.org_credit import get_personal_org_owner
@@ -527,6 +531,8 @@ class DatabaseManager(AppService):
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
+    get_native_push_subscriptions = _(get_native_push_subscriptions)
+    delete_native_push_subscription = _(delete_native_push_subscription)
     delete_push_subscription = _(delete_push_subscription)
     increment_push_fail_count = _(
         increment_fail_count, name="increment_push_fail_count"
@@ -984,6 +990,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions
+    get_native_push_subscriptions = d.get_native_push_subscriptions
+    delete_native_push_subscription = d.delete_native_push_subscription
     delete_push_subscription = d.delete_push_subscription
     increment_push_fail_count = d.increment_push_fail_count
     cleanup_failed_push_subscriptions = d.cleanup_failed_push_subscriptions

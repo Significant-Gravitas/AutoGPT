@@ -29,6 +29,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.agpt.mobile
+        CODE_SIGN_ENTITLEMENTS: App/AutoGPT.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: AutoGPT
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Choose photos to attach to an AutoGPT conversation.
@@ -37,11 +38,19 @@ targets:
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         GENERATE_INFOPLIST_FILE: YES
+      configs:
+        Debug:
+          AUTOGPT_APNS_ENVIRONMENT: development
+          AUTOGPT_PUSH_ENVIRONMENT: sandbox
+        Release:
+          AUTOGPT_APNS_ENVIRONMENT: production
+          AUTOGPT_PUSH_ENVIRONMENT: production
     info:
       path: App/Info.plist
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        AutoGPTPushEnvironment: $(AUTOGPT_PUSH_ENVIRONMENT)
         UIAppFonts:
           - Geist-Regular.ttf
           - Geist-Medium.ttf

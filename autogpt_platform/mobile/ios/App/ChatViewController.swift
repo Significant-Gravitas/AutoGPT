@@ -22,6 +22,7 @@ final class ChatViewController: UIViewController {
   private var isChangingServer = false
   private var lastCommittedURL: URL?
   private var downloads: [ObjectIdentifier: DownloadExport] = [:]
+  private var pushBridge: NativePushBridge?
 
   init() {
     var address = UserDefaults.standard.string(forKey: "serverOrigin") ?? "https://platform.agpt.co"
@@ -61,6 +62,8 @@ final class ChatViewController: UIViewController {
     navigationController?.navigationBar.prefersLargeTitles = false
     configureStatus()
     installWebView()
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(openNotification), name: NativePush.opened, object: nil)
     #if DEBUG
       if let screen = ProcessInfo.processInfo.environment["AUTOGPT_UI_TEST_SCREEN"] {
         showSignIn()
@@ -69,6 +72,7 @@ final class ChatViewController: UIViewController {
       }
     #endif
     loadChat()
+    openNotification()
   }
 
   override func viewWillTransition(
@@ -187,6 +191,8 @@ final class ChatViewController: UIViewController {
   }
 
   private func installWebView() {
+    pushBridge?.invalidate()
+    webView?.configuration.userContentController.removeScriptMessageHandler(forName: "AutoGPTPush")
     cancelExports()
     webView?.stopLoading()
     webView?.navigationDelegate = nil
@@ -197,6 +203,8 @@ final class ChatViewController: UIViewController {
     configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
     configuration.allowsInlineMediaPlayback = true
     configuration.applicationNameForUserAgent = "AutoGPTMobile/iOS"
+    let pushBridge = NativePushBridge(origin: origin)
+    configuration.userContentController.add(pushBridge, name: "AutoGPTPush")
     let browser = WKWebView(frame: .zero, configuration: configuration)
     browser.translatesAutoresizingMaskIntoConstraints = false
     browser.navigationDelegate = self
@@ -209,6 +217,8 @@ final class ChatViewController: UIViewController {
       if #available(iOS 16.4, *) { browser.isInspectable = true }
     #endif
     webView = browser
+    pushBridge.webView = browser
+    self.pushBridge = pushBridge
     view.insertSubview(browser, at: 0)
     NSLayoutConstraint.activate([
       browser.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -248,7 +258,10 @@ final class ChatViewController: UIViewController {
         }) : nil
     navigationItem.leftBarButtonItem?.accessibilityLabel = "Back"
     var actions = [
-      UIAction(title: "Chat home", image: UIImage(systemName: "bubble.left.and.bubble.right")) {
+      UIAction(
+        title: "Chats, experts & requests",
+        image: UIImage(systemName: "bubble.left.and.bubble.right")
+      ) {
         [weak self] _ in
         self?.loadChat()
       },
@@ -297,7 +310,26 @@ final class ChatViewController: UIViewController {
     cancelExports()
     statusScroll.isHidden = true
     webView.isHidden = false
-    webView.load(URLRequest(url: origin.chatURL))
+    webView.load(URLRequest(url: origin.url.appendingPathComponent("mobile")))
+  }
+
+  @objc private func openNotification() {
+    guard !isSigningIn, !isChangingServer, let target = NativePush.shared.takeTarget(origin: origin)
+    else { return }
+    statusScroll.isHidden = true
+    webView.isHidden = false
+    webView.load(URLRequest(url: target))
+  }
+
+  private func clearPush() {
+    let binding = NativePush.shared.binding
+    if UUID(uuidString: binding) != nil {
+      webView?.evaluateJavaScript(
+        "fetch('/api/auth/mobile/push/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({binding_id:'\(binding)'})}).catch(()=>{})",
+        completionHandler: nil)
+    }
+    pushBridge?.invalidate()
+    NativePush.shared.clear()
   }
 
   private func retry() {
@@ -338,6 +370,7 @@ final class ChatViewController: UIViewController {
   }
 
   private func showSignIn() {
+    clearPush()
     showStatus(
       title: "Welcome back",
       message:
@@ -347,6 +380,7 @@ final class ChatViewController: UIViewController {
 
   private func signIn() {
     guard !isSigningIn, !isChangingServer, let window = view.window else { return }
+    clearPush()
     isSigningIn = true
     installWebView()
     showStatus(
@@ -419,6 +453,7 @@ final class ChatViewController: UIViewController {
         #endif
         let next = try AppOrigin(address, allowLocalHTTP: allowLocalHTTP)
         if next == self.origin { return }
+        self.clearPush()
         self.authentication.cancel()
         self.isChangingServer = true
         self.installWebView()
@@ -447,6 +482,10 @@ final class ChatViewController: UIViewController {
 }
 
 extension ChatViewController: WKNavigationDelegate {
+  func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+    pushBridge?.invalidate()
+  }
+
   func webView(
     _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
     decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void

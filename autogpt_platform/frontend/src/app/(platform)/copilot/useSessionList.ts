@@ -44,6 +44,8 @@ export function useSessionList({ enabled = true }: Args = {}) {
   return {
     sessions: flattenSessions(query.data),
     isLoading: query.isLoading,
+    isError: query.isError,
+    refetch: query.refetch,
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
     loadMore: query.fetchNextPage,

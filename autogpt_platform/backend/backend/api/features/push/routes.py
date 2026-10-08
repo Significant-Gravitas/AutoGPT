@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Security
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_400_BAD_REQUEST
 
 from backend.api.features.push.model import (
+    NativePushConfig,
     PushSubscribeRequest,
     PushUnsubscribeRequest,
     VapidPublicKeyResponse,
@@ -18,6 +19,17 @@ from backend.util.settings import Settings
 
 router = APIRouter()
 _settings = Settings()
+
+
+@router.get("/native/config", summary="Check native push provider availability")
+async def get_native_push_config() -> NativePushConfig:
+    config = _settings.config
+    return NativePushConfig(
+        apns=bool(
+            config.apns_private_key_path and config.apns_key_id and config.apns_team_id
+        ),
+        fcm=bool(config.fcm_service_account_path),
+    )
 
 
 @router.get(

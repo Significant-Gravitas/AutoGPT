@@ -8,6 +8,7 @@ from pydantic import BaseModel, field_serializer
 
 from backend.api.model import NotificationPayload
 from backend.data.event_bus import AsyncRedisEventBus
+from backend.data.native_push import send_native_push_for_user
 from backend.data.push_sender import send_push_for_user
 from backend.util.settings import Settings
 
@@ -39,6 +40,13 @@ async def _safe_send_push(user_id: str, payload: NotificationPayload) -> None:
         logger.exception("Failed to send web push for user %s", user_id)
 
 
+async def _safe_send_native_push(user_id: str, payload: NotificationPayload) -> None:
+    try:
+        await send_native_push_for_user(user_id, payload)
+    except Exception:
+        logger.warning("Native notification fanout failed")
+
+
 class AsyncRedisNotificationEventBus(AsyncRedisEventBus[NotificationEvent]):
     Model = NotificationEvent  # type: ignore
 
@@ -56,9 +64,10 @@ class AsyncRedisNotificationEventBus(AsyncRedisEventBus[NotificationEvent]):
         # Fan out to web push subscriptions in parallel. Fire-and-forget so
         # publishers never wait on the push service; held in _push_tasks so
         # the task survives until completion.
-        task = asyncio.create_task(_safe_send_push(event.user_id, event.payload))
-        _push_tasks.add(task)
-        task.add_done_callback(_push_tasks.discard)
+        for deliver in (_safe_send_push, _safe_send_native_push):
+            task = asyncio.create_task(deliver(event.user_id, event.payload))
+            _push_tasks.add(task)
+            task.add_done_callback(_push_tasks.discard)
 
     async def listen(self, user_id: str) -> AsyncGenerator[NotificationEvent, None]:
         """Stream notifications for a specific user."""

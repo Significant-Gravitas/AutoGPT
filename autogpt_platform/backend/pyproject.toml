@@ -113,7 +113,7 @@ tavily-python = ">=0.7.26,<0.9.0"
 aiohappyeyeballs = "^2.6.1"
 black = "^24.10.0"
 faker = ">=38.2,<41.0"
-httpx = "^0.28.1"
+httpx = { version = "^0.28.1", extras = ["http2"] }
 isort = "^5.13.2"
 poethepoet = "^0.41.0"
 pre-commit = "^4.4.0"

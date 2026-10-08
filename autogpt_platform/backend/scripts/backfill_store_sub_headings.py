@@ -105,19 +105,17 @@ async def find_listings_without_sub_heading(
     from prisma import get_client
 
     # Prisma has no "empty once trimmed" string filter.
-    status_clause = (
-        "" if include_unapproved else "AND \"submissionStatus\" = 'APPROVED'"
-    )
-    limit_clause = f"LIMIT {int(limit)}" if limit else ""
     rows = await get_client().query_raw(
         f"""
         SELECT id, name, description
         FROM platform."StoreListingVersion"
         WHERE {BLANK_SUB_HEADING} AND "isDeleted" = false
-        {status_clause}
+        AND ($1::boolean OR "submissionStatus" = 'APPROVED')
         ORDER BY "createdAt" DESC
-        {limit_clause}
-        """
+        LIMIT $2
+        """,
+        include_unapproved,
+        int(limit) if limit else None,
     )
     return [(r["id"], r["name"], r["description"]) for r in rows]
 

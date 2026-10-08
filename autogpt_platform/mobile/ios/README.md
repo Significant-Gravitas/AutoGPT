@@ -39,7 +39,7 @@ Install the matching Xcode platform support before running the included XCUITest
 
 ## Connection and authentication
 
-The default is `https://platform.agpt.co/copilot`. **App menu → Server settings** accepts a deliberate HTTPS origin, including a self-hosted or preview deployment. Paths, embedded credentials, queries, and fragments are rejected. Changing servers clears this app's website data.
+The default is `https://platform.agpt.co/mobile`. **App menu → Server settings** accepts a deliberate HTTPS origin, including a self-hosted or preview deployment. Paths, embedded credentials, queries, and fragments are rejected. Changing servers clears this app's website data.
 
 The same deployment must include this PR's `/api/auth/mobile/start`, `/api/auth/mobile/authorize`, and `/api/auth/mobile/exchange` endpoints. Until those endpoints are deployed, **Open in browser** can use the existing website, but native browser-to-app sign-in cannot complete against that deployment.
 

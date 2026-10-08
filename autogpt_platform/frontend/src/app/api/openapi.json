@@ -13733,6 +13733,23 @@
         }
       }
     },
+    "/api/push/native/config": {
+      "get": {
+        "tags": ["push"],
+        "summary": "Check native push provider availability",
+        "operationId": "getPushCheck native push provider availability",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/NativePushConfig" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/push/subscribe": {
       "post": {
         "tags": ["push"],
@@ -26268,6 +26285,15 @@
         "type": "object",
         "required": ["agents", "pagination"],
         "title": "MyUnpublishedAgentsResponse"
+      },
+      "NativePushConfig": {
+        "properties": {
+          "apns": { "type": "boolean", "title": "Apns" },
+          "fcm": { "type": "boolean", "title": "Fcm" }
+        },
+        "type": "object",
+        "required": ["apns", "fcm"],
+        "title": "NativePushConfig"
       },
       "NeedLoginResponse": {
         "properties": {

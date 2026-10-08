@@ -16,6 +16,8 @@ export async function loadAuthRuntime() {
   const allowedSources = new Map([
     ["./mobile-auth-helpers", "src/lib/auth/mobile-auth-helpers.ts"],
     ["./mobile-auth", "src/lib/auth/mobile-auth.ts"],
+    ["./mobile-push", "src/lib/auth/mobile-push.ts"],
+    ["./mobile-push-store", "src/lib/auth/mobile-push-store.ts"],
   ]);
   const compiled = new Map();
   function compile(specifier) {
@@ -50,6 +52,10 @@ export async function loadAuthRuntime() {
       import(resolve("better-auth/db/migration")),
       import(resolve("pg")),
     ]);
+  const [{ mobilePush }, { mobilePushStore }] = await Promise.all([
+    import(compile("./mobile-push")),
+    import(compile("./mobile-push-store")),
+  ]);
   function createAuth(connection, sessionBefore) {
     const pool = new (pg.Pool ?? pg.default.Pool)({
       ...connection,
@@ -78,7 +84,7 @@ export async function loadAuthRuntime() {
       account: { modelName: "UserAuthAccount" },
       verification: { modelName: "UserAuthVerification" },
       emailAndPassword: { enabled: true },
-      plugins: [admin(), mobileAuth()],
+      plugins: [admin(), mobileAuth(), mobilePush(mobilePushStore(pool))],
       ...(sessionBefore
         ? { databaseHooks: { session: { create: { before: sessionBefore } } } }
         : {}),

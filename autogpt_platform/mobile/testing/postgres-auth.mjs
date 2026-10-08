@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
@@ -227,6 +228,15 @@ try {
   assert.ok(ready, "Disposable PostgreSQL did not become ready");
   await pool.query("CREATE SCHEMA platform");
   await (await runtime.getMigrations(instance.options)).runMigrations();
+  await pool.query(
+    readFileSync(
+      new URL(
+        "../../backend/migrations/20261007220000_native_push/migration.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
   const context = await auth.$context;
   console.log(
     "Created fresh platform.UserAuth* tables using Better Auth migrations.",
@@ -320,6 +330,59 @@ try {
   );
 
   const otherUser = await createUser(auth, "other-account");
+  const pushBody = {
+    binding_id: crypto.randomUUID(),
+    expected_user_id: user.id,
+    provider: "apns",
+    environment: "sandbox",
+    token: randomBytes(32).toString("hex"),
+  };
+  assert.equal((await post(auth, "push", pushBody, user.cookie)).status, 200);
+  const otherPush = {
+    ...pushBody,
+    expected_user_id: otherUser.id,
+    binding_id: crypto.randomUUID(),
+  };
+  assert.equal(
+    (await post(auth, "push", otherPush, otherUser.cookie)).status,
+    200,
+  );
+  let pushRows = await pool.query(
+    'SELECT p."id", s."userId" FROM "NativePushSubscription" p JOIN "UserAuthSession" s ON s.id = p."sessionId"',
+  );
+  assert.equal(pushRows.rows.length, 1);
+  assert.equal(pushRows.rows[0].userId, otherUser.id);
+  assert.equal(
+    (
+      await post(
+        auth,
+        "push/remove",
+        { binding_id: pushBody.binding_id },
+        user.cookie,
+      )
+    ).status,
+    200,
+  );
+  pushRows = await pool.query('SELECT "id" FROM "NativePushSubscription"');
+  assert.equal(pushRows.rows[0].id, otherPush.binding_id);
+  const otherSession = await auth.api.getSession({
+    headers: new Headers({ Cookie: otherUser.cookie }),
+  });
+  await pool.query('DELETE FROM "UserAuthSession" WHERE id = $1', [
+    otherSession.session.id,
+  ]);
+  assert.equal(
+    (await pool.query('SELECT "id" FROM "NativePushSubscription"')).rows.length,
+    0,
+  );
+  assert.equal(
+    (await post(auth, "push", otherPush, otherUser.cookie)).status,
+    401,
+  );
+  console.log(
+    "PASS: a device token has one current account; stale cleanup cannot delete its new binding, and session revocation cascades.",
+  );
+  const otherReplacement = await createUser(auth, "other-account-after-push");
   const staleConsent = handoff();
   const changedAccount = await post(
     auth,
@@ -329,7 +392,7 @@ try {
       state: staleConsent.state,
       expected_user_id: user.id,
     },
-    otherUser.cookie,
+    otherReplacement.cookie,
   );
   assert.equal(changedAccount.status, 403);
   console.log(

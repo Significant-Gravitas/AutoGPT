@@ -1,6 +1,6 @@
 # AutoGPT for Android
 
-A small native host for the existing AutoGPT website. Chat rendering, streaming, conversation history, agents, tools, and account screens remain in the web application. The app defaults to `https://platform.agpt.co/copilot`.
+A small native host for the existing AutoGPT website. Chat rendering, streaming, conversation history, agents, tools, and account screens remain in the web application. The app defaults to `https://platform.agpt.co/mobile`.
 
 The primary device target is Pixel 11 Pro, the compact flagship Android peer of iPhone 17 Pro. This project compiles against Android API 36, targets API 36, and supports Android 10/API 29 or later with an updated Android System WebView. No emulator image or Android Studio installation is required to build it.
 

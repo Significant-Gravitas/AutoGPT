@@ -1,12 +1,13 @@
 # AutoGPT mobile apps
 
-Native iOS and Android hosts for AutoGPT's existing chat interfaces. The default entry point is `https://platform.agpt.co/copilot`; navigation to other AutoGPT pages stays on the same configured website. Conversations, streaming, agents, tools, history, account settings, and onboarding remain implemented by the web application. Web improvements reach the apps without copying components or issuing an app update.
+Native iOS and Android hosts for AutoGPT's existing chat interfaces. The default entry point is `https://platform.agpt.co/mobile`, a workspace with **Chats**, **Experts**, and **Needs you**. Existing conversations reopen by session ID; choosing an expert opens their hosted chat. Questions, approvals, editable reviews, and setup prompts retain the website's controls. Web improvements reach the apps without copying components or issuing an app update.
 
 - [Build and test iOS](ios/README.md)
 - [Build and test Android](android/README.md)
 - [Native integration fixture and PostgreSQL checks](testing/README.md)
 - [Progress screenshots](screenshots/README.md)
 - [Shared native design assets and web tokens](design-system/README.md)
+- [Apple and Firebase push setup](PUSH_SETUP.md)
 
 This is a development prototype. Store publication, production deployment, release signing identities, and store privacy declarations are not configured by this change.
 
@@ -16,7 +17,13 @@ Native sign-in and server settings reuse AutoGPT's full logo, licensed Poppins a
 
 The shells manage persistent website sessions, safe URL handling, system-browser sign-in, keyboard and safe areas, Back navigation, loading/recovery, file selection, file export, and user-controlled microphone permission. General responsive-web design remains in the separate web workstream.
 
-The iOS app uses UIKit, WebKit, AuthenticationServices, and a local Swift package. Android uses the platform WebView and small AndroidX components. There is no separate chat API client, copied message renderer, or React Native/Capacitor runtime.
+The iOS app uses UIKit, WebKit, AuthenticationServices, UserNotifications, and a local Swift package. Android uses the platform WebView, AndroidX, and Firebase Messaging. There is no separate chat API client, copied message renderer, or React Native/Capacitor runtime.
+
+## Native notifications
+
+Choose **Enable notifications** in the workspace to opt in. APNs and FCM deliver generic chat updates and requests for attention; tapping opens the appropriate conversation or the current **Needs you** inbox. Notification taps never approve actions. Registrations are bound to the signed-in session and removed on session revocation. Native handlers reject taps from a previous account or server.
+
+Both providers require external configuration and remain disabled in this checkout. See [PUSH_SETUP.md](PUSH_SETUP.md) for Apple signing, Firebase build properties, backend credential mounts, lifecycle details, and the real-device delivery checklist. Local tests do not prove provider delivery.
 
 HTTPS origins can be selected explicitly for self-hosted and preview deployments. Changing servers clears the app's website session. Debug builds allow loopback HTTP for local tests; release builds require HTTPS. Only the chosen origin is trusted inside the main WebView. External web links use the system browser, and unsupported schemes are rejected.
 

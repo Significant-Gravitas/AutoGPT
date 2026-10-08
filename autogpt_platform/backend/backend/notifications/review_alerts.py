@@ -19,6 +19,7 @@ from backend.copilot.constants import AUTOPILOT_NAME, COPILOT_SESSION_PREFIX
 from backend.data import alerts as alerts_db
 from backend.data.graph import get_graph_metadata
 from backend.notifications.alert_causes import AwaitingReviewCause
+from backend.notifications.mobile_attention import notify_attention
 from backend.util.logging import TruncatedLogger
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[ReviewAlerts]")
@@ -63,6 +64,9 @@ async def sync_awaiting_review(
             return
 
         oldest = waiting[0].createdAt
+        await notify_attention(
+            user_id, f"review:{waiting[-1].nodeExecId}", chat_session_id
+        )
         if chat_session_id:
             agent = AUTOPILOT_NAME
             cta_path = f"/copilot?sessionId={quote(chat_session_id)}"

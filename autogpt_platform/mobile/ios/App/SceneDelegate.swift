@@ -26,5 +26,14 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     #endif
     self.window = window
     window.makeKeyAndVisible()
+    if let response = connectionOptions.notificationResponse {
+      let info = response.notification.request.content.userInfo
+      let data: [String: String] = Dictionary(
+        uniqueKeysWithValues: ["path", "origin", "binding_id"].compactMap {
+          (key: String) -> (String, String)? in
+          (info[key] as? String).map { (key, $0) }
+        })
+      NativePush.shared.receive(data)
+    }
   }
 }

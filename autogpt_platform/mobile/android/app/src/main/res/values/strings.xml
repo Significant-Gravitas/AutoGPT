@@ -4,7 +4,7 @@
     <string name="app_menu">AutoGPT menu</string>
     <string name="back">Go back</string>
     <string name="sign_in">Sign in</string>
-    <string name="new_chat">New chat</string>
+    <string name="new_chat">Chats, experts &amp; requests</string>
     <string name="reload">Reload</string>
     <string name="open_browser">Open in browser</string>
     <string name="settings">Server settings</string>

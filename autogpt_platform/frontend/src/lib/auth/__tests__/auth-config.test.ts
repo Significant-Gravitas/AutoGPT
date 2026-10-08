@@ -262,6 +262,7 @@ describe("auth config", () => {
       "jwt",
       "supabase-bridge",
       "mobile-auth",
+      "mobile-push",
       "next-cookies",
     ]);
   });

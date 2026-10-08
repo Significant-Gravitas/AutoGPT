@@ -71,6 +71,9 @@ jobs:
         timeout-minutes: 10
         run: |
           set -euo pipefail
+          node ../testing/server.mjs > "$RUNNER_TEMP/ios-fixture.log" 2>&1 &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
           ios_sdk="$(xcrun --sdk iphonesimulator --show-sdk-version)"
           xcrun simctl list --json > "$RUNNER_TEMP/ios-simulators.json"
           ios_runtime="$(jq -r --arg sdk "$ios_sdk" '

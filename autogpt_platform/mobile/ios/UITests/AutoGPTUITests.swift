@@ -2,6 +2,18 @@ import XCTest
 
 final class AutoGPTUITests: XCTestCase {
   @MainActor
+  func testNativePushBridgeReturnsStatusWithoutRequestingPermission() {
+    let app = XCUIApplication()
+    app.launchEnvironment["AUTOGPT_ORIGIN"] = "http://127.0.0.1:8765"
+    app.launch()
+    let check = app.webViews.buttons["Check native push"]
+    XCTAssertTrue(check.waitForExistence(timeout: 15))
+    check.tap()
+    XCTAssertTrue(app.webViews.staticTexts["Native push: disabled"].waitForExistence(timeout: 5))
+    capture("Native push bridge - disabled without permission request")
+  }
+
+  @MainActor
   func testLargeStatusActionsRemainReachableInLandscape() {
     let app = XCUIApplication()
     app.launchEnvironment["AUTOGPT_UI_TEST_SCREEN"] = "large-status"

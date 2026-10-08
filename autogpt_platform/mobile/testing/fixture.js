@@ -20,6 +20,32 @@ async function refreshSession() {
       : "HttpOnly check: fixture session cookie is not readable by page JavaScript.";
 }
 
+document.querySelector("#push-status").addEventListener("click", () => {
+  const id = crypto.randomUUID();
+  const channel =
+    window.AutoGPTPush ?? window.webkit?.messageHandlers?.AutoGPTPush;
+  if (!channel) {
+    document.querySelector("#push-result").textContent =
+      "Native push bridge unavailable";
+    return;
+  }
+  function receive(detail) {
+    if (detail.id === id)
+      document.querySelector("#push-result").textContent =
+        `Native push: ${detail.permission}`;
+  }
+  if (window.AutoGPTPush)
+    window.AutoGPTPush.onmessage = (event) => receive(JSON.parse(event.data));
+  window.addEventListener(
+    "autogpt-native-push",
+    (event) => receive(event.detail),
+    { once: true },
+  );
+  channel.postMessage(
+    JSON.stringify({ id, action: "status", account_id: "native-probe-user" }),
+  );
+});
+
 function showFiles(event) {
   const names = Array.from(
     event.target.files,

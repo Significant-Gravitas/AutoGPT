@@ -6,6 +6,7 @@ from typing import Any
 
 from backend.copilot.model import ChatSession, PendingQuestion
 from backend.data.db_accessors import chat_db
+from backend.notifications.mobile_attention import notify_attention
 
 from .base import BaseTool
 from .models import ClarificationNeededResponse, ClarifyingQuestion, ToolResponseBase
@@ -133,6 +134,11 @@ async def _mark_pending(session: ChatSession, text: str) -> None:
     try:
         await chat_db().set_session_pending_question(
             session.session_id, session.user_id, text, asked_at
+        )
+        await notify_attention(
+            session.user_id,
+            f"question:{session.session_id}:{asked_at.isoformat()}",
+            session.session_id,
         )
     except Exception as e:
         logger.warning(

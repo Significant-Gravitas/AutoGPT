@@ -16,8 +16,11 @@ import {
   BellRingIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { NativePushControl } from "@/services/push-notifications/native/NativePushControl";
+import { useNativePushState } from "@/services/push-notifications/native/useNativePush";
 
 export function NotificationToggle() {
+  const native = useNativePushState();
   const {
     isNotificationsEnabled,
     setNotificationsEnabled,
@@ -55,7 +58,7 @@ export function NotificationToggle() {
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" aria-label="Notification settings">
-          {!isNotificationsEnabled ? (
+          {!(native.available ? native.enabled : isNotificationsEnabled) ? (
             <Icon icon={BellOffIcon} className="!size-5" />
           ) : isSoundEnabled ? (
             <Icon icon={BellRingIcon} className="!size-5" />
@@ -68,30 +71,34 @@ export function NotificationToggle() {
           (overlay z-[60], content z-[70] in MobileDrawer.tsx) so the
           popover doesn't render under the drawer's blur. */}
       <PopoverContent align="start" className="z-[80] w-56 p-3">
-        <div className="flex flex-col gap-3">
-          <label className="flex items-center justify-between">
-            <span className="text-sm text-zinc-700">Notifications</span>
-            <Switch
-              checked={isNotificationsEnabled}
-              onCheckedChange={handleToggleNotifications}
-            />
-          </label>
-          <label className="flex items-center justify-between">
-            <span
-              className={cn(
-                "text-sm text-zinc-700",
-                !isNotificationsEnabled && "opacity-50",
-              )}
-            >
-              Sound
-            </span>
-            <Switch
-              checked={isSoundEnabled && isNotificationsEnabled}
-              onCheckedChange={toggleSound}
-              disabled={!isNotificationsEnabled}
-            />
-          </label>
-        </div>
+        {native.available ? (
+          <NativePushControl />
+        ) : (
+          <div className="flex flex-col gap-3">
+            <label className="flex items-center justify-between">
+              <span className="text-sm text-zinc-700">Notifications</span>
+              <Switch
+                checked={isNotificationsEnabled}
+                onCheckedChange={handleToggleNotifications}
+              />
+            </label>
+            <label className="flex items-center justify-between">
+              <span
+                className={cn(
+                  "text-sm text-zinc-700",
+                  !isNotificationsEnabled && "opacity-50",
+                )}
+              >
+                Sound
+              </span>
+              <Switch
+                checked={isSoundEnabled && isNotificationsEnabled}
+                onCheckedChange={toggleSound}
+                disabled={!isNotificationsEnabled}
+              />
+            </label>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );

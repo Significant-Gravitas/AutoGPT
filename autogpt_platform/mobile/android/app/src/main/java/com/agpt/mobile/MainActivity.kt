@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
     private var pendingError: Int? = null
     private var backCallback: OnBackPressedCallback? = null
     private val preferences by lazy { getSharedPreferences("server", MODE_PRIVATE) }
+    private val nativePush = NativePush(this)
 
     private val filePicker =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -157,7 +158,7 @@ class MainActivity : ComponentActivity() {
                 preferences.getString("origin", ServerOrigin.DEFAULT) ?: ServerOrigin.DEFAULT,
                 BuildConfig.DEBUG,
             ) ?: requireNotNull(ServerOrigin.parse(ServerOrigin.DEFAULT, false))
-        lastSafeUrl = origin.chatUrl
+        lastSafeUrl = "${origin.value}/mobile"
         auth = ViewModelProvider(this)[AuthViewModel::class.java]
         layout = BrowserLayout(this)
         setContentView(layout)
@@ -194,10 +195,10 @@ class MainActivity : ComponentActivity() {
                     } == true
             if (!restored) {
                 val candidate = savedInstanceState?.getString("last_url")
-                load(candidate?.takeIf { origin.contains(it) } ?: origin.chatUrl)
+                load(candidate?.takeIf { origin.contains(it) } ?: "${origin.value}/mobile")
             }
         }
-        if (intent?.action == Intent.ACTION_VIEW) acceptIntent(intent)
+        intent?.let { acceptIntent(it) }
         DownloadFile.cleanOldFiles(cacheDir)
     }
 
@@ -234,6 +235,20 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun acceptIntent(intent: Intent) {
+        if (intent.action == PushService.ACTION) {
+            val prefs = getSharedPreferences("push", MODE_PRIVATE)
+            val target =
+                PushTarget.url(
+                    intent.getStringExtra("push_path") ?: "",
+                    intent.getStringExtra("push_origin") ?: "",
+                    intent.getStringExtra("push_binding") ?: "",
+                    prefs.getString("binding", "") ?: "",
+                    origin,
+                )
+            intent.removeExtra("push_path")
+            if (target != null && !auth.replacingSession) load(target)
+            return
+        }
         if (intent.action != Intent.ACTION_VIEW) return
         val callback = intent.dataString ?: return
         intent.data = null
@@ -322,9 +337,11 @@ class MainActivity : ComponentActivity() {
                 }
                 .also { it.attach() }
         layout.webContainer.addView(view)
+        nativePush.attach(view, origin)
     }
 
     private fun destroyWebView(rendererGone: Boolean = false) {
+        nativePush.detach()
         cancelMicrophonePermission()
         documentGeneration++
         httpDownloads.forEach { it.cancel() }
@@ -359,6 +376,7 @@ class MainActivity : ComponentActivity() {
             }
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                nativePush.navigation()
                 documentGeneration++
                 cancelMicrophonePermission()
                 cancelFileSelection()
@@ -569,6 +587,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun showSignIn() {
+        nativePush.clear()
         pageFailed = true
         layout.showPanel(
             R.string.native_login_title,
@@ -581,6 +600,7 @@ class MainActivity : ComponentActivity() {
 
     private fun beginSignIn() {
         if (auth.replacingSession) return
+        nativePush.clear()
         if (!BrowserSession.supportsCompleteDeletion) {
             toast(R.string.update_webview)
             return
@@ -640,13 +660,13 @@ class MainActivity : ComponentActivity() {
                         BuildConfig.DEBUG,
                     ) ?: requireNotNull(ServerOrigin.parse(ServerOrigin.DEFAULT, false))
                 auth.acknowledge()
-                load(origin.chatUrl)
+                load("${origin.value}/mobile")
                 toast(R.string.session_cleared)
             }
             AuthViewModel.Status.SUCCESS -> {
                 auth.acknowledge()
                 webView?.clearHistory()
-                load(origin.chatUrl)
+                load("${origin.value}/mobile")
                 toast(R.string.signed_in)
             }
             AuthViewModel.Status.FAILED,
@@ -686,7 +706,7 @@ class MainActivity : ComponentActivity() {
                     menu.add(label).setOnMenuItemClickListener {
                         if (auth.replacingSession) return@setOnMenuItemClickListener true
                         when (label) {
-                            R.string.new_chat -> load(origin.chatUrl)
+                            R.string.new_chat -> load("${origin.value}/mobile")
                             R.string.sign_in -> beginSignIn()
                             R.string.reload -> load(lastSafeUrl)
                             R.string.open_browser -> openBrowser(lastSafeUrl)
@@ -718,6 +738,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         auth.cancel()
+        nativePush.clear()
         cancelFileSelection()
         webView?.clearCache(true)
         destroyWebView()

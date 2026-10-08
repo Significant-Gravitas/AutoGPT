@@ -91,6 +91,9 @@ class RuntimeProbe : Instrumentation() {
             verify("native_provider_save_and_cancellation") {
                 RuntimeSaveProbe(targetContext, runtime).run()
             }
+            verify("native_push_origin_and_frame_boundary") {
+                RuntimePushProbe(this, runtime).run()
+            }
             result.putString("probe_status", "PASS")
             result.putString("suite", if (fixtureOrigin == null) "platform" else "fixture")
             result.putString(

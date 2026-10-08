@@ -39,19 +39,33 @@ model AuthUser {
 }
 
 model AuthSession {
-  id             String   @id
+  id             String                  @id
   expiresAt      DateTime
-  token          String   @unique
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now()) @updatedAt
+  token          String                  @unique
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @default(now()) @updatedAt
   ipAddress      String?
   userAgent      String?
   impersonatedBy String?
   userId         String
-  user           AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           AuthUser                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nativePush     NativePushSubscription?
 
   @@index([userId])
   @@map("UserAuthSession")
+}
+
+model NativePushSubscription {
+  id          String      @id
+  sessionId   String      @unique
+  session     AuthSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  provider    String
+  token       String
+  environment String
+  origin      String
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([provider, token, environment])
 }
 
 model AuthAccount {
