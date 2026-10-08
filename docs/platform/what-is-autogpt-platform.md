@@ -63,7 +63,7 @@ The full model list — models, capabilities, context windows, and pricing — l
 * OpenAI - <https://openai.com/>
 * Anthropic - <https://www.anthropic.com/>
 * Groq - <https://groq.com/>
-* Llama - <https://llamaindex.ai/>
+* Llama - <https://www.llama.com/llama-api/>
 * AI/ML API - <https://aimlapi.com/>
   * AI/ML API provides 300+ AI models including Deepseek, Gemini, ChatGPT. The models run at enterprise-grade rate limits and uptimes.
 
@@ -73,10 +73,11 @@ We've adopted a dual-license approach to balance open collaboration with sustain
 
 * **MIT License**: The majority of the AutoGPT repository remains under this license.
 * **Polyform Shield License**: Applies to the new `autogpt_platform` folder.
+* **Docker image**: The single-container image also bundles third-party services under their own licenses, including FalkorDB under SSPL-1.0. Their license files are in the image under `/usr/share/licenses/`.
 
 This strategy allows us to share previously closed-source components, fostering a vibrant ecosystem of developers and users.
 
 ## Ready to Get Started?
 
 * **Cloud:** Read the [Getting Started (Cloud)](getting-started-cloud.md) guide to start using the hosted platform immediately.
-* **Self-Host:** Read the [Self-Hosting Guide](getting-started.md) to run the platform on your own infrastructure.
+* **Self-Host:** Run the whole platform from one Docker image, `significantgravitas/autogpt` on Docker Hub, with the [single-container guide](single-container.md) (experimental), or read the [Self-Hosting Guide](getting-started.md) to run each service with Docker Compose on your own infrastructure.

@@ -64,7 +64,9 @@ the pre-catalog behavior; your env vars stay authoritative. See
 
 ## Required environment variables
 
-In `autogpt_platform/backend/.env`:
+In `autogpt_platform/backend/.env` (for the single-container image, the same
+lines go in its `--env-file`; see
+[Run AutoGPT in One Docker Container](single-container.md#ollama-or-another-local-openai-compatible-server)):
 
 ```bash
 # Turn on the local transport
@@ -337,7 +339,7 @@ copilot_executor log for the upstream error. Common causes:
   → free RAM (stop ClamAV, raise VM memory) or pick a smaller model
 - `model "..." not found` → `ollama pull <slug>` first
 - `connection refused` → containers can't reach the host on `:11434`;
-  see "Container → host networking" above
+  see "Networking — same host, different host, or remote" above
 
 **`api_key` is `None` even though I set `OPENAI_API_KEY`** — by design.
 The local transport requires an explicit `CHAT_API_KEY` so a stray cloud

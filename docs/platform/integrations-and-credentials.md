@@ -66,4 +66,4 @@ Removing a credential can break agents, workflows, or active webhooks that refer
 
 ## Self-Hosted Credentials
 
-When self-hosting, configure deployment-level provider keys and OAuth application credentials in `autogpt_platform/backend/.env`, then connect end-user accounts from **Settings → Integrations** as needed. See the [Self-Hosting Guide](getting-started.md) for details.
+When self-hosting, configure deployment-level provider keys and OAuth application credentials as environment variables. For the [Docker Hub image](single-container.md), put them in the environment file you pass to `docker run --env-file`; for a Docker Compose or source install, put them in `autogpt_platform/backend/.env`. Register `<your AutoGPT URL>/auth/integrations/oauth_callback` (for example `http://localhost:3000/auth/integrations/oauth_callback`) as each OAuth app's redirect URI, then connect end-user accounts from **Settings → Integrations** as needed. See the [Self-Hosting Guide](getting-started.md) for details.
