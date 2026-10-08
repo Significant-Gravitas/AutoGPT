@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "skills": {
+    "design-system-migration": {
+      "source": "skills.sh",
+      "sourceUrl": "https://skills.sh/p/BCo1c0oBAtHom5It",
+      "sourceType": "well-known",
+      "computedHash": "cea0d23c0e7b099ace572188036e35be15aec9fec9ed0ffe1a19fb67f051aec4",
+      "wellKnownDigest": "sha256:9b6e9fb61537de5a74c2d62c2f432c72d86057e7afb2d161fe66952bfa285e5e"
+    },
+    "kobra-design-eng": {
+      "source": "skills.sh",
+      "sourceUrl": "https://skills.sh/p/BCo1c0oBAtHom5It",
+      "sourceType": "well-known",
+      "computedHash": "fdef3f0ee2bfa57299e712f990acfda2b7b085afa6e6421339ba23ba6bdf4ebb",
+      "wellKnownDigest": "sha256:69ff72a2e205fadcc3d0ca674c849204a5b365d65af5254b8e37593f5248083f"
+    },
+    "ui-sound-design": {
+      "source": "skills.sh",
+      "sourceUrl": "https://skills.sh/p/BCo1c0oBAtHom5It",
+      "sourceType": "well-known",
+      "computedHash": "8965196e1496a9f65e2390278b151c47f088137da0ce85ffb806b087c33bf24a",
+      "wellKnownDigest": "sha256:8a685d6a7c78d3a3827bbf4863a512f9d6d8ba40ae04350c7c201259a09c798a"
+    }
+  }
+}
