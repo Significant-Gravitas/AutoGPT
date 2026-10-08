@@ -20,6 +20,8 @@ from __future__ import annotations
 import hashlib
 import re
 
+from backend.data.skill_version_files import SkillVersionFile, version_package_hash
+
 _STOPWORDS = frozenset(
     "the a an and or to of in on for with then that this is are be as at by "
     "it its into from your you we our use using via each any all".split()
@@ -46,11 +48,15 @@ def behavior_tokens(body: str) -> list[str]:
     return sorted(tokens)
 
 
-def behavior_fingerprint(skill_name: str, body: str) -> str:
+def behavior_fingerprint(
+    skill_name: str, body: str, files: list[SkillVersionFile] | None = None
+) -> str:
     digest = hashlib.sha256()
     digest.update(skill_name.strip().lower().encode("utf-8"))
     digest.update(b"\n")
     digest.update(" ".join(behavior_tokens(body)).encode("utf-8"))
+    if files:
+        digest.update(version_package_hash("", files).encode("ascii"))
     return digest.hexdigest()
 
 

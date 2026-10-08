@@ -25,6 +25,7 @@ from backend.copilot.tools.skills import (
 from backend.data.db_accessors import skill_use_db, skill_versions_db
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_publication import VersionDraft
+from backend.data.skill_version_files import SkillVersionFile
 from backend.data.skill_versions import SkillVersionRecord
 
 from .content_checks import safe_diagnostic
@@ -160,6 +161,7 @@ async def restore_version(
     )
     draft = VersionDraft(
         content=target.content,
+        files=target.files,
         description=target.description,
         triggers=target.triggers,
         origin="restored",
@@ -175,7 +177,12 @@ async def restore_version(
     if outcome.status == "applied" and replaced is not None:
         replaced_body = _body_of(replaced)
         await _suppress_replaced_behavior(
-            user_id, expert_id, replaced, target.content, reason="undone by restore"
+            user_id,
+            expert_id,
+            replaced,
+            target.content,
+            reason="undone by restore",
+            head_files=target.files,
         )
         logger.info(
             "Restored %s to v%s for user %s (replaced v%s, %d chars)",
@@ -268,6 +275,7 @@ async def decide_proposal(
         )
     draft = VersionDraft(
         content=content,
+        files=proposal.files,
         description=proposal.description,
         triggers=proposal.triggers,
         origin="edited" if action == "apply_edited" else proposal.origin,
@@ -334,6 +342,7 @@ async def _suppress_replaced_behavior(
     head_body: str,
     *,
     reason: str,
+    head_files: list[SkillVersionFile] | None = None,
 ) -> None:
     """Suppress an automated behaviour the owner just removed."""
     if replaced.origin not in ("saved_overnight", "requested") or not replaced.content:
@@ -341,8 +350,12 @@ async def _suppress_replaced_behavior(
     replaced_body = _body_of(replaced)
     new_body = head_body
     if new_body and behavior_fingerprint(
-        replaced.skill_name, replaced_body
-    ) == behavior_fingerprint(replaced.skill_name, _body_of_text(new_body)):
+        replaced.skill_name, replaced_body, replaced.files
+    ) == behavior_fingerprint(
+        replaced.skill_name,
+        _body_of_text(new_body),
+        head_files if head_files is not None else replaced.files,
+    ):
         return
     try:
         await skill_use_db().add_suppression(
@@ -350,7 +363,7 @@ async def _suppress_replaced_behavior(
             expert_id=expert_id,
             skill_name=replaced.skill_name,
             behavior_fingerprint=behavior_fingerprint(
-                replaced.skill_name, replaced_body
+                replaced.skill_name, replaced_body, replaced.files
             ),
             behavior_tokens=behavior_tokens(replaced_body),
             evidence_fingerprints=[

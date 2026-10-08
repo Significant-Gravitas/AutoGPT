@@ -7,9 +7,17 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from backend.copilot.tools.skills import ParsedSkill
+from backend.copilot.tools.skills import (
+    MAX_BODY_CHARS,
+    MAX_DESCRIPTION_CHARS,
+    MAX_PACKAGE_FILES,
+    MAX_TRIGGER_CHARS,
+    MAX_TRIGGERS,
+    ParsedSkill,
+)
 
 from .contract import EvidenceBundle
+from .packages import LearningFile, ReviewedPackage
 
 MAX_PROPOSAL_BODY_CHARS = 12_000
 
@@ -23,6 +31,7 @@ class LearningProposal(BaseModel):
     description: str | None = None
     triggers: list[str] = Field(default_factory=list)
     body: str | None = None
+    files: list[LearningFile] | None = Field(default=None, max_length=MAX_PACKAGE_FILES)
     summary: str = Field(
         default="",
         description="One plain sentence a user reads: what changed and why.",
@@ -45,7 +54,7 @@ Decide whether the evidence supports a narrowly scoped reusable procedure.
 
 Return ONLY a JSON object with these keys:
 decision ("create" | "update" | "skip"), reason, skill_name, description,
-triggers, body, summary, supported_by, verification, limits,
+triggers, body, files, summary, supported_by, verification, limits,
 private_values_replaced.
 
 Rules:
@@ -73,6 +82,24 @@ Rules:
   near-duplicate; if an existing skill already covers it, decide "skip".
   Only update a skill with body_complete true; otherwise skip to preserve
   instructions that were not shown to you.
+- A skill is a package: keep SKILL.md as the concise entrypoint. Preserve
+  verified reusable code as scripts/, detailed guidance and fixtures as
+  references/, and templates as assets/ when they make the procedure reusable.
+  Do not force simple prose procedures into extra files or copy a transcript.
+- files contains the COMPLETE replacement set of sibling UTF-8 files, each
+  with relative_path, content, is_executable, and supported_by evidence refs.
+  Cite the source spans that contain the code/material and its checked outcome.
+  Reuse code actually visible in successful evidence; do not invent missing
+  scripts or claim that generated or modified code has been executed.
+  Parameterize private values. Include the actual verification command and
+  relevant test fixtures when the evidence provides them.
+- Reference every supporting file from the entrypoint or another included
+  file. Use relative paths and describe script inputs, outputs and checks.
+- For updates, files=null preserves all existing siblings. Replace files
+  only when package_complete=true: retain unchanged files, including their
+  executable flags, and omit a file only when deliberately removing it.
+  files=[] deliberately removes all siblings. Never replace an incomplete
+  package or infer missing/binary file contents.
 - Every step must be supported by the listed evidence refs. Prerequisites
   must be stated. "verification" must name a concrete check.
 - Review only the evidence shown. If a procedure needs an omitted or
@@ -94,7 +121,9 @@ Rules:
 
 
 def build_review_messages(
-    bundle: EvidenceBundle, existing_skills: list[ParsedSkill]
+    bundle: EvidenceBundle,
+    existing_skills: list[ParsedSkill],
+    packages: dict[str, ReviewedPackage] | None = None,
 ) -> list[dict[str, str]]:
     evidence = [
         {"ref": span.ref, "role": span.role, "outcome": span.outcome, "text": span.text}
@@ -108,6 +137,17 @@ def build_review_messages(
             "body": skill.body[:MAX_PROPOSAL_BODY_CHARS],
             "body_complete": bool(skill.body)
             and len(skill.body) <= MAX_PROPOSAL_BODY_CHARS,
+            "package_complete": bool(
+                packages and skill.name in packages and packages[skill.name].complete
+            ),
+            "files": (
+                [
+                    f.model_dump(exclude={"supported_by"})
+                    for f in packages[skill.name].files
+                ]
+                if packages and skill.name in packages
+                else []
+            ),
         }
         for skill in existing_skills
     ]
@@ -124,6 +164,9 @@ def build_review_messages(
         {
             "role": "system",
             "content": _SYSTEM_PROMPT
+            + f"\nMetadata limits: description <= {MAX_DESCRIPTION_CHARS} characters; "
+            + f"at most {MAX_TRIGGERS} triggers, each <= {MAX_TRIGGER_CHARS} characters. "
+            + f"SKILL.md body <= {MAX_BODY_CHARS} characters. Prefer a few specific discovery phrases.\n"
             + "\nResponse JSON schema (also applies when skipping):\n"
             + json.dumps(LearningProposal.model_json_schema()),
         },

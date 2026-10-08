@@ -14,6 +14,7 @@ import logging
 from backend.data.db_accessors import skill_publication_db, skill_versions_db
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_publication import VersionDraft
+from backend.data.skill_version_files import SkillVersionFile, version_package_hash
 from backend.data.skill_versions import (
     SkillHeadRecord,
     SkillVersionRecord,
@@ -38,6 +39,7 @@ async def record_registry_write(
     actor_user_id: str | None,
     summary: str,
     keep_auto_improve: bool | None,
+    files: list[SkillVersionFile] | None = None,
 ) -> SkillVersionRecord | None:
     """Append the version for a workspace write that already succeeded.
 
@@ -50,7 +52,16 @@ async def record_registry_write(
         versions = skill_versions_db()
         head = await versions.ensure_head(user_id, expert_id, skill_name)
         if head.content_hash == content_hash(rendered) and head.current_version_id:
-            return None
+            current = await versions.get_version(user_id, head.current_version_id)
+            if current is not None and (
+                files is None
+                or (
+                    current.files is not None
+                    and version_package_hash(rendered, current.files)
+                    == version_package_hash(rendered, files)
+                )
+            ):
+                return None
         auto_improve = _auto_improve_after(origin, keep_auto_improve)
         for _ in range(3):
             result = await skill_publication_db().commit_version_safe(
@@ -58,6 +69,7 @@ async def record_registry_write(
                 head=head,
                 draft=VersionDraft(
                     content=rendered,
+                    files=files,
                     description=description,
                     triggers=triggers,
                     origin=origin,

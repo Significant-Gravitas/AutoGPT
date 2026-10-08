@@ -5,6 +5,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { lineDiff, stepChanges } from "@/services/skill-learning/helpers";
 import { useState } from "react";
+import { PackageFiles } from "./PackageFiles/PackageFiles";
 
 interface Props {
   version: SkillVersionSummary | null;
@@ -81,6 +82,7 @@ export function ChangesView({ version, versions, onSelect }: Props) {
       <Button variant="ghost" size="small" onClick={() => setShowRaw(!showRaw)}>
         {showRaw ? "Hide raw diff" : "Show raw Markdown diff"}
       </Button>
+      <PackageFiles before={base?.files} after={version.files} />
       {showRaw ? (
         <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-3 text-xs text-zinc-100">
           {lineDiff(before, after) || "(no line-level differences)"}

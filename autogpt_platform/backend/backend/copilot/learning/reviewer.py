@@ -23,12 +23,13 @@ from backend.copilot.tools.skills import ParsedSkill
 from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
 
 from .contract import EvidenceBundle
+from .packages import ReviewedPackage
 from .prompts import LearningProposal, build_review_messages
 
 logger = logging.getLogger(__name__)
 
 REVIEW_TEMPERATURE = 0.1
-REVIEW_MAX_OUTPUT_TOKENS = 6144
+REVIEW_MAX_OUTPUT_TOKENS = 12_288
 REVIEW_TIMEOUT_SECONDS = 240
 
 __all__ = ["DreamLLMError", "review_evidence", "record_review_cost", "reviewer_model"]
@@ -42,11 +43,12 @@ async def review_evidence(
     config: ChatConfig,
     bundle: EvidenceBundle,
     existing_skills: list[ParsedSkill],
+    packages: dict[str, ReviewedPackage] | None = None,
 ) -> StructuredCompletion[LearningProposal]:
     """One reviewer call. Raises ``DreamLLMError`` on provider/parse failure."""
     return await structured_completion(
         model=reviewer_model(config),
-        messages=build_review_messages(bundle, existing_skills),
+        messages=build_review_messages(bundle, existing_skills, packages),
         response_model=LearningProposal,
         temperature=REVIEW_TEMPERATURE,
         max_output_tokens=REVIEW_MAX_OUTPUT_TOKENS,

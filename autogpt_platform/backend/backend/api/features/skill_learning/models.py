@@ -72,6 +72,15 @@ class SkillUseSummary(BaseModel):
     reuse_label: str = "Not yet reused"
 
 
+class SkillVersionFileSummary(BaseModel):
+    relative_path: str
+    size_bytes: int
+    sha256: str
+    is_executable: bool
+    content: str | None = None
+    content_truncated: bool = False
+
+
 class SkillVersionSummary(BaseModel):
     id: str
     skill_name: str
@@ -87,6 +96,7 @@ class SkillVersionSummary(BaseModel):
     description: str
     triggers: list[str] = Field(default_factory=list)
     body: str | None = None
+    files: list[SkillVersionFileSummary] | None = None
     evidence: list[LearningEvidenceLabel] = Field(default_factory=list)
     limits: list[str] = Field(default_factory=list)
     sources: list[LearningSourceLink] = Field(default_factory=list)

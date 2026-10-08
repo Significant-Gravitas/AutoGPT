@@ -14,14 +14,17 @@ from backend.api.features.skill_learning.models import (
     LearningHistoryItem,
     LearningSourceLink,
     SkillUseSummary,
+    SkillVersionFileSummary,
     SkillVersionSummary,
 )
 from backend.copilot import db as chat_db
 from backend.copilot.learning.chat_source import CHAT_SOURCE_KIND
 from backend.copilot.learning.retrieval import origin_label
 from backend.data import skill_learning as learning_data
+from backend.data.skill_package import file_sha256
 from backend.data.skill_reviews import LearningReviewRecord
 from backend.data.skill_use import SkillUseEventRecord
+from backend.data.skill_version_files import SkillVersionFile
 from backend.data.skill_versions import SkillVersionRecord
 
 MAX_SOURCE_LINKS = 10
@@ -118,6 +121,7 @@ async def version_summary(
         description=version.description,
         triggers=version.triggers,
         body=version.content if include_body and version.content else None,
+        files=file_previews(version.files) if include_body else None,
         evidence=evidence,
         limits=version.limits,
         sources=links,
@@ -127,6 +131,35 @@ async def version_summary(
         blocked_pattern_class=version.blocked_pattern_class,
         blocked_step=version.blocked_step,
     )
+
+
+def file_previews(
+    files: list[SkillVersionFile] | None,
+) -> list[SkillVersionFileSummary] | None:
+    if files is None:
+        return None
+    previews = []
+    remaining = 48_000
+    for file in files:
+        content = file.content
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            text = None
+        limit = min(16_000, remaining)
+        preview = text[:limit] if text is not None else None
+        remaining -= len(preview or "")
+        previews.append(
+            SkillVersionFileSummary(
+                relative_path=file.relative_path,
+                size_bytes=len(content),
+                sha256=file_sha256(content),
+                is_executable=file.is_executable,
+                content=preview,
+                content_truncated=text is not None and len(text) > limit,
+            )
+        )
+    return previews
 
 
 def use_summary(

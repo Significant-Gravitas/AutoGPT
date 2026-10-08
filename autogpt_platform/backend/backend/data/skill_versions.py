@@ -18,6 +18,11 @@ import prisma.types
 from pydantic import BaseModel, Field
 
 from backend.data.skill_learning import owner_key_for
+from backend.data.skill_version_files import (
+    SkillVersionFile,
+    parse_version_files,
+    version_files_json,
+)
 from backend.util.json import SafeJson
 
 ACTIVE_VERSION_STATES = frozenset({"ready"})
@@ -77,6 +82,7 @@ class SkillVersionRecord(BaseModel):
     version: int
     content: str
     content_hash: str
+    files: list[SkillVersionFile] | None = None
     description: str
     triggers: list[str] = Field(default_factory=list)
     origin: str
@@ -106,6 +112,7 @@ class SkillVersionRecord(BaseModel):
             version=row.version,
             content=row.content,
             content_hash=row.contentHash,
+            files=parse_version_files(row.packageFiles),
             description=row.description,
             triggers=list(row.triggers or []),
             origin=row.origin,
@@ -271,6 +278,7 @@ async def create_version(
     limits: list[str] | None = None,
     blocked_pattern_class: str | None = None,
     blocked_step: str | None = None,
+    files: list[SkillVersionFile] | None = None,
 ) -> SkillVersionRecord:
     """Append an immutable version row (numbers are monotonic per head)."""
     for _ in range(3):
@@ -286,6 +294,7 @@ async def create_version(
                     "version": number,
                     "content": content,
                     "contentHash": content_hash(content),
+                    "packageFiles": version_files_json(files),
                     "description": description,
                     "triggers": list(triggers),
                     "origin": origin,

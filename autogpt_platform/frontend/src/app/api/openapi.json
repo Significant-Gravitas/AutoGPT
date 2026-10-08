@@ -31026,6 +31026,26 @@
         "title": "SkillUseSummary",
         "description": "Reuse evidence for exactly one version. Loads are loads; an owner's\nreport is a report; only a recorded check can say \"passed checks\"."
       },
+      "SkillVersionFileSummary": {
+        "properties": {
+          "relative_path": { "type": "string", "title": "Relative Path" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "sha256": { "type": "string", "title": "Sha256" },
+          "is_executable": { "type": "boolean", "title": "Is Executable" },
+          "content": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Content"
+          },
+          "content_truncated": {
+            "type": "boolean",
+            "title": "Content Truncated",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["relative_path", "size_bytes", "sha256", "is_executable"],
+        "title": "SkillVersionFileSummary"
+      },
       "SkillVersionSummary": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -31055,6 +31075,18 @@
           "body": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Body"
+          },
+          "files": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SkillVersionFileSummary"
+                },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Files"
           },
           "evidence": {
             "items": { "$ref": "#/components/schemas/LearningEvidenceLabel" },

@@ -76,6 +76,7 @@ from backend.data.skill_package import (
     merge_packages,
     package_tree_sha256,
 )
+from backend.data.skill_version_files import SkillVersionFile
 from backend.data.skill_versions import content_hash
 from backend.data.workspace_scope import (
     EXPERT_SKILL_SCOPE_DENIED,
@@ -115,7 +116,7 @@ logger = logging.getLogger(__name__)
 # does not strain Anthropic prompt caches and does not crowd out the user's
 # turn budget.  A typical user skill line lands around 150-200 chars
 # (~50 tok), so 150 entries ≈ 7.5k tokens.  Filling every description and
-# trigger to the per-field caps below is roughly 66k tokens under the same
+# trigger display to the index caps below is roughly 66k tokens under the same
 # estimate; actual token cost varies by content and tokenizer.
 # The cap is per owner folder and per origin: what the owner saves and what
 # the platform installs (a hire's bundle, a marketplace install) each get
@@ -129,11 +130,10 @@ MAX_DESCRIPTION_CHARS = 1024
 # skill-creator's 33 KB SKILL.md, the package authors are told to copy.
 MAX_BODY_CHARS = 50_000
 # Triggers appear inline in the per-turn ``<available_skills>`` index,
-# so an unbounded list (or one huge trigger) would balloon the prefix
-# the model parses every turn.  Cap both the count and the per-entry
-# length so a misbehaving caller cannot blow the token budget.
+# so rendering bounds the combined hint separately from the saved phrases.
 MAX_TRIGGERS = 10
-MAX_TRIGGER_CHARS = 64
+MAX_TRIGGER_CHARS = 512
+MAX_INDEX_TRIGGER_CHARS = 640
 # Files a skill may carry beside its SKILL.md.  The largest package in the
 # public ``anthropics/skills`` set is 83 files, so 100 clears the ecosystem
 # with room to spare while keeping one activation's copy into the sandbox
@@ -444,8 +444,12 @@ def _validate_name(name: str) -> str | None:
 
 
 def validate_skill_content(
-    description: str, body: str, triggers: Iterable[str]
+    description: str, body: str, triggers: Iterable[str], *, name: str | None = None
 ) -> None:
+    if name is not None:
+        name_error = _validate_name(name)
+        if name_error:
+            raise ValueError(name_error)
     trigger_list = list(triggers)
     if not description:
         raise ValueError("description is required")
@@ -1064,21 +1068,8 @@ async def store_user_skills(
                 outcomes[index] = e
                 continue
             if skill.learning.version_origin is not None:
-                await record_registry_write(
-                    user_id,
-                    expert_id=expert_id,
-                    skill_name=skill.parsed.name,
-                    rendered=skill.rendered,
-                    description=skill.parsed.description,
-                    triggers=list(skill.parsed.triggers),
-                    origin=(
-                        "imported"
-                        if origin == SKILL_ORIGIN_MARKETPLACE
-                        else skill.learning.version_origin
-                    ),
-                    actor_user_id=skill.learning.actor_user_id,
-                    summary=skill.learning.summary,
-                    keep_auto_improve=skill.learning.keep_auto_improve,
+                await _record_package_history(
+                    user_id, expert_id, manager, skill, origin
                 )
             same_origin.add(skill.parsed.name)
             stored.append((index, skill.parsed.name))
@@ -1156,6 +1147,54 @@ class _PreparedSkill(NamedTuple):
     baseline: SkillBaseline | None = None
     expected_package_sha256: str | None = None
     learning: SkillWritePolicy = SkillWritePolicy()
+
+
+async def _record_package_history(
+    user_id: str,
+    expert_id: str | None,
+    manager: WorkspaceManager,
+    skill: _PreparedSkill,
+    origin: str,
+) -> None:
+    try:
+        files = await _read_package_files(
+            manager, skill_folder(expert_id), skill.parsed.name, complete=True
+        )
+        bundle = {
+            f.relative_path: f.content.decode("utf-8", errors="replace") for f in files
+        }
+        bundle["SKILL.md"] = skill.rendered
+        failure = check_skill_bundle(
+            bundle,
+            allowed_pattern_classes=skill.learning.allowed_pattern_classes,
+            seeded_values=skill.learning.seeded_secret_values,
+        )
+        if failure is not None:
+            raise SkillContentBlockedError(failure)
+        await record_registry_write(
+            user_id,
+            expert_id=expert_id,
+            skill_name=skill.parsed.name,
+            rendered=skill.rendered,
+            description=skill.parsed.description,
+            triggers=list(skill.parsed.triggers),
+            origin=(
+                "imported"
+                if origin == SKILL_ORIGIN_MARKETPLACE
+                else skill.learning.version_origin or "saved_during_work"
+            ),
+            actor_user_id=skill.learning.actor_user_id,
+            summary=skill.learning.summary,
+            keep_auto_improve=skill.learning.keep_auto_improve,
+            files=[
+                SkillVersionFile.from_content(
+                    f.relative_path, f.content, f.is_executable
+                )
+                for f in files
+            ],
+        )
+    except Exception:
+        logger.warning("[skills] package history could not be recorded", exc_info=True)
 
 
 def _prepare_skill(write: SkillWrite, origin: str) -> _PreparedSkill:
@@ -2285,6 +2324,20 @@ async def list_user_skill_files(
 MAX_BUNDLE_FILE_BYTES = 256 * 1024
 
 
+async def read_user_skill_files(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+    manager: WorkspaceManager | None = None,
+) -> list[SkillFile]:
+    manager = manager or await _get_user_skill_manager(user_id, scope)
+    return await _read_package_files(
+        manager, skill_folder(expert_id), name, complete=True
+    )
+
+
 async def read_skill_bundle_files(
     user_id: str,
     name: str,
@@ -2559,7 +2612,10 @@ def render_skills_index(skills: list[ParsedSkill]) -> str:
         return ""
     lines = []
     for s in skills:
-        trigger_hint = f" — triggers: {', '.join(s.triggers)}" if s.triggers else ""
+        trigger_text = ", ".join(s.triggers)
+        if len(trigger_text) > MAX_INDEX_TRIGGER_CHARS:
+            trigger_text = trigger_text[:MAX_INDEX_TRIGGER_CHARS].rstrip() + "…"
+        trigger_hint = f" — triggers: {trigger_text}" if trigger_text else ""
         update_hint = (
             f" — note: {_UPDATE_HINTS[s.update]}" if s.update in _UPDATE_HINTS else ""
         )
@@ -2951,6 +3007,7 @@ class LoadedSkillVersion(BaseModel):
     version_id: str | None = None
     origin: str | None = None
     origin_label: str | None = None
+    files: list[SkillVersionFile] | None = None
 
     def message(self, name: str) -> str:
         if self.version is None:
@@ -2977,13 +3034,25 @@ async def resolve_loaded_skill_version(
     head, current = resolved
     if head.use_paused_at is not None:
         raise SkillUsePausedError(name)
+    if head.current_version_id is not None and (
+        current is None or current.state != "ready"
+    ):
+        raise SkillWriteLockError("the skill version is not ready to load")
     if current is None or current.content_hash != content_hash(text):
         return LoadedSkillVersion()
+    if current.files is not None:
+        manager = await _get_user_skill_manager(user_id)
+        listed = await _list_package_files(manager, skill_folder(expert_id), name)
+        if not _matches_version_files(
+            listed, current.files, f"{skill_folder(expert_id)}/{name}/"
+        ):
+            return LoadedSkillVersion()
     return LoadedSkillVersion(
         version=current.version,
         version_id=current.id,
         origin=current.origin,
         origin_label=origin_label(current.origin),
+        files=current.files,
     )
 
 
@@ -3139,14 +3208,6 @@ class ReadSkillTool(BaseTool):
                 error="skill_registry_unavailable",
                 session_id=session_id,
             )
-        await record_skill_loaded(
-            user_id,
-            owner.expert_id,
-            name,
-            version_id=loaded.version_id,
-            session_id=session_id,
-        )
-
         # List the package files (references/, scripts/, assets/, ...) so
         # the model knows what else lives in the bundle.
         folder = skill_folder(owner.expert_id)
@@ -3159,6 +3220,15 @@ class ReadSkillTool(BaseTool):
             )
             package_files = []
             listed = False
+
+        if loaded.files is not None and not _matches_version_files(
+            package_files, loaded.files, f"{folder}/{name}/"
+        ):
+            return ErrorResponse(
+                message="The skill package changed while loading; retry read_skill.",
+                error="skill_changed",
+                session_id=session_id,
+            )
 
         notes: list[str] = []
         # A listing that failed is not an empty package: treating it as one
@@ -3179,6 +3249,7 @@ class ReadSkillTool(BaseTool):
             slug=name,
             session_id=session_id,
             complete=complete,
+            version_files=loaded.files,
         )
         if warning:
             notes.append(warning)
@@ -3189,6 +3260,13 @@ class ReadSkillTool(BaseTool):
                 "directory."
             )
 
+        await record_skill_loaded(
+            user_id,
+            owner.expert_id,
+            name,
+            version_id=loaded.version_id,
+            session_id=session_id,
+        )
         return ReadSkillResponse(
             name=parsed.name,
             description=parsed.description,
@@ -3496,6 +3574,18 @@ class _CopiedFile(NamedTuple):
 _COPY_CONCURRENCY = 16
 
 
+def _matches_version_files(
+    files: list[SkillFileInfo], snapshot: list[SkillVersionFile], prefix: str
+) -> bool:
+    actual = {f.path: (f.checksum, f.is_executable) for f in files}
+    expected = {
+        prefix
+        + f.relative_path: (hashlib.sha256(f.content).hexdigest(), f.is_executable)
+        for f in snapshot
+    }
+    return actual == expected
+
+
 async def _sync_skill_package(
     manager: WorkspaceManager,
     files: list[SkillFileInfo],
@@ -3504,6 +3594,7 @@ async def _sync_skill_package(
     slug: str,
     session_id: str,
     complete: bool,
+    version_files: list[SkillVersionFile] | None = None,
 ) -> tuple[str | None, str | None]:
     """Make the turn's working directory match the skill's package.
 
@@ -3519,6 +3610,11 @@ async def _sync_skill_package(
     package_dir = f"{workdir}/skills/{slug}"
     manifest_path = f"{workdir}/{_MANIFEST_DIR}/{slug}.json"
     prefix = f"{folder}/{slug}/"
+    frozen = (
+        {f.relative_path: f.content for f in version_files}
+        if version_files is not None
+        else None
+    )
     manifest = await _read_package_manifest(manifest_path, session_id)
     limit = asyncio.Semaphore(_COPY_CONCURRENCY)
 
@@ -3538,7 +3634,11 @@ async def _sync_skill_package(
             return _CopiedFile(relative, info.checksum, executable, None)
         async with limit:
             try:
-                content = await manager.read_file(info.path)
+                content = (
+                    frozen[relative]
+                    if frozen is not None
+                    else await manager.read_file(info.path)
+                )
             except Exception:
                 logger.warning("[skills] failed to read %s", info.path, exc_info=True)
                 return None

@@ -80,6 +80,29 @@ produced by an owner's report.
 
 ## Controls
 
+Learned skills can contain a concise `SKILL.md` entrypoint together with
+reusable scripts, reference material, fixtures, and templates. The reviewer
+uses code and material visible in verified evidence, and records the limits
+of what was checked. A simple procedure can remain a single Markdown file.
+Supporting files are saved with the immutable version, so retrying a save,
+applying an update, or restoring a version preserves the corresponding
+package. Older versions created before file snapshots were introduced
+retain their existing Markdown-only restore behavior.
+
+The Changes and decision views show added, changed, and removed package
+files with bounded text previews. The instructions editor changes the
+entrypoint; supporting file changes shown in a proposal are retained when
+applying an edited alternative. New scripts are not executed automatically
+during dreaming. A later task loads the package into its working directory
+and runs the applicable checks.
+
+Discovery triggers may contain up to 512 characters each. The per-turn
+index displays a shortened combined hint when necessary; the full phrases
+remain in the saved skill. Metadata and package constraints are checked
+before a version is committed. A temporary storage failure retries the saved
+package without another review; a permanent validation failure is settled
+instead of retried indefinitely.
+
 - **Expert page → Skills**: a recent-change line, per-skill learning lines,
   and a detail sheet with Summary, Changes (before/after by step, with the
   raw Markdown diff on request), Sources, and History. The sheet offers

@@ -1604,6 +1604,8 @@ model SkillVersion {
   // Full rendered SKILL.md for this version (frontmatter + body).
   content     String
   contentHash String
+  // Null for legacy Markdown-only versions; [] is an explicitly empty package.
+  packageFiles Json?
   description String
   triggers    String[] @default([])
 

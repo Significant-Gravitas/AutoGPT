@@ -17,6 +17,7 @@ from backend.copilot.learning.chat_source import CHAT_SOURCE_KIND
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.tools.skills import ParsedSkill, render_skill_markdown
 from backend.data.skill_publication import VersionDraft
+from backend.data.skill_version_files import SkillVersionFile
 
 from . import routes, views
 from .routes import router
@@ -58,7 +59,7 @@ def store(monkeypatch, test_user_id):
     monkeypatch.setattr(publish, "invalidate_skills_index_cache", AsyncMock())
     monkeypatch.setattr(publish, "store_user_skill", AsyncMock())
     monkeypatch.setattr(owner_actions, "store_user_skill", AsyncMock())
-    monkeypatch.setattr(publish, "read_skill_bundle_files", AsyncMock(return_value={}))
+    monkeypatch.setattr(publish, "read_user_skill_files", AsyncMock(return_value=[]))
     monkeypatch.setattr(
         owner_actions, "read_user_skill_with_body", AsyncMock(return_value=None)
     )
@@ -204,6 +205,49 @@ def test_foreign_expert_scope_is_not_found(store):
         "/skill-learning/skills/csv-import-checks", params={"expert_id": "other"}
     )
     assert resp.status_code == 404
+
+
+def test_version_file_previews_remain_in_the_owner_scope(store, test_user_id):
+    _, version = run(_publish(store, test_user_id))
+    file = SkillVersionFile.from_content(
+        "scripts/check.py", b"print('verified package')\n", True
+    )
+    store.versions[version.id] = version.model_copy(update={"files": [file]})
+    response = client.get(
+        "/skill-learning/skills/csv-import-checks", params={"expert_id": EXPERT}
+    )
+    assert response.status_code == 200
+    assert (
+        response.json()["current_version"]["files"][0]["content"]
+        == "print('verified package')\n"
+    )
+    _, foreign = run(_publish(store, "foreign-user"))
+    store.versions[foreign.id] = foreign.model_copy(
+        update={
+            "files": [
+                SkillVersionFile.from_content(
+                    "scripts/private.py", b"foreign-script-marker"
+                )
+            ]
+        }
+    )
+    denied = client.get(
+        "/skill-learning/skills/csv-import-checks",
+        params={"expert_id": EXPERT, "version_id": foreign.id},
+    )
+    assert denied.status_code == 404
+    assert "foreign-script-marker" not in denied.text
+
+
+def test_package_previews_bound_text_and_preserve_binary_metadata():
+    files = [
+        SkillVersionFile.from_content("references/large.md", b"x" * 50_000),
+        SkillVersionFile.from_content("assets/template.bin", b"\xff"),
+    ]
+    previews = views.file_previews(files)
+    assert previews[0].content_truncated and len(previews[0].content) == 16_000
+    assert previews[0].size_bytes == 50_000
+    assert previews[1].content is None and previews[1].size_bytes == 1
 
 
 def test_restore_creates_a_new_version_and_history_shows_it(store, test_user_id):

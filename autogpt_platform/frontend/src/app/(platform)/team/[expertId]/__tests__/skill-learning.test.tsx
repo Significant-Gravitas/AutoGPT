@@ -582,6 +582,55 @@ describe("exact version review", () => {
   });
 });
 
+test("shows changed package scripts before an owner accepts a proposal", async () => {
+  const before = {
+    relative_path: "scripts/check.py",
+    size_bytes: 18,
+    sha256: "before",
+    is_executable: true,
+    content: "print('old check')",
+    content_truncated: false,
+  };
+  const after = {
+    ...before,
+    sha256: "after",
+    content: "print('verified new check')",
+  };
+  const proposal = version({
+    id: "proposal-files",
+    version: 3,
+    state: "needs_decision",
+    state_label: "Needs your decision",
+    base_version_id: v2.id,
+    files: [after],
+  });
+  server.use(
+    getGetSkillLearningDetailMockHandler200({
+      ...detail,
+      current_version: { ...v2, files: [before] },
+      open_decision: proposal,
+      versions: [proposal, { ...v2, files: [before] }, v1],
+    }),
+  );
+  searchParams.set("tab", "skills");
+  searchParams.set("skill", "csv-import-checks");
+  render(<ExpertDetailPage />);
+  const panel = await screen.findByRole("complementary", {
+    name: "csv-import-checks",
+  });
+  const changes = await within(panel).findByRole("region", {
+    name: "Package file changes",
+  });
+  await userEvent.click(within(changes).getByText("scripts/check.py"));
+  expect(within(changes).getByText("print('old check')")).toBeDefined();
+  expect(
+    within(changes).getByText("print('verified new check')"),
+  ).toBeDefined();
+  expect(
+    within(panel).getByRole("button", { name: "Apply change" }),
+  ).toBeDefined();
+});
+
 describe("recovering an unfinished edit", () => {
   test("keeps the procedure, description, and improvement choice after closing the panel", async () => {
     render(<ExpertDetailPage />);

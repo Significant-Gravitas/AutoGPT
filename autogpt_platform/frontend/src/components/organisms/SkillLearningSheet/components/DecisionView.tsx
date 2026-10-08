@@ -9,6 +9,7 @@ import {
   stepChanges,
   stripFrontmatter,
 } from "@/services/skill-learning/helpers";
+import { PackageFiles } from "./PackageFiles/PackageFiles";
 
 interface Props {
   proposal: SkillVersionSummary;
@@ -60,6 +61,7 @@ export function DecisionView({
           </li>
         ))}
       </ul>
+      <PackageFiles before={current?.files} after={proposal.files} />
       {hasPreviousDraft && !draft ? (
         <div className="flex flex-col gap-2">
           <Text variant="small" tone="secondary">

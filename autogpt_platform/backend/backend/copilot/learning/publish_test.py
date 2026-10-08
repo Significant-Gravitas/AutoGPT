@@ -69,7 +69,7 @@ def workspace(monkeypatch):
     write = AsyncMock()
     monkeypatch.setattr(publish, "store_user_skill", write)
     monkeypatch.setattr(owner_actions, "store_user_skill", write)
-    monkeypatch.setattr(publish, "read_skill_bundle_files", AsyncMock(return_value={}))
+    monkeypatch.setattr(publish, "read_user_skill_files", AsyncMock(return_value=[]))
     monkeypatch.setattr(
         owner_actions, "read_user_skill_with_body", AsyncMock(return_value=None)
     )

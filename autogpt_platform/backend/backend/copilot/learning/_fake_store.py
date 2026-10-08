@@ -28,6 +28,7 @@ from backend.data.skill_publication import (
 )
 from backend.data.skill_reviews import LearningReviewRecord, LearningRunSummary
 from backend.data.skill_use import SkillSuppressionRecord, SkillUseEventRecord
+from backend.data.skill_version_files import SkillVersionFile
 from backend.data.skill_versions import (
     PENDING_WRITE_STATE,
     SkillHeadRecord,
@@ -447,6 +448,7 @@ class FakeLearningStore:
         limits: list[str] | None = None,
         blocked_pattern_class: str | None = None,
         blocked_step: str | None = None,
+        files: list[SkillVersionFile] | None = None,
     ) -> SkillVersionRecord:
         version = SkillVersionRecord(
             id=str(uuid.uuid4()),
@@ -458,6 +460,7 @@ class FakeLearningStore:
             version=self._next_number(head.id),
             content=content,
             content_hash=content_hash(content),
+            files=files,
             description=description,
             triggers=list(triggers),
             origin=origin,
@@ -531,6 +534,7 @@ class FakeLearningStore:
             user_id,
             head=live,
             content=draft.content,
+            files=draft.files,
             description=draft.description,
             triggers=draft.triggers,
             origin=draft.origin,
@@ -608,7 +612,13 @@ class FakeLearningStore:
             )
 
     async def abandon_publication(
-        self, user_id: str, *, version_id: str, review_id: str | None, reason: str
+        self,
+        user_id: str,
+        *,
+        version_id: str,
+        review_id: str | None,
+        reason: str,
+        disposition: str = "conflict",
     ) -> None:
         version = self.versions.get(version_id)
         if (
@@ -624,7 +634,7 @@ class FakeLearningStore:
             key, review = found
             self.reviews[key] = review.model_copy(
                 update={
-                    "disposition": "conflict",
+                    "disposition": disposition,
                     "reason": reason,
                     "completed_at": _now(),
                 }

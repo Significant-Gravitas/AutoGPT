@@ -50,6 +50,7 @@ from .dispositions import (
     settle_ineligible,
     settle_outcome,
 )
+from .packages import load_reviewed_packages
 from .proposal import build_publish_request, validate_proposal
 from .publish import publish_learned_version, reconcile_pending
 from .reviewer import DreamLLMError, record_review_cost, review_evidence
@@ -250,8 +251,9 @@ async def _process_source(
             advance=False,
         )
     existing = await _existing_skills(user_id, source.scope.expert_id)
+    packages = await load_reviewed_packages(user_id, source.scope.expert_id, existing)
     try:
-        completion = await review_evidence(config, bundle, existing)
+        completion = await review_evidence(config, bundle, existing, packages)
     except DreamLLMError as exc:
         return await record_provider_error(user_id, source, result, exc, config)
     result.model_calls += 1
@@ -280,7 +282,7 @@ async def _process_source(
             stamp=stamp,
         )
     proposal = completion.value
-    rejection = validate_proposal(proposal, bundle, existing)
+    rejection = validate_proposal(proposal, bundle, existing, packages)
     if rejection is not None:
         disposition = "no_novel_procedure" if proposal.decision == "skip" else "skipped"
         return await settle(
@@ -292,7 +294,7 @@ async def _process_source(
             stamp=stamp,
         )
 
-    request = build_publish_request(user_id, source, proposal, bundle, stamp)
+    request = build_publish_request(user_id, source, proposal, bundle, stamp, packages)
     outcome = await publish_learned_version(request)
     return await settle_outcome(user_id, source, result, outcome, stamp, request)
 

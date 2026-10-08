@@ -68,7 +68,7 @@ Only the sample fixture was checked.
 
 
 async def _persist_turn(
-    session: ChatSession, offset: int, request: str
+    session: ChatSession, offset: int, request: str, tool_arguments: str = "{}"
 ) -> list[ChatMessage]:
     tool_id = str(uuid4())
     response = BashExecResponse(
@@ -84,7 +84,7 @@ async def _persist_turn(
                 {
                     "id": tool_id,
                     "type": "function",
-                    "function": {"name": "bash_exec", "arguments": "{}"},
+                    "function": {"name": "bash_exec", "arguments": tool_arguments},
                 }
             ],
         ),

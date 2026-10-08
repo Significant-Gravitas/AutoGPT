@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.skill_learning import LearningSourceRecord, canonical_revision
 from backend.data.skill_reviews import review_data, upsert_review_in
+from backend.data.skill_version_files import SkillVersionFile, version_files_json
 from backend.data.skill_versions import (
     PENDING_WRITE_STATE,
     SkillHeadRecord,
@@ -40,6 +41,7 @@ class VersionDraft(BaseModel):
     """Everything needed to append one version row."""
 
     content: str
+    files: list[SkillVersionFile] | None = None
     description: str
     triggers: list[str] = Field(default_factory=list)
     origin: str
@@ -109,6 +111,7 @@ async def commit_version(
                     "version": number,
                     "content": draft.content,
                     "contentHash": content_hash(draft.content),
+                    "packageFiles": version_files_json(draft.files),
                     "description": draft.description,
                     "triggers": list(draft.triggers),
                     "origin": draft.origin,
@@ -282,7 +285,12 @@ async def complete_publication(
 
 
 async def abandon_publication(
-    user_id: str, *, version_id: str, review_id: str | None, reason: str
+    user_id: str,
+    *,
+    version_id: str,
+    review_id: str | None,
+    reason: str,
+    disposition: str = "conflict",
 ) -> None:
     """A pending version that can no longer be written: stale, and the
     ledger records the conflict so the source is reviewed again later."""
@@ -294,7 +302,7 @@ async def abandon_publication(
         await prisma.models.SkillLearningReview.prisma().update_many(
             where={"id": review_id, "userId": user_id},
             data={
-                "disposition": "conflict",
+                "disposition": disposition,
                 "reason": reason[:2000],
                 "completedAt": datetime.now(timezone.utc),
             },

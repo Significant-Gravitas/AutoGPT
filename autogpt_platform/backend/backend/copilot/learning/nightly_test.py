@@ -146,7 +146,7 @@ def boundaries(monkeypatch):
     monkeypatch.setattr(nightly, "_existing_skills", AsyncMock(return_value=[]))
     monkeypatch.setattr(dispositions, "link_version_to_memory", memory)
     monkeypatch.setattr(publish, "store_user_skill", write)
-    monkeypatch.setattr(publish, "read_skill_bundle_files", AsyncMock(return_value={}))
+    monkeypatch.setattr(publish, "read_user_skill_files", AsyncMock(return_value=[]))
     monkeypatch.setattr(
         publish, "read_user_skill_markdown", AsyncMock(return_value=None)
     )

@@ -18,22 +18,22 @@ policy — a queued proposal never publishes on a stale snapshot.
 from __future__ import annotations
 
 import logging
-from typing import Literal
-
-from pydantic import BaseModel, Field
 
 from backend.copilot.tools.skills import (
     ExpectedHead,
     ParsedSkill,
     SkillContentBlockedError,
+    SkillFile,
+    SkillPackage,
     SkillVersionConflictError,
     canonicalize_skill,
     invalidate_skills_index_cache,
     parse_skill_markdown,
-    read_skill_bundle_files,
+    read_user_skill_files,
     read_user_skill_markdown,
     render_skill_markdown,
     store_user_skill,
+    validate_package,
 )
 from backend.data.db_accessors import (
     skill_publication_db,
@@ -42,19 +42,15 @@ from backend.data.db_accessors import (
 )
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_publication import ReviewStamp, VersionDraft
+from backend.data.skill_version_files import version_package_hash
 from backend.data.skill_versions import (
     SkillHeadRecord,
     SkillVersionRecord,
     content_hash,
 )
 
-from .content_checks import check_metadata, check_skill_bundle
-from .contract import (
-    ApprovalCheckpoint,
-    LearningScope,
-    check_approval_precondition,
-    get_source_adapter,
-)
+from .content_checks import check_metadata, check_skill_bundle, safe_diagnostic
+from .contract import LearningScope, check_approval_precondition, get_source_adapter
 from .fingerprint import (
     UNCERTAIN_EQUIVALENCE_THRESHOLD,
     behavior_fingerprint,
@@ -62,66 +58,13 @@ from .fingerprint import (
     token_overlap,
 )
 from .history import record_registry_write
+from .packages import restore_files, snapshot_files
+from .publication_models import PublishOutcome, PublishRequest
+from .publication_models import PublishStatus as PublishStatus
+from .publication_models import SourceSnapshot
+from .publication_validation import _validate_request, _validate_version_content
 
 logger = logging.getLogger(__name__)
-
-PublishStatus = Literal[
-    "applied",
-    "needs_decision",
-    "conflict",
-    "stale_eligibility",
-    "blocked_content",
-    "suppressed",
-    "paused",
-    "write_failed",
-]
-
-
-class SourceSnapshot(BaseModel):
-    """The eligibility snapshot a proposal was reviewed under."""
-
-    source_id: str
-    source_kind: str
-    source_ref: str
-    revision: str
-    # ``None`` for a snapshot rebuilt from stored version dependencies: the
-    # live epoch is then adopted and only state + revision are checked.
-    epoch: int | None
-    approval: ApprovalCheckpoint | None = None
-
-    def as_dependency(self) -> dict[str, object]:
-        return {
-            "source_id": self.source_id,
-            "source_kind": self.source_kind,
-            "source_ref": self.source_ref,
-            "revision": self.revision,
-            "epoch": self.epoch,
-        }
-
-
-class PublishRequest(BaseModel):
-    user_id: str
-    expert_id: str | None
-    skill_name: str
-    description: str
-    triggers: list[str] = Field(default_factory=list)
-    body: str
-    summary: str
-    origin: str
-    sources: list[SourceSnapshot] = Field(default_factory=list)
-    evidence: list[dict[str, str]] = Field(default_factory=list)
-    limits: list[str] = Field(default_factory=list)
-    supported_refs: list[str] = Field(default_factory=list)
-    review: ReviewStamp | None = None
-
-
-class PublishOutcome(BaseModel):
-    status: PublishStatus
-    version: SkillVersionRecord | None = None
-    reason: str = ""
-    pattern_class: str | None = None
-    blocked_step: str | None = None
-
 
 # ---------------------------------------------------------------------------
 # Automated publication (nightly / requested)
@@ -152,12 +95,33 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
             pattern_class=metadata_failure.pattern_class,
             blocked_step=metadata_failure.step,
         )
+    invalid = _validate_request(request)
+    if invalid is not None:
+        return invalid
     current_text = await read_user_skill_markdown(
         request.user_id, request.skill_name, expert_id=request.expert_id
     )
     current = parse_skill_markdown(current_text) if current_text else None
+    current_files = await read_user_skill_files(
+        request.user_id, request.skill_name, expert_id=request.expert_id
+    )
+    if (
+        request.expected_package_hash is not None
+        and version_package_hash(current_text or "", snapshot_files(current_files))
+        != request.expected_package_hash
+    ):
+        return PublishOutcome(
+            status="conflict", reason="the skill package changed after review"
+        )
     if current_text:
-        failure = check_skill_bundle({"SKILL.md": current_text})
+        previous_bundle = {
+            f.relative_path: f.content.decode("utf-8", errors="replace")
+            for f in current_files
+        }
+        previous_bundle["SKILL.md"] = current_text
+        failure = check_metadata(
+            {str(i): f.relative_path for i, f in enumerate(current_files)}
+        ) or check_skill_bundle(previous_bundle)
         if failure is not None:
             return PublishOutcome(
                 status="blocked_content",
@@ -176,7 +140,14 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
         )
     )
     rendered = render_skill_markdown(parsed)
-    blocked = await _check_bundle(request, rendered)
+    files = current_files if request.files is None else request.files
+    try:
+        validate_package(SkillPackage(skill_md=rendered, files=files))
+    except ValueError as exc:
+        return PublishOutcome(
+            status="invalid_proposal", reason=safe_diagnostic(str(exc))
+        )
+    blocked = await _check_bundle(request, rendered, files)
     if blocked is not None:
         return blocked
 
@@ -196,6 +167,7 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
             actor_user_id=None,
             summary="Existing skill preserved before learning",
             keep_auto_improve=False,
+            files=snapshot_files(current_files),
         )
         head = await versions.ensure_head(
             request.user_id, request.expert_id, request.skill_name
@@ -208,7 +180,7 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
     if head.learning_paused_at is not None:
         return PublishOutcome(status="paused", reason="learning paused for this skill")
 
-    suppression = await _check_suppression(request, head)
+    suppression = await _check_suppression(request, head, files)
     if suppression is not None and suppression.status == "suppressed":
         return suppression
 
@@ -222,6 +194,7 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
 
     draft = VersionDraft(
         content=rendered,
+        files=snapshot_files(files),
         description=request.description,
         triggers=request.triggers,
         origin=request.origin,
@@ -237,13 +210,14 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
 
 
 async def _check_bundle(
-    request: PublishRequest, rendered: str
+    request: PublishRequest, rendered: str, files: list[SkillFile]
 ) -> PublishOutcome | None:
-    bundle = await read_skill_bundle_files(
-        request.user_id, request.skill_name, expert_id=request.expert_id
-    )
+    bundle = {
+        f.relative_path: f.content.decode("utf-8", errors="replace") for f in files
+    }
+    failure = check_metadata({str(i): f.relative_path for i, f in enumerate(files)})
     bundle["SKILL.md"] = rendered
-    failure = check_skill_bundle(bundle)
+    failure = failure or check_skill_bundle(bundle)
     if failure is None:
         return None
     # Record the blocked attempt without any rejected content: history can
@@ -278,10 +252,12 @@ async def _check_bundle(
 
 
 async def _check_suppression(
-    request: PublishRequest, head: SkillHeadRecord
+    request: PublishRequest, head: SkillHeadRecord, files: list[SkillFile]
 ) -> PublishOutcome | None:
     """Exact match → suppressed; uncertain overlap → must become a proposal."""
-    fingerprint = behavior_fingerprint(request.skill_name, request.body)
+    fingerprint = behavior_fingerprint(
+        request.skill_name, request.body, snapshot_files(files)
+    )
     exact = await skill_use_db().find_suppression(
         request.user_id, head.owner_key, request.skill_name, fingerprint
     )
@@ -362,7 +338,32 @@ async def _record_untracked_edit(
     raw = await read_user_skill_markdown(
         request.user_id, request.skill_name, expert_id=request.expert_id
     )
-    if raw is None or content_hash(raw) == head.content_hash:
+    if raw is None:
+        return None
+    files = snapshot_files(
+        await read_user_skill_files(
+            request.user_id, request.skill_name, expert_id=request.expert_id
+        )
+    )
+    package_hash = version_package_hash(raw, files)
+    if (
+        request.expected_package_hash is not None
+        and package_hash != request.expected_package_hash
+    ):
+        return PublishOutcome(
+            status="conflict", reason="the skill package changed after review"
+        )
+    tracked = (
+        await skill_versions_db().get_version(request.user_id, head.current_version_id)
+        if head.current_version_id
+        else None
+    )
+    files_match = (
+        tracked is None
+        or tracked.files is None
+        or version_package_hash(tracked.content, tracked.files) == package_hash
+    )
+    if content_hash(raw) == head.content_hash and files_match:
         return None
     current = parse_skill_markdown(raw, fallback_name=request.skill_name)
     if current is None:
@@ -421,6 +422,7 @@ async def _file_proposal(
         request.user_id,
         head=head,
         content=draft.content,
+        files=draft.files,
         description=draft.description,
         triggers=draft.triggers,
         origin=draft.origin,
@@ -443,6 +445,9 @@ async def commit_and_write(
     *,
     auto_improve: bool | None = None,
 ) -> PublishOutcome:
+    invalid = _validate_version_content(draft.content, draft.files)
+    if invalid is not None:
+        return invalid
     result = await skill_publication_db().commit_version_safe(
         user_id,
         head=head,
@@ -466,6 +471,16 @@ async def write_committed_version(
     a newer human correction is abandoned instead of putting its older
     bytes on top of that correction.
     """
+    invalid = _validate_version_content(version.content, version.files)
+    if invalid is not None:
+        await skill_publication_db().abandon_publication(
+            user_id,
+            version_id=version.id,
+            review_id=review_id,
+            reason=invalid.reason,
+            disposition="skipped",
+        )
+        return invalid
     parsed = parse_skill_markdown(version.content, fallback_name=version.skill_name)
     if parsed is None:
         await skill_publication_db().abandon_publication(
@@ -486,6 +501,7 @@ async def write_committed_version(
             expert_id=version.expert_id,
             version_origin=None,
             expected_head=ExpectedHead(version_id=version.id),
+            files=restore_files(version.files) if version.files is not None else None,
         )
     except SkillContentBlockedError as exc:
         await skill_publication_db().abandon_publication(

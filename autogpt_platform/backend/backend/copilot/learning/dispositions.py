@@ -115,6 +115,8 @@ async def settle_outcome(
 ) -> str:
     fingerprint = behavior_fingerprint(request.skill_name, request.body)
     reason = safe_diagnostic(outcome.reason)
+    if outcome.status == "invalid_proposal":
+        return await settle(user_id, source, result, "skipped", reason, stamp=stamp)
     # Rejected metadata is never persisted: a blocked outcome records only
     # the safe diagnostic, not the model-written skill name.
     skill_name = None if outcome.status == "blocked_content" else request.skill_name

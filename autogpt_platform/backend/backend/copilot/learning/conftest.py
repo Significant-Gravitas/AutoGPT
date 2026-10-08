@@ -6,6 +6,8 @@ not spin the full backend. The DB-backed integration tests for the learning
 data layer live under ``backend/data`` and use the real server fixture.
 """
 
+from unittest.mock import AsyncMock
+
 import pytest
 import pytest_asyncio
 
@@ -28,6 +30,14 @@ def fake_store(monkeypatch):
     from backend.copilot.learning._fake_store import FakeLearningStore
 
     store = FakeLearningStore()
+    monkeypatch.setattr(
+        "backend.copilot.learning.publish.read_user_skill_files",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        "backend.copilot.learning.nightly.load_reviewed_packages",
+        AsyncMock(return_value={}),
+    )
     modules = (
         "retrieval",
         "history",
