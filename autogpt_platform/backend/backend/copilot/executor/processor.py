@@ -19,7 +19,7 @@ from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import set_turn_unattended
 from backend.copilot.credential_selection import set_turn_credential_pins
-from backend.copilot.engine import resolve_use_sdk
+from backend.copilot.engine import resolve_use_pai, resolve_use_sdk
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
@@ -31,6 +31,7 @@ from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
+from backend.copilot.turn_lease import TurnLease
 from backend.data.model import OAuth2Credentials
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
@@ -423,12 +424,21 @@ class CoPilotProcessor:
         )
         log.info("Starting execution")
         start_time = time.monotonic()
+        # Before the turn publishes anything: its first publish marks it
+        # claimed, and a claimed turn without a lease reads as dead.
+        lease = TurnLease(entry.turn_id, str(cluster_lock.owner_id))
+        lease.acquire()
         try:
-            self._execute(entry, cancel, cluster_lock, log)
+            self._execute(entry, cancel, cluster_lock, log, lease=lease)
         finally:
-            sync_fail_close_session(
-                entry.session_id, entry.turn_id, log, self.execution_loop
-            )
+            try:
+                sync_fail_close_session(
+                    entry.session_id, entry.turn_id, log, self.execution_loop
+                )
+            finally:
+                # After the fail-close: by then the turn no longer reads as
+                # running, so the lease going cannot make it look dead.
+                lease.release()
             elapsed = time.monotonic() - start_time
             log.info(f"Execution completed in {elapsed:.2f}s")
 
@@ -438,6 +448,7 @@ class CoPilotProcessor:
         cancel: threading.Event,
         cluster_lock: ClusterLock,
         log: CoPilotLogMetadata,
+        lease: TurnLease | None = None,
     ):
         """Submit the async turn to ``self.execution_loop`` and drive it.
 
@@ -532,6 +543,8 @@ class CoPilotProcessor:
                         return
                     log_cancel_wait()
                 cluster_lock.refresh()
+                if lease is not None:
+                    lease.refresh()
 
     async def _execute_async(
         self,
@@ -713,6 +726,17 @@ class CoPilotProcessor:
                         else stream_chat_completion_baseline
                     )
                     log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
+                    # --- pai engine: opt-in third branch, off by default.
+                    # Building-mode sessions stay pinned to the SDK. ---
+                    if await resolve_use_pai(entry.session_id) and not (
+                        use_sdk and await _building_mode_forces_sdk(entry.session_id)
+                    ):
+                        from backend.copilot.pai.service import (
+                            stream_chat_completion_pai,
+                        )
+
+                        stream_fn = stream_chat_completion_pai
+                        log.info("Using pai (Pydantic AI) service")
 
             await cost_context_stack.enter_async_context(
                 trial_cost_context(entry.user_id)

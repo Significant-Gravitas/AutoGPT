@@ -15,14 +15,8 @@ import type { ExpertKickoffMetadata } from "./expertKickoff";
  * - lastSubmittedMessageText: blocks duplicate POSTs on resume. Meaningful
  *   across visits.
  *
- * (Previously also tracked `lastChunkId` as a cursor for incremental resume
- * via `?last_chunk_id=…`. That optimisation is unsafe with AI SDK v5's
- * `UIMessageStream` parser — it throws `UIMessageStreamError` on any
- * `*-delta` / `*-end` whose `*-start` predecessor is missing from its
- * parser-local `activeTextParts` / `activeReasoningParts` state, and a
- * cursor-based XREAD skips the envelope + `*-start` chunks at the top of the
- * turn. Every resume now replays from `0-0`; overlap is handled by
- * `deduplicateMessages` on the consumer side.)
+ * (The resume cursor is not kept here: the turn stream holds it for the
+ * life of the turn, see `stream/turnStream.ts`.)
  */
 export interface SessionCoord {
   lastSubmittedMessageText: string | null;

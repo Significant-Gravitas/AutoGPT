@@ -90,18 +90,22 @@ export function resolveSessionDryRun(queryData: unknown): boolean {
  * active SSE stream for this session.
  */
 export function hasActiveBackendStream(result: { data?: unknown }): boolean {
-  const d = result.data;
-  return (
-    d != null &&
-    typeof d === "object" &&
-    "status" in d &&
-    d.status === 200 &&
-    "data" in d &&
-    d.data != null &&
-    typeof d.data === "object" &&
-    "active_stream" in d.data &&
-    !!d.data.active_stream
-  );
+  return getActiveBackendTurnId(result) !== null;
+}
+
+/** The turn a refetchSession result reports running; "" when the backend
+ *  reports a stream without naming its turn, null when none runs. */
+export function getActiveBackendTurnId(result: {
+  data?: unknown;
+}): string | null {
+  const d = result.data as
+    | { status?: unknown; data?: { active_stream?: { turn_id?: unknown } } }
+    | null
+    | undefined;
+  if (d?.status !== 200) return null;
+  const active = d.data?.active_stream;
+  if (!active) return null;
+  return typeof active.turn_id === "string" ? active.turn_id : "";
 }
 
 /**
@@ -306,87 +310,16 @@ export function disconnectSessionStream(sessionId: string): void {
 }
 
 /**
- * Decide whether a reconnect request must be coalesced onto the debounce
- * window boundary, rather than firing immediately.
+ * Drop messages whose id an earlier message already holds, keeping the first.
  *
- * Returns the remaining milliseconds until the window closes (so the caller
- * can schedule a `setTimeout` for that delay) when the previous resume
- * happened inside the window, or `null` to let the reconnect proceed now.
- *
- * `lastResumeAt === 0` signals "no reconnect has fired yet in this session"
- * — the first reconnect always passes through regardless of `now`.
- */
-export function shouldDebounceReconnect(
-  lastResumeAt: number,
-  now: number,
-  windowMs: number,
-): number | null {
-  if (lastResumeAt <= 0) return null;
-  const sinceLastResume = now - lastResumeAt;
-  if (sinceLastResume >= windowMs) return null;
-  return windowMs - sinceLastResume;
-}
-
-/**
- * Deduplicate messages by ID and by consecutive content fingerprint.
- *
- * ID dedup catches exact duplicates within the same source.
- * Content dedup uses a composite key of `role + preceding-user-message-id +
- * content-fingerprint` to detect replayed messages that arrive with new
- * IDs after an SSE reconnection replays from the beginning of the Redis
- * stream. Scoping by user message ID (not text) preserves the second
- * assistant reply when the user asks the same question twice and gets the
- * same answer — two different user messages produce two different IDs even
- * when their text is identical.
+ * Content is never compared: the turn stream hands the parser each entry
+ * once, so a replay cannot add a copy of a message under a new id.
  */
 export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
-  const seenFingerprints = new Set<string>();
-  let lastUserMsgID = "";
-
   return messages.filter((msg) => {
     if (seenIds.has(msg.id)) return false;
     seenIds.add(msg.id);
-
-    if (msg.role === "user") {
-      // Track the ID (not text) of the latest user message so we can scope
-      // assistant fingerprints to their conversational turn. Using the ID
-      // means two user messages with identical text are still treated as
-      // distinct turns, preventing false-positive deduplication.
-      lastUserMsgID = msg.id;
-    }
-
-    if (msg.role === "assistant") {
-      // JSON.stringify the parts array to avoid separator-collision false
-      // positives: a plain join("|") on ["a|b", "c"] and ["a", "b|c"]
-      // produces the same string. JSON encoding each element is unambiguous.
-      // Fall back to JSON.stringify(p) for parts that carry neither a text nor
-      // a toolCallId (e.g. step-start) so structurally different parts never
-      // collapse to the same empty-string fingerprint element.
-      const contentFingerprint = JSON.stringify(
-        msg.parts.map(
-          (p) =>
-            ("text" in p && p.text) ||
-            ("toolCallId" in p && p.toolCallId) ||
-            JSON.stringify(p),
-        ),
-      );
-
-      if (contentFingerprint !== "[]") {
-        // Scope to the preceding user message turn so that identical assistant
-        // replies to *different* user prompts are preserved.
-        // NOTE: A streaming (in-progress) assistant message has a partial
-        // fingerprint that differs from its final form, so it would not be
-        // caught by this dedup. This is safe because every caller that invokes
-        // resumeStream() first strips the in-progress assistant message —
-        // handleReconnect, the wake-resync path, and the hydration-effect path
-        // all do this. See useCopilotStream.ts.
-        const contextKey = `assistant:${lastUserMsgID}:${contentFingerprint}`;
-        if (seenFingerprints.has(contextKey)) return false;
-        seenFingerprints.add(contextKey);
-      }
-    }
-
     return true;
   });
 }

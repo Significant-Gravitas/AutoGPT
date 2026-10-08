@@ -30,6 +30,14 @@ its escalation messages when the gap between bumps grows past a
 threshold. ``note_status_emitted()`` lets driver-emitted status messages
 suppress the watchdog for a short window so the two don't talk over each
 other.
+
+Independently of those tiers the watchdog also emits a ``StreamHeartbeat``
+every ``HEARTBEAT_INTERVAL_S`` for the whole turn. The tiers stop after the
+last one, but a turn can stay silent for far longer than that; the
+heartbeat is what keeps ``publish_chunk`` refreshing the turn's Redis TTLs
+(and the executor's cluster lock) until the turn really ends. It carries no
+UX: the registry does not store it, and the client tells it apart from a
+``StreamStatus``.
 """
 
 import asyncio
@@ -39,7 +47,11 @@ import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Any
 
-from backend.copilot.response_model import StreamBaseResponse, StreamStatus
+from backend.copilot.response_model import (
+    StreamBaseResponse,
+    StreamHeartbeat,
+    StreamStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +77,12 @@ DEFAULT_SUPPRESSION_WINDOW_S = 5.0
 DEFAULT_TICK_S = 1.0
 
 
+# Fixed cadence of the producer-side heartbeat, whatever the model or its
+# tools are doing. Well inside every TTL it keeps alive (stream meta, turn
+# stream, cluster lock) and matches the client's transport heartbeat.
+HEARTBEAT_INTERVAL_S = 10.0
+
+
 class SilenceWatchdog:
     """Async context manager that emits ``StreamStatus`` during silence.
 
@@ -80,8 +98,12 @@ class SilenceWatchdog:
         suppression_window_s: float = DEFAULT_SUPPRESSION_WINDOW_S,
         tick_s: float = DEFAULT_TICK_S,
         clock: Callable[[], float] = time.monotonic,
+        emit_heartbeat: Callable[[StreamHeartbeat], Awaitable[None]] | None = None,
+        heartbeat_interval_s: float = HEARTBEAT_INTERVAL_S,
     ) -> None:
         self._emit_status = emit_status
+        self._emit_heartbeat = emit_heartbeat
+        self._heartbeat_interval_s = heartbeat_interval_s
         self._schedule = sorted(schedule if schedule is not None else DEFAULT_SCHEDULE)
         self._suppression_window_s = suppression_window_s
         self._tick_s = tick_s
@@ -89,6 +111,7 @@ class SilenceWatchdog:
 
         now = self._clock()
         self._last_event_at = now
+        self._last_heartbeat_at = now
         self._last_status_emitted_at: float = float("-inf")
         # Fired thresholds since the last ``bump()``.  Uses index into the
         # sorted schedule so we can quickly check whether a tier already
@@ -132,6 +155,9 @@ class SilenceWatchdog:
             while True:
                 await asyncio.sleep(self._tick_s)
                 now = self._clock()
+                # Before the tiers and their suppression: the heartbeat runs
+                # on its own fixed cadence for the whole turn.
+                await self._maybe_heartbeat(now)
                 # Suppression: if a non-watchdog status was emitted recently,
                 # don't fire on top of it.
                 if now - self._last_status_emitted_at < self._suppression_window_s:
@@ -150,6 +176,19 @@ class SilenceWatchdog:
             raise
         except Exception:  # noqa: BLE001 — defensive: keep loop alive on bugs in emit
             logger.exception("[SilenceWatchdog] unexpected error in tick loop")
+
+    async def _maybe_heartbeat(self, now: float) -> None:
+        if self._emit_heartbeat is None:
+            return
+        if now - self._last_heartbeat_at < self._heartbeat_interval_s:
+            return
+        self._last_heartbeat_at = now
+        try:
+            await self._emit_heartbeat(StreamHeartbeat())
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "[SilenceWatchdog] emit_heartbeat raised; continuing", exc_info=True
+            )
 
     async def _safe_emit(self, message: str) -> None:
         """Emit a status, swallowing exceptions so a transient SSE
@@ -170,9 +209,12 @@ async def wrap_stream_with_heartbeat(
     schedule: list[tuple[float, str]] | None = None,
     suppression_window_s: float = DEFAULT_SUPPRESSION_WINDOW_S,
     tick_s: float = DEFAULT_TICK_S,
+    heartbeat_interval_s: float = HEARTBEAT_INTERVAL_S,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Wrap a stream of ``StreamBaseResponse`` events with a silence
-    watchdog so periodic ``StreamStatus`` events fire during long gaps.
+    watchdog so periodic ``StreamStatus`` events fire during long gaps,
+    and a ``StreamHeartbeat`` every ``heartbeat_interval_s`` for as long
+    as the stream runs.
 
     Driver-emitted ``StreamStatus`` events arm the suppression window so
     the watchdog doesn't talk over them. All other driver events bump the
@@ -184,6 +226,9 @@ async def wrap_stream_with_heartbeat(
 
     async def _emit_from_watchdog(status: StreamStatus) -> None:
         await out_queue.put(("watchdog", status))
+
+    async def _heartbeat_from_watchdog(heartbeat: StreamHeartbeat) -> None:
+        await out_queue.put(("watchdog", heartbeat))
 
     async def _drain_driver() -> None:
         try:
@@ -206,6 +251,8 @@ async def wrap_stream_with_heartbeat(
             schedule=schedule,
             suppression_window_s=suppression_window_s,
             tick_s=tick_s,
+            emit_heartbeat=_heartbeat_from_watchdog,
+            heartbeat_interval_s=heartbeat_interval_s,
         ) as watchdog:
             while True:
                 source, event = await out_queue.get()

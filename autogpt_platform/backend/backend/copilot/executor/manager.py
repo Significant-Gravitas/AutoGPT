@@ -104,6 +104,9 @@ class CoPilotExecutor(AppProcess):
         self._run_client = None
 
         self._task_locks: dict[str, ClusterLock] = {}
+        # The turn each entry of ``active_tasks`` runs, to tell a redelivery
+        # of that turn from the session's next turn.
+        self._active_turn_ids: dict[str, str] = {}
         self._active_tasks_lock_obj: threading.Lock | None = None
         self._codex_runtime_pool_closed = False
 
@@ -438,12 +441,28 @@ class CoPilotExecutor(AppProcess):
 
         session_id = entry.session_id
 
-        # Check for local duplicate - session is already running on this executor
+        # The session already has a turn on this executor.
         if session_id in self.active_tasks:
-            logger.warning(
-                f"Session {session_id} already running locally, rejecting duplicate"
+            running_future, _ = self.active_tasks[session_id]
+            if self._active_turn_ids.get(session_id) == entry.turn_id:
+                logger.warning(
+                    f"Turn {entry.turn_id} of session {session_id} already "
+                    "running locally, rejecting duplicate"
+                )
+                ack_message(reject=True, requeue=False)
+                return
+            # The session's next turn, dispatched while the previous one is
+            # still leaving this executor (an approval card's wake is started
+            # by the ending turn itself). Dropping it would leave it reading
+            # running forever, so hand it back to the queue once that turn
+            # is gone; callbacks run in order, after on_run_done's cleanup.
+            logger.info(
+                f"Session {session_id} is still finishing a turn; turn "
+                f"{entry.turn_id} goes back to the queue when it is done"
             )
-            ack_message(reject=True, requeue=False)
+            running_future.add_done_callback(
+                lambda _: ack_message(reject=True, requeue=True)
+            )
             return
 
         # Try to acquire cluster-wide lock
@@ -480,6 +499,7 @@ class CoPilotExecutor(AppProcess):
                 execute_copilot_turn, entry, cancel_event, cluster_lock
             )
             self.active_tasks[session_id] = (future, cancel_event)
+            self._active_turn_ids[session_id] = entry.turn_id
         except Exception as e:
             logger.warning(f"Failed to setup execution for {session_id}: {e}")
             cluster_lock.release()
@@ -525,6 +545,7 @@ class CoPilotExecutor(AppProcess):
                 if future.done():
                     completed_tasks.append(session_id)
                     self.active_tasks.pop(session_id, None)
+                    self._active_turn_ids.pop(session_id, None)
                     logger.info(f"Cleaned up completed session {session_id}")
 
         self._update_metrics()

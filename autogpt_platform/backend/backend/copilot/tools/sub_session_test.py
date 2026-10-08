@@ -71,7 +71,10 @@ def mock_queue(monkeypatch):
     """
     enqueue_turn = AsyncMock()
     enqueue_cancel = AsyncMock()
-    create_session = AsyncMock()
+    # Registers the turn it is given, as create_session does on an idle chat.
+    create_session = AsyncMock(
+        side_effect=lambda **kwargs: MagicMock(turn_id=kwargs["turn_id"])
+    )
 
     # run_sub_session reaches enqueue_copilot_turn / create_session via
     # session_waiter.run_copilot_turn_via_queue → schedule_turn → dispatch_turn.

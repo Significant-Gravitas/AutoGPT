@@ -1,6 +1,5 @@
 import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
 import { environment } from "@/services/environment";
-import { DefaultChatTransport } from "ai";
 import type { ChatTransport, FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
@@ -8,7 +7,7 @@ import { getAutopilotModeChoice } from "./autopilotModeStore";
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
-import { createShadowFetch } from "./stream/turnShadow";
+import { TurnStream } from "./stream/turnStream";
 import { isVoiceTurn } from "./voice/pendingVoiceStart";
 import { isTokenDevtoolEnabled } from "./tokenDevtool/gate";
 import { createUsageCapturingFetch } from "./tokenDevtool/usageTap";
@@ -27,121 +26,202 @@ interface CreateTransportArgs {
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
 }
 
-/**
- * `DefaultChatTransport` with typewriter smoothing on live sends.
- *
- * POST streams (new user turns) are piped through the word-pacing transform
- * so bursty backend deltas render as steady text. GET-resume streams are
- * deliberately left raw — they replay the whole turn from `0-0`, and slow-
- * typing already-produced history would be worse than a single jump.
- */
-class SmoothedCopilotChatTransport extends DefaultChatTransport<UIMessage> {
-  async sendMessages(
-    options: Parameters<ChatTransport<UIMessage>["sendMessages"]>[0],
-  ) {
-    const stream = await super.sendMessages(options);
-    return stream.pipeThrough(createSmoothingTransform());
-  }
+type Listener = () => void;
+
+interface ResumeTarget {
+  turnId: string | null;
+  /** The parser continues into the chat's last assistant message: keep its
+   *  id rather than forking a copy of it under the turn's message id. */
+  continuesLastMessage: boolean;
 }
 
 /**
- * Build the `DefaultChatTransport` that wires `useChat` directly at the
- * Python backend's SSE endpoint (bypassing the Next.js serverless proxy to
- * avoid the Vercel 800 s function timeout on long-running tasks).
- *
- * Two closures are attached:
- *  - `prepareSendMessagesRequest` — POST new user turns (includes file_ids,
- *    mode, model).
- *  - `prepareReconnectToStreamRequest` — GET-resume existing turns from the
- *    beginning of the active Redis turn so AI SDK sees a complete stream
- *    envelope.
+ * The chat's transport. Both a send and a resume read the backend's SSE into
+ * a `TurnStream`, which outlives any one connection: a reconnect continues
+ * the same AI SDK parser from the stream cursor, so nothing replays and no
+ * part ever arrives without its start. Sends are typewriter-smoothed; a
+ * resume is not, since slow-typing text that was already produced is worse
+ * than a jump.
  */
-export function createCopilotTransport({
-  sessionId,
-  copilotModelRef,
-}: CreateTransportArgs) {
-  const baseUrl = `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`;
+export class CopilotChatTransport implements ChatTransport<UIMessage> {
+  private stream: TurnStream | null = null;
+  private resumeTarget: ResumeTarget | null = null;
+  private listeners = new Set<Listener>();
+  private readonly streamUrl: string;
+  private readonly fetchImpl: typeof fetch;
 
-  return new SmoothedCopilotChatTransport({
-    api: baseUrl,
-    // Tee the raw SSE into the stream converter's shadow, and in dev into the
-    // token devtool, which reads the `: usage {...}` comments the SDK drops.
-    fetch: createShadowFetch(
-      sessionId,
-      isTokenDevtoolEnabled()
-        ? createUsageCapturingFetch(sessionId)
-        : undefined,
-    ),
-    prepareSendMessagesRequest: async ({ messages }) => {
-      const last = messages[messages.length - 1];
-      const kickoffExpertId = getKickoffExpertIdFromMetadata(last.metadata);
-      // Extract file_ids from FileUIPart entries on the message
-      const fileIds = last.parts
-        ?.filter((p): p is FileUIPart => p.type === "file")
-        .map((p) => {
-          // URL is like /api/proxy/api/workspace/files/{id}/download
-          const match = p.url.match(/\/workspace\/files\/([^/]+)\//);
-          return match?.[1];
-        })
-        .filter(Boolean) as string[] | undefined;
-      // A folder is named for the model to open, never expanded into files,
-      // so it travels as its own id list.
-      const folderIds = last.parts?.flatMap((p) =>
-        isWorkspaceFolderPart(p) ? [p.data.id] : [],
-      );
-      // ``message_id`` is the client idempotency key. The backend scopes it
-      // to the authenticated user + session before using the result as the
-      // persisted PK, so retransmits collide atomically without letting one
-      // tenant preclaim another tenant's global ChatMessage id.
-      //
-      // Generated here (rather than in ``useSendMessage``) for two
-      // reasons: (1) AI SDK's ``messageId`` arg on ``sendMessage`` is
-      // "replace-existing-message" semantics — passing a fresh UUID
-      // puts the SDK into edit-mode with no target and breaks
-      // optimistic render. (2) ``prepareSendMessagesRequest`` is
-      // called once per logical ``sendMessages`` call and the
-      // prepared body is reused across SDK-internal retries, so a
-      // single per-call UUID is exactly the stability we need.
-      return {
-        body: {
-          message: (
-            last.parts?.map((p) => (p.type === "text" ? p.text : "")) ?? []
-          ).join(""),
-          is_user_message: last.role === "user",
-          context: null,
-          file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
-          folder_ids: folderIds && folderIds.length > 0 ? folderIds : null,
-          model: copilotModelRef.current ?? null,
-          // Supplying options forces uuid's
-          // getRandomValues path. Unlike crypto.randomUUID,
-          // getRandomValues is available on plain-HTTP LAN origins used
-          // by the local single-container appliance.
-          message_id: uuidv4({}),
-          // Asks the reply to speak before it starts working. Text turns
-          // send false and pay nothing for it.
-          voice: isVoiceTurn(),
-          expert_kickoff: kickoffExpertId !== null,
-          ...optionalAutopilotMode(sessionId),
-        },
-        headers: await getCopilotAuthHeaders(),
-      };
-    },
-    prepareReconnectToStreamRequest: async () => {
-      // Always replay from "0-0" (no ?last_chunk_id). AI SDK v5's
-      // UIMessageStream parser throws UIMessageStreamError on any *-delta /
-      // *-end whose matching *-start is missing from its *parser-local*
-      // activeTextParts / activeReasoningParts state — and each
-      // resumeStream() spawns a fresh parser, so a cursor-based resume
-      // (which skips the envelope + *-start chunks that came before the
-      // cursor) crashes on the first orphan delta. Replay overlap with the
-      // in-memory `messages` is handled by `deduplicateMessages` on the
-      // consumer side.
-      return {
-        api: baseUrl,
-        headers: await getCopilotAuthHeaders(),
-      };
-    },
-  });
+  constructor(private readonly args: CreateTransportArgs) {
+    this.streamUrl = `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${args.sessionId}/stream`;
+    // In dev, tee the POST into the token devtool, which reads the
+    // `: usage {...}` comments.
+    this.fetchImpl = isTokenDevtoolEnabled()
+      ? createUsageCapturingFetch(args.sessionId)
+      : (input, init) => fetch(input, init);
+  }
+
+  /** The turn this chat reads (or last read), with its connection state. */
+  get activeStream() {
+    return this.stream;
+  }
+
+  /** Called when the active stream changes or its state does. */
+  subscribe = (listener: Listener) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+
+  /** Name the turn the next `resumeStream()` attaches to. */
+  setResumeTarget(target: ResumeTarget) {
+    this.resumeTarget = target;
+  }
+
+  async sendMessages({
+    messages,
+    abortSignal,
+  }: Parameters<ChatTransport<UIMessage>["sendMessages"]>[0]) {
+    const { body, headers } = await this.prepareSendMessagesRequest({
+      messages,
+    });
+    const stream = this.adopt({
+      turnId: null,
+      isSend: true,
+      dropStartMessageId: false,
+      openFirst: (signal) =>
+        this.fetchImpl(this.streamUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...headers },
+          body: JSON.stringify(body),
+          signal,
+        }),
+    });
+    abortSignal?.addEventListener("abort", () => stream.close(), {
+      once: true,
+    });
+    const readable = await stream.open();
+    if (!readable) throw new Error("Failed to fetch the chat response.");
+    return readable.pipeThrough(createSmoothingTransform());
+  }
+
+  async reconnectToStream(
+    _options: Parameters<ChatTransport<UIMessage>["reconnectToStream"]>[0],
+  ) {
+    const target = this.resumeTarget ?? {
+      turnId: null,
+      continuesLastMessage: false,
+    };
+    this.resumeTarget = null;
+    const stream = this.adopt({
+      turnId: target.turnId,
+      isSend: false,
+      dropStartMessageId: target.continuesLastMessage,
+      openFirst: (signal) =>
+        this.openResume(
+          target.turnId
+            ? `?turn=${encodeURIComponent(target.turnId)}&after=0-0`
+            : "",
+          signal,
+        ),
+    });
+    return stream.open();
+  }
+
+  prepareSendMessagesRequest = async ({
+    messages,
+  }: {
+    messages: UIMessage[];
+  }) => {
+    const { sessionId, copilotModelRef } = this.args;
+
+    const last = messages[messages.length - 1];
+    const kickoffExpertId = getKickoffExpertIdFromMetadata(last.metadata);
+    // Extract file_ids from FileUIPart entries on the message
+    const fileIds = last.parts
+      ?.filter((p): p is FileUIPart => p.type === "file")
+      .map((p) => {
+        // URL is like /api/proxy/api/workspace/files/{id}/download
+        const match = p.url.match(/\/workspace\/files\/([^/]+)\//);
+        return match?.[1];
+      })
+      .filter(Boolean) as string[] | undefined;
+    // A folder is named for the model to open, never expanded into files,
+    // so it travels as its own id list.
+    const folderIds = last.parts?.flatMap((p) =>
+      isWorkspaceFolderPart(p) ? [p.data.id] : [],
+    );
+    // ``message_id`` is the client idempotency key. The backend scopes it
+    // to the authenticated user + session before using the result as the
+    // persisted PK, so retransmits collide atomically without letting one
+    // tenant preclaim another tenant's global ChatMessage id.
+    //
+    // Generated here (rather than in ``useSendMessage``) for two
+    // reasons: (1) AI SDK's ``messageId`` arg on ``sendMessage`` is
+    // "replace-existing-message" semantics — passing a fresh UUID
+    // puts the SDK into edit-mode with no target and breaks
+    // optimistic render. (2) ``prepareSendMessagesRequest`` is
+    // called once per logical ``sendMessages`` call and the
+    // prepared body is reused across SDK-internal retries, so a
+    // single per-call UUID is exactly the stability we need.
+    return {
+      body: {
+        message: (
+          last.parts?.map((p) => (p.type === "text" ? p.text : "")) ?? []
+        ).join(""),
+        is_user_message: last.role === "user",
+        context: null,
+        file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
+        folder_ids: folderIds && folderIds.length > 0 ? folderIds : null,
+        model: copilotModelRef.current ?? null,
+        // Supplying options forces uuid's
+        // getRandomValues path. Unlike crypto.randomUUID,
+        // getRandomValues is available on plain-HTTP LAN origins used
+        // by the local single-container appliance.
+        message_id: uuidv4({}),
+        // Asks the reply to speak before it starts working. Text turns
+        // send false and pay nothing for it.
+        voice: isVoiceTurn(),
+        expert_kickoff: kickoffExpertId !== null,
+        ...optionalAutopilotMode(sessionId),
+      },
+      headers: await getCopilotAuthHeaders(),
+    };
+  };
+
+  private adopt(
+    args: Omit<
+      ConstructorParameters<typeof TurnStream>[0],
+      "sessionId" | "openResume" | "onComment"
+    >,
+  ) {
+    this.stream?.close();
+    const stream = new TurnStream({
+      ...args,
+      sessionId: this.args.sessionId,
+      openResume: (query, signal) => this.openResume(query, signal),
+    });
+    this.stream = stream;
+    stream.subscribe(() => this.notify());
+    this.notify();
+    return stream;
+  }
+
+  private async openResume(query: string, signal: AbortSignal) {
+    return this.fetchImpl(`${this.streamUrl}${query}`, {
+      headers: await getCopilotAuthHeaders(),
+      signal,
+    });
+  }
+
+  private notify() {
+    this.listeners.forEach((listener) => listener());
+  }
+}
+
+/** The transport that wires `useChat` straight at the Python backend's SSE
+ *  endpoint, bypassing the Next.js proxy and its 800 s function timeout. */
+export function createCopilotTransport(args: CreateTransportArgs) {
+  return new CopilotChatTransport(args);
 }
 
 // Absent unless the user picked a mode, so a chat nobody touched keeps its own.

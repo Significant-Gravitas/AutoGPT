@@ -1015,6 +1015,7 @@ function StopHarness({
   const stop = useCopilotStop({
     sessionId,
     sdkStop,
+    closeStream: () => {},
     setMessages: setMessages as Parameters<
       typeof useCopilotStop
     >[0]["setMessages"],

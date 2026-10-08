@@ -1,0 +1,32 @@
+:root {
+  --ring-duration: 150ms;
+  --blue: #0a7cff;
+  --blue-foreground: #ffffff;
+  --bubble-sent: var(--blue);
+  --bubble-sent-foreground: var(--blue-foreground);
+  --bubble-received: #e9e9eb;
+  --bubble-received-foreground: #000000;
+}
+
+.dark {
+  --bubble-received: #3b3b3d;
+  --bubble-received-foreground: #ffffff;
+}
+
+@theme inline {
+  --color-bubble-sent: var(--bubble-sent);
+  --color-bubble-sent-foreground: var(--bubble-sent-foreground);
+  --color-bubble-received: var(--bubble-received);
+  --color-bubble-received-foreground: var(--bubble-received-foreground);
+}
+
+@utility transition-ring {
+  transition-property:
+    color, background-color, border-color, box-shadow, outline-color, outline-offset;
+  transition-duration: var(--ring-duration);
+  transition-timing-function: var(--ease-out);
+
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 0ms;
+  }
+}

@@ -1421,7 +1421,7 @@ class TestExecuteSafetyNet:
         async def _ok(*args, **kwargs):
             call_log.append("sync-ok")
 
-        def _broken_execute(entry, cancel, cluster_lock, log):
+        def _broken_execute(entry, cancel, cluster_lock, log, lease=None):
             # Simulate the async path raising because its Redis client is
             # wedged (the pre-fix zombie-session scenario).
             raise RuntimeError("async Redis client broken")

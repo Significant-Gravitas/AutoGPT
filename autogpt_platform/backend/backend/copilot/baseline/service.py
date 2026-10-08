@@ -2413,6 +2413,9 @@ async def stream_chat_completion_baseline(
     # the current binding lazily so the executor always sees the latest session.
     _session_holder: list[ChatSession] = [session]
     final_checkpoint: StreamCheckpoint | None = None
+    # Set when the turn's final persist failed: the streamed reply is not in
+    # the rows the client hydrates from, so the turn must not end a success.
+    reply_not_saved = False
 
     async def _bound_tool_executor(
         tool_call: LLMToolCall, tools: Sequence[Any]
@@ -2924,6 +2927,8 @@ async def stream_chat_completion_baseline(
             final_checkpoint = turn_checkpoint(session.messages, turn_start)
         except Exception as persist_err:
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
+            reply_not_saved = not _stream_error
+            await _persist_reply_not_saved_marker(session)
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
         if graphiti_enabled and user_id and message and is_user_message:
@@ -2976,6 +2981,10 @@ async def stream_chat_completion_baseline(
     # aclose() — doing so raises RuntimeError on client disconnect.
     # On GeneratorExit the client is already gone, so unreachable yields
     # are harmless; on normal completion they reach the SSE stream.
+    if reply_not_saved:
+        # The consumer stops at the error, so it is the turn's last event.
+        yield StreamError(errorText=REPLY_NOT_SAVED_MESSAGE, code="persist_failed")
+        return
     if final_checkpoint is not None:
         yield final_checkpoint
     if state.turn_prompt_tokens > 0 or state.turn_completion_tokens > 0:
@@ -3000,6 +3009,25 @@ async def stream_chat_completion_baseline(
     for event in _engine_switch_finish_events(session_id):
         yield event
     yield StreamFinish()
+
+
+REPLY_NOT_SAVED_MESSAGE = (
+    "This reply could not be saved, so it may be missing when you reload "
+    "the chat. Please try again."
+)
+
+
+async def _persist_reply_not_saved_marker(session: ChatSession) -> None:
+    """Best effort: one more upsert, now carrying an error marker after the
+    reply, so a reload shows the failure instead of the question alone.
+    It also retries the reply's own rows; when the database is still down
+    the StreamError the turn ends with is the only trace."""
+    if not append_error_marker(session, REPLY_NOT_SAVED_MESSAGE, retryable=True):
+        return
+    try:
+        await upsert_chat_session(session)
+    except Exception as marker_err:
+        logger.error("[Baseline] Failed to persist the error marker: %s", marker_err)
 
 
 def _engine_switch_finish_events(session_id: str) -> "list[StreamBaseResponse]":

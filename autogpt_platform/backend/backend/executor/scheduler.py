@@ -22,6 +22,7 @@ from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.util import ZoneInfo
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
@@ -1030,6 +1031,53 @@ async def _self_delete_morning_briefing_schedule(user_id: str) -> None:
         logger.warning(
             f"Failed to remove morning briefing job for user {user_id[:12]}",
             exc_info=True,
+        )
+
+
+def _copilot_heartbeat_job_id(user_id: str) -> str:
+    return f"copilot_heartbeat_{user_id}"
+
+
+def _copilot_heartbeat_offset(user_id: str, interval_minutes: int) -> timedelta:
+    """Where in its interval a user's beat falls, spread by user id like the
+    briefing minute, so every user on 30 minutes does not fire at once."""
+    digest = int(hashlib.sha256(user_id.encode("utf-8")).hexdigest(), 16)
+    return timedelta(minutes=digest % max(interval_minutes, 1))
+
+
+def execute_copilot_heartbeat(user_id: str) -> None:
+    """Per-user heartbeat body (``backend.copilot.heartbeat``).
+
+    The window, the empty checklist, a running turn and the change signal are
+    all checked inside ``run_heartbeat``, so a beat outside them costs no model
+    call. A beat that finds the settings switched off removes its own job,
+    covering a toggle whose removal call did not reach the scheduler.
+    """
+    from backend.copilot.heartbeat.runner import run_heartbeat
+
+    try:
+        result = run_async(
+            run_heartbeat(user_id), timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS
+        )
+        logger.info(
+            "Heartbeat for user %s: %s (%s)",
+            user_id[:12],
+            result.status,
+            result.reason,
+        )
+        if result.status == "skipped" and result.reason == "disabled":
+            run_async(_self_delete_copilot_heartbeat_schedule(user_id))
+    except Exception as e:
+        logger.error("Heartbeat failed for user %s: %s", user_id[:12], e)
+
+
+async def _self_delete_copilot_heartbeat_schedule(user_id: str) -> None:
+    """Best effort: the next beat retries the cleanup."""
+    try:
+        await get_scheduler_client().remove_copilot_heartbeat_schedule(user_id=user_id)
+    except Exception:
+        logger.warning(
+            f"Failed to remove heartbeat job for user {user_id[:12]}", exc_info=True
         )
 
 
@@ -2957,6 +3005,86 @@ class Scheduler(AppService):
         logger.info(f"Removed morning briefing job {job_id} for user {user_id[:12]}")
         return {"id": job_id, "user_id": user_id, "removed": True}
 
+    # --- Copilot heartbeat ---
+    #
+    # One interval job per user who switched the heartbeat on, registered and
+    # refreshed when they save their settings. Active hours are checked in the
+    # job body against the user's zone, so the trigger stays a plain interval.
+
+    @expose
+    def add_copilot_heartbeat_schedule(
+        self, user_id: str, interval_minutes: int = 30
+    ) -> dict:
+        """Register or refresh one user's heartbeat job.
+
+        An unchanged interval is a no-op, like the briefing: replacing the job
+        would move its next beat.
+        """
+        job_id = _copilot_heartbeat_job_id(user_id)
+        interval = timedelta(minutes=interval_minutes)
+        existing = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if (
+            existing is not None
+            and isinstance(existing.trigger, IntervalTrigger)
+            and existing.trigger.interval == interval
+        ):
+            return {
+                "id": existing.id,
+                "user_id": user_id,
+                "interval_minutes": interval_minutes,
+                "next_run_time": (
+                    existing.next_run_time.isoformat()
+                    if existing.next_run_time
+                    else None
+                ),
+                "skipped": True,
+                "reason": "already_registered",
+            }
+        job = self.scheduler.add_job(
+            execute_copilot_heartbeat,
+            kwargs={"user_id": user_id},
+            trigger=IntervalTrigger(
+                minutes=interval_minutes,
+                start_date=datetime.now(timezone.utc)
+                + _copilot_heartbeat_offset(user_id, interval_minutes),
+            ),
+            id=job_id,
+            name=f"Copilot heartbeat for {user_id[:12]}",
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+            max_instances=1,
+            # A scheduler that was down owes one beat, not a backlog of them.
+            coalesce=True,
+            misfire_grace_time=max(interval_minutes * 30, 60),
+        )
+        self._invalidate_jobs_cache()
+        logger.info(
+            "Registered heartbeat job %s for user %s every %d min",
+            job.id,
+            user_id[:12],
+            interval_minutes,
+        )
+        return {
+            "id": job.id,
+            "user_id": user_id,
+            "interval_minutes": interval_minutes,
+            "next_run_time": (
+                job.next_run_time.isoformat() if job.next_run_time else None
+            ),
+        }
+
+    @expose
+    def remove_copilot_heartbeat_schedule(self, user_id: str) -> dict:
+        """Delete one user's heartbeat job; the job id embeds the user id."""
+        job_id = _copilot_heartbeat_job_id(user_id)
+        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if job is None:
+            return {"id": job_id, "user_id": user_id, "removed": False}
+        job.remove()
+        self._invalidate_jobs_cache()
+        logger.info(f"Removed heartbeat job {job_id} for user {user_id[:12]}")
+        return {"id": job_id, "user_id": user_id, "removed": True}
+
     # --- Dream nightly batch (P-0.2 + P-0.4 consolidated) ---
     #
     # ONE per-user cron at user-local 03:00 fans out all batch-family
@@ -3185,6 +3313,13 @@ class SchedulerClient(AppServiceClient):
     )
     remove_morning_briefing_schedule = endpoint_to_async(
         Scheduler.remove_morning_briefing_schedule
+    )
+
+    add_copilot_heartbeat_schedule = endpoint_to_async(
+        Scheduler.add_copilot_heartbeat_schedule
+    )
+    remove_copilot_heartbeat_schedule = endpoint_to_async(
+        Scheduler.remove_copilot_heartbeat_schedule
     )
 
     add_nightly_batch_schedule = endpoint_to_async(Scheduler.add_nightly_batch_schedule)

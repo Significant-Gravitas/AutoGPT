@@ -800,7 +800,12 @@ async def add_chat_messages_batch(
 
 
 def exclude_dream_sessions_sql(column: str = "metadata") -> str:
-    return f"({column}->>'kind' IS DISTINCT FROM 'dream')"
+    # Heartbeat runs are pipeline artifacts too: one hidden session per beat,
+    # whose alerts are posted into the user's main thread instead.
+    return (
+        f"(({column}->>'kind' IS DISTINCT FROM 'dream') "
+        f"AND ({column}->>'kind' IS DISTINCT FROM 'heartbeat'))"
+    )
 
 
 _EXCLUDE_DREAM_SESSIONS_SQL = exclude_dream_sessions_sql()

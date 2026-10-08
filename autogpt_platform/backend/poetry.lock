@@ -2045,6 +2045,25 @@ pyasn1-modules = ">=0.2.1,<0.5.0"
 rsa = ">=3.1.4,<5.0.0"
 
 [[package]]
+name = "genai-prices"
+version = "0.1.9"
+description = "Calculate prices for calling LLM inference APIs."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "genai_prices-0.1.9-py3-none-any.whl", hash = "sha256:3da8faa0a126e4df7be36696b90abe2be1fea8826bfcf45d39d91bc397fa9d1d"},
+    {file = "genai_prices-0.1.9.tar.gz", hash = "sha256:20ec774d32ec5d345510877fac415f2560bbfeb081bc4cd4e7ebce57a5503e8d"},
+]
+
+[package.dependencies]
+httpx2 = ">=2.0"
+pydantic = ">=2.10"
+
+[package.extras]
+cli = ["pydantic-settings (>=2.11)", "rich (>=14.3.2)", "rich-argparse (>=1.7.2)"]
+
+[[package]]
 name = "google-api-core"
 version = "2.29.0"
 description = "Google API client core library"
@@ -2503,6 +2522,112 @@ files = [
 [package.extras]
 docs = ["Sphinx", "furo"]
 test = ["objgraph", "psutil", "setuptools"]
+
+[[package]]
+name = "griffe"
+version = "2.3.0"
+description = "Signatures for entire Python programs. Extract the structure, the frame, the skeleton of your project, to generate API documentation or find breaking changes in your API."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+markers = "python_version == \"3.10\""
+files = [
+    {file = "griffe-2.3.0-py3-none-any.whl", hash = "sha256:92a41ff72eb1eb316cdcb7248a608f1313f9fbc6e35d5cffa5cf7c813b7db70b"},
+    {file = "griffe-2.3.0.tar.gz", hash = "sha256:aa5634c0d7802583ecd29a7fe335c02d462ffdf5ce8f51426a3d326f374e6d93"},
+]
+
+[package.dependencies]
+griffecli = "2.3.0"
+griffelib = "2.3.0"
+
+[package.extras]
+pypi = ["griffelib[pypi] (==2.3.0)"]
+
+[[package]]
+name = "griffe"
+version = "2.3.2"
+description = "Signatures for entire Python programs. Extract the structure, the frame, the skeleton of your project, to generate API documentation or find breaking changes in your API."
+optional = false
+python-versions = ">=3.11"
+groups = ["main"]
+markers = "python_version >= \"3.11\""
+files = [
+    {file = "griffe-2.3.2-py3-none-any.whl", hash = "sha256:31f5217d19c7e732893260d558f92298c4c9c9d2b50f930a1e6dec3f6feb63cb"},
+    {file = "griffe-2.3.2.tar.gz", hash = "sha256:8625bf98dbb02edb291aef77f2f1a17ae6c62d32a764f5bfed009e6010b2d538"},
+]
+
+[package.dependencies]
+griffecli = "2.3.2"
+griffelib = "2.3.2"
+
+[package.extras]
+pypi = ["griffelib[pypi] (==2.3.2)"]
+
+[[package]]
+name = "griffecli"
+version = "2.3.0"
+description = "Signatures for entire Python programs. Extract the structure, the frame, the skeleton of your project, to generate API documentation or find breaking changes in your API."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+markers = "python_version == \"3.10\""
+files = [
+    {file = "griffecli-2.3.0-py3-none-any.whl", hash = "sha256:f94653edcb52ebcac21eaeb3b7121b065a636174eddf2bd558b5935e72a553e8"},
+    {file = "griffecli-2.3.0.tar.gz", hash = "sha256:916fdc851cf51d38e9b5ab82550305df45e5981d5dfe65d346544464abedb3ec"},
+]
+
+[package.dependencies]
+colorama = ">=0.4"
+griffelib = "2.3.0"
+
+[[package]]
+name = "griffecli"
+version = "2.3.2"
+description = "Signatures for entire Python programs. Extract the structure, the frame, the skeleton of your project, to generate API documentation or find breaking changes in your API."
+optional = false
+python-versions = ">=3.11"
+groups = ["main"]
+markers = "python_version >= \"3.11\""
+files = [
+    {file = "griffecli-2.3.2-py3-none-any.whl", hash = "sha256:54770415ad6f4b650d1c7af606d5db85c8e75591114b4b714c081a29ff00d986"},
+    {file = "griffecli-2.3.2.tar.gz", hash = "sha256:d9daf7aaef8ac38fb29680a3397cc66300f3fc17c68c909a26446f06df0b44dd"},
+]
+
+[package.dependencies]
+colorama = ">=0.4"
+griffelib = "2.3.2"
+
+[[package]]
+name = "griffelib"
+version = "2.3.0"
+description = "Signatures for entire Python programs. Extract the structure, the frame, the skeleton of your project, to generate API documentation or find breaking changes in your API."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+markers = "python_version == \"3.10\""
+files = [
+    {file = "griffelib-2.3.0-py3-none-any.whl", hash = "sha256:1b8f9cd525681c26b1d6d574faa1371651e8459ca51d209684f50b8096ae06e0"},
+    {file = "griffelib-2.3.0.tar.gz", hash = "sha256:7b0952caf5bca6afa4bb5ee8c6a2d183fe3f21b62efc5f6c7243cb2b26d2d115"},
+]
+
+[package.extras]
+pypi = ["pip (>=24.0)", "platformdirs (>=4.2)", "wheel (>=0.42)"]
+
+[[package]]
+name = "griffelib"
+version = "2.3.2"
+description = "Signatures for entire Python programs. Extract the structure, the frame, the skeleton of your project, to generate API documentation or find breaking changes in your API."
+optional = false
+python-versions = ">=3.11"
+groups = ["main"]
+markers = "python_version >= \"3.11\""
+files = [
+    {file = "griffelib-2.3.2-py3-none-any.whl", hash = "sha256:8e710afededd5607f95bf3c8ccc175ee306e7084459faf27b9f9f44ef2a7a274"},
+    {file = "griffelib-2.3.2.tar.gz", hash = "sha256:df00c7a0dee3d86268d76788997a1859272cb1fb7b865658e043d2c0c3d52e60"},
+]
+
+[package.extras]
+pypi = ["pip (>=24.0)", "platformdirs (>=4.2)", "wheel (>=0.42)"]
 
 [[package]]
 name = "groq"
@@ -3444,6 +3569,18 @@ consul = ["python-consul (>=1.0.1)"]
 dynamodb = ["boto3 (>=1.9.71)"]
 redis = ["redis (>=2.10.5)"]
 test-filesource = ["pyyaml (>=5.3.1)", "watchdog (>=3.0.0)"]
+
+[[package]]
+name = "logfire-api"
+version = "5.1.1"
+description = "Shim for the Logfire SDK which does nothing unless Logfire is installed"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "logfire_api-5.1.1-py3-none-any.whl", hash = "sha256:8fd4f452c4b9267bf184a645208e71430ea3d202c412b2fc573f091842215659"},
+    {file = "logfire_api-5.1.1.tar.gz", hash = "sha256:3b0b6130ff43fe3570aaaa86ca4db9527c697f11c30157a644a41e702987eb8b"},
+]
 
 [[package]]
 name = "markdown-it-py"
@@ -5729,6 +5866,61 @@ email = ["email-validator (>=2.0.0)"]
 timezone = ["tzdata ; python_version >= \"3.9\" and platform_system == \"Windows\""]
 
 [[package]]
+name = "pydantic-ai-slim"
+version = "1.30.1"
+description = "Agent Framework / shim to use Pydantic with LLMs, slim package"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "pydantic_ai_slim-1.30.1-py3-none-any.whl", hash = "sha256:74ad0d281bc2d296e919b2b93142411b65c2c1598fea6577937767c82551fed2"},
+    {file = "pydantic_ai_slim-1.30.1.tar.gz", hash = "sha256:60a8b0e3d0f958a63aef1d468baa1d2891efc28b0c5d08a0808d5923409b41fd"},
+]
+
+[package.dependencies]
+anthropic = {version = ">=0.75.0", optional = true, markers = "extra == \"anthropic\""}
+exceptiongroup = {version = "*", markers = "python_version < \"3.11\""}
+genai-prices = ">=0.0.40"
+griffe = ">=1.3.2"
+httpx = ">=0.27"
+openai = {version = ">=1.107.2", optional = true, markers = "extra == \"openai\""}
+opentelemetry-api = ">=1.28.0"
+pydantic = ">=2.10"
+pydantic-graph = "1.30.1"
+typing-inspection = ">=0.4.0"
+
+[package.extras]
+a2a = ["fasta2a (>=0.4.1)"]
+ag-ui = ["ag-ui-protocol (>=0.1.8)", "starlette (>=0.45.3)"]
+anthropic = ["anthropic (>=0.75.0)"]
+bedrock = ["boto3 (>=1.40.14)"]
+cli = ["argcomplete (>=3.5.0)", "prompt-toolkit (>=3)", "pyperclip (>=1.9.0)", "rich (>=13)"]
+cohere = ["cohere (>=5.18.0) ; platform_system != \"Emscripten\""]
+dbos = ["dbos (>=1.14.0)"]
+duckduckgo = ["ddgs (>=9.0.0)"]
+evals = ["pydantic-evals (==1.30.1)"]
+fastmcp = ["fastmcp (>=2.12.0)"]
+google = ["google-genai (>=1.51.0)"]
+groq = ["groq (>=0.25.0)"]
+huggingface = ["huggingface-hub[inference] (>=0.33.5,<1.0.0)"]
+logfire = ["logfire[httpx] (>=3.14.1)"]
+mcp = ["mcp (>=1.18.0)"]
+mistral = ["mistralai (>=1.9.10)"]
+openai = ["openai (>=1.107.2)"]
+openrouter = ["openai (>=2.8.0)"]
+outlines-llamacpp = ["outlines[llamacpp] (>=1.0.0,<1.3.0)"]
+outlines-mlxlm = ["outlines[mlxlm] (>=1.0.0,<1.3.0) ; platform_system == \"Darwin\" and platform_machine == \"arm64\""]
+outlines-sglang = ["outlines[sglang] (>=1.0.0,<1.3.0)", "pillow"]
+outlines-transformers = ["outlines[transformers] (>=1.0.0,<1.3.0) ; sys_platform != \"darwin\" or platform_machine != \"x86_64\"", "pillow", "torch ; sys_platform != \"darwin\" or platform_machine != \"x86_64\"", "transformers (>=4.0.0)"]
+outlines-vllm-offline = ["outlines (>=1.0.0,<1.3.0)", "torch ; sys_platform != \"darwin\" or platform_machine != \"x86_64\"", "vllm ; python_version < \"3.12\" and (sys_platform != \"darwin\" or platform_machine != \"x86_64\")"]
+prefect = ["prefect (>=3.4.21)"]
+retries = ["tenacity (>=8.2.3)"]
+tavily = ["tavily-python (>=0.5.0)"]
+temporal = ["temporalio (==1.20.0)"]
+ui = ["starlette (>=0.45.3)"]
+vertexai = ["google-auth (>=2.36.0)", "requests (>=2.32.2)"]
+
+[[package]]
 name = "pydantic-core"
 version = "2.46.5"
 description = "Core functionality for Pydantic validation and serialization"
@@ -5860,6 +6052,24 @@ files = [
 
 [package.dependencies]
 typing-extensions = ">=4.14.1"
+
+[[package]]
+name = "pydantic-graph"
+version = "1.30.1"
+description = "Graph and state machine library"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "pydantic_graph-1.30.1-py3-none-any.whl", hash = "sha256:6d5fb88eb4db8ef1d588234db6c101adc45f09f3e63adc73e049ef9a7ddad5c5"},
+    {file = "pydantic_graph-1.30.1.tar.gz", hash = "sha256:158c34879c82faba569bb1fd7bbd29f4edcdeb1f469319c190bbb9ec2526485f"},
+]
+
+[package.dependencies]
+httpx = ">=0.27"
+logfire-api = ">=3.14.1"
+pydantic = ">=2.10"
+typing-inspection = ">=0.4.0"
 
 [[package]]
 name = "pydantic-settings"
@@ -8934,4 +9144,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "b0e521f9ac5ca2e76866dff633eabc71e5798e68ea94054470f4c6928b2b3a34"
+content-hash = "7109cc8589f0cdeb469994cf95e1fbfb312afafc2475b92ca950687ba9ebb823"

@@ -151,6 +151,9 @@ class ResponseType(str, Enum):
     SESSION_LIST = "session_list"
     SESSION_MESSAGE = "session_message"
 
+    # Heartbeat
+    HEARTBEAT_RESPONSE = "heartbeat_response"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):
@@ -767,6 +770,13 @@ class SessionMessageResponse(ToolResponseBase):
     type: ResponseType = ResponseType.SESSION_MESSAGE
     delivery: Literal["injected", "queued", "woke"]
     target_session_id: str
+
+
+class HeartbeatRespondResponse(ToolResponseBase):
+    """What ``heartbeat_respond`` recorded for the heartbeat runner."""
+
+    type: ResponseType = ResponseType.HEARTBEAT_RESPONSE
+    notify: bool
 
 
 class ExpertChangeProposedResponse(ToolResponseBase):

@@ -57,6 +57,7 @@ from .graphiti_forget import MemoryForgetConfirmTool, MemoryForgetSearchTool
 from .graphiti_search import MemorySearchTool
 from .graphiti_store import MemoryStoreTool
 from .handoff_to_expert import HandoffToExpertTool
+from .heartbeat_respond import HeartbeatRespondTool
 from .hire_expert import HireExpertTool
 from .list_agent_triggers import ListAgentTriggersTool
 from .list_team import ListTeamTool
@@ -111,6 +112,8 @@ logger = logging.getLogger(__name__)
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
     "ask_question": AskQuestionTool(),
+    # Heartbeat runs only: the turn's explicit alert (copilot/heartbeat).
+    "heartbeat_respond": HeartbeatRespondTool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
     "decompose_goal": DecomposeGoalTool(),

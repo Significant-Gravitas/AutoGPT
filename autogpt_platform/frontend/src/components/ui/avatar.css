@@ -1,0 +1,11 @@
+:root {
+  --shell-canvas: #fafafa;
+}
+
+.dark {
+  --shell-canvas: #191919;
+}
+
+@theme inline {
+  --color-shell-canvas: var(--shell-canvas);
+}

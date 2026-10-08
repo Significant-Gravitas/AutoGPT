@@ -258,7 +258,10 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-_CHAR_BUDGET = 77_014
+#
+# + heartbeat_respond (copilot/heartbeat), trimmed to a one-line
+#   description and one-phrase parameters:     +158       77,172, plus one.
+_CHAR_BUDGET = 77_173
 
 
 @pytest.fixture(scope="module")
@@ -448,7 +451,8 @@ def test_total_schema_char_budget() -> None:
 # the plus-one ceiling above. Same headroom, for the same reason.
 #     merged tree                                 69,183
 #     + headroom                       +300       69,483
-_SESSION_WIRE_BUDGET = 69_483
+#     + heartbeat_respond              +108       69,591, plus one
+_SESSION_WIRE_BUDGET = 69_592
 
 
 def test_largest_declared_session_wire_budget() -> None:

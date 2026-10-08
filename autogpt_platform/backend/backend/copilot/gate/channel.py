@@ -17,26 +17,34 @@ from backend.copilot.constants import AUTOPILOT_NAME
 from backend.data.db_accessors import review_db
 
 from . import chat_rules, held
-from .review import payload_headline
+from .review import answer_options, payload_headline
 
 logger = logging.getLogger(__name__)
 
-Choice = Literal["approve", "approve_chat", "judge", "reject"]
+# ``approve`` is Allow once and ``reject`` is Deny. ``approve_chat`` is no
+# longer offered, but a card posted before "Always allow" replaced it still
+# carries it, and its click must still answer.
+Choice = Literal["approve", "approve_chat", "always_allow", "judge", "reject"]
 Outcome = Literal["answered", "answered_elsewhere", "expired", "failed"]
 
 # What each choice answers: approved, and the rule it sets in this chat.
 _ANSWERS: dict[Choice, tuple[bool, chat_rules.ChatRule | None]] = {
     "approve": (True, None),
     "approve_chat": (True, "allow"),
+    "always_allow": (True, "allow"),
     "judge": (True, "judge"),
     "reject": (False, None),
 }
 _RECEIPTS: dict[Choice, str] = {
-    "approve": "Approved",
+    "approve": "Allowed once",
     "approve_chat": "Approved for this chat",
+    "always_allow": "Always allowed in this chat",
     "judge": f"Approved, and {AUTOPILOT_NAME} judges it in this chat",
-    "reject": "Rejected",
+    "reject": "Denied",
 }
+# Anyone in a shared channel may click, so "Always allow" there holds in this
+# chat only, whatever the web card would offer.
+_CHANNEL_GRANT = chat_rules.AllowGrant(scope="chat", lifetime="always")
 _PASSAGE_CHARS = 500
 
 
@@ -45,6 +53,10 @@ class CardOption(BaseModel):
     label: str
     # What replaces the buttons once this option answered the row.
     receipt: str
+    # Where and for how long the rule this option saves holds; None when it
+    # saves none.
+    scope: chat_rules.Scope | None = None
+    lifetime: chat_rules.Lifetime | None = None
 
 
 class CardView(BaseModel):
@@ -69,6 +81,8 @@ def card_for(row: PendingHumanReviewModel) -> CardView:
                 choice=choice,
                 label=label,
                 receipt=f"{'✅' if _ANSWERS[choice][0] else '✖️'} {headline} · {said}",
+                scope=_grant_of(choice).scope if _ANSWERS[choice][1] else None,
+                lifetime=_grant_of(choice).lifetime if _ANSWERS[choice][1] else None,
             )
             for choice, label, said in _offered(payload)
         ],
@@ -111,6 +125,7 @@ async def answer(
                 {review_id: rule},
                 keys,
                 {review_id: "chat"},
+                {review_id: _CHANNEL_GRANT} if choice == "always_allow" else None,
             )
         except Exception:
             logger.warning(f"Rule from {review_id} not saved", exc_info=True)
@@ -126,13 +141,17 @@ def _offered(payload: dict[str, Any]) -> list[tuple[Choice, str, str]]:
             ("reject", "Keep it out", "Kept out"),
         ]
     rules = payload.get("chat_rules_allowed") or []
-    offered: list[tuple[Choice, str]] = [("approve", "Approve")]
-    if "allow" in rules:
-        offered.append(("approve_chat", "Approve for this chat"))
-    if "judge" in rules:
-        offered.append(("judge", f"Let {AUTOPILOT_NAME} judge in this chat"))
-    offered.append(("reject", "Reject"))
-    return [(choice, label, _RECEIPTS[choice]) for choice, label in offered]
+    return [
+        (option.id, option.label, _RECEIPTS[option.id])
+        for option in answer_options(rules)
+    ]
+
+
+def _grant_of(choice: Choice) -> chat_rules.AllowGrant:
+    # A judge rule and a legacy chat approval last as long as the chat.
+    if choice == "always_allow":
+        return _CHANNEL_GRANT
+    return chat_rules.AllowGrant(scope="chat", lifetime="chat")
 
 
 def _reason_line(payload: dict[str, Any]) -> str | None:

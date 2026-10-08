@@ -18,6 +18,7 @@ from backend.copilot.response_model import (
     StreamTextStart,
     StreamUsage,
 )
+from backend.copilot.turn_lease import turn_lease_key
 from backend.data import redis_client
 from backend.util.testing import is_tcp_port_reachable
 
@@ -29,14 +30,19 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture
 async def turn():
-    """A running turn of its own session, with every key removed after."""
+    """A running turn of its own session, with every key removed after.
+
+    Published with its ``session_id`` as the executor does, so it also holds
+    the executor's lease: a claimed turn without one reads as dead."""
     session_id, turn_id = f"resume-{uuid.uuid4().hex}", str(uuid.uuid4())
     await stream_registry.create_session(session_id, None, "", "", turn_id=turn_id)
+    redis = await redis_client.get_redis_async()
+    await redis.set(turn_lease_key(turn_id), "test-executor", ex=300)
     turn_ids = [turn_id]
     yield session_id, turn_id, turn_ids
-    redis = await redis_client.get_redis_async()
     await redis.delete(stream_registry.get_session_meta_key(session_id))
     for key_turn in turn_ids:
+        await redis.delete(turn_lease_key(key_turn))
         await redis.delete(stream_registry._get_turn_stream_key(key_turn))
         await redis.delete(stream_registry._get_turn_meta_key(key_turn))
 

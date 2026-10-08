@@ -16,6 +16,8 @@ export const CANCELLED_MARKER = "[__COPILOT_ERROR_f7a1__] Operation cancelled";
 interface UseCopilotStopArgs {
   sessionId: string | null;
   sdkStop: () => void;
+  /** Close this chat's connection to the turn and keep it from resuming. */
+  closeStream: () => void;
   setMessages: UseChatHelpers<UIMessage>["setMessages"];
   /** Flipped to `true` so the stream's onError/onFinish callbacks don't
    *  misinterpret the resulting AbortError as a disconnect + reconnect. */
@@ -31,15 +33,18 @@ interface UseCopilotStopArgs {
  *
  * Wraps AI-SDK's `stop()` to:
  *   1. flag the stop as user-initiated (so onError/onFinish don't reconnect)
- *   2. abort the SSE fetch synchronously for instant UI feedback
+ *   2. close the turn's connection synchronously for instant UI feedback,
+ *      and keep the lifecycle from resuming that turn until the next send
  *   3. inject a cancellation marker into the visible assistant message
- *   4. asynchronously tell the backend executor to actually stop the task,
+ *   4. asynchronously tell the backend executor to actually stop the task
+ *      (the only caller of the backend stop: closing a connection never is),
  *      surfacing a toast when the cancel was published but not yet
  *      confirmed (the task should stop shortly) or failed outright.
  */
 export function useCopilotStop({
   sessionId,
   sdkStop,
+  closeStream,
   setMessages,
   isUserStoppingRef,
   setIsUserStopping,
@@ -53,6 +58,7 @@ export function useCopilotStop({
       // sdkStop throws if no fetch is in flight — the user-stop flag
       // already flipped, so the UI reflects the intent either way.
     }
+    closeStream();
     setMessages((prev) => {
       const resolved = resolveInProgressTools(prev, "cancelled");
       const last = resolved[resolved.length - 1];

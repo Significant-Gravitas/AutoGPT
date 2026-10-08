@@ -1128,3 +1128,39 @@ async def set_user_default_chat_route(
         raise DatabaseError(
             f"Failed to update default chat route for user {user_id}: {e}"
         ) from e
+
+
+# Key in ``User.metadata`` holding the copilot heartbeat settings
+# (``backend.copilot.heartbeat.config.HeartbeatConfig``). The JSON column takes
+# per-user options without a migration; the data layer stores the dict as given
+# and the copilot layer validates it, as with the default chat route above.
+COPILOT_HEARTBEAT_METADATA_KEY = "copilot_heartbeat"
+
+
+async def get_user_copilot_heartbeat(user_id: str) -> Optional[dict]:
+    """The stored heartbeat settings, or None when the user never saved any."""
+    user = await PrismaUser.prisma().find_unique(where={"id": user_id})
+    if user is None or not isinstance(user.metadata, dict):
+        return None
+    stored = user.metadata.get(COPILOT_HEARTBEAT_METADATA_KEY)
+    return stored if isinstance(stored, dict) else None
+
+
+async def set_user_copilot_heartbeat(user_id: str, settings: dict) -> None:
+    """Save the heartbeat settings, keeping every other metadata key."""
+    try:
+        prisma_user = PrismaUser.prisma()
+        user = await prisma_user.find_unique(where={"id": user_id})
+        if user is None:
+            raise NotFoundError(f"User {user_id} not found")
+        metadata = dict(user.metadata) if isinstance(user.metadata, dict) else {}
+        metadata[COPILOT_HEARTBEAT_METADATA_KEY] = settings
+        await prisma_user.update(
+            where={"id": user_id}, data={"metadata": SafeJson(metadata)}
+        )
+    except NotFoundError:
+        raise
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to update heartbeat settings for user {user_id}: {e}"
+        ) from e

@@ -2039,12 +2039,11 @@ async def stream_chat_post(
         # First chunk on the turn stream: gives the SSE subscriber an
         # immediate status to render while the turn waits for an executor
         # pickup — otherwise the user stares at a bare loader until setup
-        # completes.
+        # completes. No ``session_id``: that marks the turn claimed by an
+        # executor, and none has picked it up yet.
         try:
             await stream_registry.publish_chunk(
-                turn_id,
-                StreamStatus(message="Message received…"),
-                session_id=session_id,
+                turn_id, StreamStatus(message="Message received…")
             )
         except Exception:
             logger.warning(

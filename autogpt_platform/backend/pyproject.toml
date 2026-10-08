@@ -108,6 +108,7 @@ sqlparse = ">=0.5.5,<0.7.0"
 pillow = ">=9.1.0,<12"
 pypdfium2 = "^5.8.0"
 tavily-python = ">=0.7.26,<0.9.0"
+pydantic-ai-slim = {version = "1.30.1", extras = ["anthropic", "openai"]}
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"

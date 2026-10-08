@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEST_BACKEND_BASE_URL } from "../sse-helpers";
 import {
   createBackendSim,
@@ -119,6 +119,8 @@ describe("stream drift — guards", () => {
         }),
         {},
       );
+      // A fresh page has no cursor of its own: its one read starts at 0-0.
+      expect(sim.resumes).toEqual([{ turn: "drift-turn-0", after: "0-0" }]);
     },
   );
 });

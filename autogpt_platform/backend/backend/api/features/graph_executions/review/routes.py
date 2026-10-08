@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
 from backend.copilot.constants import legacy_chat_session_id, parse_node_id_from_exec_id
+from backend.copilot.gate.chat_rules import AllowGrant
 from backend.copilot.gate.chat_rules import set_answer_rules as set_chat_rules
 from backend.copilot.gate.held import subject_keys as held_subject_keys
 from backend.copilot.gate.held import wake as wake_for_held_calls
@@ -364,6 +365,15 @@ async def process_review_action(
             {review.node_exec_id: review.chat_rule for review in request.reviews},
             chat_rule_keys,
             {review.node_exec_id: review.chat_rule_scope for review in request.reviews},
+            {
+                review.node_exec_id: AllowGrant(
+                    scope=review.chat_rule_scope,
+                    lifetime=review.chat_rule_lifetime,
+                    ttl_hours=review.chat_rule_ttl_hours,
+                )
+                for review in request.reviews
+                if review.chat_rule_lifetime is not None
+            },
         )
 
     # A held call finishes on its own: the answer starts the chat's next turn.

@@ -865,6 +865,11 @@ class TestCompletionOnRealRedis:
 
     async def test_a_late_completion_leaves_the_next_turn_running(self, session_id):
         await stream_registry.create_session(session_id, None, "", "", turn_id="a")
+        # Turn a's end flips its status, then wakes turn b.
+        redis = await redis_client.get_redis_async()
+        await redis.hset(
+            stream_registry.get_session_meta_key(session_id), "status", "completed"
+        )
         await stream_registry.create_session(session_id, None, "", "", turn_id="b")
 
         with patch.object(stream_registry, "publish_chunk", new=AsyncMock()) as publish:
