@@ -452,6 +452,25 @@ def test_an_exact_tool_name_unpins_the_block_that_shares_it(rival_index):
     assert block.reason == "search"
 
 
+def test_graph_context_keeps_the_block_order(rival_index):
+    """Building an agent lists blocks only: tools and MCP servers are
+    direct-only, so neither the tool-first order nor the MCP lift nor the
+    unpin can move a buildable block, and graph-only blocks stay listed."""
+    layered = rival_index.with_entries(
+        [_block(INPUT_ID, "AgentInputBlock", "Graph input.", context="graph")]
+    )
+    state = ConnectionState(
+        providers=frozenset({"discord"}), server_urls=frozenset({LINEAR_MCP_URL})
+    )
+    pinned = layered.search("Linear create issue", context="graph", connections=state)
+    assert pinned.names[0] == "LinearCreateIssueBlock"
+    assert pinned.hits[0].reason == "exact_name"
+    for query in ("post a message to discord", "Linear create issue"):
+        result = layered.search(query, context="graph", connections=state)
+        assert {h.entry.kind for h in result.hits} == {"block"}, query
+    assert layered.search("agent input", context="graph").names == ["AgentInputBlock"]
+
+
 def test_a_distant_connected_service_is_not_lifted(rival_index):
     """A connected server the query does not name competes on coverage like
     anything else: Sentry matches only "issue" here, so it must not displace
