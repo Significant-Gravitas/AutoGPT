@@ -25,7 +25,7 @@ from .tenancy import TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
 
-schedules_router = APIRouter(tags=["graphs", "schedules"])
+schedules_router = APIRouter(tags=["schedules"])
 
 
 # ============================================================================

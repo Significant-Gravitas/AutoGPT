@@ -47,7 +47,29 @@
 
 ## API & Integrations
 
-* [API Introduction](integrating/api-guide.md)
+* [AutoGPT Platform API](integrating/api-guide.md)
+  * [Quickstart](integrating/quickstart.md)
+  * [Build with AI coding agents](integrating/ai-coding-agents.md)
+  * [Cloud and self-hosted](integrating/environments.md)
+  * [Authentication and permissions](integrating/authentication.md)
+  * [Run agents](integrating/running-agents.md)
+  * [Build agents](integrating/building-agents.md)
+  * [Errors, rate limits, and pagination](integrating/api-conventions.md)
+  * [MCP server](integrating/mcp-server.md)
+  * [Migrate from v1](integrating/migrate-from-v1.md)
+* [API reference](integrating/api-reference.md)
+  * ```yaml
+    props:
+      models: true
+      downloadLink: true
+      grouping: by-operation
+    type: builtin:openapi
+    dependencies:
+      spec:
+        ref:
+          kind: openapi
+          spec: autogpt-api-v2
+    ```
 * [OAuth & SSO](integrating/oauth-guide.md)
 
 ## Contributing

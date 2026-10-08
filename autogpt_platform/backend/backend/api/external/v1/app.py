@@ -17,7 +17,7 @@ DESCRIPTION = """
 The v1 API provides access to core AutoGPT functionality for external integrations.
 
 For authentication details and usage examples, see the
-[API Integration Guide](https://docs.agpt.co/platform/integrating/api-guide/).
+[API Integration Guide](https://agpt.co/docs/platform/api-and-integrations/api-guide).
 """
 
 v1_app = FastAPI(

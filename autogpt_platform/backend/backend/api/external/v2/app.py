@@ -11,7 +11,7 @@ from backend.api.utils.openapi import sort_openapi
 
 from .errors import add_v2_exception_handlers
 from .global_rate_limit import GlobalRateLimitMiddleware
-from .mcp_server import create_mcp_app
+from .mcp_server import mcp_mount
 from .routes import v2_router
 
 DESCRIPTION = """
@@ -29,7 +29,7 @@ integrations, automations, and custom applications.
 - **Human-in-the-loop**: Review and approve agent decisions via the API
 
 For authentication details and usage examples, see the
-[API Integration Guide](https://docs.agpt.co/platform/integrating/api-guide/).
+[API Integration Guide](https://agpt.co/docs/platform/api-and-integrations/api-guide).
 
 ### Rate Limits
 
@@ -67,49 +67,77 @@ v2_app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    servers=[
+        {
+            "url": "https://backend.agpt.co/external-api/v2",
+            "description": "AutoGPT Cloud",
+        },
+        {
+            "url": "{origin}/external-api/v2",
+            "description": "Self-hosted with Docker Compose",
+            "variables": {"origin": {"default": "http://localhost:8006"}},
+        },
+        {
+            "url": "{origin}/_agpt/external-api/v2",
+            "description": "Self-hosted single container",
+            "variables": {"origin": {"default": "http://localhost:3000"}},
+        },
+    ],
     openapi_tags=[
         {
             "name": "graphs",
+            "x-page-title": "Graphs",
             "description": "Create, update, and manage agent graphs",
         },
         {
             "name": "schedules",
+            "x-page-title": "Schedules",
             "description": "Manage scheduled graph executions",
         },
         {
             "name": "blocks",
+            "x-page-title": "Blocks",
             "description": "Discover available building blocks",
         },
         {
             "name": "search",
+            "x-page-title": "Search",
             "description": "Cross-domain hybrid search across agents, blocks, and docs",
         },
         {
             "name": "marketplace",
+            "x-page-title": "Marketplace",
             "description": "Browse agents and creators, manage submissions",
         },
         {
             "name": "library",
-            "description": "Manage your agent library, execute agents, organize with folders",
+            "x-page-title": "Library",
+            "description": "Manage your agent library, run agents, organize with folders",
         },
         {
             "name": "runs",
-            "description": (
-                "Monitor, stop, delete, and share agent runs; "
-                "manage human-in-the-loop reviews"
-            ),
+            "x-page-title": "Runs",
+            "description": "Monitor, stop, delete, and share agent runs; manage human-in-the-loop reviews",
         },
         {
             "name": "credits",
+            "x-page-title": "Credits",
             "description": "Check balance and view transaction history",
         },
         {
             "name": "integrations",
+            "x-page-title": "Integrations",
             "description": "List, create, and delete integration credentials",
         },
         {
             "name": "files",
+            "x-page-title": "Files",
             "description": "Upload, list, download, and delete workspace files",
+        },
+        {
+            "name": "identity",
+            "x-page-title": "Identity",
+            "description": "Who the credentials act as, and in which organization and team",
         },
     ],
 )
@@ -122,8 +150,29 @@ v2_app.include_router(v2_router)
 # so we must register them here for the v2 API specifically.
 add_v2_exception_handlers(v2_app)
 
-# Mount MCP server (Copilot tools via Streamable HTTP)
-v2_app.mount("/mcp", create_mcp_app())
+# MCP server (Copilot tools via Streamable HTTP). The platform app's lifespan
+# runs it; see `MCPMount`.
+v2_app.mount("/mcp", mcp_mount)
 
 # Sort OpenAPI schema to eliminate diff on refactors
 sort_openapi(v2_app)
+
+
+def _route_try_it_through_the_docs_proxy(app: FastAPI) -> None:
+    """The docs site calls the API from the reader's browser to "Test it",
+    and the API does not allow that origin; GitBook's proxy makes the call
+    server-side instead, and only to the hosts listed in `servers`."""
+    wrapped = app.openapi
+
+    def openapi():
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = wrapped()
+        schema["x-enable-proxy"] = True
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = openapi
+
+
+_route_try_it_through_the_docs_proxy(v2_app)
