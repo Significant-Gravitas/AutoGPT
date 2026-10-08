@@ -332,7 +332,11 @@ def _create_tool_handler(
         for block in result.get("content", []):
             if block.get("type") == "text":
                 parts.append(block["text"])
-        return "\n".join(parts) if parts else ""
+        text = "\n".join(parts)
+        # A refusal or failure must reach the client as one, not as a result.
+        if result.get("isError"):
+            raise ToolError(text)
+        return text
 
     return handler
 

@@ -3,14 +3,13 @@
 import json
 from types import SimpleNamespace
 from unittest import mock
-from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
 import pytest
 import pytest_mock
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
-from mcp.types import ListToolsRequest
+from mcp.types import CallToolRequest, CallToolRequestParams, ListToolsRequest
 from prisma.enums import APIKeyPermission
 from starlette.routing import Match
 
@@ -197,10 +196,15 @@ async def test_a_gated_tool_called_over_mcp_is_parked_for_an_approval_nobody_can
     mocker.patch.object(type(tool), "gate_subject", return_value=None)
     run = mocker.patch.object(type(tool), "_execute")
 
-    output = await _create_tool_handler(tool, [str(s) for s in scopes or []])(
-        ctx=MagicMock(), **args
+    result = await create_mcp_server()._mcp_server.request_handlers[CallToolRequest](
+        CallToolRequest(
+            method="tools/call",
+            params=CallToolRequestParams(name=tool_name, arguments=args),
+        )
     )
 
     run.assert_not_called()
     open_review.assert_awaited_once()
-    assert json.loads(output)["type"] == "approval_required"
+    assert result.root.isError
+    _, refusal = result.root.content[0].text.split(": ", 1)
+    assert json.loads(refusal)["type"] == "approval_required"

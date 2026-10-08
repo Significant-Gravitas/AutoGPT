@@ -111,7 +111,7 @@ class RunClaim:
         self.user_id = user_id
         self.organization_id = organization_id
         self.holds_key = False
-        self.recorded = False
+        self.run_id: Optional[str] = None
         self.existing_run_id: Optional[str] = None
 
     @property
@@ -142,17 +142,19 @@ class RunClaim:
 
     async def record(self, run_id: str) -> None:
         """Point the key at the run, so a later retry gets this one back."""
+        self.run_id = run_id
         if not self.holds_key:
             return
         try:
             redis = await get_redis_async()
             await redis.set(self.redis_key, run_id, ex=_TTL_SECONDS)
-            self.recorded = True
         except Exception as e:
             logger.warning(f"Could not record idempotent run {run_id}: {e}")
 
     async def release(self) -> None:
-        if not self.holds_key or self.recorded:
+        # Once a run exists the key stays, even unrecorded: a retry then gets a
+        # 409 until the key expires, never a second run.
+        if not self.holds_key or self.run_id is not None:
             return
         try:
             redis = await get_redis_async()
