@@ -1587,6 +1587,10 @@ class TestRegressionUserSettings:
         mock_user.subscriptionTier = "NO_TIER"
         mock_user.defaultChatAuthProvider = None
         mock_user.defaultChatCredentialId = None
+        mock_user.termsAcceptedAt = None
+        mock_user.termsVersion = None
+        mock_user.marketingOptOutAt = None
+        mock_user.marketingOptOutSource = None
         self.mock_user_actions.update = AsyncMock(return_value=mock_user)
 
         from backend.data.user import update_user_timezone

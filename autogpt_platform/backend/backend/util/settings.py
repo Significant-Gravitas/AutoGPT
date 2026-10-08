@@ -1130,6 +1130,13 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="MailerLite API token used to manage tour and changelog audiences",
     )
+    mailerlite_webhook_secret: str = Field(
+        default="",
+        description=(
+            "Signing secret of the MailerLite webhook that reports unsubscribes. "
+            "Blank refuses every call to that webhook."
+        ),
+    )
 
     unsubscribe_secret_key: str = Field(
         default="",
