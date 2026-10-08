@@ -416,7 +416,7 @@ async def test_find_capability_kind_emptied_list_never_suggests_an_mcp_server(
 def test_find_capability_kind_description_says_usually_omit():
     description = FindCapabilityTool().parameters["properties"]["kind"]["description"]
     assert description.startswith("Usually omit")
-    assert "kind='tool' hides them" in description
+    assert "kind='tool' hides blocks" in description
 
 
 async def test_find_capability_returns_the_session_owner_s_skill(skills):

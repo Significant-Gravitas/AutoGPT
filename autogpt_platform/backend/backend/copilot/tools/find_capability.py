@@ -82,11 +82,7 @@ class FindCapabilityTool(BaseTool):
                 "kind": {
                     "type": "string",
                     "enum": list(KINDS),
-                    "description": (
-                        "Usually omit. Integrations such as Gmail, Slack or "
-                        "Sheets are blocks, so kind='tool' hides them. Set it "
-                        "only to look up a capability whose kind you know."
-                    ),
+                    "description": "Usually omit; kind='tool' hides blocks like Gmail.",
                 },
             },
             "required": ["query"],
