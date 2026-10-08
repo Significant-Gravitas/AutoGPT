@@ -19,7 +19,7 @@ from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import set_turn_unattended
 from backend.copilot.credential_selection import set_turn_credential_pins
-from backend.copilot.engine import resolve_use_sdk
+from backend.copilot.engine import resolve_use_pai, resolve_use_sdk
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
@@ -726,6 +726,17 @@ class CoPilotProcessor:
                         else stream_chat_completion_baseline
                     )
                     log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
+                    # --- pai engine: opt-in third branch, off by default.
+                    # Building-mode sessions stay pinned to the SDK. ---
+                    if await resolve_use_pai(entry.session_id) and not (
+                        use_sdk and await _building_mode_forces_sdk(entry.session_id)
+                    ):
+                        from backend.copilot.pai.service import (
+                            stream_chat_completion_pai,
+                        )
+
+                        stream_fn = stream_chat_completion_pai
+                        log.info("Using pai (Pydantic AI) service")
 
             await cost_context_stack.enter_async_context(
                 trial_cost_context(entry.user_id)

@@ -8,6 +8,7 @@ before any turn exists.
 
 import logging
 
+from backend.copilot.pai.selection import pai_engine_enabled
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
@@ -39,3 +40,13 @@ async def resolve_use_sdk(
         user_id or "anonymous",
         default=config_default,
     )
+
+
+# --- pai engine (opt-in, off by default) -------------------------------------
+async def resolve_use_pai(session_id: str | None) -> bool:
+    """Run this turn on the Pydantic AI engine (``backend.copilot.pai``)?
+
+    Off unless ``COPILOT_ENGINE=pai`` or the session opted in; see
+    ``backend.copilot.pai.selection``.
+    """
+    return await pai_engine_enabled(session_id)
