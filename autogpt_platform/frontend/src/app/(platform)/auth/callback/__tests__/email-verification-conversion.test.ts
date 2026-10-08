@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   getServerSession: vi.fn(),
   scheduleAccountCreatedGoal: vi.fn(),
   cookieSet: vi.fn(),
+  recordUserConsent: vi.fn(),
   provisionedUserIDs: new Set<string>(),
 }));
 
@@ -37,6 +38,7 @@ vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
       headers: new Headers({ "X-AutoGPT-User-Created": String(created) }),
     };
   }),
+  postV1RecordUserConsent: mocks.recordUserConsent,
 }));
 
 vi.mock("@/app/api/helpers", () => ({
@@ -50,7 +52,11 @@ vi.mock("@/services/analytics/datafast-server", async (importOriginal) => ({
 }));
 vi.mock("next/headers", () => ({
   headers: vi.fn(async () => new Headers()),
-  cookies: vi.fn(async () => ({ set: mocks.cookieSet })),
+  cookies: vi.fn(async () => ({
+    set: mocks.cookieSet,
+    get: vi.fn(),
+    delete: vi.fn(),
+  })),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
@@ -109,4 +115,26 @@ describe("sign_up conversion across email verification", () => {
     expect(mocks.scheduleAccountCreatedGoal).toHaveBeenCalledOnce();
     expect(mocks.cookieSet).toHaveBeenCalledOnce();
   });
+
+  it.each([true, false])(
+    "records the sign-up's marketing opt-out (%s) from the link, opened in any browser",
+    async (marketingOptOut) => {
+      mocks.signUpEmail.mockResolvedValue({ token: null, user: { id: "u-1" } });
+      mocks.getServerSession.mockResolvedValue(null);
+      mocks.recordUserConsent.mockResolvedValue({ status: 200, data: {} });
+
+      await signup("new@example.com", password, password, marketingOptOut);
+
+      // No cookie travels with it: only the link the email carries.
+      const callbackURL = mocks.signUpEmail.mock.calls[0][0].body.callbackURL;
+      mocks.getServerSession.mockResolvedValue({ user: { id: "u-1" } });
+
+      await clickVerificationLink(callbackURL);
+
+      expect(mocks.recordUserConsent).toHaveBeenCalledOnce();
+      expect(mocks.recordUserConsent).toHaveBeenCalledWith(
+        expect.objectContaining({ marketing_opt_out: marketingOptOut }),
+      );
+    },
+  );
 });

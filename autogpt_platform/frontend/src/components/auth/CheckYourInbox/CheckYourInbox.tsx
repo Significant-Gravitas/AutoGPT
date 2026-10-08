@@ -15,14 +15,22 @@ interface Props {
   email: string;
   reason: CheckYourInboxReason;
   next?: string | null;
+  marketingOptOut?: boolean;
   onBack: () => void;
 }
 
-export function CheckYourInbox({ email, reason, next, onBack }: Props) {
+export function CheckYourInbox({
+  email,
+  reason,
+  next,
+  marketingOptOut,
+  onBack,
+}: Props) {
   const copy = CHECK_YOUR_INBOX_COPY[reason];
   const { cooldown, isResending, canResend, handleResend } = useCheckYourInbox({
     email,
     next,
+    marketingOptOut,
   });
 
   return (

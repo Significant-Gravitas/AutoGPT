@@ -4,6 +4,7 @@ import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/au
 import { getOnboardingStatus } from "@/app/api/helpers";
 import { auth } from "@/lib/auth/auth";
 import { getEmailVerificationCallbackURL } from "@/lib/auth/email-verification";
+import { recordSignupConsent } from "@/lib/auth/server/recordSignupConsent";
 import { rollbackSession } from "@/lib/auth/server/rollbackSession";
 import { markAccountCreated } from "@/services/analytics/account-created-server";
 import {
@@ -20,7 +21,7 @@ export async function signup(
   email: string,
   password: string,
   confirmPassword: string,
-  agreeToTerms: boolean,
+  marketingOptOut: boolean,
   next?: string | null,
 ) {
   try {
@@ -28,7 +29,7 @@ export async function signup(
       email,
       password,
       confirmPassword,
-      agreeToTerms,
+      marketingOptOut,
     });
 
     if (!parsed.success) {
@@ -46,7 +47,10 @@ export async function signup(
           email: parsed.data.email,
           password: parsed.data.password,
           name: parsed.data.email.split("@")[0],
-          callbackURL: getEmailVerificationCallbackURL(next),
+          callbackURL: getEmailVerificationCallbackURL({
+            next,
+            marketingOptOut: parsed.data.marketingOptOut,
+          }),
         },
         headers: await headers(),
       });
@@ -80,8 +84,8 @@ export async function signup(
 
     // With email verification required there is no session yet: Better Auth
     // has emailed a link instead (and answers an address that already has an
-    // account the same way). The platform user and the sign-up conversion
-    // wait for that link, which lands on /auth/callback.
+    // account the same way). The platform user, the sign-up conversion and
+    // the consent record wait for that link, which lands on /auth/callback.
     if (!signUpResult.token) {
       return {
         success: true,
@@ -95,6 +99,12 @@ export async function signup(
       if (wasAccountCreated(createUserResponse)) {
         await scheduleAccountCreatedGoal("email");
         await markAccountCreated("email");
+        // Never throws, so a failed consent write can't reach the rollback
+        // below: the account exists and the signup still succeeds.
+        await recordSignupConsent({
+          userID: signUpResult.user.id,
+          marketingOptOut: parsed.data.marketingOptOut,
+        });
       }
     } catch (createUserError) {
       console.error("Error creating user during signup:", createUserError);
@@ -112,7 +122,7 @@ export async function signup(
 
     return {
       success: true,
-      next: shouldShowOnboarding ? "/onboarding" : "/copilot",
+      next: shouldShowOnboarding ? "/onboarding" : "/home",
     };
   } catch (err) {
     Sentry.captureException(err);

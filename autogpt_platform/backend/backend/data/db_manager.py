@@ -187,6 +187,7 @@ from backend.data.user import (
     get_user_notification_preference,
     get_user_subscription_tier,
     heal_orphaned_auth_identities,
+    is_marketing_opted_out,
     release_welcome_email,
     set_last_briefing_at,
     set_user_credentials,
@@ -703,6 +704,8 @@ class DatabaseManager(AppService):
     # second process has no Prisma connection, so these cross the RPC.
     get_billing_email_recipient = _(get_billing_email_recipient)
     claim_welcome_email = _(claim_welcome_email)
+    # Read by the audience consumer right before each MailerLite write.
+    is_marketing_opted_out = _(is_marketing_opted_out)
     release_welcome_email = _(release_welcome_email)
     update_briefing_content = _(update_briefing_content)
 
@@ -881,6 +884,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     set_last_briefing_at = d.set_last_briefing_at
     get_billing_email_recipient = d.get_billing_email_recipient
     claim_welcome_email = d.claim_welcome_email
+    is_marketing_opted_out = d.is_marketing_opted_out
     release_welcome_email = d.release_welcome_email
 
     # ============ Morning Briefing ============ #
