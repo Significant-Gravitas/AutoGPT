@@ -490,7 +490,7 @@ async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
         # handing out the full cap is the one fail-open branch this module
         # would otherwise contain.
         return 0
-    daily, weekly, _ = await get_global_rate_limits(
+    daily, weekly, usage_tier = await get_global_rate_limits(
         user_id,
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
@@ -498,7 +498,11 @@ async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
     ceiling = _plan_ceiling_microdollars(daily)
 
     remaining_usd = await get_remaining_usd_budget(
-        user_id=user_id, daily_cost_limit=daily, weekly_cost_limit=weekly, floor_usd=0.0
+        user_id=user_id,
+        daily_cost_limit=daily,
+        weekly_cost_limit=weekly,
+        floor_usd=0.0,
+        expected_tier=usage_tier,
     )
     if remaining_usd == float("inf"):
         return max(0, ceiling)

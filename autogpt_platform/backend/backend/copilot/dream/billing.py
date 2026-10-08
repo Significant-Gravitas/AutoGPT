@@ -128,6 +128,7 @@ async def check_dream_budget(
             daily_cost_limit=daily_limit,
             weekly_cost_limit=weekly_limit,
             skip_daily=True,
+            expected_tier=_tier,
         )
     except RateLimitExceeded as exc:
         logger.info(

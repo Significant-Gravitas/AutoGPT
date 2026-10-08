@@ -112,15 +112,15 @@ def test_stripe_webhook_checkout_calls_sync_tier_helper(
     mock_sync.assert_called_once()
 
 
-def test_stripe_webhook_skips_handlers_on_replayed_event(
+def test_stripe_webhook_reconciles_activation_without_repeating_checkout_on_replay(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """A second delivery of the same Stripe event.id must short-circuit.
+    """A claimed event still reconciles activation after a crashed delivery.
 
     Stripe retries the same event on non-2xx responses, and not every
     downstream handler is independently idempotent (e.g. ``fulfill_checkout``
     relies on a checkout-state flag that races on concurrent retries). The
-    webhook dedupes by event.id so retries don't re-run any handler.
+    The webhook skips collection/fulfillment but retries authoritative sync.
     """
     event = _make_checkout_event("subscription", "sub_dedup")
     event["id"] = "evt_already_seen"
@@ -146,6 +146,9 @@ def test_stripe_webhook_skips_handlers_on_replayed_event(
         "backend.api.features.billing.subscriptions.routes.sync_tier_from_checkout_session",
         new_callable=AsyncMock,
     )
+    recover_sync = mocker.patch(
+        "backend.data.credit.sync_tier_from_checkout_session", new_callable=AsyncMock
+    )
 
     response = client.post(
         "/credits/stripe_webhook",
@@ -156,6 +159,59 @@ def test_stripe_webhook_skips_handlers_on_replayed_event(
     assert response.status_code == 200
     mock_fulfill.assert_not_called()
     mock_sync.assert_not_called()
+    recover_sync.assert_awaited_once_with(event["data"]["object"])
+
+
+@pytest.mark.parametrize(
+    "event_type,payload",
+    [
+        ("customer.subscription.updated", {"id": "sub_retry", "customer": "cus"}),
+        ("invoice.paid", {"id": "in_retry", "subscription": "sub_retry"}),
+    ],
+)
+def test_claimed_webhook_recovers_subscription_without_collection(
+    mocker: pytest_mock.MockFixture, event_type: str, payload: dict
+) -> None:
+    mocker.patch(
+        "stripe.Webhook.construct_event",
+        return_value={
+            "id": "evt_retry",
+            "type": event_type,
+            "data": {"object": payload},
+        },
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
+        new="whsec_test",
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes._claim_stripe_event",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    current = {"id": "sub_retry", "customer": "cus"}
+    mocker.patch(
+        "stripe.Subscription.retrieve_async",
+        new_callable=AsyncMock,
+        return_value=current,
+    )
+    recovered = mocker.patch(
+        "backend.data.credit.sync_subscription_from_stripe", new_callable=AsyncMock
+    )
+    collection = mocker.patch("stripe.Invoice.pay_async", new_callable=AsyncMock)
+    fulfill = mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.UserCredit.fulfill_checkout",
+        new_callable=AsyncMock,
+    )
+    response = client.post(
+        "/credits/stripe_webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=sig"},
+    )
+    assert response.status_code == 200
+    recovered.assert_awaited_once_with(current)
+    collection.assert_not_awaited()
+    fulfill.assert_not_awaited()
 
 
 def test_stripe_webhook_checkout_propagates_sync_failure(

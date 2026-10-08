@@ -325,6 +325,7 @@ async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
         daily_cost_limit=daily_limit,
         weekly_cost_limit=weekly_limit,
         floor_usd=-1.0,
+        expected_tier=tier,
     )
     if tier == "TRIAL":
         return resolve_trial_sdk_budget(static_cap, remaining)

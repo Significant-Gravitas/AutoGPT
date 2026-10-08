@@ -139,6 +139,8 @@ model User {
 
   subscriptionTier  SubscriptionTier   @default(NO_TIER)
   subscriptionTrial SubscriptionTrial?
+  paidUsageActivation PaidUsageActivation?
+  proActivationAttempt ProActivationAttempt?
 
   // Relations
 
@@ -262,6 +264,38 @@ enum SubscriptionTier {
   MAX
   BUSINESS
   ENTERPRISE
+}
+
+// One immutable generation for the first settled trial-to-Pro/Max conversion. Never reset on replay.
+model PaidUsageActivation {
+  id                   String @id @default(uuid())
+  userId               String @unique
+  user                 User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String @unique
+  stripeInvoiceId      String @unique
+  readyAt              DateTime?
+  createdAt            DateTime @default(now())
+}
+
+// Cutover fence: old settled payments cannot become new activation resets on replay.
+model PaidUsageActivationPolicy {
+  id        String @id
+  startsAt  DateTime @default(now())
+}
+
+model ProActivationAttempt {
+  id                   String @id @default(uuid())
+  userId               String @unique
+  user                 User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String @unique
+  stripeCustomerId     String
+  terms                Json
+  returnTo             String
+  status               String @default("quoted")
+  confirmedAt          DateTime?
+  invoiceId            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 model SubscriptionTrial {

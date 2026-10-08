@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.briefing import narrative as narrative_module
 from backend.copilot.briefing.models import BriefingContent, BriefingRunItem
 from backend.copilot.briefing.narrative import (
@@ -302,3 +303,6 @@ async def test_cost_log_failure_does_not_lose_the_narrative(cost_log):
     cost_log.side_effect = RuntimeError("redis down")
     with patch_llm(return_value=completion("Morning.")):
         assert await compose_narrative(USER, make_content()) == "Morning."
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot

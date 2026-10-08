@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot import stream_registry
+from backend.copilot import stream_registry, usage_activation_fixtures
 from backend.copilot.executor.processor import CoPilotProcessor
 from backend.copilot.executor.scheduled_turn_alert import (
     UNCLASSIFIED,
@@ -23,11 +23,21 @@ from backend.copilot.tools.models import ErrorResponse, ExecutionStartedResponse
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.monitoring.instrumentation import COPILOT_SCHEDULED_TURN_FAILURES
 
+usage_snapshot = usage_activation_fixtures.usage_snapshot
+
 _ALERT = "backend.copilot.executor.scheduled_turn_alert"
 _PRISMA_ERROR = (
     "Client is not connected to the query engine, you must call `connect()` "
     "before attempting to query data."
 )
+
+
+@pytest.fixture(autouse=True)
+def mock_stream_publication(mocker):
+    mocker.patch(
+        "backend.copilot.executor.processor.stream_registry.publish_chunk",
+        new_callable=AsyncMock,
+    )
 
 
 def _entry(scheduled: ScheduledTurnOrigin | None) -> CoPilotExecutionEntry:

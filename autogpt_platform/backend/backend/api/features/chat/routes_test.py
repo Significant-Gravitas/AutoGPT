@@ -328,6 +328,18 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
+    # Validation tests do not need a live entitlement snapshot or Redis.
+    # Gate-specific tests replace these boundary mocks with their verdict.
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(1_000_000, 5_000_000, SubscriptionTier.BASIC),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     # ``schedule_chat_turn`` owns acquire-slot + persist-message + dispatch
     # in one call. Patching it at the route boundary lets tests exercise
     # validation/enrichment (file_ids, message length, rate limits, etc.)
@@ -337,6 +349,12 @@ def _mock_stream_internals(
         "backend.api.features.chat.routes.schedule_chat_turn",
         new_callable=AsyncMock,
         return_value="turn-id-mock",
+    )
+    mocker.patch.object(
+        chat_routes.stream_registry,
+        "publish_chunk",
+        new_callable=AsyncMock,
+        return_value=None,
     )
     mocker.patch.object(
         chat_routes.stream_registry,
@@ -2699,21 +2717,6 @@ def test_stream_chat_accepts_exactly_max_length_message(
 ):
     """A message exactly at max_length=64_000 must be accepted."""
     _mock_stream_internals(mocker)
-    # Pass generous rate-limits so the rate-limit gate doesn't interfere
-    # with the message-length validation under test. Pre-PR convention
-    # used 0 for "unlimited"; we now treat 0 as "no spend allowed".
-    mocker.patch(
-        "backend.api.features.chat.routes.get_global_rate_limits",
-        new_callable=AsyncMock,
-        return_value=(1_000_000, 5_000_000, SubscriptionTier.BASIC),
-    )
-    # And mock the redis lookup so check_rate_limit sees zero usage.
-    mock_redis = mocker.AsyncMock()
-    mock_redis.get = mocker.AsyncMock(side_effect=["0", "0"])
-    mocker.patch(
-        "backend.copilot.rate_limit.get_redis_async",
-        return_value=mock_redis,
-    )
 
     response = client.post(
         "/sessions/sess-1/stream",

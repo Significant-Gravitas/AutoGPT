@@ -47,8 +47,10 @@ from backend.data.credit import (
     sync_tier_from_checkout_session,
 )
 from backend.data.notifications import PassWorkEvent, PassWorkKind
+from backend.data.pro_activation import get_usage_activation_state
 from backend.data.redis_client import get_redis_async
 from backend.data.stripe_client import stripe_call
+from backend.data.subscription_activation_events import recover_claimed_billing_event
 from backend.data.subscription_trial_billing import (
     TRIAL_BILLING_EVENTS,
     sync_trials_for_billing_event,
@@ -226,8 +228,12 @@ async def _get_stripe_price_amount(price_id: str) -> int | None:
 async def get_subscription_status(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> SubscriptionStatusResponse:
-    user = await get_user_by_id(user_id)
-    tier = user.subscription_tier or SubscriptionTier.NO_TIER
+    activation = await get_usage_activation_state(user_id)
+    if not activation.ready:
+        raise HTTPException(
+            503, "Subscription activation is processing", headers={"Retry-After": "3"}
+        )
+    tier = activation.tier
 
     # Tiers that *can* have a Stripe price configured (and therefore appear
     # in the tier picker if the LD flag exposes a price-id). NO_TIER is not
@@ -800,22 +806,23 @@ async def stripe_webhook(request: Request):
         await sync_trials_for_billing_event(event_type, event.get("data"))
         return Response(status_code=200)
 
-    # Event-level dedup: short-circuit identical re-deliveries before any
-    # handler runs. Stripe retries the same event.id on non-2xx responses, and
-    # not every downstream handler is independently idempotent.
-    if not await _claim_stripe_event(event_id):
-        logger.info(
-            "stripe_webhook: event %s (%s) already processed; skipping",
-            event_id,
-            event_type,
-        )
-        return Response(status_code=200)
-
     event_data = event.get("data") or {}
     data_object = event_data.get("object") if isinstance(event_data, dict) else None
     if not isinstance(data_object, dict):
         logger.warning(
             "stripe_webhook: %s missing or non-dict data.object; ignoring",
+            event_type,
+        )
+        return Response(status_code=200)
+
+    # Event-level dedup: short-circuit identical re-deliveries before any
+    # handler runs. Stripe retries the same event.id on non-2xx responses, and
+    # not every downstream handler is independently idempotent.
+    if not await _claim_stripe_event(event_id):
+        await recover_claimed_billing_event(event_type, data_object)
+        logger.info(
+            "stripe_webhook: event %s (%s) already processed; skipping",
+            event_id,
             event_type,
         )
         return Response(status_code=200)
@@ -871,7 +878,7 @@ async def stripe_webhook(request: Request):
         ):
             await sync_subscription_schedule_from_stripe(data_object)
 
-        if event_type == "invoice.payment_succeeded":
+        if event_type in ("invoice.payment_succeeded", "invoice.paid"):
             await handle_subscription_payment_success(data_object)
             await on_trial_invoice(data_object, paid=True)
 

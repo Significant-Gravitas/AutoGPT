@@ -290,7 +290,7 @@ async def dispatch_next_for_user(user_id: str) -> bool:
 
         cfg = ChatConfig()
         try:
-            daily_limit, weekly_limit, _ = await get_global_rate_limits(
+            daily_limit, weekly_limit, usage_tier = await get_global_rate_limits(
                 user_id,
                 cfg.daily_cost_limit_microdollars,
                 cfg.weekly_cost_limit_microdollars,
@@ -299,6 +299,7 @@ async def dispatch_next_for_user(user_id: str) -> bool:
                 user_id=user_id,
                 daily_cost_limit=daily_limit,
                 weekly_cost_limit=weekly_limit,
+                expected_tier=usage_tier,
             )
         except RateLimitExceeded as exc:
             logger.info(

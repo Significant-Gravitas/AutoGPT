@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from backend.api.features.experts.models import Expert
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
+from backend.copilot.usage_activation import UsageActivationUnavailable
 from backend.data.db_accessors import (
     execution_db,
     experts_db,
@@ -251,9 +252,14 @@ async def _compose_fresh_briefing(
     # the thread — home's `without_summaries` only covers the card.
     if not await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
         return content
-    return content.model_copy(
-        update={"narrative": await compose_narrative(user_id, content)}
-    )
+    try:
+        narrative = await compose_narrative(user_id, content)
+    except UsageActivationUnavailable:
+        logger.warning(
+            "Briefing narrative usage attribution unavailable for %s", user_id[:8]
+        )
+        narrative = None
+    return content.model_copy(update={"narrative": narrative})
 
 
 async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
