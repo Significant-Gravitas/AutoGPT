@@ -1549,6 +1549,10 @@ class NodeExecutionEntry(BaseModel):
     # reconcile, leaving the delta computed against a different number).
     # Excluded from dumps — in-memory only, scoped to a single live execution.
     pre_flight_charge: Optional[int] = Field(default=None, exclude=True)
+    # Set when a REVIEW/RUNNING node is re-dispatched from a paused or crashed
+    # run. Those nodes were already pre-flight charged on the first dispatch;
+    # charging again orphans the first debit (#15272). Also exclude=True.
+    already_charged: bool = Field(default=False, exclude=True)
 
 
 class ExecutionQueue(Generic[T]):
