@@ -19,48 +19,6 @@ import { useState } from "react";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-function UndoActions({
-  libraryAgentID,
-  libraryHref,
-  onUndo,
-}: {
-  libraryAgentID: string;
-  libraryHref: string;
-  onUndo: (id: string) => Promise<void>;
-}) {
-  const [isUndoing, setIsUndoing] = useState(false);
-
-  return (
-    <div className="mt-6 flex items-center gap-2">
-      <Button
-        variant="primary"
-        size="md"
-        as="NextLink"
-        className="bg-zinc-200 text-zinc-900 hover:bg-zinc-300 hover:text-zinc-800"
-        href={libraryHref}
-      >
-        Open agent
-      </Button>
-      <Button
-        variant="ghost"
-        size="md"
-        loading={isUndoing}
-        className="border-none text-zinc-200 hover:bg-transparent hover:text-zinc-400"
-        onClick={async () => {
-          setIsUndoing(true);
-          try {
-            await onUndo(libraryAgentID);
-          } finally {
-            setIsUndoing(false);
-          }
-        }}
-      >
-        {isUndoing ? "Undoing..." : "Undo"}
-      </Button>
-    </div>
-  );
-}
-
 interface Props {
   creatorSlug: string;
   agentSlug: string;
@@ -140,20 +98,18 @@ export function AddToLibraryButton({
         id: data.id,
       });
 
-      const addedToast = toast({
+      toast({
         title: `Agent ${agentName} added to your library.`,
-        description: (
-          <UndoActions
-            libraryAgentID={data.id}
-            libraryHref={`/library/agents/${data.id}`}
-            onUndo={async (id) => {
+        description: "Open it from your library, or undo.",
+        action: (
+          <Button
+            onClick={async () => {
               try {
-                await removeFromLibrary({ libraryAgentId: id });
+                await removeFromLibrary({ libraryAgentId: data.id });
                 await queryClient.invalidateQueries({
                   queryKey: getGetV2ListLibraryAgentsQueryKey(),
                 });
                 setJustAdded(false);
-                addedToast.dismiss();
                 toast({
                   title: "Action undone.",
                   variant: "info",
@@ -167,9 +123,10 @@ export function AddToLibraryButton({
                 });
               }
             }}
-          />
+          >
+            Undo
+          </Button>
         ),
-        dismissable: false,
         duration: 10000,
       });
     } catch (error) {

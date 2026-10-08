@@ -5,7 +5,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/__legacy__/ui/table";
+} from "@/components/molecules/Table/TablePrimitives";
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { UrlPagination } from "@/app/(platform)/admin/components/UrlPagination/UrlPagination";

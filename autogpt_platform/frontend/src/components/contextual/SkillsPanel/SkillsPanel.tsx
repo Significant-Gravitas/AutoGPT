@@ -39,17 +39,19 @@ export function SkillsPanel({ onGuidedPrompt, withHeading = true }: Props) {
         <div className="flex shrink-0 items-center gap-2">
           <UploadSkillButton onUploaded={handleSkillUploaded} />
           <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => onGuidedPrompt(NEW_SKILL_PROMPT)}
-                data-testid="skill-new-button"
-              >
-                <Icon icon={PlusSignIcon} className="mr-1 h-4 w-4" />
-                New skill
-              </Button>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={() => onGuidedPrompt(NEW_SKILL_PROMPT)}
+                  data-testid="skill-new-button"
+                >
+                  <Icon icon={PlusSignIcon} className="mr-1 h-4 w-4" />
+                  New skill
+                </Button>
+              }
+            />
             <TooltipContent side="bottom">
               Create a new skill in chat
             </TooltipContent>

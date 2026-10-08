@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { Status } from "@/components/__legacy__/Status";
+import { SubmissionStatusBadge } from "../SubmissionStatusBadge";
 import { useAgentTableRow } from "./useAgentTableRow";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
@@ -130,7 +130,7 @@ export const AgentTableRow = ({
 
         {/* Status column */}
         <div data-testid="agent-status">
-          <Status status={status} />
+          <SubmissionStatusBadge status={status} />
         </div>
 
         {/* Runs column */}

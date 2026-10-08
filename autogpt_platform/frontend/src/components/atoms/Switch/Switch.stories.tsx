@@ -12,7 +12,7 @@ const meta: Meta<typeof Switch> = {
     docs: {
       description: {
         component:
-          "Shadcn-based toggle switch. Controlled via checked and onCheckedChange.",
+          "Kobra toggle switch. Controlled via checked and onCheckedChange.",
       },
     },
   },

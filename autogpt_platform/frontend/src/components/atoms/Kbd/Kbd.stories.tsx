@@ -11,7 +11,7 @@ const meta: Meta<typeof Kbd> = {
     docs: {
       description: {
         component:
-          "A keyboard key chip for shortcut hints. Renders a `<kbd>`; put one key in each chip and group them next to a label.",
+          "A keyboard key chip for shortcut hints on Kobra's Kbd. Renders a `<kbd>`; put one key in each chip and group them next to a label.",
       },
     },
   },

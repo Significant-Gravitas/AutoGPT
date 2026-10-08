@@ -1,26 +1,27 @@
+"use client";
+
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { Button as KobraButton } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import NextLink, { type LinkProps } from "next/link";
 import React, { forwardRef } from "react";
 import {
   BUTTON_ICON_SIZE,
   ButtonProps,
-  extendedButtonVariants,
   ICON_ONLY_SIZES,
+  resolveButtonStyle,
 } from "./helpers";
-import { Loading03Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const Button = forwardRef<
   HTMLButtonElement | HTMLAnchorElement,
   ButtonProps
 >(function Button(props, ref) {
-  const buttonRef = ref as React.ForwardedRef<HTMLButtonElement>;
-  const anchorRef = ref as React.ForwardedRef<HTMLAnchorElement>;
   const {
     className,
     variant,
@@ -37,19 +38,14 @@ export const Button = forwardRef<
     ...restProps
   } = props;
 
-  const disabled = "disabled" in props ? props.disabled : false;
-  const isDisabled = disabled;
-
-  const applyUnmask = (...classes: Array<string | false | null | undefined>) =>
-    cn(...classes, unmask && "sentry-unmask");
-
-  // Extract aria-label for tooltip on icon variant
+  const isDisabled = "disabled" in props ? Boolean(props.disabled) : false;
   const ariaLabel =
     "aria-label" in restProps ? restProps["aria-label"] : undefined;
-
   const isIconOnly =
     variant === "icon" || (size != null && ICON_ONLY_SIZES.has(size));
   const shouldShowTooltip = isIconOnly && ariaLabel && !loading && withTooltip;
+
+  const style = resolveButtonStyle({ variant, size });
   const resolvedLeftIcon = leadingIcon ? (
     <Icon
       icon={leadingIcon}
@@ -60,126 +56,57 @@ export const Button = forwardRef<
     leftIcon
   );
 
-  // Helper to wrap button with tooltip if needed
-  const wrapWithTooltip = (buttonElement: React.ReactElement) => {
-    if (shouldShowTooltip) {
-      return (
-        <Tooltip>
-          <TooltipTrigger asChild>{buttonElement}</TooltipTrigger>
-          <TooltipContent>{ariaLabel}</TooltipContent>
-        </Tooltip>
-      );
-    }
-    return buttonElement;
-  };
-
-  const buttonContent = (
+  const content = (
     <>
-      {loading && (
-        <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
-      )}
-      {!loading && resolvedLeftIcon}
+      {loading ? <Spinner aria-hidden /> : resolvedLeftIcon}
       {children}
       {!loading && rightIcon}
     </>
   );
 
-  if (variant === "link") {
-    const buttonRest = { ...(restProps as Record<string, unknown>) };
+  const shared = {
+    variant: style.variant,
+    size: style.size,
+    rounded: style.rounded,
+    flat: style.flat,
+    disabled: isDisabled || loading,
+    "aria-busy": loading || undefined,
+  };
 
-    if ("href" in buttonRest) {
-      delete buttonRest.href;
-    }
-
-    const linkButton = (
-      <button
-        ref={buttonRef}
-        className={applyUnmask(
-          extendedButtonVariants({ variant: "link", className }),
-          loading && "pointer-events-none opacity-60",
-          isDisabled && "pointer-events-none opacity-50",
+  const element =
+    as === "NextLink" ? (
+      <KobraButton
+        ref={ref as React.Ref<HTMLButtonElement>}
+        {...shared}
+        className={cn(
+          style.className,
+          className,
+          (isDisabled || loading) && "pointer-events-none opacity-50",
+          unmask && "sentry-unmask",
         )}
-        disabled={isDisabled || loading}
-        {...(buttonRest as React.ButtonHTMLAttributes<HTMLButtonElement>)}
+        nativeButton={false}
+        role={undefined}
+        render={<NextLink {...(restProps as LinkProps)} />}
       >
-        {buttonContent}
-      </button>
-    );
-
-    return wrapWithTooltip(linkButton);
-  }
-
-  if (loading) {
-    const loadingClassName = applyUnmask(
-      extendedButtonVariants({ variant, size, className }),
-      "pointer-events-none opacity-50",
-    );
-
-    if (as === "NextLink") {
-      return (
-        <NextLink
-          ref={anchorRef}
-          {...(restProps as LinkProps)}
-          className={loadingClassName}
-          aria-disabled="true"
-        >
-          <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
-          {children}
-        </NextLink>
-      );
-    }
-
-    // Spread first so `className` and `disabled` below still win. Without this
-    // the loading branch silently drops every extra prop the caller passed —
-    // aria-label, data-testid, analytics data-* — the moment a click flips it
-    // into loading, which is exactly when a click listener needs to read them.
-    const loadingButton = (
-      <button
-        ref={buttonRef}
+        {content}
+      </KobraButton>
+    ) : (
+      <KobraButton
+        ref={ref as React.Ref<HTMLButtonElement>}
+        {...shared}
+        className={cn(style.className, className, unmask && "sentry-unmask")}
         {...(restProps as React.ButtonHTMLAttributes<HTMLButtonElement>)}
-        className={loadingClassName}
-        disabled
       >
-        <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
-        {children}
-      </button>
+        {content}
+      </KobraButton>
     );
 
-    return wrapWithTooltip(loadingButton);
-  }
+  if (!shouldShowTooltip) return element;
 
-  if (as === "NextLink") {
-    const nextLinkButton = (
-      <NextLink
-        ref={anchorRef}
-        {...(restProps as LinkProps)}
-        className={applyUnmask(
-          extendedButtonVariants({ variant, size, className }),
-          loading && "pointer-events-none",
-          isDisabled && "pointer-events-none opacity-50",
-        )}
-        aria-disabled={isDisabled}
-      >
-        {buttonContent}
-      </NextLink>
-    );
-
-    return wrapWithTooltip(nextLinkButton);
-  }
-
-  const regularButton = (
-    <button
-      ref={buttonRef}
-      className={applyUnmask(
-        extendedButtonVariants({ variant, size, className }),
-        loading && "pointer-events-none",
-      )}
-      disabled={isDisabled}
-      {...(restProps as React.ButtonHTMLAttributes<HTMLButtonElement>)}
-    >
-      {buttonContent}
-    </button>
+  return (
+    <Tooltip>
+      <TooltipTrigger render={element} />
+      <TooltipContent>{ariaLabel}</TooltipContent>
+    </Tooltip>
   );
-
-  return wrapWithTooltip(regularButton);
 });

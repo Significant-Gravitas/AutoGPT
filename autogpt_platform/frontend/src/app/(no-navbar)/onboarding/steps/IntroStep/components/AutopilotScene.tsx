@@ -1,7 +1,7 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 
 const POINTS = [

@@ -206,9 +206,7 @@ describe("ChatInput attachment cap — the notice and the affordance", () => {
     render(<ChatInput onSend={vi.fn()} />);
     pasteFiles(makeFiles(MAX_ATTACHMENTS));
 
-    fireEvent.pointerDown(screen.getByTestId("composer-plus-button"), {
-      button: 0,
-    });
+    fireEvent.click(screen.getByTestId("composer-plus-button"));
     const attach = await screen.findByRole("menuitem", {
       name: /attach file/i,
     });
@@ -217,9 +215,7 @@ describe("ChatInput attachment cap — the notice and the affordance", () => {
 
     fireEvent.keyDown(attach, { key: "Escape" });
     fireEvent.click(removeButtons()[0]);
-    fireEvent.pointerDown(screen.getByTestId("composer-plus-button"), {
-      button: 0,
-    });
+    fireEvent.click(screen.getByTestId("composer-plus-button"));
 
     await waitFor(() =>
       expect(

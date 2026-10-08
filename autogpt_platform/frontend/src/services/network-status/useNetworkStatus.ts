@@ -1,19 +1,23 @@
 "use client";
 
 import { useEffect } from "react";
-import { toast } from "sonner";
+import { toast } from "@/components/molecules/Toast/use-toast";
 
 export function useNetworkStatus() {
   useEffect(function monitorNetworkStatus() {
     function handleOnline() {
-      toast.success("Connection restored", {
+      toast({
+        title: "Connection restored",
         description: "You're back online",
+        variant: "success",
       });
     }
 
     function handleOffline() {
-      toast.error("You're offline", {
+      toast({
+        title: "You're offline",
         description: "Check your internet connection",
+        variant: "destructive",
       });
     }
 

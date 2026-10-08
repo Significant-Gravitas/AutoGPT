@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { LayoutGroup, motion, type Transition } from "framer-motion";
+import { LayoutGroup, motion, type Transition } from "motion/react";
 import type { OriginFilter as OriginFilterValue } from "../../useArtifactsPage";
 
 interface Props {

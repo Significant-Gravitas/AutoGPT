@@ -59,11 +59,11 @@ describe("design-system import boundaries", () => {
     ["@/components/__legacy__/ui/button", "legacy"],
     ["../../components/__legacy__/ui/button", "legacy"],
     ["@/components/ui/tooltip", "ui"],
-    ["@/components/__shadcn_scratch__/button", "shadcn-scratch"],
     ["lucide-react", "lucide-react"],
     ["@phosphor-icons/react", "@phosphor-icons/react"],
     ["@phosphor-icons/react/dist/ssr", "@phosphor-icons/react"],
     ["@radix-ui/react-icons", "@radix-ui/react-icons"],
+    ["@tabler/icons-react", "@tabler/icons-react"],
     ["react-icons/fa", "react-icons"],
     ["@hugeicons/react", "@hugeicons/react"],
     ["sonner", "sonner"],
@@ -107,17 +107,15 @@ describe("design-system import boundaries", () => {
   });
 
   it("exempts an allowlisted file from its own restriction only", async () => {
-    const file = ALLOWLIST.imports["lucide-react"].find(
-      (path) =>
-        !ALLOWLIST.imports.legacy.includes(path) &&
-        !path.startsWith("src/components/__legacy__/"),
+    const file = ALLOWLIST.imports.ui.find(
+      (path) => !path.startsWith("src/components/"),
     );
     expect(file).toBeDefined();
     const source = [
-      'import { X } from "lucide-react";',
-      'import { Y } from "@/components/__legacy__/ui/button";',
+      'import { X } from "@/components/ui/tooltip";',
+      'import { Y } from "lucide-react";',
     ].join("\n");
-    expect(await restrictedImports(source, file!)).toEqual(["legacy"]);
+    expect(await restrictedImports(source, file!)).toEqual(["lucide-react"]);
   });
 });
 

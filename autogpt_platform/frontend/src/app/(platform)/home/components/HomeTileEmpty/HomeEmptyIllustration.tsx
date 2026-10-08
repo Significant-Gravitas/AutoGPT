@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 
 const EASE_OUT_QUINT = [0.22, 1, 0.36, 1] as const;
 

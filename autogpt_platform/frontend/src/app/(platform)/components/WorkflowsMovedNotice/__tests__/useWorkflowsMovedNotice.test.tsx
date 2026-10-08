@@ -14,7 +14,11 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import * as Dialog from "@radix-ui/react-dialog";
+import {
+  DialogContent,
+  DialogRoot,
+  DialogTitle,
+} from "@/components/molecules/Dialog/Dialog";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -115,14 +119,12 @@ describe("migration notice eligibility", () => {
       return (
         <QueryClientProvider client={queryClient}>
           <button>Page action</button>
-          <Dialog.Root open={tutorialOpen}>
-            <Dialog.Portal>
-              <Dialog.Content aria-describedby={undefined}>
-                <Dialog.Title>First visit tutorial</Dialog.Title>
-                <button>Continue tutorial</button>
-              </Dialog.Content>
-            </Dialog.Portal>
-          </Dialog.Root>
+          <DialogRoot open={tutorialOpen}>
+            <DialogContent>
+              <DialogTitle>First visit tutorial</DialogTitle>
+              <button>Continue tutorial</button>
+            </DialogContent>
+          </DialogRoot>
           <WorkflowsMovedNotice />
         </QueryClientProvider>
       );
@@ -146,7 +148,7 @@ describe("migration notice eligibility", () => {
     ).toBeNull();
 
     rerender(<Harness tutorialOpen={false} />);
-    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     context.pathname = "/team";
     rerender(<Harness tutorialOpen={false} />);
     await screen.findByRole("dialog", { name: "Your agents have moved" });
@@ -210,14 +212,12 @@ describe("migration notice eligibility", () => {
     function Harness({ notificationOpen }: { notificationOpen: boolean }) {
       return (
         <QueryClientProvider client={queryClient}>
-          <Dialog.Root open={notificationOpen}>
-            <Dialog.Portal>
-              <Dialog.Content aria-describedby={undefined}>
-                <Dialog.Title>Stay in the loop</Dialog.Title>
-                <button>Not now</button>
-              </Dialog.Content>
-            </Dialog.Portal>
-          </Dialog.Root>
+          <DialogRoot open={notificationOpen}>
+            <DialogContent>
+              <DialogTitle>Stay in the loop</DialogTitle>
+              <button>Not now</button>
+            </DialogContent>
+          </DialogRoot>
           <WorkflowsMovedNotice />
         </QueryClientProvider>
       );

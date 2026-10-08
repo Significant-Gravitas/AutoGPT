@@ -2,12 +2,29 @@ import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { render, screen, cleanup } from "@testing-library/react";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { createRef } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { Button } from "./Button";
 import { ButtonProps } from "./helpers";
 
 // The shared setup mocks next/link with a component that drops refs.
 vi.mock("next/link", async () => await vi.importActual("next/link"));
+
+// Kobra's Spinner animates its arc with the Web Animations API, which
+// happy-dom does not implement.
+beforeAll(() => {
+  if (typeof Element.prototype.animate === "function") return;
+  Element.prototype.animate = vi.fn(
+    () =>
+      ({
+        onfinish: null,
+        playState: "running",
+        cancel: vi.fn(),
+        pause: vi.fn(),
+        play: vi.fn(),
+      }) as unknown as Animation,
+  );
+  Element.prototype.getAnimations = vi.fn(() => []);
+});
 
 function renderButton(
   props: Partial<ButtonProps> & { children?: React.ReactNode } = {},
@@ -175,25 +192,48 @@ describe("Button sizes", () => {
 });
 
 describe("Button tokens", () => {
-  it("paints primary with the primary token", () => {
+  it("paints primary with Kobra's primary surface", () => {
     renderButton({ children: "Save" });
     const el = screen.getByRole("button", { name: "Save" });
-    expect(el.className).toContain("bg-primary");
+    expect(el.className).toContain("t-surface-primary");
     expect(el.className).toContain("text-primary-foreground");
+    expect(el.className).toContain("rounded-full");
+    expect(el.getAttribute("data-slot")).toBe("button");
   });
 
-  it("uses the shared focus ring", () => {
+  it("uses Kobra's focus ring", () => {
     renderButton({ variant: "secondary", children: "Cancel" });
     expect(screen.getByRole("button", { name: "Cancel" }).className).toContain(
-      "focus-ring",
+      "focus-visible:ring-ring/50",
     );
   });
 
   it("keeps the variant while loading instead of turning grey", () => {
     renderButton({ variant: "secondary", loading: true, children: "Saving" });
-    const el = screen.getByRole("button");
-    expect(el.className).toContain("bg-background");
+    const el = screen.getByRole("button", { name: "Saving" });
+    expect(el.className).toContain("t-surface-outline");
     expect(el).toHaveProperty("disabled", true);
+    expect(el.getAttribute("aria-busy")).toBe("true");
+    expect(el.querySelector("[data-slot=spinner]")).not.toBeNull();
+  });
+
+  it("defaults to type=button and keeps an explicit submit", () => {
+    renderButton({ children: "Default" });
+    expect(
+      screen.getByRole("button", { name: "Default" }).getAttribute("type"),
+    ).toBe("button");
+    cleanup();
+    renderButton({ type: "submit", children: "Submit" });
+    expect(
+      screen.getByRole("button", { name: "Submit" }).getAttribute("type"),
+    ).toBe("submit");
+  });
+
+  it("renders the sm chip through Kobra at the house height", () => {
+    renderButton({ variant: "primary", size: "sm", children: "Chat" });
+    const el = screen.getByRole("button", { name: "Chat" });
+    expect(el.className).toContain("h-8");
+    expect(el.className).not.toContain("h-7");
   });
 });
 
@@ -229,5 +269,18 @@ describe("Button ref forwarding", () => {
     );
     expect(ref.current).toBeInstanceOf(HTMLAnchorElement);
     expect(ref.current).toBe(screen.getByRole("link", { name: "Library" }));
+    expect(ref.current?.getAttribute("href")).toBe("/library");
+    expect(ref.current?.getAttribute("role")).toBeNull();
+  });
+
+  it("marks a disabled NextLink with aria-disabled", () => {
+    render(
+      <Button as="NextLink" href="/library" disabled>
+        Library
+      </Button>,
+    );
+    const el = screen.getByRole("link", { name: "Library" });
+    expect(el.getAttribute("aria-disabled")).toBe("true");
+    expect(el.className).toContain("pointer-events-none");
   });
 });

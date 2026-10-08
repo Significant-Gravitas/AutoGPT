@@ -1,0 +1,20 @@
+:root {
+  --error: oklch(0.5 0.21 27.3);
+  --warning: oklch(0.5 0.14 70);
+  --success: oklch(0.5 0.13 152);
+  --info: oklch(0.5 0.17 255);
+}
+
+.dark {
+  --error: oklch(0.704 0.191 22.216);
+  --warning: oklch(0.704 0.15 75);
+  --success: oklch(0.704 0.15 152);
+  --info: oklch(0.704 0.15 255);
+}
+
+@theme inline {
+  --color-error: var(--error);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --color-info: var(--info);
+}

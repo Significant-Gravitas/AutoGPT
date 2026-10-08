@@ -1,11 +1,12 @@
 import { useCopyPasteStore } from "@/app/(platform)/build/stores/copyPasteStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import {
+  SecondaryMenu,
   SecondaryMenuContent,
   SecondaryMenuItem,
   SecondaryMenuSeparator,
+  SecondaryMenuTrigger,
 } from "@/components/molecules/SecondaryMenu/SecondaryMenu";
-import * as ContextMenu from "@radix-ui/react-context-menu";
 import { useReactFlow } from "@xyflow/react";
 import { useEffect, useRef } from "react";
 import { CustomNode } from "../CustomNode";
@@ -70,10 +71,8 @@ export function NodeRightClickMenu({ nodeId, subGraphID, children }: Props) {
   }, []);
 
   return (
-    <ContextMenu.Root>
-      <ContextMenu.Trigger asChild>
-        <div ref={containerRef}>{children}</div>
-      </ContextMenu.Trigger>
+    <SecondaryMenu>
+      <SecondaryMenuTrigger ref={containerRef}>{children}</SecondaryMenuTrigger>
       <SecondaryMenuContent>
         <SecondaryMenuItem onSelect={copyNode}>
           <Icon icon={Copy01Icon} size={20} className="mr-2" />
@@ -98,6 +97,6 @@ export function NodeRightClickMenu({ nodeId, subGraphID, children }: Props) {
           <span>Delete</span>
         </SecondaryMenuItem>
       </SecondaryMenuContent>
-    </ContextMenu.Root>
+    </SecondaryMenu>
   );
 }

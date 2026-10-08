@@ -100,9 +100,9 @@ describe("AccountMenu", () => {
     );
 
     expect(screen.queryByText("Ada")).toBeNull();
-    expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(
-      0,
-    );
+    expect(
+      container.querySelectorAll("[data-slot=skeleton]").length,
+    ).toBeGreaterThan(0);
   });
 
   test("renders skeleton when userName/email are missing", () => {

@@ -39,10 +39,10 @@ function resetCopilotStore() {
   }));
 }
 
-// framer-motion's AnimatePresence/motion mount/exit animations make panel
+// motion's AnimatePresence/motion mount/exit animations make panel
 // swaps async and flaky in jsdom. Render them as plain divs so the swap is
 // synchronous — same approach as ChatContainer.test.tsx.
-vi.mock("framer-motion", () => ({
+vi.mock("motion/react", () => ({
   useReducedMotion: () => false,
   AnimatePresence: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>

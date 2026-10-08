@@ -131,7 +131,7 @@ export function useLoginPage() {
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
-    handleSubmit: form.handleSubmit(handleLogin),
+    handleSubmit: handleLogin,
     handleProviderLogin,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
   };

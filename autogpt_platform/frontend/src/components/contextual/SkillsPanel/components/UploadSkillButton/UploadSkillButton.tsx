@@ -29,18 +29,20 @@ export function UploadSkillButton({ onUploaded }: Props) {
         data-testid="skill-upload-input"
       />
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="secondary"
-            size="md"
-            onClick={openFilePicker}
-            loading={isUploading}
-            data-testid="skill-upload-button"
-          >
-            <Icon icon={Upload03Icon} className="mr-1 h-4 w-4" />
-            Upload skill
-          </Button>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={openFilePicker}
+              loading={isUploading}
+              data-testid="skill-upload-button"
+            >
+              <Icon icon={Upload03Icon} className="mr-1 h-4 w-4" />
+              Upload skill
+            </Button>
+          }
+        />
         <TooltipContent side="bottom">
           Import a SKILL.md, or a zipped skill package
         </TooltipContent>

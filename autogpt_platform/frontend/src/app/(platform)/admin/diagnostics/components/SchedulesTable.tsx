@@ -12,7 +12,7 @@ import {
   TableHead,
   TableRow,
   TableCell,
-} from "@/components/__legacy__/ui/table";
+} from "@/components/molecules/Table/TablePrimitives";
 import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { Text } from "@/components/atoms/Text/Text";
 import {

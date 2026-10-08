@@ -12,7 +12,7 @@ const meta: Meta<typeof Separator> = {
     docs: {
       description: {
         component:
-          "A one-pixel zinc-200 rule. Decorative by default, so screen readers skip it; pass `decorative={false}` when it separates content semantically.",
+          "A one-pixel rule on Kobra's Separator (`bg-foreground/15`). Decorative by default, so screen readers skip it; pass `decorative={false}` when it separates content semantically. Vertical separators stretch to their flex row.",
       },
     },
   },

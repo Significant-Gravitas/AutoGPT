@@ -11,7 +11,7 @@ import {
   LazyMotion,
   m,
   useReducedMotion,
-} from "framer-motion";
+} from "motion/react";
 import {
   useCallback,
   useContext,

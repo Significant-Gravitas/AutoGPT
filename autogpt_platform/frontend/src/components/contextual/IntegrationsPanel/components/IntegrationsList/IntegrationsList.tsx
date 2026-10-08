@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import type { Variants } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import type { Variants } from "motion/react";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 

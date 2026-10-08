@@ -1,100 +1,103 @@
 "use client";
 
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import * as ContextMenu from "@radix-ui/react-context-menu";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import React from "react";
+import * as React from "react";
 
-const secondaryMenuContentClassName =
-  "z-10 rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-md";
+const contentClassName = "rounded-xl";
 
-const secondaryMenuItemClassName =
-  "flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-muted";
+const itemClassName = "cursor-pointer px-3 py-2";
 
-const secondaryMenuSeparatorClassName = "my-1 h-px bg-border";
+type Variant = "default" | "destructive";
 
-export const SecondaryMenuContent = React.forwardRef<
-  React.ElementRef<typeof ContextMenu.Content>,
-  React.ComponentPropsWithoutRef<typeof ContextMenu.Content>
->(({ className, ...props }, ref) => (
-  <ContextMenu.Content
-    ref={ref}
-    className={cn(secondaryMenuContentClassName, className)}
-    {...props}
-  />
-));
-SecondaryMenuContent.displayName = "SecondaryMenuContent";
+const SecondaryMenu = ContextMenu;
+const SecondaryMenuTrigger = ContextMenuTrigger;
 
-export const SecondaryMenuItem = React.forwardRef<
-  React.ElementRef<typeof ContextMenu.Item>,
-  React.ComponentPropsWithoutRef<typeof ContextMenu.Item> & {
-    variant?: "default" | "destructive";
-  }
->(({ className, variant = "default", ...props }, ref) => (
-  <ContextMenu.Item
-    ref={ref}
-    className={cn(
-      secondaryMenuItemClassName,
-      variant === "destructive" && "text-destructive hover:bg-muted",
-      className,
-    )}
-    {...props}
-  />
-));
-SecondaryMenuItem.displayName = "SecondaryMenuItem";
-
-export const SecondaryMenuSeparator = React.forwardRef<
-  React.ElementRef<typeof ContextMenu.Separator>,
-  React.ComponentPropsWithoutRef<typeof ContextMenu.Separator>
->(({ className, ...props }, ref) => (
-  <ContextMenu.Separator
-    ref={ref}
-    className={cn(secondaryMenuSeparatorClassName, className)}
-    {...props}
-  />
-));
-SecondaryMenuSeparator.displayName = "SecondaryMenuSeparator";
-
-export const SecondaryDropdownMenuContent = React.forwardRef<
-  React.ElementRef<typeof DropdownMenuPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
->(({ className, ...props }, ref) => (
-  <DropdownMenuPrimitive.Portal>
-    <DropdownMenuPrimitive.Content
-      ref={ref}
-      className={cn(secondaryMenuContentClassName, className)}
+function SecondaryMenuContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof ContextMenuContent>) {
+  return (
+    <ContextMenuContent
+      className={cn(contentClassName, className)}
       {...props}
     />
-  </DropdownMenuPrimitive.Portal>
-));
-SecondaryDropdownMenuContent.displayName = "SecondaryDropdownMenuContent";
+  );
+}
 
-export const SecondaryDropdownMenuItem = React.forwardRef<
-  React.ElementRef<typeof DropdownMenuPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & {
-    variant?: "default" | "destructive";
-  }
->(({ className, variant = "default", ...props }, ref) => (
-  <DropdownMenuPrimitive.Item
-    ref={ref}
-    className={cn(
-      secondaryMenuItemClassName,
-      variant === "destructive" && "text-destructive hover:bg-muted",
-      className,
-    )}
-    {...props}
-  />
-));
-SecondaryDropdownMenuItem.displayName = "SecondaryDropdownMenuItem";
+interface SecondaryMenuItemProps extends Omit<
+  React.ComponentProps<typeof ContextMenuItem>,
+  "onSelect"
+> {
+  variant?: Variant;
+  /** Radix name for the activation handler; Base UI calls it `onClick`.
+   *  `preventDefault()` keeps the menu open, as it did there. */
+  onSelect?: (event: React.MouseEvent<HTMLDivElement>) => void;
+}
 
-export const SecondaryDropdownMenuSeparator = React.forwardRef<
-  React.ElementRef<typeof DropdownMenuPrimitive.Separator>,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Separator>
->(({ className, ...props }, ref) => (
-  <DropdownMenuPrimitive.Separator
-    ref={ref}
-    className={cn(secondaryMenuSeparatorClassName, className)}
-    {...props}
-  />
-));
-SecondaryDropdownMenuSeparator.displayName = "SecondaryDropdownMenuSeparator";
+function SecondaryMenuItem({
+  className,
+  onSelect,
+  onClick,
+  ...props
+}: SecondaryMenuItemProps) {
+  return (
+    <ContextMenuItem
+      className={cn(itemClassName, className)}
+      onClick={(event) => {
+        onClick?.(event);
+        if (!onSelect) return;
+        onSelect(event);
+        if (event.defaultPrevented) event.preventBaseUIHandler();
+      }}
+      {...props}
+    />
+  );
+}
+
+const SecondaryMenuSeparator = ContextMenuSeparator;
+
+function SecondaryDropdownMenuContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuContent>) {
+  return (
+    <DropdownMenuContent
+      className={cn(contentClassName, "w-auto", className)}
+      {...props}
+    />
+  );
+}
+
+function SecondaryDropdownMenuItem({
+  className,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuItem>) {
+  return (
+    <DropdownMenuItem className={cn(itemClassName, className)} {...props} />
+  );
+}
+
+const SecondaryDropdownMenuSeparator = DropdownMenuSeparator;
+
+export {
+  SecondaryMenu,
+  SecondaryMenuTrigger,
+  SecondaryMenuContent,
+  SecondaryMenuItem,
+  SecondaryMenuSeparator,
+  SecondaryDropdownMenuContent,
+  SecondaryDropdownMenuItem,
+  SecondaryDropdownMenuSeparator,
+};

@@ -5,7 +5,7 @@ import {
   FormControl,
   FormField,
   FormItem,
-} from "@/components/__legacy__/ui/form";
+} from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";
 import { Select } from "@/components/atoms/Select/Select";
@@ -44,32 +44,30 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
       <Text variant="h5" as="h3" className="mb-6">
         Timezone
       </Text>
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          <FormField
-            control={form.control}
-            name="timezone"
-            render={({ field, fieldState }) => (
-              <FormItem>
-                <FormControl>
-                  <Select
-                    id="timezone"
-                    label="Select your timezone"
-                    labelVariant="body-medium"
-                    placeholder="Select a timezone"
-                    value={field.value}
-                    onValueChange={field.onChange}
-                    options={TIMEZONES}
-                    error={fieldState.error?.message}
-                  />
-                </FormControl>
-              </FormItem>
-            )}
-          />
-          <Button type="submit" disabled={isLoading} size="md">
-            {isLoading ? "Saving..." : "Save timezone"}
-          </Button>
-        </form>
+      <Form form={form} onSubmit={onSubmit} className="space-y-6">
+        <FormField
+          control={form.control}
+          name="timezone"
+          render={({ field, fieldState }) => (
+            <FormItem>
+              <FormControl>
+                <Select
+                  id="timezone"
+                  label="Select your timezone"
+                  labelVariant="body-medium"
+                  placeholder="Select a timezone"
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  options={TIMEZONES}
+                  error={fieldState.error?.message}
+                />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+        <Button type="submit" disabled={isLoading} size="md">
+          {isLoading ? "Saving..." : "Save timezone"}
+        </Button>
       </Form>
     </Card>
   );

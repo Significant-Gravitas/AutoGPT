@@ -1,17 +1,15 @@
 "use client";
 
-import { forwardRef } from "react";
-import { cn } from "@/lib/utils";
-import {
-  Cancel01Icon,
-  Loading03Icon,
-  Search01Icon,
-} from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
-  fieldVariants,
+  fieldSizeClasses,
   type FieldSize,
 } from "@/components/atoms/Input/fieldVariants";
+import { Input as KobraInput } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
+import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { forwardRef } from "react";
 
 interface Props {
   value: string;
@@ -65,7 +63,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
             iconOffset[size].left,
           )}
         />
-        <input
+        <KobraInput
           ref={ref}
           type="search"
           value={value}
@@ -75,24 +73,21 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
           disabled={disabled}
           maxLength={maxLength}
           className={cn(
-            fieldVariants({ size }),
+            fieldSizeClasses[size],
             sizeStyles[size],
             "[&::-webkit-search-cancel-button]:appearance-none",
           )}
         />
         {loading ? (
           <span
-            role="status"
-            aria-label="Searching"
             className={cn(
               "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center text-muted-foreground",
               iconOffset[size].right,
             )}
           >
-            <Icon
-              icon={Loading03Icon}
-              size={size === "lg" ? 16 : 14}
-              className="animate-spin"
+            <Spinner
+              aria-label="Searching"
+              className={size === "lg" ? "size-4" : "size-3.5"}
             />
           </span>
         ) : hasValue && !disabled ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 
 import { Select } from "@/components/atoms/Select/Select";
 import { Switch } from "@/components/atoms/Switch/Switch";

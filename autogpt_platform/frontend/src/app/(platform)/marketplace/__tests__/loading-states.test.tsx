@@ -19,8 +19,8 @@ describe("Marketplace loading states", () => {
   ])("%s shows the marketplace skeleton", (_route, Loading) => {
     const { container } = render(<Loading />);
 
-    expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(
-      0,
-    );
+    expect(
+      container.querySelectorAll("[data-slot=skeleton]").length,
+    ).toBeGreaterThan(0);
   });
 });

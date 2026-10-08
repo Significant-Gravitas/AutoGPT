@@ -1,0 +1,19 @@
+:root {
+  --ring-duration: 150ms;
+}
+
+@utility focus-field {
+  outline: none;
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--ring-duration);
+  transition-timing-function: var(--ease-out);
+
+  &:focus-within {
+    border-color: var(--field-focus-color, var(--ring));
+    box-shadow: inset 0 0 0 var(--field-focus-width, 0.5px) var(--field-focus-color, var(--ring));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 0ms;
+  }
+}

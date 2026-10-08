@@ -1,0 +1,30 @@
+:root {
+  --ring-duration: 150ms;
+}
+
+@utility transition-ring {
+  transition-property:
+    color, background-color, border-color, box-shadow, outline-color, outline-offset;
+  transition-duration: var(--ring-duration);
+  transition-timing-function: var(--ease-out);
+
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 0ms;
+  }
+}
+
+.smooth-shadow-ring-xl {
+  --smooth-ring-color: rgb(0 0 0 / 5%);
+
+  box-shadow:
+    0 40px 80px 0 rgb(0 0 0 / 6%),
+    0 20px 40px 0 rgb(0 0 0 / 5%),
+    0 10px 20px 0 rgb(0 0 0 / 4%),
+    0 5px 10px 0 rgb(0 0 0 / 3%),
+    0 2px 4px 0 rgb(0 0 0 / 2%),
+    0 0 0 1px var(--smooth-ring-color);
+}
+
+.dark .smooth-shadow-ring-xl {
+  --smooth-ring-color: rgb(255 255 255 / 18%);
+}

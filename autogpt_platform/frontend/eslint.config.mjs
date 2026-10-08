@@ -86,6 +86,16 @@ export default [
     },
   },
   {
+    // Kobra registry output (see MIGRATION.md): vendored verbatim, so the
+    // house syntax rules do not apply. Import boundaries still do.
+    files: ["src/components/ui/**"],
+    rules: {
+      "no-restricted-syntax": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "react-hooks/rules-of-hooks": "off",
+    },
+  },
+  {
     // CommonJS config files at the package root.
     files: ["*.config.js"],
     rules: { "@typescript-eslint/no-require-imports": "off" },

@@ -1,9 +1,10 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
+import { Textarea as KobraTextarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { forwardRef, ReactNode, useId } from "react";
-import { getDescribedBy, textareaVariants } from "./helpers";
+import { getDescribedBy, rowsMinHeight, textareaSizeClasses } from "./helpers";
 import { useTextarea } from "./useTextarea";
 
 interface Props extends Omit<
@@ -38,6 +39,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, Props>(
       defaultValue,
       onChange,
       onKeyDown,
+      style,
       "aria-describedby": ariaDescribedBy,
       ...props
     },
@@ -74,7 +76,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, Props>(
             </Text>
           ) : null}
         </div>
-        <textarea
+        <KobraTextarea
           ref={ref}
           id={textareaId}
           rows={rows}
@@ -85,8 +87,10 @@ export const Textarea = forwardRef<HTMLTextAreaElement, Props>(
           onKeyDown={handleKeyDown}
           aria-invalid={error ? true : undefined}
           aria-describedby={getDescribedBy(ariaDescribedBy, hintId, errorId)}
+          style={{ minHeight: rowsMinHeight(rows, size), ...style }}
           className={cn(
-            textareaVariants({ size, invalid: Boolean(error) }),
+            textareaSizeClasses[size],
+            "resize-y leading-snug",
             className,
           )}
           {...props}

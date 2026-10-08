@@ -6,7 +6,7 @@ const setOpen = vi.fn<(open: boolean) => void>();
 const setOpenMobile = vi.fn<(open: boolean) => void>();
 let sidebarOpen = true;
 
-vi.mock("@/components/ui/sidebar", () => ({
+vi.mock("@/components/layout/AppSidebar/useOptionalSidebar", () => ({
   useOptionalSidebar: () => ({
     open: sidebarOpen,
     setOpen,

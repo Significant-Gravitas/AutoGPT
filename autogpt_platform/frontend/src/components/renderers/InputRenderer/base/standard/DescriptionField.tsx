@@ -21,13 +21,15 @@ export default function DescriptionField(props: DescriptionFieldProps) {
       className="0 inline w-fit"
     >
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Icon
-            icon={InformationCircleIcon}
-            size={16}
-            className="cursor-pointer"
-          />
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <Icon
+              icon={InformationCircleIcon}
+              size={16}
+              className="cursor-pointer"
+            />
+          }
+        />
         <TooltipContent>
           <RichDescription
             description={description}

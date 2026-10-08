@@ -696,9 +696,9 @@ describe("SettingsProfilePage - skeleton & nullish profile fields", () => {
     expect(
       screen.queryByRole("heading", { name: /^profile$/i, level: 1 }),
     ).toBeNull();
-    expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(
-      0,
-    );
+    expect(
+      container.querySelectorAll("[data-slot=skeleton]").length,
+    ).toBeGreaterThan(0);
   });
 
   test("hydrates safely when the API returns nullish profile fields", async () => {
@@ -738,9 +738,9 @@ describe("SettingsProfilePage - skeleton wrapper", () => {
     const { container } = render(<SettingsProfilePage />);
 
     // Initial render — query is in-flight, skeleton shows
-    expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(
-      0,
-    );
+    expect(
+      container.querySelectorAll("[data-slot=skeleton]").length,
+    ).toBeGreaterThan(0);
 
     // Heading appears once data resolves; verifies the skeleton path was taken first
     return screen.findByRole("heading", { name: /^profile$/i, level: 1 });

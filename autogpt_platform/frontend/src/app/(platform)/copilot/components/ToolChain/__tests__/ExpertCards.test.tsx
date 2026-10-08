@@ -312,7 +312,7 @@ describe("ExpertChangePart", () => {
       />,
     );
 
-    expect(container.querySelectorAll(".animate-pulse").length).toBe(5);
+    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBe(5);
   });
 
   it("renders nothing for an empty row once the stream is over", () => {

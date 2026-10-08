@@ -9,6 +9,8 @@ describe("Separator", () => {
 
     const separator = container.firstElementChild as HTMLElement;
     expect(separator.getAttribute("role")).toBe("none");
+    expect(separator.getAttribute("aria-orientation")).toBeNull();
+    expect(separator.getAttribute("data-slot")).toBe("separator");
     expect(separator.getAttribute("data-orientation")).toBe("horizontal");
     expect(separator.className).toContain("h-px");
     expect(separator.className).toContain("w-full");
@@ -20,7 +22,7 @@ describe("Separator", () => {
     const separator = screen.getByRole("separator");
     expect(separator.getAttribute("aria-orientation")).toBe("vertical");
     expect(separator.className).toContain("w-px");
-    expect(separator.className).toContain("h-full");
+    expect(separator.className).toContain("self-stretch");
   });
 
   it("merges className and forwards its ref", () => {

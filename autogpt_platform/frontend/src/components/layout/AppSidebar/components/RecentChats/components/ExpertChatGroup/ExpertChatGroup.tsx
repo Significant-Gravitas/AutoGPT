@@ -16,7 +16,7 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@radix-ui/react-collapsible";
+} from "@/components/ui/collapsible";
 import { SidebarMenu } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
@@ -108,7 +108,7 @@ export function ExpertChatGroup({
           <Icon
             icon={ArrowDown01Icon}
             className={cn(
-              "shrink-0 text-zinc-400 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none md:opacity-0",
+              "shrink-0 text-zinc-400 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 group-data-open/expert-group:rotate-180 motion-reduce:transition-none md:opacity-0",
               CHEVRON_SIZE_CLASS,
               !newChatHref && "ml-auto",
             )}
@@ -123,7 +123,7 @@ export function ExpertChatGroup({
         </GroupBody>
       )}
 
-      <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+      <CollapsibleContent className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
         <GroupBody>
           <SidebarMenu>{visibleSessions.map(renderItem)}</SidebarMenu>
           {hasHiddenSessions && (
@@ -149,19 +149,21 @@ function NewChatLink({ href, label }: { href: string; label: string }) {
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Link
-          href={href}
-          aria-label={name}
-          className={cn(
-            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-zinc-200 hover:text-zinc-900 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-hidden md:opacity-0",
-            CHEVRON_SIZE_CLASS,
-            NEW_CHAT_LINK_OFFSET_CLASS,
-          )}
-        >
-          <NewChatIcon />
-        </Link>
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <Link
+            href={href}
+            aria-label={name}
+            className={cn(
+              "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-zinc-200 hover:text-zinc-900 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-hidden md:opacity-0",
+              CHEVRON_SIZE_CLASS,
+              NEW_CHAT_LINK_OFFSET_CLASS,
+            )}
+          >
+            <NewChatIcon />
+          </Link>
+        }
+      />
       <TooltipPortal>
         <TooltipContent side="top">{name}</TooltipContent>
       </TooltipPortal>

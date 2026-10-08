@@ -110,18 +110,20 @@ export const JsonTextField = (props: FieldProps) => {
         />
 
         <Tooltip delayDuration={0}>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-lg"
-              onClick={handleModalOpen}
-              type="button"
-              className="p-1"
-              aria-label="Expand JSON input"
-            >
-              <Icon icon={ArrowExpandIcon} className="size-4" />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-lg"
+                onClick={handleModalOpen}
+                type="button"
+                className="p-1"
+                aria-label="Expand JSON input"
+              >
+                <Icon icon={ArrowExpandIcon} className="size-4" />
+              </Button>
+            }
+          />
           <TooltipContent>Expand input</TooltipContent>
         </Tooltip>
       </div>

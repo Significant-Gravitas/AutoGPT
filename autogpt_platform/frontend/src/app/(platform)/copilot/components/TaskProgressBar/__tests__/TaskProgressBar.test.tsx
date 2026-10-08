@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TaskProgressBar } from "../TaskProgressBar";
 import type { TodoItem } from "../helpers";
 
-vi.mock("framer-motion", () => {
+vi.mock("motion/react", () => {
   const MOTION_PROPS = [
     "initial",
     "animate",

@@ -92,9 +92,11 @@ function SubAgentUpdateAvailableBar({
         </span>
         {!isCompatible && (
           <Tooltip>
-            <TooltipTrigger asChild>
-              <Icon icon={Alert01Icon} className="h-4 w-4 text-yellow-500" />
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <Icon icon={Alert01Icon} className="h-4 w-4 text-yellow-500" />
+              }
+            />
             <TooltipContent className="max-w-xs">
               <Text variant="small-medium" tone="primary">
                 Incompatible changes detected

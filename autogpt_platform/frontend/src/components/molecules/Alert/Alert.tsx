@@ -1,101 +1,48 @@
-import * as React from "react";
-import { cva, type VariantProps } from "class-variance-authority";
 import {
-  Alert02Icon,
-  CancelCircleIcon,
-  CheckmarkCircle02Icon,
-  InformationCircleIcon,
-} from "@hugeicons/core-free-icons";
-
-import { Icon } from "@/components/atoms/Icon/Icon";
+  Alert as KobraAlert,
+  AlertDescription as KobraAlertDescription,
+  AlertTitle as KobraAlertTitle,
+  type AlertTone,
+} from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import * as React from "react";
 
-const alertVariants = cva(
-  "relative w-full rounded-lg border px-4 py-3 text-sm text-card-foreground [&>svg]:absolute [&>svg]:top-1/2 [&>svg]:left-4 [&>svg]:-translate-y-1/2 [&>svg~*]:pl-7",
-  {
-    variants: {
-      variant: {
-        default: "border-border bg-card [&>svg]:text-accent",
-        info: "border-border bg-info-foreground [&>svg]:text-info",
-        success: "border-success/30 bg-success/10 [&>svg]:text-success",
-        warning: "border-warning/40 bg-warning/10 [&>svg]:text-warning",
-        error:
-          "border-destructive/30 bg-destructive/10 [&>svg]:text-destructive",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-    },
-  },
-);
+type AlertVariant = AlertTone | "default";
 
-const variantIcons = {
-  default: InformationCircleIcon,
-  info: InformationCircleIcon,
-  success: CheckmarkCircle02Icon,
-  warning: Alert02Icon,
-  error: CancelCircleIcon,
-} as const;
-
-interface AlertProps
-  extends
-    React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof alertVariants> {
+interface Props extends React.ComponentProps<"div"> {
   children: React.ReactNode;
-  /** Override the default variant icon (e.g. a domain-specific icon). */
+  /** `default` is the neutral notice; Kobra has no neutral tone, so it reads as `info`. */
+  variant?: AlertVariant | null;
+  /** Kobra draws the tone's own mark; a custom icon is not shown. */
   icon?: React.ComponentType<{ className?: string }>;
 }
 
-const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
-  (
-    { className, variant = "default", icon: CustomIcon, children, ...props },
-    ref,
-  ) => {
-    const currentVariant = variant || "default";
-    const iconClassName = "h-4.5 w-4.5";
+function Alert({ variant, icon: _icon, ...props }: Props) {
+  const tone: AlertTone = !variant || variant === "default" ? "info" : variant;
+  return <KobraAlert variant={tone} {...props} />;
+}
 
-    return (
-      <div
-        ref={ref}
-        role="alert"
-        className={cn(alertVariants({ variant: currentVariant }), className)}
-        {...props}
-      >
-        {CustomIcon ? (
-          <CustomIcon className={iconClassName} />
-        ) : (
-          <Icon icon={variantIcons[currentVariant]} className={iconClassName} />
-        )}
-        {children}
-      </div>
-    );
-  },
-);
-Alert.displayName = "Alert";
+// Kobra colours the text with the tone, which fails contrast on the tone's
+// own tint (warning 1.8:1, success 3.3:1); the tone stays on the mark only.
+function AlertTitle({
+  className,
+  ...props
+}: React.ComponentProps<typeof KobraAlertTitle>) {
+  return (
+    <KobraAlertTitle className={cn("text-foreground", className)} {...props} />
+  );
+}
 
-const AlertTitle = React.forwardRef<
-  HTMLParagraphElement,
-  React.HTMLAttributes<HTMLHeadingElement>
->(({ className, ...props }, ref) => (
-  <h5
-    ref={ref}
-    className={cn("mb-1 leading-none font-medium tracking-tight", className)}
-    {...props}
-  />
-));
+function AlertDescription({
+  className,
+  ...props
+}: React.ComponentProps<typeof KobraAlertDescription>) {
+  return (
+    <KobraAlertDescription
+      className={cn("text-foreground", className)}
+      {...props}
+    />
+  );
+}
 
-AlertTitle.displayName = "AlertTitle";
-
-const AlertDescription = React.forwardRef<
-  HTMLParagraphElement,
-  React.HTMLAttributes<HTMLParagraphElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn("text-sm [&_p]:leading-relaxed", className)}
-    {...props}
-  />
-));
-AlertDescription.displayName = "AlertDescription";
-
-export { Alert, AlertTitle, AlertDescription };
+export { Alert, AlertDescription, AlertTitle };

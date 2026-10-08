@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
-import { Status } from "@/components/__legacy__/Status";
+import { SubmissionStatusBadge } from "../SubmissionStatusBadge";
 import {
   ImageNotFound01Icon,
   MoreVerticalIcon,
@@ -103,7 +103,7 @@ export const AgentTableCard = ({
       </div>
 
       <div className="mt-4 flex flex-wrap gap-4">
-        <Status status={status} />
+        <SubmissionStatusBadge status={status} />
         <div className="text-sm text-zinc-600">
           {submitted_at && submitted_at.toLocaleDateString()}
         </div>

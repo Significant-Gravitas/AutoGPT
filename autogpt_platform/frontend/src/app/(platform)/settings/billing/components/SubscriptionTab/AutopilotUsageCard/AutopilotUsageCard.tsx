@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 
 import { Text } from "@/components/atoms/Text/Text";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";

@@ -14,11 +14,17 @@
   "aliases": {
     "components": "@/components",
     "utils": "@/lib/utils",
-    "ui": "@/components/__shadcn_scratch__",
+    "ui": "@/components/ui",
     "lib": "@/lib",
     "hooks": "@/hooks"
   },
   "registries": {
-    "@aceternity": "https://ui.aceternity.com/registry/{name}.json"
+    "@aceternity": "https://ui.aceternity.com/registry/{name}.json",
+    "@kobra": {
+      "url": "https://kobra.systems/r/{name}.json",
+      "headers": {
+        "Authorization": "Bearer ${KOBRA_TOKEN}"
+      }
+    }
   }
 }

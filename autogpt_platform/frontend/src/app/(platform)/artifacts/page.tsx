@@ -2,8 +2,8 @@
 
 import { useEffect } from "react";
 import { notFound } from "next/navigation";
-import { motion, useReducedMotion } from "framer-motion";
-import type { Transition, Variants } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
+import type { Transition, Variants } from "motion/react";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";

@@ -1,26 +1,10 @@
-import { cva } from "class-variance-authority";
+export type SheetSide = "top" | "right" | "bottom" | "left";
 
-export const sheetVariants = cva(
-  [
-    "fixed z-50 flex flex-col bg-popover text-popover-foreground shadow-lg focus:outline-hidden",
-    "transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500",
-  ],
-  {
-    variants: {
-      side: {
-        top: "inset-x-0 top-0 max-h-screen rounded-b-2xl border-b border-border data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
-        bottom:
-          "inset-x-0 bottom-0 max-h-screen rounded-t-2xl border-t border-border data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
-        left: "inset-y-0 left-0 h-full w-3/4 border-r border-border data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm",
-        right:
-          "inset-y-0 right-0 h-full w-3/4 border-l border-border data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
-      },
-    },
-    defaultVariants: {
-      side: "right",
-    },
-  },
-);
+// Kobra fixes side panels at 440px through `data-[side]` variants; neutralise
+// those so the house default and the caller's `className` set the width.
+const SIDE_WIDTH =
+  "w-3/4 data-[side=left]:w-auto data-[side=right]:w-auto sm:max-w-sm";
 
-export const overlayClassName =
-  "fixed inset-0 z-50 bg-black/20 backdrop-blur-xs data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0";
+export function panelClassName(side: SheetSide) {
+  return side === "left" || side === "right" ? SIDE_WIDTH : "";
+}

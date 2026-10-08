@@ -62,8 +62,8 @@ vi.mock("next/navigation", async () => {
   return navigationMock({ onNotFound: notFoundMock });
 });
 
-vi.mock("framer-motion", async (importActual) => {
-  const actual = await importActual<typeof import("framer-motion")>();
+vi.mock("motion/react", async (importActual) => {
+  const actual = await importActual<typeof import("motion/react")>();
   return {
     ...actual,
     useReducedMotion: () => true,
@@ -361,9 +361,7 @@ describe("ArtifactsPage - new menu", () => {
 
     await screen.findByTestId("artifacts-empty");
     // Radix DropdownMenu opens on pointerdown, not click, under happy-dom.
-    fireEvent.pointerDown(screen.getByTestId("artifacts-new-menu"), {
-      button: 0,
-    });
+    fireEvent.click(screen.getByTestId("artifacts-new-menu"));
 
     expect(await screen.findByTestId("artifacts-upload-file")).toBeDefined();
     expect(screen.getByTestId("create-folder-button")).toBeDefined();

@@ -4,7 +4,7 @@ import { SettingsNavItem } from "@/app/(platform)/settings/components/SettingsSi
 import { Text } from "@/components/atoms/Text/Text";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useAdminSidebar } from "./useAdminSidebar";
 

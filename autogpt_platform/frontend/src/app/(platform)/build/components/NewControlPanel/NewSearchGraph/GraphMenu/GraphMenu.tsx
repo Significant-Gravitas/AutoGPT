@@ -57,18 +57,20 @@ export function GraphSearchMenu() {
       }}
     >
       <Tooltip delayDuration={100}>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild className="hover:cursor-pointer">
-            <ControlPanelButton
-              data-id="graph-search-control-popover-trigger"
-              data-testid="graph-search-control-button"
-              selected={graphSearchOpen}
-              className="rounded-none"
-            >
-              <Icon icon={Search01Icon} className="size-5" />
-            </ControlPanelButton>
-          </PopoverTrigger>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <PopoverTrigger asChild className="hover:cursor-pointer">
+              <ControlPanelButton
+                data-id="graph-search-control-popover-trigger"
+                data-testid="graph-search-control-button"
+                selected={graphSearchOpen}
+                className="rounded-none"
+              >
+                <Icon icon={Search01Icon} className="size-5" />
+              </ControlPanelButton>
+            </PopoverTrigger>
+          }
+        />
         <TooltipContent side="right">
           Search Graph ({isMac ? "Cmd" : "Ctrl"}+F)
         </TooltipContent>

@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { formatElapsed } from "../helpers";
 
 // Each digit is its own slot, so only the digits that actually changed pop:

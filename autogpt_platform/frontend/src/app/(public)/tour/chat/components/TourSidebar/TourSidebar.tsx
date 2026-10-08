@@ -8,7 +8,7 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@radix-ui/react-collapsible";
+} from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -21,7 +21,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useTourStore } from "../../tourStore";
 import { TourSidebarHeader } from "./components/TourSidebarHeader";
@@ -111,14 +111,12 @@ export function TourSidebar({ variant = "tour" }: Props) {
                   <DisabledMenuItem icon={GridViewIcon} label="Agents" />
                   <SidebarMenuItem>
                     <SidebarMenuButton
-                      asChild
+                      render={<Link href="/marketplace" />}
                       tooltip="Marketplace"
                       className="font-normal group-data-[collapsible=icon]:p-1.5! hover:bg-zinc-200 [&>svg]:size-5"
                     >
-                      <Link href="/marketplace">
-                        <Icon icon={Store01Icon} className="size-5" />
-                        <span className="truncate">Marketplace</span>
-                      </Link>
+                      <Icon icon={Store01Icon} className="size-5" />
+                      <span className="truncate">Marketplace</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <DisabledMenuItem icon={FlowIcon} label="Build" />
@@ -130,16 +128,17 @@ export function TourSidebar({ variant = "tour" }: Props) {
           <motion.div variants={itemVariants}>
             <Collapsible defaultOpen className="group/collapsible">
               <SidebarGroup className="py-1">
-                <SidebarGroupLabel asChild className="text-[13px] font-medium">
-                  <CollapsibleTrigger>
-                    Workspace
-                    <Icon
-                      icon={ArrowDown01Icon}
-                      className="ml-auto size-4 transition-transform duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
-                    />
-                  </CollapsibleTrigger>
+                <SidebarGroupLabel
+                  render={<CollapsibleTrigger />}
+                  className="text-[13px] font-medium"
+                >
+                  Workspace
+                  <Icon
+                    icon={ArrowDown01Icon}
+                    className="ml-auto size-4 transition-transform duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] group-data-open/collapsible:rotate-180 motion-reduce:transition-none"
+                  />
                 </SidebarGroupLabel>
-                <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+                <CollapsibleContent className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
                   <SidebarGroupContent>
                     <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
                       <DisabledMenuItem icon={Folder01Icon} label="Files" />

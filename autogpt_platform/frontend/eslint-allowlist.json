@@ -1,44 +1,6 @@
 {
   "imports": {
-    "legacy": [
-      "src/app/(no-navbar)/login/page.tsx",
-      "src/app/(no-navbar)/signup/page.tsx",
-      "src/app/(platform)/admin/components/AdminClassicShell.tsx",
-      "src/app/(platform)/admin/diagnostics/components/ExecutionsTable.tsx",
-      "src/app/(platform)/admin/diagnostics/components/SchedulesTable.tsx",
-      "src/app/(platform)/admin/execution-analytics/components/ExecutionAnalyticsForm.tsx",
-      "src/app/(platform)/admin/marketplace/components/AdminAgentsDataTable.tsx",
-      "src/app/(platform)/admin/marketplace/components/ExpandleRow.tsx",
-      "src/app/(platform)/admin/spending/components/AdminUserGrantHistory.tsx",
-      "src/app/(platform)/build/components/BuilderActions/components/AgentOutputs/AgentOutputs.tsx",
-      "src/app/(platform)/build/components/NewControlPanel/NewSaveControl/NewSaveControl.tsx",
-      "src/app/(platform)/marketplace/components/AgentsSection/AgentsSection.tsx",
-      "src/app/(platform)/marketplace/components/FeaturedSection/FeaturedSection.tsx",
-      "src/app/(platform)/marketplace/search/components/MainSearchResultPage/MainSearchResultPage.tsx",
-      "src/app/(platform)/profile/(user)/api-keys/components/APIKeysModals/APIKeysModals.tsx",
-      "src/app/(platform)/profile/(user)/credits/page.tsx",
-      "src/app/(platform)/profile/(user)/dashboard/components/AgentTableCard/AgentTableCard.tsx",
-      "src/app/(platform)/profile/(user)/dashboard/components/AgentTableRow/AgentTableRow.tsx",
-      "src/app/(platform)/profile/(user)/integrations/page.tsx",
-      "src/app/(platform)/profile/(user)/layout.tsx",
-      "src/app/(platform)/profile/(user)/settings/components/SettingsForm/components/EmailForm/EmailForm.tsx",
-      "src/app/(platform)/profile/(user)/settings/components/SettingsForm/components/NotificationForm/NotificationForm.tsx",
-      "src/app/(platform)/profile/(user)/settings/components/SettingsForm/components/TimezoneForm/TimezoneForm.tsx",
-      "src/app/(platform)/reset-password/page.tsx",
-      "src/components/atoms/DateInput/DateInput.tsx",
-      "src/components/atoms/DateTimeInput/DateTimeInput.tsx",
-      "src/components/atoms/Select/Select.tsx",
-      "src/components/contextual/CredentialsInput/components/APIKeyCredentialsModal/APIKeyCredentialsModal.tsx",
-      "src/components/contextual/CredentialsInput/components/CredentialTypeSelector/CredentialTypeSelector.tsx",
-      "src/components/contextual/CredentialsInput/components/HotScopedCredentialsModal/HotScopedCredentialsModal.tsx",
-      "src/components/contextual/CredentialsInput/components/PasswordCredentialsModal/PasswordCredentialsModal.tsx",
-      "src/components/contextual/CronScheduler/cron-scheduler.tsx",
-      "src/components/contextual/EditAgentModal/components/EditAgentForm.tsx",
-      "src/components/contextual/PublishAgentModal/components/AgentInfoStep/AgentInfoStep.tsx",
-      "src/components/layout/Navbar/components/Wallet/components/WalletRefill.tsx",
-      "src/components/renderers/InputRenderer/base/standard/widgets/SelectInput/SelectWidget.tsx",
-      "src/components/renderers/InputRenderer/custom/MultiSelectField/MultiSelectField.tsx"
-    ],
+    "legacy": [],
     "ui": [
       "src/app/(platform)/PlatformChrome/PlatformChrome.tsx",
       "src/app/(platform)/PlatformChrome/components/ArtifactsPanelNavCollapse/useArtifactsPanelNavCollapse.ts",
@@ -50,38 +12,19 @@
       "src/app/(platform)/copilot/components/ChatSidebar/ChatSidebar.tsx",
       "src/app/(platform)/copilot/components/ChatSidebar/__tests__/ChatSidebar.test.tsx",
       "src/app/(platform)/copilot/components/EmptySession/components/EmptyHero.tsx",
-      "src/app/(platform)/team/components/ExpertSidePanel/usePanelSidebarCollapse.ts",
       "src/app/(public)/tour/chat/TourCopilot.tsx",
       "src/app/(public)/tour/chat/__tests__/tracking.test.tsx",
       "src/app/(public)/tour/chat/components/TourChatHeader/TourChatHeader.tsx",
       "src/app/(public)/tour/chat/components/TourSidebar/TourSidebar.tsx",
       "src/app/(public)/tour/chat/components/TourSidebar/components/TourSidebarHeader.tsx"
     ],
-    "shadcn-scratch": [],
-    "lucide-react": [
-      "src/components/__legacy__/Sidebar.tsx",
-      "src/components/__legacy__/ui/carousel.tsx",
-      "src/components/__legacy__/ui/multiselect.tsx",
-      "src/components/atoms/Button/Button.stories.tsx",
-      "src/components/atoms/Link/Link.stories.tsx",
-      "src/components/molecules/InformationTooltip/InformationTooltip.tsx"
-    ],
+    "lucide-react": [],
     "@phosphor-icons/react": [],
-    "@radix-ui/react-icons": [
-      "src/components/__legacy__/SortDropdown.tsx",
-      "src/components/__legacy__/ui/calendar.tsx",
-      "src/components/__legacy__/ui/command.tsx",
-      "src/components/__legacy__/ui/dialog.tsx",
-      "src/components/__legacy__/ui/dropdown-menu.tsx",
-      "src/components/__legacy__/ui/select.tsx",
-      "src/components/molecules/DropdownMenu/DropdownMenu.tsx"
-    ],
+    "@radix-ui/react-icons": [],
+    "@tabler/icons-react": [],
     "react-icons": [],
     "@hugeicons/react": ["src/components/atoms/Button/helpers.ts"],
-    "sonner": [
-      "src/components/organisms/NeedsAttentionList/__tests__/NeedsAttentionList.test.tsx",
-      "src/services/network-status/useNetworkStatus.ts"
-    ]
+    "sonner": []
   },
   "tailwind": {
     "no-unknown-classes": [
@@ -94,14 +37,12 @@
       "src/app/(platform)/library/components/LibraryFolder/FolderIcon.tsx",
       "src/app/(platform)/library/components/LibraryFolderCreationDialog/LibraryFolderCreationDialog.tsx",
       "src/app/(platform)/marketplace/components/AgentInfo/AgentInfo.tsx",
-      "src/components/__legacy__/Sidebar.tsx",
       "src/components/ai-elements/message.tsx",
       "src/components/atoms/Text/Text.test.tsx",
       "src/components/contextual/OutputRenderers/renderers/MarkdownRenderer.tsx",
       "src/components/molecules/file-tree.tsx",
       "src/components/organisms/WorkOutputSheet/WorkOutputSheet.tsx",
-      "src/components/renderers/InputRenderer/base/standard/DescriptionField.tsx",
-      "src/components/ui/aurora-background.tsx"
+      "src/components/renderers/InputRenderer/base/standard/DescriptionField.tsx"
     ],
     "no-conflicting-classes": [],
     "no-restricted-classes": []

@@ -95,7 +95,7 @@ describe("Sheet", () => {
     );
 
     expect(ref.current).toBe(screen.getByRole("dialog"));
-    expect(ref.current?.className).toContain("left-0");
+    expect(ref.current?.getAttribute("data-side")).toBe("left");
     expect(ref.current?.className).toContain("sm:max-w-xl");
     expect(screen.getByRole("button", { name: "Export" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Save" })).toBeDefined();

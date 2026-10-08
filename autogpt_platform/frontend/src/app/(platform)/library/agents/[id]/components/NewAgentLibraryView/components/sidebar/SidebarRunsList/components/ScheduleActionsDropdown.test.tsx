@@ -69,9 +69,7 @@ describe("ScheduleActionsDropdown", () => {
     );
 
     // Radix DropdownMenu opens on pointerdown, not click, under happy-dom.
-    fireEvent.pointerDown(screen.getByLabelText("More actions"), {
-      button: 0,
-    });
+    fireEvent.click(screen.getByLabelText("More actions"));
     fireEvent.click(await screen.findByText("Run now"));
 
     await waitFor(() => {

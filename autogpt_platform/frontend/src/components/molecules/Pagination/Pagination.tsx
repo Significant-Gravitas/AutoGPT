@@ -2,13 +2,15 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { cn } from "@/lib/utils";
 import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
-  MoreHorizontalIcon,
-} from "@hugeicons/core-free-icons";
-import { forwardRef } from "react";
+  Pagination as KobraPagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+} from "@/components/ui/pagination";
+import { cn } from "@/lib/utils";
+import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import type { Ref } from "react";
 import { getPageItems } from "./helpers";
 
 interface Props {
@@ -21,22 +23,20 @@ interface Props {
   disabled?: boolean;
   className?: string;
   "aria-label"?: string;
+  ref?: Ref<HTMLElement>;
 }
 
-export const Pagination = forwardRef<HTMLElement, Props>(function Pagination(
-  {
-    page,
-    pageCount,
-    onPageChange,
-    siblingCount = 1,
-    disabled = false,
-    className,
-    "aria-label": ariaLabel = "Pagination",
-  },
+export function Pagination({
+  page,
+  pageCount,
+  onPageChange,
+  siblingCount = 1,
+  disabled = false,
+  className,
+  "aria-label": ariaLabel = "Pagination",
   ref,
-) {
+}: Props) {
   const items = getPageItems(page, pageCount, siblingCount);
-  const focusRing = "focus-ring focus-visible:ring-offset-2";
 
   function goTo(next: number) {
     if (next < 1 || next > pageCount || next === page) return;
@@ -44,13 +44,9 @@ export const Pagination = forwardRef<HTMLElement, Props>(function Pagination(
   }
 
   return (
-    <nav
-      ref={ref}
-      aria-label={ariaLabel}
-      className={cn("flex justify-center", className)}
-    >
-      <ul className="flex items-center gap-1">
-        <li>
+    <KobraPagination ref={ref} aria-label={ariaLabel} className={className}>
+      <PaginationContent className="gap-1">
+        <PaginationItem>
           <Button
             type="button"
             variant="ghost"
@@ -58,39 +54,39 @@ export const Pagination = forwardRef<HTMLElement, Props>(function Pagination(
             leadingIcon={ArrowLeft01Icon}
             onClick={() => goTo(page - 1)}
             disabled={disabled || page <= 1}
-            className={cn("min-w-0 px-2.5", focusRing)}
+            className="min-w-0 px-2.5"
           >
             Previous
           </Button>
-        </li>
+        </PaginationItem>
         {items.map((item) =>
           typeof item === "number" ? (
-            <li key={item}>
+            <PaginationItem key={item}>
               <Button
                 type="button"
-                variant={item === page ? "primary" : "ghost"}
+                variant="ghost"
                 size="icon-sm"
                 withTooltip={false}
                 onClick={() => goTo(item)}
                 disabled={disabled}
                 aria-label={`Page ${item}`}
                 aria-current={item === page ? "page" : undefined}
-                className={cn("text-sm font-medium", focusRing)}
+                data-active={item === page}
+                className={cn(
+                  "rounded-lg text-sm font-medium text-muted-foreground",
+                  item === page && "text-foreground",
+                )}
               >
                 {item}
               </Button>
-            </li>
+            </PaginationItem>
           ) : (
-            <li
-              key={item}
-              aria-hidden
-              className="flex size-8 items-center justify-center text-muted-foreground"
-            >
-              <Icon icon={MoreHorizontalIcon} size={16} />
-            </li>
+            <PaginationItem key={item}>
+              <PaginationEllipsis className="text-muted-foreground" />
+            </PaginationItem>
           ),
         )}
-        <li>
+        <PaginationItem>
           <Button
             type="button"
             variant="ghost"
@@ -98,12 +94,12 @@ export const Pagination = forwardRef<HTMLElement, Props>(function Pagination(
             rightIcon={<Icon icon={ArrowRight01Icon} size={16} aria-hidden />}
             onClick={() => goTo(page + 1)}
             disabled={disabled || page >= pageCount}
-            className={cn("min-w-0 px-2.5", focusRing)}
+            className="min-w-0 px-2.5"
           >
             Next
           </Button>
-        </li>
-      </ul>
-    </nav>
+        </PaginationItem>
+      </PaginationContent>
+    </KobraPagination>
   );
-});
+}

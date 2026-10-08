@@ -4,8 +4,8 @@ import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspace
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { motion, useReducedMotion } from "framer-motion";
-import type { Variants } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
+import type { Variants } from "motion/react";
 import { useFileDrag } from "../../WorkspaceFolders/useFileDrag";
 import { ExpertBadge } from "../ExpertBadge";
 import { FileActionsMenu } from "../FileActionsMenu";

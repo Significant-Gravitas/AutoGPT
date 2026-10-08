@@ -309,7 +309,7 @@ describe("SettingsCreatorDashboardPage", () => {
     ).toBeGreaterThan(0);
 
     const actionButtons = screen.getAllByTestId("submission-actions");
-    fireEvent.pointerDown(actionButtons[0], { button: 0 });
+    fireEvent.click(actionButtons[0]);
 
     const deleteMenuItem = await screen.findByRole("menuitem", {
       name: /delete/i,
@@ -347,7 +347,7 @@ describe("SettingsCreatorDashboardPage", () => {
     );
 
     const actionButtons = screen.getAllByTestId("submission-actions");
-    fireEvent.pointerDown(actionButtons[0], { button: 0 });
+    fireEvent.click(actionButtons[0]);
 
     const deleteMenuItem = await screen.findByRole("menuitem", {
       name: /delete/i,
@@ -389,7 +389,7 @@ describe("SettingsCreatorDashboardPage", () => {
     ).toBeGreaterThan(0);
 
     const actionButtons = screen.getAllByTestId("submission-actions");
-    fireEvent.pointerDown(actionButtons[0], { button: 0 });
+    fireEvent.click(actionButtons[0]);
     const editItem = await screen.findByRole("menuitem", { name: /edit/i });
     fireEvent.click(editItem);
 
@@ -421,7 +421,7 @@ describe("SettingsCreatorDashboardPage", () => {
     ).toBeGreaterThan(0);
 
     const actionButtons = screen.getAllByTestId("submission-actions");
-    fireEvent.pointerDown(actionButtons[0], { button: 0 });
+    fireEvent.click(actionButtons[0]);
 
     const viewItem = await screen.findByRole("menuitem", {
       name: /view submission/i,
@@ -467,7 +467,7 @@ describe("SettingsCreatorDashboardPage", () => {
 
     const actionButtons = screen.getAllByTestId("submission-actions");
     expect(actionButtons.length).toBeGreaterThanOrEqual(2);
-    fireEvent.pointerDown(actionButtons[1], { button: 0 });
+    fireEvent.click(actionButtons[1]);
 
     const deleteMenuItem = await screen.findByRole("menuitem", {
       name: /delete/i,

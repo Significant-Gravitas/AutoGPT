@@ -8,7 +8,7 @@ import { ConnectMethodView } from "@/components/contextual/IntegrationsPanel/com
 import { ConnectProviderRow } from "./ConnectProviderRow";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Plug01Icon, Search01Icon } from "@hugeicons/core-free-icons";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect } from "react";
 import { useConnectToolsPanel } from "./useConnectToolsPanel";
 import { isKey } from "@/lib/keyboard";

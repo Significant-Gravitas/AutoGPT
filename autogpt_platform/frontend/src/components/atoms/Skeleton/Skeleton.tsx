@@ -1,14 +1,7 @@
-import { cn } from "@/lib/utils";
+import { Skeleton as KobraSkeleton } from "@/components/ui/skeleton";
 
-interface Props extends React.HTMLAttributes<HTMLDivElement> {
-  className?: string;
-}
+type Props = React.ComponentProps<typeof KobraSkeleton>;
 
-export function Skeleton({ className, ...props }: Props) {
-  return (
-    <div
-      className={cn("animate-pulse rounded-md bg-muted", className)}
-      {...props}
-    />
-  );
+export function Skeleton(props: Props) {
+  return <KobraSkeleton {...props} />;
 }

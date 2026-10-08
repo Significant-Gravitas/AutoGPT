@@ -507,7 +507,7 @@ export function ChatInput({
               <PromptInputButton
                 aria-label="Queue message"
                 tooltip="Queue message"
-                variant="primary"
+                variant="default"
                 disabled={isEnqueueing}
                 onClick={() => void handleEnqueue()}
                 className={cn(
@@ -520,13 +520,15 @@ export function ChatInput({
             )}
             {isStreaming ? (
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <PromptInputSubmit
-                    status="streaming"
-                    onStop={onStop}
-                    className={sendButtonClass}
-                  />
-                </TooltipTrigger>
+                <TooltipTrigger
+                  render={
+                    <PromptInputSubmit
+                      status="streaming"
+                      onStop={onStop}
+                      className={sendButtonClass}
+                    />
+                  }
+                />
                 <TooltipPortal>
                   <TooltipContent side="top">Stop</TooltipContent>
                 </TooltipPortal>

@@ -1,0 +1,260 @@
+:root {
+  --check-opacity-duration: 550ms;
+  --check-rotate-duration: 550ms;
+  --check-bob-duration: 450ms;
+  --check-blur-duration: 500ms;
+  --check-path-duration: 550ms;
+  --check-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --check-box: 150ms;
+  --check-draw: 350ms;
+  --check-delay: 0ms;
+  --check-uncheck: 150ms;
+  --check-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --spinner-bars-dur: 1.2s;
+  --spinner-bars-min: 0.15;
+  --check-spin-dur: 900ms;
+  --check-pop-dur: 220ms;
+  --check-pop-ease: cubic-bezier(0.34, 1.96, 0.94, 1);
+  --check-fill-dur: 220ms;
+  --check-fill-ease: cubic-bezier(0.34, 1.35, 0.64, 1);
+  --check-draw-dur: 300ms;
+  --check-draw-lead: 0.64;
+  --check-draw-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --check-revert-dur: 200ms;
+  --check-revert-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --check-pop-scale: 1.09;
+  --check-blur: 0.5px;
+  --check-size: 22px;
+  --check-ring-w: calc(var(--check-size) * 2.5 / 22);
+  --check-mark-w: 2;
+  --check-fill-color: #2563eb;
+  --check-ring-color: rgba(0, 0, 0, 0.1);
+  --check-arc-color: #7a7a7a;
+  --check-outline-color: var(--muted-foreground);
+}
+
+.dark {
+  --check-ring-color: rgba(255, 255, 255, 0.12);
+  --check-arc-color: #9a9a9a;
+}
+
+.t-spinner-bar {
+  animation: t-spinner-bars var(--spinner-bars-dur) linear infinite;
+}
+
+@keyframes t-spinner-bars {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: var(--spinner-bars-min);
+  }
+}
+
+.t-check-blur-wrap {
+  display: inline-flex;
+  filter: blur(0);
+  transition: filter var(--check-revert-dur) var(--check-revert-ease);
+  will-change: filter;
+}
+
+.t-check-blur-wrap.is-crossing {
+  filter: blur(var(--check-blur));
+  transition: filter calc(var(--check-fill-dur) * 0.45) var(--check-fill-ease);
+}
+
+.t-check-badge {
+  position: relative;
+  width: var(--check-size);
+  height: var(--check-size);
+  flex: 0 0 var(--check-size);
+  scale: 1;
+  transition: scale var(--check-revert-dur) var(--check-revert-ease);
+  will-change: scale;
+}
+
+.t-check-badge[data-state='done'] {
+  scale: var(--check-pop-scale);
+  transition: scale var(--check-pop-dur) var(--check-pop-ease);
+}
+
+.t-check-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: var(--check-ring-w) solid var(--check-ring-color);
+  transition:
+    opacity var(--check-revert-dur) ease,
+    filter var(--check-revert-dur) ease;
+}
+
+.t-check-badge[data-state='done'] .t-check-ring {
+  opacity: 0;
+  transition: opacity calc(var(--check-fill-dur) * 0.7) ease;
+}
+
+.t-check-fill {
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  background: var(--check-fill-color);
+
+  box-shadow:
+    0 0 0 0.504px rgba(0, 0, 0, 0.05) inset,
+    0 0.504px 0.504px 0 rgba(0, 0, 0, 0.1),
+    0 0.504px 2.016px 0 rgba(0, 0, 0, 0.08),
+    0 -0.504px 0.504px 0 rgba(0, 0, 0, 0.09) inset;
+  box-shadow:
+    0 0 0 0.504px color(display-p3 0 0 0 / 0.05) inset,
+    0 0.504px 0.504px 0 color(display-p3 0 0 0 / 0.1),
+    0 0.504px 2.016px 0 color(display-p3 0 0 0 / 0.08),
+    0 -0.504px 0.504px 0 color(display-p3 0 0 0 / 0.09) inset;
+  opacity: 0;
+  transition: opacity var(--check-revert-dur) var(--check-revert-ease);
+  will-change: opacity;
+}
+
+.t-check-badge[data-state='done'] .t-check-fill {
+  opacity: 1;
+  transition: opacity var(--check-fill-dur) var(--check-fill-ease);
+}
+
+.t-check-arc {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke: var(--check-arc-color);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  animation-name: t-check-spin;
+  animation-duration: var(--check-spin-dur);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  transition: opacity var(--check-revert-dur) var(--check-revert-ease);
+  will-change: transform;
+}
+
+@keyframes t-check-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.t-check-badge[data-state='done'] .t-check-arc {
+  opacity: 0;
+  animation-play-state: paused;
+  transition: opacity calc(var(--check-fill-dur) * 0.5) ease;
+}
+
+.t-check-spinner {
+  position: absolute;
+  inset: -10%;
+  display: grid;
+  place-items: center;
+  color: var(--check-arc-color);
+  transition: opacity var(--check-revert-dur) var(--check-revert-ease);
+}
+
+.t-check-badge[data-state='done'] .t-check-spinner {
+  opacity: 0;
+  transition: opacity calc(var(--check-fill-dur) * 0.5) ease;
+}
+
+.t-check-disc {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.t-check-disc svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.t-check-mark {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: var(--check-mark-w);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: var(--check-mark-len, 20);
+  stroke-dashoffset: var(--check-mark-len, 20);
+  transition: stroke-dashoffset var(--check-revert-dur) var(--check-revert-ease);
+}
+
+.t-check-badge[data-state='done'] .t-check-mark {
+  stroke-dashoffset: 0;
+
+  transition: stroke-dashoffset var(--check-draw-dur) var(--check-draw-ease)
+    calc(var(--check-fill-dur) * var(--check-draw-lead));
+}
+
+.t-check-badge.is-outline .t-check-ring {
+  border-color: var(--check-outline-color);
+}
+
+.t-check-badge.is-outline[data-state='done'] .t-check-ring {
+  opacity: 1;
+}
+
+.t-check-badge.is-outline[data-state='done'] .t-check-fill {
+  opacity: 0;
+}
+
+.t-check-badge.is-outline .t-check-mark {
+  stroke: var(--check-outline-color);
+}
+
+.t-check-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.t-check-texts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.t-check-title {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 13px;
+}
+
+.t-check-sub {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 13px;
+  opacity: 0.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-check-arc {
+    animation: none !important;
+  }
+  .t-check-blur-wrap,
+  .t-check-blur-wrap.is-crossing {
+    filter: none !important;
+    transition: none !important;
+  }
+  .t-check-ring,
+  .t-check-arc,
+  .t-check-fill {
+    transition: none !important;
+  }
+  .t-check-badge,
+  .t-check-mark {
+    transition: none !important;
+    animation: none !important;
+  }
+  .t-check-badge[data-state='done'] .t-check-mark {
+    stroke-dashoffset: 0;
+  }
+}

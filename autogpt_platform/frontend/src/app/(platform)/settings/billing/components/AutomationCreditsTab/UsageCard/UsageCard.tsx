@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
@@ -150,38 +150,40 @@ function UsageBar({
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label={
-            isEmpty
-              ? `${day.date}: $0.00, 0 runs`
-              : `${day.date}: $${day.amount.toFixed(2)}, ${day.runs} runs`
-          }
-          className="group flex h-full flex-1 flex-col justify-end focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-hidden"
-        >
-          {isEmpty ? (
-            <div className="h-px w-full bg-transparent" />
-          ) : (
-            <motion.div
-              initial={
-                reduceMotion ? { height: `${heightPercent}%` } : { height: 0 }
-              }
-              animate={{ height: `${heightPercent}%` }}
-              transition={
-                reduceMotion
-                  ? undefined
-                  : {
-                      duration: 0.5,
-                      ease: EASE_OUT,
-                      delay: 0.15 + index * 0.015,
-                    }
-              }
-              className="w-full cursor-help rounded-t-[3px] border-t-2 border-purple-500 bg-purple-500/30 transition-colors group-hover:bg-purple-500/50"
-            />
-          )}
-        </button>
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={
+              isEmpty
+                ? `${day.date}: $0.00, 0 runs`
+                : `${day.date}: $${day.amount.toFixed(2)}, ${day.runs} runs`
+            }
+            className="group flex h-full flex-1 flex-col justify-end focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-hidden"
+          >
+            {isEmpty ? (
+              <div className="h-px w-full bg-transparent" />
+            ) : (
+              <motion.div
+                initial={
+                  reduceMotion ? { height: `${heightPercent}%` } : { height: 0 }
+                }
+                animate={{ height: `${heightPercent}%` }}
+                transition={
+                  reduceMotion
+                    ? undefined
+                    : {
+                        duration: 0.5,
+                        ease: EASE_OUT,
+                        delay: 0.15 + index * 0.015,
+                      }
+                }
+                className="w-full cursor-help rounded-t-[3px] border-t-2 border-purple-500 bg-purple-500/30 transition-colors group-hover:bg-purple-500/50"
+              />
+            )}
+          </button>
+        }
+      />
       <TooltipContent side="top">
         <div className="flex flex-col gap-0.5">
           <Text

@@ -1,18 +1,13 @@
-// Common styles as Tailwind class strings
-const commonStyles = {
-  title: "font-poppins text-base md:text-lg leading-none",
-  overlay: "fixed inset-0 z-50 bg-zinc-500/20 backdrop-blur-md animate-fade-in",
-  content:
-    "bg-popover text-popover-foreground p-6 fixed rounded-3xl flex flex-col z-50 w-full",
-};
+import { cn } from "@/lib/utils";
 
-// Modal specific styles
+// House sizing on top of Kobra's dialog and drawer panels (Tailwind class
+// strings merged after Kobra's own, so these win).
+const title = "font-poppins text-base md:text-lg leading-none";
+
 export const modalStyles = {
-  ...commonStyles,
-  content: `${commonStyles.content} p-6 min-w-[40vw] max-w-[60vw] max-h-[95vh] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-fade-in`,
-  iconWrap:
-    "absolute top-2 right-3 bg-transparent p-2 rounded-full transition-colors duration-300 ease-in-out outline-hidden border-none",
-  icon: "w-4 h-4 text-popover-foreground",
+  title,
+  content:
+    "flex max-h-[95vh] min-w-[40vw] max-w-[60vw] flex-col gap-0 p-6 sm:max-w-[60vw]",
 };
 
 // Compact variant: dense neutral dialog for in-app forms — smaller radius,
@@ -23,11 +18,10 @@ export const compactStyles = {
   header: "pb-4",
   close: "right-3 top-3",
   // Bottom sheet keeps its top-only radius; only the padding tightens.
-  drawerContent: "p-5",
+  drawerContent: "px-5 pb-5",
 };
 
-// Drawer specific styles
 export const drawerStyles = {
-  ...commonStyles,
-  content: `${commonStyles.content} max-h-[90vh] w-full bottom-0 rounded-br-none rounded-bl-none min-h-0`,
+  title: cn(title, "font-semibold text-popover-foreground"),
+  content: "mt-0 h-auto max-h-[90vh] min-h-0 rounded-t-3xl px-6 pb-6",
 };

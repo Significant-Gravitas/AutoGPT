@@ -3,26 +3,33 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { isComposingEscape } from "@/components/molecules/Dialog/helpers";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
-import { isComposingEvent } from "@/lib/keyboard";
+import {
+  Sheet as KobraSheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
-import * as RXDialog from "@radix-ui/react-dialog";
-import { type VariantProps } from "class-variance-authority";
-import { forwardRef, ReactNode } from "react";
-import { overlayClassName, sheetVariants } from "./helpers";
+import { forwardRef, isValidElement, ReactNode } from "react";
+import { panelClassName, SheetSide } from "./helpers";
 
-interface Props extends VariantProps<typeof sheetVariants> {
+interface Props {
   /** Accessible name of the sheet. Shown in the header unless `hideTitle`. */
   title: ReactNode;
   hideTitle?: boolean;
   description?: ReactNode;
   hideDescription?: boolean;
-  /** Element that opens the sheet, rendered through Radix `Trigger asChild`. */
+  /** Element that opens the sheet; rendered as the trigger itself. */
   trigger?: ReactNode;
   /** Header controls shown next to the close button. */
   actions?: ReactNode;
   footer?: ReactNode;
+  side?: SheetSide | null;
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -51,69 +58,77 @@ export const Sheet = forwardRef<HTMLDivElement, Props>(function Sheet(
   },
   ref,
 ) {
-  // Escape dismisses an IME candidate window, not the sheet; see AGENTS.md
-  // "Keyboard handling".
-  function handleEscapeKeyDown(event: KeyboardEvent) {
-    if (isComposingEvent(event)) event.preventDefault();
-  }
-
+  const resolvedSide = side ?? "right";
   const hasVisibleHeader =
     !hideTitle || Boolean(description && !hideDescription);
 
   return (
-    <RXDialog.Root
+    <KobraSheet
       open={open}
       defaultOpen={defaultOpen}
-      onOpenChange={onOpenChange}
+      onOpenChange={(next, details) => {
+        // Escape dismisses an IME candidate window, not the sheet; see
+        // AGENTS.md "Keyboard handling".
+        if (!next && isComposingEscape(details)) {
+          details.cancel();
+          return;
+        }
+        onOpenChange?.(next);
+      }}
     >
-      {trigger ? <RXDialog.Trigger asChild>{trigger}</RXDialog.Trigger> : null}
-      <RXDialog.Portal>
-        <RXDialog.Overlay className={overlayClassName} />
-        <RXDialog.Content
-          ref={ref}
-          onEscapeKeyDown={handleEscapeKeyDown}
-          // Without a description, opt out of Radix's missing-description
-          // warning; with one, keep the link Radix sets up.
-          {...(description ? {} : { "aria-describedby": undefined })}
-          className={cn(sheetVariants({ side }), className)}
+      {isValidElement(trigger) ? (
+        <SheetTrigger render={trigger} />
+      ) : trigger ? (
+        <SheetTrigger>{trigger}</SheetTrigger>
+      ) : null}
+      <SheetContent
+        ref={ref}
+        side={resolvedSide}
+        showCloseButton={false}
+        className={cn(panelClassName(resolvedSide), className)}
+      >
+        <div
+          className={cn(
+            "flex shrink-0 items-start gap-2 p-6",
+            hasVisibleHeader ? "pb-4" : "pb-0",
+          )}
         >
           <div
             className={cn(
-              "flex shrink-0 items-start gap-2 p-6",
-              hasVisibleHeader ? "pb-4" : "pb-0",
+              "flex min-w-0 flex-1 flex-col gap-1",
+              !hasVisibleHeader && "sr-only",
             )}
           >
-            <div
-              className={cn(
-                "flex min-w-0 flex-1 flex-col gap-1",
-                !hasVisibleHeader && "sr-only",
-              )}
-            >
-              <RXDialog.Title asChild>
+            <SheetTitle
+              render={
                 <Text
                   variant="large-semibold"
                   as="h2"
                   tone="primary"
                   className={cn("wrap-break-word", hideTitle && "sr-only")}
-                >
-                  {title}
-                </Text>
-              </RXDialog.Title>
-              {description ? (
-                <RXDialog.Description asChild>
+                />
+              }
+            >
+              {title}
+            </SheetTitle>
+            {description ? (
+              <SheetDescription
+                render={
                   <Text
                     variant="body"
                     tone="secondary"
                     className={cn(hideDescription && "sr-only")}
-                  >
-                    {description}
-                  </Text>
-                </RXDialog.Description>
-              ) : null}
-            </div>
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              {actions}
-              <RXDialog.Close asChild>
+                  />
+                }
+              >
+                {description}
+              </SheetDescription>
+            ) : null}
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            {actions}
+            <SheetClose
+              render={
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -122,25 +137,25 @@ export const Sheet = forwardRef<HTMLDivElement, Props>(function Sheet(
                 >
                   <Icon icon={Cancel01Icon} size={16} aria-hidden />
                 </Button>
-              </RXDialog.Close>
-            </div>
+              }
+            />
           </div>
-          <div
-            className={cn(
-              "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-6",
-              scrollbarStyles,
-              bodyClassName,
-            )}
-          >
-            {children}
+        </div>
+        <div
+          className={cn(
+            "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-6",
+            scrollbarStyles,
+            bodyClassName,
+          )}
+        >
+          {children}
+        </div>
+        {footer ? (
+          <div className="flex shrink-0 justify-end gap-2 border-t border-border px-6 py-4">
+            {footer}
           </div>
-          {footer ? (
-            <div className="flex shrink-0 justify-end gap-2 border-t border-border px-6 py-4">
-              {footer}
-            </div>
-          ) : null}
-        </RXDialog.Content>
-      </RXDialog.Portal>
-    </RXDialog.Root>
+        ) : null}
+      </SheetContent>
+    </KobraSheet>
   );
 });

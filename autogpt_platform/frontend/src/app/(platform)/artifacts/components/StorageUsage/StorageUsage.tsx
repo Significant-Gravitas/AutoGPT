@@ -49,7 +49,9 @@ export function StorageUsage() {
         aria-label={usedLabel}
         className={cn(
           "h-1.5 w-32 bg-zinc-100",
-          percent > 95 ? "[&>div]:bg-red-400" : "[&>div]:bg-zinc-400",
+          percent > 95
+            ? "[&_[data-slot=progress-indicator]]:bg-red-400"
+            : "[&_[data-slot=progress-indicator]]:bg-zinc-400",
         )}
       />
       <Text variant="small" as="span" className="text-muted-foreground">

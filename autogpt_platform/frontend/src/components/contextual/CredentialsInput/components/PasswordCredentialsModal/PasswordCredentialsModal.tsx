@@ -1,4 +1,4 @@
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { Form, FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -82,55 +82,54 @@ export function PasswordCredentialsModal({
       }}
     >
       <Dialog.Content>
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="w-[98%] space-y-2 pt-4"
-          >
-            <FormField
-              control={form.control}
-              name="username"
-              render={({ field }) => (
-                <Input
-                  id="username"
-                  label="Username"
-                  type="text"
-                  placeholder="Enter username..."
-                  {...field}
-                />
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <Input
-                  id="password"
-                  label="Password"
-                  type="password"
-                  placeholder="Enter password..."
-                  {...field}
-                />
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="title"
-              render={({ field }) => (
-                <Input
-                  id="title"
-                  label="Name"
-                  type="text"
-                  placeholder="Enter a name for this user login..."
-                  className="mb-8"
-                  {...field}
-                />
-              )}
-            />
-            <Button type="submit" className="w-full">
-              Save & use this user login
-            </Button>
-          </form>
+        <Form
+          form={form}
+          onSubmit={onSubmit}
+          className="w-[98%] space-y-2 pt-4"
+        >
+          <FormField
+            control={form.control}
+            name="username"
+            render={({ field }) => (
+              <Input
+                id="username"
+                label="Username"
+                type="text"
+                placeholder="Enter username..."
+                {...field}
+              />
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <Input
+                id="password"
+                label="Password"
+                type="password"
+                placeholder="Enter password..."
+                {...field}
+              />
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="title"
+            render={({ field }) => (
+              <Input
+                id="title"
+                label="Name"
+                type="text"
+                placeholder="Enter a name for this user login..."
+                className="mb-8"
+                {...field}
+              />
+            )}
+          />
+          <Button type="submit" className="w-full">
+            Save & use this user login
+          </Button>
         </Form>
       </Dialog.Content>
     </Dialog>

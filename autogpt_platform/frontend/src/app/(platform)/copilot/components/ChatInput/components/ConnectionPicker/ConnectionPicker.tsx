@@ -217,7 +217,7 @@ export function ConnectionPicker({
     <Popover>
       {showsTier ? (
         <Tooltip>
-          <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+          <TooltipTrigger render={trigger} />
           <TooltipPortal>
             <TooltipContent side="top">
               {tierLabel(active, tier)}
@@ -231,7 +231,7 @@ export function ConnectionPicker({
       <PopoverContent
         align="end"
         className={cn(
-          "max-h-(--radix-popover-content-available-height) w-96 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-zinc-200 bg-zinc-50 p-3 pt-4 text-zinc-900 shadow-lg",
+          "max-h-(--available-height) w-96 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-zinc-200 bg-zinc-50 p-3 pt-4 text-zinc-900 shadow-lg",
           showMaxUpgrade && "bg-white",
         )}
       >

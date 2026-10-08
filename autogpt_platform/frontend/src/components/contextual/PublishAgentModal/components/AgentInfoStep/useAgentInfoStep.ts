@@ -162,6 +162,6 @@ export function useAgentInfoStep({
     initialImages: images,
     initialSelectedImage: initialData?.thumbnailSrc || null,
     handleImagesChange,
-    handleSubmit: form.handleSubmit(handleFormSubmit),
+    handleSubmit: handleFormSubmit,
   };
 }

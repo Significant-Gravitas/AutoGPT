@@ -46,7 +46,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           className={cn(
             "flex w-full items-center gap-2.5 rounded-[10px] border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-black",
             "transition-colors hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-hidden",
-            "data-[state=open]:border-purple-500",
+            "data-open:border-purple-500",
           )}
         >
           {selectedExpert ? (

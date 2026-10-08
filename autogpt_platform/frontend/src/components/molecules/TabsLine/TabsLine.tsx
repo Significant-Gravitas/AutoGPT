@@ -1,56 +1,55 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import type { IconSvgElement } from "@hugeicons/react";
-import * as TabsPrimitive from "@radix-ui/react-tabs";
 import * as React from "react";
 
 type TabsLineVariant = "default" | "compact";
 
-interface TabsLineContextValue {
-  variant: TabsLineVariant;
-  activeTabElement: HTMLElement | null;
-  setActiveTabElement: React.Dispatch<React.SetStateAction<HTMLElement | null>>;
-}
+const TabsLineContext = React.createContext<TabsLineVariant>("default");
 
-const TabsLineContext = React.createContext<TabsLineContextValue | undefined>(
-  undefined,
-);
+type WithClassName<T> = Omit<T, "className"> & { className?: string };
 
-function useTabsLine() {
-  const context = React.useContext(TabsLineContext);
-  if (!context) {
-    throw new Error("useTabsLine must be used within a TabsLine");
-  }
-  return context;
-}
-
-interface TabsLineProps extends React.ComponentPropsWithoutRef<
-  typeof TabsPrimitive.Root
+interface TabsLineProps extends WithClassName<
+  Omit<
+    React.ComponentProps<typeof Tabs>,
+    "value" | "defaultValue" | "onValueChange"
+  >
 > {
   /**
    * `compact` is the dense neutral style: flush, foreground underline, 14px
    * triggers with tighter padding. `default` underlines in the accent.
    */
   variant?: TabsLineVariant;
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
 }
 
-function TabsLine({ variant = "default", ...props }: TabsLineProps) {
-  const [activeTabElement, setActiveTabElement] =
-    React.useState<HTMLElement | null>(null);
-
+function TabsLine({
+  variant = "default",
+  className,
+  onValueChange,
+  ...props
+}: TabsLineProps) {
   return (
-    <TabsLineContext.Provider
-      value={{ variant, activeTabElement, setActiveTabElement }}
-    >
-      <TabsPrimitive.Root {...props} />
-    </TabsLineContext.Provider>
+    <TabsLineContext value={variant}>
+      <Tabs
+        className={cn("gap-0", className)}
+        onValueChange={(next) => {
+          if (typeof next === "string") onValueChange?.(next);
+        }}
+        {...props}
+      />
+    </TabsLineContext>
   );
 }
 
-interface TabsLineListProps extends React.ComponentPropsWithoutRef<
-  typeof TabsPrimitive.List
+interface TabsLineListProps extends WithClassName<
+  React.ComponentProps<typeof TabsList>
 > {
   /**
    * When `true`, removes the left padding on the first tab trigger so it
@@ -64,127 +63,82 @@ interface TabsLineListProps extends React.ComponentPropsWithoutRef<
   indicatorClassName?: string;
 }
 
-const TabsLineList = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.List>,
-  TabsLineListProps
->(({ className, flush, indicatorClassName, ...props }, ref) => {
-  const { variant, activeTabElement } = useTabsLine();
-  const listRef = React.useRef<HTMLDivElement>(null);
+function TabsLineList({
+  className,
+  flush,
+  indicatorClassName,
+  children,
+  ...props
+}: TabsLineListProps) {
+  const variant = React.useContext(TabsLineContext);
   const isCompact = variant === "compact";
   const isFlush = flush ?? isCompact;
 
   return (
-    <div className="relative">
-      <TabsPrimitive.List
-        ref={(node) => {
-          if (typeof ref === "function") ref(node);
-          else if (ref) ref.current = node;
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-ignore
-          listRef.current = node;
-        }}
-        className={cn(
-          "inline-flex w-full items-center justify-start border-b border-border",
-          isFlush && "[&>button:first-child]:pl-0!",
-          className,
-        )}
-        {...props}
-      />
-      {activeTabElement && (
-        <div
-          className={cn(
-            "absolute bottom-0 h-0.5 bg-accent transition-[left,width] duration-200 ease-in-out",
-            isCompact && "bg-foreground",
-            indicatorClassName,
-          )}
-          style={{
-            left: activeTabElement.offsetLeft,
-            width: activeTabElement.offsetWidth,
-            willChange: "left, width",
-          }}
-        />
+    <TabsList
+      variant="line"
+      className={cn(
+        "relative w-full justify-start gap-0 rounded-none border-b border-border p-0 group-data-horizontal/tabs:h-auto",
+        isFlush && "[&>button:first-child]:pl-0!",
+        className,
       )}
-    </div>
+      {...props}
+    >
+      {children}
+      <TabsPrimitive.Indicator
+        renderBeforeHydration
+        className={cn(
+          "absolute bottom-0 left-(--active-tab-left) h-0.5 w-(--active-tab-width) bg-accent transition-[left,width] duration-200 ease-in-out motion-reduce:transition-none",
+          isCompact && "bg-foreground",
+          indicatorClassName,
+        )}
+      />
+    </TabsList>
   );
-});
-TabsLineList.displayName = "TabsLineList";
+}
 
-interface TabsLineTriggerProps extends React.ComponentPropsWithoutRef<
-  typeof TabsPrimitive.Trigger
+interface TabsLineTriggerProps extends WithClassName<
+  React.ComponentProps<typeof TabsTrigger>
 > {
+  value: string;
   /** Hugeicon shown before the label at 14px. */
   icon?: IconSvgElement;
 }
 
-const TabsLineTrigger = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.Trigger>,
-  TabsLineTriggerProps
->(({ className, icon, children, ...props }, ref) => {
-  const elementRef = React.useRef<HTMLButtonElement>(null);
-  const { variant, setActiveTabElement } = useTabsLine();
-
-  React.useEffect(() => {
-    if (!elementRef.current) return;
-
-    const observer = new MutationObserver(() => {
-      if (!elementRef.current) return;
-      if (elementRef.current.getAttribute("data-state") === "active") {
-        setActiveTabElement(elementRef.current);
-      }
-    });
-
-    observer.observe(elementRef.current, { attributes: true });
-
-    // Initial check
-    if (elementRef.current.getAttribute("data-state") === "active") {
-      setActiveTabElement(elementRef.current);
-    }
-
-    return () => observer.disconnect();
-  }, [setActiveTabElement]);
+function TabsLineTrigger({
+  className,
+  icon,
+  children,
+  ...props
+}: TabsLineTriggerProps) {
+  const variant = React.useContext(TabsLineContext);
 
   return (
-    <TabsPrimitive.Trigger
-      ref={(node) => {
-        if (typeof ref === "function") ref(node);
-        else if (ref) ref.current = node;
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        elementRef.current = node;
-      }}
+    <TabsTrigger
       className={cn(
-        "relative inline-flex items-center justify-center px-3 py-3 font-sans text-[0.875rem] leading-6 font-medium whitespace-nowrap text-muted-foreground focus-ring transition-all focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-accent",
-        icon && "gap-1.5",
+        "h-auto flex-none rounded-none border-0 px-3 py-3 font-sans text-sm leading-6 font-medium text-muted-foreground after:hidden data-active:bg-transparent data-active:text-accent",
         variant === "compact" &&
-          "px-2.5 py-2 text-sm leading-5 data-[state=active]:text-foreground",
+          "px-2.5 py-2 leading-5 data-active:text-foreground",
         className,
       )}
       {...props}
     >
       {icon ? <Icon icon={icon} size={14} aria-hidden /> : null}
       {children}
-    </TabsPrimitive.Trigger>
+    </TabsTrigger>
   );
-});
-TabsLineTrigger.displayName = "TabsLineTrigger";
+}
 
-const TabsLineContent = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
->(({ className, ...props }, ref) => (
-  <TabsPrimitive.Content
-    ref={ref}
-    className={cn(
-      // Radix marks inactive panels with the `hidden` attribute, but the UA
-      // rule behind it is weaker than any author display utility — a panel
-      // styled `flex`/`grid` stays laid out and keeps stealing space from the
-      // active one. The data-state variant is specific enough to win.
-      "mt-4 focus-ring focus-visible:ring-offset-2 data-[state=inactive]:hidden",
-      className,
-    )}
-    {...props}
-  />
-));
-TabsLineContent.displayName = "TabsLineContent";
+function TabsLineContent({
+  className,
+  ...props
+}: WithClassName<React.ComponentProps<typeof TabsContent>>) {
+  return (
+    <TabsContent
+      className={cn("mt-4 focus-ring focus-visible:ring-offset-2", className)}
+      {...props}
+    />
+  );
+}
 
 export { TabsLine, TabsLineContent, TabsLineList, TabsLineTrigger };

@@ -6,3 +6,7 @@ public
 Dockerfile
 .prettierignore
 .env*
+# Kobra registry output, kept as installed
+src/components/ui/*.tsx
+src/components/ui/*.css
+src/app/kobra.css

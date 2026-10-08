@@ -1,5 +1,5 @@
 import { Card } from "@/components/atoms/Card/Card";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { Form, FormField } from "@/components/molecules/Form/Form";
 import {
   Popover,
   PopoverContent,
@@ -33,18 +33,20 @@ export const NewSaveControl = () => {
       open={forceOpenSave ? true : saveControlOpen}
     >
       <Tooltip delayDuration={100}>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <ControlPanelButton
-              data-id="save-control-popover-trigger"
-              data-testid="save-control-save-button"
-              selected={saveControlOpen}
-              className="rounded-none"
-            >
-              <Icon icon={FloppyDiskIcon} className="size-5" />
-            </ControlPanelButton>
-          </PopoverTrigger>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <PopoverTrigger asChild>
+              <ControlPanelButton
+                data-id="save-control-popover-trigger"
+                data-testid="save-control-save-button"
+                selected={saveControlOpen}
+                className="rounded-none"
+              >
+                <Icon icon={FloppyDiskIcon} className="size-5" />
+              </ControlPanelButton>
+            </PopoverTrigger>
+          }
+        />
         <TooltipContent side="right">Save</TooltipContent>
       </Tooltip>
       <PopoverContent
@@ -55,77 +57,75 @@ export const NewSaveControl = () => {
         className="w-96 max-w-[400px] rounded-2xl"
       >
         <Card className="rounded-2xl p-px text-zinc-900 shadow-none">
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSave)}>
-              <div>
-                <div className="space-y-3">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <Input
-                        id="name"
-                        label="Name"
-                        size="md"
-                        placeholder="Enter your agent name"
-                        data-id="save-control-name-input"
-                        data-testid="save-control-name-input"
-                        maxLength={100}
-                        wrapperClassName="mb-0"
-                        {...field}
-                      />
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="description"
-                    render={({ field }) => (
-                      <Input
-                        id="description"
-                        size="md"
-                        label="Description"
-                        placeholder="Your agent description"
-                        data-id="save-control-description-input"
-                        data-testid="save-control-description-input"
-                        maxLength={500}
-                        wrapperClassName="mb-0"
-                        {...field}
-                      />
-                    )}
-                  />
-
-                  {graphVersion && (
+          <Form form={form} onSubmit={handleSave} className="space-y-0">
+            <div>
+              <div className="space-y-3">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
                     <Input
-                      id="version"
-                      placeholder="Version"
+                      id="name"
+                      label="Name"
                       size="md"
-                      value={graphVersion || "-"}
-                      disabled
-                      data-testid="save-control-version-output"
-                      data-tutorial-id="save-control-version-output"
-                      label="Version"
+                      placeholder="Enter your agent name"
+                      data-id="save-control-name-input"
+                      data-testid="save-control-name-input"
+                      maxLength={100}
                       wrapperClassName="mb-0"
+                      {...field}
                     />
                   )}
-                </div>
+                />
+
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <Input
+                      id="description"
+                      size="md"
+                      label="Description"
+                      placeholder="Your agent description"
+                      data-id="save-control-description-input"
+                      data-testid="save-control-description-input"
+                      maxLength={500}
+                      wrapperClassName="mb-0"
+                      {...field}
+                    />
+                  )}
+                />
+
+                {graphVersion && (
+                  <Input
+                    id="version"
+                    placeholder="Version"
+                    size="md"
+                    value={graphVersion || "-"}
+                    disabled
+                    data-testid="save-control-version-output"
+                    data-tutorial-id="save-control-version-output"
+                    label="Version"
+                    wrapperClassName="mb-0"
+                  />
+                )}
               </div>
-              {/* TODO: Add a cron schedule button */}
-              <div className="mt-3 flex flex-col items-stretch gap-2">
-                <Button
-                  variant="primary"
-                  type="submit"
-                  size="md"
-                  className="w-full"
-                  data-id="save-control-save-agent"
-                  data-testid="save-control-save-agent-button"
-                  disabled={isSaving}
-                  loading={isSaving}
-                >
-                  Save Agent
-                </Button>
-              </div>
-            </form>
+            </div>
+            {/* TODO: Add a cron schedule button */}
+            <div className="mt-3 flex flex-col items-stretch gap-2">
+              <Button
+                variant="primary"
+                type="submit"
+                size="md"
+                className="w-full"
+                data-id="save-control-save-agent"
+                data-testid="save-control-save-agent-button"
+                disabled={isSaving}
+                loading={isSaving}
+              >
+                Save Agent
+              </Button>
+            </div>
           </Form>
         </Card>
       </PopoverContent>

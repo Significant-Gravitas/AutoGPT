@@ -6,12 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/components/atoms/Input/Input";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import {
-  Form,
-  FormDescription,
-  FormField,
-  FormLabel,
-} from "@/components/__legacy__/ui/form";
+import { Form, FormField } from "@/components/molecules/Form/Form";
 import useCredentials from "@/hooks/useCredentials";
 import {
   BlockIOCredentialsSubSchema,
@@ -201,97 +196,93 @@ export function HostScopedCredentialsModal({
           </Text>
         )}
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
-            <FormField
-              control={form.control}
-              name="host"
-              render={({ field }) => (
-                <Input
-                  id="host"
-                  label="Host Pattern"
-                  type="text"
-                  size="md"
-                  readOnly={!!currentHost}
-                  hint={
-                    currentHost
-                      ? "Auto-populated from the URL field. Headers will be applied to requests to this host."
-                      : "Enter the host/domain to match against request URLs (e.g., api.example.com)."
-                  }
-                  placeholder={
-                    currentHost
-                      ? undefined
-                      : "Enter host (e.g., api.example.com)"
-                  }
-                  {...field}
-                />
-              )}
-            />
-
-            <div className="space-y-2">
-              <FormLabel>Headers</FormLabel>
-              <FormDescription className="max-w-md">
-                Add sensitive headers (like Authorization, X-API-Key) that
-                should be automatically included in requests to the specified
-                host.
-              </FormDescription>
-
-              {headerPairs.map((pair, index) => (
-                <div key={index} className="flex w-full items-center gap-4">
-                  <Input
-                    id={`header-${index}-key`}
-                    label="Header Name"
-                    placeholder="Header name (e.g., Authorization)"
-                    size="md"
-                    value={pair.key}
-                    className="flex-1"
-                    onChange={(e) =>
-                      updateHeaderPair(index, "key", e.target.value)
-                    }
-                  />
-
-                  <Input
-                    id={`header-${index}-value`}
-                    label="Header Value"
-                    size="md"
-                    type="password"
-                    placeholder="Header value (e.g., Bearer token123)"
-                    value={pair.value}
-                    onChange={(e) =>
-                      updateHeaderPair(index, "value", e.target.value)
-                    }
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="md"
-                    onClick={() => removeHeaderPair(index)}
-                    disabled={headerPairs.length === 1}
-                  >
-                    <Icon icon={Delete02Icon} className="size-4" /> Remove
-                  </Button>
-                </div>
-              ))}
-
-              <Button
-                type="button"
-                variant="outline"
+        <Form form={form} onSubmit={onSubmit} className="space-y-2">
+          <FormField
+            control={form.control}
+            name="host"
+            render={({ field }) => (
+              <Input
+                id="host"
+                label="Host Pattern"
+                type="text"
                 size="md"
-                onClick={addHeaderPair}
-              >
-                <Icon icon={PlusSignIcon} className="size-4" /> Add Another
-                Header
-              </Button>
-            </div>
+                readOnly={!!currentHost}
+                hint={
+                  currentHost
+                    ? "Auto-populated from the URL field. Headers will be applied to requests to this host."
+                    : "Enter the host/domain to match against request URLs (e.g., api.example.com)."
+                }
+                placeholder={
+                  currentHost ? undefined : "Enter host (e.g., api.example.com)"
+                }
+                {...field}
+              />
+            )}
+          />
 
-            <div className="pt-8">
-              <Button type="submit" className="w-full" size="md">
-                {hasExistingForHost
-                  ? "Update & use these credentials"
-                  : "Save & use these credentials"}
-              </Button>
-            </div>
-          </form>
+          <div className="space-y-2">
+            <Text variant="body-medium" as="span">
+              Headers
+            </Text>
+            <Text variant="small" tone="muted" className="max-w-md">
+              Add sensitive headers (like Authorization, X-API-Key) that should
+              be automatically included in requests to the specified host.
+            </Text>
+
+            {headerPairs.map((pair, index) => (
+              <div key={index} className="flex w-full items-center gap-4">
+                <Input
+                  id={`header-${index}-key`}
+                  label="Header Name"
+                  placeholder="Header name (e.g., Authorization)"
+                  size="md"
+                  value={pair.key}
+                  className="flex-1"
+                  onChange={(e) =>
+                    updateHeaderPair(index, "key", e.target.value)
+                  }
+                />
+
+                <Input
+                  id={`header-${index}-value`}
+                  label="Header Value"
+                  size="md"
+                  type="password"
+                  placeholder="Header value (e.g., Bearer token123)"
+                  value={pair.value}
+                  onChange={(e) =>
+                    updateHeaderPair(index, "value", e.target.value)
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="md"
+                  onClick={() => removeHeaderPair(index)}
+                  disabled={headerPairs.length === 1}
+                >
+                  <Icon icon={Delete02Icon} className="size-4" /> Remove
+                </Button>
+              </div>
+            ))}
+
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              onClick={addHeaderPair}
+            >
+              <Icon icon={PlusSignIcon} className="size-4" /> Add Another Header
+            </Button>
+          </div>
+
+          <div className="pt-8">
+            <Button type="submit" className="w-full" size="md">
+              {hasExistingForHost
+                ? "Update & use these credentials"
+                : "Save & use these credentials"}
+            </Button>
+          </div>
         </Form>
       </Dialog.Content>
     </Dialog>

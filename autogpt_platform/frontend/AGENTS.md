@@ -64,7 +64,7 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 - **State Management**: React Query for server state, co-located UI state in components/hooks
 - **Component Structure**: Separate render logic (`.tsx`) from business logic (`use*.ts` hooks)
 - **Workflow Builder**: Visual graph editor using @xyflow/react
-- **UI Components**: the design system in `src/components` (atoms, molecules, organisms), built on Radix primitives and Tailwind; see [DESIGN.md](./DESIGN.md)
+- **UI Components**: the design system in `src/components` (atoms, molecules, organisms), built on Kobra (Base UI) and Tailwind; see [DESIGN.md](./DESIGN.md)
 - **Icons**: Hugeicons (stroke-rounded) only, rendered through the `Icon` atom
 - **Feature Flags**: LaunchDarkly integration
 - **Error Handling**: ErrorCard for render errors, toast for mutations, Sentry for exceptions

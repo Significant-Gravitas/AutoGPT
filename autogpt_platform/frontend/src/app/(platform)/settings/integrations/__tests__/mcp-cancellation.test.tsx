@@ -39,10 +39,7 @@ async function openParallel() {
 }
 
 function selectMethod(dialog: HTMLElement, name: RegExp) {
-  fireEvent.mouseDown(within(dialog).getByRole("tab", { name }), {
-    button: 0,
-    ctrlKey: false,
-  });
+  fireEvent.click(within(dialog).getByRole("tab", { name }));
 }
 
 async function releaseResponse(gate: ReturnType<typeof delayedResponse>) {

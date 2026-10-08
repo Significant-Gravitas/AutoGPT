@@ -1,25 +1,21 @@
-import { cva } from "class-variance-authority";
-import { FIELD_BASE, FIELD_INVALID } from "../Input/fieldVariants";
+export const textareaSizeClasses = {
+  sm: "px-3 py-2",
+  md: "px-4 py-2.5",
+} as const;
 
-export const textareaVariants = cva(
-  [FIELD_BASE, "block resize-y text-sm leading-snug"],
-  {
-    variants: {
-      size: {
-        sm: "min-h-16 px-3 py-2",
-        md: "min-h-20 px-4 py-2.5",
-      },
-      invalid: {
-        true: FIELD_INVALID,
-        false: "",
-      },
-    },
-    defaultVariants: {
-      size: "md",
-      invalid: false,
-    },
-  },
-);
+const textareaPaddingY = {
+  sm: "1rem",
+  md: "1.25rem",
+} as const;
+
+// Kobra's textarea sizes itself to its content (`field-sizing: content`), which
+// ignores `rows`. Translate `rows` into the minimum height it used to set.
+export function rowsMinHeight(
+  rows: number,
+  size: keyof typeof textareaPaddingY = "sm",
+): string {
+  return `calc(${rows}lh + ${textareaPaddingY[size]} + 2px)`;
+}
 
 export function getDescribedBy(
   ...ids: Array<string | undefined>

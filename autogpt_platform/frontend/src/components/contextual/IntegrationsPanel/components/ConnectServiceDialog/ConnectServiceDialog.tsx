@@ -5,7 +5,7 @@ import {
   MotionConfig,
   motion,
   useReducedMotion,
-} from "framer-motion";
+} from "motion/react";
 
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";

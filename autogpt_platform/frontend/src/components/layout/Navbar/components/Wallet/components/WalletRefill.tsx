@@ -1,10 +1,10 @@
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { Form, FormField } from "@/components/molecules/Form/Form";
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/__legacy__/ui/tabs";
+  TabsLine,
+  TabsLineContent,
+  TabsLineList,
+  TabsLineTrigger,
+} from "@/components/molecules/TabsLine/TabsLine";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
@@ -90,16 +90,16 @@ export function WalletRefill() {
       <Text variant="small" tone="muted" className="mx-0 my-1">
         Choose a one-time top-up or set up automatic refills
       </Text>
-      <Tabs
+      <TabsLine
         defaultValue="top-up"
         className="mt-4 mb-6 flex w-full flex-col items-center"
       >
-        <TabsList className="mx-auto">
-          <TabsTrigger value="top-up">One-time top up</TabsTrigger>
-          <TabsTrigger value="auto-refill">Auto-refill</TabsTrigger>
-        </TabsList>
+        <TabsLineList className="mx-auto">
+          <TabsLineTrigger value="top-up">One-time top up</TabsLineTrigger>
+          <TabsLineTrigger value="auto-refill">Auto-refill</TabsLineTrigger>
+        </TabsLineList>
         <div className="mt-4 w-full rounded-lg px-5 outline-1 outline-offset-2 outline-zinc-200 outline-solid">
-          <TabsContent value="top-up" className="flex flex-col">
+          <TabsLineContent value="top-up" className="flex flex-col">
             <div className="mt-2 justify-start font-sans text-sm leading-snug font-medium text-zinc-900">
               One-time top-up
             </div>
@@ -107,8 +107,8 @@ export function WalletRefill() {
               Enter an amount (min. $5) and add credits instantly.
             </div>
             <TopUpForm submitLabel="Top up" size="small" />
-          </TabsContent>
-          <TabsContent value="auto-refill" className="flex flex-col">
+          </TabsLineContent>
+          <TabsLineContent value="auto-refill" className="flex flex-col">
             <div className="justify-start font-sans text-sm leading-snug font-medium text-zinc-900">
               Auto-refill
             </div>
@@ -116,56 +116,55 @@ export function WalletRefill() {
               Choose a one-time top-up or set up automatic refills.
             </div>
 
-            <Form {...autoRefillForm}>
-              <form
-                onSubmit={autoRefillForm.handleSubmit(submitAutoTopUpConfig)}
-                className="my-6"
+            <Form
+              form={autoRefillForm}
+              onSubmit={submitAutoTopUpConfig}
+              className="my-6 space-y-0"
+            >
+              <FormField
+                control={autoRefillForm.control}
+                name="threshold"
+                render={({ field }) => (
+                  <Input
+                    type="amount"
+                    label="Refill when balance drops below:"
+                    id={field.name}
+                    size="md"
+                    decimalCount={0}
+                    error={autoRefillForm.formState.errors.threshold?.message}
+                    amountPrefix="$"
+                    {...field}
+                  />
+                )}
+              />
+              <FormField
+                control={autoRefillForm.control}
+                name="refillAmount"
+                render={({ field }) => (
+                  <Input
+                    type="amount"
+                    label="Add this amount:"
+                    size="md"
+                    decimalCount={0}
+                    id={field.name}
+                    error={
+                      autoRefillForm.formState.errors.refillAmount?.message
+                    }
+                    amountPrefix="$"
+                    {...field}
+                  />
+                )}
+              />
+              <Button
+                type="submit"
+                disabled={isLoading}
+                size="md"
+                className="mt-5"
               >
-                <FormField
-                  control={autoRefillForm.control}
-                  name="threshold"
-                  render={({ field }) => (
-                    <Input
-                      type="amount"
-                      label="Refill when balance drops below:"
-                      id={field.name}
-                      size="md"
-                      decimalCount={0}
-                      error={autoRefillForm.formState.errors.threshold?.message}
-                      amountPrefix="$"
-                      {...field}
-                    />
-                  )}
-                />
-                <FormField
-                  control={autoRefillForm.control}
-                  name="refillAmount"
-                  render={({ field }) => (
-                    <Input
-                      type="amount"
-                      label="Add this amount:"
-                      size="md"
-                      decimalCount={0}
-                      id={field.name}
-                      error={
-                        autoRefillForm.formState.errors.refillAmount?.message
-                      }
-                      amountPrefix="$"
-                      {...field}
-                    />
-                  )}
-                />
-                <Button
-                  type="submit"
-                  disabled={isLoading}
-                  size="md"
-                  className="mt-5"
-                >
-                  Enable Auto-refill
-                </Button>
-              </form>
+                Enable Auto-refill
+              </Button>
             </Form>
-          </TabsContent>
+          </TabsLineContent>
           <div className="mb-3 justify-start font-sans text-xs leading-tight font-normal">
             <span className="text-muted-foreground">
               To update your billing details, head to{" "}
@@ -178,7 +177,7 @@ export function WalletRefill() {
             </Link>
           </div>
         </div>
-      </Tabs>
+      </TabsLine>
     </div>
   );
 }

@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableHead,
   TableBody,
-} from "@/components/__legacy__/ui/table";
+} from "@/components/molecules/Table/TablePrimitives";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";

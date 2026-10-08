@@ -77,16 +77,18 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
             ) : (
               <TooltipProvider>
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <Text
-                        variant="large-semibold"
-                        className="line-clamp-1 hover:cursor-text"
-                      >
-                        {displayTitle}
-                      </Text>
-                    </div>
-                  </TooltipTrigger>
+                  <TooltipTrigger
+                    render={
+                      <div>
+                        <Text
+                          variant="large-semibold"
+                          className="line-clamp-1 hover:cursor-text"
+                        >
+                          {displayTitle}
+                        </Text>
+                      </div>
+                    }
+                  />
                   <TooltipContent>
                     <p>{displayTitle}</p>
                   </TooltipContent>

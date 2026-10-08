@@ -326,7 +326,7 @@ export function PromptInputButton({
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipTrigger render={button} />
       <TooltipPortal>
         <TooltipContent side={side}>
           {tooltipContent}
@@ -350,7 +350,7 @@ export type PromptInputSubmitProps = ComponentProps<typeof InputGroupButton> & {
 
 export function PromptInputSubmit({
   className,
-  variant = "primary",
+  variant = "default",
   size = "icon-sm",
   status,
   onStop,
@@ -382,7 +382,7 @@ export function PromptInputSubmit({
         e.preventDefault();
         return;
       }
-      onClick?.(e);
+      onClick?.(e as Parameters<NonNullable<typeof onClick>>[0]);
     },
     [canStop, isGenerating, onStop, onClick],
   );

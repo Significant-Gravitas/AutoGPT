@@ -1,8 +1,19 @@
 import { useState } from "react";
-import { describe, expect, test, vi } from "vitest";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { SearchInput } from "./SearchInput";
+
+// Kobra's Spinner drives its arc with the Web Animations API, which happy-dom
+// does not implement.
+beforeAll(() => {
+  if (!Element.prototype.animate) {
+    Element.prototype.animate = vi.fn(
+      () => ({ onfinish: null, cancel: vi.fn() }) as unknown as Animation,
+    );
+    Element.prototype.getAnimations = vi.fn(() => []);
+  }
+});
 
 function Harness({
   initial = "",

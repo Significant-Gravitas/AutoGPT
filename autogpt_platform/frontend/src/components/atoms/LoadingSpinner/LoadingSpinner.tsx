@@ -1,12 +1,11 @@
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import React from "react";
-import { Loading03Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 
 const sizeClassNameMap = {
-  small: "h-4 w-4",
-  medium: "h-6 w-6",
-  large: "h-10 w-10",
+  small: "size-4",
+  medium: "size-6",
+  large: "size-10",
 } as const;
 
 type SpinnerSize = keyof typeof sizeClassNameMap;
@@ -15,21 +14,13 @@ type LoadingSpinnerProps = {
   size?: SpinnerSize;
   className?: string;
   cover?: boolean;
-} & Omit<React.ComponentPropsWithoutRef<typeof Icon>, "icon" | "size">;
+} & Omit<React.ComponentProps<typeof Spinner>, "className">;
 
 export function LoadingSpinner(props: LoadingSpinnerProps) {
   const { size = "medium", className, cover = false, ...restProps } = props;
 
   const spinner = (
-    <Icon
-      icon={Loading03Icon}
-      className={cn(
-        "animate-spin text-inherit",
-        sizeClassNameMap[size],
-        className,
-      )}
-      {...restProps}
-    />
+    <Spinner className={cn(sizeClassNameMap[size], className)} {...restProps} />
   );
 
   if (cover) {

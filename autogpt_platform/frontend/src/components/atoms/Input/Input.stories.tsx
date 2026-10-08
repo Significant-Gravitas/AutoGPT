@@ -13,7 +13,7 @@ const meta: Meta<typeof Input> = {
     docs: {
       description: {
         component:
-          "Input component based on our design system. Built on top of shadcn/ui input with custom styling matching Figma designs.",
+          'Text field with label, hint and error. Renders Kobra\'s Input (or Textarea for `type="textarea"`) at the house heights: 32, 36 and 40px for `sm`, `md` and `lg`.',
       },
     },
   },

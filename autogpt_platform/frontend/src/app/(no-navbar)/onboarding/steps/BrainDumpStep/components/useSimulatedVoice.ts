@@ -1,4 +1,4 @@
-import { type MotionValue, motionValue } from "framer-motion";
+import { type MotionValue, motionValue } from "motion/react";
 import { useEffect, useRef } from "react";
 
 // A wandering loudness with pauses, close enough to speech for a preview.

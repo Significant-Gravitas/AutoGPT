@@ -4,12 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { delay, http, HttpResponse } from "msw";
 import { useQueryClient } from "@tanstack/react-query";
 
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
   getGetV2GetExpertGraphQueryKey,
@@ -341,8 +336,8 @@ describe("MemoryVisualizer — memory scope", () => {
     await waitFor(() => {
       expect((selector as HTMLButtonElement).disabled).toBe(false);
     });
-    fireEvent.click(selector);
-    fireEvent.click(
+    await userEvent.click(selector);
+    await userEvent.click(
       await screen.findByRole("option", { name: /Ada — Researcher/ }),
     );
 
@@ -396,14 +391,14 @@ describe("MemoryVisualizer — memory scope", () => {
     await screen.findByRole("button", { name: /consolidate…/i });
 
     const selector = screen.getByRole("combobox", { name: "Memory scope" });
-    fireEvent.click(selector);
-    fireEvent.click(
+    await userEvent.click(selector);
+    await userEvent.click(
       await screen.findByRole("option", { name: /Ada — Researcher/ }),
     );
     await screen.findByText("Expert memory is read-only.");
 
-    fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: /Otto/i }));
+    await userEvent.click(selector);
+    await userEvent.click(await screen.findByRole("option", { name: /Otto/i }));
 
     const activeButton = await screen.findByRole("button", {
       name: /consolidate…/i,
@@ -463,8 +458,8 @@ describe("MemoryVisualizer — memory scope", () => {
     await waitFor(() =>
       expect((selector as HTMLButtonElement).disabled).toBe(false),
     );
-    fireEvent.click(selector);
-    fireEvent.click(
+    await userEvent.click(selector);
+    await userEvent.click(
       await screen.findByRole("option", { name: /Ada — Researcher/ }),
     );
     await screen.findByText("Expert memory is read-only.");
@@ -500,8 +495,8 @@ describe("MemoryVisualizer — memory scope", () => {
     await waitFor(() =>
       expect((selector as HTMLButtonElement).disabled).toBe(false),
     );
-    fireEvent.click(selector);
-    fireEvent.click(
+    await userEvent.click(selector);
+    await userEvent.click(
       await screen.findByRole("option", { name: /Ada — Researcher/ }),
     );
     await screen.findByText("Expert memory is read-only.");
@@ -563,7 +558,7 @@ describe("MemoryVisualizer — memory scope", () => {
     await waitFor(() =>
       expect((selector as HTMLButtonElement).disabled).toBe(false),
     );
-    fireEvent.click(selector);
+    await userEvent.click(selector);
 
     expect(
       await screen.findByRole("option", {
@@ -624,8 +619,8 @@ describe("MemoryVisualizer — memory scope", () => {
     await waitFor(() =>
       expect((selector as HTMLButtonElement).disabled).toBe(false),
     );
-    fireEvent.click(selector);
-    fireEvent.click(
+    await userEvent.click(selector);
+    await userEvent.click(
       await screen.findByRole("option", { name: /Ada — Researcher/ }),
     );
 
@@ -636,8 +631,8 @@ describe("MemoryVisualizer — memory scope", () => {
       screen.queryByRole("button", { name: "AutoPilotFact (1)" }),
     ).toBeNull();
 
-    fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: /Otto/i }));
+    await userEvent.click(selector);
+    await userEvent.click(await screen.findByRole("option", { name: /Otto/i }));
 
     await screen.findByRole("button", { name: "AutoPilotFact (1)" });
     expect(
@@ -669,8 +664,8 @@ describe("MemoryVisualizer — memory scope", () => {
     await screen.findByText("dream: running (consolidate)");
 
     const selector = screen.getByRole("combobox", { name: "Memory scope" });
-    fireEvent.click(selector);
-    fireEvent.click(
+    await userEvent.click(selector);
+    await userEvent.click(
       await screen.findByRole("option", { name: /Ada — Researcher/ }),
     );
     await screen.findByText("Expert memory is read-only.");
@@ -679,8 +674,8 @@ describe("MemoryVisualizer — memory scope", () => {
     // into the expert-scoped (read-only) control bar.
     expect(screen.queryByText("dream: running (consolidate)")).toBeNull();
 
-    fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: /Otto/i }));
+    await userEvent.click(selector);
+    await userEvent.click(await screen.findByRole("option", { name: /Otto/i }));
 
     await screen.findByText("dream: running (consolidate)");
   });
@@ -723,8 +718,8 @@ describe("MemoryVisualizer — memory scope", () => {
     await waitFor(() =>
       expect((selector as HTMLButtonElement).disabled).toBe(false),
     );
-    fireEvent.click(selector);
-    fireEvent.click(
+    await userEvent.click(selector);
+    await userEvent.click(
       await screen.findByRole("option", { name: /Ada — Researcher/ }),
     );
 
@@ -885,16 +880,16 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
     await waitFor(() =>
       expect((selector as HTMLButtonElement).disabled).toBe(false),
     );
-    fireEvent.click(selector);
-    fireEvent.click(
+    await userEvent.click(selector);
+    await userEvent.click(
       await screen.findByRole("option", { name: /Ada — Researcher/ }),
     );
     await waitFor(() =>
       expect(graphRequests.get("expert-ada:true:true")).toBe(1),
     );
 
-    fireEvent.click(selector);
-    fireEvent.click(await screen.findByRole("option", { name: /Otto/i }));
+    await userEvent.click(selector);
+    await userEvent.click(await screen.findByRole("option", { name: /Otto/i }));
     await userEvent.click(episodes);
     await userEvent.click(
       await screen.findByRole("button", { name: /dream pass/i }),

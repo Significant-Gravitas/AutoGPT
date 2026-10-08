@@ -115,20 +115,23 @@ const HERO_MIN_HEIGHT = 72;
 const DEFAULT_ROW_WIDTH = 640;
 let rowWidth = DEFAULT_ROW_WIDTH;
 
-const resizeCallbacks: ResizeObserverCallback[] = [];
+const resizeObservers: ResizeObserverStub[] = [];
 
+// Like the real one, an observer only hears about the elements it observes,
+// so the composer's observer is not mixed up with any other on the page.
 class ResizeObserverStub {
-  constructor(callback: ResizeObserverCallback) {
-    resizeCallbacks.push(callback);
+  readonly targets = new Set<Element>();
+  constructor(readonly callback: ResizeObserverCallback) {
+    resizeObservers.push(this);
   }
-  observe() {
-    return;
+  observe(target: Element) {
+    this.targets.add(target);
   }
-  unobserve() {
-    return;
+  unobserve(target: Element) {
+    this.targets.delete(target);
   }
   disconnect() {
-    return;
+    this.targets.clear();
   }
 }
 
@@ -190,9 +193,11 @@ function reportResize(textarea: HTMLTextAreaElement) {
       target: textarea,
       contentRect: { width: contentBoxWidth(layoutWidth(textarea)) },
     } as unknown as ResizeObserverEntry;
-    resizeCallbacks.forEach((callback) =>
-      callback([entry], {} as ResizeObserver),
-    );
+    resizeObservers
+      .filter((observer) => observer.targets.has(textarea))
+      .forEach((observer) =>
+        observer.callback([entry], observer as unknown as ResizeObserver),
+      );
   });
 }
 
@@ -264,7 +269,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  resizeCallbacks.length = 0;
+  resizeObservers.length = 0;
   Reflect.deleteProperty(HTMLTextAreaElement.prototype, "scrollHeight");
   Reflect.deleteProperty(
     HTMLTextAreaElement.prototype,

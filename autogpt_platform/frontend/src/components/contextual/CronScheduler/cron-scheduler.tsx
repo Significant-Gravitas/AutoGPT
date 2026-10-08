@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { Label } from "@/components/__legacy__/ui/label";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
@@ -243,7 +242,9 @@ export function CronScheduler({
   return (
     <div className="max-w-md space-y-6">
       <div className="space-y-4">
-        <Label className="text-base font-medium">Repeat</Label>
+        <Text variant="large-medium" as="span">
+          Repeat
+        </Text>
 
         <Select
           id="cron-frequency"
@@ -259,7 +260,9 @@ export function CronScheduler({
 
         {frequency === "hourly" && (
           <div className="flex items-center gap-2">
-            <Label>At minute</Label>
+            <Text variant="body-medium" as="span">
+              At minute
+            </Text>
             <Select
               id="cron-minute"
               label="At minute"
@@ -277,7 +280,9 @@ export function CronScheduler({
 
         {frequency === "custom" && (
           <div className="flex items-center gap-2">
-            <Label>Every</Label>
+            <Text variant="body-medium" as="span">
+              Every
+            </Text>
             <Input
               id="cron-custom-interval"
               label="Every"
@@ -318,7 +323,9 @@ export function CronScheduler({
       {frequency === "weekly" && (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Label>On</Label>
+            <Text variant="body-medium" as="span">
+              On
+            </Text>
             <Button
               variant="secondary"
               size="sm"
@@ -379,7 +386,9 @@ export function CronScheduler({
       )}
       {frequency === "monthly" && (
         <div className="space-y-4">
-          <Label>Days of Month</Label>
+          <Text variant="body-medium" as="span">
+            Days of Month
+          </Text>
           <div className="flex gap-2">
             <Button
               variant={
@@ -454,7 +463,9 @@ export function CronScheduler({
       )}
       {frequency === "yearly" && (
         <div className="space-y-4">
-          <Label>Months</Label>
+          <Text variant="body-medium" as="span">
+            Months
+          </Text>
           <div className="flex gap-2">
             <Button
               variant="secondary"
@@ -511,7 +522,9 @@ export function CronScheduler({
       {frequency !== "hourly" &&
         !(frequency === "custom" && customInterval.unit !== "days") && (
           <div className="flex items-center gap-4 space-y-2">
-            <Label className="pt-2">At</Label>
+            <Text variant="body-medium" as="span" className="pt-2">
+              At
+            </Text>
             <TimeInput
               value={selectedTime}
               onChange={setSelectedTime}

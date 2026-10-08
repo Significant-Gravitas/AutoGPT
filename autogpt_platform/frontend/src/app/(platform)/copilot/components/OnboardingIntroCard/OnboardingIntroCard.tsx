@@ -43,7 +43,7 @@ import {
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
 // Slugs the backend may emit (see intro.PROMPT_ICONS); anything unknown
@@ -174,24 +174,26 @@ export function OnboardingIntroCard({
         {transcript && (
           <motion.div className="ml-auto" {...reveal(HEADING_START)}>
             <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleCopyTranscript}
-                  aria-label="Copy your recording's transcript"
-                  className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-                >
-                  {isCopied ? (
-                    <Icon
-                      icon={Tick02Icon}
-                      size={16}
-                      className="text-green-600"
-                    />
-                  ) : (
-                    <Icon icon={Copy01Icon} size={16} />
-                  )}
-                </button>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={handleCopyTranscript}
+                    aria-label="Copy your recording's transcript"
+                    className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                  >
+                    {isCopied ? (
+                      <Icon
+                        icon={Tick02Icon}
+                        size={16}
+                        className="text-green-600"
+                      />
+                    ) : (
+                      <Icon icon={Copy01Icon} size={16} />
+                    )}
+                  </button>
+                }
+              />
               <TooltipPortal>
                 <TooltipContent>
                   {isCopied ? "Copied!" : "Copy everything you told me"}

@@ -46,7 +46,7 @@ export function ReferenceLink({ reference, children }: Props) {
   if (!hasCard) return link;
   return (
     <Tooltip delayDuration={300}>
-      <TooltipTrigger asChild>{link}</TooltipTrigger>
+      <TooltipTrigger render={link} />
       <TooltipPortal>
         <TooltipContent
           side="bottom"

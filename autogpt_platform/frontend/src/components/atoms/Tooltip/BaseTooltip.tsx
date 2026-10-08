@@ -1,11 +1,34 @@
 "use client";
 
+import {
+  Tooltip as KobraTooltip,
+  TooltipContent as KobraTooltipContent,
+  TooltipProvider as KobraTooltipProvider,
+  TooltipTrigger as KobraTooltipTrigger,
+} from "@/components/ui/tooltip";
 import * as React from "react";
-import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 
-import { cn } from "@/lib/utils";
+const DEFAULT_DELAY = 10;
 
-const TooltipProvider = TooltipPrimitive.Provider;
+const DelayCtx = React.createContext(DEFAULT_DELAY);
+
+interface ProviderProps {
+  children: React.ReactNode;
+  delayDuration?: number;
+  skipDelayDuration?: number;
+}
+
+function TooltipProvider({
+  children,
+  delayDuration,
+  skipDelayDuration,
+}: ProviderProps) {
+  return (
+    <KobraTooltipProvider delay={delayDuration} timeout={skipDelayDuration}>
+      {children}
+    </KobraTooltipProvider>
+  );
+}
 
 interface Props {
   children: React.ReactNode;
@@ -14,39 +37,49 @@ interface Props {
   onOpenChange?: (open: boolean) => void;
 }
 
-function Tooltip({ children, delayDuration = 10, open, onOpenChange }: Props) {
+function Tooltip({
+  children,
+  delayDuration = DEFAULT_DELAY,
+  open,
+  onOpenChange,
+}: Props) {
   return (
-    <TooltipPrimitive.Root
-      delayDuration={delayDuration}
-      open={open}
-      onOpenChange={onOpenChange}
-    >
-      {children}
-    </TooltipPrimitive.Root>
+    <DelayCtx.Provider value={delayDuration}>
+      <KobraTooltip
+        open={open}
+        onOpenChange={onOpenChange ? (next) => onOpenChange(next) : undefined}
+      >
+        {children}
+      </KobraTooltip>
+    </DelayCtx.Provider>
   );
 }
 
-const TooltipTrigger = TooltipPrimitive.Trigger;
+// Base UI puts the open delay on the trigger, so the house `Tooltip
+// delayDuration` reaches it through context.
+function TooltipTrigger({
+  delay,
+  ...props
+}: React.ComponentProps<typeof KobraTooltipTrigger>) {
+  const inherited = React.useContext(DelayCtx);
+  return <KobraTooltipTrigger delay={delay ?? inherited} {...props} />;
+}
 
-// Opt-in: content renders inline by default, so a trigger inside an
-// `overflow-hidden` ancestor clips its own tooltip. Wrap in this to escape.
-const TooltipPortal = TooltipPrimitive.Portal;
+// Kobra's content always portals; kept so existing wrappers keep compiling.
+function TooltipPortal({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
 
-const TooltipContent = React.forwardRef<
-  React.ElementRef<typeof TooltipPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
->(({ className, sideOffset = 4, ...props }, ref) => (
-  <TooltipPrimitive.Content
-    ref={ref}
-    sideOffset={sideOffset}
-    className={cn(
-      "z-50 max-w-xs animate-in overflow-hidden rounded-md bg-popover px-3 py-1.5 text-xs leading-normal font-normal text-popover-foreground outline-1 -outline-offset-1 outline-border fade-in-0 outline-solid zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
-      className,
-    )}
-    {...props}
-  />
-));
-TooltipContent.displayName = TooltipPrimitive.Content.displayName;
+type ContentProps = React.ComponentProps<typeof KobraTooltipContent> & {
+  /** Radix collision padding; Base UI positions with its own default. */
+  collisionPadding?: number;
+};
+
+// Base UI leaves the popup role-less; the house keeps `tooltip` so assistive
+// tech and tests can find it as before.
+function TooltipContent({ collisionPadding: _, ...props }: ContentProps) {
+  return <KobraTooltipContent role="tooltip" {...props} />;
+}
 
 export {
   Tooltip,

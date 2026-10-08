@@ -1,27 +1,32 @@
 "use client";
 
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { Checkbox as KobraCheckbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { MinusSignIcon, Tick02Icon } from "@hugeicons/core-free-icons";
-import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { forwardRef, ReactNode, useId } from "react";
-import { checkboxVariants, getDescribedBy, indicatorSize } from "./helpers";
+import {
+  checkboxSizeClasses,
+  getDescribedBy,
+  INDETERMINATE_CLASSES,
+} from "./helpers";
+
+type KobraCheckboxProps = React.ComponentProps<typeof KobraCheckbox>;
 
 interface Props extends Omit<
-  React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>,
-  "children"
+  KobraCheckboxProps,
+  "checked" | "onCheckedChange" | "children" | "className" | "shape" | "render"
 > {
   label?: ReactNode;
   description?: ReactNode;
   error?: string;
   size?: "sm" | "md";
+  className?: string;
+  /** `"indeterminate"` shows a partial selection; the next toggle reports a boolean. */
+  checked?: boolean | "indeterminate";
+  onCheckedChange?: (checked: boolean) => void;
 }
 
-export const Checkbox = forwardRef<
-  React.ElementRef<typeof CheckboxPrimitive.Root>,
-  Props
->(function Checkbox(
+export const Checkbox = forwardRef<HTMLButtonElement, Props>(function Checkbox(
   {
     id,
     label,
@@ -29,6 +34,8 @@ export const Checkbox = forwardRef<
     error,
     size = "sm",
     className,
+    checked,
+    onCheckedChange,
     "aria-describedby": ariaDescribedBy,
     ...props
   },
@@ -38,37 +45,27 @@ export const Checkbox = forwardRef<
   const checkboxId = id ?? generatedId;
   const descriptionId = description ? `${checkboxId}-description` : undefined;
   const errorId = error ? `${checkboxId}-error` : undefined;
+  const indeterminate = checked === "indeterminate";
 
   const box = (
-    <CheckboxPrimitive.Root
-      ref={ref}
+    <KobraCheckbox
+      ref={ref as React.Ref<HTMLElement>}
       id={checkboxId}
+      checked={indeterminate ? false : checked}
+      indeterminate={indeterminate}
+      onCheckedChange={
+        onCheckedChange ? (next) => onCheckedChange(next) : undefined
+      }
       aria-invalid={error ? true : undefined}
       aria-describedby={getDescribedBy(ariaDescribedBy, descriptionId, errorId)}
       className={cn(
-        checkboxVariants({ size, invalid: Boolean(error) }),
+        checkboxSizeClasses[size],
+        INDETERMINATE_CLASSES,
         label ? (size === "sm" ? "mt-0.5" : "mt-px") : undefined,
         className,
       )}
       {...props}
-    >
-      <CheckboxPrimitive.Indicator className="flex items-center justify-center text-current">
-        <Icon
-          icon={Tick02Icon}
-          size={indicatorSize[size]}
-          strokeWidth={2.5}
-          className="group-data-[state=indeterminate]:hidden"
-          aria-hidden
-        />
-        <Icon
-          icon={MinusSignIcon}
-          size={indicatorSize[size]}
-          strokeWidth={2.5}
-          className="hidden group-data-[state=indeterminate]:block"
-          aria-hidden
-        />
-      </CheckboxPrimitive.Indicator>
-    </CheckboxPrimitive.Root>
+    />
   );
 
   if (!label && !description && !error) return box;

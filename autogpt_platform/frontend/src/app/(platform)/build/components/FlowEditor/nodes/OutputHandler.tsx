@@ -120,15 +120,17 @@ export const OutputHandler = ({
               {fieldSchema?.description && (
                 <TooltipProvider>
                   <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span
-                        className="ml-1.5 cursor-pointer"
-                        aria-label="info"
-                        tabIndex={0}
-                      >
-                        <Icon icon={InformationCircleIcon} />
-                      </span>
-                    </TooltipTrigger>
+                    <TooltipTrigger
+                      render={
+                        <span
+                          className="ml-1.5 cursor-pointer"
+                          aria-label="info"
+                          tabIndex={0}
+                        >
+                          <Icon icon={InformationCircleIcon} />
+                        </span>
+                      }
+                    />
                     <TooltipContent>{fieldSchema?.description}</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>

@@ -89,12 +89,14 @@ export function ResolutionModeBar({
           Remove incompatible connections
         </span>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Icon
-              icon={InformationCircleIcon}
-              className="h-4 w-4 cursor-help text-yellow-500"
-            />
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <Icon
+                icon={InformationCircleIcon}
+                className="h-4 w-4 cursor-help text-yellow-500"
+              />
+            }
+          />
           <TooltipContent className="max-w-sm">
             <Text variant="small" tone="primary" className="mb-2 font-semibold">
               Incompatible changes:

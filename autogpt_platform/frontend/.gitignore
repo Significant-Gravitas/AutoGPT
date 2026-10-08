@@ -67,4 +67,3 @@ src/app/api/__generated__/
 
 # shadcn CLI output (components.json aliases.ui): copy what you need into
 # src/components, never import from here
-/src/components/__shadcn_scratch__/

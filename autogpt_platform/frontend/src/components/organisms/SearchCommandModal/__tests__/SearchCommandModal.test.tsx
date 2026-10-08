@@ -209,8 +209,8 @@ describe("SearchCommandModal", () => {
   it("closes when Escape is pressed", () => {
     const onClose = vi.fn();
     render(<Harness onClose={onClose} />);
-    // Radix listens at document level for Escape inside its Dialog;
-    // a keyDown on the document mirrors what a user keystroke would.
+    // The modal listens on window for Escape, so a keyDown on the document
+    // reaches it the way a user keystroke would.
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });

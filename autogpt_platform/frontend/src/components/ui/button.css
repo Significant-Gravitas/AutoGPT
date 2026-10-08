@@ -1,0 +1,351 @@
+:root {
+  --ring-duration: 150ms;
+  --push-lift: 5px;
+  --push-travel: 4px;
+  --push-hover: 1px;
+  --push-press: 110ms;
+  --push-release: 190ms;
+  --push-spring: cubic-bezier(0.22, 1.32, 0.36, 1);
+}
+
+@utility transition-ring {
+  transition-property:
+    color, background-color, border-color, box-shadow, outline-color, outline-offset;
+  transition-duration: var(--ring-duration);
+  transition-timing-function: var(--ease-out);
+
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 0ms;
+  }
+}
+
+.t-push {
+  transition:
+    translate var(--push-release) var(--push-spring),
+    box-shadow var(--push-release) var(--push-spring);
+}
+
+.t-push:active {
+  transition-duration: var(--push-press);
+  transition-timing-function: var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-push,
+  .t-push:active {
+    transition-duration: 0ms;
+  }
+}
+
+@property --surface-top {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
+@property --surface-bottom {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
+.t-surface::before {
+  --surface-top: var(--surface-base);
+  --surface-bottom: var(--surface-lit);
+
+  --surface-edge-mid: color-mix(in srgb, var(--surface-edge-top), var(--surface-edge-bottom));
+  --surface-drop-near: transparent;
+  --surface-sheen: linear-gradient(transparent, transparent);
+  --surface-shade: transparent;
+  --surface-glow: transparent;
+
+  --surface-strength: calc(var(--surface-calm, 1) * 100%);
+  --surface-fall: color-mix(
+    in srgb,
+    var(--surface-bottom) var(--surface-strength),
+    var(--surface-top)
+  );
+  background:
+    var(--surface-sheen) padding-box,
+    linear-gradient(var(--surface-top), var(--surface-fall)) padding-box,
+    linear-gradient(
+        color-mix(in srgb, var(--surface-edge-top) var(--surface-strength), transparent),
+        color-mix(in srgb, var(--surface-edge-mid) var(--surface-strength), transparent),
+        color-mix(in srgb, var(--surface-edge-bottom) var(--surface-strength), transparent)
+      )
+      border-box,
+    linear-gradient(var(--surface-top), var(--surface-fall)) border-box;
+
+  box-shadow:
+    0 0 0 1px var(--surface-ring),
+    inset 0 -3px 6px -3px
+      color-mix(in srgb, var(--surface-shade) var(--surface-strength), transparent),
+    0 1px 1px 0 color-mix(in srgb, var(--surface-drop-near) var(--surface-strength), transparent),
+    0 2px 4px 0 color-mix(in srgb, var(--surface-drop) var(--surface-strength), transparent),
+    0 8px 20px -8px color-mix(in srgb, var(--surface-glow) var(--surface-strength), transparent);
+  transition:
+    scale 150ms var(--ease-out),
+    --surface-top 150ms var(--ease-out),
+    --surface-bottom 150ms var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-surface::before {
+    transition-duration: 0ms;
+  }
+}
+
+.t-surface.t-flat::before {
+  background: revert-layer;
+  box-shadow: revert-layer;
+  transition: revert-layer;
+}
+
+.t-surface-primary::before {
+  --surface-base: #323137;
+  --surface-lit: #201e25;
+  --surface-edge-top: #4b4951;
+  --surface-edge-bottom: #18171b;
+  --surface-ring: #0d0d0d;
+  --surface-drop: rgb(0 0 0 / 0.1);
+}
+
+.t-surface-secondary::before {
+  --surface-base: #f2f2f3;
+  --surface-lit: #eaeaec;
+  --surface-edge-top: rgb(255 255 255 / 0);
+  --surface-edge-mid: rgb(255 255 255 / 0);
+  --surface-edge-bottom: rgb(0 0 0 / 0.06);
+  --surface-ring: rgb(0 0 0 / 0.11);
+  --surface-drop-near: rgb(0 0 0 / 0.04);
+  --surface-drop: rgb(0 0 0 / 0.05);
+}
+
+.t-surface-outline::before {
+  --surface-base: #ffffff;
+  --surface-lit: #f0f0f1;
+  --surface-edge-top: rgb(255 255 255 / 0);
+  --surface-edge-mid: rgb(255 255 255 / 0);
+  --surface-edge-bottom: rgb(0 0 0 / 0.1);
+  --surface-ring: rgb(0 0 0 / 0.15);
+  --surface-drop-near: rgb(0 0 0 / 0.06);
+  --surface-drop: rgb(0 0 0 / 0.1);
+}
+
+.t-surface-destructive::before {
+  --surface-base: #d0262b;
+  --surface-lit: #b81a1f;
+  --surface-edge-top: rgb(255 255 255 / 0.28);
+  --surface-edge-mid: rgb(255 255 255 / 0);
+  --surface-edge-bottom: rgb(0 0 0 / 0.14);
+
+  --surface-ring: #a11216;
+  --surface-drop-near: rgb(0 0 0 / 0.08);
+  --surface-drop: rgb(0 0 0 / 0.1);
+}
+
+.dark .t-surface-primary::before {
+  --surface-base: #f6f6f8;
+  --surface-lit: #dadadf;
+  --surface-sheen: linear-gradient(rgb(255 255 255 / 0.9), rgb(255 255 255 / 0) 45%);
+  --surface-edge-top: rgb(255 255 255 / 0);
+  --surface-edge-mid: rgb(255 255 255 / 0);
+  --surface-edge-bottom: rgb(0 0 0 / 0.2);
+  --surface-ring: #b8b8bf;
+  --surface-shade: rgb(0 0 0 / 0.12);
+  --surface-drop-near: rgb(0 0 0 / 0.3);
+  --surface-drop: rgb(0 0 0 / 0.4);
+  --surface-glow: rgb(255 255 255 / 0.1);
+}
+
+.dark .t-surface-secondary::before {
+  --surface-base: #2c2c30;
+  --surface-lit: #38383c;
+  --surface-edge-top: #56565b;
+  --surface-edge-bottom: #36363a;
+  --surface-ring: #232326;
+
+  --surface-edge-mid: color-mix(in srgb, var(--surface-edge-top), var(--surface-edge-bottom));
+  --surface-drop-near: transparent;
+  --surface-drop: rgb(0 0 0 / 0.4);
+}
+
+.dark .t-surface-outline::before {
+  --surface-base: #1b1b1e;
+  --surface-lit: #141416;
+  --surface-edge-top: rgb(255 255 255 / 0);
+  --surface-edge-mid: rgb(255 255 255 / 0);
+  --surface-edge-bottom: rgb(0 0 0 / 0.3);
+  --surface-ring: #2e2e33;
+  --surface-drop-near: rgb(0 0 0 / 0.3);
+  --surface-drop: rgb(0 0 0 / 0.4);
+}
+
+.dark .t-surface-destructive::before {
+  --surface-base: #c8161b;
+  --surface-lit: #d0262b;
+  --surface-edge-top: #e45c60;
+  --surface-edge-bottom: #cd262b;
+  --surface-ring: #7a0d10;
+  --surface-edge-mid: color-mix(in srgb, var(--surface-edge-top), var(--surface-edge-bottom));
+  --surface-drop-near: transparent;
+  --surface-drop: rgb(0 0 0 / 0.4);
+}
+
+.t-surface-info::before {
+  --surface-base: #e8f1fe;
+  --surface-lit: #dde9fd;
+  --surface-edge-top: rgb(255 255 255 / 0);
+  --surface-edge-mid: rgb(255 255 255 / 0);
+  --surface-edge-bottom: rgb(37 99 235 / 0.14);
+  --surface-ring: rgb(37 99 235 / 0.22);
+  --surface-drop-near: rgb(0 0 0 / 0.04);
+  --surface-drop: rgb(0 0 0 / 0.05);
+}
+
+.dark .t-surface-info::before {
+  --surface-base: #1c2842;
+  --surface-lit: #22304f;
+  --surface-edge-top: #3a5285;
+  --surface-edge-bottom: #26355a;
+  --surface-ring: #111a2b;
+  --surface-edge-mid: color-mix(in srgb, var(--surface-edge-top), var(--surface-edge-bottom));
+  --surface-drop-near: transparent;
+  --surface-drop: rgb(0 0 0 / 0.4);
+}
+
+.t-surface-warning::before {
+  --surface-base: #fef3dc;
+  --surface-lit: #fcebc9;
+  --surface-edge-top: rgb(255 255 255 / 0);
+  --surface-edge-mid: rgb(255 255 255 / 0);
+  --surface-edge-bottom: rgb(217 119 6 / 0.16);
+  --surface-ring: rgb(217 119 6 / 0.26);
+  --surface-drop-near: rgb(0 0 0 / 0.04);
+  --surface-drop: rgb(0 0 0 / 0.05);
+}
+
+.dark .t-surface-warning::before {
+  --surface-base: #332712;
+  --surface-lit: #3d2f17;
+  --surface-edge-top: #6b5226;
+  --surface-edge-bottom: #45351a;
+  --surface-ring: #1f170a;
+  --surface-edge-mid: color-mix(in srgb, var(--surface-edge-top), var(--surface-edge-bottom));
+  --surface-drop-near: transparent;
+  --surface-drop: rgb(0 0 0 / 0.4);
+}
+
+.t-surface-success::before {
+  --surface-base: #e7f4ea;
+  --surface-lit: #daeedf;
+  --surface-edge-top: rgb(255 255 255 / 0);
+  --surface-edge-mid: rgb(255 255 255 / 0);
+  --surface-edge-bottom: rgb(2 135 68 / 0.14);
+  --surface-ring: rgb(2 135 68 / 0.22);
+  --surface-drop-near: rgb(0 0 0 / 0.04);
+  --surface-drop: rgb(0 0 0 / 0.05);
+}
+
+.dark .t-surface-success::before {
+  --surface-base: #13301c;
+  --surface-lit: #163922;
+  --surface-edge-top: #26613a;
+  --surface-edge-bottom: #164124;
+  --surface-ring: #0c1f12;
+  --surface-edge-mid: color-mix(in srgb, var(--surface-edge-top), var(--surface-edge-bottom));
+  --surface-drop-near: transparent;
+  --surface-drop: rgb(0 0 0 / 0.4);
+}
+
+.t-surface-danger::before {
+  --surface-base: #feebe9;
+  --surface-lit: #fce1de;
+  --surface-edge-top: rgb(255 255 255 / 0);
+  --surface-edge-mid: rgb(255 255 255 / 0);
+  --surface-edge-bottom: rgb(209 16 37 / 0.14);
+  --surface-ring: rgb(209 16 37 / 0.22);
+  --surface-drop-near: rgb(0 0 0 / 0.04);
+  --surface-drop: rgb(0 0 0 / 0.05);
+}
+
+.dark .t-surface-danger::before {
+  --surface-base: #3e1e1c;
+  --surface-lit: #4b2421;
+  --surface-edge-top: #7e3e3a;
+  --surface-edge-bottom: #552724;
+  --surface-ring: #291312;
+  --surface-edge-mid: color-mix(in srgb, var(--surface-edge-top), var(--surface-edge-bottom));
+  --surface-drop-near: transparent;
+  --surface-drop: rgb(0 0 0 / 0.4);
+}
+
+.t-surface-tint::before {
+  --surface-base: color-mix(in oklab, currentColor 9%, var(--surface-ground, var(--background)));
+  --surface-lit: color-mix(in oklab, currentColor 13%, var(--surface-ground, var(--background)));
+  --surface-edge-top: rgb(255 255 255 / 0);
+  --surface-edge-mid: rgb(255 255 255 / 0);
+  --surface-edge-bottom: color-mix(in srgb, currentColor 16%, transparent);
+  --surface-ring: color-mix(in srgb, currentColor 24%, transparent);
+  --surface-drop-near: rgb(0 0 0 / 0.04);
+  --surface-drop: rgb(0 0 0 / 0.05);
+}
+
+.dark .t-surface-tint::before {
+  --surface-base: color-mix(in oklab, currentColor 13%, var(--surface-ground, var(--background)));
+  --surface-lit: color-mix(in oklab, currentColor 17%, var(--surface-ground, var(--background)));
+  --surface-edge-top: color-mix(
+    in oklab,
+    currentColor 34%,
+    var(--surface-ground, var(--background))
+  );
+  --surface-edge-bottom: color-mix(
+    in oklab,
+    currentColor 20%,
+    var(--surface-ground, var(--background))
+  );
+  --surface-edge-mid: color-mix(in srgb, var(--surface-edge-top), var(--surface-edge-bottom));
+  --surface-ring: color-mix(in srgb, currentColor 24%, transparent);
+  --surface-drop-near: transparent;
+  --surface-drop: transparent;
+}
+
+@media (hover: hover) {
+  .t-surface-primary:hover::before,
+  .t-surface-destructive:hover::before,
+  .dark .t-surface-secondary:hover::before,
+  .dark .t-surface-outline:hover::before {
+    --surface-top: color-mix(in srgb, var(--surface-base), white 6%);
+    --surface-bottom: color-mix(in srgb, var(--surface-lit), white 6%);
+  }
+  .t-surface-secondary:hover::before,
+  .t-surface-outline:hover::before,
+  .dark .t-surface-primary:hover::before {
+    --surface-top: color-mix(in srgb, var(--surface-base), black 4%);
+    --surface-bottom: color-mix(in srgb, var(--surface-lit), black 4%);
+  }
+}
+
+.t-surface-outline[aria-expanded='true']::before {
+  --surface-top: color-mix(in srgb, var(--surface-base), black 4%);
+  --surface-bottom: color-mix(in srgb, var(--surface-lit), black 4%);
+}
+
+.dark .t-surface-outline[aria-expanded='true']::before {
+  --surface-top: color-mix(in srgb, var(--surface-base), white 6%);
+  --surface-bottom: color-mix(in srgb, var(--surface-lit), white 6%);
+}
+
+.dark .t-surface.t-label::before {
+  --surface-ring: color-mix(in srgb, currentColor 24%, transparent);
+  --surface-edge-top: transparent;
+  --surface-edge-mid: transparent;
+  --surface-edge-bottom: transparent;
+  --surface-drop-near: transparent;
+  --surface-drop: transparent;
+}
+
+.t-surface.t-label:not(a, button):hover::before {
+  --surface-top: var(--surface-base);
+  --surface-bottom: var(--surface-lit);
+}

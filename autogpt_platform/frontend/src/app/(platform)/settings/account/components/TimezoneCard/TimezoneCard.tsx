@@ -1,5 +1,5 @@
 "use client";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 
 import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
@@ -48,15 +48,17 @@ export function TimezoneCard({ value, onChange, index = 0 }: Props) {
               Time zone
             </Text>
             <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  aria-label="Time zone info"
-                  className="flex items-center text-zinc-400 transition-colors hover:text-zinc-600 focus-visible:text-zinc-600 focus-visible:outline-hidden"
-                >
-                  <Icon icon={InformationCircleIcon} size={16} />
-                </button>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label="Time zone info"
+                    className="flex items-center text-zinc-400 transition-colors hover:text-zinc-600 focus-visible:text-zinc-600 focus-visible:outline-hidden"
+                  >
+                    <Icon icon={InformationCircleIcon} size={16} />
+                  </button>
+                }
+              />
               <TooltipContent>
                 Used for run schedules, summaries, and timestamps.
               </TooltipContent>

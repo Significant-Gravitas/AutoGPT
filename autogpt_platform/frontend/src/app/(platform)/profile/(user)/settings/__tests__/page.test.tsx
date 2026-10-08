@@ -5,6 +5,7 @@ import {
   fireEvent,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 import {
   getGetV1GetNotificationPreferencesMockHandler,
   getGetV1GetUserTimezoneMockHandler,
@@ -86,10 +87,11 @@ describe("SettingsPage", () => {
 
     render(<SettingsPage />);
 
-    fireEvent.click(
+    const user = userEvent.setup();
+    await user.click(
       await screen.findByRole("combobox", { name: "Briefing frequency" }),
     );
-    fireEvent.click(await screen.findByRole("option", { name: "Monthly" }));
+    await user.click(await screen.findByRole("option", { name: "Monthly" }));
     fireEvent.click(await screen.findByRole("switch", { name: "Alerts" }));
     fireEvent.click(
       screen.getByRole("switch", { name: "Marketplace reviews" }),

@@ -53,37 +53,39 @@ export function ThreadHeader({
       >
         <TooltipProvider>
           <Tooltip>
-            <TooltipTrigger asChild>
-              <div
-                tabIndex={0}
-                aria-label={
-                  isResolving ? "Loading expert" : `${name} — ${roleLabel}`
-                }
-                className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-full border border-zinc-200/70 bg-white/75 py-1 pr-5 pl-1.5 whitespace-nowrap shadow-xs backdrop-blur-md"
-              >
-                <ExpertAvatar
-                  name={name}
-                  avatarUrl={expertIdentity?.avatarUrl ?? null}
-                  color={expertIdentity?.color}
-                  isAutopilot={!expertIdentity && !isResolving}
-                  isLoading={isResolving}
-                  size="md"
-                />
-                {isResolving ? (
-                  <Skeleton className="h-3.5 w-16 rounded-sm" />
-                ) : (
-                  <span className="max-w-40 min-w-0">
-                    <ExpertIdentityDetails
-                      isOtto={!expertIdentity}
-                      name={name}
-                      role={role}
-                      jobTitle={jobTitle}
-                      size="compact"
-                    />
-                  </span>
-                )}
-              </div>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <div
+                  tabIndex={0}
+                  aria-label={
+                    isResolving ? "Loading expert" : `${name} — ${roleLabel}`
+                  }
+                  className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-full border border-zinc-200/70 bg-white/75 py-1 pr-5 pl-1.5 whitespace-nowrap shadow-xs backdrop-blur-md"
+                >
+                  <ExpertAvatar
+                    name={name}
+                    avatarUrl={expertIdentity?.avatarUrl ?? null}
+                    color={expertIdentity?.color}
+                    isAutopilot={!expertIdentity && !isResolving}
+                    isLoading={isResolving}
+                    size="md"
+                  />
+                  {isResolving ? (
+                    <Skeleton className="h-3.5 w-16 rounded-sm" />
+                  ) : (
+                    <span className="max-w-40 min-w-0">
+                      <ExpertIdentityDetails
+                        isOtto={!expertIdentity}
+                        name={name}
+                        role={role}
+                        jobTitle={jobTitle}
+                        size="compact"
+                      />
+                    </span>
+                  )}
+                </div>
+              }
+            />
             {isResolving ? null : (
               <TooltipContent
                 side="bottom"

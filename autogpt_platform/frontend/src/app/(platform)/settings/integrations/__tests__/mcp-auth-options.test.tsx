@@ -57,28 +57,16 @@ describe("MCP preset access options", () => {
       fallbackBlocked: false,
     }));
     const dialog = await openPreset("Parallel");
-    fireEvent.mouseDown(
-      within(dialog).getByRole("tab", { name: /^sign in$/i }),
-      { button: 0, ctrlKey: false },
-    );
+    fireEvent.click(within(dialog).getByRole("tab", { name: /^sign in$/i }));
     fireEvent.click(within(dialog).getByRole("button", { name: /^connect$/i }));
     await waitFor(() => expect(openOAuthPopup).toHaveBeenCalled());
-    fireEvent.mouseDown(
-      within(dialog).getByRole("tab", { name: /^api token$/i }),
-      { button: 0, ctrlKey: false },
-    );
+    fireEvent.click(within(dialog).getByRole("tab", { name: /^api token$/i }));
     expect(abort).toHaveBeenCalledTimes(1);
     fireEvent.change(within(dialog).getByPlaceholderText("Paste API token"), {
       target: { value: "unsaved-secret" },
     });
-    fireEvent.mouseDown(
-      within(dialog).getByRole("tab", { name: /^no sign-in$/i }),
-      { button: 0, ctrlKey: false },
-    );
-    fireEvent.mouseDown(
-      within(dialog).getByRole("tab", { name: /^api token$/i }),
-      { button: 0, ctrlKey: false },
-    );
+    fireEvent.click(within(dialog).getByRole("tab", { name: /^no sign-in$/i }));
+    fireEvent.click(within(dialog).getByRole("tab", { name: /^api token$/i }));
     expect(
       within(dialog).getByPlaceholderText<HTMLInputElement>("Paste API token")
         .value,
@@ -115,10 +103,7 @@ describe("MCP preset access options", () => {
     );
     expect(tokenRequest).not.toHaveBeenCalled();
     expect(oauthRequest).not.toHaveBeenCalled();
-    fireEvent.mouseDown(
-      within(dialog).getByRole("tab", { name: /^sign in$/i }),
-      { button: 0, ctrlKey: false },
-    );
+    fireEvent.click(within(dialog).getByRole("tab", { name: /^sign in$/i }));
     expect(
       within(dialog).getByLabelText<HTMLInputElement>("Server URL").value,
     ).toBe("https://search.parallel.ai/mcp-oauth");
@@ -131,10 +116,7 @@ describe("MCP preset access options", () => {
     expect((await within(dialog).findByRole("alert")).textContent).toBe(
       "Vendor rejected this sign-in",
     );
-    fireEvent.mouseDown(
-      within(dialog).getByRole("tab", { name: /^api token$/i }),
-      { button: 0, ctrlKey: false },
-    );
+    fireEvent.click(within(dialog).getByRole("tab", { name: /^api token$/i }));
     expect(
       within(dialog).getByLabelText<HTMLInputElement>("Server URL").value,
     ).toBe("https://search.parallel.ai/mcp");
@@ -158,10 +140,10 @@ describe("MCP preset access options", () => {
 
   test("Customer.io defaults to read access and adds only documented draft writes when selected", async () => {
     const dialog = await openPreset("Customer.io");
-    const changes = within(dialog).getByRole("checkbox", {
+    const changes = within(dialog).getByRole("button", {
       name: /allow changes/i,
     });
-    expect(changes.getAttribute("aria-checked")).toBe("false");
+    expect(changes.getAttribute("aria-pressed")).toBe("false");
     expect(within(dialog).getByText(/create drafts/i)).toBeDefined();
     fireEvent.click(within(dialog).getByRole("button", { name: /^connect$/i }));
     await waitFor(() =>

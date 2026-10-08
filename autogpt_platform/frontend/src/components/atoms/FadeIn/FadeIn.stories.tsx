@@ -13,7 +13,7 @@ const meta: Meta<typeof FadeIn> = {
     docs: {
       description: {
         component:
-          "A wrapper that fades in its children with a subtle upward slide animation using framer-motion.",
+          "A wrapper that fades in its children with a subtle upward slide animation using motion.",
       },
     },
   },

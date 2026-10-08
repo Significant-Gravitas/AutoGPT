@@ -56,11 +56,13 @@ export function RunSummary({ run }: Props) {
           </div>
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex cursor-help text-zinc-400 hover:text-zinc-600">
-                  <Icon icon={AlertCircleIcon} size={16} />
-                </span>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <span className="inline-flex cursor-help text-zinc-400 hover:text-zinc-600">
+                    <Icon icon={AlertCircleIcon} size={16} />
+                  </span>
+                }
+              />
               <TooltipContent>
                 <Text variant="small" tone="primary" className="max-w-xs">
                   AI-generated estimate of how well this execution achieved its

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { Clock01Icon, ImageNotFound01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";

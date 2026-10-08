@@ -12,7 +12,7 @@ const meta: Meta<typeof Progress> = {
     docs: {
       description: {
         component:
-          "Simple progress bar with value and optional max (default 100).",
+          "Progress bar on Kobra's Progress (Base UI, `role='progressbar'`) with value and optional max (default 100). Pass `aria-label` (or `aria-labelledby`) to name the bar; it falls back to `Progress`. Size the bar with `className`; colour the fill with `[&_[data-slot=progress-indicator]]:bg-*`.",
       },
     },
   },

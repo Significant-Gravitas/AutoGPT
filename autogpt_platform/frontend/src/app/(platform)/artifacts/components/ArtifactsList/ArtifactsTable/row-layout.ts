@@ -1,4 +1,4 @@
-import type { Variants } from "framer-motion";
+import type { Variants } from "motion/react";
 
 // Column template shared by the header and every row so cells line up.
 // Modified and Size collapse on narrow screens. The trailing column has a

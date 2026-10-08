@@ -21,27 +21,29 @@ export function AppSidebarHeader() {
 
   const toggleButton = (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          withTooltip={false}
-          onClick={toggleSidebar}
-          className={cn(
-            "shrink-0 rounded-md hover:border-transparent hover:bg-zinc-200",
-            isCollapsed
-              ? "absolute inset-0 hidden group-focus-within:flex group-hover:flex"
-              : "flex",
-          )}
-        >
-          <Icon
-            icon={SidebarLeftIcon}
-            className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
-          />
-        </Button>
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            withTooltip={false}
+            onClick={toggleSidebar}
+            className={cn(
+              "shrink-0 rounded-md hover:border-transparent hover:bg-zinc-200",
+              isCollapsed
+                ? "absolute inset-0 hidden group-focus-within:flex group-hover:flex"
+                : "flex",
+            )}
+          >
+            <Icon
+              icon={SidebarLeftIcon}
+              className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+            />
+          </Button>
+        }
+      />
       <TooltipPortal>
         <TooltipContent side="right">
           {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}

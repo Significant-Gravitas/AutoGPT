@@ -1,11 +1,18 @@
 "use client";
-import * as RXDialog from "@radix-ui/react-dialog";
+import {
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  Dialog as DialogRoot,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Drawer } from "@/components/ui/drawer";
 import { CSSProperties, PropsWithChildren } from "react";
-import { Drawer } from "vaul";
 
 import { BaseContent } from "./components/BaseContent";
 import { BaseFooter } from "./components/BaseFooter";
 import { BaseTrigger } from "./components/BaseTrigger";
+import { isComposingEscape, isPickerInteraction } from "./helpers";
 import { DialogCtx, DialogVariant, useDialogCtx } from "./useDialogCtx";
 import { useDialogInternal } from "./useDialogInternal";
 
@@ -49,6 +56,11 @@ function Dialog({
   const config = useDialogInternal({ controlled });
   const isOpen = forceOpen || config.isOpen;
 
+  function close() {
+    config.handleClose();
+    onClose?.();
+  }
+
   return (
     <DialogCtx.Provider
       value={{
@@ -70,33 +82,43 @@ function Dialog({
       }}
     >
       {config.isLgScreenUp ? (
-        <RXDialog.Root
+        <DialogRoot
           open={isOpen}
-          onOpenChange={(open) => {
-            if (!open && !forceOpen) {
-              config.handleClose();
-              onClose?.();
+          onOpenChange={(open, details) => {
+            if (open) return;
+            if (
+              forceOpen ||
+              isComposingEscape(details) ||
+              isPickerInteraction(details)
+            ) {
+              details.cancel();
+              return;
             }
+            close();
           }}
         >
           {children}
-        </RXDialog.Root>
+        </DialogRoot>
       ) : (
-        <Drawer.Root
-          shouldScaleBackground
+        <Drawer
           open={isOpen}
           onOpenChange={(open) => {
-            if (!open && !forceOpen) {
-              config.handleClose();
-              onClose?.();
-            }
+            if (!open && !forceOpen) close();
           }}
         >
           {children}
-        </Drawer.Root>
+        </Drawer>
       )}
     </DialogCtx.Provider>
   );
 }
 
-export { Dialog, useDialogCtx };
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogRoot,
+  DialogTitle,
+  useDialogCtx,
+};

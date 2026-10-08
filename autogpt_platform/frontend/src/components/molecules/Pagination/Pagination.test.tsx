@@ -1,8 +1,19 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { createRef } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { getPageItems } from "./helpers";
 import { Pagination } from "./Pagination";
+
+// Kobra's PaginationContent re-measures its highlight once fonts have
+// loaded; happy-dom has no CSS Font Loading API.
+beforeAll(() => {
+  if (!("fonts" in document)) {
+    Object.defineProperty(document, "fonts", {
+      value: { ready: Promise.resolve() },
+      configurable: true,
+    });
+  }
+});
 
 describe("getPageItems", () => {
   it("lists every page when they all fit", () => {

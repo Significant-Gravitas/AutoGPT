@@ -2,17 +2,16 @@
 
 import * as React from "react";
 import { Calendar03Icon } from "@hugeicons/core-free-icons";
-import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { cn } from "@/lib/utils";
-import { fieldVariants, type FieldSize } from "../Input/fieldVariants";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
-import { Calendar } from "@/components/__legacy__/ui/calendar";
+} from "@/components/molecules/Popover/Popover";
+import { cn } from "@/lib/utils";
+import { DatePickerCalendar } from "./components/DatePickerCalendar";
+import { fieldVariants, type FieldSize } from "../Input/fieldVariants";
 
 function toLocalISODateString(d: Date) {
   const year = d.getFullYear();
@@ -66,7 +65,7 @@ export const DateInput = ({
   "aria-labelledby": ariaLabelledBy,
   "aria-describedby": ariaDescribedBy,
 }: DateInputProps) => {
-  const selected = React.useMemo(() => parseISODateString(value), [value]);
+  const selected = parseISODateString(value);
   const [open, setOpen] = React.useState(false);
 
   const setDate = (d?: Date) => {
@@ -85,13 +84,6 @@ export const DateInput = ({
 
   const isDisabled = disabled || readonly;
 
-  const triggerStyles = cn(
-    fieldVariants({ size, invalid: Boolean(error) }),
-    "min-w-0 justify-start gap-2 text-left",
-    !selected && "text-muted-foreground",
-    className,
-  );
-
   return (
     <div className="flex flex-col gap-1">
       {label && !hideLabel && (
@@ -102,43 +94,35 @@ export const DateInput = ({
         </label>
       )}
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            className={triggerStyles}
-            disabled={isDisabled}
-            autoFocus={autoFocus}
-            id={id}
-            aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
-            aria-labelledby={ariaLabelledBy}
-            aria-describedby={ariaDescribedBy}
-            aria-invalid={error ? true : undefined}
-          >
-            <Icon
-              icon={Calendar03Icon}
-              size={size === "sm" ? 14 : 16}
-              aria-hidden
-            />
-            {buttonText}
-          </Button>
+        <PopoverTrigger
+          type="button"
+          className={cn(
+            fieldVariants({ size, invalid: Boolean(error) }),
+            "inline-flex min-w-0 items-center justify-start gap-2 text-left",
+            !selected && "text-muted-foreground",
+            className,
+          )}
+          disabled={isDisabled}
+          autoFocus={autoFocus}
+          id={id}
+          aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
+          aria-labelledby={ariaLabelledBy}
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={error ? true : undefined}
+        >
+          <Icon
+            icon={Calendar03Icon}
+            size={size === "sm" ? 14 : 16}
+            aria-hidden
+          />
+          {buttonText}
         </PopoverTrigger>
         <PopoverContent
           className="w-auto p-0"
           sideOffset={6}
           aria-label="Choose a date"
         >
-          <Calendar
-            mode="single"
-            selected={selected}
-            defaultMonth={selected}
-            onSelect={setDate}
-            showOutsideDays
-            // Prevent selection when disabled/readonly
-            modifiersClassNames={{
-              disabled: "pointer-events-none opacity-50",
-            }}
-          />
+          <DatePickerCalendar selected={selected} onSelect={setDate} />
         </PopoverContent>
       </Popover>
       {error && (

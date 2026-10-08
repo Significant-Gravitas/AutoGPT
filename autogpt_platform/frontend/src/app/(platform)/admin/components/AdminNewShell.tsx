@@ -1,7 +1,7 @@
 "use client";
 
 import { ScrollArea } from "@/components/atoms/ScrollArea/ScrollArea";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 import { usePathname } from "next/navigation";
 import { ReactNode } from "react";
 

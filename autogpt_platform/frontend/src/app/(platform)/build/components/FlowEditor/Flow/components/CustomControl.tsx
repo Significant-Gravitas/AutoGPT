@@ -114,19 +114,21 @@ export const CustomControls = memo(
       >
         {controls.map((control) => (
           <Tooltip key={control.id} delayDuration={0}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="icon"
-                size="md"
-                onClick={control.onClick}
-                className={control.className}
-                data-id={control.id}
-                disabled={"disabled" in control ? control.disabled : false}
-              >
-                {control.icon}
-                <span className="sr-only">{control.label}</span>
-              </Button>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="icon"
+                  size="md"
+                  onClick={control.onClick}
+                  className={control.className}
+                  data-id={control.id}
+                  disabled={"disabled" in control ? control.disabled : false}
+                >
+                  {control.icon}
+                  <span className="sr-only">{control.label}</span>
+                </Button>
+              }
+            />
             <TooltipContent side="right">{control.label}</TooltipContent>
           </Tooltip>
         ))}

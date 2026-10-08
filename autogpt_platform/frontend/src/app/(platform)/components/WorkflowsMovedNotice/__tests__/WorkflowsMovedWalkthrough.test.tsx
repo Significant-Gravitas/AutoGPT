@@ -1,4 +1,8 @@
-import * as Dialog from "@radix-ui/react-dialog";
+import {
+  DialogContent,
+  DialogRoot,
+  DialogTitle,
+} from "@/components/molecules/Dialog/Dialog";
 import {
   act,
   fireEvent,
@@ -195,13 +199,13 @@ describe("WorkflowsMovedWalkthrough", () => {
     const onOpenChange = vi.fn();
     const user = userEvent.setup();
     render(
-      <Dialog.Root defaultOpen onOpenChange={onOpenChange}>
-        <Dialog.Content aria-describedby={undefined}>
-          <Dialog.Title>Your agents have moved</Dialog.Title>
+      <DialogRoot defaultOpen onOpenChange={onOpenChange}>
+        <DialogContent>
+          <DialogTitle>Your agents have moved</DialogTitle>
           <WorkflowsMovedWalkthrough />
           <button>Show my workflows</button>
-        </Dialog.Content>
-      </Dialog.Root>,
+        </DialogContent>
+      </DialogRoot>,
     );
     await user.click(screen.getByRole("button", { name: "Play walkthrough" }));
     fireEvent.error(getVideo());

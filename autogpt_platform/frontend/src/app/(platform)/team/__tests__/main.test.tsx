@@ -49,8 +49,8 @@ vi.mock("@/lib/oauth-popup", async (importActual) => {
   };
 });
 
-vi.mock("framer-motion", async (importActual) => {
-  const actual = await importActual<typeof import("framer-motion")>();
+vi.mock("motion/react", async (importActual) => {
+  const actual = await importActual<typeof import("motion/react")>();
   return { ...actual, useReducedMotion: () => true };
 });
 
@@ -754,9 +754,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
-      button: 0,
-    });
+    fireEvent.click(screen.getByTestId("expert-card-actions"));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: /Fire Maria/ }),
     );
@@ -796,9 +794,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
-      button: 0,
-    });
+    fireEvent.click(screen.getByTestId("expert-card-actions"));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: /Fire Maria/ }),
     );
@@ -832,9 +828,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
-      button: 0,
-    });
+    fireEvent.click(screen.getByTestId("expert-card-actions"));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: /Fire Maria/ }),
     );
@@ -868,9 +862,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
-      button: 0,
-    });
+    fireEvent.click(screen.getByTestId("expert-card-actions"));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: /Fire Maria/ }),
     );
@@ -907,9 +899,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
-      button: 0,
-    });
+    fireEvent.click(screen.getByTestId("expert-card-actions"));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: /Fire Maria/ }),
     );
@@ -946,9 +936,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
-      button: 0,
-    });
+    fireEvent.click(screen.getByTestId("expert-card-actions"));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: /Fire Maria/ }),
     );
@@ -977,9 +965,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
-      button: 0,
-    });
+    fireEvent.click(screen.getByTestId("expert-card-actions"));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: /Fire Maria/ }),
     );

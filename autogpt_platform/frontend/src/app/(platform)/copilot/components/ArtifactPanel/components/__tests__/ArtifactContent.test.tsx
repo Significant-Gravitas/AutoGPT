@@ -133,8 +133,7 @@ describe("ArtifactContent", () => {
       />,
     );
 
-    // Skeleton uses animate-pulse class
-    const skeleton = container.querySelector('[class*="animate-pulse"]');
+    const skeleton = container.querySelector('[data-slot="skeleton"]');
     expect(skeleton).toBeTruthy();
   });
 
@@ -320,14 +319,14 @@ describe("ArtifactContent", () => {
       />,
     );
 
-    const skeleton = container.querySelector('[class*="animate-pulse"]');
+    const skeleton = container.querySelector('[data-slot="skeleton"]');
     expect(skeleton).toBeTruthy();
 
     // After metadata loads, skeleton should disappear
     const video = container.querySelector("video");
     fireEvent.loadedMetadata(video!);
 
-    expect(container.querySelector('[class*="animate-pulse"]')).toBeNull();
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull();
   });
 
   it("video shows error state when video fails to load", () => {
@@ -676,10 +675,10 @@ describe("ArtifactContent", () => {
     fireEvent.click(screen.getByRole("button", { name: /try again/i }));
 
     // Before the second fetch resolves, the error must be gone and a skeleton
-    // visible (animate-pulse is the Skeleton component's signature class).
+    // visible.
     await waitFor(() => {
       expect(screen.queryByText("Failed to load content")).toBeNull();
-      expect(container.querySelector('[class*="animate-pulse"]')).toBeTruthy();
+      expect(container.querySelector('[data-slot="skeleton"]')).toBeTruthy();
     });
 
     // Let the second fetch complete and wait for the recovered render so

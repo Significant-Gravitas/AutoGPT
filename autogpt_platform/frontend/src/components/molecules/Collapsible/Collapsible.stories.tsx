@@ -12,17 +12,15 @@ const meta: Meta<typeof Collapsible> = {
         component: `
 ## Collapsible Component
 
-A reusable collapsible component built on top of shadcn's collapsible primitives with enhanced functionality and styling.
+A collapsible section on Kobra's Collapsible (Base UI). With a \`trigger\` it renders the house header with a rotating chevron; without one it is the bare root to compose with \`CollapsibleTrigger\` and \`CollapsibleContent\`.
 
 ### ✨ Features
 
-- **Built on shadcn base** - Uses shadcn collapsible primitives without modification
-- **Custom trigger design** - Enhanced trigger with "↓ more" / "↑ less" text indicators
-- **Smooth animations** - Chevron rotation and content expand/collapse transitions
+- **Built on Kobra** - Renders Kobra's Collapsible parts
+- **Smooth animations** - Chevron rotation and a height transition on the panel
 - **Controlled & uncontrolled modes** - Supports both controlled and uncontrolled usage
 - **Customizable styling** - Props for custom classes on trigger, content, and root
-- **Accessible** - Built on Radix UI primitives for full accessibility support
-- **TypeScript support** - Complete TypeScript interface support
+- **Accessible** - Base UI handles the disclosure semantics and keyboard support
 
 ### 🎯 Usage
 
@@ -129,7 +127,7 @@ export const DefaultOpen: Story = {
 /**
  * Multiple collapsibles can be used together to create accordion-like interfaces.
  */
-export const MultipleCollapsibles: Story = {
+export const MultipleCollapsibles: StoryObj = {
   render: () => (
     <div className="w-96 space-y-4">
       <Collapsible

@@ -22,7 +22,7 @@ describe("Checkbox", () => {
 
     const checkbox = screen.getByRole("checkbox", { name: "Select all" });
     expect(checkbox.getAttribute("aria-checked")).toBe("mixed");
-    expect(checkbox.getAttribute("data-state")).toBe("indeterminate");
+    expect(checkbox.hasAttribute("data-indeterminate")).toBe(true);
   });
 
   it("links the description and error and marks the box invalid", () => {

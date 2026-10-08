@@ -1,5 +1,4 @@
 import type { WidgetProps } from "@rjsf/utils";
-import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { SelectWidget } from "../SelectWidget";
@@ -12,71 +11,36 @@ interface SelectMockProps {
   value?: string;
 }
 
-interface MultiSelectorMockProps {
-  children: ReactNode;
-  onValuesChange: (values: string[]) => void;
-  values: string[];
+interface MultiSelectMockProps {
+  options: { value: string; label: string }[];
+  onValueChange: (values: string[]) => void;
+  value: string[];
 }
 
 const selectSpy = vi.fn();
-const multiSelectorSpy = vi.fn();
+const multiSelectSpy = vi.fn();
 
 function SelectMock(props: SelectMockProps) {
   selectSpy(props);
   return <div data-testid="select-widget-select" />;
 }
 
-function MultiSelectorMock(props: MultiSelectorMockProps) {
-  multiSelectorSpy(props);
-  return <div data-testid="multi-selector">{props.children}</div>;
-}
-
-function MultiSelectorContentMock({ children }: { children: ReactNode }) {
-  return <div>{children}</div>;
-}
-
-function MultiSelectorInputMock({ placeholder }: { placeholder?: string }) {
-  return <input data-testid="multi-selector-input" placeholder={placeholder} />;
-}
-
-function MultiSelectorItemMock({
-  children,
-  value,
-}: {
-  children: ReactNode;
-  value: string;
-}) {
-  return (
-    <div data-testid="multi-selector-item" data-value={value}>
-      {children}
-    </div>
-  );
-}
-
-function MultiSelectorListMock({ children }: { children: ReactNode }) {
-  return <div>{children}</div>;
-}
-
-function MultiSelectorTriggerMock({ children }: { children: ReactNode }) {
-  return <div>{children}</div>;
+function MultiSelectMock(props: MultiSelectMockProps) {
+  multiSelectSpy(props);
+  return <div data-testid="multi-select" />;
 }
 
 vi.mock("@/components/atoms/Select/Select", () => ({
   Select: SelectMock,
 }));
 
-vi.mock("@/components/__legacy__/ui/multiselect", () => ({
-  MultiSelector: MultiSelectorMock,
-  MultiSelectorContent: MultiSelectorContentMock,
-  MultiSelectorInput: MultiSelectorInputMock,
-  MultiSelectorItem: MultiSelectorItemMock,
-  MultiSelectorList: MultiSelectorListMock,
-  MultiSelectorTrigger: MultiSelectorTriggerMock,
+vi.mock("@/components/molecules/MultiSelect/MultiSelect", () => ({
+  MultiSelect: MultiSelectMock,
 }));
 
 afterEach(() => {
   selectSpy.mockClear();
-  multiSelectorSpy.mockClear();
+  multiSelectSpy.mockClear();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
@@ -271,7 +235,7 @@ describe("SelectWidget", () => {
     );
 
     expect(warnSpy).toHaveBeenCalledWith(
-      "[SelectWidget] Dropped enum option(s) with empty-string value. Radix Select.Item disallows empty values.",
+      "[SelectWidget] Dropped enum option(s) with empty-string value. An empty value reads as no selection in Select.",
       {
         schema: { type: "string" },
         dropped: 1,
@@ -305,7 +269,7 @@ describe("SelectWidget", () => {
     expect(onChange).toHaveBeenCalledWith("green");
   });
 
-  it("maps multi-select labels back to enum option values", () => {
+  it("maps selected indexes back to enum option values for multi-select changes", () => {
     const onChange = vi.fn();
 
     render(
@@ -330,12 +294,16 @@ describe("SelectWidget", () => {
       />,
     );
 
-    expect(multiSelectorSpy).toHaveBeenCalledOnce();
-    const multiSelectorProps = multiSelectorSpy.mock
-      .calls[0][0] as MultiSelectorMockProps;
-    expect(multiSelectorProps.values).toEqual(["Red"]);
+    expect(multiSelectSpy).toHaveBeenCalledOnce();
+    const multiSelectProps = multiSelectSpy.mock
+      .calls[0][0] as MultiSelectMockProps;
+    expect(multiSelectProps.value).toEqual(["0"]);
+    expect(multiSelectProps.options).toEqual([
+      { value: "0", label: "Red" },
+      { value: "1", label: "Green" },
+    ]);
 
-    multiSelectorProps.onValuesChange(["Red", "Green", "Unknown"]);
+    multiSelectProps.onValueChange(["0", "1", "9"]);
 
     expect(onChange).toHaveBeenCalledWith(["red", "green"]);
   });
@@ -362,9 +330,9 @@ describe("SelectWidget", () => {
       />,
     );
 
-    const items = screen.getAllByTestId("multi-selector-item");
-    expect(items).toHaveLength(1);
-    expect(items[0].getAttribute("data-value")).toBe("Red");
-    expect(items[0].textContent).toContain("Red");
+    expect(screen.getByTestId("multi-select")).toBeDefined();
+    expect(multiSelectSpy.mock.calls[0][0]).toMatchObject({
+      options: [{ value: "0", label: "Red" }],
+    });
   });
 });

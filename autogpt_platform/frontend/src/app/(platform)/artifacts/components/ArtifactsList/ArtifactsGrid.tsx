@@ -2,8 +2,8 @@
 
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { motion, useReducedMotion } from "framer-motion";
-import type { Variants } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
+import type { Variants } from "motion/react";
 import { ArtifactCard } from "./ArtifactCard/ArtifactCard";
 import { EmptyState } from "./EmptyState";
 import type { EmptyStateContent } from "./helpers";

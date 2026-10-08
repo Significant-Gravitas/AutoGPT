@@ -89,20 +89,22 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
     <Dialog title="Data Preview" styling={{ width: "600px" }}>
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Dialog.Trigger>
-              <Button
-                variant="secondary"
-                size="md"
-                className="h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900"
-              >
-                <Icon
-                  icon={ArrowExpand01Icon}
-                  size={isViewMoreData ? 16 : 12}
-                />
-              </Button>
-            </Dialog.Trigger>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <Dialog.Trigger>
+                <Button
+                  variant="secondary"
+                  size="md"
+                  className="h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900"
+                >
+                  <Icon
+                    icon={ArrowExpand01Icon}
+                    size={isViewMoreData ? 16 : 12}
+                  />
+                </Button>
+              </Dialog.Trigger>
+            }
+          />
           <TooltipContent>
             <p>View Data</p>
           </TooltipContent>

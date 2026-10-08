@@ -2,9 +2,12 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { isComposingEvent } from "@/lib/keyboard";
+import {
+  DialogContent,
+  DialogRoot,
+} from "@/components/molecules/Dialog/Dialog";
+import { isComposingEscape } from "@/components/molecules/Dialog/helpers";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
-import * as Dialog from "@radix-ui/react-dialog";
 import { useRef } from "react";
 import { WorkflowsMovedContent } from "./WorkflowsMovedContent";
 import { hasCompetingDialog } from "./helpers";
@@ -16,45 +19,37 @@ interface Props {
 
 export function WorkflowsMovedDialog({ isOpen, onDismiss }: Props) {
   const titleRef = useRef<HTMLHeadingElement>(null);
-  const previousFocus = useRef<HTMLElement | null>(null);
   return (
-    <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onDismiss()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-100 bg-black/25 backdrop-blur-xs motion-safe:animate-fade-in" />
-        <Dialog.Content
-          data-workflows-moved-notice=""
-          className="fixed top-1/2 left-1/2 z-100 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-176 -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-white/80 bg-white shadow-2xl outline-hidden motion-safe:animate-fade-in"
-          onEscapeKeyDown={(event) => {
-            if (isComposingEvent(event)) event.preventDefault();
-          }}
-          onOpenAutoFocus={(event) => {
-            event.preventDefault();
-            previousFocus.current =
-              document.activeElement instanceof HTMLElement
-                ? document.activeElement
-                : null;
-            titleRef.current?.focus();
-          }}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            if (hasCompetingDialog()) return;
-            if (previousFocus.current?.isConnected)
-              previousFocus.current.focus();
-          }}
+    <DialogRoot
+      open={isOpen}
+      onOpenChange={(open, details) => {
+        if (open) return;
+        if (isComposingEscape(details)) {
+          details.cancel();
+          return;
+        }
+        onDismiss();
+      }}
+    >
+      <DialogContent
+        data-workflows-moved-notice=""
+        showCloseButton={false}
+        initialFocus={titleRef}
+        finalFocus={() => !hasCompetingDialog()}
+        className="flex max-h-[calc(100dvh-2rem)] max-w-176 flex-col gap-0 overflow-hidden bg-white p-0 sm:max-w-176"
+      >
+        <Button
+          variant="icon"
+          size="icon-sm"
+          aria-label="Close notice"
+          onClick={onDismiss}
+          withTooltip={false}
+          className="absolute top-4 right-4 z-10 rounded-full border-white/80 bg-white/80"
         >
-          <Button
-            variant="icon"
-            size="icon-sm"
-            aria-label="Close notice"
-            onClick={onDismiss}
-            withTooltip={false}
-            className="absolute top-4 right-4 z-10 rounded-full border-white/80 bg-white/80"
-          >
-            <Icon icon={Cancel01Icon} size={16} aria-hidden />
-          </Button>
-          <WorkflowsMovedContent titleRef={titleRef} onDismiss={onDismiss} />
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+          <Icon icon={Cancel01Icon} size={16} aria-hidden />
+        </Button>
+        <WorkflowsMovedContent titleRef={titleRef} onDismiss={onDismiss} />
+      </DialogContent>
+    </DialogRoot>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { Sheet } from "@/components/molecules/Sheet/Sheet";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import {
   MAX_CONTEXT_PANEL_WIDTH,

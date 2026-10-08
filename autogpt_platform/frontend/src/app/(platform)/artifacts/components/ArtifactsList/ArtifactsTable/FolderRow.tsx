@@ -5,7 +5,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { Folder01Icon } from "@hugeicons/core-free-icons";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import type { DragEvent } from "react";
 import { FILE_DRAG_MIME, readFileDragIds } from "../../WorkspaceFolders/drag";

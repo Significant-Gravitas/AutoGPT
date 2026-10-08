@@ -13,7 +13,7 @@ const meta: Meta<typeof Badge> = {
     docs: {
       description: {
         component:
-          "Badge component for displaying status information with success, error, warning, and info states.",
+          "Status badge on Kobra's Badge: success, error and warning are the green, red and amber tints; info is the neutral zinc one.",
       },
     },
   },

@@ -358,9 +358,9 @@ describe("RecentChats — expert groups", () => {
     // Hidden via opacity, so the slot stays reserved and the open/closed
     // rotation still applies: no layout shift on hover.
     expect(classes.contains("size-5")).toBe(true);
-    expect(
-      classes.contains("group-data-[state=open]/expert-group:rotate-180"),
-    ).toBe(true);
+    expect(classes.contains("group-data-open/expert-group:rotate-180")).toBe(
+      true,
+    );
     expect(classes.contains("hidden")).toBe(false);
 
     // The Otto group has no reveal-on-hover + link of its own to lean on, so

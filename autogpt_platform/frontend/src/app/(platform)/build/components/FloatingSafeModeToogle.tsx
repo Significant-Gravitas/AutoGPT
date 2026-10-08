@@ -40,31 +40,33 @@ function SafeModeButton({
 }: SafeModeButtonProps) {
   return (
     <Tooltip delayDuration={100}>
-      <TooltipTrigger asChild>
-        <Button
-          variant={isEnabled ? "primary" : "outline"}
-          size="md"
-          onClick={onToggle}
-          disabled={isPending}
-          className={cn("justify-start", fullWidth ? "w-full" : "")}
-        >
-          {isEnabled ? (
-            <>
-              <Icon icon={SecurityCheckIcon} size={16} />
-              <Text variant="body" className="text-zinc-200">
-                {label}: ON
-              </Text>
-            </>
-          ) : (
-            <>
-              <Icon icon={Shield01Icon} size={16} />
-              <Text variant="body" className="text-zinc-600">
-                {label}: OFF
-              </Text>
-            </>
-          )}
-        </Button>
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <Button
+            variant={isEnabled ? "primary" : "outline"}
+            size="md"
+            onClick={onToggle}
+            disabled={isPending}
+            className={cn("justify-start", fullWidth ? "w-full" : "")}
+          >
+            {isEnabled ? (
+              <>
+                <Icon icon={SecurityCheckIcon} size={16} />
+                <Text variant="body" className="text-zinc-200">
+                  {label}: ON
+                </Text>
+              </>
+            ) : (
+              <>
+                <Icon icon={Shield01Icon} size={16} />
+                <Text variant="body" className="text-zinc-600">
+                  {label}: OFF
+                </Text>
+              </>
+            )}
+          </Button>
+        }
+      />
       <TooltipContent>
         <div className="text-center">
           <div className="font-medium">

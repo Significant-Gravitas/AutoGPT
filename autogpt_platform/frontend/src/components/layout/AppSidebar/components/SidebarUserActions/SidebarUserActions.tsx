@@ -12,6 +12,7 @@ import { AccountMenu } from "@/components/layout/Navbar/components/AccountMenu/A
 import { Wallet } from "@/components/layout/Navbar/components/Wallet/Wallet";
 import { getAccountMenuItems } from "@/components/layout/Navbar/helpers";
 import { SidebarFooter, useSidebar } from "@/components/ui/sidebar";
+import { SoundToggle } from "@/components/ui/sound";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 
@@ -55,9 +56,7 @@ export function SidebarUserActions() {
       <div className="flex w-full items-center justify-between group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1">
         {isCollapsed ? (
           <Tooltip>
-            <TooltipTrigger asChild>
-              <div>{accountMenu}</div>
-            </TooltipTrigger>
+            <TooltipTrigger render={<div>{accountMenu}</div>} />
             <TooltipPortal>
               <TooltipContent side="right">Account</TooltipContent>
             </TooltipPortal>
@@ -65,16 +64,26 @@ export function SidebarUserActions() {
         ) : (
           accountMenu
         )}
-        {profile && (
+        <div className="flex items-center gap-1">
           <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="group-data-[collapsible=icon]:hidden">
-                <Wallet key={profile.username} compact />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="top">Credits</TooltipContent>
+            <TooltipTrigger render={<SoundToggle />} />
+            <TooltipContent side={isCollapsed ? "right" : "top"}>
+              Interface sounds
+            </TooltipContent>
           </Tooltip>
-        )}
+          {profile && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <div className="group-data-[collapsible=icon]:hidden">
+                    <Wallet key={profile.username} compact />
+                  </div>
+                }
+              />
+              <TooltipContent side="top">Credits</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       </div>
     </SidebarFooter>
   );

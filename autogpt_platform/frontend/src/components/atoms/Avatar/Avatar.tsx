@@ -46,6 +46,7 @@ export function Avatar({
   return (
     <AvatarContext.Provider value={value}>
       <div
+        data-slot="avatar"
         className={cn(
           "relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full",
           className,
@@ -129,6 +130,7 @@ export function AvatarImage({
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
+        data-slot="avatar-image"
         src={normalizedSrc}
         alt={alt ?? "Avatar image"}
         className={cn("h-full w-full object-cover", className)}
@@ -152,6 +154,7 @@ export function AvatarImage({
   return (
     <Image
       {...rest}
+      data-slot="avatar-image"
       src={normalizedSrc}
       alt={alt ?? "Avatar image"}
       className={cn("h-full w-full object-cover", className)}
@@ -199,9 +202,10 @@ export function AvatarFallback({
   if (hasImage) {
     return (
       <span
+        data-slot="avatar-fallback"
         aria-hidden="true"
         className={cn(
-          "absolute inset-0 rounded-full bg-zinc-100",
+          "absolute inset-0 rounded-full bg-muted",
           square && "rounded-none",
           className,
         )}
@@ -216,6 +220,7 @@ export function AvatarFallback({
     typeof children === "string" && children.trim() ? children.trim() : "User";
   return (
     <span
+      data-slot="avatar-fallback"
       // decorative gradient — hide from AT so the marble's unnamed role="img"
       // svg doesn't surface as an axe violation, unless the caller named it
       role={accessibleLabel ? "img" : undefined}
@@ -224,7 +229,7 @@ export function AvatarFallback({
       className={cn(
         // absolute so the fallback overlays (not flows beside) the image while it loads;
         // svg stretched to fill so the marble always matches the avatar size
-        "absolute inset-0 flex items-center justify-center rounded-full bg-transparent text-lg text-zinc-600",
+        "absolute inset-0 flex items-center justify-center rounded-full bg-transparent text-lg text-muted-foreground",
         !hasCustomFallback && "[&>svg]:h-full [&>svg]:w-full",
         className,
       )}

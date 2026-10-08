@@ -6,11 +6,12 @@ import {
   ListViewIcon,
   MoreHorizontalIcon,
   PencilEdit02Icon,
+  PlayIcon,
   PlusSignIcon,
   SparklesIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
-import { Play, Plus } from "lucide-react";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { TooltipProvider } from "../Tooltip/BaseTooltip";
 import { Button } from "./Button";
 
@@ -33,7 +34,7 @@ const meta: Meta<typeof Button> = {
     docs: {
       description: {
         component:
-          "Button component with multiple variants and sizes based on our design system. Built on top of shadcn/ui button with custom styling.",
+          "Button component with multiple variants and sizes based on our design system. Built on Kobra's Button (Base UI): house variants map onto Kobra's, pills via `rounded`, loading through Kobra's Spinner with `aria-busy`.",
       },
     },
   },
@@ -239,7 +240,7 @@ export const ToggleButtons: Story = {
 export const WithLeftIcon: Story = {
   args: {
     variant: "primary",
-    leftIcon: <Play className="h-4 w-4" />,
+    leftIcon: <Icon icon={PlayIcon} size={16} />,
     children: "Play",
   },
 };
@@ -247,7 +248,7 @@ export const WithLeftIcon: Story = {
 export const WithRightIcon: Story = {
   args: {
     variant: "outline",
-    rightIcon: <Plus className="h-4 w-4" />,
+    rightIcon: <Icon icon={PlusSignIcon} size={16} />,
     children: "Add Item",
   },
 };
@@ -256,7 +257,7 @@ export const IconOnly: Story = {
   args: {
     variant: "icon",
     size: "icon-lg",
-    children: <Plus className="h-4 w-4" />,
+    children: <Icon icon={PlusSignIcon} size={16} />,
     "aria-label": "Add item",
   },
 };
@@ -565,7 +566,7 @@ function renderAllVariants() {
               <Button
                 variant="primary"
                 size="lg"
-                leftIcon={<Play className="h-5 w-5" />}
+                leftIcon={<Icon icon={PlayIcon} size={20} />}
               >
                 Play
               </Button>
@@ -590,7 +591,7 @@ function renderAllVariants() {
               <Button
                 variant="secondary"
                 size="lg"
-                leftIcon={<Play className="h-5 w-5" />}
+                leftIcon={<Icon icon={PlayIcon} size={20} />}
               >
                 Play
               </Button>
@@ -615,7 +616,7 @@ function renderAllVariants() {
               <Button
                 variant="destructive"
                 size="lg"
-                leftIcon={<Play className="h-5 w-5" />}
+                leftIcon={<Icon icon={PlayIcon} size={20} />}
               >
                 Play
               </Button>
@@ -640,7 +641,7 @@ function renderAllVariants() {
               <Button
                 variant="outline"
                 size="lg"
-                leftIcon={<Play className="h-5 w-5" />}
+                leftIcon={<Icon icon={PlayIcon} size={20} />}
               >
                 Play
               </Button>
@@ -665,7 +666,7 @@ function renderAllVariants() {
               <Button
                 variant="ghost"
                 size="lg"
-                leftIcon={<Play className="h-5 w-5" />}
+                leftIcon={<Icon icon={PlayIcon} size={20} />}
               >
                 Play
               </Button>
@@ -696,7 +697,7 @@ function renderAllVariants() {
               <Button
                 variant="primary"
                 size="md"
-                leftIcon={<Play className="h-4 w-4" />}
+                leftIcon={<Icon icon={PlayIcon} size={16} />}
               >
                 Play
               </Button>
@@ -721,7 +722,7 @@ function renderAllVariants() {
               <Button
                 variant="secondary"
                 size="md"
-                leftIcon={<Play className="h-4 w-4" />}
+                leftIcon={<Icon icon={PlayIcon} size={16} />}
               >
                 Play
               </Button>
@@ -746,7 +747,7 @@ function renderAllVariants() {
               <Button
                 variant="destructive"
                 size="md"
-                leftIcon={<Play className="h-4 w-4" />}
+                leftIcon={<Icon icon={PlayIcon} size={16} />}
               >
                 Play
               </Button>
@@ -771,7 +772,7 @@ function renderAllVariants() {
               <Button
                 variant="outline"
                 size="md"
-                leftIcon={<Play className="h-4 w-4" />}
+                leftIcon={<Icon icon={PlayIcon} size={16} />}
               >
                 Play
               </Button>
@@ -796,7 +797,7 @@ function renderAllVariants() {
               <Button
                 variant="ghost"
                 size="md"
-                leftIcon={<Play className="h-4 w-4" />}
+                leftIcon={<Icon icon={PlayIcon} size={16} />}
               >
                 Play
               </Button>
@@ -817,7 +818,7 @@ function renderAllVariants() {
             </div>
             <div className="flex flex-col gap-8">
               <Button variant="icon" size="icon-lg" aria-label="Add">
-                <Plus className="h-4 w-4" />
+                <Icon icon={PlusSignIcon} size={16} />
               </Button>
               <Button
                 variant="primary"
@@ -825,10 +826,10 @@ function renderAllVariants() {
                 className="bg-zinc-700"
                 aria-label="Add"
               >
-                <Plus className="h-4 w-4" />
+                <Icon icon={PlusSignIcon} size={16} />
               </Button>
               <Button variant="icon" size="icon-lg" disabled aria-label="Add">
-                <Plus className="h-4 w-4" />
+                <Icon icon={PlusSignIcon} size={16} />
               </Button>
             </div>
           </div>

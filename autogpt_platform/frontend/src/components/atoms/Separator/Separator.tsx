@@ -1,38 +1,22 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import * as SeparatorPrimitive from "@radix-ui/react-separator";
-import { cva } from "class-variance-authority";
-import { forwardRef } from "react";
+import { Separator as KobraSeparator } from "@/components/ui/separator";
 
-const separatorVariants = cva("shrink-0 bg-border", {
-  variants: {
-    orientation: {
-      horizontal: "h-px w-full",
-      vertical: "h-full w-px",
-    },
-  },
-  defaultVariants: {
-    orientation: "horizontal",
-  },
-});
+interface Props extends React.ComponentProps<typeof KobraSeparator> {
+  /** Hidden from assistive tech (default). Base UI's separator is always semantic. */
+  decorative?: boolean;
+}
 
-type Props = React.ComponentPropsWithoutRef<typeof SeparatorPrimitive.Root>;
-
-export const Separator = forwardRef<
-  React.ElementRef<typeof SeparatorPrimitive.Root>,
-  Props
->(function Separator(
-  { className, orientation = "horizontal", decorative = true, ...props },
-  ref,
-) {
+export function Separator({
+  decorative = true,
+  orientation = "horizontal",
+  ...props
+}: Props) {
   return (
-    <SeparatorPrimitive.Root
-      ref={ref}
+    <KobraSeparator
       orientation={orientation}
-      decorative={decorative}
-      className={cn(separatorVariants({ orientation }), className)}
+      {...(decorative && { role: "none", "aria-orientation": undefined })}
       {...props}
     />
   );
-});
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useId } from "react";
 import { useToolAccordion } from "./useToolAccordion";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";

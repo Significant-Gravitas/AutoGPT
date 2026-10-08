@@ -85,8 +85,8 @@ vi.mock("@/app/(platform)/copilot/helpers", async (importActual) => {
   };
 });
 
-vi.mock("framer-motion", async (importActual) => {
-  const actual = await importActual<typeof import("framer-motion")>();
+vi.mock("motion/react", async (importActual) => {
+  const actual = await importActual<typeof import("motion/react")>();
   return { ...actual, useReducedMotion: () => true };
 });
 

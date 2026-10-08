@@ -1,6 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 interface Props {
   visible: boolean;
@@ -14,7 +14,7 @@ export function ScrollToTopButton({ visible, onClick }: Props) {
     : { opacity: 0, scale: 0.95, y: 8 };
   const shown = reduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 };
 
-  // framer-motion writes `transform` inline, so the centring lives on a
+  // motion writes `transform` inline, so the centring lives on a
   // static wrapper rather than on the animated element.
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 z-30 flex justify-center">

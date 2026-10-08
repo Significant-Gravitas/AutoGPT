@@ -5,7 +5,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import type { IconSvgElement } from "@hugeicons/react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef } from "react";
 import { getFocusableElements } from "./helpers";
 import { isKey, isKeyIgnoringComposition } from "@/lib/keyboard";

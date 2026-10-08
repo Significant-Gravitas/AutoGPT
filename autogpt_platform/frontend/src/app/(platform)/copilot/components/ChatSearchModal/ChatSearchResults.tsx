@@ -1,6 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { MutableRefObject } from "react";
 import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { ChatOriginIcon } from "../ChatOriginIcon/ChatOriginIcon";

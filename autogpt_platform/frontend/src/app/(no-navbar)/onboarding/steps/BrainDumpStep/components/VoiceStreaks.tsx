@@ -1,6 +1,6 @@
 "use client";
 
-import type { MotionValue } from "framer-motion";
+import type { MotionValue } from "motion/react";
 import { useEffect, useRef } from "react";
 import {
   envelope,

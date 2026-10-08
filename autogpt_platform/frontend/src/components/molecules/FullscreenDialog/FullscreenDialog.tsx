@@ -1,7 +1,7 @@
 "use client";
 
-import * as Dialog from "@radix-ui/react-dialog";
-import { PropsWithChildren, useRef } from "react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { PropsWithChildren } from "react";
 
 interface Props extends PropsWithChildren {
   title: string;
@@ -9,35 +9,20 @@ interface Props extends PropsWithChildren {
 }
 
 export function FullscreenDialog({ title, onClose, children }: Props) {
-  const previousFocus = useRef<HTMLElement | null>(null);
   return (
-    <Dialog.Root
+    <Dialog
       open
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
     >
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-background" />
-        <Dialog.Content
-          className="fixed inset-0 z-50 flex flex-col bg-background"
-          aria-describedby={undefined}
-          onOpenAutoFocus={() => {
-            previousFocus.current =
-              document.activeElement instanceof HTMLElement
-                ? document.activeElement
-                : null;
-          }}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            if (previousFocus.current?.isConnected)
-              previousFocus.current.focus();
-          }}
-        >
-          <Dialog.Title className="sr-only">{title}</Dialog.Title>
-          {children}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+      <DialogContent
+        showCloseButton={false}
+        className="inset-0 top-0 left-0 flex h-full max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none bg-background p-0 shadow-none ring-0 sm:max-w-none"
+      >
+        <DialogTitle className="sr-only">{title}</DialogTitle>
+        {children}
+      </DialogContent>
+    </Dialog>
   );
 }

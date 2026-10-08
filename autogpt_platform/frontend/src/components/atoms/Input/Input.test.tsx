@@ -54,12 +54,10 @@ describe("Input keyboard handling", () => {
 });
 
 describe("Input field styles", () => {
-  it("uses the shared field classes at 40px by default", () => {
+  it("renders Kobra's input at the house 40px height by default", () => {
     render(<Input id="name" label="Name" />);
     const field = screen.getByLabelText("Name");
-    expect(field.className).toContain("rounded-lg");
-    expect(field.className).toContain("border-input");
-    expect(field.className).toContain("focus-ring");
+    expect(field.getAttribute("data-slot")).toBe("input");
     expect(field.className).toContain("h-10");
   });
 
@@ -71,11 +69,20 @@ describe("Input field styles", () => {
     expect(screen.getByLabelText("Name").className).toContain(height);
   });
 
-  it("marks an error with the destructive border and aria-invalid", () => {
+  it("marks an error with aria-invalid and shows the message", () => {
     render(<Input id="name" label="Name" error="Required" />);
     const field = screen.getByLabelText("Name");
-    expect(field.className).toContain("border-destructive");
     expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByText("Required")).toBeDefined();
+  });
+
+  it("renders the textarea variant on Kobra's textarea with a rows-based minimum height", () => {
+    render(<Input id="bio" label="Bio" type="textarea" rows={5} />);
+    const field = screen.getByLabelText("Bio");
+    expect(field.tagName).toBe("TEXTAREA");
+    expect(field.getAttribute("data-slot")).toBe("textarea");
+    expect(field.getAttribute("rows")).toBe("5");
+    expect(field.style.minHeight).toContain("5lh");
   });
 
   it("puts the consumer className last", () => {

@@ -14,9 +14,9 @@ interface Props {
 export function HeaderAction({ label, children }: Props) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex">{children}</span>
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={<span className="inline-flex">{children}</span>}
+      />
       <TooltipContent side="bottom">{label}</TooltipContent>
     </Tooltip>
   );

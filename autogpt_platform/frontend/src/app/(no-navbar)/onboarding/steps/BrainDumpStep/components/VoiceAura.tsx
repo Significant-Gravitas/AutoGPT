@@ -1,6 +1,6 @@
 "use client";
 
-import type { MotionValue } from "framer-motion";
+import type { MotionValue } from "motion/react";
 import { type ReactNode, useRef } from "react";
 import {
   createStreakField,

@@ -83,14 +83,16 @@ export function CredentialRow({
       {credential.isManaged ? (
         <TooltipProvider>
           <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                tabIndex={0}
-                className="text-[11px] font-medium tracking-[1.1px] text-zinc-700 uppercase focus:outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-800"
-              >
-                Managed
-              </span>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <span
+                  tabIndex={0}
+                  className="text-[11px] font-medium tracking-[1.1px] text-zinc-700 uppercase focus:outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-800"
+                >
+                  Managed
+                </span>
+              }
+            />
             <TooltipContent side="top">
               Managed by AutoGPT — cannot be removed
             </TooltipContent>

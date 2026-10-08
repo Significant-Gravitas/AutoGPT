@@ -1,21 +1,25 @@
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
+import { Input as KobraInput } from "@/components/ui/input";
+import { Textarea as KobraTextarea } from "@/components/ui/textarea";
 import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
+import { EyeIcon, EyeOffIcon } from "@hugeicons/core-free-icons";
 import { forwardRef, ReactNode, useState } from "react";
 import CurrencyInput from "react-currency-input-field";
 import { Text } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
-import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
+import { rowsMinHeight } from "../Textarea/helpers";
+import { fieldSizeClasses, type FieldSize } from "./fieldVariants";
 import { useInput } from "./useInput";
-import {
-  FIELD_BASE,
-  FIELD_INVALID,
-  fieldVariants,
-  type FieldSize,
-} from "./fieldVariants";
-import { EyeIcon, EyeOffIcon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement;
+
+const textareaSizeClasses: Record<FieldSize, string> = {
+  sm: "px-3 text-xs md:text-xs",
+  md: "px-3 text-sm",
+  lg: "px-4 text-sm",
+};
 
 export interface TextFieldProps extends Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
@@ -69,6 +73,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     amountPrefix,
     amountSuffix,
     onKeyDown,
+    rows = 3,
     ...props
   },
   ref,
@@ -104,29 +109,26 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     }
   }
 
-  const fieldClassName = fieldVariants({ size, invalid: Boolean(error) });
+  const ariaLabel =
+    props["aria-label"] ?? (hideLabel && label ? label : undefined);
+
   const renderInput = () => {
     if (props.type === "textarea") {
       return (
-        <textarea
+        <KobraTextarea
           ref={ref as React.Ref<HTMLTextAreaElement>}
           className={cn(
-            FIELD_BASE,
-            error && FIELD_INVALID,
-            "-mb-1 h-auto py-2 text-sm leading-snug",
-            size === "sm" && "min-h-8 px-3",
-            size === "md" && "min-h-9 px-3",
-            size === "lg" && "min-h-10 px-4",
+            textareaSizeClasses[size],
+            "py-2 leading-snug",
             className,
           )}
+          style={{ minHeight: rowsMinHeight(rows) }}
           placeholder={placeholder || label}
           onChange={handleTextareaChange}
           aria-invalid={error ? true : undefined}
           onKeyDown={guardedOnKeyDown}
-          rows={props.rows || 3}
-          aria-label={
-            props["aria-label"] ?? (hideLabel && label ? label : undefined)
-          }
+          rows={rows}
+          aria-label={ariaLabel}
           aria-labelledby={props["aria-labelledby"]}
           aria-describedby={props["aria-describedby"]}
           id={inputId}
@@ -142,7 +144,8 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     if (props.type === "amount") {
       return (
         <CurrencyInput
-          className={cn(fieldClassName, className)}
+          customInput={KobraInput}
+          className={cn(fieldSizeClasses[size], className)}
           placeholder={placeholder || label}
           // CurrencyInput gives unformatted numeric string in value param
           onValueChange={handleAmountValueChange}
@@ -156,14 +159,12 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           groupSeparator=","
           decimalSeparator="."
           allowNegativeValue
-          aria-label={
-            props["aria-label"] ?? (hideLabel && label ? label : undefined)
-          }
+          aria-invalid={error ? true : undefined}
+          aria-label={ariaLabel}
           aria-labelledby={props["aria-labelledby"]}
           aria-describedby={props["aria-describedby"]}
-          // Pass through common handlers
-          onBlur={props.onBlur as any}
-          onFocus={props.onFocus as any}
+          onBlur={props.onBlur}
+          onFocus={props.onFocus}
           onKeyDown={guardedOnKeyDown}
           prefix={amountPrefix}
           suffix={amountSuffix}
@@ -172,9 +173,13 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     }
 
     return (
-      <input
+      <KobraInput
         ref={ref as React.Ref<HTMLInputElement>}
-        className={cn(fieldClassName, isPasswordType && "pr-12", className)}
+        className={cn(
+          fieldSizeClasses[size],
+          isPasswordType && "pr-12",
+          className,
+        )}
         placeholder={placeholder || label}
         onChange={handleInputChange}
         aria-invalid={error ? true : undefined}

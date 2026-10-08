@@ -5,9 +5,9 @@ import {
   Accordion,
   AccordionContent,
   AccordionItem,
+  AccordionTrigger,
 } from "@/components/molecules/Accordion/Accordion";
 import { cn } from "@/lib/utils";
-import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { useState } from "react";
 import { ArrowRight01Icon, BulbIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -32,30 +32,29 @@ export function ReasoningCollapse({ children, isActive = false }: Props) {
       collapsible
       className="my-1"
       value={value}
-      onValueChange={(newValue) => setValue(newValue === value ? "" : newValue)}
+      onValueChange={setValue}
     >
       <AccordionItem value="reasoning" className="border-none">
-        <AccordionPrimitive.Header className="flex">
-          <AccordionPrimitive.Trigger
-            className={cn(
-              "group flex items-center gap-1.5 py-1 font-sans text-sm font-medium text-muted-foreground transition-colors hover:text-zinc-700 focus-visible:outline-hidden",
-              isActive && "animate-pulse",
-            )}
-          >
-            {isActive ? (
-              <Icon icon={BulbIcon} size={14} className="shrink-0" />
-            ) : (
-              // Once reasoning has finished streaming, swap the bulb for a
-              // caret that rotates to reflect the expanded/collapsed state.
-              <Icon
-                icon={ArrowRight01Icon}
-                size={14}
-                className="shrink-0 transition-transform group-data-[state=open]:rotate-90"
-              />
-            )}
-            Reasoning
-          </AccordionPrimitive.Trigger>
-        </AccordionPrimitive.Header>
+        <AccordionTrigger
+          showChevron={false}
+          className={cn(
+            "group w-auto flex-none justify-start gap-1.5 py-1 font-sans text-sm font-medium text-muted-foreground transition-colors hover:text-zinc-700",
+            isActive && "animate-pulse",
+          )}
+        >
+          {isActive ? (
+            <Icon icon={BulbIcon} size={14} className="shrink-0" />
+          ) : (
+            // Once reasoning has finished streaming, swap the bulb for a
+            // caret that rotates to reflect the expanded/collapsed state.
+            <Icon
+              icon={ArrowRight01Icon}
+              size={14}
+              className="shrink-0 transition-transform group-aria-expanded:rotate-90"
+            />
+          )}
+          Reasoning
+        </AccordionTrigger>
         <AccordionContent className="pt-0 pb-1 font-sans text-sm text-muted-foreground [&_pre]:m-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:font-sans [&_pre]:text-sm [&_pre]:whitespace-pre-wrap [&_pre]:text-muted-foreground">
           {children}
           <Button

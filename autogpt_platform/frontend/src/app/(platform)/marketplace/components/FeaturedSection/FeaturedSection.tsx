@@ -7,7 +7,7 @@ import {
   CarouselItem,
   CarouselNext,
   CarouselPrevious,
-} from "@/components/__legacy__/ui/carousel";
+} from "@/components/molecules/Carousel/Carousel";
 import Link from "next/link";
 import { FeaturedAgentCard } from "../FeaturedAgentCard/FeaturedAgentCard";
 import { SparklesIcon } from "@hugeicons/core-free-icons";

@@ -1,5 +1,5 @@
 import { act, render, screen } from "@testing-library/react";
-import { motionValue, type MotionValue } from "framer-motion";
+import { motionValue, type MotionValue } from "motion/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MicButton, type OrbScreen } from "../MicButton";
@@ -16,8 +16,8 @@ const state = vi.hoisted(() => ({
   reduced: false,
   animations: [] as Running[],
 }));
-vi.mock("framer-motion", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("framer-motion")>()),
+vi.mock("motion/react", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("motion/react")>()),
   useReducedMotion: () => state.reduced,
   animate: (
     value: MotionValue<number>,

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./kobra.css";
 
 @plugin "tailwind-scrollbar" {
   nocompatible: true;
@@ -165,11 +166,6 @@
   /* The default ring colour, for ring-* without a colour class. */
   --default-ring-color: var(--ring);
 
-  --animate-accordion-down: accordion-down 0.2s ease-out;
-  --animate-accordion-up: accordion-up 0.2s ease-out;
-  --animate-collapsible-down: collapsible-down 0.26s
-    cubic-bezier(0.33, 1, 0.68, 1);
-  --animate-collapsible-up: collapsible-up 0.2s cubic-bezier(0.33, 1, 0.68, 1);
   --animate-fade-in: fade-in 0.2s ease-out;
   --animate-shimmer: shimmer 4s ease-in-out infinite;
   --animate-shake: shake 0.5s ease-in-out;
@@ -185,48 +181,6 @@
 
   --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
 
-  @keyframes accordion-down {
-    from {
-      height: 0;
-    }
-    to {
-      height: var(--radix-accordion-content-height);
-    }
-  }
-  @keyframes accordion-up {
-    from {
-      height: var(--radix-accordion-content-height);
-    }
-    to {
-      height: 0;
-    }
-  }
-  @keyframes collapsible-down {
-    from {
-      height: 0;
-      opacity: 0;
-    }
-    60% {
-      opacity: 1;
-    }
-    to {
-      height: var(--radix-collapsible-content-height);
-      opacity: 1;
-    }
-  }
-  @keyframes collapsible-up {
-    from {
-      height: var(--radix-collapsible-content-height);
-      opacity: 1;
-    }
-    40% {
-      opacity: 0;
-    }
-    to {
-      height: 0;
-      opacity: 0;
-    }
-  }
   @keyframes fade-in {
     0% {
       opacity: 0;
@@ -505,7 +459,7 @@
 /* *** AutoGPT Design Components *** */
 
 @utility agpt-border-input {
-  @apply m-0.5 border border-input focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 focus:outline-hidden data-[state=open]:border-zinc-400 data-[state=open]:ring-1 data-[state=open]:ring-zinc-400;
+  @apply m-0.5 border border-input focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 focus:outline-hidden data-open:border-zinc-400 data-open:ring-1 data-open:ring-zinc-400;
 }
 
 @utility agpt-shadow-input {

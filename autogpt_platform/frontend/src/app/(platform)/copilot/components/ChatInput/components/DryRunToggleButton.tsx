@@ -27,22 +27,24 @@ export function DryRunToggleButton({ isDryRun, onToggle }: Props) {
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-pressed={isDryRun}
-          onClick={onToggle}
-          className={cn(
-            "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-zinc-100",
-            isDryRun
-              ? "text-yellow-600 hover:text-yellow-700"
-              : "text-muted-foreground hover:text-zinc-700",
-          )}
-          aria-label={ariaLabel}
-        >
-          <Icon icon={FlaskConicalIcon} size={16} />
-        </button>
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-pressed={isDryRun}
+            onClick={onToggle}
+            className={cn(
+              "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-zinc-100",
+              isDryRun
+                ? "text-yellow-600 hover:text-yellow-700"
+                : "text-muted-foreground hover:text-zinc-700",
+            )}
+            aria-label={ariaLabel}
+          >
+            <Icon icon={FlaskConicalIcon} size={16} />
+          </button>
+        }
+      />
       <TooltipPortal>
         <TooltipContent>{tooltip}</TooltipContent>
       </TooltipPortal>

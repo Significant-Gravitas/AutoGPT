@@ -17,14 +17,24 @@ function renderToggle(selectedValues: string[] = []) {
       aria-label="Animals"
     />,
   );
-  return { onChange, cat: screen.getByRole("checkbox", { name: "猫" }) };
+  return { onChange, cat: screen.getByRole("button", { name: "猫" }) };
 }
 
-describe("MultiToggle keyboard handling", () => {
-  it.each([" ", "Enter"])("selects an item on %s", (key) => {
+describe("MultiToggle", () => {
+  it("exposes the selection as a labelled group of pressed buttons", () => {
+    const { cat } = renderToggle(["dog"]);
+
+    expect(screen.getByRole("group", { name: "Animals" })).toBeDefined();
+    expect(cat.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      screen.getByRole("button", { name: "犬" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("selects an item on click", () => {
     const { onChange, cat } = renderToggle();
 
-    fireEvent.keyDown(cat, { key });
+    fireEvent.click(cat);
 
     expect(onChange).toHaveBeenCalledWith(["cat"]);
   });
@@ -32,7 +42,7 @@ describe("MultiToggle keyboard handling", () => {
   it("deselects an already selected item", () => {
     const { onChange, cat } = renderToggle(["cat", "dog"]);
 
-    fireEvent.keyDown(cat, { key: " " });
+    fireEvent.click(cat);
 
     expect(onChange).toHaveBeenCalledWith(["dog"]);
   });

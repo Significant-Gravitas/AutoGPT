@@ -14,7 +14,7 @@ const meta: Meta<typeof Sheet> = {
     docs: {
       description: {
         component:
-          "A panel that slides in from an edge of the screen, on Radix Dialog. `title` is required as the accessible name; hide it visually with `hideTitle`. Control it with `open`/`onOpenChange` or pass a `trigger`.",
+          "A panel that slides in from an edge of the screen, on Kobra's Sheet (Base UI Dialog). `title` is required as the accessible name; hide it visually with `hideTitle`. Control it with `open`/`onOpenChange` or pass a `trigger`.",
       },
     },
   },

@@ -1,3 +1,4 @@
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { ErrorCardProps } from "./ErrorCard";
 
 export function getErrorMessage(
@@ -93,23 +94,21 @@ export function handleReportError(
         Sentry.captureException(error);
       });
 
-      // Show success toast notification after pressing the report error button
-      import("sonner").then(({ toast }) => {
-        toast.success("Error reported successfully", {
-          description:
-            "Thank you for helping us improve! Our team has been notified.",
-          duration: 4000,
-        });
+      toast({
+        title: "Error reported successfully",
+        description:
+          "Thank you for helping us improve! Our team has been notified.",
+        variant: "success",
+        duration: 4000,
       });
     });
   } catch (error) {
     console.error("Failed to report error to Sentry:", error);
-    // Fallback toast notification
-    import("sonner").then(({ toast }) => {
-      toast.error("Failed to report error", {
-        description: "Please try again or contact support directly.",
-        duration: 4000,
-      });
+    toast({
+      title: "Failed to report error",
+      description: "Please try again or contact support directly.",
+      variant: "destructive",
+      duration: 4000,
     });
   }
 }

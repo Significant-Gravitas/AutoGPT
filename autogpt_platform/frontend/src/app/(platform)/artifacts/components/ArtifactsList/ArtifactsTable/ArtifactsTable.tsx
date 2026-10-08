@@ -4,8 +4,8 @@ import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspace
 import { Text } from "@/components/atoms/Text/Text";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
-import { motion, useReducedMotion } from "framer-motion";
-import type { Variants } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
+import type { Variants } from "motion/react";
 import { EmptyState } from "../EmptyState";
 import type { EmptyStateContent } from "../helpers";
 import { SelectionBar } from "../SelectionBar/SelectionBar";

@@ -1,3 +1,4 @@
+import type { CommandOptionType } from "@kmenu/react";
 import type { ComponentType } from "react";
 
 export interface SearchCommandItem {
@@ -19,34 +20,40 @@ export interface SearchCommandBucket {
   items: SearchCommandItem[];
 }
 
-export interface FlatBucketItem {
+export interface SearchCommandOptionData {
   item: SearchCommandItem;
   bucketKey: string;
-  /** Absolute index across all buckets (0-based). */
-  index: number;
 }
+
+export type SearchCommandOption = CommandOptionType<SearchCommandOptionData>;
 
 export interface HighlightPart {
   text: string;
   isMatch: boolean;
 }
 
-export function flattenBuckets(
-  buckets: SearchCommandBucket[],
-): FlatBucketItem[] {
-  const flat: FlatBucketItem[] = [];
-  for (const bucket of buckets) {
-    for (const item of bucket.items) {
-      flat.push({ item, bucketKey: bucket.key, index: flat.length });
-    }
-  }
-  return flat;
-}
-
 export function getTotalCount(buckets: SearchCommandBucket[]): number {
   let total = 0;
   for (const bucket of buckets) total += bucket.items.length;
   return total;
+}
+
+/**
+ * Flattens the buckets into kmenu options. The bucket key doubles as the
+ * kmenu group, so bucket order survives kmenu's group reordering, and the
+ * id is namespaced so the same item id in two buckets never collides.
+ */
+export function toCommandOptions(
+  buckets: SearchCommandBucket[],
+): SearchCommandOption[] {
+  return buckets.flatMap((bucket) =>
+    bucket.items.map((item) => ({
+      id: `${bucket.key}:${item.id}`,
+      label: item.title,
+      group: bucket.key,
+      data: { item, bucketKey: bucket.key },
+    })),
+  );
 }
 
 /**

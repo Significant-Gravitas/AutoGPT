@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "motion/react";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { getSubmissionMeta } from "../helpers";
 import {

@@ -2,9 +2,18 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { isKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
-import { forwardRef, ReactElement, ReactNode, Ref } from "react";
+import { ReactElement, ReactNode, Ref } from "react";
 import { SortableHeader } from "./components/SortableHeader";
 import {
   alignClassName,
@@ -32,26 +41,25 @@ interface Props<T> {
   /** The rows arrive sorted (e.g. by the server); only report sort changes. */
   manualSorting?: boolean;
   className?: string;
+  ref?: Ref<HTMLTableElement>;
 }
 
-function DataTableInner<T>(
-  {
-    columns,
-    rows,
-    getRowKey,
-    caption,
-    isLoading = false,
-    loadingRowCount = 5,
-    emptyState = "No results",
-    onRowClick,
-    sort,
-    defaultSort,
-    onSortChange,
-    manualSorting = false,
-    className,
-  }: Props<T>,
-  ref: Ref<HTMLTableElement>,
-) {
+export function DataTable<T>({
+  columns,
+  rows,
+  getRowKey,
+  caption,
+  isLoading = false,
+  loadingRowCount = 5,
+  emptyState = "No results",
+  onRowClick,
+  sort,
+  defaultSort,
+  onSortChange,
+  manualSorting = false,
+  className,
+  ref,
+}: Props<T>): ReactElement {
   const { activeSort, visibleRows, handleSort } = useDataTable({
     rows,
     columns,
@@ -72,23 +80,23 @@ function DataTableInner<T>(
   function renderBody() {
     if (isLoading) {
       return Array.from({ length: loadingRowCount }, (_, rowIndex) => (
-        <tr
-          key={`loading-${rowIndex}`}
-          className="border-b border-border last:border-0"
-        >
+        <TableRow key={`loading-${rowIndex}`} className="hover:bg-transparent">
           {columns.map((column) => (
-            <td key={column.key} className="px-4 py-3">
+            <TableCell key={column.key}>
               <Skeleton className="h-4 w-full max-w-32" />
-            </td>
+            </TableCell>
           ))}
-        </tr>
+        </TableRow>
       ));
     }
 
     if (visibleRows.length === 0) {
       return (
-        <tr>
-          <td colSpan={columns.length} className="px-4 py-10 text-center">
+        <TableRow className="hover:bg-transparent">
+          <TableCell
+            colSpan={columns.length}
+            className="h-auto py-10 text-center whitespace-normal"
+          >
             {typeof emptyState === "string" ? (
               <Text variant="body" tone="secondary" as="span">
                 {emptyState}
@@ -96,13 +104,13 @@ function DataTableInner<T>(
             ) : (
               emptyState
             )}
-          </td>
-        </tr>
+          </TableCell>
+        </TableRow>
       );
     }
 
     return visibleRows.map((row, rowIndex) => (
-      <tr
+      <TableRow
         key={getRowKey(row, rowIndex)}
         onClick={onRowClick ? () => onRowClick(row) : undefined}
         onKeyDown={
@@ -110,54 +118,45 @@ function DataTableInner<T>(
         }
         tabIndex={onRowClick ? 0 : undefined}
         className={cn(
-          "border-b border-border transition-colors last:border-0",
+          !onRowClick && "hover:bg-transparent",
           onRowClick &&
-            "cursor-pointer focus-ring hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-inset",
+            "cursor-pointer focus-ring focus-visible:bg-muted/50 focus-visible:ring-inset",
         )}
       >
         {columns.map((column) => (
-          <td
+          <TableCell
             key={column.key}
             className={cn(
-              "px-4 py-3 align-middle font-sans text-sm text-foreground",
+              "h-auto py-3 whitespace-normal",
               alignClassName[column.align ?? DEFAULT_ALIGN],
               column.className,
             )}
           >
             {column.cell(row, rowIndex)}
-          </td>
+          </TableCell>
         ))}
-      </tr>
+      </TableRow>
     ));
   }
 
   return (
-    <div
-      className={cn(
-        "relative w-full overflow-x-auto rounded-xl border border-border bg-card",
-        className,
-      )}
-    >
-      <table
-        ref={ref}
-        aria-busy={isLoading || undefined}
-        className="w-full caption-bottom border-collapse"
-      >
-        <caption className="sr-only">{caption}</caption>
-        <thead className="bg-muted/50">
-          <tr className="border-b border-border">
+    <div className={className}>
+      <Table ref={ref} aria-busy={isLoading || undefined}>
+        <TableCaption className="sr-only">{caption}</TableCaption>
+        <TableHeader>
+          <TableRow>
             {columns.map((column) => {
               const align = column.align ?? DEFAULT_ALIGN;
               const isSortable = Boolean(column.sortValue);
               return (
-                <th
+                <TableHead
                   key={column.key}
                   scope="col"
                   aria-sort={
                     isSortable ? getAriaSort(activeSort, column.key) : undefined
                   }
                   className={cn(
-                    "h-10 px-4 align-middle",
+                    "h-10",
                     alignClassName[align],
                     column.headerClassName,
                   )}
@@ -179,18 +178,13 @@ function DataTableInner<T>(
                       {column.header}
                     </Text>
                   )}
-                </th>
+                </TableHead>
               );
             })}
-          </tr>
-        </thead>
-        <tbody>{renderBody()}</tbody>
-      </table>
+          </TableRow>
+        </TableHeader>
+        <TableBody>{renderBody()}</TableBody>
+      </Table>
     </div>
   );
 }
-
-// forwardRef drops the row type parameter, so restore it on the export.
-export const DataTable = forwardRef(DataTableInner) as <T>(
-  props: Props<T> & { ref?: Ref<HTMLTableElement> },
-) => ReactElement;

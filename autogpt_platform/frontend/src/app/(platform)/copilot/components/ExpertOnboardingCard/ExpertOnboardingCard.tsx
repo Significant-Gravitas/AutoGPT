@@ -10,7 +10,7 @@ import {
   SentIcon,
 } from "@hugeicons/core-free-icons";
 import type { ToolUIPart } from "ai";
-import { domAnimation, LazyMotion, m } from "framer-motion";
+import { domAnimation, LazyMotion, m } from "motion/react";
 import { useContext, useId } from "react";
 import { useExpertMap } from "../../useExpertMap";
 import { ExpertAvatar } from "../ChatMessagesContainer/components/ExpertAvatar/ExpertAvatar";

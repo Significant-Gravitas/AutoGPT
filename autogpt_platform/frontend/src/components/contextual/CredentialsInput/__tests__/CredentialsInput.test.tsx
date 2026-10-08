@@ -13,6 +13,7 @@ import type {
 } from "@/lib/autogpt-server-api";
 import React from "react";
 import { CredentialsInput } from "../CredentialsInput";
+import userEvent from "@testing-library/user-event";
 
 // The default variant mounts ConnectCredentialDialog, which reads the pure
 // getConnectableCredentialTypes helper — keep it while stubbing the hook.
@@ -682,8 +683,10 @@ describe("CredentialsInput – a removed connection", () => {
       .getAllByRole("button")
       .find((button) => button.getAttribute("aria-haspopup") === "menu");
     if (!menuTrigger) throw new Error("expected the credential actions menu");
-    fireEvent.pointerDown(menuTrigger, { button: 0 });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    await userEvent.click(menuTrigger);
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: "Delete" }),
+    );
     fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(deleteCredentials).toHaveBeenCalled());

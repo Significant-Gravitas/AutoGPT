@@ -13,7 +13,7 @@ const meta: Meta<typeof OriginFilter> = {
       description: {
         component:
           "Segmented pill filter for the Artifacts page. The active pill " +
-          "slides between options via Framer Motion's shared `layoutId`. " +
+          "slides between options via Motion's shared `layoutId`. " +
           "Drives the `origin` query param on `useListWorkspaceFiles` " +
           "(uploaded vs generated, all = no filter).",
       },

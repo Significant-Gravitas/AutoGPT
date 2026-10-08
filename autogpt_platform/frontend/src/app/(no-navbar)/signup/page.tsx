@@ -7,7 +7,7 @@ import {
   FormField,
   FormItem,
   FormLabel,
-} from "@/components/__legacy__/ui/form";
+} from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
@@ -64,130 +64,132 @@ export default function SignupPage() {
         </Text>
       </div>
 
-      <Form {...form}>
-        <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Email"
-                placeholder="name@company.com"
-                type="email"
-                autoComplete="email"
-                error={form.formState.errors.email?.message}
-                {...field}
-              />
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Password"
-                placeholder="Create a password"
-                type="password"
-                autoComplete="new-password"
-                error={form.formState.errors.password?.message}
-                {...field}
-              />
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="confirmPassword"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Confirm Password"
-                placeholder="Confirm your password"
-                type="password"
-                autoComplete="new-password"
-                error={confirmPasswordError}
-                {...field}
-              />
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="agreeToTerms"
-            render={({ field }) => (
-              <>
-                <FormItem className="mt-6 flex w-full flex-row items-center -space-y-1 space-x-2">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      className="relative bottom-px"
-                    />
-                  </FormControl>
-                  <div>
-                    <FormLabel className="flex flex-wrap items-center gap-1">
-                      <Text variant="body-medium" className="inline-block">
-                        I agree to the
-                      </Text>
-                      <Link
-                        href="https://agpt.co/legal/platform-terms-of-use"
-                        variant="secondary"
-                      >
-                        Terms of Use
-                      </Link>
-                      <Text variant="body-medium" className="inline-block">
-                        and
-                      </Text>
-                      <Link
-                        href="https://agpt.co/legal/platform-privacy-policy"
-                        variant="secondary"
-                      >
-                        Privacy Policy
-                      </Link>
-                    </FormLabel>
-                  </div>
-                </FormItem>
-                {termsError ? (
-                  <div className="flex items-center gap-2">
-                    <Icon icon={Alert02Icon} className="h-4 w-4 text-red-500" />
-                    <Text variant="small-medium" className="text-red-500">
-                      {termsError}
-                    </Text>
-                  </div>
-                ) : null}
-              </>
-            )}
-          />
-
-          <Button
-            variant="primary"
-            loading={isLoading}
-            disabled={isGoogleLoading}
-            type="submit"
-            className="mt-6 w-full"
-          >
-            {isLoading ? "Signing up..." : "Sign up"}
-          </Button>
-        </form>
-
-        {isCloudEnv ? (
-          <>
-            <AuthDivider />
-            <GoogleOAuthButton
-              onClick={() => handleProviderSignup("google")}
-              isLoading={isGoogleLoading}
-              disabled={isLoading}
+      <Form
+        form={form}
+        onSubmit={handleSubmit}
+        className="flex w-full flex-col gap-1 space-y-0"
+      >
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <Input
+              id={field.name}
+              label="Email"
+              placeholder="name@company.com"
+              type="email"
+              autoComplete="email"
+              error={form.formState.errors.email?.message}
+              {...field}
             />
-          </>
-        ) : null}
-
-        <AuthFeedback
-          type="signup"
-          message={feedback}
-          isError={!!feedback}
-          behaveAs={environment.getBehaveAs()}
+          )}
         />
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <Input
+              id={field.name}
+              label="Password"
+              placeholder="Create a password"
+              type="password"
+              autoComplete="new-password"
+              error={form.formState.errors.password?.message}
+              {...field}
+            />
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="confirmPassword"
+          render={({ field }) => (
+            <Input
+              id={field.name}
+              label="Confirm Password"
+              placeholder="Confirm your password"
+              type="password"
+              autoComplete="new-password"
+              error={confirmPasswordError}
+              {...field}
+            />
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="agreeToTerms"
+          render={({ field }) => (
+            <>
+              <FormItem className="mt-6 flex w-full flex-row items-center -space-y-1 space-x-2">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    className="relative bottom-px"
+                  />
+                </FormControl>
+                <div>
+                  <FormLabel className="flex flex-wrap items-center gap-1">
+                    <Text variant="body-medium" className="inline-block">
+                      I agree to the
+                    </Text>
+                    <Link
+                      href="https://agpt.co/legal/platform-terms-of-use"
+                      variant="secondary"
+                    >
+                      Terms of Use
+                    </Link>
+                    <Text variant="body-medium" className="inline-block">
+                      and
+                    </Text>
+                    <Link
+                      href="https://agpt.co/legal/platform-privacy-policy"
+                      variant="secondary"
+                    >
+                      Privacy Policy
+                    </Link>
+                  </FormLabel>
+                </div>
+              </FormItem>
+              {termsError ? (
+                <div className="flex items-center gap-2">
+                  <Icon icon={Alert02Icon} className="h-4 w-4 text-red-500" />
+                  <Text variant="small-medium" className="text-red-500">
+                    {termsError}
+                  </Text>
+                </div>
+              ) : null}
+            </>
+          )}
+        />
+
+        <Button
+          variant="primary"
+          loading={isLoading}
+          disabled={isGoogleLoading}
+          type="submit"
+          className="mt-6 w-full"
+        >
+          {isLoading ? "Signing up..." : "Sign up"}
+        </Button>
       </Form>
+
+      {isCloudEnv ? (
+        <>
+          <AuthDivider />
+          <GoogleOAuthButton
+            onClick={() => handleProviderSignup("google")}
+            isLoading={isGoogleLoading}
+            disabled={isLoading}
+          />
+        </>
+      ) : null}
+
+      <AuthFeedback
+        type="signup"
+        message={feedback}
+        isError={!!feedback}
+        behaveAs={environment.getBehaveAs()}
+      />
 
       <div className="mt-6 inline-flex w-full items-center justify-center gap-1">
         <Text variant="body-medium" className="text-slate-500">

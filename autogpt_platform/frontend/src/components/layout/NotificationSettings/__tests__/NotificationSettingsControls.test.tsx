@@ -21,7 +21,7 @@ vi.mock("@/services/environment", () => ({
   },
 }));
 
-// Radix reflects a disabled switch as `data-disabled`, not always `disabled`.
+// Base UI's switch is a <span>, so a disabled one has `data-disabled`, not `disabled`.
 function isDisabled(element: HTMLElement) {
   return (
     element.hasAttribute("disabled") ||

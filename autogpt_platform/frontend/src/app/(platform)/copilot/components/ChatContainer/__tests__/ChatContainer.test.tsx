@@ -2,6 +2,7 @@ import React from "react";
 import { getGetV2GetChatShareStateMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { ChatShareStateResponse } from "@/app/api/__generated__/models/chatShareStateResponse";
 import { server } from "@/mocks/mock-server";
+import userEvent from "@testing-library/user-event";
 import {
   act,
   render,
@@ -66,7 +67,7 @@ function mockShareState(state: Partial<ChatShareStateResponse>) {
   );
 }
 
-vi.mock("framer-motion", () => {
+vi.mock("motion/react", () => {
   const MOTION_PROPS = [
     "initial",
     "animate",
@@ -227,7 +228,7 @@ describe("ChatContainer", () => {
     expect((input as HTMLInputElement).value).toBe("Unsent draft");
     expect(screen.queryByRole("tooltip")).toBeNull();
 
-    fireEvent.pointerMove(input.parentElement!, { pointerType: "mouse" });
+    await userEvent.hover(input.parentElement!);
     expect(await screen.findByRole("tooltip")).toBeDefined();
     await act(async () => {});
     fireEvent.keyDown(document, { key: "Escape" });

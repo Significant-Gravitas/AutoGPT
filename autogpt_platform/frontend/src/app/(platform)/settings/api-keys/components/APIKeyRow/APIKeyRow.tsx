@@ -69,16 +69,18 @@ export function APIKeyRow({
             </Text>
             <TooltipProvider>
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label={`View details for ${apiKey.name}`}
-                    onClick={() => setInfoOpen(true)}
-                    className="shrink-0 rounded-sm text-muted-foreground transition-colors hover:text-zinc-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-800"
-                  >
-                    <Icon icon={InformationCircleIcon} size={16} />
-                  </button>
-                </TooltipTrigger>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label={`View details for ${apiKey.name}`}
+                      onClick={() => setInfoOpen(true)}
+                      className="shrink-0 rounded-sm text-muted-foreground transition-colors hover:text-zinc-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-800"
+                    >
+                      <Icon icon={InformationCircleIcon} size={16} />
+                    </button>
+                  }
+                />
                 <TooltipContent side="top">View key details</TooltipContent>
               </Tooltip>
             </TooltipProvider>

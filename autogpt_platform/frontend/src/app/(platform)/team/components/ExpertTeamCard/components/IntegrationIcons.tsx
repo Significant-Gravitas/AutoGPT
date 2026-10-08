@@ -32,11 +32,13 @@ export function IntegrationIcons({ expertName, providers }: Props) {
       {shown.map((provider) => (
         <li key={provider} className="flex">
           <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="flex">
-                <ProviderLogo provider={provider} />
-              </span>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <span className="flex">
+                  <ProviderLogo provider={provider} />
+                </span>
+              }
+            />
             <TooltipContent>
               {expertName} has access to your {formatProviderName(provider)}{" "}
               account
@@ -47,16 +49,18 @@ export function IntegrationIcons({ expertName, providers }: Props) {
       {hidden.length > 0 ? (
         <li className="flex">
           <Tooltip>
-            <TooltipTrigger asChild>
-              <Text
-                variant="body-medium"
-                as="span"
-                className="cursor-default whitespace-nowrap text-zinc-800"
-              >
-                +{hidden.length} more
-                <span className="sr-only">: {hiddenNames}</span>
-              </Text>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <Text
+                  variant="body-medium"
+                  as="span"
+                  className="cursor-default whitespace-nowrap text-zinc-800"
+                >
+                  +{hidden.length} more
+                  <span className="sr-only">: {hiddenNames}</span>
+                </Text>
+              }
+            />
             <TooltipContent>{hiddenNames}</TooltipContent>
           </Tooltip>
         </li>

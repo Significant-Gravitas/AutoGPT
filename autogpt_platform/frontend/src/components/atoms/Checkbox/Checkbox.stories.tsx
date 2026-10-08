@@ -14,7 +14,7 @@ const meta: Meta<typeof Checkbox> = {
     docs: {
       description: {
         component:
-          'Radix checkbox with an optional label, description and error. Pass `checked="indeterminate"` for a partial selection. Without a label, give it an `aria-label`.',
+          'Kobra checkbox with an optional label, description and error. Pass `checked="indeterminate"` for a partial selection. Without a label, give it an `aria-label`.',
       },
     },
   },

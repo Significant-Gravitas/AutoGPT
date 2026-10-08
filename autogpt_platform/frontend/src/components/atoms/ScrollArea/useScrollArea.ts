@@ -1,4 +1,4 @@
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 
 const SCROLL_TO_TOP_THRESHOLD = 200;

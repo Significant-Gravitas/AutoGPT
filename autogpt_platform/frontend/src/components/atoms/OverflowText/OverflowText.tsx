@@ -87,7 +87,7 @@ export function OverflowText(props: Props) {
     return (
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger asChild>{content}</TooltipTrigger>
+          <TooltipTrigger render={content} />
           <TooltipContent>
             {typeof value === "string" ? <p>{value}</p> : value}
           </TooltipContent>

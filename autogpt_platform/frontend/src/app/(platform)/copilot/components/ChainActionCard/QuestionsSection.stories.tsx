@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
-import { domAnimation, LazyMotion } from "framer-motion";
+import { domAnimation, LazyMotion } from "motion/react";
 import { useState } from "react";
 import {
   type ClarifyingQuestion,

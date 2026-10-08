@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 
 import { Text } from "@/components/atoms/Text/Text";
 import type { SubmissionMetaItem } from "../helpers";

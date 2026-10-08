@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion, Variants } from "framer-motion";
+import { motion, useReducedMotion, Variants } from "motion/react";
 import { ReactNode } from "react";
 
 const ITEM: Variants = {

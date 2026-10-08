@@ -5,7 +5,7 @@ import {
   Carousel,
   CarouselContent,
   CarouselItem,
-} from "@/components/__legacy__/ui/carousel";
+} from "@/components/molecules/Carousel/Carousel";
 import { Text } from "@/components/atoms/Text/Text";
 import { ReactNode } from "react";
 import { SectionHeader } from "../SectionHeader";

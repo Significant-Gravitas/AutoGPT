@@ -1,4 +1,4 @@
-import { useOptionalSidebar } from "@/components/ui/sidebar";
+import { useOptionalSidebar } from "@/components/layout/AppSidebar/useOptionalSidebar";
 import { useEffect, useLayoutEffect, useRef } from "react";
 
 export function usePanelSidebarCollapse(isPanelOpen: boolean) {

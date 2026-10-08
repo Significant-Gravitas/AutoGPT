@@ -1,6 +1,6 @@
 <div align="center">
   <h1>AutoGPT Frontend • Contributing ⌨️</h1>
-  <p>Next.js App Router • Client-first • Type-safe generated API hooks • Tailwind + Radix</p>
+  <p>Next.js App Router • Client-first • Type-safe generated API hooks • Tailwind + Kobra (Base UI)</p>
 </div>
 
 ---
@@ -180,7 +180,7 @@ While server components and actions are cool and cutting-edge, they introduce a 
 
 ### Styling and components
 
-- [Tailwind CSS](https://tailwindcss.com/docs) + [Radix Primitives](https://www.radix-ui.com/docs/primitives/overview/introduction), with components we own in `src/components` (some started as [shadcn/ui](https://ui.shadcn.com/) output)
+- [Tailwind CSS](https://tailwindcss.com/docs) + Kobra ([Base UI](https://base-ui.com/)), with components we own in `src/components` (some started as [shadcn/ui](https://ui.shadcn.com/) output)
 - Use the design system under `src/components` (atoms, molecules, organisms) for primitives and building blocks; [`DESIGN.md`](./DESIGN.md) lists them, the tokens and the rules
 - Do not use anything under `src/components/__legacy__`; migrate away from it when touching old code
 - Browse the components in Storybook (`pnpm storybook`). The Chromatic catalog is not published while the Chromatic CI job is off (it runs only when the `CHROMATIC_PROJECT_TOKEN` secret is set)

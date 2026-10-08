@@ -3,7 +3,7 @@
 import * as React from "react";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { Form, FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
@@ -88,292 +88,288 @@ export function EditAgentForm({
 
   return (
     <div className="mx-auto flex w-full flex-col">
-      <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit(handleFormSubmit)}
-          className="flex flex-col gap-5 pb-5"
-        >
-          <section className="rounded-[18px] border border-yellow-200 bg-yellow-50 p-4">
-            <div className="mb-4 flex items-start gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-yellow-700 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-                <Icon icon={InformationCircleIcon} size={18} />
-              </div>
-              <div className="flex min-w-0 flex-col gap-1">
-                <Text variant="body-medium" as="h3" className="text-yellow-900">
-                  Update note
-                </Text>
-                <Text variant="small" className="text-yellow-800">
-                  Reviewers use this to understand why this submission was
-                  edited.
-                </Text>
-              </div>
+      <Form
+        form={form}
+        onSubmit={handleFormSubmit}
+        className="flex flex-col gap-5 space-y-0 pb-5"
+      >
+        <section className="rounded-[18px] border border-yellow-200 bg-yellow-50 p-4">
+          <div className="mb-4 flex items-start gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-yellow-700 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+              <Icon icon={InformationCircleIcon} size={18} />
             </div>
-            <FormField
-              control={form.control}
-              name="changes_summary"
-              render={({ field }) => (
-                <CharCountedTextarea
-                  max={CHANGES_SUMMARY_MAX}
-                  value={field.value ?? ""}
-                >
-                  <Input
-                    id={field.name}
-                    labelVariant="body"
-                    label="What changed?"
-                    labelTooltip="Summary of what's new or improved in this version. Reviewers see this first."
-                    type="textarea"
-                    rows={1}
-                    placeholder="Briefly describe what you changed"
-                    error={form.formState.errors.changes_summary?.message}
-                    required
-                    wrapperClassName="mb-0"
-                    {...field}
-                  />
-                </CharCountedTextarea>
-              )}
-            />
-          </section>
+            <div className="flex min-w-0 flex-col gap-1">
+              <Text variant="body-medium" as="h3" className="text-yellow-900">
+                Update note
+              </Text>
+              <Text variant="small" className="text-yellow-800">
+                Reviewers use this to understand why this submission was edited.
+              </Text>
+            </div>
+          </div>
+          <FormField
+            control={form.control}
+            name="changes_summary"
+            render={({ field }) => (
+              <CharCountedTextarea
+                max={CHANGES_SUMMARY_MAX}
+                value={field.value ?? ""}
+              >
+                <Input
+                  id={field.name}
+                  labelVariant="body"
+                  label="What changed?"
+                  labelTooltip="Summary of what's new or improved in this version. Reviewers see this first."
+                  type="textarea"
+                  rows={1}
+                  placeholder="Briefly describe what you changed"
+                  error={form.formState.errors.changes_summary?.message}
+                  required
+                  wrapperClassName="mb-0"
+                  {...field}
+                />
+              </CharCountedTextarea>
+            )}
+          />
+        </section>
 
-          <Accordion
-            type="single"
-            collapsible
-            value={openAccordion}
-            onValueChange={setOpenAccordion}
-            className="overflow-hidden rounded-[14px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)] [&>*+*]:border-t [&>*+*]:border-zinc-200"
-          >
-            <AccordionItem value="basics" className="border-0 px-4">
-              <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-black">
+        <Accordion
+          type="single"
+          collapsible
+          value={openAccordion}
+          onValueChange={setOpenAccordion}
+          className="overflow-hidden rounded-[14px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)] [&>*+*]:border-t [&>*+*]:border-zinc-200"
+        >
+          <AccordionItem value="basics" className="border-0 px-4">
+            <AccordionTrigger className="hover:no-underline">
+              <span className="flex items-center gap-2 text-sm font-medium text-black">
+                <Icon
+                  icon={Store01Icon}
+                  size={18}
+                  className="text-muted-foreground"
+                />
+                Listing basics
+                {basicsHasError ? (
                   <Icon
-                    icon={Store01Icon}
-                    size={18}
-                    className="text-muted-foreground"
+                    icon={AlertCircleIcon}
+                    size={16}
+                    className="text-red-500"
                   />
-                  Listing basics
-                  {basicsHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-red-500"
-                    />
-                  ) : basicsComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-purple-500"
-                    />
-                  ) : null}
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="px-1 pt-0 pb-4">
-                <div className="grid gap-x-4 sm:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="title"
-                    render={({ field }) => (
-                      <Input
-                        id={field.name}
-                        labelVariant="body"
-                        label="Title"
-                        labelTooltip="Public name shown on the marketplace listing."
-                        type="text"
-                        placeholder="Agent name"
-                        error={form.formState.errors.title?.message}
-                        {...field}
-                      />
-                    )}
+                ) : basicsComplete ? (
+                  <Icon
+                    icon={CheckmarkCircle02Icon}
+                    size={16}
+                    className="text-purple-500"
                   />
-
-                  <FormField
-                    control={form.control}
-                    name="subheader"
-                    render={({ field }) => (
-                      <CharCountedTextarea
-                        max={SUB_HEADING_MAX}
-                        value={field.value ?? ""}
-                      >
-                        <Input
-                          id={field.name}
-                          labelVariant="body"
-                          label="Tagline"
-                          labelTooltip="The one-line subtitle shown under the agent name and on preview cards. Start with a verb and name the outcome for the user."
-                          type="text"
-                          placeholder="Find decision-makers at any company in seconds"
-                          error={form.formState.errors.subheader?.message}
-                          required
-                          {...field}
-                        />
-                      </CharCountedTextarea>
-                    )}
-                  />
-                </div>
-
+                ) : null}
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="px-1 pt-0 pb-4">
+              <div className="grid gap-x-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
-                  name="category"
+                  name="title"
                   render={({ field }) => (
-                    <Select
+                    <Input
                       id={field.name}
                       labelVariant="body"
-                      label="Category"
-                      labelTooltip="Primary category that helps users discover the agent."
-                      placeholder={categoryPlaceholder}
-                      disabled={categoriesUnavailable}
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      error={form.formState.errors.category?.message}
-                      options={categoryOptions}
+                      label="Title"
+                      labelTooltip="Public name shown on the marketplace listing."
+                      type="text"
+                      placeholder="Agent name"
+                      error={form.formState.errors.title?.message}
+                      {...field}
                     />
                   )}
                 />
-              </AccordionContent>
-            </AccordionItem>
 
-            <AccordionItem value="thumbnails" className="border-0 px-4">
-              <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-black">
-                  <Icon
-                    icon={Album01Icon}
-                    size={18}
-                    className="text-muted-foreground"
-                  />
-                  Thumbnails
-                  {thumbnailsHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-red-500"
-                    />
-                  ) : thumbnailsComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-purple-500"
-                    />
-                  ) : null}
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="px-1 pt-0 pb-4">
-                <ThumbnailImages
-                  agentId={submission.graph_id}
-                  onImagesChange={handleImagesChange}
-                  initialImages={Array.from(
-                    new Set(submission.image_urls || []),
-                  )}
-                  initialSelectedImage={submission.image_urls?.[0] || null}
-                  errorMessage={form.formState.errors.root?.message}
-                />
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="experience" className="border-0 px-4">
-              <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-black">
-                  <Icon
-                    icon={SparklesIcon}
-                    size={18}
-                    className="text-muted-foreground"
-                  />
-                  Experience details
-                  {experienceHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-red-500"
-                    />
-                  ) : experienceComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-purple-500"
-                    />
-                  ) : null}
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="px-1 pt-0 pb-4">
                 <FormField
                   control={form.control}
-                  name="description"
+                  name="subheader"
                   render={({ field }) => (
                     <CharCountedTextarea
-                      max={DESCRIPTION_MAX}
+                      max={SUB_HEADING_MAX}
                       value={field.value ?? ""}
                     >
                       <Input
                         id={field.name}
                         labelVariant="body"
-                        label="Description"
-                        labelTooltip="What the agent does and the outcome users get."
-                        type="textarea"
-                        rows={2}
-                        placeholder="Describe the outcome this agent creates"
-                        error={form.formState.errors.description?.message}
+                        label="Tagline"
+                        labelTooltip="The one-line subtitle shown under the agent name and on preview cards. Start with a verb and name the outcome for the user."
+                        type="text"
+                        placeholder="Find decision-makers at any company in seconds"
+                        error={form.formState.errors.subheader?.message}
+                        required
                         {...field}
                       />
                     </CharCountedTextarea>
                   )}
                 />
+              </div>
 
-                <div className="grid gap-x-4 sm:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="youtubeLink"
-                    render={({ field }) => (
-                      <Input
-                        id={field.name}
-                        labelVariant="body"
-                        label="YouTube video link"
-                        labelTooltip="Demo or walkthrough video hosted on YouTube."
-                        type="url"
-                        placeholder="https://youtube.com/watch?v=..."
-                        error={form.formState.errors.youtubeLink?.message}
-                        {...field}
-                      />
-                    )}
+              <FormField
+                control={form.control}
+                name="category"
+                render={({ field }) => (
+                  <Select
+                    id={field.name}
+                    labelVariant="body"
+                    label="Category"
+                    labelTooltip="Primary category that helps users discover the agent."
+                    placeholder={categoryPlaceholder}
+                    disabled={categoriesUnavailable}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    error={form.formState.errors.category?.message}
+                    options={categoryOptions}
                   />
+                )}
+              />
+            </AccordionContent>
+          </AccordionItem>
 
-                  <FormField
-                    control={form.control}
-                    name="agentOutputDemo"
-                    render={({ field }) => (
-                      <Input
-                        id={field.name}
-                        labelVariant="body"
-                        label="Output demo"
-                        labelTooltip="Link showing example output the agent produces."
-                        type="url"
-                        placeholder="https://youtube.com/watch?v=..."
-                        error={form.formState.errors.agentOutputDemo?.message}
-                        {...field}
-                      />
-                    )}
+          <AccordionItem value="thumbnails" className="border-0 px-4">
+            <AccordionTrigger className="hover:no-underline">
+              <span className="flex items-center gap-2 text-sm font-medium text-black">
+                <Icon
+                  icon={Album01Icon}
+                  size={18}
+                  className="text-muted-foreground"
+                />
+                Thumbnails
+                {thumbnailsHasError ? (
+                  <Icon
+                    icon={AlertCircleIcon}
+                    size={16}
+                    className="text-red-500"
                   />
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+                ) : thumbnailsComplete ? (
+                  <Icon
+                    icon={CheckmarkCircle02Icon}
+                    size={16}
+                    className="text-purple-500"
+                  />
+                ) : null}
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="px-1 pt-0 pb-4">
+              <ThumbnailImages
+                agentId={submission.graph_id}
+                onImagesChange={handleImagesChange}
+                initialImages={Array.from(new Set(submission.image_urls || []))}
+                initialSelectedImage={submission.image_urls?.[0] || null}
+                errorMessage={form.formState.errors.root?.message}
+              />
+            </AccordionContent>
+          </AccordionItem>
 
-          <div className="flex flex-col-reverse gap-3 border-t border-zinc-200 pt-4 sm:flex-row sm:justify-end">
-            <Button
-              type="button"
-              onClick={onClose}
-              variant="secondary"
-              size="md"
-              className="w-full sm:w-auto"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              size="md"
-              disabled={isSubmitDisabled}
-              loading={isSubmitting}
-              className="w-full sm:w-auto"
-            >
-              {isSubmitting ? "Saving" : "Update submission"}
-            </Button>
-          </div>
-        </form>
+          <AccordionItem value="experience" className="border-0 px-4">
+            <AccordionTrigger className="hover:no-underline">
+              <span className="flex items-center gap-2 text-sm font-medium text-black">
+                <Icon
+                  icon={SparklesIcon}
+                  size={18}
+                  className="text-muted-foreground"
+                />
+                Experience details
+                {experienceHasError ? (
+                  <Icon
+                    icon={AlertCircleIcon}
+                    size={16}
+                    className="text-red-500"
+                  />
+                ) : experienceComplete ? (
+                  <Icon
+                    icon={CheckmarkCircle02Icon}
+                    size={16}
+                    className="text-purple-500"
+                  />
+                ) : null}
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="px-1 pt-0 pb-4">
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <CharCountedTextarea
+                    max={DESCRIPTION_MAX}
+                    value={field.value ?? ""}
+                  >
+                    <Input
+                      id={field.name}
+                      labelVariant="body"
+                      label="Description"
+                      labelTooltip="What the agent does and the outcome users get."
+                      type="textarea"
+                      rows={2}
+                      placeholder="Describe the outcome this agent creates"
+                      error={form.formState.errors.description?.message}
+                      {...field}
+                    />
+                  </CharCountedTextarea>
+                )}
+              />
+
+              <div className="grid gap-x-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="youtubeLink"
+                  render={({ field }) => (
+                    <Input
+                      id={field.name}
+                      labelVariant="body"
+                      label="YouTube video link"
+                      labelTooltip="Demo or walkthrough video hosted on YouTube."
+                      type="url"
+                      placeholder="https://youtube.com/watch?v=..."
+                      error={form.formState.errors.youtubeLink?.message}
+                      {...field}
+                    />
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="agentOutputDemo"
+                  render={({ field }) => (
+                    <Input
+                      id={field.name}
+                      labelVariant="body"
+                      label="Output demo"
+                      labelTooltip="Link showing example output the agent produces."
+                      type="url"
+                      placeholder="https://youtube.com/watch?v=..."
+                      error={form.formState.errors.agentOutputDemo?.message}
+                      {...field}
+                    />
+                  )}
+                />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+
+        <div className="flex flex-col-reverse gap-3 border-t border-zinc-200 pt-4 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            onClick={onClose}
+            variant="secondary"
+            size="md"
+            className="w-full sm:w-auto"
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            size="md"
+            disabled={isSubmitDisabled}
+            loading={isSubmitting}
+            className="w-full sm:w-auto"
+          >
+            {isSubmitting ? "Saving" : "Update submission"}
+          </Button>
+        </div>
       </Form>
     </div>
   );

@@ -1,7 +1,7 @@
 import { FilterChip } from "../FilterChip";
 import { cn } from "@/lib/utils";
 import { CategoryKey } from "../BlockMenuFilters/types";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Separator } from "@/components/atoms/Separator/Separator";
@@ -82,7 +82,7 @@ export function FilterSheet({
                       onCheckedChange={() =>
                         handleLocalCategoryChange(category.key)
                       }
-                      className="border border-zinc-200 shadow-none data-[state=checked]:border-none data-[state=checked]:bg-purple-700 data-[state=checked]:text-white"
+                      className="border border-zinc-200 shadow-none data-checked:border-none data-checked:bg-purple-700 data-checked:text-white"
                     />
                     <label
                       htmlFor={category.key}
@@ -107,7 +107,7 @@ export function FilterSheet({
                       id={`creator-${creator}`}
                       checked={localCreators.includes(creator)}
                       onCheckedChange={() => handleLocalCreatorChange(creator)}
-                      className="border border-zinc-200 shadow-none data-[state=checked]:border-none data-[state=checked]:bg-purple-700 data-[state=checked]:text-white"
+                      className="border border-zinc-200 shadow-none data-checked:border-none data-checked:bg-purple-700 data-checked:text-white"
                     />
                     <label
                       htmlFor={`creator-${creator}`}

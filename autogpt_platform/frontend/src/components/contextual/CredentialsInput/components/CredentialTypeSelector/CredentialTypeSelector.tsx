@@ -1,11 +1,7 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  Form,
-  FormDescription,
-  FormField,
-} from "@/components/__legacy__/ui/form";
+import { Form, FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -203,72 +199,70 @@ function APIKeyTabContent({
         </Text>
       )}
 
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
-          <FormField
-            control={form.control}
-            name="title"
-            render={({ field }) => (
-              <Input
-                id="title"
-                label="Name"
-                type="text"
-                placeholder="Enter a name for this API Key..."
-                {...field}
-              />
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="apiKey"
-            render={({ field }) => (
-              <Input
-                id="apiKey"
-                label="API Key"
-                type="password"
-                placeholder="Enter API Key..."
-                hint={
-                  schema.credentials_scopes ? (
-                    <FormDescription>
-                      Required scope(s) for this block:{" "}
-                      {schema.credentials_scopes?.map((s, i, a) => (
-                        <span key={i}>
-                          <code className="text-xs font-bold">{s}</code>
-                          {i < a.length - 1 && ", "}
-                        </span>
-                      ))}
-                    </FormDescription>
-                  ) : null
-                }
-                {...field}
-              />
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="expiresAt"
-            render={({ field }) => (
-              <Input
-                id="expiresAt"
-                label="Expiration Date"
-                type="datetime-local"
-                placeholder="Select expiration date..."
-                value={field.value}
-                onChange={(e) => field.onChange(e.target.value)}
-                onBlur={field.onBlur}
-                name={field.name}
-              />
-            )}
-          />
-          <Button
-            type="submit"
-            className="min-w-68"
-            loading={isSubmitting}
-            disabled={isSubmitting}
-          >
-            Add API Key
-          </Button>
-        </form>
+      <Form form={form} onSubmit={onSubmit} className="space-y-2">
+        <FormField
+          control={form.control}
+          name="title"
+          render={({ field }) => (
+            <Input
+              id="title"
+              label="Name"
+              type="text"
+              placeholder="Enter a name for this API Key..."
+              {...field}
+            />
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="apiKey"
+          render={({ field }) => (
+            <Input
+              id="apiKey"
+              label="API Key"
+              type="password"
+              placeholder="Enter API Key..."
+              hint={
+                schema.credentials_scopes ? (
+                  <>
+                    Required scope(s) for this block:{" "}
+                    {schema.credentials_scopes?.map((s, i, a) => (
+                      <span key={i}>
+                        <code className="text-xs font-bold">{s}</code>
+                        {i < a.length - 1 && ", "}
+                      </span>
+                    ))}
+                  </>
+                ) : null
+              }
+              {...field}
+            />
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="expiresAt"
+          render={({ field }) => (
+            <Input
+              id="expiresAt"
+              label="Expiration Date"
+              type="datetime-local"
+              placeholder="Select expiration date..."
+              value={field.value}
+              onChange={(e) => field.onChange(e.target.value)}
+              onBlur={field.onBlur}
+              name={field.name}
+            />
+          )}
+        />
+        <Button
+          type="submit"
+          className="min-w-68"
+          loading={isSubmitting}
+          disabled={isSubmitting}
+        >
+          Add API Key
+        </Button>
       </Form>
     </div>
   );

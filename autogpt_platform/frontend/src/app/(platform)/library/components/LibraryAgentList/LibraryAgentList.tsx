@@ -14,7 +14,7 @@ import {
   LayoutGroup,
   motion,
   useReducedMotion,
-} from "framer-motion";
+} from "motion/react";
 import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolderEditDialog";
 import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
 import { LibraryEmptyState } from "../LibraryEmptyState/LibraryEmptyState";

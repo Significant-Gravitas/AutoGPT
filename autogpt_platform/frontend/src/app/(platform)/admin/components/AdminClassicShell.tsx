@@ -1,4 +1,7 @@
-import { Sidebar } from "@/components/__legacy__/Sidebar";
+import {
+  SettingsNav,
+  type SettingsNavLink,
+} from "@/components/layout/SettingsNav/SettingsNav";
 import {
   BrainIcon,
   Calculator01Icon,
@@ -15,91 +18,70 @@ import {
 } from "@hugeicons/core-free-icons";
 import { ReactNode } from "react";
 
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { isTestDataSurfaceEnabled } from "../test-data/helpers";
 
 // Built per render so the local-only Test Data link follows the live
 // environment check instead of the value at module load.
-function getSidebarLinkGroups() {
+function getLinks(): SettingsNavLink[] {
   return [
     {
-      links: [
-        {
-          text: "Marketplace Management",
-          href: "/admin/marketplace",
-          icon: <Icon icon={UserMultipleIcon} className="h-6 w-6" />,
-        },
-        {
-          text: "User Spending",
-          href: "/admin/spending",
-          icon: <Icon icon={DollarSignIcon} className="h-6 w-6" />,
-        },
-        {
-          text: "System Diagnostics",
-          href: "/admin/diagnostics",
-          icon: <Icon icon={Pulse01Icon} className="h-6 w-6" />,
-        },
-        {
-          text: "User Impersonation",
-          href: "/admin/impersonation",
-          icon: <Icon icon={Search01Icon} className="h-6 w-6" />,
-        },
-        {
-          text: "Rate Limits",
-          href: "/admin/rate-limits",
-          icon: <Icon icon={GaugeIcon} className="h-6 w-6" />,
-        },
-        {
-          text: "Platform Costs",
-          href: "/admin/platform-costs",
-          icon: <Icon icon={ReceiptTextIcon} className="h-6 w-6" />,
-        },
-        {
-          text: "Execution Analytics",
-          href: "/admin/execution-analytics",
-          icon: <Icon icon={File02Icon} className="h-6 w-6" />,
-        },
-        {
-          text: "Bot Analytics",
-          href: "/admin/bots",
-          icon: <Icon icon={Robot01Icon} className="h-6 w-6" />,
-        },
-        {
-          text: "Block Cost Estimates",
-          href: "/admin/block-cost-estimates",
-          icon: <Icon icon={Calculator01Icon} className="h-6 w-6" />,
-        },
-        {
-          text: "Memory Inspector",
-          href: "/admin/memory",
-          icon: <Icon icon={BrainIcon} className="h-6 w-6" />,
-        },
-        {
-          text: "Admin User Management",
-          href: "/admin/settings",
-          icon: <Icon icon={SlidersHorizontalIcon} className="h-6 w-6" />,
-        },
-        // Test data seeding only exists on local stacks; hide the entry point
-        // everywhere else so cloud admins don't hit a guaranteed 403/404.
-        ...(isTestDataSurfaceEnabled()
-          ? [
-              {
-                text: "Test Data",
-                href: "/admin/test-data",
-                icon: <Icon icon={Database01Icon} className="h-6 w-6" />,
-              },
-            ]
-          : []),
-      ],
+      label: "Marketplace Management",
+      href: "/admin/marketplace",
+      icon: UserMultipleIcon,
     },
+    { label: "User Spending", href: "/admin/spending", icon: DollarSignIcon },
+    {
+      label: "System Diagnostics",
+      href: "/admin/diagnostics",
+      icon: Pulse01Icon,
+    },
+    {
+      label: "User Impersonation",
+      href: "/admin/impersonation",
+      icon: Search01Icon,
+    },
+    { label: "Rate Limits", href: "/admin/rate-limits", icon: GaugeIcon },
+    {
+      label: "Platform Costs",
+      href: "/admin/platform-costs",
+      icon: ReceiptTextIcon,
+    },
+    {
+      label: "Execution Analytics",
+      href: "/admin/execution-analytics",
+      icon: File02Icon,
+    },
+    { label: "Bot Analytics", href: "/admin/bots", icon: Robot01Icon },
+    {
+      label: "Block Cost Estimates",
+      href: "/admin/block-cost-estimates",
+      icon: Calculator01Icon,
+    },
+    { label: "Memory Inspector", href: "/admin/memory", icon: BrainIcon },
+    {
+      label: "Admin User Management",
+      href: "/admin/settings",
+      icon: SlidersHorizontalIcon,
+    },
+    // Test data seeding only exists on local stacks; hide the entry point
+    // everywhere else so cloud admins don't hit a guaranteed 403/404.
+    ...(isTestDataSurfaceEnabled()
+      ? [
+          {
+            label: "Test Data",
+            href: "/admin/test-data",
+            icon: Database01Icon,
+          },
+        ]
+      : []),
   ];
 }
 
 export function AdminClassicShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-full w-full flex-col lg:flex-row">
-      <Sidebar linkGroups={getSidebarLinkGroups()} />
-      <div className="flex-1 pl-4">{children}</div>
+    <div className="flex h-full w-full flex-col gap-4 lg:flex-row">
+      <SettingsNav label="Admin" links={getLinks()} />
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }

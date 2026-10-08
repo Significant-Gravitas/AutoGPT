@@ -12,7 +12,7 @@ const meta: Meta<typeof Dialog> = {
     docs: {
       description: {
         component:
-          "A responsive dialog component that automatically switches between modal dialog (desktop) and drawer (mobile). Built on top of Radix UI Dialog and Vaul drawer with custom styling. Supports compound components: Dialog.Trigger, Dialog.Content, and Dialog.Footer.",
+          "A responsive dialog component that automatically switches between modal dialog (desktop) and drawer (mobile). Built on Kobra's Dialog (Base UI) and Drawer (Vaul) with house sizing. Supports compound components: Dialog.Trigger, Dialog.Content, and Dialog.Footer. Custom-shaped dialogs use the exported parts: DialogRoot, DialogContent, DialogTitle, DialogDescription, DialogClose.",
       },
     },
   },

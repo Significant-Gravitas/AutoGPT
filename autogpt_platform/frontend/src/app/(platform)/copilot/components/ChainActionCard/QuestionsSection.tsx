@@ -7,7 +7,7 @@ import {
   Message01Icon,
   SentIcon,
 } from "@hugeicons/core-free-icons";
-import { m } from "framer-motion";
+import { m } from "motion/react";
 import { useId, useState } from "react";
 import {
   isAnswered,

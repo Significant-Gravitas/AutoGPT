@@ -8,7 +8,7 @@ import {
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
-import { LayoutGroup, motion } from "framer-motion";
+import { LayoutGroup, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
@@ -429,58 +429,60 @@ export const ChatContainer = ({
                       open={Boolean(isLimitReached && isUsageTooltipOpen)}
                       onOpenChange={setIsUsageTooltipOpen}
                     >
-                      <TooltipTrigger asChild>
-                        <div>
-                          <ChatInput
-                            inputId="chat-input-session"
-                            onSend={guardedOnSend}
-                            disabled={isInputDisabled}
-                            isStreaming={isStreaming}
-                            isUploadingFiles={isUploadingFiles}
-                            onStop={onStop}
-                            onEnqueue={onEnqueue}
-                            placeholder="What else can I help with?"
-                            droppedFiles={droppedFiles}
-                            onDroppedFilesConsumed={onDroppedFilesConsumed}
-                            hasSession={!!sessionId}
-                            sessionId={sessionId}
-                            expertId={expertIdentity?.id ?? null}
-                            modeSelector={modeSelector}
-                            expertName={expertIdentity?.name ?? null}
-                            voiceToggle={
-                              isVoiceModeEnabled ? (
-                                <VoiceModeButton
-                                  isActive={voice.isActive}
-                                  disabled={
-                                    isInputDisabled ||
-                                    isSendLocked ||
-                                    voice.isStarting
-                                  }
-                                  onClick={voice.toggle}
-                                />
-                              ) : undefined
-                            }
-                            voiceBar={
-                              voice.isActive ? (
-                                <VoiceModeBar
-                                  state={voice.state}
-                                  statusLabel={voice.statusLabel}
-                                  failure={voice.failure}
-                                  onRetry={voice.retryFailedUtterance}
-                                  onDownload={voice.downloadFailedUtterance}
-                                  leaveButton={
-                                    <VoiceModeButton
-                                      isActive
-                                      speaking={voice.state === "speaking"}
-                                      onClick={voice.toggle}
-                                    />
-                                  }
-                                />
-                              ) : undefined
-                            }
-                          />
-                        </div>
-                      </TooltipTrigger>
+                      <TooltipTrigger
+                        render={
+                          <div>
+                            <ChatInput
+                              inputId="chat-input-session"
+                              onSend={guardedOnSend}
+                              disabled={isInputDisabled}
+                              isStreaming={isStreaming}
+                              isUploadingFiles={isUploadingFiles}
+                              onStop={onStop}
+                              onEnqueue={onEnqueue}
+                              placeholder="What else can I help with?"
+                              droppedFiles={droppedFiles}
+                              onDroppedFilesConsumed={onDroppedFilesConsumed}
+                              hasSession={!!sessionId}
+                              sessionId={sessionId}
+                              expertId={expertIdentity?.id ?? null}
+                              modeSelector={modeSelector}
+                              expertName={expertIdentity?.name ?? null}
+                              voiceToggle={
+                                isVoiceModeEnabled ? (
+                                  <VoiceModeButton
+                                    isActive={voice.isActive}
+                                    disabled={
+                                      isInputDisabled ||
+                                      isSendLocked ||
+                                      voice.isStarting
+                                    }
+                                    onClick={voice.toggle}
+                                  />
+                                ) : undefined
+                              }
+                              voiceBar={
+                                voice.isActive ? (
+                                  <VoiceModeBar
+                                    state={voice.state}
+                                    statusLabel={voice.statusLabel}
+                                    failure={voice.failure}
+                                    onRetry={voice.retryFailedUtterance}
+                                    onDownload={voice.downloadFailedUtterance}
+                                    leaveButton={
+                                      <VoiceModeButton
+                                        isActive
+                                        speaking={voice.state === "speaking"}
+                                        onClick={voice.toggle}
+                                      />
+                                    }
+                                  />
+                                ) : undefined
+                              }
+                            />
+                          </div>
+                        }
+                      />
                       <TooltipContent side="top" className="max-w-sm">
                         You&apos;ve reached your usage limit. Wait for it to
                         refresh or upgrade your plan to continue sending

@@ -48,12 +48,12 @@ describe("AgentTableRow", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByTestId("agent-table-row-actions"));
+    fireEvent.click(screen.getByTestId("agent-table-row-actions"));
 
     fireEvent.click(await screen.findByText("Edit"));
     expect(onEditSubmission).toHaveBeenCalledTimes(1);
 
-    fireEvent.pointerDown(screen.getByTestId("agent-table-row-actions"));
+    fireEvent.click(screen.getByTestId("agent-table-row-actions"));
     fireEvent.click(await screen.findByText("Delete"));
     expect(onDeleteSubmission).toHaveBeenCalledWith("listing-pending");
     expect(onViewSubmission).not.toHaveBeenCalled();
@@ -71,7 +71,7 @@ describe("AgentTableRow", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByTestId("agent-table-row-actions"));
+    fireEvent.click(screen.getByTestId("agent-table-row-actions"));
 
     const viewAction = await screen.findByText("View");
     fireEvent.click(viewAction);

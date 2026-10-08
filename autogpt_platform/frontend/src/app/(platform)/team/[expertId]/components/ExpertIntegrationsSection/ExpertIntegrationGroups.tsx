@@ -17,7 +17,7 @@ import {
 } from "@/components/molecules/Accordion/Accordion";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { Delete02Icon, Loading03Icon } from "@hugeicons/core-free-icons";
-import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { motion, useReducedMotion, type Variants } from "motion/react";
 
 const TYPE_LABELS: Record<string, string> = {
   api_key: "API Key",

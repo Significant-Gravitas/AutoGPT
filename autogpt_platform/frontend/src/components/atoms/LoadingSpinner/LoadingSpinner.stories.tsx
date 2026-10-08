@@ -11,7 +11,7 @@ const meta: Meta<typeof LoadingSpinner> = {
     docs: {
       description: {
         component:
-          "Animated loading indicator using the Hugeicons Loading03 icon. Provide a `size` prop or custom classes to fit different contexts.",
+          "Animated loading indicator rendering Kobra's Spinner (`role='status'`, `aria-label='Loading'` by default). Provide a `size` prop or custom classes to fit different contexts.",
       },
     },
   },

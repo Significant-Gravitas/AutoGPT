@@ -158,7 +158,7 @@ describe("Marketplace expert page on the server", () => {
     const [header, body] = html.split("</header>");
     expect(header).toContain("<h1");
     expect(body).toContain("Maria is a senior marketing strategist");
-    expect(body).not.toContain("animate-pulse");
+    expect(body).not.toContain('data-slot="skeleton"');
   });
 
   test("404s on the server for an id that matches no template", async () => {
@@ -173,6 +173,6 @@ describe("Marketplace expert page on the server", () => {
     const html = renderServerHTML(await renderPage("template-maria"));
 
     expect(html).not.toContain("<h1");
-    expect(html).toContain("animate-pulse");
+    expect(html).toContain('data-slot="skeleton"');
   });
 });

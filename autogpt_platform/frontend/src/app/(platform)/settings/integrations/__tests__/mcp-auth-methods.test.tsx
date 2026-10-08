@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from "vitest";
+import userEvent from "@testing-library/user-event";
 import {
   fireEvent,
   render,
@@ -49,14 +50,16 @@ describe("MCP preset authentication methods", () => {
       name: "Server region",
     });
     fireEvent.keyDown(region, { key: "ArrowDown" });
-    fireEvent.click(await screen.findByRole("option", { name: "EU" }));
+    await userEvent.click(await screen.findByRole("option", { name: "EU" }));
     expect(url.value).toBe("https://cloud.langfuse.com/api/public/mcp");
     expect(url.readOnly).toBe(true);
     fireEvent.change(within(dialog).getByPlaceholderText(/paste base64/i), {
       target: { value: "secret-for-old-region" },
     });
     fireEvent.keyDown(region, { key: "ArrowDown" });
-    fireEvent.click(await screen.findByRole("option", { name: "Custom URL" }));
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Custom URL" }),
+    );
     expect(url.value).toBe("");
     expect(url.readOnly).toBe(false);
     expect(

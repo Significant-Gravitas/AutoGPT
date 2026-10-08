@@ -1,76 +1,45 @@
+"use client";
+
 import { Kbd } from "@/components/atoms/Kbd/Kbd";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { Button } from "@/components/atoms/Button/Button";
-import { cn } from "@/lib/utils";
-import type { MutableRefObject } from "react";
-import { highlightMatch, type SearchCommandItem } from "./helpers";
+import { CommandOption, useCommand } from "@kmenu/react";
+import {
+  highlightMatch,
+  type SearchCommandOption,
+  type SearchCommandOptionData,
+} from "./helpers";
 
 interface Props {
-  item: SearchCommandItem;
-  /** Unique DOM id prefix so multiple modals on a page never collide. */
-  idPrefix: string;
+  option: SearchCommandOption;
   query: string;
-  isHighlighted: boolean;
   /** Shows a trailing spinner while the row's action is in-flight. */
   isLoading?: boolean;
-  highlightedRef?: MutableRefObject<HTMLButtonElement | null>;
-  onHighlight: () => void;
-  onSelect: () => void;
 }
 
 export function SearchCommandResultItem({
-  item,
-  idPrefix,
+  option,
   query,
-  isHighlighted,
   isLoading = false,
-  highlightedRef,
-  onHighlight,
-  onSelect,
 }: Props) {
-  const Icon = item.icon;
+  const { state } = useCommand<SearchCommandOptionData>();
+  const isActive = state.activeId === option.id;
+  const item = option.data?.item;
+  if (!item) return null;
+  const RowIcon = item.icon;
 
   return (
-    <Button
-      ref={isHighlighted ? highlightedRef : undefined}
-      id={`${idPrefix}-${item.id}`}
-      type="button"
-      variant="ghost"
-      role="option"
-      unmask={false}
-      aria-selected={isHighlighted}
-      onMouseEnter={onHighlight}
-      onClick={onSelect}
-      className={cn(
-        "relative h-auto w-full justify-start rounded-md px-3 py-2 text-left transition-colors duration-150",
-        isHighlighted ? "bg-muted hover:bg-muted" : "hover:bg-muted/50",
-      )}
+    <CommandOption
+      value={option}
+      className="relative z-1 flex cursor-pointer items-center justify-between rounded-lg p-2.5 aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "absolute inset-y-0 left-0 my-auto h-5 w-[3px] rounded-full bg-zinc-900 transition-opacity duration-150",
-          isHighlighted ? "opacity-100" : "opacity-0",
-        )}
-      />
-      <div className="relative z-10 flex min-w-0 flex-1 items-center gap-2.5">
-        {Icon ? (
-          <span aria-hidden className="contents">
-            <Icon
-              className={cn(
-                "h-4 w-4 shrink-0 transition-colors duration-150",
-                isHighlighted ? "text-foreground" : "text-muted-foreground",
-              )}
-            />
+      <span className="flex min-w-0 flex-1 items-center gap-2.5">
+        {RowIcon ? (
+          <span aria-hidden className="flex shrink-0 text-muted-foreground">
+            <RowIcon className="size-[18px]" />
           </span>
         ) : null}
-        <div className="min-w-0 flex-1">
-          <div
-            className={cn(
-              "truncate text-sm font-normal transition-colors duration-150",
-              isHighlighted ? "text-foreground" : "text-foreground",
-            )}
-          >
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-[0.9rem] text-popover-foreground">
             {highlightMatch(item.title, query).map((part, partIndex) => (
               <span
                 key={`${part.text}-${partIndex}`}
@@ -79,31 +48,25 @@ export function SearchCommandResultItem({
                 {part.text}
               </span>
             ))}
-          </div>
+          </span>
           {item.subtitle ? (
-            <div className="mt-0.5 truncate text-xs text-muted-foreground">
+            <span className="truncate text-xs text-muted-foreground">
               {item.subtitle}
-            </div>
+            </span>
           ) : null}
-        </div>
-        {isLoading ? (
-          <LoadingSpinner
-            size="small"
-            aria-label="Opening"
-            className="shrink-0 text-muted-foreground"
-          />
-        ) : (
-          <Kbd
-            aria-hidden="true"
-            className={cn(
-              "text-muted-foreground transition-opacity duration-150",
-              isHighlighted ? "opacity-100" : "opacity-0",
-            )}
-          >
-            ↵
-          </Kbd>
-        )}
-      </div>
-    </Button>
+        </span>
+      </span>
+      {isLoading ? (
+        <LoadingSpinner
+          size="small"
+          aria-label="Opening"
+          className="shrink-0 text-muted-foreground"
+        />
+      ) : isActive ? (
+        <Kbd aria-hidden="true" className="shrink-0">
+          ↵
+        </Kbd>
+      ) : null}
+    </CommandOption>
   );
 }

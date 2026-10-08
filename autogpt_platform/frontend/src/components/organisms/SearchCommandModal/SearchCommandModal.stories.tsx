@@ -110,14 +110,14 @@ function SearchCommandModalDemo({
 
   return (
     // Storybook preview shim: a sized box that becomes the containing
-    // block for the modal's ``position: fixed`` descendants. Any
-    // ancestor with a ``transform`` (or ``filter`` / ``contain: paint``)
-    // anchors fixed children to itself instead of the viewport, which
-    // lets the full dialog render inside the docs iframe without
-    // overflow or scrollbars. ``[&_.fixed]:absolute!`` also retargets
-    // the backdrop's positioning so it sits inside this box.
+    // block for the modal's ``position: fixed`` overlay. Any ancestor
+    // with a ``transform`` (or ``filter`` / ``contain: paint``) anchors
+    // fixed children to itself instead of the viewport, which lets the
+    // full dialog render inside the docs iframe without overflow or
+    // scrollbars. The overlay's ``18vh`` top padding is pulled in so the
+    // dialog sits inside the box at any iframe height.
     <div
-      className="relative h-[720px] w-full overflow-hidden rounded-md bg-zinc-100 [&_.fixed]:absolute! [&_.pt-\[18vh\]]:pt-12!"
+      className="relative h-[720px] w-full overflow-hidden rounded-md bg-zinc-100 [&_.command-overlay]:pt-12!"
       style={{ transform: "translateZ(0)" }}
     >
       {!isOpen && (

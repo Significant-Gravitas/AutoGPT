@@ -5,7 +5,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/__legacy__/ui/table";
+} from "@/components/molecules/Table/TablePrimitives";
 
 import { UrlPagination } from "@/app/(platform)/admin/components/UrlPagination/UrlPagination";
 import { SearchAndFilterAdminSpending } from "./SearchAndFilterAdminSpending";

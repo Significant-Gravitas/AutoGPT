@@ -1,18 +1,22 @@
 "use client";
 
-import React from "react";
-import { cn } from "@/lib/utils";
-import {
-  Collapsible as BaseCollapsible,
-  CollapsibleTrigger as BaseCollapsibleTrigger,
-  CollapsibleContent as BaseCollapsibleContent,
-} from "@radix-ui/react-collapsible";
-import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  Collapsible as KobraCollapsible,
+  CollapsibleContent as KobraCollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import type { ComponentProps, ReactNode } from "react";
 
-interface Props {
-  trigger: React.ReactNode;
-  children: React.ReactNode;
+type WithClassName<T> = Omit<T, "className"> & { className?: string };
+
+type RootProps = WithClassName<ComponentProps<typeof KobraCollapsible>>;
+
+interface ComposedProps {
+  trigger: ReactNode;
+  children: ReactNode;
   defaultOpen?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -21,36 +25,37 @@ interface Props {
   contentClassName?: string;
 }
 
-export function Collapsible({
-  trigger,
-  children,
-  defaultOpen = false,
-  open,
-  onOpenChange,
-  className,
-  triggerClassName,
-  contentClassName,
-}: Props) {
-  const [isOpen, setIsOpen] = React.useState(defaultOpen);
-  const isControlled = open !== undefined;
-  const openState = isControlled ? open : isOpen;
+/**
+ * With `trigger` it renders the house header-plus-chevron layout; without it,
+ * it is the bare root to compose with `CollapsibleTrigger` and
+ * `CollapsibleContent`.
+ */
+export function Collapsible(props: RootProps | ComposedProps) {
+  if (!("trigger" in props)) {
+    return <KobraCollapsible {...props} />;
+  }
 
-  const handleOpenChange = (newOpen: boolean) => {
-    if (!isControlled) {
-      setIsOpen(newOpen);
-    }
-    onOpenChange?.(newOpen);
-  };
+  const {
+    trigger,
+    children,
+    defaultOpen = false,
+    open,
+    onOpenChange,
+    className,
+    triggerClassName,
+    contentClassName,
+  } = props;
 
   return (
-    <BaseCollapsible
-      open={openState}
-      onOpenChange={handleOpenChange}
+    <KobraCollapsible
+      open={open}
+      defaultOpen={defaultOpen}
+      onOpenChange={(next) => onOpenChange?.(next)}
       className={cn("w-full", className)}
     >
-      <BaseCollapsibleTrigger
+      <CollapsibleTrigger
         className={cn(
-          "flex w-full items-center justify-between text-left transition-all duration-200 hover:opacity-80",
+          "group/collapsible-trigger flex w-full items-center justify-between text-left transition-all duration-200 hover:opacity-80",
           triggerClassName,
         )}
       >
@@ -58,18 +63,30 @@ export function Collapsible({
           {trigger}
           <Icon
             icon={ArrowDown01Icon}
-            className={cn(
-              "inline-flex h-4 w-4 transition-transform duration-200",
-              openState && "rotate-180",
-            )}
+            className="inline-flex h-4 w-4 transition-transform duration-200 group-data-panel-open/collapsible-trigger:rotate-180"
           />
         </div>
-      </BaseCollapsibleTrigger>
-      <BaseCollapsibleContent
-        className={cn("overflow-hidden", contentClassName)}
-      >
+      </CollapsibleTrigger>
+      <CollapsibleContent className={contentClassName}>
         <div className="pt-2">{children}</div>
-      </BaseCollapsibleContent>
-    </BaseCollapsible>
+      </CollapsibleContent>
+    </KobraCollapsible>
   );
 }
+
+export function CollapsibleContent({
+  className,
+  ...props
+}: WithClassName<ComponentProps<typeof KobraCollapsibleContent>>) {
+  return (
+    <KobraCollapsibleContent
+      className={cn(
+        "h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export { CollapsibleTrigger };

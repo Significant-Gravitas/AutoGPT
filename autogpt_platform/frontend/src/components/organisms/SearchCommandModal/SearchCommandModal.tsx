@@ -1,22 +1,34 @@
+"use client";
+
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { Button } from "@/components/atoms/Button/Button";
-import { Separator } from "@/components/atoms/Separator/Separator";
+import { isKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
-import * as RXDialog from "@radix-ui/react-dialog";
-import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import {
-  flattenBuckets,
+  Command as CommandRoot,
+  CommandInput,
+  type CommandRef,
+  type FilterFunctionType,
+} from "@kmenu/react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
+import {
   getTotalCount,
+  toCommandOptions,
   type SearchCommandBucket,
   type SearchCommandItem,
+  type SearchCommandOption,
+  type SearchCommandOptionData,
 } from "./helpers";
 import { SearchCommandResults } from "./SearchCommandResults";
 import { SearchCommandSkeleton } from "./SearchCommandSkeleton";
-import { useKeyboardNav } from "./useKeyboardNav";
-import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { Kbd } from "@/components/atoms/Kbd/Kbd";
-import { isKey } from "@/lib/keyboard";
 
 interface Props {
   isOpen: boolean;
@@ -40,6 +52,17 @@ interface Props {
   loadingItemId?: string;
 }
 
+// The results are already filtered by whoever owns ``buckets`` (usually a
+// server search), so kmenu must not filter them again.
+const showEverything: FilterFunctionType<SearchCommandOptionData> = (options) =>
+  options;
+
+const headerButtonClassName =
+  "flex cursor-pointer items-center rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground";
+
+const emptyClassName =
+  "flex h-24 items-center justify-center text-sm text-muted-foreground";
+
 export function SearchCommandModal({
   isOpen,
   onClose,
@@ -56,96 +79,131 @@ export function SearchCommandModal({
   inputAriaLabel = "Search",
   loadingItemId,
 }: Props) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const reactId = useId();
-  // Strip the colons React uses in ``useId`` so the result survives a
-  // selector / id-based lookup in tests and CSS.
-  const idPrefix = `search-cmd-${reactId.replace(/:/g, "")}`;
+  const titleId = useId();
+  const descriptionId = useId();
+  const commandRef = useRef<CommandRef<SearchCommandOptionData>>(null);
+  // kmenu wires its callbacks once on mount, so they read the latest props
+  // through refs instead of the closures it captured.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const onSelectItemRef = useRef(onSelectItem);
+  onSelectItemRef.current = onSelectItem;
+  const [isReady, setIsReady] = useState(false);
 
-  const flatResults = flattenBuckets(buckets);
+  useEffect(() => {
+    if (!isOpen) {
+      setIsReady(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => setIsReady(true), 180);
+    return () => window.clearTimeout(timeout);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    // Escape pressed with focus outside the dialog still closes it.
+    function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.defaultPrevented || !isKey(event, "Escape")) return;
+      event.preventDefault();
+      onCloseRef.current();
+    }
+    window.addEventListener("keydown", handleWindowKeyDown);
+    return () => window.removeEventListener("keydown", handleWindowKeyDown);
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const options = toCommandOptions(buckets);
   const totalCount = getTotalCount(buckets);
-  const trimmedQuery = query.trim();
-  const isSearching = trimmedQuery.length > 0;
+  const isSearching = query.trim().length > 0;
 
-  const {
-    highlightedIndex,
-    setHighlightedIndex,
-    highlightedRef,
-    moveHighlight,
-  } = useKeyboardNav(totalCount, trimmedQuery);
-
-  const highlightedFlat = flatResults[highlightedIndex];
-
-  function selectHighlightedItem() {
-    if (!highlightedFlat) return;
-    onSelectItem(highlightedFlat.item, highlightedFlat.bucketKey);
+  function handleSelect(option: SearchCommandOption) {
+    if (!option.data) return;
+    onSelectItemRef.current(option.data.item, option.data.bucketKey);
   }
 
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    // Escape closure is handled by Radix's ``onOpenChange``; arrow
-    // keys and Enter stay here so the input keeps focus while the user
-    // navigates the result list.
+  // Closing is this component's job (kmenu would only park its core in an
+  // idle state), so Escape is taken in the capture phase before kmenu sees it.
+  function handleEscapeCapture(event: KeyboardEvent<HTMLDivElement>) {
+    if (!isKey(event, "Escape")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onClose();
+  }
+
+  function handleDialogKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    // Keys typed into the input are kmenu's; this covers focus elsewhere in
+    // the dialog (the header buttons) so the list still navigates.
+    if (event.target instanceof HTMLInputElement) return;
+    const command = commandRef.current?.command;
     if (isKey(event, "ArrowDown")) {
       event.preventDefault();
-      moveHighlight(1);
+      command?.navigateDown();
     } else if (isKey(event, "ArrowUp")) {
       event.preventDefault();
-      moveHighlight(-1);
+      command?.navigateUp();
     } else if (isKey(event, "Enter")) {
       event.preventDefault();
-      selectHighlightedItem();
+      command?.selectActive();
     }
   }
 
-  function handleOpenAutoFocus(event: Event) {
-    // Radix's default is to focus the first focusable element. For
-    // search-as-you-type we want the input regardless of where it
-    // sits in the tab order.
-    event.preventDefault();
-    inputRef.current?.focus();
-  }
-
-  const showResults = !isError && totalCount > 0;
-  const showLoading = !isError && totalCount === 0 && isLoading;
-  const showEmptyState = !isError && totalCount === 0 && !isLoading;
-
   return (
-    <RXDialog.Root
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+      className="fixed inset-0 z-80 flex animate-in items-start justify-center bg-linear-to-b from-black/20 to-black/25 pt-[18vh] backdrop-blur-[2px] fade-in-0 motion-reduce:animate-none"
+      onKeyDownCapture={handleEscapeCapture}
+      onKeyDown={handleDialogKeyDown}
     >
-      <RXDialog.Portal>
-        <RXDialog.Overlay className="fixed inset-0 z-80 bg-black/20 backdrop-blur-xs" />
-        <RXDialog.Content
-          onOpenAutoFocus={handleOpenAutoFocus}
-          className="fixed top-[18vh] left-1/2 z-80 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-3xl bg-card shadow-2xl ring-1 ring-border focus:outline-hidden"
-          onKeyDown={handleKeyDown}
+      <button
+        type="button"
+        aria-label="Close search"
+        className="fixed inset-0 cursor-default border-0 bg-transparent"
+        onClick={onClose}
+      />
+      <div
+        className={cn(
+          "relative w-[90%] max-w-[620px] animate-in overflow-hidden rounded-[14px] border border-border bg-popover shadow-2xl duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] fade-in-0 zoom-in-95 slide-in-from-top-1 motion-reduce:animate-none",
+          // kmenu's active-row indicator (styled by Kobra's command-menu.css)
+          // only starts gliding once the dialog has settled.
+          isReady &&
+            "[&_.command-active-indicator]:transition-[transform,width,height] [&_.command-active-indicator]:duration-150 [&_.command-active-indicator]:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:[&_.command-active-indicator]:transition-none",
+        )}
+      >
+        <span id={titleId} className="sr-only">
+          Search
+        </span>
+        <span id={descriptionId} className="sr-only">
+          Search commands and results.
+        </span>
+        <CommandRoot
+          ref={commandRef}
+          open
+          value={query}
+          options={options}
+          filter={showEverything}
+          onSelect={handleSelect}
+          className="flex flex-col"
         >
-          <RXDialog.Title className="sr-only">Search</RXDialog.Title>
-          <RXDialog.Description className="sr-only">
-            Search commands and results.
-          </RXDialog.Description>
-          <div className="flex items-center gap-3 bg-muted/50 p-3">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
             <Icon
               icon={Search01Icon}
-              className="h-5 w-5 shrink-0 text-foreground"
+              className="size-5 shrink-0 text-muted-foreground"
             />
-            <input
-              ref={inputRef}
+            {/* kmenu marks the input as a combobox; it stays a plain textbox
+                with the listbox wired through aria-controls, as before. */}
+            <CommandInput
+              role={undefined}
+              aria-expanded={undefined}
               value={query}
-              onChange={(event) => onQueryChange(event.target.value)}
-              placeholder={placeholder}
               aria-label={inputAriaLabel}
-              aria-controls={`${idPrefix}-results`}
-              aria-activedescendant={
-                highlightedFlat
-                  ? `${idPrefix}-${highlightedFlat.item.id}`
-                  : undefined
-              }
+              placeholder={placeholder}
               autoComplete="off"
-              className="flex h-9 w-full min-w-0 border-0 bg-transparent px-0 text-base text-foreground shadow-none outline-hidden placeholder:text-zinc-700 md:text-sm"
+              className="min-w-0 flex-1 border-0 bg-transparent text-[0.95rem] text-popover-foreground outline-0 placeholder:text-muted-foreground"
+              onValueChange={onQueryChange}
             />
             {isLoading && isSearching ? (
               <LoadingSpinner
@@ -155,77 +213,48 @@ export function SearchCommandModal({
               />
             ) : null}
             {query ? (
-              <Button
+              <button
                 type="button"
-                variant="ghost"
-                size="icon-sm"
-                withTooltip={false}
                 aria-label="Clear search"
+                className={headerButtonClassName}
                 onClick={() => onQueryChange("")}
-                className="shrink-0"
               >
-                <Icon icon={Cancel01Icon} className="h-4 w-4" />
-              </Button>
+                <Icon icon={Cancel01Icon} className="size-3" />
+              </button>
             ) : null}
-          </div>
-          <Separator />
-          <div className="py-2">
-            <div
-              id={`${idPrefix}-results`}
-              className={cn(
-                "scrollbar-thin max-h-104 scrollbar-thumb-zinc-200 scrollbar-track-transparent overflow-y-auto",
-                totalCount === 0 && "max-h-none",
-              )}
+            <button
+              type="button"
+              className={headerButtonClassName}
+              onClick={onClose}
             >
-              {isError ? (
-                <div className="px-3 py-8 text-center text-sm text-destructive">
-                  {errorLabel}
-                </div>
-              ) : showResults ? (
-                <SearchCommandResults
-                  buckets={buckets}
-                  idPrefix={idPrefix}
-                  query={trimmedQuery}
-                  highlightedIndex={highlightedIndex}
-                  highlightedRef={highlightedRef}
-                  onHighlight={setHighlightedIndex}
-                  onSelect={onSelectItem}
-                  loadingItemId={loadingItemId}
-                />
-              ) : showLoading ? (
-                // Skeleton over text: the input-side spinner already
-                // signals "searching", so the body should mirror the
-                // shape of what's about to appear (staggered rows) rather
-                // than block the eye with a centred string. Emil
-                // Kowalski's strategy-feedback-immediate rule.
-                <SearchCommandSkeleton />
-              ) : showEmptyState ? (
-                <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-                  {isSearching ? searchingEmptyLabel : idleEmptyLabel}
-                </div>
-              ) : null}
-            </div>
+              Esc
+            </button>
           </div>
-          <Separator />
-          <div className="flex items-center justify-between gap-4 bg-muted/50 px-4 py-4 text-xs text-zinc-700">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5">
-                <Kbd>↑</Kbd>
-                <Kbd>↓</Kbd>
-                <span>Navigate</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Kbd>↵</Kbd>
-                <span>Select</span>
-              </div>
+          {isError ? (
+            <div className={cn(emptyClassName, "text-destructive")}>
+              {errorLabel}
             </div>
-            <div className="flex items-center gap-1.5">
-              <Kbd>esc</Kbd>
-              <span>Close</span>
+          ) : totalCount > 0 ? (
+            <SearchCommandResults
+              buckets={buckets}
+              options={options}
+              query={query.trim()}
+              loadingItemId={loadingItemId}
+            />
+          ) : isLoading ? (
+            // Skeleton over text: the input-side spinner already signals
+            // "searching", so the body mirrors the shape of what's about to
+            // appear rather than blocking the eye with a centred string.
+            <div className="p-2">
+              <SearchCommandSkeleton />
             </div>
-          </div>
-        </RXDialog.Content>
-      </RXDialog.Portal>
-    </RXDialog.Root>
+          ) : (
+            <div className={emptyClassName}>
+              {isSearching ? searchingEmptyLabel : idleEmptyLabel}
+            </div>
+          )}
+        </CommandRoot>
+      </div>
+    </div>
   );
 }

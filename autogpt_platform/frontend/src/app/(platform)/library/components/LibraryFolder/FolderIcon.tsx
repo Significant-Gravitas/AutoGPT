@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { Text } from "@/components/atoms/Text/Text";
 
 type FolderSize = "xs" | "sm" | "md" | "lg" | "xl";

@@ -20,6 +20,7 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 
 import {
   configureCookiebot,
@@ -298,8 +299,9 @@ describe("SettingsPreferencesPage", () => {
 
     render(<SettingsPreferencesPage />);
 
-    fireEvent.click(await screen.findByRole("combobox", { name: "Briefing" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Monthly" }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("combobox", { name: "Briefing" }));
+    await user.click(await screen.findByRole("option", { name: "Monthly" }));
     fireEvent.click(
       screen.getByRole("switch", { name: "Marketplace reviews" }),
     );
@@ -359,13 +361,14 @@ describe("SettingsPreferencesPage", () => {
 
     render(<SettingsPreferencesPage />);
 
+    const user = userEvent.setup();
     const select = await screen.findByRole("combobox", { name: "Timezone" });
-    fireEvent.click(select);
+    await user.click(select);
 
     const option = await screen.findByRole("option", {
       name: /London/i,
     });
-    fireEvent.click(option);
+    await user.click(option);
 
     const saveButton = screen.getByRole("button", { name: "Save changes" });
 

@@ -48,15 +48,6 @@ export const IMPORT_RESTRICTIONS = {
       },
     ],
   },
-  "shadcn-scratch": {
-    patterns: [
-      {
-        regex: "^(@/|(\\.\\./)+)components/__shadcn_scratch__/",
-        message:
-          "src/components/__shadcn_scratch__ is where the shadcn CLI writes (components.json aliases.ui) and is git-ignored. Adapt the generated code into an atom or molecule instead of importing it.",
-      },
-    ],
-  },
   "lucide-react": {
     paths: [{ name: "lucide-react", message: HUGEICONS_ONLY }],
   },
@@ -67,6 +58,9 @@ export const IMPORT_RESTRICTIONS = {
   },
   "@radix-ui/react-icons": {
     paths: [{ name: "@radix-ui/react-icons", message: HUGEICONS_ONLY }],
+  },
+  "@tabler/icons-react": {
+    paths: [{ name: "@tabler/icons-react", message: HUGEICONS_ONLY }],
   },
   "react-icons": {
     patterns: [{ regex: "^react-icons(/|$)", message: HUGEICONS_ONLY }],
@@ -96,6 +90,9 @@ export const IMPORT_RESTRICTIONS = {
 // relative to this file. Nested scopes add up.
 export const IMPORT_SCOPES = {
   "src/components/": ["ui"],
+  // Kobra registry output, kept as installed so it can be updated. It ships
+  // its own Tabler glyphs; the design system's atoms still use Hugeicons.
+  "src/components/ui/": ["@tabler/icons-react"],
   "src/components/__legacy__/": ["legacy"],
   "src/components/atoms/Icon/": ["@hugeicons/react"],
   "src/components/molecules/Toast/": ["sonner"],
@@ -253,6 +250,8 @@ export function tailwindBlocks({ allowlist = true } = {}) {
     {
       name: "design-system/tailwind",
       files: ["src/**/*.{ts,tsx}"],
+      // Kobra registry files are vendored verbatim (see MIGRATION.md).
+      ignores: ["src/components/ui/**"],
       plugins: { "better-tailwindcss": betterTailwind },
       settings: {
         "better-tailwindcss": {

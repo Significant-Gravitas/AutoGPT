@@ -6,9 +6,9 @@ const { reducedMotion } = vi.hoisted(() => ({
   reducedMotion: { value: false },
 }));
 
-vi.mock("framer-motion", async () => {
+vi.mock("motion/react", async () => {
   const actual =
-    await vi.importActual<typeof import("framer-motion")>("framer-motion");
+    await vi.importActual<typeof import("motion/react")>("motion/react");
   return {
     ...actual,
     useReducedMotion: () => reducedMotion.value,

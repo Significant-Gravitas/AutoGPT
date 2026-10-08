@@ -40,9 +40,9 @@ describe("trial billing", () => {
       ),
     );
     const { container } = render(<TrialCard />);
-    expect(container.querySelector(".animate-pulse")).not.toBeNull();
+    expect(container.querySelector("[data-slot=skeleton]")).not.toBeNull();
     await waitFor(() =>
-      expect(container.querySelector(".animate-pulse")).toBeNull(),
+      expect(container.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.queryByRole("region", { name: "AutoGPT trial" })).toBeNull();
   });

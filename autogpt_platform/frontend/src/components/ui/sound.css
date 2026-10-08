@@ -1,0 +1,79 @@
+:root {
+  --shell-fg-muted: #333333;
+  --shell-fg-faint: #6d6d6d;
+}
+
+.dark {
+  --shell-fg-muted: #d4d4d4;
+  --shell-fg-faint: #8e8e8e;
+}
+
+@theme inline {
+  --color-shell-fg-muted: var(--shell-fg-muted);
+  --color-shell-fg-faint: var(--shell-fg-faint);
+}
+
+.sound-slash {
+
+  stroke-dasharray: 1 2;
+
+  stroke-dashoffset: 1.02;
+  --slash-ms: 200ms;
+  transition: stroke-dashoffset var(--slash-ms) var(--ease-out);
+}
+
+[data-muted='true'] .sound-slash {
+  stroke-dashoffset: 0;
+  --slash-ms: 260ms;
+}
+
+.sound-wave {
+  transform-box: view-box;
+  transform-origin: 11px 12px;
+  transition:
+    opacity 130ms var(--ease-out) var(--wave-delay),
+    transform 130ms var(--ease-out) var(--wave-delay),
+    filter 130ms var(--ease-out) var(--wave-delay);
+}
+
+[data-muted='true'] .sound-wave {
+  opacity: 0;
+  transform: scale(0.25);
+  filter: blur(1px);
+}
+
+.sound-wave-inner {
+  --wave-delay: 45ms;
+}
+
+.sound-wave-outer {
+  --wave-delay: 20ms;
+}
+
+[data-muted='true'] .sound-wave-inner {
+  --wave-delay: 50ms;
+}
+
+[data-muted='true'] .sound-wave-outer {
+  --wave-delay: 75ms;
+}
+
+.sound-speaker {
+  --speaker-ms: 220ms;
+  --speaker-delay: 0ms;
+  transition: transform var(--speaker-ms) var(--ease-out) var(--speaker-delay);
+}
+
+[data-muted='true'] .sound-speaker {
+  transform: translateX(5.5px);
+  --speaker-ms: 260ms;
+  --speaker-delay: 80ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sound-slash,
+  .sound-wave,
+  .sound-speaker {
+    transition: none;
+  }
+}

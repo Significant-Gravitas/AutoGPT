@@ -12,7 +12,7 @@ const meta: Meta<typeof MultiToggle> = {
     docs: {
       description: {
         component:
-          "MultiToggle component that behaves like a checkbox group, allowing multiple items to be selected. Each item uses outline button styling with purple-600 accent for selected state.",
+          "A multi-select group of pill toggles on Kobra's ToggleGroup. Each item is an outline pill; selected items take the accent tint.",
       },
     },
   },

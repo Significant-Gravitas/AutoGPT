@@ -94,26 +94,30 @@ export function IntegrationsToggle({ expert, className }: Props) {
         <span className="flex -space-x-1.5">
           {shown.map((service) => (
             <Tooltip key={service.id}>
-              <TooltipTrigger asChild>
-                <span className="flex size-6 items-center justify-center rounded-full bg-white ring-2 smooth-shadow-ring-sm ring-white">
-                  <IntegrationLogo
-                    provider={service.id}
-                    alt={service.name}
-                    size={14}
-                  />
-                </span>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <span className="flex size-6 items-center justify-center rounded-full bg-white ring-2 smooth-shadow-ring-sm ring-white">
+                    <IntegrationLogo
+                      provider={service.id}
+                      alt={service.name}
+                      size={14}
+                    />
+                  </span>
+                }
+              />
               <TooltipContent side="bottom">{service.name}</TooltipContent>
             </Tooltip>
           ))}
         </span>
         {hidden.length > 0 && (
           <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="text-xs font-medium text-sidebar-foreground/90 tabular-nums">
-                +{hidden.length}
-              </span>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <span className="text-xs font-medium text-sidebar-foreground/90 tabular-nums">
+                  +{hidden.length}
+                </span>
+              }
+            />
             <TooltipContent side="bottom">{hiddenNames}</TooltipContent>
           </Tooltip>
         )}

@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { TooltipProvider } from "@radix-ui/react-tooltip";
+import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { DraftRecoveryPopup } from "../components/DraftRecoveryDialog/DraftRecoveryPopup";
 
 const mockOnLoad = vi.fn();
@@ -23,7 +23,7 @@ vi.mock("../components/DraftRecoveryDialog/useDraftRecoveryPopup", () => ({
   })),
 }));
 
-vi.mock("framer-motion", () => ({
+vi.mock("motion/react", () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),

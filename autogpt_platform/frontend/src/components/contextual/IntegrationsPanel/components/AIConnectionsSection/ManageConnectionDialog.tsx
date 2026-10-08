@@ -119,8 +119,8 @@ function ChatGPTConnectionDialog({
           isOpen: connection !== null && forceMessage === null,
           set: (open) => {
             // Opening the force-confirmation dialog intentionally hides this
-            // one. Radix reports that controlled close through this callback;
-            // keep the connection selected so Cancel can return here.
+            // one. Ignore any close reported while it is up and keep the
+            // connection selected so Cancel can return here.
             if (!open && forceMessage !== null) return;
             setManageOpen(open);
           },

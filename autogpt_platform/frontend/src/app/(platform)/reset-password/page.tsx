@@ -3,7 +3,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { ExpiredLinkMessage } from "@/components/auth/ExpiredLinkMessage";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { Form, FormField } from "@/components/molecules/Form/Form";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { changePasswordFormSchema, sendEmailFormSchema } from "@/types/auth";
@@ -168,87 +168,82 @@ function ResetPasswordContent() {
     <div className="flex h-full min-h-[85vh] w-full flex-col items-center justify-center">
       <AuthCard title="Reset Password">
         {resetToken ? (
-          <form
-            onSubmit={changePasswordForm.handleSubmit(onChangePassword)}
-            className="flex w-full flex-col gap-1"
+          <Form
+            form={changePasswordForm}
+            onSubmit={onChangePassword}
+            className="flex w-full flex-col gap-1 space-y-0"
           >
-            <Form {...changePasswordForm}>
-              <FormField
-                control={changePasswordForm.control}
-                name="password"
-                render={({ field }) => (
-                  <Input
-                    id={field.name}
-                    label="Password"
-                    type="password"
-                    placeholder="••••••••••••••••"
-                    error={
-                      changePasswordForm.formState.errors.password?.message
-                    }
-                    {...field}
-                  />
-                )}
-              />
-              <FormField
-                control={changePasswordForm.control}
-                name="confirmPassword"
-                render={({ field }) => (
-                  <Input
-                    id={field.name}
-                    label="Confirm Password"
-                    type="password"
-                    placeholder="••••••••••••••••"
-                    error={
-                      changePasswordForm.formState.errors.confirmPassword
-                        ?.message
-                    }
-                    {...field}
-                  />
-                )}
-              />
+            <FormField
+              control={changePasswordForm.control}
+              name="password"
+              render={({ field }) => (
+                <Input
+                  id={field.name}
+                  label="Password"
+                  type="password"
+                  placeholder="••••••••••••••••"
+                  error={changePasswordForm.formState.errors.password?.message}
+                  {...field}
+                />
+              )}
+            />
+            <FormField
+              control={changePasswordForm.control}
+              name="confirmPassword"
+              render={({ field }) => (
+                <Input
+                  id={field.name}
+                  label="Confirm Password"
+                  type="password"
+                  placeholder="••••••••••••••••"
+                  error={
+                    changePasswordForm.formState.errors.confirmPassword?.message
+                  }
+                  {...field}
+                />
+              )}
+            />
 
-              <Button
-                variant="primary"
-                loading={isLoading}
-                type="submit"
-                className="mt-6 w-full"
-              >
-                {isLoading ? "Updating password..." : "Update password"}
-              </Button>
-            </Form>
-          </form>
+            <Button
+              variant="primary"
+              loading={isLoading}
+              type="submit"
+              className="mt-6 w-full"
+            >
+              {isLoading ? "Updating password..." : "Update password"}
+            </Button>
+          </Form>
         ) : (
-          <form
-            onSubmit={sendEmailForm.handleSubmit(onSendEmail)}
-            className="flex w-full flex-col gap-1"
+          <Form
+            form={sendEmailForm}
+            onSubmit={onSendEmail}
+            className="flex w-full flex-col gap-1 space-y-0"
           >
-            <Form {...sendEmailForm}>
-              <FormField
-                control={sendEmailForm.control}
-                name="email"
-                render={({ field }) => (
-                  <Input
-                    id={field.name}
-                    label="Email"
-                    placeholder="m@example.com"
-                    type="email"
-                    error={sendEmailForm.formState.errors.email?.message}
-                    {...field}
-                  />
-                )}
-              />
+            <FormField
+              control={sendEmailForm.control}
+              name="email"
+              render={({ field }) => (
+                <Input
+                  id={field.name}
+                  label="Email"
+                  placeholder="m@example.com"
+                  type="email"
+                  error={sendEmailForm.formState.errors.email?.message}
+                  {...field}
+                />
+              )}
+            />
 
-              <Button
-                variant="primary"
-                loading={isLoading}
-                disabled={disabled}
-                type="submit"
-                className="mt-6 w-full"
-              >
-                Send reset email
-              </Button>
-            </Form>
-          </form>
+            <Button
+              variant="primary"
+              loading={isLoading}
+              disabled={disabled}
+              type="submit"
+              className="mt-6 w-full"
+            >
+              Send reset email
+            </Button>
+          </Form>
         )}
       </AuthCard>
     </div>

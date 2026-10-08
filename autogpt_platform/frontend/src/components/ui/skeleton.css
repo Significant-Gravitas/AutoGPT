@@ -1,0 +1,44 @@
+:root {
+  --shell-line-strong: #dcdcdc;
+  --skeleton-shimmer-duration: 1600ms;
+  --skeleton-sweep: rgb(0 0 0 / 6%);
+}
+
+.dark {
+  --skeleton-sweep: rgb(255 255 255 / 7%);
+  --shell-line-strong: #303030;
+}
+
+@theme inline {
+  --color-shell-line-strong: var(--shell-line-strong);
+}
+
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-shimmer::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  background: linear-gradient(90deg, transparent, var(--skeleton-sweep), transparent);
+  transform: translateX(-100%);
+  animation: skeleton-shimmer var(--skeleton-shimmer-duration) linear infinite;
+}
+
+.skeleton-shimmer:dir(rtl)::after {
+  animation-direction: reverse;
+}
+
+@keyframes skeleton-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after {
+    animation: none;
+  }
+}

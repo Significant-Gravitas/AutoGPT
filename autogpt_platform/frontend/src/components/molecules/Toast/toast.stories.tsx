@@ -54,7 +54,7 @@ function ToastDemo() {
       title: "Toast with Action",
       description: "This toast has a custom action button.",
       action: (
-        <Button variant="secondary" size="md" className="ml-6">
+        <Button variant="secondary" size="md" onClick={() => alert("Action")}>
           Action
         </Button>
       ),
@@ -164,7 +164,11 @@ export const ToastWithAction: Story = {
             title: "Toast with Action",
             description: "This toast has a custom action button.",
             action: (
-              <Button variant="secondary" size="md">
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={() => alert("Action")}
+              >
                 Action
               </Button>
             ),

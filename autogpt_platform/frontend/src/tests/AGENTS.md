@@ -145,7 +145,7 @@ Does it need a REAL browser/backend?
 
 ## What NOT to Test
 
-❌ Third-party library internals (Radix UI, React Query)  
+❌ Third-party library internals (Base UI/Kobra, React Query)  
 ❌ CSS styling details (use Storybook)  
 ❌ Simple prop-passing components with no logic  
 ❌ TypeScript types

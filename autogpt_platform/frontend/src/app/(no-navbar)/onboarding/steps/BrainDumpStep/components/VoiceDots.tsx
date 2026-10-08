@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, type MotionValue, useTransform } from "framer-motion";
+import { motion, type MotionValue, useTransform } from "motion/react";
 
 export const DOT = 14;
 const GAP = 22;

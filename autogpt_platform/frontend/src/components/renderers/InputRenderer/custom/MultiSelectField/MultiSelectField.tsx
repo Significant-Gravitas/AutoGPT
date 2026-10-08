@@ -1,14 +1,7 @@
 import React from "react";
 import { FieldProps, getUiOptions } from "@rjsf/utils";
 import { BlockIOObjectSubSchema } from "@/lib/autogpt-server-api/types";
-import {
-  MultiSelector,
-  MultiSelectorContent,
-  MultiSelectorInput,
-  MultiSelectorItem,
-  MultiSelectorList,
-  MultiSelectorTrigger,
-} from "@/components/__legacy__/ui/multiselect";
+import { MultiSelect } from "@/components/molecules/MultiSelect/MultiSelect";
 import { cn } from "@/lib/utils";
 import { useMultiSelectField } from "./useMultiSelectField";
 
@@ -25,33 +18,25 @@ export const MultiSelectField = (props: FieldProps) => {
   const handleValuesChange = createChangeHandler(onChange, fieldPathId);
 
   const displayName = schema.title || "options";
+  const placeholder =
+    typeof schema.placeholder === "string"
+      ? schema.placeholder
+      : `Select ${displayName}...`;
 
   return (
     <div className={cn("flex flex-col", uiOptions.className)}>
-      <MultiSelector
+      <MultiSelect
         className="nodrag"
-        values={selection}
-        onValuesChange={handleValuesChange}
-      >
-        <MultiSelectorTrigger className="rounded-3xl border border-zinc-200 bg-white px-2 shadow-none">
-          <MultiSelectorInput
-            placeholder={
-              (schema as any).placeholder ?? `Select ${displayName}...`
-            }
-          />
-        </MultiSelectorTrigger>
-        <MultiSelectorContent className="nowheel">
-          <MultiSelectorList>
-            {options
-              .map((key) => ({ ...optionSchema[key], key }))
-              .map(({ key, title, description }) => (
-                <MultiSelectorItem key={key} value={key} title={description}>
-                  {title ?? key}
-                </MultiSelectorItem>
-              ))}
-          </MultiSelectorList>
-        </MultiSelectorContent>
-      </MultiSelector>
+        aria-label={displayName}
+        options={options.map((key) => ({
+          value: key,
+          label: optionSchema[key].title ?? key,
+          description: optionSchema[key].description,
+        }))}
+        value={selection}
+        onValueChange={handleValuesChange}
+        placeholder={placeholder}
+      />
     </div>
   );
 };

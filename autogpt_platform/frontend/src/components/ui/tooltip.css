@@ -1,0 +1,6 @@
+@media (prefers-reduced-transparency: reduce) {
+.dark [data-slot='tooltip-content'] {
+    background: var(--popover);
+    backdrop-filter: none;
+  }
+}

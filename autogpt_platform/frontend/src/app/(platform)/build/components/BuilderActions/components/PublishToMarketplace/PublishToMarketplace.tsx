@@ -23,16 +23,18 @@ export function PublishToMarketplace({ flowID, flowVersion }: Props) {
   return (
     <>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="outline"
-            size="icon-lg"
-            onClick={handlePublishToMarketplace}
-            disabled={isDisabled}
-          >
-            <Icon icon={Share01Icon} className="size-4" />
-          </Button>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="outline"
+              size="icon-lg"
+              onClick={handlePublishToMarketplace}
+              disabled={isDisabled}
+            >
+              <Icon icon={Share01Icon} className="size-4" />
+            </Button>
+          }
+        />
         <TooltipContent>Publish to Marketplace</TooltipContent>
       </Tooltip>
 

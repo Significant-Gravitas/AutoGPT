@@ -5,14 +5,9 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
-import { useState } from "react";
+import { ComponentProps, useState } from "react";
 import { fn, userEvent, within } from "storybook/test";
-import {
-  Popover,
-  PopoverAnchor,
-  PopoverContent,
-  PopoverTrigger,
-} from "./Popover";
+import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
 
 const triggerClassName = extendedButtonVariants({
   variant: "secondary",
@@ -29,7 +24,7 @@ const meta = {
     docs: {
       description: {
         component:
-          'Radix Popover with design-system styling: `Popover` (root), `PopoverTrigger`, `PopoverAnchor` and `PopoverContent` (portalled, 18rem wide, zinc border, `align="center"` and `sideOffset=4` by default). The content has `role="dialog"` but no built-in name, so pass `aria-label` or `aria-labelledby`. Opens with `defaultOpen` or a controlled `open`/`onOpenChange`.',
+          'Popover on Kobra (Base UI): `Popover` (root), `PopoverTrigger`, `PopoverContent` (portalled, 18rem wide, with arrow, `align="center"` and `sideOffset=8` by default) and `PopoverClose`. The content has `role="dialog"` but no built-in name, so pass `aria-label` or `aria-labelledby`. Opens with `defaultOpen` or a controlled `open`/`onOpenChange`.',
       },
       story: { height: "320px" },
     },
@@ -87,15 +82,7 @@ export const Controlled: Story = {
   render: renderControlled,
 };
 
-export const WithAnchor: Story = {
-  render: renderWithAnchor,
-};
-
-interface PopoverStoryProps {
-  defaultOpen?: boolean;
-  modal?: boolean;
-  onOpenChange?: (open: boolean) => void;
-}
+type PopoverStoryProps = ComponentProps<typeof Popover>;
 
 function renderBasic(args: PopoverStoryProps) {
   return (
@@ -128,7 +115,6 @@ function renderSides() {
             side={side}
             className="w-40"
             aria-label={`Popover on ${side}`}
-            onOpenAutoFocus={(event) => event.preventDefault()}
           >
             <Text variant="small">Opens on the {side} side.</Text>
           </PopoverContent>
@@ -148,11 +134,7 @@ function renderAlignments() {
           <PopoverTrigger className={triggerClassName}>
             align {align}
           </PopoverTrigger>
-          <PopoverContent
-            align={align}
-            aria-label={`Aligned to ${align}`}
-            onOpenAutoFocus={(event) => event.preventDefault()}
-          >
+          <PopoverContent align={align} aria-label={`Aligned to ${align}`}>
             <Text variant="small">
               Content aligned to the {align} of its trigger.
             </Text>
@@ -219,35 +201,4 @@ function ControlledPopover() {
 
 function renderControlled() {
   return <ControlledPopover />;
-}
-
-function renderWithAnchor() {
-  return (
-    <Popover defaultOpen>
-      <div className="flex w-96 items-end gap-2">
-        <PopoverAnchor asChild>
-          <div className="flex-1">
-            <Input
-              id="search-agents"
-              label="Search agents"
-              placeholder="Search agents"
-              wrapperClassName="mb-0!"
-            />
-          </div>
-        </PopoverAnchor>
-        <PopoverTrigger className={triggerClassName}>Tips</PopoverTrigger>
-      </div>
-      <PopoverContent
-        align="start"
-        className="w-80"
-        aria-label="Search tips"
-        onOpenAutoFocus={(event) => event.preventDefault()}
-      >
-        <Text variant="small">
-          The content is positioned against the search field (the anchor), not
-          the Tips trigger.
-        </Text>
-      </PopoverContent>
-    </Popover>
-  );
 }

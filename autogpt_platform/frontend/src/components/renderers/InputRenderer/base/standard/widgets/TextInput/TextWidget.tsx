@@ -148,18 +148,20 @@ export default function TextWidget(props: WidgetProps) {
         />
         {showExpandButton && (
           <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-lg"
-                onClick={handleModalOpen}
-                type="button"
-                className="p-1"
-                aria-label="Expand input"
-              >
-                <Icon icon={ArrowExpandIcon} className="size-4" />
-              </Button>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-lg"
+                  onClick={handleModalOpen}
+                  type="button"
+                  className="p-1"
+                  aria-label="Expand input"
+                >
+                  <Icon icon={ArrowExpandIcon} className="size-4" />
+                </Button>
+              }
+            />
             <TooltipContent>Expand input</TooltipContent>
           </Tooltip>
         )}

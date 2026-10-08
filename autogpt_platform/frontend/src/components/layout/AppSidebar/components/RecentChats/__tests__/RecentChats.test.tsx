@@ -202,10 +202,7 @@ describe("RecentChats — delete flow", () => {
 
     const row = (await screen.findByText("Deletable")).closest("li");
     if (!row) throw new Error("row not found");
-    fireEvent.pointerDown(
-      within(row).getByRole("button", { name: /chat actions/i }),
-      { button: 0 },
-    );
+    fireEvent.click(within(row).getByRole("button", { name: /chat actions/i }));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: /delete chat/i }),
     );

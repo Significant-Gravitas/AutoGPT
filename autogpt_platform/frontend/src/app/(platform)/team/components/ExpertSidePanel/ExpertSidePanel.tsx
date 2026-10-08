@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { FullscreenDialog } from "@/components/molecules/FullscreenDialog/FullscreenDialog";
 import { Text } from "@/components/atoms/Text/Text";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ReactNode, useEffect, useState } from "react";
 import { PanelResizeHandle } from "@/app/(platform)/copilot/components/PanelResizeHandle";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";

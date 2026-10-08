@@ -2,8 +2,8 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { ScrollArea } from "@/components/atoms/ScrollArea/ScrollArea";
+import { PopoverClose } from "@/components/molecules/Popover/Popover";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { PopoverClose } from "@radix-ui/react-popover";
 
 import { TaskGroup } from "../helpers";
 import { WalletRefill } from "./WalletRefill";

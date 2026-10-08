@@ -34,7 +34,7 @@ export function AccountMenuHeader({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left outline-hidden transition-colors hover:bg-zinc-100 focus-visible:bg-zinc-100 data-[state=open]:bg-zinc-100"
+          className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left outline-hidden transition-colors hover:bg-zinc-100 focus-visible:bg-zinc-100 data-open:bg-zinc-100"
           aria-controls={popupId}
           aria-haspopup="true"
           data-testid="account-menu-org-trigger"

@@ -173,7 +173,7 @@ export function useSignupPage() {
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
-    handleSubmit: form.handleSubmit(handleSignup),
+    handleSubmit: handleSignup,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleProviderSignup,
   };

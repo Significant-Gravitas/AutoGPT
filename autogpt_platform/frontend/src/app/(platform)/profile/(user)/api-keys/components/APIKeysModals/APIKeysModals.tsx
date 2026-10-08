@@ -1,6 +1,5 @@
 "use client";
 import { Copy01Icon } from "@hugeicons/core-free-icons";
-import { Label } from "@/components/__legacy__/ui/label";
 import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
@@ -66,25 +65,26 @@ export const APIKeysModals = () => {
               placeholder="Used for..."
             />
             <div className="grid gap-2">
-              <Label>Permissions</Label>
+              <Text variant="body-medium" as="span">
+                Permissions
+              </Text>
               {Object.values(APIKeyPermission).map((permission) => (
-                <div className="flex items-center space-x-2" key={permission}>
-                  <Checkbox
-                    id={permission}
-                    checked={keyState.selectedPermissions.includes(permission)}
-                    onCheckedChange={(checked: boolean) => {
-                      setKeyState((prev) => ({
-                        ...prev,
-                        selectedPermissions: checked
-                          ? [...prev.selectedPermissions, permission]
-                          : prev.selectedPermissions.filter(
-                              (p) => p !== permission,
-                            ),
-                      }));
-                    }}
-                  />
-                  <Label htmlFor={permission}>{permission}</Label>
-                </div>
+                <Checkbox
+                  key={permission}
+                  id={permission}
+                  label={permission}
+                  checked={keyState.selectedPermissions.includes(permission)}
+                  onCheckedChange={(checked) => {
+                    setKeyState((prev) => ({
+                      ...prev,
+                      selectedPermissions: checked
+                        ? [...prev.selectedPermissions, permission]
+                        : prev.selectedPermissions.filter(
+                            (p) => p !== permission,
+                          ),
+                    }));
+                  }}
+                />
               ))}
             </div>
           </div>

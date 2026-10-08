@@ -12,7 +12,7 @@ import {
   useMotionValue,
   useReducedMotion,
   useTransform,
-} from "framer-motion";
+} from "motion/react";
 import { useEffect, useState } from "react";
 import { useAudioBars } from "./useAudioBars";
 import { useSimulatedVoice } from "./useSimulatedVoice";

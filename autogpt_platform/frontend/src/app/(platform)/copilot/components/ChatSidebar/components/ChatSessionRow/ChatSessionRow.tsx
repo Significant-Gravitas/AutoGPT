@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 import type { MouseEvent, RefObject } from "react";
 import { ChatSessionBlock } from "../../../ChatSessionBlock/ChatSessionBlock";
 import {

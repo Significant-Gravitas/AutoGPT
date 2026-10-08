@@ -13,7 +13,7 @@ import { ArrowRight01Icon, Pulse01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 const rowClasses =
-  "group relative flex w-full items-center gap-3 rounded-lg py-2 pl-3 pr-2 text-left text-sm font-normal text-zinc-700 outline-hidden transition-colors duration-200 ease-out hover:bg-zinc-100 focus-visible:bg-zinc-100 focus-visible:outline-hidden data-[state=open]:bg-zinc-100";
+  "group relative flex w-full items-center gap-3 rounded-lg py-2 pl-3 pr-2 text-left text-sm font-normal text-zinc-700 outline-hidden transition-colors duration-200 ease-out hover:bg-zinc-100 focus-visible:bg-zinc-100 focus-visible:outline-hidden data-open:bg-zinc-100";
 
 export function AccountMenuActivityRow() {
   const { activeExecutions, recentCompletions, recentFailures } =
@@ -35,7 +35,7 @@ export function AccountMenuActivityRow() {
           data-testid="account-menu-activity-trigger"
         >
           <span
-            className="absolute top-1/2 left-0 h-5 w-[3px] -translate-y-1/2 rounded-full bg-zinc-900 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100"
+            className="absolute top-1/2 left-0 h-5 w-[3px] -translate-y-1/2 rounded-full bg-zinc-900 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-open:opacity-100"
             aria-hidden="true"
           />
           <span className="relative z-10 flex shrink-0 items-center">

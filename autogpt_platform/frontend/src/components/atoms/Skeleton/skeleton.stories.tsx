@@ -11,7 +11,7 @@ const meta: Meta<typeof Skeleton> = {
     docs: {
       description: {
         component:
-          "Skeleton component for loading states. Use these patterns to show users that content is being loaded, providing a better perceived performance and user experience.",
+          "Kobra's shimmering Skeleton for loading states. Use these patterns to show users that content is being loaded, providing a better perceived performance and user experience.",
       },
     },
   },

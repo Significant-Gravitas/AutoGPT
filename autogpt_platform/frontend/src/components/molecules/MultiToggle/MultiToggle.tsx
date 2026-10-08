@@ -1,8 +1,8 @@
 "use client";
 
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
-import React, { useId } from "react";
-import { isKey } from "@/lib/keyboard";
 
 type MultiToggleItem = {
   value: string;
@@ -27,64 +27,37 @@ export function MultiToggle({
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
 }: MultiToggleProps) {
-  const groupId = useId();
-
-  function handleToggle(value: string) {
-    if (selectedValues.includes(value)) {
-      onChange(selectedValues.filter((v) => v !== value));
-    } else {
-      onChange([...selectedValues, value]);
-    }
-  }
-
-  function handleKeyDown(event: React.KeyboardEvent, value: string) {
-    if (isKey(event, " ", "Enter")) {
-      event.preventDefault();
-      handleToggle(value);
-    }
-  }
-
   return (
-    <div
-      role="group"
+    <ToggleGroup
+      multiple
+      value={selectedValues}
+      onValueChange={(next) => onChange(next as string[])}
       aria-label={ariaLabel}
       aria-labelledby={ariaLabelledBy}
-      className={cn("flex flex-wrap gap-2", className)}
+      className={cn("w-full flex-wrap rounded-none", className)}
     >
-      {items.map((item) => {
-        const isSelected = selectedValues.includes(item.value);
-        const itemId = `${groupId}-${item.value}`;
-
-        return (
-          <button
-            key={item.value}
-            id={itemId}
-            type="button"
-            role="checkbox"
-            aria-checked={isSelected}
-            disabled={item.disabled}
-            onClick={() => handleToggle(item.value)}
-            onKeyDown={(e) => handleKeyDown(e, item.value)}
-            className={cn(
-              // Base button styles similar to outline variant
-              "inline-flex items-center justify-center font-medium whitespace-nowrap transition-colors",
-              "focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:outline-hidden",
-              "disabled:pointer-events-none disabled:opacity-50",
-              "rounded-full border font-sans",
-              "h-9 px-4 py-2 text-sm leading-[22px]",
-              // Default outline styles
-              "border-zinc-700 bg-transparent text-foreground hover:bg-muted",
-              // Selected styles with purple-600
-              isSelected &&
-                "border-accent bg-accent/10 text-accent hover:bg-accent/15",
-              // Disabled styles
-              item.disabled && "border-border text-zinc-200 opacity-50",
-            )}
-          >
-            {item.label}
-          </button>
-        );
-      })}
-    </div>
+      {items.map((item) => (
+        <ToggleGroupItem
+          key={item.value}
+          value={item.value}
+          disabled={item.disabled}
+          variant="outline"
+          size="lg"
+          // Base UI presses a group item on Space keydown; an IME still
+          // composing owns that key.
+          onKeyDown={(event) => {
+            if (isComposingEvent(event)) event.preventBaseUIHandler();
+          }}
+          className={cn(
+            "h-9 rounded-full border-zinc-700 px-4 font-sans text-sm leading-[22px] text-foreground shadow-none hover:bg-muted hover:text-foreground",
+            "focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
+            "data-pressed:border-accent data-pressed:bg-accent/10 data-pressed:text-accent data-pressed:hover:bg-accent/15",
+            item.disabled && "border-border text-zinc-200 opacity-50",
+          )}
+        >
+          {item.label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   );
 }

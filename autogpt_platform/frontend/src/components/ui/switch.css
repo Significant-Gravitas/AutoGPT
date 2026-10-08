@@ -1,0 +1,67 @@
+:root {
+  --ring-duration: 150ms;
+  --toggle-dur: 220ms;
+  --toggle-travel: 14.66px;
+  --toggle-thumb: 14px;
+  --toggle-grow: 5px;
+  --toggle-track: 0ms;
+  --toggle-ease: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.t-toggle {
+  transition:
+    background var(--toggle-track) var(--toggle-ease),
+    box-shadow var(--ring-duration) var(--ease-out),
+    border-color var(--ring-duration) var(--ease-out);
+}
+
+.t-toggle-thumb {
+  width: calc(var(--toggle-travel) + var(--toggle-thumb));
+  clip-path: inset(0 var(--toggle-travel) 0 0 round 999px);
+  transition: clip-path var(--toggle-dur) var(--toggle-ease);
+  will-change: clip-path;
+}
+
+.t-toggle[data-on='true'] .t-toggle-thumb {
+  clip-path: inset(0 0 0 var(--toggle-travel) round 999px);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :is(
+      .t-toggle:hover:not(:disabled),
+      [role='menuitemcheckbox']:not([aria-disabled='true']):is(:hover, :focus) .t-toggle
+    )
+    .t-toggle-thumb {
+    clip-path: inset(0 calc(var(--toggle-travel) - var(--toggle-grow)) 0 0 round 999px);
+  }
+  :is(
+      .t-toggle[data-on='true']:hover:not(:disabled),
+      [role='menuitemcheckbox']:not([aria-disabled='true']):is(:hover, :focus)
+        .t-toggle[data-on='true']
+    )
+    .t-toggle-thumb {
+    clip-path: inset(0 0 0 calc(var(--toggle-travel) - var(--toggle-grow)) round 999px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-toggle,
+  .t-toggle-thumb {
+    transition: none;
+  }
+  :is(
+      .t-toggle:hover:not(:disabled),
+      [role='menuitemcheckbox']:not([aria-disabled='true']):is(:hover, :focus) .t-toggle
+    )
+    .t-toggle-thumb {
+    clip-path: inset(0 var(--toggle-travel) 0 0 round 999px);
+  }
+  :is(
+      .t-toggle[data-on='true']:hover:not(:disabled),
+      [role='menuitemcheckbox']:not([aria-disabled='true']):is(:hover, :focus)
+        .t-toggle[data-on='true']
+    )
+    .t-toggle-thumb {
+    clip-path: inset(0 0 0 var(--toggle-travel) round 999px);
+  }
+}

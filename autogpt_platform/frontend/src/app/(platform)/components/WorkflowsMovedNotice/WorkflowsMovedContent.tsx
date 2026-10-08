@@ -1,8 +1,11 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import {
+  DialogDescription,
+  DialogTitle,
+} from "@/components/molecules/Dialog/Dialog";
 import { ArrowRight02Icon } from "@hugeicons/core-free-icons";
-import * as Dialog from "@radix-ui/react-dialog";
 import { RefObject } from "react";
 import { WorkflowsMovedWalkthrough } from "./WorkflowsMovedWalkthrough";
 
@@ -23,19 +26,19 @@ export function WorkflowsMovedContent({ titleRef, onDismiss }: Props) {
           >
             Workspace update
           </Text>
-          <Dialog.Title
+          <DialogTitle
             ref={titleRef}
             tabIndex={-1}
             className="pr-7 text-2xl leading-tight font-semibold tracking-tight text-zinc-900 outline-hidden sm:text-[1.625rem]"
           >
             Your agents have moved
-          </Dialog.Title>
-          <Dialog.Description className="mt-1.5 text-sm leading-relaxed text-zinc-600">
+          </DialogTitle>
+          <DialogDescription className="mt-1.5 text-sm leading-relaxed text-zinc-600">
             Agents are now{" "}
             <strong className="font-medium text-zinc-900">workflows</strong>.
             Find yours under{" "}
             <strong className="font-medium text-zinc-900">Otto</strong> in Team.
-          </Dialog.Description>
+          </DialogDescription>
           <WorkflowLocation />
         </div>
         <div className="px-4 pb-3 sm:px-6">

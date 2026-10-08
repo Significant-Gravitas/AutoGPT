@@ -59,21 +59,23 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
       {/* Simulate button — dry-run, no credentials or credits needed */}
       {!isGraphRunning && (
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon-lg"
-              variant="ghost"
-              data-id="simulate-graph-button"
-              onClick={() => void handleRunGraph({ dryRun: true })}
-              disabled={!flowID || isLoading}
-              className="group text-yellow-600 hover:bg-yellow-50 hover:text-yellow-700"
-            >
-              <Icon
-                icon={FlaskConicalIcon}
-                className="size-4 transition-transform duration-200 ease-out group-hover:scale-110"
-              />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <Button
+                size="icon-lg"
+                variant="ghost"
+                data-id="simulate-graph-button"
+                onClick={() => void handleRunGraph({ dryRun: true })}
+                disabled={!flowID || isLoading}
+                className="group text-yellow-600 hover:bg-yellow-50 hover:text-yellow-700"
+              >
+                <Icon
+                  icon={FlaskConicalIcon}
+                  className="size-4 transition-transform duration-200 ease-out group-hover:scale-110"
+                />
+              </Button>
+            }
+          />
           <TooltipContent>
             Simulate agent (no real execution — LLM-generated outputs)
           </TooltipContent>
@@ -82,20 +84,24 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
 
       {/* Run / Stop button */}
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="icon-lg"
-            variant={isGraphRunning ? "destructive" : "primary"}
-            data-id={isGraphRunning ? "stop-graph-button" : "run-graph-button"}
-            onClick={
-              isGraphRunning ? handleStopGraph : () => void handleRunGraph()
-            }
-            disabled={!flowID || isLoading}
-            className="group"
-          >
-            {renderIcon()}
-          </Button>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <Button
+              size="icon-lg"
+              variant={isGraphRunning ? "destructive" : "primary"}
+              data-id={
+                isGraphRunning ? "stop-graph-button" : "run-graph-button"
+              }
+              onClick={
+                isGraphRunning ? handleStopGraph : () => void handleRunGraph()
+              }
+              disabled={!flowID || isLoading}
+              className="group"
+            >
+              {renderIcon()}
+            </Button>
+          }
+        />
         <TooltipContent>
           {isLoading
             ? "Processing..."

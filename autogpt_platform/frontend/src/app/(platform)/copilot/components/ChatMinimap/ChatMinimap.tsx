@@ -3,7 +3,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 import { useMemo, useState } from "react";
 import { tickColor, tickScale, toMinimapEntries } from "./helpers";
 import { isKey } from "@/lib/keyboard";

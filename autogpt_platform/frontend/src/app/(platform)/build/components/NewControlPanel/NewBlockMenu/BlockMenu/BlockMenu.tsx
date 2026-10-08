@@ -27,18 +27,20 @@ export const BlockMenu = () => {
       open={forceOpenBlockMenu ? true : blockMenuOpen}
     >
       <Tooltip delayDuration={100}>
-        <TooltipTrigger asChild>
-          <PopoverTrigger className="hover:cursor-pointer">
-            <ControlPanelButton
-              data-id="blocks-control-popover-trigger"
-              data-testid="blocks-control-blocks-button"
-              selected={blockMenuOpen}
-              className="rounded-none"
-            >
-              <Icon icon={ToyBrickIcon} className="size-5" />
-            </ControlPanelButton>
-          </PopoverTrigger>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <PopoverTrigger className="hover:cursor-pointer">
+              <ControlPanelButton
+                data-id="blocks-control-popover-trigger"
+                data-testid="blocks-control-blocks-button"
+                selected={blockMenuOpen}
+                className="rounded-none"
+              >
+                <Icon icon={ToyBrickIcon} className="size-5" />
+              </ControlPanelButton>
+            </PopoverTrigger>
+          }
+        />
         <TooltipContent side="right">Blocks</TooltipContent>
       </Tooltip>
 

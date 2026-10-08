@@ -65,33 +65,37 @@ export function QueueBadge({ sessionID }: Props) {
   return (
     <span className="inline-flex items-center gap-1">
       <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-[11px] font-medium text-purple-800"
-            data-testid="queue-badge-queued"
-          >
-            <Icon icon={HourglassIcon} size={12} />
-            Queued
-          </span>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-[11px] font-medium text-purple-800"
+              data-testid="queue-badge-queued"
+            >
+              <Icon icon={HourglassIcon} size={12} />
+              Queued
+            </span>
+          }
+        />
         <TooltipContent side="top" className="max-w-xs whitespace-normal">
           {QUEUED_TOOLTIP}
         </TooltipContent>
       </Tooltip>
       {sessionID ? (
         <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={handleCancel}
-              disabled={isCancelling}
-              aria-label="Cancel queued task"
-              data-testid="queue-cancel-button"
-              className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-red-600 disabled:opacity-50"
-            >
-              <Icon icon={CancelCircleIcon} size={14} />
-            </button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onClick={handleCancel}
+                disabled={isCancelling}
+                aria-label="Cancel queued task"
+                data-testid="queue-cancel-button"
+                className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-red-600 disabled:opacity-50"
+              >
+                <Icon icon={CancelCircleIcon} size={14} />
+              </button>
+            }
+          />
           <TooltipContent side="top">Cancel queued task</TooltipContent>
         </Tooltip>
       ) : null}

@@ -133,23 +133,21 @@ export function RecentChatItem({
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        asChild
+        render={<Link href={`/home?sessionId=${session.id}`} />}
         isActive={isActive}
         tooltip={title}
-        className="font-normal hover:bg-zinc-100! data-[active=true]:bg-zinc-100! data-[active=true]:font-normal"
+        className="font-normal hover:bg-zinc-100! data-active:bg-zinc-100! data-active:font-normal"
       >
-        <Link href={`/home?sessionId=${session.id}`}>
-          {session.is_processing ? (
-            <LoadingSpinner
-              size="small"
-              className="size-4 shrink-0 text-purple-600"
-            />
-          ) : hasPlatformLogo ? (
-            <ChatOriginIcon sourcePlatform={session.source_platform} />
-          ) : null}
-          <span className="truncate">{title}</span>
-          <ChatLinkLoader />
-        </Link>
+        {session.is_processing ? (
+          <LoadingSpinner
+            size="small"
+            className="size-4 shrink-0 text-purple-600"
+          />
+        ) : hasPlatformLogo ? (
+          <ChatOriginIcon sourcePlatform={session.source_platform} />
+        ) : null}
+        <span className="truncate">{title}</span>
+        <ChatLinkLoader />
       </SidebarMenuButton>
 
       <DropdownMenu>

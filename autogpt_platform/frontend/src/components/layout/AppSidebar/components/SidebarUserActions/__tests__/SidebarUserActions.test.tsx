@@ -69,4 +69,18 @@ describe("SidebarUserActions", () => {
     expect(screen.queryByTestId("agent-activity")).toBeNull();
     expect(screen.queryByTestId("usage-indicator")).toBeNull();
   });
+
+  it("renders the interface sound mute switch with an accessible name", () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: "u1", email: "alice@example.com", role: "user" },
+      isLoggedIn: true,
+      isUserLoading: false,
+    });
+    render(<SidebarUserActions />);
+
+    const toggle = screen.getByRole("button", {
+      name: /(mute|unmute) interface sounds/i,
+    });
+    expect(toggle.getAttribute("aria-pressed")).not.toBeNull();
+  });
 });

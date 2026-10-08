@@ -1,93 +1,72 @@
 "use client";
 
+import { dismissToast, toast as showToast } from "@/components/ui/toast";
 import * as React from "react";
-import { toast as sonnerToast } from "sonner";
+import {
+  PERSISTENT_LIFETIME,
+  STATE_BY_VARIANT,
+  toAction,
+  toText,
+  ToastVariant,
+} from "./helpers";
 
 export interface ToastProps {
   title?: React.ReactNode;
   description?: React.ReactNode;
-  variant?: "default" | "destructive" | "success" | "info";
+  variant?: ToastVariant;
+  /** Milliseconds on screen; Kobra picks a fitting lifetime when unset. */
   duration?: number;
+  /** A button-like node: its text is the label, its `onClick` runs. */
   action?: React.ReactNode;
   dismissable?: boolean;
 }
 
-type ToasterToast = ToastProps & {
-  id: string;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-};
-
-interface State {
-  toasts: ToasterToast[];
+interface Toast extends ToastProps {
+  id?: string;
 }
 
-type Toast = Omit<ToasterToast, "id">;
+let nextId = 0;
+const issued = new Set<string>();
 
 function toast({
   title,
   description,
   variant = "default",
-  duration = 5000,
+  duration,
   action,
   dismissable = true,
-  ..._props
+  id = `toast-${++nextId}`,
 }: Toast) {
-  const message = title || description || "";
-  const descriptionText = title && description ? description : undefined;
+  const heading = toText(title);
+  const detail = toText(description);
 
-  const toastOptions = {
-    duration: dismissable ? duration : Infinity,
-    action,
-    description: descriptionText,
-  };
-
-  let toastId: string | number;
-
-  switch (variant) {
-    case "destructive":
-      toastId = sonnerToast.error(message, toastOptions);
-      break;
-    case "success":
-      toastId = sonnerToast.success(message, toastOptions);
-      break;
-    case "info":
-      toastId = sonnerToast.info(message, toastOptions);
-      break;
-    default:
-      toastId = sonnerToast(message, toastOptions);
-  }
-
-  const id = toastId.toString();
-
-  const update = (newProps: ToasterToast) => {
-    sonnerToast.dismiss(toastId);
-    return toast(newProps);
-  };
-
-  const dismiss = () => sonnerToast.dismiss(toastId);
+  showToast({
+    id,
+    message: heading || detail,
+    description: heading && detail ? detail : undefined,
+    state: STATE_BY_VARIANT[variant],
+    action: toAction(action),
+    lifetime: dismissable ? duration : PERSISTENT_LIFETIME,
+  });
+  issued.add(id);
 
   return {
     id,
-    dismiss,
-    update,
+    dismiss: () => dismiss(id),
+    update: (next: ToastProps) => toast({ ...next, id }),
   };
 }
 
-function useToast() {
-  const [state] = React.useState<State>({ toasts: [] });
+function dismiss(toastId?: string) {
+  const ids = toastId ? [toastId] : [...issued];
+  for (const id of ids) {
+    dismissToast(id);
+    issued.delete(id);
+  }
+}
 
-  return {
-    ...state,
-    toast,
-    dismiss: (toastId?: string) => {
-      if (toastId) {
-        sonnerToast.dismiss(toastId);
-      } else {
-        sonnerToast.dismiss();
-      }
-    },
-  };
+function useToast() {
+  return { toast, dismiss };
 }
 
 interface ToastOnFailOptions {
@@ -97,11 +76,12 @@ interface ToastOnFailOptions {
 function useToastOnFail() {
   return React.useCallback(
     (action: string, { rethrow = false }: ToastOnFailOptions = {}) =>
-      (error: any) => {
-        const err = error as Error;
+      (error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Something went wrong";
         toast({
           title: `Unable to ${action}`,
-          description: err.message ?? "Something went wrong",
+          description: message,
           variant: "destructive",
           duration: 10000,
         });

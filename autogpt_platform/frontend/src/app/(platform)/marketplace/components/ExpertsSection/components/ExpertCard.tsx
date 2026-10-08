@@ -106,18 +106,20 @@ export function ExpertCard({ expert, isHired, category }: Props) {
               ))}
               {restSkills.length > 0 ? (
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      tabIndex={0}
-                      className={cn(
-                        CHIP_SHAPE,
-                        CHIP_SIZE.small,
-                        "h-6 cursor-default border-transparent px-0 text-muted-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-purple-600",
-                      )}
-                    >
-                      +{restSkills.length} skills
-                    </span>
-                  </TooltipTrigger>
+                  <TooltipTrigger
+                    render={
+                      <span
+                        tabIndex={0}
+                        className={cn(
+                          CHIP_SHAPE,
+                          CHIP_SIZE.small,
+                          "h-6 cursor-default border-transparent px-0 text-muted-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-purple-600",
+                        )}
+                      >
+                        +{restSkills.length} skills
+                      </span>
+                    }
+                  />
                   <TooltipPortal>
                     <TooltipContent side="top">
                       <ul className="space-y-0.5">

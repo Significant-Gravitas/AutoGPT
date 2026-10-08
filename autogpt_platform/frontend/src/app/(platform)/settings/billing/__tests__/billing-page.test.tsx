@@ -79,7 +79,7 @@ describe("Settings billing page (integration)", () => {
     expect(screen.getByRole("heading", { name: "Billing" })).toBeDefined();
 
     const subscriptionTab = screen.getByRole("tab", { name: "Subscription" });
-    expect(subscriptionTab.getAttribute("data-state")).toBe("active");
+    expect(subscriptionTab.hasAttribute("data-active")).toBe(true);
 
     expect(await screen.findByText("Your plan")).toBeDefined();
     expect(await screen.findByText("Pro")).toBeDefined();
@@ -176,7 +176,7 @@ describe("Settings billing page (integration)", () => {
     const automationCreditsTab = await screen.findByRole("tab", {
       name: /automation credits/i,
     });
-    expect(automationCreditsTab.getAttribute("data-state")).toBe("active");
+    expect(automationCreditsTab.hasAttribute("data-active")).toBe(true);
   });
 
   it("activates the requested tab when ?tab=automation-credits is present (deep-link)", async () => {
@@ -190,7 +190,7 @@ describe("Settings billing page (integration)", () => {
     const automationCreditsTab = await screen.findByRole("tab", {
       name: /automation credits/i,
     });
-    expect(automationCreditsTab.getAttribute("data-state")).toBe("active");
+    expect(automationCreditsTab.hasAttribute("data-active")).toBe(true);
   });
 
   it("ignores an unknown ?tab= value and falls back to the Subscription default", async () => {
@@ -202,7 +202,7 @@ describe("Settings billing page (integration)", () => {
     const subscriptionTab = await screen.findByRole("tab", {
       name: "Subscription",
     });
-    expect(subscriptionTab.getAttribute("data-state")).toBe("active");
+    expect(subscriptionTab.hasAttribute("data-active")).toBe(true);
   });
 
   it("AutomationCreditsTab renders the ErrorCard when the balance fetch fails", async () => {

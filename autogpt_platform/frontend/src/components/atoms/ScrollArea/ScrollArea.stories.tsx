@@ -12,7 +12,7 @@ const meta: Meta<typeof ScrollArea> = {
     docs: {
       description: {
         component:
-          "Radix scroll area with a thin zinc scrollbar that matches `scrollbarStyles`. Give it a fixed height or max-height. `showScrollToTop` fades in a button once the content is scrolled 200px.",
+          "Base UI scroll area with Kobra's thin scrollbar. Give it a fixed height or max-height. `showScrollToTop` fades in a button once the content is scrolled 200px.",
       },
     },
   },

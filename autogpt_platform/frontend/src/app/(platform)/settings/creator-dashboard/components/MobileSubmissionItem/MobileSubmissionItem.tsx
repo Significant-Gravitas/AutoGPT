@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import Link from "next/link";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";

@@ -13,7 +13,7 @@ const meta: Meta<typeof Select> = {
     docs: {
       description: {
         component:
-          "Select component based on our design system. Built on shadcn/ui with styling that matches our Input. Supports size variants (small | medium) and optional hidden label.",
+          "Labelled select from an options array, rendered on Kobra's Select at the house field heights (`sm`, `md`, `lg`). Supports icons, separators, disabled rows, action rows via `onSelect` and an optional hidden label.",
       },
     },
   },
@@ -50,8 +50,7 @@ const meta: Meta<typeof Select> = {
     size: {
       control: { type: "radio" },
       options: ["sm", "md", "lg"],
-      description:
-        "Visual size variant. small = compact trigger (22px line-height), medium = default (46px height).",
+      description: "Trigger height: sm = 32px, md = 36px, lg = 40px.",
     },
   },
   args: {

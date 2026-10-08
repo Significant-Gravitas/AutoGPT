@@ -15,6 +15,8 @@
     "postcss-load-config"
   ],
   "ignoreFiles": [
+    // Kobra per-component stylesheets, compiled into src/app/kobra.css by scripts/build-kobra-css.mjs.
+    "src/components/ui/*.css",
     // Type sidecar for eslint.design-system.mjs; consumed by TypeScript, not imported.
     "eslint.design-system.d.mts",
     // Ambient `declare global` Window types for the Google Drive picker.
@@ -34,6 +36,8 @@
   ],
   // Backlog: unused exports, types, enum members and duplicate exports.
   "ignoreIssues": {
+    // Kobra registry output (see MIGRATION.md): every part is exported as installed.
+    "src/components/ui/*.tsx": ["exports", "types"],
     "src/app/(platform)/artifacts/components/ArtifactsList/FileIllustration.tsx": [
       "exports"
     ],

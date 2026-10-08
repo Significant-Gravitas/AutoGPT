@@ -3,15 +3,16 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import * as ContextMenu from "@radix-ui/react-context-menu";
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import {
   SecondaryDropdownMenuContent,
   SecondaryDropdownMenuItem,
   SecondaryDropdownMenuSeparator,
+  SecondaryMenu,
   SecondaryMenuContent,
   SecondaryMenuItem,
   SecondaryMenuSeparator,
+  SecondaryMenuTrigger,
 } from "./SecondaryMenu";
 import {
   Copy01Icon,
@@ -33,12 +34,10 @@ type Story = StoryObj<typeof SecondaryMenuContent>;
 export const ContextMenuExample: Story = {
   render: () => (
     <div className="flex h-96 items-center justify-center">
-      <ContextMenu.Root>
-        <ContextMenu.Trigger asChild>
-          <div className="flex h-32 w-64 cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-zinc-50">
-            Right-click me
-          </div>
-        </ContextMenu.Trigger>
+      <SecondaryMenu>
+        <SecondaryMenuTrigger className="flex h-32 w-64 cursor-pointer items-center justify-center rounded-lg border border-border bg-muted">
+          Right-click me
+        </SecondaryMenuTrigger>
         <SecondaryMenuContent>
           <SecondaryMenuItem onSelect={() => alert("Copy")}>
             <Icon icon={Copy01Icon} size={20} className="mr-2" />
@@ -57,7 +56,7 @@ export const ContextMenuExample: Story = {
             <span className="">Delete</span>
           </SecondaryMenuItem>
         </SecondaryMenuContent>
-      </ContextMenu.Root>
+      </SecondaryMenu>
     </div>
   ),
 };
@@ -66,11 +65,13 @@ export const DropdownMenuExample: Story = {
   render: () => (
     <div className="flex h-96 items-center justify-center">
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="secondary" size="md" aria-label="More actions">
-            <Icon icon={MoreVerticalIcon} size={16} />
-          </Button>
-        </DropdownMenuTrigger>
+        <DropdownMenuTrigger
+          render={
+            <Button variant="secondary" size="md" aria-label="More actions">
+              <Icon icon={MoreVerticalIcon} size={16} />
+            </Button>
+          }
+        />
         <SecondaryDropdownMenuContent side="right" align="start">
           <SecondaryDropdownMenuItem onClick={() => alert("Copy")}>
             <Icon icon={Copy01Icon} size={20} className="mr-2" />

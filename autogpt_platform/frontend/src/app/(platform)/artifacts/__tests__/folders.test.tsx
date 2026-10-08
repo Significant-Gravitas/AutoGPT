@@ -38,8 +38,8 @@ vi.mock("next/navigation", async () => {
   return navigationMock();
 });
 
-vi.mock("framer-motion", async (importActual) => {
-  const actual = await importActual<typeof import("framer-motion")>();
+vi.mock("motion/react", async (importActual) => {
+  const actual = await importActual<typeof import("motion/react")>();
   return { ...actual, useReducedMotion: () => true };
 });
 
@@ -90,19 +90,14 @@ function useStorageHandler() {
 // "New folder" lives in the header's New menu. Radix DropdownMenu opens on
 // pointerdown, not click, under happy-dom.
 async function openCreateFolderDialog() {
-  fireEvent.pointerDown(screen.getByTestId("artifacts-new-menu"), {
-    button: 0,
-  });
+  fireEvent.click(screen.getByTestId("artifacts-new-menu"));
   fireEvent.click(await screen.findByTestId("create-folder-button"));
 }
 
 // Folder actions live behind a "…" menu, like the file rows'. Radix
 // DropdownMenu opens on pointerdown, not click, under happy-dom.
 async function openFolderMenu(folderName = "Reports") {
-  fireEvent.pointerDown(
-    await screen.findByLabelText(`Actions for ${folderName}`),
-    { button: 0 },
-  );
+  fireEvent.click(await screen.findByLabelText(`Actions for ${folderName}`));
 }
 
 // The move dialog selects first and moves on confirm, so a mis-click on a
@@ -248,9 +243,7 @@ describe("ArtifactsPage - folders", () => {
     render(<ArtifactsPage />);
 
     expect(await screen.findByText("movable.txt")).toBeDefined();
-    fireEvent.pointerDown(screen.getByTestId("artifacts-card-menu"), {
-      button: 0,
-    });
+    fireEvent.click(screen.getByTestId("artifacts-card-menu"));
     fireEvent.click(await screen.findByTestId("artifacts-move-to-folder"));
     await chooseMoveTarget("Reports");
 
@@ -341,9 +334,7 @@ describe("ArtifactsPage - folders", () => {
     render(<ArtifactsPage />);
 
     expect(await screen.findByText("movable.txt")).toBeDefined();
-    fireEvent.pointerDown(screen.getByTestId("artifacts-card-menu"), {
-      button: 0,
-    });
+    fireEvent.click(screen.getByTestId("artifacts-card-menu"));
     fireEvent.click(await screen.findByTestId("artifacts-move-to-folder"));
     await chooseMoveTarget("Files (root)");
 

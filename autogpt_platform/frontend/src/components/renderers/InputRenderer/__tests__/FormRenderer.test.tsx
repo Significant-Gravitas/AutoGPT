@@ -35,60 +35,31 @@ vi.mock("@/components/atoms/Select/Select", () => ({
   ),
 }));
 
-let mockMultiSelectValues: string[] = [];
-let mockMultiSelectOnChange: (values: string[]) => void = () => undefined;
-
-vi.mock("@/components/__legacy__/ui/multiselect", () => ({
-  MultiSelector: ({
-    values,
-    onValuesChange,
-    children,
+vi.mock("@/components/molecules/MultiSelect/MultiSelect", () => ({
+  MultiSelect: ({
+    options,
+    value,
+    onValueChange,
   }: {
-    values: string[];
-    onValuesChange: (values: string[]) => void;
-    children: React.ReactNode;
-  }) => (
-    <div>
-      {(() => {
-        mockMultiSelectValues = values;
-        mockMultiSelectOnChange = onValuesChange;
-        return children;
-      })()}
-    </div>
-  ),
-  MultiSelectorTrigger: ({ children }: { children: React.ReactNode }) => {
+    options: { value: string; label: string }[];
+    value: string[];
+    onValueChange: (values: string[]) => void;
+  }) => {
+    const labelOf = (selected: string) =>
+      options.find((option) => option.value === selected)?.label ?? selected;
     return (
       <div>
-        <div data-testid="selected-values">
-          {mockMultiSelectValues.join(",")}
-        </div>
-        {children}
+        <div data-testid="selected-values">{value.map(labelOf).join(",")}</div>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onValueChange([...value, option.value])}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
-    );
-  },
-  MultiSelectorInput: () => <input aria-label="multi-select-input" />,
-  MultiSelectorContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  MultiSelectorList: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  MultiSelectorItem: ({
-    value,
-    children,
-  }: {
-    value: string;
-    children: React.ReactNode;
-  }) => {
-    return (
-      <button
-        type="button"
-        onClick={() =>
-          mockMultiSelectOnChange([...mockMultiSelectValues, value])
-        }
-      >
-        {children}
-      </button>
     );
   },
 }));

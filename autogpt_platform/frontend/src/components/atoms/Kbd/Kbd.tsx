@@ -1,34 +1,25 @@
+import { Kbd as KobraKbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
-import { cva, type VariantProps } from "class-variance-authority";
-import { forwardRef } from "react";
 
-const kbdVariants = cva(
-  "inline-flex shrink-0 items-center justify-center rounded-md border border-border border-b-zinc-300 bg-card font-sans text-xs font-normal text-foreground shadow-xs",
+type KbdSize = "sm" | "md";
+
+interface Props extends React.ComponentProps<"kbd"> {
+  size?: KbdSize;
+}
+
+// House sm/md are 20/24px, which are Kobra's md/lg.
+const kbdSizes: Record<KbdSize, React.ComponentProps<typeof KobraKbd>["size"]> =
   {
-    variants: {
-      size: {
-        sm: "h-5 min-w-5 px-1",
-        md: "h-6 min-w-6 px-1.5",
-      },
-    },
-    defaultVariants: {
-      size: "sm",
-    },
-  },
-);
+    sm: "md",
+    md: "lg",
+  };
 
-interface Props
-  extends React.HTMLAttributes<HTMLElement>, VariantProps<typeof kbdVariants> {}
-
-export const Kbd = forwardRef<HTMLElement, Props>(function Kbd(
-  { className, size, ...props },
-  ref,
-) {
+export function Kbd({ className, size = "sm", ...props }: Props) {
   return (
-    <kbd
-      ref={ref}
-      className={cn(kbdVariants({ size }), "sentry-unmask", className)}
+    <KobraKbd
+      size={kbdSizes[size]}
+      className={cn("sentry-unmask", className)}
       {...props}
     />
   );
-});
+}

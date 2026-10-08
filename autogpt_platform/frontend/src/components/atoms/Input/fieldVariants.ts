@@ -1,17 +1,25 @@
 import { cva } from "class-variance-authority";
 
-// The one field style. Input, Textarea, Select, SearchInput, TimeInput,
-// DateInput and DateTimeInput all start from it, and put the consumer's
-// className last.
+export type FieldSize = "sm" | "md" | "lg";
+
+// House control heights (32, 36 and 40px) layered on Kobra's field primitives,
+// which default to 32px. Input, Select and SearchInput read from here.
+export const fieldSizeClasses: Record<FieldSize, string> = {
+  sm: "h-8 px-3 text-xs md:text-xs",
+  md: "h-9 px-3 text-sm",
+  lg: "h-10 px-4 text-sm",
+};
+
+// Pre-Kobra field style, still rendered by DateInput, DateTimeInput and
+// TimeInput until they move onto Kobra. Delete with the last importer.
+// For plain <input>/<button> only: Kobra's ui/input and ui/select bring their
+// own `focus-field`, so these classes on them would double the focus ring.
 export const FIELD_BASE =
-  "focus-ring w-full rounded-lg border border-input bg-background font-sans font-normal text-foreground shadow-none transition-colors placeholder:font-normal placeholder:text-muted-foreground focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50";
+  "focus-ring w-full rounded-lg border border-input bg-background font-sans font-normal text-foreground shadow-none transition-colors placeholder:font-normal placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50";
 
 export const FIELD_INVALID =
   "border-destructive focus-visible:ring-destructive";
 
-export type FieldSize = "sm" | "md" | "lg";
-
-// Single-line fields: 32, 36 and 40px.
 export const fieldVariants = cva(FIELD_BASE, {
   variants: {
     size: {

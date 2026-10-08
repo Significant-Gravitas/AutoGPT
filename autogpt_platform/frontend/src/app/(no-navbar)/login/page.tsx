@@ -1,5 +1,5 @@
 "use client";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { Form, FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
@@ -51,74 +51,76 @@ export default function LoginPage() {
         </Text>
       </div>
 
-      <Form {...form}>
-        <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Email"
-                placeholder="name@company.com"
-                type="email"
-                autoComplete="username"
-                className="w-full"
-                error={form.formState.errors.email?.message}
-                {...field}
-              />
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Password"
-                placeholder="Enter your password"
-                type="password"
-                autoComplete="current-password"
-                error={form.formState.errors.password?.message}
-                hint={
-                  <Link variant="secondary" href="/reset-password">
-                    Forgot password?
-                  </Link>
-                }
-                {...field}
-              />
-            )}
-          />
-
-          <Button
-            variant="primary"
-            loading={isLoading}
-            disabled={isGoogleLoading}
-            type="submit"
-            className="mt-6 w-full"
-          >
-            {isLoading ? "Logging in..." : "Log in"}
-          </Button>
-        </form>
-
-        {isCloudEnv ? (
-          <>
-            <AuthDivider />
-            <GoogleOAuthButton
-              onClick={() => handleProviderLogin("google")}
-              isLoading={isGoogleLoading}
-              disabled={isLoading}
+      <Form
+        form={form}
+        onSubmit={handleSubmit}
+        className="flex w-full flex-col gap-1 space-y-0"
+      >
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <Input
+              id={field.name}
+              label="Email"
+              placeholder="name@company.com"
+              type="email"
+              autoComplete="username"
+              className="w-full"
+              error={form.formState.errors.email?.message}
+              {...field}
             />
-          </>
-        ) : null}
-
-        <AuthFeedback
-          type="login"
-          message={feedback}
-          isError={!!feedback}
-          behaveAs={environment.getBehaveAs()}
+          )}
         />
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <Input
+              id={field.name}
+              label="Password"
+              placeholder="Enter your password"
+              type="password"
+              autoComplete="current-password"
+              error={form.formState.errors.password?.message}
+              hint={
+                <Link variant="secondary" href="/reset-password">
+                  Forgot password?
+                </Link>
+              }
+              {...field}
+            />
+          )}
+        />
+
+        <Button
+          variant="primary"
+          loading={isLoading}
+          disabled={isGoogleLoading}
+          type="submit"
+          className="mt-6 w-full"
+        >
+          {isLoading ? "Logging in..." : "Log in"}
+        </Button>
       </Form>
+
+      {isCloudEnv ? (
+        <>
+          <AuthDivider />
+          <GoogleOAuthButton
+            onClick={() => handleProviderLogin("google")}
+            isLoading={isGoogleLoading}
+            disabled={isLoading}
+          />
+        </>
+      ) : null}
+
+      <AuthFeedback
+        type="login"
+        message={feedback}
+        isError={!!feedback}
+        behaveAs={environment.getBehaveAs()}
+      />
 
       <div className="mt-6 inline-flex w-full items-center justify-center gap-1">
         <Text variant="body-medium" className="text-slate-500">

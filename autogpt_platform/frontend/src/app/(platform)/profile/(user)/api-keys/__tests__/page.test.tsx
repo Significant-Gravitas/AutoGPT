@@ -131,7 +131,7 @@ describe("ApiKeysPage", () => {
 
     expect(await screen.findByText("Existing Key")).toBeDefined();
 
-    fireEvent.pointerDown(screen.getByTestId("api-key-actions"));
+    fireEvent.click(screen.getByTestId("api-key-actions"));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Revoke" }));
 
     await waitFor(() => {

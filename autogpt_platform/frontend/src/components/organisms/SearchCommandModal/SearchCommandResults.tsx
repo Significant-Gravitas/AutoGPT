@@ -1,78 +1,68 @@
-import type { MutableRefObject } from "react";
-import {
-  flattenBuckets,
-  type FlatBucketItem,
-  type SearchCommandBucket,
-  type SearchCommandItem,
+"use client";
+
+import { CommandGroup, CommandList, useCommand } from "@kmenu/react";
+import { useEffect } from "react";
+import type {
+  SearchCommandBucket,
+  SearchCommandOption,
+  SearchCommandOptionData,
 } from "./helpers";
 import { SearchCommandResultItem } from "./SearchCommandResultItem";
 
 interface Props {
   buckets: SearchCommandBucket[];
-  idPrefix: string;
+  options: SearchCommandOption[];
   query: string;
-  highlightedIndex: number;
-  highlightedRef: MutableRefObject<HTMLButtonElement | null>;
-  onHighlight: (index: number) => void;
-  onSelect: (item: SearchCommandItem, bucketKey: string) => void;
   /** Id of the row whose action is in-flight (renders a spinner). */
   loadingItemId?: string;
 }
 
 export function SearchCommandResults({
   buckets,
-  idPrefix,
+  options,
   query,
-  highlightedIndex,
-  highlightedRef,
-  onHighlight,
-  onSelect,
   loadingItemId,
 }: Props) {
-  const flat = flattenBuckets(buckets);
-  // Group the flat list back by bucket so the absolute ``index`` survives
-  // for keyboard nav while we still render each section under its
-  // header.
-  const grouped = new Map<string, FlatBucketItem[]>();
-  for (const bucket of buckets) grouped.set(bucket.key, []);
-  for (const entry of flat) grouped.get(entry.bucketKey)?.push(entry);
+  const { command, state } = useCommand<SearchCommandOptionData>();
+
+  // A new query or a new top result moves the highlight back to the top, the
+  // way Kobra's CommandMenu does; arrow navigation leaves both unchanged.
+  const topId = state.filtered[0]?.id;
+  useEffect(() => {
+    if (topId) command?.setActiveById(topId);
+  }, [command, query, topId]);
 
   return (
-    <div
-      role="listbox"
+    <CommandList
+      className="relative max-h-[380px] overflow-y-auto p-2"
       aria-label="Search results"
-      className="flex flex-col gap-1"
+      indicatorOffsetY={-8}
     >
       {buckets.map((bucket) => {
-        const entries = grouped.get(bucket.key) ?? [];
-        if (entries.length === 0) return null;
+        const bucketOptions = options.filter(
+          (option) => option.group === bucket.key,
+        );
+        if (bucketOptions.length === 0) return null;
         return (
-          <div key={bucket.key} className="px-2">
-            <div className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-              {bucket.label}
-            </div>
-            <div className="flex flex-col">
-              {entries.map((entry) => (
-                <SearchCommandResultItem
-                  key={entry.item.id}
-                  item={entry.item}
-                  idPrefix={idPrefix}
-                  query={query}
-                  isHighlighted={entry.index === highlightedIndex}
-                  isLoading={entry.item.id === loadingItemId}
-                  highlightedRef={
-                    entry.index === highlightedIndex
-                      ? highlightedRef
-                      : undefined
-                  }
-                  onHighlight={() => onHighlight(entry.index)}
-                  onSelect={() => onSelect(entry.item, entry.bucketKey)}
-                />
-              ))}
-            </div>
-          </div>
+          <CommandGroup
+            key={bucket.key}
+            heading={
+              <div className="relative z-1 px-2.5 pt-2 pb-1 text-xs font-medium text-muted-foreground">
+                {bucket.label}
+              </div>
+            }
+          >
+            {bucketOptions.map((option) => (
+              <SearchCommandResultItem
+                key={option.id}
+                option={option}
+                query={query}
+                isLoading={option.data?.item.id === loadingItemId}
+              />
+            ))}
+          </CommandGroup>
         );
       })}
-    </div>
+    </CommandList>
   );
 }

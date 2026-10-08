@@ -27,8 +27,8 @@ vi.mock("next/navigation", async () => {
   return navigationMock();
 });
 
-vi.mock("framer-motion", async (importActual) => {
-  const actual = await importActual<typeof import("framer-motion")>();
+vi.mock("motion/react", async (importActual) => {
+  const actual = await importActual<typeof import("motion/react")>();
   return { ...actual, useReducedMotion: () => true };
 });
 
@@ -273,9 +273,7 @@ describe("ArtifactsPage - folder in the URL", () => {
 
     // Root, the parent and the current folder stay; "Reports" hides.
     expect(screen.queryByRole("button", { name: "Reports" })).toBeNull();
-    fireEvent.pointerDown(screen.getByTestId("folder-breadcrumb-overflow"), {
-      button: 0,
-    });
+    fireEvent.click(screen.getByTestId("folder-breadcrumb-overflow"));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Reports" }));
 
     await waitFor(() => expect(currentFolderParam()).toBe("fld-1"));

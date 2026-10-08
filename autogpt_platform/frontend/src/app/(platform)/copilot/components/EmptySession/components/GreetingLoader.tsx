@@ -1,7 +1,7 @@
 "use client";
 
 import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 import {
   GREETING_ORB_LAYOUT_ID,
   ORB_FLIP_TRANSITION,

@@ -5,7 +5,7 @@ import { ScrollArea } from "./ScrollArea";
 
 function getViewport(container: HTMLElement) {
   const viewport = container.querySelector<HTMLDivElement>(
-    "[data-radix-scroll-area-viewport]",
+    "[data-slot=scroll-area-viewport]",
   );
   if (!viewport) throw new Error("viewport not rendered");
   return viewport;

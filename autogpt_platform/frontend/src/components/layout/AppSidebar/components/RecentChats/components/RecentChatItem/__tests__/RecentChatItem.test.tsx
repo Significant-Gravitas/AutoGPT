@@ -51,9 +51,7 @@ function renderItem(props: React.ComponentProps<typeof RecentChatItem>) {
 }
 
 function openActions() {
-  fireEvent.pointerDown(screen.getByRole("button", { name: /chat actions/i }), {
-    button: 0,
-  });
+  fireEvent.click(screen.getByRole("button", { name: /chat actions/i }));
 }
 
 describe("RecentChatItem — display", () => {

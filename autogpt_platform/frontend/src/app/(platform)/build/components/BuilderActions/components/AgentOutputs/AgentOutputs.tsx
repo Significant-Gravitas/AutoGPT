@@ -1,10 +1,10 @@
 import { BlockUIType } from "@/app/(platform)/build/components/types";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { Label } from "@/components/__legacy__/ui/label";
 import { ScrollArea } from "@/components/atoms/ScrollArea/ScrollArea";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Tooltip,
   TooltipContent,
@@ -84,18 +84,20 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
     <>
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon-lg"
-              data-id="agent-outputs-button"
-              aria-label="Agent Outputs"
-              disabled={!flowID || !hasOutputs()}
-              onClick={() => setOpen(true)}
-            >
-              <Icon icon={BookOpen01Icon} className="size-4" />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="outline"
+                size="icon-lg"
+                data-id="agent-outputs-button"
+                aria-label="Agent Outputs"
+                disabled={!flowID || !hasOutputs()}
+                onClick={() => setOpen(true)}
+              >
+                <Icon icon={BookOpen01Icon} className="size-4" />
+              </Button>
+            }
+          />
           <TooltipContent>
             <p>Agent Outputs</p>
           </TooltipContent>
@@ -126,13 +128,13 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                 outputs.map((group) => (
                   <div key={group.nodeID} className="space-y-2">
                     <div>
-                      <Label className="text-base font-semibold">
+                      <Text variant="large-semibold" as="h3">
                         {group.metadata.name || "Unnamed Output"}
-                      </Label>
+                      </Text>
                       {group.metadata.description && (
-                        <Label className="mt-1 block text-sm text-zinc-600">
+                        <Text variant="body" tone="secondary" className="mt-1">
                           {group.metadata.description}
-                        </Label>
+                        </Text>
                       )}
                     </div>
 

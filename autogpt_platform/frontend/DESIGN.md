@@ -3,8 +3,8 @@ version: alpha
 name: AutoGPT Platform
 description: >-
   Design system of the AutoGPT Platform frontend (Next.js, Tailwind 4.3,
-  Radix). Tokens below are the decided values; the Tokens section lists
-  the classes that carry them.
+  Kobra on Base UI). Tokens below are the decided values; the Tokens section
+  lists the classes that carry them.
 colors:
   primary: "#3E3E43"
   on-primary: "#FFFFFF"
@@ -142,22 +142,28 @@ History, evidence and the rebuild plan are in [the design system audit](../../do
 
 ## Decisions
 
-Made 2026-10-07 (audit Part 8.4). The wave-3 token rebuild (Tailwind 4 and shadcn, audit Part 8.3) put them into `globals.css` and the atoms.
+Made 2026-10-07 (audit Part 8.4). The wave-3 token rebuild (Tailwind 4 and shadcn, audit Part 8.3) put them into `globals.css` and the atoms. The last four rows came with the move to Kobra in wave 4 (2026-10-08, [MIGRATION.md](./MIGRATION.md)).
 
-| Axis            | Decision                                                                                                            |
-| --------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Primary action  | Zinc. The primary Button is `zinc-800` with white text. Purple is never the primary action.                         |
-| Accent          | Palette `purple-500` (`#7733F5`). The violet in `--accent` (`#7C3BED`) is retired. Focus rings use the purple ramp. |
-| Page background | `#FAFAFA`, through `bg-background`. Surfaces (cards, popovers, dialogs) are white.                                  |
-| Radius          | Base `--radius: 0.75rem`. Fields are `rounded-lg` (12px), cards are `rounded-xl` (16px), pills are `rounded-full`.  |
-| Control heights | 32 / 36 / 40px for `sm` / `md` / `lg` (`h-8` / `h-9` / `h-10`). The 46px size goes away.                            |
-| Muted text      | `zinc-600` (about 5.2:1 on white). `zinc-500` is only for placeholders and disabled text.                           |
-| Dark mode       | Later, and only by swapping the semantic variables in `.dark`. No `dark:` class anywhere.                           |
-| Icons           | Hugeicons only (`@hugeicons/core-free-icons`, stroke-rounded), always through the `Icon` atom.                      |
+| Axis            | Decision                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Primary action  | Zinc. The primary Button is `zinc-800` with white text. Purple is never the primary action.                                                                                                                                                                                                                                                                                                        |
+| Accent          | Palette `purple-500` (`#7733F5`). The violet in `--accent` (`#7C3BED`) is retired. Focus rings use the purple ramp.                                                                                                                                                                                                                                                                                |
+| Page background | `#FAFAFA`, through `bg-background`. Surfaces (cards, popovers, dialogs) are white.                                                                                                                                                                                                                                                                                                                 |
+| Radius          | Base `--radius: 0.75rem`. Fields are `rounded-lg` (12px), cards are `rounded-xl` (16px), pills are `rounded-full`.                                                                                                                                                                                                                                                                                 |
+| Control heights | 32 / 36 / 40px for `sm` / `md` / `lg` (`h-8` / `h-9` / `h-10`). The 46px size goes away.                                                                                                                                                                                                                                                                                                           |
+| Muted text      | `zinc-600` (about 5.2:1 on white). `zinc-500` is only for placeholders and disabled text.                                                                                                                                                                                                                                                                                                          |
+| Dark mode       | Later, and only by swapping the semantic variables in `.dark`. No `dark:` class anywhere.                                                                                                                                                                                                                                                                                                          |
+| Icons           | Hugeicons only (`@hugeicons/core-free-icons`, stroke-rounded), always through the `Icon` atom.                                                                                                                                                                                                                                                                                                     |
+| Foundation      | Kobra, a component library on Base UI (`@base-ui/react`). Each component is vendored in `src/components/ui/<slug>.tsx` with its stylesheet beside it as `<slug>.css`; the `@kobra` registry is declared in `components.json` (`aliases.ui` is `@/components/ui`); `scripts/build-kobra-css.mjs` (`pnpm kobra:css`) compiles the stylesheets into `src/app/kobra.css`, which `globals.css` imports. |
+| Kobra glyphs    | Files in `ui/` keep the glyphs they ship with (Tabler today; `lucide-react` is also allowed there). Atoms, molecules and app code stay on Hugeicons.                                                                                                                                                                                                                                               |
+| Motion library  | `motion` (`motion/react`) replaces `framer-motion`, same API. Kobra's Toast uses it.                                                                                                                                                                                                                                                                                                               |
+| Sound           | `SoundEffects` (`ui/sound`) wraps the app once in `src/app/providers.tsx` and plays a cue when a Kobra control is pressed, keyed off its `data-slot`. Muted state is per browser in `localStorage`; `SoundToggle` (or `setSoundMuted`) switches it.                                                                                                                                                |
 
 ## Tokens
 
-`src/app/globals.css` is the only source: the palette and theme in `@theme` blocks, the semantic values in `:root` (and an inactive `.dark`), exposed as classes by `@theme inline`. The type scale is in `src/components/atoms/Text/helpers.ts`. If this section and those files disagree, the files win. Storybook's "Tokens" stories read the same file.
+`src/app/globals.css` is the source: the palette and theme in `@theme` blocks, the semantic values in `:root` (and an inactive `.dark`), exposed as classes by `@theme inline`. The type scale is in `src/components/atoms/Text/helpers.ts`. If this section and those files disagree, the files win. Storybook's "Tokens" stories read the same file.
+
+The house tokens use shadcn's names (`--background`, `--primary`, `--muted`, `--border`, `--ring`, `--radius`...) and are the contract Kobra reads; Kobra's own values for tokens the house already defines (`--success`, `--warning`, `--info`) are not copied. `src/app/kobra.css` is generated (`pnpm kobra:css`) and adds only the tokens Kobra introduces: `--error`, `--push-*` (button press), `--ring-duration`, `--shell-fg-*` and `--toast-morph-*`. Do not edit it; change `globals.css` or the Kobra stylesheet's source.
 
 ### Palette
 
@@ -217,7 +223,7 @@ Prefer these over palette steps where one fits. Each is a class stem (`bg-`, `te
 
 The success, warning and destructive pairs are below 4.5:1 as text (warning on its tint is 1.9:1). Use them for fills, borders and icons; for text on their tints use the 700/800 step of the hue, as Badge does.
 
-Interactive atoms share one focus treatment, the `focus-ring` utility (a 2px `ring` on `focus-visible`); add `focus-visible:ring-offset-2` where the ring needs air. Form fields share `fieldVariants` in `atoms/Input/fieldVariants.ts`.
+Interactive atoms get their focus treatment from the Kobra component they render: `focus-visible:ring-3 ring-ring/50` (Button, Checkbox, Switch, Badge), and Kobra's `focus-field` border on fields. The `focus-ring` utility (a 2px `ring` on `focus-visible`) remains for elements that are not Kobra components (Link, DataTable headers, ScrollableTabs, the Input reveal button); add `focus-visible:ring-offset-2` where the ring needs air. Form fields share `fieldVariants` in `atoms/Input/fieldVariants.ts`.
 
 The `.dark` block holds inverted values for every variable. Nothing activates it: no code adds the `.dark` class (`providers.tsx` has no theme provider), and no `dark:` class exists.
 
@@ -269,115 +275,119 @@ No elevation scale exists yet. Use, in order of height: `shadow-subtle` (1px hai
 
 ### Motion
 
-Durations: Tailwind `duration-150` (hover), `duration-200` (default), `duration-300` (panels). Easing: `ease-out`, or `ease-out-quint` for expand and collapse. Animations in the theme: `fade-in`, `fade-up`, `accordion-down/up`, `collapsible-down/up`, `shimmer`, `shimmer-text`, `shake`, `progress-bar`, `grow-line`, `aurora`. Respect reduced motion: `motion-reduce:` classes, or framer-motion's `useReducedMotion`.
+Durations: Tailwind `duration-150` (hover), `duration-200` (default), `duration-300` (panels). Easing: `ease-out`, or `ease-out-quint` for expand and collapse. Animations in the theme: `fade-in`, `fade-up`, `accordion-down/up`, `collapsible-down/up`, `shimmer`, `shimmer-text`, `shake`, `progress-bar`, `grow-line`, `aurora`. Respect reduced motion: `motion-reduce:` classes, or `useReducedMotion` from `motion/react`.
 
 ## Component catalog
 
-All under `src/components/`. Every folder has a story except the two helper-only ones. "Replaces" names the legacy or `ui/` file it supersedes.
+All under `src/components/`. Each atom and molecule that wraps a Kobra component renders the file in `src/components/ui/<slug>.tsx` (the "Kobra" column) and maps the house props onto it; `ui/` is registry output and is never imported outside `src/components`. Every folder has a story except the two helper-only ones. "Replaces" names the deleted file it superseded.
 
 **Atoms**
 
-| Atom               | Purpose                                                                      | Replaces                                                                   |
-| ------------------ | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| AutoGPTLogo        | Brand logo, plus a white variant                                             |                                                                            |
-| Avatar             | Image avatar with fallback                                                   |                                                                            |
-| Badge              | Status and label pill                                                        | `__legacy__/ui/badge`                                                      |
-| Button             | Every button: variants, sizes, loading, icons, `as="NextLink"`               | `__legacy__/ui/button`, `ui/button`                                        |
-| Card               | Bordered content container                                                   | `__legacy__/ui/card`                                                       |
-| Checkbox           | Checkbox with optional label, description and error                          | `__legacy__/ui/checkbox`                                                   |
-| DateInput          | Date field with calendar popover                                             | (still uses `__legacy__` popover, calendar)                                |
-| DateTimeInput      | Date and time field                                                          | (still uses `__legacy__` popover, calendar)                                |
-| Emoji              | Emoji at a given size                                                        |                                                                            |
-| FadeIn             | Fade-in wrapper                                                              |                                                                            |
-| FileInput          | File upload with preview                                                     |                                                                            |
-| GlassPixelBackdrop | Decorative backdrop                                                          |                                                                            |
-| Icon               | Renders a Hugeicon at the system stroke width                                | `__legacy__/ui/icons`, every other icon library                            |
-| Input              | Text, password, number, amount and textarea field with label, hint and error | `__legacy__/ui/input`, `ui/input`, `__legacy__/ui/textarea`, `ui/textarea` |
-| Kbd                | Keyboard key                                                                 | hand-rolled kbd styles                                                     |
-| Link               | In-app and external links                                                    | raw `<a>` and bare `next/link`                                             |
-| LLMItem            | LLM provider logo and name                                                   |                                                                            |
-| LoadingSpinner     | Spinner                                                                      | `__legacy__/ui/loading`, `ui/spinner`                                      |
-| OverflowText       | Truncated text with a tooltip                                                |                                                                            |
-| Progress           | Progress bar                                                                 |                                                                            |
-| Reveal             | Staggered entrance animation                                                 |                                                                            |
-| ScrollArea         | Scroll container with styled scrollbars and scroll-to-top                    | `ui/scroll-area`, `__legacy__/ui/scroll-area`                              |
-| Select             | Labelled select from an options array                                        | `__legacy__/ui/select` (still wraps it)                                    |
-| Separator          | Horizontal or vertical rule                                                  | `ui/separator`, `__legacy__/ui/separator`                                  |
-| Skeleton           | Loading placeholder                                                          | `__legacy__/ui/skeleton`, `ui/skeleton`                                    |
-| SwapFade           | Cross-fade on key change                                                     |                                                                            |
-| Switch             | Toggle switch                                                                |                                                                            |
-| Text               | All typography                                                               | raw `<p>`, `<h1>`…`<h6>` with classes                                      |
-| Textarea           | Multi-line field with label, hint, error and counter                         | `ui/textarea`, `__legacy__/ui/textarea`                                    |
-| TimeInput          | Time field                                                                   |                                                                            |
-| ToggleChip         | Icon and label toggle chip                                                   |                                                                            |
-| Tooltip            | Tooltip (`BaseTooltip.tsx`)                                                  | `ui/tooltip`                                                               |
+| Atom               | Purpose                                                                      | Kobra                                               | Replaces                                                            |
+| ------------------ | ---------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------- |
+| AutoGPTLogo        | Brand logo, plus a white variant                                             |                                                     |                                                                     |
+| Avatar             | Image avatar with fallback                                                   | (house; Kobra Avatar not adopted, see MIGRATION.md) |                                                                     |
+| Badge              | Status and label pill                                                        | badge                                               | `__legacy__/ui/badge`                                               |
+| Button             | Every button: variants, sizes, loading, icons, `as="NextLink"`               | button, spinner                                     | `__legacy__/ui/button`, shadcn `ui/button`                          |
+| Card               | Bordered content container                                                   | card                                                | `__legacy__/ui/card`                                                |
+| Checkbox           | Checkbox with optional label, description and error                          | checkbox                                            | `__legacy__/ui/checkbox`                                            |
+| DateInput          | Date field with calendar popover                                             | calendar, with `molecules/Popover`                  | `__legacy__/ui/calendar`, `popover`                                 |
+| DateTimeInput      | Date and time field                                                          | calendar, with `molecules/Popover`                  | `__legacy__/ui/calendar`, `popover`                                 |
+| Emoji              | Emoji at a given size                                                        |                                                     |                                                                     |
+| FadeIn             | Fade-in wrapper                                                              |                                                     |                                                                     |
+| FileInput          | File upload with preview                                                     |                                                     |                                                                     |
+| GlassPixelBackdrop | Decorative backdrop                                                          |                                                     |                                                                     |
+| Icon               | Renders a Hugeicon at the system stroke width                                |                                                     | `__legacy__/ui/icons`, every other icon library                     |
+| Input              | Text, password, number, amount and textarea field with label, hint and error | input, textarea                                     | `__legacy__/ui/input`, `textarea`; shadcn `ui/input`, `ui/textarea` |
+| Kbd                | Keyboard key                                                                 | kbd                                                 | hand-rolled kbd styles                                              |
+| Link               | In-app and external links                                                    |                                                     | raw `<a>` and bare `next/link`                                      |
+| LoadingSpinner     | Spinner                                                                      | spinner                                             | `__legacy__/ui/loading`, shadcn `ui/spinner`                        |
+| OverflowText       | Truncated text with a tooltip                                                |                                                     |                                                                     |
+| Progress           | Progress bar                                                                 | progress                                            |                                                                     |
+| Reveal             | Staggered entrance animation                                                 |                                                     |                                                                     |
+| ScrollArea         | Scroll container with styled scrollbars and scroll-to-top                    | scroll-area                                         | `__legacy__/ui/scroll-area`, shadcn `ui/scroll-area`                |
+| Select             | Labelled select from an options array                                        | select                                              | `__legacy__/ui/select`                                              |
+| Separator          | Horizontal or vertical rule                                                  | separator                                           | `__legacy__/ui/separator`, shadcn `ui/separator`                    |
+| Skeleton           | Loading placeholder (shimmer; select by `[data-slot=skeleton]`)              | skeleton                                            | `__legacy__/ui/skeleton`, shadcn `ui/skeleton`                      |
+| SwapFade           | Cross-fade on key change                                                     |                                                     |                                                                     |
+| Switch             | Toggle switch                                                                | switch                                              |                                                                     |
+| Text               | All typography                                                               |                                                     | raw `<p>`, `<h1>`…`<h6>` with classes                               |
+| Textarea           | Multi-line field with label, hint, error and counter                         | textarea                                            | `__legacy__/ui/textarea`, shadcn `ui/textarea`                      |
+| TimeInput          | Time field                                                                   |                                                     |                                                                     |
+| Tooltip            | Tooltip (`BaseTooltip.tsx`)                                                  | tooltip                                             | shadcn `ui/tooltip`                                                 |
 
 **Molecules**
 
-| Molecule                                      | Purpose                                             | Replaces                                                     |
-| --------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
-| `file-tree.tsx`                               | File tree view (loose file)                         |                                                              |
-| Accordion                                     | Accordion primitives                                | `ui/accordion` (deleted)                                     |
-| Alert                                         | Inline alert with icon                              |                                                              |
-| AutopilotAvatar, ExpertAvatar, WorkflowAvatar | Identity avatars                                    |                                                              |
-| Breadcrumbs                                   | Breadcrumb trail                                    |                                                              |
-| Collapsible                                   | Disclosure section                                  | `__legacy__/ui/collapsible`, `ui/collapsible` (both deleted) |
-| Confetti                                      | Confetti effect                                     |                                                              |
-| DataTable                                     | Read-only table from column config, sortable        | `__legacy__/ui/table` (partly)                               |
-| Dialog                                        | Modal, drawer on mobile                             | `__legacy__/ui/dialog`                                       |
-| DropdownMenu                                  | Dropdown menu                                       | `__legacy__/ui/dropdown-menu`                                |
-| ErrorBoundary, ErrorCard                      | Render-error boundary and error display             |                                                              |
-| ExpertAvatarPicker, ExpertIdentityDetails     | Expert identity editing and display                 |                                                              |
-| Form                                          | react-hook-form bindings                            | `__legacy__/ui/form`                                         |
-| FullscreenDialog                              | Full-screen modal                                   |                                                              |
-| GlassOrb, TypingText                          | Decorative effects                                  |                                                              |
-| InfiniteList                                  | Infinite-scroll list                                |                                                              |
-| InformationTooltip                            | Info icon with tooltip                              |                                                              |
-| InstallWorkflowPicker                         | Pick an expert or workflow to install               |                                                              |
-| IntegrationLogo, IntegrationsMarquee          | Provider logos                                      |                                                              |
-| MultiToggle                                   | Segmented toggle group                              |                                                              |
-| NotionAvatar                                  | Avatar composition helpers (no component, no story) |                                                              |
-| Pagination                                    | Numbered page navigation                            | `__legacy__/ui/pagination-controls`                          |
-| PlanCard                                      | Pricing data helpers (no component, no story)       |                                                              |
-| Popover                                       | Popover                                             | `__legacy__/ui/popover`                                      |
-| RunStatusBadge                                | Agent run status badge                              | `__legacy__/Status` (partly)                                 |
-| ScrollableTabs                                | Tabs synced to scroll position                      |                                                              |
-| SearchInput                                   | Search field                                        |                                                              |
-| SecondaryMenu                                 | Context menu                                        |                                                              |
-| Sheet                                         | Side panel with title, actions and footer           | `ui/sheet`, `__legacy__/ui/sheet`                            |
-| ShowMoreText                                  | Clamped text with a toggle                          |                                                              |
-| Table                                         | Editable table from column config                   | `__legacy__/ui/table`                                        |
-| TabsLine                                      | Underline tabs                                      | `__legacy__/ui/tabs`                                         |
-| TallyPoup                                     | Tally feedback popup (folder name has a typo)       |                                                              |
-| TimePicker                                    | Hour and minute picker                              |                                                              |
-| Toast                                         | Toasts (`useToast`, `Toaster`)                      | direct `sonner` calls                                        |
+| Molecule                                      | Purpose                                                                                                                                                                                                                | Kobra                       | Replaces                                             |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ---------------------------------------------------- |
+| `file-tree.tsx`                               | File tree view (loose file)                                                                                                                                                                                            |                             |                                                      |
+| Accordion                                     | Accordion primitives                                                                                                                                                                                                   | accordion                   | shadcn `ui/accordion`                                |
+| Alert                                         | Inline alert; Kobra draws the tone's icon                                                                                                                                                                              | alert                       |                                                      |
+| AutopilotAvatar, ExpertAvatar, WorkflowAvatar | Identity avatars                                                                                                                                                                                                       |                             |                                                      |
+| Breadcrumbs                                   | Breadcrumb trail                                                                                                                                                                                                       | breadcrumb                  |                                                      |
+| Carousel                                      | Carousel parts (`Carousel`, `CarouselContent`, `CarouselItem`, `CarouselNext`, `CarouselPrevious`)                                                                                                                     | carousel                    | `__legacy__/ui/carousel`                             |
+| Collapsible                                   | Disclosure section                                                                                                                                                                                                     | collapsible                 | `__legacy__/ui/collapsible`, shadcn `ui/collapsible` |
+| Confetti                                      | Confetti effect                                                                                                                                                                                                        |                             |                                                      |
+| DataTable                                     | Read-only table from column config, sortable                                                                                                                                                                           | table                       | `__legacy__/ui/table` (read-only uses)               |
+| Dialog                                        | Modal, drawer on mobile                                                                                                                                                                                                | dialog, drawer              | `__legacy__/ui/dialog`                               |
+| DropdownMenu                                  | Dropdown menu                                                                                                                                                                                                          | dropdown-menu               | `__legacy__/ui/dropdown-menu`                        |
+| ErrorBoundary, ErrorCard                      | Render-error boundary and error display                                                                                                                                                                                |                             |                                                      |
+| ExpertAvatarPicker, ExpertIdentityDetails     | Expert identity editing and display                                                                                                                                                                                    |                             |                                                      |
+| Form                                          | react-hook-form bindings (`<Form form={form} onSubmit>`)                                                                                                                                                               | form, label                 | `__legacy__/ui/form`, `label`                        |
+| FullscreenDialog                              | Full-screen modal                                                                                                                                                                                                      | dialog                      |                                                      |
+| GlassOrb, TypingText                          | Decorative effects                                                                                                                                                                                                     |                             |                                                      |
+| InfiniteList                                  | Infinite-scroll list                                                                                                                                                                                                   |                             |                                                      |
+| InformationTooltip                            | Info icon with tooltip                                                                                                                                                                                                 |                             |                                                      |
+| InstallWorkflowPicker                         | Pick an expert or workflow to install                                                                                                                                                                                  |                             |                                                      |
+| IntegrationLogo, IntegrationsMarquee          | Provider logos                                                                                                                                                                                                         |                             |                                                      |
+| MultiSelect                                   | Pick several values from an options array, shown as chips                                                                                                                                                              | combobox                    | `__legacy__/ui/multiselect`                          |
+| MultiToggle                                   | Segmented toggle group                                                                                                                                                                                                 | toggle-group                |                                                      |
+| NotionAvatar                                  | Avatar composition helpers (no component, no story)                                                                                                                                                                    |                             |                                                      |
+| Pagination                                    | Numbered page navigation                                                                                                                                                                                               | pagination                  | `__legacy__/ui/pagination-controls`                  |
+| PlanCard                                      | Pricing data helpers (no component, no story)                                                                                                                                                                          |                             |                                                      |
+| Popover                                       | Popover                                                                                                                                                                                                                | popover                     | `__legacy__/ui/popover`                              |
+| RunStatusBadge                                | Agent run status badge                                                                                                                                                                                                 |                             | `__legacy__/Status` (partly)                         |
+| ScrollableTabs                                | Tabs synced to scroll position                                                                                                                                                                                         |                             |                                                      |
+| SearchInput                                   | Search field                                                                                                                                                                                                           | input, spinner              |                                                      |
+| SecondaryMenu                                 | Context menu (`SecondaryMenu`, `SecondaryMenuTrigger`)                                                                                                                                                                 | context-menu, dropdown-menu |                                                      |
+| Sheet                                         | Side panel with title, actions and footer                                                                                                                                                                              | sheet                       | `__legacy__/ui/sheet`, shadcn `ui/sheet`             |
+| ShowMoreText                                  | Clamped text with a toggle                                                                                                                                                                                             |                             |                                                      |
+| Table                                         | Editable table from column config. `Table/TablePrimitives` re-exports the table parts (`Table`, `TableHeader`, `TableBody`, `TableRow`, `TableHead`, `TableCell`, `TableFooter`, `TableCaption`) for hand-built tables | table                       | `__legacy__/ui/table`                                |
+| TabsLine                                      | Underline tabs                                                                                                                                                                                                         | tabs                        | `__legacy__/ui/tabs`                                 |
+| TallyPoup                                     | Tally feedback popup (folder name has a typo)                                                                                                                                                                          |                             |                                                      |
+| TimePicker                                    | Hour and minute picker                                                                                                                                                                                                 |                             |                                                      |
+| Toast                                         | Toasts (`toast`, `useToast`, `Toaster`)                                                                                                                                                                                | toast                       | `sonner`                                             |
 
-**Organisms:** ApprovalFields, BriefingCard, FloatingReviewsPanel, NeedsAttentionList, PendingReviewCard, PendingReviewsList, SearchCommandModal, SubscriptionPlans, TrialCard, VoicePicker, WorkOutputSheet. Each is a product feature built from atoms and molecules; reuse them rather than copying.
+**Organisms:** ApprovalFields, FloatingReviewsPanel, PendingReviewCard, PendingReviewsList, SearchCommandModal (on `@kmenu/react`, replaces `cmdk`), SubscriptionPlans, TrialCard, VoicePicker, WorkOutputSheet. Each is a product feature built from atoms and molecules; reuse them rather than copying.
+
+**Layout:** SettingsNav, the side navigation of the settings and profile pages (a Sheet on mobile), replaces `__legacy__/Sidebar`. The rest of `layout/` is the app shell (AppSidebar on Kobra's `ui/sidebar`, Navbar, NotificationSettings, TopUpPrompt), not building blocks.
 
 ## Rules
 
 One rule per line, with what enforces it. "Allowlisted" means existing violators are listed in `eslint-allowlist.json` and new ones fail.
 
-1. Import nothing from `src/components/__legacy__`. Enforced: `@typescript-eslint/no-restricted-imports` (`legacy`), allowlisted.
+1. Import nothing from `src/components/__legacy__`; the folder was deleted in wave 4 and stays deleted. Enforced: `@typescript-eslint/no-restricted-imports` (`legacy`), allowlisted.
 2. Import `src/components/ui/*` only from inside `src/components`. Enforced: `no-restricted-imports` (`ui`), allowlisted.
-3. Icons are Hugeicons through the `Icon` atom; no `lucide-react`, `@phosphor-icons/react`, `@radix-ui/react-icons`, `react-icons`, or direct `@hugeicons/react` (type imports are fine). Enforced: `no-restricted-imports`, allowlisted.
-4. Toasts go through `molecules/Toast`, never `sonner`. Enforced: `no-restricted-imports` (`sonner`), allowlisted.
-5. Use only classes Tailwind generates. Enforced: `better-tailwindcss/no-unknown-classes`, allowlisted.
-6. Do not combine classes that set the same property. Enforced: `better-tailwindcss/no-conflicting-classes`, allowlisted.
-7. No `gray`, `neutral`, `stone`, `emerald`, `amber`, `violet`, `indigo`, `rose`, `lime` or `fuchsia` colour classes; map them to `zinc`, `zinc`, `zinc`, `green`, `yellow`, `purple`, `purple`, `red`, `green`, `pink`. Enforced twice: they no longer compile (`no-unknown-classes`) and `better-tailwindcss/no-restricted-classes` names the replacement.
-8. `blue`, `sky`, `teal`, `cyan`: no decision yet; leave existing uses, avoid new ones. Not yet enforced.
-9. No `dark:` classes. Enforced: `better-tailwindcss/no-restricted-classes`.
-10. No hex or `rgb()` colour classes (`bg-[#F9F9FA]`); use a palette step. Not yet enforced.
-11. Prefer semantic classes (`bg-background`, `text-muted-foreground`, `border-border`) where one fits. Not yet enforced.
-12. Typography through `Text`; no raw `<p>` or `<h1>`…`<h6>` with classes. Not yet enforced.
-13. Buttons through the `Button` atom; no raw `<button className>`. Not yet enforced.
-14. In-app links through the `Link` atom (or `Button as="NextLink"`); `next/link` only inside those atoms. Not yet enforced.
-15. No `!important` overrides of an atom's classes; fix or extend the atom. Not yet enforced.
-16. No arbitrary values where the scale has one (`h-[2.25rem]` is `h-9`). Not yet enforced.
-17. Keyboard handlers use `isKey()` from `@/lib/keyboard`. Enforced: `no-restricted-syntax` (keyboard rules in `eslint.config.mjs`).
-18. Components use `interface Props`, function declarations, and no barrel files. Not yet enforced (review).
-19. A new or changed design-system component comes with a story. Not yet enforced (PR template checklist, CODEOWNERS review).
-20. Never add to `eslint-allowlist.json`. Review only; `scripts/eslint-allowlist.test.ts` fails on stale entries, not new ones.
+3. Do not edit `src/components/ui/*` by hand; it is Kobra registry output. Update a component from the registry (`npx shadcn@latest add @kobra/<slug>` with `KOBRA_TOKEN` set) or through the Kobra MCP (`get_component`), then run `pnpm kobra:css`. Work around a gap in the atom or molecule that wraps it. The exceptions are the house files listed under "Remainders" in MIGRATION.md (`input-group`, `label`, `toggle`) and the decorative one-offs. Not enforced (review); `ui/` is exempt from the Tailwind rules and the `lucide-react` restriction.
+4. Base UI APIs, not Radix: `render={<a />}` instead of `asChild` (Kobra's Button also needs `nativeButton={false}` to render a non-button), `data-open`, `data-active` and `data-checked` instead of `data-state`, `onOpenChange(open, eventDetails)`. The Popover and DropdownMenu molecules keep an `asChild` shim for existing callers. MIGRATION.md lists the behaviour changes. Not enforced; `@radix-ui/*` is no longer installed.
+5. Icons are Hugeicons through the `Icon` atom; no `lucide-react`, `@phosphor-icons/react`, `@radix-ui/react-icons`, `react-icons`, or direct `@hugeicons/react` (type imports are fine). Enforced: `no-restricted-imports`, allowlisted.
+6. Toasts go through `molecules/Toast`, never `sonner` (no longer installed). Enforced: `no-restricted-imports` (`sonner`), allowlisted.
+7. Use only classes Tailwind generates. Enforced: `better-tailwindcss/no-unknown-classes`, allowlisted.
+8. Do not combine classes that set the same property. Enforced: `better-tailwindcss/no-conflicting-classes`, allowlisted.
+9. No `gray`, `neutral`, `stone`, `emerald`, `amber`, `violet`, `indigo`, `rose`, `lime` or `fuchsia` colour classes; map them to `zinc`, `zinc`, `zinc`, `green`, `yellow`, `purple`, `purple`, `red`, `green`, `pink`. Enforced twice: they no longer compile (`no-unknown-classes`) and `better-tailwindcss/no-restricted-classes` names the replacement.
+10. `blue`, `sky`, `teal`, `cyan`: no decision yet; leave existing uses, avoid new ones. Not yet enforced.
+11. No `dark:` classes. Enforced: `better-tailwindcss/no-restricted-classes`.
+12. No hex or `rgb()` colour classes (`bg-[#F9F9FA]`); use a palette step. Not yet enforced.
+13. Prefer semantic classes (`bg-background`, `text-muted-foreground`, `border-border`) where one fits. Not yet enforced.
+14. Typography through `Text`; no raw `<p>` or `<h1>`…`<h6>` with classes. Not yet enforced.
+15. Buttons through the `Button` atom; no raw `<button className>`. Not yet enforced.
+16. In-app links through the `Link` atom (or `Button as="NextLink"`); `next/link` only inside those atoms. Not yet enforced.
+17. No `!important` overrides of an atom's classes; fix or extend the atom. Not yet enforced.
+18. No arbitrary values where the scale has one (`h-[2.25rem]` is `h-9`). Not yet enforced.
+19. Keyboard handlers use `isKey()` from `@/lib/keyboard`. Enforced: `no-restricted-syntax` (keyboard rules in `eslint.config.mjs`).
+20. Components use `interface Props`, function declarations, and no barrel files. Not yet enforced (review).
+21. A new or changed design-system component comes with a story. Not yet enforced (PR template checklist, CODEOWNERS review).
+22. Never add to `eslint-allowlist.json`. Review only; `scripts/eslint-allowlist.test.ts` fails on stale entries, not new ones.
 
 ### The allowlist
 
@@ -393,7 +403,7 @@ The script lints everything with the allowlist removed, rewrites the file, and p
 
 Every story runs as a Vitest test in headless Chromium (`@storybook/addon-vitest`, the `storybook` project in `vitest.config.mts`, part of `pnpm test:unit` and CI). A story fails if it throws, if its `play` function fails, or, with `parameters.a11y.test: "error"`, if axe finds a violation. Every story file declares `"error"` except the ones with known findings, which declare `"todo"` with a comment: the findings show in Storybook's accessibility panel without failing the run. That list only shrinks; set a file back to `"error"` when its findings are fixed.
 
-The known findings are colour contrast, nearly all from tokens: `text-destructive` and white on `bg-destructive` (red-500, 3.6 to 3.7:1), success text (green-600, 3.2 to 3.9:1), the undecided `blue`, `sky` and `yellow-500` text in the renderer stories, accent text on purple tints, and one ARIA value in the legacy multiselect. Moving `--destructive` to red-600 (4.6:1) would clear most of them; that is a design decision, not yet taken.
+The known findings are colour contrast, nearly all from tokens: `text-destructive` and white on `bg-destructive` (red-500, 3.6 to 3.7:1), success text (green-600, 3.2 to 3.9:1), the undecided `blue`, `sky` and `yellow-500` text in the renderer stories, and accent text on purple tints. Moving `--destructive` to red-600 (4.6:1) would clear most of them; that is a design decision, not yet taken.
 
 ## Migration status
 
@@ -401,25 +411,18 @@ Wave 1 (merged into `ds/integration`): lint enforcement, live atom fixes, dead c
 
 Wave 3 (`ds/20` to `ds/23`): Tailwind 4, the shadcn token rebuild with the decisions above, the 32/36/40 control heights, and the atoms on semantic tokens.
 
+Wave 4 (`ds/kobra-migration`): the design system moved from Radix onto Kobra (Base UI). Kobra components are vendored in `src/components/ui`; the atoms and molecules keep their exported names and props and render them. Radix is gone: the 16 `@radix-ui/*` packages, `sonner`, `cmdk` and `framer-motion` were dropped for `@base-ui/react`, Kobra's Toast, `@kmenu/react` and `motion`. `src/components/__legacy__` is deleted, its last uses moved onto atoms and molecules or into local components. React 19 came first. MIGRATION.md is the ledger: the component map, decisions, remainders and behaviour changes.
+
 Not done yet: visual regression in CI (the Chromatic job runs only when `CHROMATIC_PROJECT_TOKEN` is set).
 
 ## Deprecated
 
-Do not add imports of these. Each has a replacement or is waiting for one.
+Do not add imports of these.
 
-| Deprecated                                                                                                  | Use instead                                                                     |
-| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `__legacy__/ui/select`                                                                                      | `atoms/Select` (which still renders it)                                         |
-| `__legacy__/ui/icons`                                                                                       | `atoms/Icon` with `@hugeicons/core-free-icons`                                  |
-| `__legacy__/ui/dialog`                                                                                      | `molecules/Dialog`                                                              |
-| `__legacy__/ui/popover`                                                                                     | `molecules/Popover` (the Date atoms still render the legacy one)                |
-| `__legacy__/ui/dropdown-menu`                                                                               | `molecules/DropdownMenu`                                                        |
-| `__legacy__/ui/form`, `label`                                                                               | `molecules/Form`; field atoms carry their own labels                            |
-| `__legacy__/ui/tabs`                                                                                        | `molecules/TabsLine`                                                            |
-| `__legacy__/ui/table`                                                                                       | `molecules/DataTable` for read-only tables, `molecules/Table` for editable ones |
-| `__legacy__/Status`                                                                                         | `molecules/RunStatusBadge` where it fits                                        |
-| `__legacy__/ui/calendar`, `carousel`, `command`, `multiselect`; `ui/sidebar`, `input-group`, `button-group` | No replacement yet. Keep existing uses, add none.                               |
-| `__legacy__/Sidebar`, `SortDropdown`, `SearchFilterChips`                                                   | No replacement yet                                                              |
-| `ui/aurora-background`, `vortex`, `dot-distortion-shader`, `text-generate-effect`                           | Decorative one-offs; do not reuse                                               |
+| Deprecated                                                                        | Use instead                       |
+| --------------------------------------------------------------------------------- | --------------------------------- |
+| `ui/aurora-background`, `vortex`, `dot-distortion-shader`, `text-generate-effect` | Decorative one-offs; do not reuse |
 
 Deleted in wave 3, with every importer moved: `ui/button`, `input`, `textarea`, `separator`, `skeleton`, `tooltip`, `sheet`, `scroll-area`, `accordion`, `collapsible`, and `__legacy__/ui/button`, `input`, `textarea`, `checkbox`, `badge`, `separator`, `sheet`, `scroll-area`, `collapsible`, `pagination-controls`.
+
+Deleted in wave 4: the whole `__legacy__` folder (`ui/calendar`, `carousel`, `command`, `dialog`, `dropdown-menu`, `form`, `icons`, `label`, `multiselect`, `popover`, `select`, `table`, `tabs`; `Sidebar`, `SortDropdown`, `SearchFilterChips`, `Status`, the last three moved into the pages that used them), the shadcn `ui/sidebar` (replaced by Kobra's), and the unused `atoms/ToggleChip`, `atoms/LLMItem`, `organisms/BriefingCard` and `organisms/NeedsAttentionList`.

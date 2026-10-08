@@ -271,9 +271,12 @@ describe("ShareChatDialog", () => {
 
     // Wait for the share-state query to hydrate (the Stop sharing button
     // only appears once isLoadingState flips false), then assert the
-    // toggle is in Radix's data-disabled state.
+    // toggle is disabled.
     await screen.findByRole("button", { name: /stop sharing/i });
     const toggle = screen.getByLabelText(/share agent runs from this chat/i);
-    expect(toggle.getAttribute("data-disabled")).not.toBeNull();
+    expect(
+      toggle.hasAttribute("disabled") ||
+        toggle.getAttribute("data-disabled") !== null,
+    ).toBe(true);
   });
 });

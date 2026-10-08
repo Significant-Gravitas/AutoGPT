@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
-import { LayoutGroup, motion, type Transition } from "framer-motion";
+import { LayoutGroup, motion, type Transition } from "motion/react";
 
 export interface ExpertFilterOption {
   id: string;

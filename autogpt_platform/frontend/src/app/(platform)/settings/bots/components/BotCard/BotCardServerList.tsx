@@ -93,11 +93,13 @@ function BotCardServerRow({
           </Text>
           {botMissing ? (
             <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex items-center gap-1 text-xs text-yellow-600">
-                  <Icon icon={AlertCircleIcon} size={14} /> Name unavailable
-                </span>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <span className="inline-flex items-center gap-1 text-xs text-yellow-600">
+                    <Icon icon={AlertCircleIcon} size={14} /> Name unavailable
+                  </span>
+                }
+              />
               <TooltipContent>
                 {platformName} didn&apos;t give us a name for this {serverNoun}.
                 It stays linked and usable; unlink to remove this row.

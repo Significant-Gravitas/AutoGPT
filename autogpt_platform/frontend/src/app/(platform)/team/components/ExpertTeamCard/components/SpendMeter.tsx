@@ -27,7 +27,9 @@ export function SpendMeter({ spent, budget, muted }: Props) {
       aria-valuetext={valueText}
       className={cn(
         "h-1.5 w-full bg-zinc-100",
-        isOverBudget ? "[&>div]:bg-red-400" : "[&>div]:bg-zinc-400",
+        isOverBudget
+          ? "[&_[data-slot=progress-indicator]]:bg-red-400"
+          : "[&_[data-slot=progress-indicator]]:bg-zinc-400",
         muted && "opacity-50",
       )}
     />

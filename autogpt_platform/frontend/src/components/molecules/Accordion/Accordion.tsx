@@ -1,63 +1,124 @@
 "use client";
 
-import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  Accordion as KobraAccordion,
+  AccordionContent as KobraAccordionContent,
+  AccordionItem as KobraAccordionItem,
+  AccordionTrigger as KobraAccordionTrigger,
+} from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
-import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
-import * as AccordionPrimitive from "@radix-ui/react-accordion";
-import { forwardRef } from "react";
+import type { ComponentProps } from "react";
 
-export const Accordion = AccordionPrimitive.Root;
+type WithClassName<T> = Omit<T, "className"> & { className?: string };
 
-export const AccordionItem = forwardRef<
-  React.ElementRef<typeof AccordionPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item>
->(function AccordionItem({ className, ...props }, ref) {
+type RootProps = WithClassName<
+  Omit<
+    ComponentProps<typeof KobraAccordion>,
+    "value" | "defaultValue" | "onValueChange" | "multiple"
+  >
+>;
+
+interface SingleProps extends RootProps {
+  type: "single";
+  /** Lets the open item be closed again. */
+  collapsible?: boolean;
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+}
+
+interface MultipleProps extends RootProps {
+  type: "multiple";
+  value?: string[];
+  defaultValue?: string[];
+  onValueChange?: (value: string[]) => void;
+}
+
+export type AccordionProps = SingleProps | MultipleProps;
+
+export function Accordion(props: AccordionProps) {
+  if (props.type === "multiple") {
+    const { type: _type, onValueChange, ...rest } = props;
+    return (
+      <KobraAccordion
+        multiple
+        onValueChange={(next) => onValueChange?.(next as string[])}
+        {...rest}
+      />
+    );
+  }
+
+  const {
+    type: _type,
+    collapsible = false,
+    value,
+    defaultValue,
+    onValueChange,
+    ...rest
+  } = props;
+
   return (
-    <AccordionPrimitive.Item
-      ref={ref}
-      className={cn("border-b border-border", className)}
+    <KobraAccordion
+      multiple={false}
+      value={value === undefined ? undefined : value ? [value] : []}
+      defaultValue={defaultValue ? [defaultValue] : undefined}
+      onValueChange={(next, details) => {
+        const nextValue: string = next[0] ?? "";
+        if (!collapsible && nextValue === "") {
+          details.cancel();
+          return;
+        }
+        onValueChange?.(nextValue);
+      }}
+      {...rest}
+    />
+  );
+}
+
+export function AccordionItem({
+  className,
+  ...props
+}: WithClassName<ComponentProps<typeof KobraAccordionItem>>) {
+  return (
+    <KobraAccordionItem
+      className={cn("border-t-0 border-b border-border", className)}
       {...props}
     />
   );
-});
+}
 
-export const AccordionTrigger = forwardRef<
-  React.ElementRef<typeof AccordionPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
->(function AccordionTrigger({ className, children, ...props }, ref) {
-  return (
-    <AccordionPrimitive.Header className="flex">
-      <AccordionPrimitive.Trigger
-        ref={ref}
-        className={cn(
-          "flex flex-1 items-center justify-between rounded-sm py-4 text-left text-sm font-medium text-foreground focus-ring transition-all hover:underline [&[data-state=open]>svg]:rotate-180",
-          className,
-        )}
-        {...props}
-      >
-        {children}
-        <Icon
-          icon={ArrowDown01Icon}
-          size={16}
-          aria-hidden
-          className="shrink-0 text-muted-foreground transition-transform duration-200"
-        />
-      </AccordionPrimitive.Trigger>
-    </AccordionPrimitive.Header>
-  );
-});
+interface AccordionTriggerProps extends WithClassName<
+  ComponentProps<typeof KobraAccordionTrigger>
+> {
+  /** Hides the expand mark for triggers that draw their own state indicator. */
+  showChevron?: boolean;
+}
 
-export const AccordionContent = forwardRef<
-  React.ElementRef<typeof AccordionPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content>
->(function AccordionContent({ className, children, ...props }, ref) {
+export function AccordionTrigger({
+  className,
+  showChevron = true,
+  ...props
+}: AccordionTriggerProps) {
   return (
-    <AccordionPrimitive.Content
-      ref={ref}
-      className="overflow-hidden text-sm data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
+    <KobraAccordionTrigger
+      className={cn(
+        "py-4 text-sm font-medium text-foreground",
+        !showChevron && "[&>svg:last-child]:hidden",
+        className,
+      )}
       {...props}
-    >
-      <div className={cn("pt-0 pb-4", className)}>{children}</div>
-    </AccordionPrimitive.Content>
+    />
   );
-});
+}
+
+export function AccordionContent({
+  className,
+  ...props
+}: WithClassName<ComponentProps<typeof KobraAccordionContent>>) {
+  return (
+    <KobraAccordionContent
+      className={cn("pb-4 text-sm text-foreground", className)}
+      {...props}
+    />
+  );
+}

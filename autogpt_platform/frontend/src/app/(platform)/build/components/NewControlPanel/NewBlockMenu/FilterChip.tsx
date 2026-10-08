@@ -1,6 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 
 import React, { ButtonHTMLAttributes, useState } from "react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";

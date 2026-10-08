@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import Link from "next/link";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { Button } from "@/components/atoms/Button/Button";
@@ -195,7 +195,7 @@ export function SubmissionItem({
           <DropdownMenuContent
             align="end"
             sideOffset={6}
-            className="min-w-[160px] origin-(--radix-dropdown-menu-content-transform-origin) data-[state=closed]:duration-150 data-[state=closed]:ease-in data-[state=open]:duration-200 data-[state=open]:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:duration-100!"
+            className="min-w-[160px] origin-(--transform-origin) data-closed:duration-150 data-closed:ease-in data-open:duration-200 data-open:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:duration-100!"
           >
             {canModify ? (
               <DropdownMenuItem

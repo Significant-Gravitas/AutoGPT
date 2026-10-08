@@ -4,7 +4,7 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@radix-ui/react-collapsible";
+} from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -21,7 +21,7 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { isEditableElement } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ComponentProps, ReactNode, Suspense, useEffect } from "react";
@@ -102,10 +102,10 @@ function HomeIcon() {
 function useNavItemClassName() {
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   return cn(
-    "h-auto rounded-xl p-2 pl-3 font-normal group-data-[collapsible=icon]:p-1.5! hover:bg-zinc-100! data-[active=true]:font-normal [&>svg]:size-4 [&>svg]:group-data-[collapsible=icon]:size-4.5",
+    "h-auto rounded-xl p-2 pl-3 font-normal group-data-[collapsible=icon]:p-1.5! hover:bg-zinc-100! data-active:font-normal [&>svg]:size-4 [&>svg]:group-data-[collapsible=icon]:size-4.5",
     isBrainDumpEnabled
-      ? "data-[active=true]:bg-zinc-200! data-[active=true]:hover:bg-zinc-200!"
-      : "data-[active=true]:bg-zinc-100!",
+      ? "data-active:bg-zinc-200! data-active:hover:bg-zinc-200!"
+      : "data-active:bg-zinc-100!",
   );
 }
 
@@ -116,16 +116,14 @@ function HomeItem() {
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        asChild
+        render={<Link href="/home" />}
         tooltip="Home"
         isActive={isLinkActive(pathname, "/home")}
         className={navItemClassName}
       >
-        <Link href="/home">
-          <HomeIcon />
-          <span className="truncate">Home</span>
-          <ShortcutHint letter="O" />
-        </Link>
+        <HomeIcon />
+        <span className="truncate">Home</span>
+        <ShortcutHint letter="O" />
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -142,19 +140,17 @@ function NavItem({ link }: NavItemProps) {
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        asChild
+        render={<Link href={link.href} />}
         tooltip={link.name}
         isActive={isLinkActive(pathname, link.href)}
         className={navItemClassName}
       >
-        <Link href={link.href}>
-          <Icon
-            icon={link.icon}
-            className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
-          />
-          <span className="truncate">{link.name}</span>
-          <NavLinkLoader />
-        </Link>
+        <Icon
+          icon={link.icon}
+          className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+        />
+        <span className="truncate">{link.name}</span>
+        <NavLinkLoader />
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -198,21 +194,23 @@ function CollapsibleNavGroup({
         className={cn("py-1", scrollable && "flex min-h-0 flex-1 flex-col")}
       >
         <SidebarGroupLabel
-          asChild
+          render={<CollapsibleTrigger />}
           className="text-[13px] font-medium text-muted-foreground group-data-[collapsible=icon]:hidden"
         >
-          <CollapsibleTrigger>
-            {label}
-            <Icon
-              icon={ArrowDown01Icon}
-              className="ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
-            />
-          </CollapsibleTrigger>
+          {label}
+          <Icon
+            icon={ArrowDown01Icon}
+            className="ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] group-data-open/collapsible:rotate-180 group-data-[collapsible=icon]:size-4.5 motion-reduce:transition-none"
+          />
         </SidebarGroupLabel>
+        {/* The scrollable group fills the sidebar with flex, so it skips the
+            measured-height transition that would pin it to its content. */}
         <CollapsibleContent
           className={cn(
-            "overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none",
-            scrollable && "flex min-h-0 flex-1 flex-col",
+            "overflow-hidden",
+            scrollable
+              ? "flex min-h-0 flex-1 flex-col"
+              : "h-(--collapsible-panel-height) transition-[height] duration-200 ease-[cubic-bezier(0.33,1,0.68,1)] data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none",
           )}
         >
           <SidebarGroupContent

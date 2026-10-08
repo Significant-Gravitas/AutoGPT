@@ -21,7 +21,7 @@ A vertically stacked set of interactive headings that each reveal an associated 
 
 ### ✨ Features
 
-- **Built on Radix UI** - Uses @radix-ui/react-accordion for accessibility and functionality
+- **Built on Kobra** - Renders Kobra's Accordion (Base UI) for accessibility and functionality
 - **Single or multiple** - Supports single or multiple items open at once
 - **Smooth animations** - Built-in expand/collapse animations
 - **Accessible** - Full keyboard navigation and screen reader support

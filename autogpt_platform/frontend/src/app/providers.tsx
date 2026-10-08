@@ -2,6 +2,7 @@
 
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { SentryUserTracker } from "@/components/monitor/SentryUserTracker";
+import { SoundLayer } from "@/components/layout/SoundLayer/SoundLayer";
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import CredentialsProvider from "@/providers/agent-credentials/credentials-provider";
@@ -46,7 +47,9 @@ export function Providers({ children }: Props) {
               <OrgTeamProvider>
                 <LaunchDarklyProvider>
                   <OnboardingProvider>
-                    <TooltipProvider>{children}</TooltipProvider>
+                    <TooltipProvider>
+                      <SoundLayer>{children}</SoundLayer>
+                    </TooltipProvider>
                   </OnboardingProvider>
                 </LaunchDarklyProvider>
               </OrgTeamProvider>

@@ -23,17 +23,19 @@ export const ScheduleGraph = ({ flowID }: { flowID: string | null }) => {
     <>
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon-lg"
-              data-id="schedule-graph-button"
-              onClick={handleScheduleGraph}
-              disabled={!flowID}
-            >
-              <Icon icon={Clock01Icon} className="size-4" />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="outline"
+                size="icon-lg"
+                data-id="schedule-graph-button"
+                onClick={handleScheduleGraph}
+                disabled={!flowID}
+              >
+                <Icon icon={Clock01Icon} className="size-4" />
+              </Button>
+            }
+          />
           <TooltipContent>
             <p>Schedule Graph</p>
           </TooltipContent>

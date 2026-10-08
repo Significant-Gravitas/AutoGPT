@@ -6,7 +6,7 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@radix-ui/react-collapsible";
+} from "@/components/molecules/Collapsible/Collapsible";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { useState, type ReactNode } from "react";
 import { EXPERT_CHAT_PAGE_SIZE } from "@/services/experts/expert-chat-pagination";
@@ -62,10 +62,10 @@ export function ExpertSessionGroup({
         )}
         <Icon
           icon={ArrowDown01Icon}
-          className="size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
+          className="size-4 transition-transform duration-200 group-data-open/collapsible:rotate-180 motion-reduce:transition-none"
         />
       </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-1 overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+      <CollapsibleContent className="flex flex-col gap-1">
         {visible.map((session, index) => renderRow(session, index, visible))}
         {hiddenCount > 0 && (
           <Button

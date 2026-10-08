@@ -6,7 +6,7 @@ import {
   LazyMotion,
   m,
   useReducedMotion,
-} from "framer-motion";
+} from "motion/react";
 import { useRef } from "react";
 import { ShimmerText } from "./ShimmerText";
 

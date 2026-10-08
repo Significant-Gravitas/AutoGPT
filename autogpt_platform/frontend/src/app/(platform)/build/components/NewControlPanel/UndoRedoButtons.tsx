@@ -45,30 +45,34 @@ export const UndoRedoButtons = () => {
   return (
     <>
       <Tooltip delayDuration={100}>
-        <TooltipTrigger asChild>
-          <ControlPanelButton
-            as="button"
-            data-id="undo-button"
-            disabled={!canUndo()}
-            onClick={undo}
-          >
-            <Icon icon={ArrowTurnBackwardIcon} className="size-5" />
-          </ControlPanelButton>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <ControlPanelButton
+              as="button"
+              data-id="undo-button"
+              disabled={!canUndo()}
+              onClick={undo}
+            >
+              <Icon icon={ArrowTurnBackwardIcon} className="size-5" />
+            </ControlPanelButton>
+          }
+        />
         <TooltipContent side="right">Undo</TooltipContent>
       </Tooltip>
       <Separator className="text-zinc-200" />
       <Tooltip delayDuration={100}>
-        <TooltipTrigger asChild>
-          <ControlPanelButton
-            as="button"
-            data-id="redo-button"
-            disabled={!canRedo()}
-            onClick={redo}
-          >
-            <Icon icon={ArrowTurnForwardIcon} className="size-5" />
-          </ControlPanelButton>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <ControlPanelButton
+              as="button"
+              data-id="redo-button"
+              disabled={!canRedo()}
+              onClick={redo}
+            >
+              <Icon icon={ArrowTurnForwardIcon} className="size-5" />
+            </ControlPanelButton>
+          }
+        />
         <TooltipContent side="right">Redo</TooltipContent>
       </Tooltip>
     </>

@@ -81,7 +81,7 @@ async function openDeleteDialogFor(title: string) {
   const moreButton = within(sessionRow as HTMLElement).getByRole("button", {
     name: /more actions/i,
   });
-  fireEvent.pointerDown(moreButton, { button: 0 });
+  fireEvent.click(moreButton);
   const deleteItem = await screen.findByRole("menuitem", {
     name: /delete chat/i,
   });
@@ -293,7 +293,7 @@ describe("ChatSidebar — pinning", () => {
     const moreButton = within(sessionRow as HTMLElement).getByRole("button", {
       name: /more actions/i,
     });
-    fireEvent.pointerDown(moreButton, { button: 0 });
+    fireEvent.click(moreButton);
   }
 
   it("pins an unpinned session via the dropdown", async () => {
@@ -439,7 +439,7 @@ describe("ChatSidebar — rename", () => {
     const moreButton = within(sessionRow as HTMLElement).getByRole("button", {
       name: /more actions/i,
     });
-    fireEvent.pointerDown(moreButton, { button: 0 });
+    fireEvent.click(moreButton);
     fireEvent.click(await screen.findByRole("menuitem", { name: /rename/i }));
     return screen.findByLabelText("Rename chat");
   }

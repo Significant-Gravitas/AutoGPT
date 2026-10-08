@@ -9,14 +9,7 @@ import {
   mapJsonSchemaTypeToInputType,
 } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 import { Select } from "@/components/atoms/Select/Select";
-import {
-  MultiSelector,
-  MultiSelectorContent,
-  MultiSelectorInput,
-  MultiSelectorItem,
-  MultiSelectorList,
-  MultiSelectorTrigger,
-} from "@/components/__legacy__/ui/multiselect";
+import { MultiSelect } from "@/components/molecules/MultiSelect/MultiSelect";
 
 function isSchema(value: unknown): value is RJSFSchema {
   return typeof value === "object" && value !== null;
@@ -84,7 +77,7 @@ export function SelectWidget(props: WidgetProps) {
   const droppedEmptyOptionCount = rawEnumOptions.length - enumOptions.length;
   if (process.env.NODE_ENV === "development" && droppedEmptyOptionCount > 0) {
     console.warn(
-      "[SelectWidget] Dropped enum option(s) with empty-string value. Radix Select.Item disallows empty values.",
+      "[SelectWidget] Dropped enum option(s) with empty-string value. An empty value reads as no selection in Select.",
       {
         schema: props.schema,
         dropped: droppedEmptyOptionCount,
@@ -102,62 +95,26 @@ export function SelectWidget(props: WidgetProps) {
   // Determine select size based on context
   const selectSize = size === "large" ? "lg" : "md";
 
+  const indexedOptions = enumOptions.map((option, index) => ({
+    value: String(index),
+    label: option.label,
+  }));
+
   const renderInput = () => {
     if (type === InputType.MULTI_SELECT) {
-      const enumOptionIndexesByLabel = new Map<string, string>();
-      enumOptions.forEach((option, index) => {
-        if (!enumOptionIndexesByLabel.has(option.label)) {
-          enumOptionIndexesByLabel.set(option.label, String(index));
-        }
-      });
-
-      const selectedValues: string[] = [];
-      if (Array.isArray(selectedIndexes)) {
-        for (const index of selectedIndexes) {
-          const label = enumOptions[Number(index)]?.label;
-          if (typeof label === "string") {
-            selectedValues.push(label);
-          }
-        }
-      }
-
       return (
-        <MultiSelector
-          label={resolvedLabel}
-          values={selectedValues}
-          onValuesChange={(newValues) => {
-            const selectedOptionIndexes: string[] = [];
-            for (const label of newValues) {
-              const optionIndex = enumOptionIndexesByLabel.get(label);
-              if (optionIndex !== undefined) {
-                selectedOptionIndexes.push(optionIndex);
-              }
-            }
-            onChange(
-              enumOptionsValueForIndex(selectedOptionIndexes, enumOptions),
-            );
-          }}
+        <MultiSelect
+          {...accessibility}
+          id={id}
+          options={indexedOptions}
+          value={Array.isArray(selectedIndexes) ? selectedIndexes : []}
+          onValueChange={(indexes) =>
+            onChange(enumOptionsValueForIndex(indexes, enumOptions))
+          }
+          disabled={disabled || readonly}
+          placeholder="Select options..."
           className="w-full"
-        >
-          <MultiSelectorTrigger>
-            <MultiSelectorInput
-              aria-describedby={accessibility["aria-describedby"]}
-              placeholder="Select options..."
-            />
-          </MultiSelectorTrigger>
-          <MultiSelectorContent>
-            <MultiSelectorList>
-              {enumOptions.map((option) => (
-                <MultiSelectorItem
-                  key={`${String(option.value)}-${option.label}`}
-                  value={option.label}
-                >
-                  {option.label}
-                </MultiSelectorItem>
-              ))}
-            </MultiSelectorList>
-          </MultiSelectorContent>
-        </MultiSelector>
+        />
       );
     }
     const selectedValue =
@@ -177,10 +134,7 @@ export function SelectWidget(props: WidgetProps) {
             enumOptionsValueForIndex(newValue, enumOptions, options.emptyValue),
           )
         }
-        options={enumOptions.map((option, index) => ({
-          value: String(index),
-          label: option.label,
-        }))}
+        options={indexedOptions}
         wrapperClassName="mb-0"
         className={className}
       />

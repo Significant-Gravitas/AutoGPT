@@ -6,7 +6,7 @@ import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import NextLink from "next/link";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { cn } from "@/lib/utils";
@@ -174,7 +174,7 @@ export function LibraryAgentCard({
   if (hasError && statusInfo.lastError) {
     return (
       <Tooltip>
-        <TooltipTrigger asChild>{card}</TooltipTrigger>
+        <TooltipTrigger render={card} />
         <TooltipPortal>
           <TooltipContent className="max-w-xs text-red-600">
             {statusInfo.lastError}

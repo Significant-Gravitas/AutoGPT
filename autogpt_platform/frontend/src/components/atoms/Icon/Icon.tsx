@@ -21,7 +21,7 @@ export function Icon({
 
 /**
  * Wraps icon data in a component, for maps that also hold icons from other
- * libraries (react-icons, radix) and therefore need a uniform component type.
+ * libraries (react-icons) and therefore need a uniform component type.
  */
 export function createIconComponent(icon: IconSvgElement) {
   return function IconComponent(props: IconProps) {

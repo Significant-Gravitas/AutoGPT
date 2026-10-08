@@ -46,10 +46,10 @@ export function ColumnFilter({
         sideOffset={6}
         className={cn(
           "w-64 p-3 will-change-transform",
-          "origin-(--radix-popover-content-transform-origin)",
-          "data-[state=closed]:duration-150 data-[state=open]:duration-200",
-          "data-[state=open]:ease-[cubic-bezier(0.16,1,0.3,1)]",
-          "data-[state=closed]:ease-in",
+          "origin-(--transform-origin)",
+          "data-closed:duration-150 data-open:duration-200",
+          "data-open:ease-[cubic-bezier(0.16,1,0.3,1)]",
+          "data-closed:ease-in",
           "motion-reduce:animate-none! motion-reduce:duration-100!",
         )}
         onClick={(e) => e.stopPropagation()}

@@ -10,7 +10,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { useDraftRecoveryPopup } from "./useDraftRecoveryPopup";
 import { Text } from "@/components/atoms/Text/Text";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 import { DraftDiff } from "@/lib/dexie/draft-utils";
 import { Cancel01Icon, HistoryIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -118,32 +118,36 @@ export function DraftRecoveryPopup({
 
             <div className="ml-2 flex items-center gap-2">
               <Tooltip delayDuration={10}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="primary"
-                    size="md"
-                    onClick={onLoad}
-                    className="aspect-square min-w-0 p-1.5"
-                  >
-                    <Icon icon={HistoryIcon} size={20} />
-                    <span className="sr-only">Restore changes</span>
-                  </Button>
-                </TooltipTrigger>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="primary"
+                      size="md"
+                      onClick={onLoad}
+                      className="aspect-square min-w-0 p-1.5"
+                    >
+                      <Icon icon={HistoryIcon} size={20} />
+                      <span className="sr-only">Restore changes</span>
+                    </Button>
+                  }
+                />
                 <TooltipContent>Restore changes</TooltipContent>
               </Tooltip>
               <Tooltip delayDuration={10}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="destructive"
-                    size="icon-lg"
-                    onClick={onDiscard}
-                    aria-label="Discard changes"
-                    className="aspect-square min-w-0 p-1.5"
-                  >
-                    <Icon icon={Cancel01Icon} size={20} />
-                    <span className="sr-only">Discard changes</span>
-                  </Button>
-                </TooltipTrigger>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="destructive"
+                      size="icon-lg"
+                      onClick={onDiscard}
+                      aria-label="Discard changes"
+                      className="aspect-square min-w-0 p-1.5"
+                    >
+                      <Icon icon={Cancel01Icon} size={20} />
+                      <span className="sr-only">Discard changes</span>
+                    </Button>
+                  }
+                />
                 <TooltipContent>Discard changes</TooltipContent>
               </Tooltip>
             </div>

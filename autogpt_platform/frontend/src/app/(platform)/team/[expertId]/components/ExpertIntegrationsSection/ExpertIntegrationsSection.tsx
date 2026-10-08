@@ -67,21 +67,23 @@ export function ExpertIntegrationsSection({
         </Text>
         <div className="flex items-center gap-2">
           <Tooltip>
-            <TooltipTrigger asChild>
-              <span>
-                <Button
-                  variant="secondary"
-                  size="md"
-                  leadingIcon={Share01Icon}
-                  disabled={
-                    grantable.length === 0 || isError || isGrantableError
-                  }
-                  onClick={openUseExisting}
-                >
-                  Use existing
-                </Button>
-              </span>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <span>
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    leadingIcon={Share01Icon}
+                    disabled={
+                      grantable.length === 0 || isError || isGrantableError
+                    }
+                    onClick={openUseExisting}
+                  >
+                    Use existing
+                  </Button>
+                </span>
+              }
+            />
             {isError ? (
               <TooltipContent side="bottom">
                 Couldn&apos;t load what {expertName} already has.

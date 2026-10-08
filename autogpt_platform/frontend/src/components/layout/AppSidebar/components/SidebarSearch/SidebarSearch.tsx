@@ -16,22 +16,24 @@ export function SidebarSearch() {
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Search"
-          withTooltip={false}
-          onClick={openSearch}
-          className="shrink-0 rounded-md hover:border-transparent hover:bg-zinc-200"
-        >
-          <Icon
-            icon={Search01Icon}
-            className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
-          />
-        </Button>
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Search"
+            withTooltip={false}
+            onClick={openSearch}
+            className="shrink-0 rounded-md hover:border-transparent hover:bg-zinc-200"
+          >
+            <Icon
+              icon={Search01Icon}
+              className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+            />
+          </Button>
+        }
+      />
       <TooltipPortal>
         <TooltipContent side="right">Search</TooltipContent>
       </TooltipPortal>

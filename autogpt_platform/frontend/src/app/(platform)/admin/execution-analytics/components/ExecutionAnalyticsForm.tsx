@@ -14,7 +14,6 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
-import { Label } from "@/components/__legacy__/ui/label";
 import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { Collapsible } from "@/components/molecules/Collapsible/Collapsible";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -406,31 +405,22 @@ export function ExecutionAnalyticsForm() {
           >
             <div className="space-y-4 pt-4">
               {/* Skip Existing Checkbox */}
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="skip_existing"
-                  checked={formData.skip_existing}
-                  onCheckedChange={(checked) =>
-                    handleInputChange("skip_existing", checked)
-                  }
-                />
-                <Label htmlFor="skip_existing" className="text-sm">
-                  Skip executions that already have activity status and
-                  correctness score
-                </Label>
-              </div>
+              <Checkbox
+                id="skip_existing"
+                label="Skip executions that already have activity status and correctness score"
+                checked={formData.skip_existing}
+                onCheckedChange={(checked) =>
+                  handleInputChange("skip_existing", checked)
+                }
+              />
 
               {/* Show Accuracy Chart Checkbox */}
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="show_accuracy_chart"
-                  checked={showAccuracyChart}
-                  onCheckedChange={(checked) => setShowAccuracyChart(!!checked)}
-                />
-                <Label htmlFor="show_accuracy_chart" className="text-sm">
-                  Show accuracy trends chart and historical data visualization
-                </Label>
-              </div>
+              <Checkbox
+                id="show_accuracy_chart"
+                label="Show accuracy trends chart and historical data visualization"
+                checked={showAccuracyChart}
+                onCheckedChange={setShowAccuracyChart}
+              />
 
               {/* Custom System Prompt */}
               <div className="space-y-2">

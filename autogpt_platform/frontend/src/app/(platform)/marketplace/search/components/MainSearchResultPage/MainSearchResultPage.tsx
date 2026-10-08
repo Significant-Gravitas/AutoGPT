@@ -1,6 +1,6 @@
 import { GetV2ListStoreAgentsParams } from "@/app/api/__generated__/models/getV2ListStoreAgentsParams";
-import { SearchFilterChips } from "@/components/__legacy__/SearchFilterChips";
-import { SortDropdown } from "@/components/__legacy__/SortDropdown";
+import { SearchFilterChips } from "./components/SearchFilterChips";
+import { SortDropdown } from "./components/SortDropdown";
 import { Button } from "@/components/atoms/Button/Button";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { AgentsSection } from "../../../components/AgentsSection/AgentsSection";

@@ -141,7 +141,7 @@ describe("PlatformCostContent", () => {
     mockUseGetDashboard.mockReturnValue({ data: undefined, isLoading: true });
     mockUseGetLogs.mockReturnValue({ data: undefined, isLoading: true });
     renderComponent();
-    // Loading state renders Skeleton placeholders (animate-pulse divs) instead of content
+    // Loading state renders Skeleton placeholders instead of content
     expect(screen.queryByText("Loading...")).toBeNull();
     // Summary cards and table content are not yet shown
     expect(screen.queryByText("Known Cost")).toBeNull();
@@ -158,7 +158,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent();
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     // Known Cost and Estimated Total cards render $0.0000
     // "Known Cost" appears in both the SummaryCard and the ProviderTable header
@@ -182,7 +182,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent();
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("$5.0000")).toBeDefined();
     expect(screen.getByText("100")).toBeDefined();
@@ -204,7 +204,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent();
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("tokens")).toBeDefined();
     expect(screen.getByText("per_run")).toBeDefined();
@@ -223,7 +223,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent();
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("Network error")).toBeDefined();
   });
@@ -236,7 +236,7 @@ describe("PlatformCostContent", () => {
     mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
     renderComponent();
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("By Provider")).toBeDefined();
     expect(screen.getByText("By User")).toBeDefined();
@@ -254,7 +254,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent();
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     // Original 4 cards
     expect(screen.getAllByText("Known Cost").length).toBeGreaterThanOrEqual(1);
@@ -284,7 +284,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent();
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("Cost Distribution by Bucket")).toBeDefined();
     expect(screen.getByText("$0-0.50")).toBeDefined();
@@ -305,7 +305,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent();
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     // Avg Input Tokens: 2500 formatted
     expect(screen.getByText("2,500")).toBeDefined();
@@ -326,7 +326,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent({ tab: "by-user" });
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     // User table should show Avg Cost / Req header
     expect(screen.getByText("Avg Cost / Req")).toBeDefined();
@@ -343,7 +343,7 @@ describe("PlatformCostContent", () => {
     mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
     renderComponent();
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("Start Date")).toBeDefined();
     expect(screen.getByText("End Date")).toBeDefined();
@@ -360,7 +360,7 @@ describe("PlatformCostContent", () => {
     mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
     renderComponent();
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("Execution ID")).toBeDefined();
     expect(screen.getByPlaceholderText("Filter by execution")).toBeDefined();
@@ -374,7 +374,7 @@ describe("PlatformCostContent", () => {
     mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
     renderComponent({ graph_exec_id: "exec-123" });
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     const input = screen.getByPlaceholderText(
       "Filter by execution",
@@ -390,7 +390,7 @@ describe("PlatformCostContent", () => {
     mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
     renderComponent({ graph_exec_id: "exec-123" });
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     fireEvent.click(screen.getByText("Clear"));
     const input = screen.getByPlaceholderText(
@@ -407,7 +407,7 @@ describe("PlatformCostContent", () => {
     mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
     renderComponent();
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     const input = screen.getByPlaceholderText(
       "Filter by execution",
@@ -432,7 +432,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent({ tab: "logs" });
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     // The exec ID cell shows first 8 chars of "gx-123"
     const execIdCell = screen.getByText("gx-123".slice(0, 8));
@@ -452,7 +452,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent({ tab: "by-user" });
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("alice@example.com")).toBeDefined();
   });
@@ -468,7 +468,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent({ tab: "logs" });
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("LLMBlock")).toBeDefined();
     expect(screen.getByText("gpt-4")).toBeDefined();
@@ -482,7 +482,7 @@ describe("PlatformCostContent", () => {
     mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
     renderComponent({ tab: "logs" });
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("No logs found")).toBeDefined();
   });
@@ -507,7 +507,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent({ tab: "logs" });
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("Previous")).toBeDefined();
     expect(screen.getByText("Next")).toBeDefined();
@@ -535,7 +535,7 @@ describe("PlatformCostContent", () => {
     mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
     renderComponent({ tab: "by-user" });
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("Unknown")).toBeDefined();
   });
@@ -551,7 +551,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent({ tab: "by-user" });
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("alice@example.com")).toBeDefined();
     // overview tab content should not be visible
@@ -569,7 +569,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent({ tab: "logs" });
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("LLMBlock")).toBeDefined();
     expect(screen.getByText("gpt-4")).toBeDefined();
@@ -612,7 +612,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent({ tab: "logs" });
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("copilot:SDK")).toBeDefined();
     expect(screen.getByText("anthropic")).toBeDefined();
@@ -645,7 +645,7 @@ describe("PlatformCostContent", () => {
     });
     renderComponent({ tab: "logs" });
     await waitFor(() =>
-      expect(document.querySelector(".animate-pulse")).toBeNull(),
+      expect(document.querySelector("[data-slot=skeleton]")).toBeNull(),
     );
     expect(screen.getByText("Chat 5e551011")).toBeDefined();
     expect(screen.getByText("gx-123")).toBeDefined();

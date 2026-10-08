@@ -21,11 +21,13 @@ type Story = StoryObj<typeof DropdownMenuContent>;
 export const Basic: Story = {
   render: () => (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="secondary" size="md">
-          Open menu
-        </Button>
-      </DropdownMenuTrigger>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="secondary" size="md">
+            Open menu
+          </Button>
+        }
+      />
       <DropdownMenuContent>
         <DropdownMenuItem onClick={() => alert("Action 1")}>
           Action 1

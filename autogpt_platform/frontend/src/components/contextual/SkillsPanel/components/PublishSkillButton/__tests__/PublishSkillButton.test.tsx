@@ -7,9 +7,7 @@ import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 
-// Radix marks the page inert while a dialog is open, which userEvent refuses
-// to click through by default.
-const user = () => userEvent.setup({ pointerEventsCheck: 0 });
+const user = () => userEvent.setup();
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { PublishSkillButton } from "../PublishSkillButton";

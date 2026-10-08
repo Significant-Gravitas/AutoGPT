@@ -87,15 +87,17 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
       <div className="relative mt-4 flex w-full flex-1 flex-col">
         <TooltipProvider>
           <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                ref={titleRef}
-                onPointerEnter={checkTitleOverflow}
-                className="line-clamp-1 block min-w-0 font-sans text-lg font-semibold tracking-[-0.01em] text-zinc-900"
-              >
-                {agent.agent_name}
-              </span>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <span
+                  ref={titleRef}
+                  onPointerEnter={checkTitleOverflow}
+                  className="line-clamp-1 block min-w-0 font-sans text-lg font-semibold tracking-[-0.01em] text-zinc-900"
+                >
+                  {agent.agent_name}
+                </span>
+              }
+            />
             {isTitleTruncated && (
               <TooltipContent>
                 <p>{agent.agent_name}</p>

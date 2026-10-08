@@ -2,7 +2,7 @@ import type { GlassParams } from "@/components/molecules/GlassOrb/GlassSurface";
 
 // The orb is one element across the greeting's arrival, not two:
 // GreetingLoader renders it centered, OnboardingIntroCard renders it in
-// the heading, and framer moves it between the two because they share
+// the heading, and motion moves it between the two because they share
 // this id. Both live here so neither component owns the other's values.
 export const GREETING_ORB_LAYOUT_ID = "onboarding-greeting-orb";
 

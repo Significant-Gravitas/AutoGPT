@@ -12,7 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { PencilEdit02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import { RenameFileDialog } from "../../RenameFileDialog/RenameFileDialog";
 import { useFileDrag } from "../../WorkspaceFolders/useFileDrag";
@@ -69,7 +69,7 @@ export function FileRow({
       animate="show"
       className={cn(
         ROW_GRID_CLASS,
-        "group cursor-pointer px-2 transition-colors hover:bg-zinc-50 has-data-[state=open]:bg-zinc-50",
+        "group cursor-pointer px-2 transition-colors hover:bg-zinc-50 has-data-open:bg-zinc-50",
         isSelected && "bg-zinc-100 hover:bg-zinc-100",
       )}
       data-testid="artifacts-list-item"
@@ -110,27 +110,28 @@ export function FileRow({
           </span>
         </Button>
         <Tooltip delayDuration={PREVIEW_DELAY_MS}>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              unmask={false}
-              className={NAME_BUTTON_CLASS}
-              data-testid="artifacts-card-open"
-            >
-              <Text
-                variant="body-medium"
-                as="span"
-                className="truncate text-zinc-900"
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                unmask={false}
+                className={NAME_BUTTON_CLASS}
+                data-testid="artifacts-card-open"
               >
-                {file.name}
-              </Text>
-              <ExpertBadge expertId={file.expert_id} className="shrink-0" />
-            </Button>
-          </TooltipTrigger>
+                <Text
+                  variant="body-medium"
+                  as="span"
+                  className="truncate text-zinc-900"
+                >
+                  {file.name}
+                </Text>
+                <ExpertBadge expertId={file.expert_id} className="shrink-0" />
+              </Button>
+            }
+          />
           <TooltipPortal>
-            {/* aria-label keeps Radix from mirroring the whole card into its
-              visually-hidden tooltip copy (which would fetch previews twice). */}
+            {/* aria-label names the tooltip in place of the whole card's text. */}
             <TooltipContent
               aria-label={`Preview of ${file.name}`}
               side="right"
@@ -177,7 +178,7 @@ export function FileRow({
       <div
         className={cn(
           ACTIONS_CELL_CLASS,
-          "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 has-data-[state=open]:opacity-100",
+          "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 has-data-open:opacity-100",
         )}
         onClick={(e) => e.stopPropagation()}
       >

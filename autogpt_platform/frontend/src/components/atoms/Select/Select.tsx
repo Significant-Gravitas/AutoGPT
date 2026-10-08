@@ -1,20 +1,27 @@
 "use client";
 
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import {
-  Select as BaseSelect,
+  Select as KobraSelect,
   SelectContent,
   SelectItem,
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import * as React from "react";
 import { ReactNode, useId, useState } from "react";
+import type { FieldSize } from "../Input/fieldVariants";
 import { Text } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
-import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
-import { fieldVariants, type FieldSize } from "../Input/fieldVariants";
+
+// Kobra's trigger sets its height through `data-size`; the house heights win
+// by matching that variant.
+const triggerSizeClasses: Record<FieldSize, string> = {
+  sm: "data-[size=default]:h-8 ps-3 pe-2 text-xs",
+  md: "data-[size=default]:h-9 ps-3 pe-2.5 text-sm",
+  lg: "data-[size=default]:h-10 ps-4 pe-3 text-sm",
+};
 
 export interface SelectOption {
   value: string;
@@ -72,18 +79,29 @@ export function Select({
   "aria-labelledby": ariaLabelledBy,
   "aria-describedby": ariaDescribedBy,
 }: SelectFieldProps) {
-  const triggerStyles = cn(
-    fieldVariants({ size, invalid: Boolean(error) }),
-    "[&[data-placeholder]>span]:font-normal [&[data-placeholder]>span]:text-muted-foreground",
-    className,
-  );
-
   const generatedId = useId();
   const triggerId = id ?? generatedId;
   const [uncontrolledValue, setUncontrolledValue] = useState<string>();
   const currentValue = value ?? uncontrolledValue ?? "";
 
-  function handleValueChange(nextValue: string) {
+  function renderOption(option: SelectOption) {
+    if (renderItem) return renderItem(option);
+    return (
+      <>
+        {option.icon}
+        <span>{option.label}</span>
+      </>
+    );
+  }
+
+  // Base UI reads the trigger's text from `items`, so the popup never has to
+  // mount to show the selected option.
+  const items = options
+    .filter((option) => !option.separator)
+    .map((option) => ({ value: option.value, label: renderOption(option) }));
+
+  function handleValueChange(nextValue: string | null) {
+    if (nextValue === null) return;
     const action = options.find(
       (option) => option.value === nextValue,
     )?.onSelect;
@@ -96,13 +114,14 @@ export function Select({
   }
 
   const select = (
-    <BaseSelect
-      value={currentValue}
+    <KobraSelect
+      value={currentValue === "" ? null : currentValue}
       onValueChange={handleValueChange}
       disabled={disabled}
+      items={items}
     >
       <SelectTrigger
-        className={triggerStyles}
+        className={cn("w-full", triggerSizeClasses[size], className)}
         aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
         aria-labelledby={ariaLabelledBy}
         aria-describedby={ariaDescribedBy}
@@ -111,29 +130,21 @@ export function Select({
       >
         <SelectValue placeholder={placeholder || label} />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent align="start" alignItemWithTrigger={false}>
         {options.map((option, idx) => {
           if (option.separator) return <SelectSeparator key={`sep-${idx}`} />;
-          const content = renderItem ? (
-            renderItem(option)
-          ) : (
-            <div className="flex items-center gap-2">
-              {option.icon}
-              <span>{option.label}</span>
-            </div>
-          );
           return (
             <SelectItem
               key={option.value}
               value={option.value}
               disabled={option.disabled}
             >
-              {content}
+              {renderOption(option)}
             </SelectItem>
           );
         })}
       </SelectContent>
-    </BaseSelect>
+    </KobraSelect>
   );
 
   const selectWithError = (

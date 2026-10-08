@@ -21,9 +21,7 @@ function ModalProbe() {
 }
 
 function openMenu() {
-  fireEvent.pointerDown(screen.getByTestId("composer-plus-button"), {
-    button: 0,
-  });
+  fireEvent.click(screen.getByTestId("composer-plus-button"));
 }
 
 describe("ComposerPlusMenu", () => {

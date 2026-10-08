@@ -1,7 +1,7 @@
 "use client";
 
 import { CronExpressionDialog } from "@/components/contextual/CronScheduler/cron-scheduler-dialog";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { Form, FormField } from "@/components/molecules/Form/Form";
 import {
   Accordion,
   AccordionContent,
@@ -126,136 +126,94 @@ export function AgentInfoStep({
     <div className="mx-auto flex w-full flex-col">
       <StepHeader title={title} description={description} currentStep="info" />
 
-      <Form {...form}>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5 pb-5">
-          {isMarketplaceUpdate && (
-            <section className="rounded-[18px] border border-yellow-200 bg-yellow-50 p-4">
-              <div className="mb-4 flex items-start gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-yellow-700 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-                  <Icon icon={InformationCircleIcon} size={18} />
-                </div>
-                <div className="flex min-w-0 flex-col gap-1">
-                  <Text
-                    variant="body-medium"
-                    as="h3"
-                    className="text-yellow-900"
-                  >
-                    Update note
-                  </Text>
-                  <Text variant="small" className="text-yellow-800">
-                    Reviewers use this to understand why the marketplace listing
-                    needs a new version.
-                  </Text>
-                </div>
+      <Form
+        form={form}
+        onSubmit={handleSubmit}
+        className="flex flex-col gap-5 space-y-0 pb-5"
+      >
+        {isMarketplaceUpdate && (
+          <section className="rounded-[18px] border border-yellow-200 bg-yellow-50 p-4">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-yellow-700 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+                <Icon icon={InformationCircleIcon} size={18} />
               </div>
-              <FormField
-                control={form.control}
-                name="changesSummary"
-                render={({ field }) => (
-                  <Input
-                    id={field.name}
-                    labelVariant="body"
-                    label="What changed?"
-                    labelTooltip="Summary of what's new or improved in this version. Reviewers see this first."
-                    type="textarea"
-                    rows={1}
-                    placeholder="Describe what's new or improved in this version..."
-                    error={form.formState.errors.changesSummary?.message}
-                    required
-                    wrapperClassName="mb-0"
-                    {...field}
-                  />
-                )}
-              />
-            </section>
-          )}
+              <div className="flex min-w-0 flex-col gap-1">
+                <Text variant="body-medium" as="h3" className="text-yellow-900">
+                  Update note
+                </Text>
+                <Text variant="small" className="text-yellow-800">
+                  Reviewers use this to understand why the marketplace listing
+                  needs a new version.
+                </Text>
+              </div>
+            </div>
+            <FormField
+              control={form.control}
+              name="changesSummary"
+              render={({ field }) => (
+                <Input
+                  id={field.name}
+                  labelVariant="body"
+                  label="What changed?"
+                  labelTooltip="Summary of what's new or improved in this version. Reviewers see this first."
+                  type="textarea"
+                  rows={1}
+                  placeholder="Describe what's new or improved in this version..."
+                  error={form.formState.errors.changesSummary?.message}
+                  required
+                  wrapperClassName="mb-0"
+                  {...field}
+                />
+              )}
+            />
+          </section>
+        )}
 
-          <Accordion
-            type="single"
-            collapsible
-            value={openAccordion}
-            onValueChange={setOpenAccordion}
-            className="overflow-hidden rounded-[14px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)] [&>*+*]:border-t [&>*+*]:border-zinc-200"
-          >
-            <AccordionItem value="basics" className="border-0 px-4">
-              <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-black">
+        <Accordion
+          type="single"
+          collapsible
+          value={openAccordion}
+          onValueChange={setOpenAccordion}
+          className="overflow-hidden rounded-[14px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)] [&>*+*]:border-t [&>*+*]:border-zinc-200"
+        >
+          <AccordionItem value="basics" className="border-0 px-4">
+            <AccordionTrigger className="hover:no-underline">
+              <span className="flex items-center gap-2 text-sm font-medium text-black">
+                <Icon
+                  icon={Store01Icon}
+                  size={18}
+                  className="text-muted-foreground"
+                />
+                Listing basics
+                {basicsHasError ? (
                   <Icon
-                    icon={Store01Icon}
-                    size={18}
-                    className="text-muted-foreground"
+                    icon={AlertCircleIcon}
+                    size={16}
+                    className="text-red-500"
                   />
-                  Listing basics
-                  {basicsHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-red-500"
-                    />
-                  ) : basicsComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-purple-500"
-                    />
-                  ) : null}
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="px-1 pt-0 pb-4">
-                <div className="grid gap-x-4 sm:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="title"
-                    render={({ field }) => (
-                      <Input
-                        id={field.name}
-                        labelVariant="body"
-                        label="Title"
-                        labelTooltip="Public name shown on the marketplace listing."
-                        type="text"
-                        placeholder="Agent name"
-                        error={form.formState.errors.title?.message}
-                        {...field}
-                      />
-                    )}
+                ) : basicsComplete ? (
+                  <Icon
+                    icon={CheckmarkCircle02Icon}
+                    size={16}
+                    className="text-purple-500"
                   />
-
-                  <FormField
-                    control={form.control}
-                    name="subheader"
-                    render={({ field }) => (
-                      <CharCountedTextarea
-                        max={SUB_HEADING_MAX}
-                        value={field.value ?? ""}
-                      >
-                        <Input
-                          id={field.name}
-                          labelVariant="body"
-                          label="Tagline"
-                          labelTooltip="The one-line subtitle shown under the agent name and on preview cards. Start with a verb and name the outcome for the user."
-                          type="text"
-                          placeholder="Find decision-makers at any company in seconds"
-                          error={form.formState.errors.subheader?.message}
-                          required
-                          {...field}
-                        />
-                      </CharCountedTextarea>
-                    )}
-                  />
-                </div>
-
+                ) : null}
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="px-1 pt-0 pb-4">
+              <div className="grid gap-x-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
-                  name="slug"
+                  name="title"
                   render={({ field }) => (
                     <Input
                       id={field.name}
                       labelVariant="body"
-                      label="Slug"
-                      labelTooltip="URL-friendly identifier used in the marketplace path. Lowercase letters, numbers, hyphens only."
+                      label="Title"
+                      labelTooltip="Public name shown on the marketplace listing."
                       type="text"
-                      placeholder="URL-friendly name"
-                      error={form.formState.errors.slug?.message}
+                      placeholder="Agent name"
+                      error={form.formState.errors.title?.message}
                       {...field}
                     />
                   )}
@@ -263,236 +221,276 @@ export function AgentInfoStep({
 
                 <FormField
                   control={form.control}
-                  name="category"
+                  name="subheader"
                   render={({ field }) => (
-                    <Select
+                    <CharCountedTextarea
+                      max={SUB_HEADING_MAX}
+                      value={field.value ?? ""}
+                    >
+                      <Input
+                        id={field.name}
+                        labelVariant="body"
+                        label="Tagline"
+                        labelTooltip="The one-line subtitle shown under the agent name and on preview cards. Start with a verb and name the outcome for the user."
+                        type="text"
+                        placeholder="Find decision-makers at any company in seconds"
+                        error={form.formState.errors.subheader?.message}
+                        required
+                        {...field}
+                      />
+                    </CharCountedTextarea>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={form.control}
+                name="slug"
+                render={({ field }) => (
+                  <Input
+                    id={field.name}
+                    labelVariant="body"
+                    label="Slug"
+                    labelTooltip="URL-friendly identifier used in the marketplace path. Lowercase letters, numbers, hyphens only."
+                    type="text"
+                    placeholder="URL-friendly name"
+                    error={form.formState.errors.slug?.message}
+                    {...field}
+                  />
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="category"
+                render={({ field }) => (
+                  <Select
+                    id={field.name}
+                    labelVariant="body"
+                    label="Category"
+                    labelTooltip="Primary category that helps users discover the agent."
+                    placeholder={placeholder}
+                    disabled={isUnavailable}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    error={form.formState.errors.category?.message}
+                    options={categoryOptions}
+                  />
+                )}
+              />
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="thumbnails" className="border-0 px-4">
+            <AccordionTrigger className="hover:no-underline">
+              <span className="flex items-center gap-2 text-sm font-medium text-black">
+                <Icon
+                  icon={Album01Icon}
+                  size={18}
+                  className="text-muted-foreground"
+                />
+                Thumbnails
+                {thumbnailsHasError ? (
+                  <Icon
+                    icon={AlertCircleIcon}
+                    size={16}
+                    className="text-red-500"
+                  />
+                ) : thumbnailsComplete ? (
+                  <Icon
+                    icon={CheckmarkCircle02Icon}
+                    size={16}
+                    className="text-purple-500"
+                  />
+                ) : null}
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="px-1 pt-0 pb-4">
+              <ThumbnailImages
+                agentId={agentId}
+                onImagesChange={handleImagesChange}
+                initialImages={initialImages}
+                initialSelectedImage={initialSelectedImage}
+                errorMessage={form.formState.errors.root?.message}
+              />
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="experience" className="border-0 px-4">
+            <AccordionTrigger className="hover:no-underline">
+              <span className="flex items-center gap-2 text-sm font-medium text-black">
+                <Icon
+                  icon={SparklesIcon}
+                  size={18}
+                  className="text-muted-foreground"
+                />
+                Experience details
+                {experienceHasError ? (
+                  <Icon
+                    icon={AlertCircleIcon}
+                    size={16}
+                    className="text-red-500"
+                  />
+                ) : experienceComplete ? (
+                  <Icon
+                    icon={CheckmarkCircle02Icon}
+                    size={16}
+                    className="text-purple-500"
+                  />
+                ) : null}
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="px-1 pt-0 pb-4">
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <CharCountedTextarea
+                    max={DESCRIPTION_MAX}
+                    value={field.value ?? ""}
+                  >
+                    <Input
                       id={field.name}
                       labelVariant="body"
-                      label="Category"
-                      labelTooltip="Primary category that helps users discover the agent."
-                      placeholder={placeholder}
-                      disabled={isUnavailable}
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      error={form.formState.errors.category?.message}
-                      options={categoryOptions}
+                      label="Description"
+                      labelTooltip="What the agent does and the outcome users get."
+                      type="textarea"
+                      rows={2}
+                      placeholder="Describe the outcome this agent creates"
+                      error={form.formState.errors.description?.message}
+                      {...field}
                     />
-                  )}
-                />
-              </AccordionContent>
-            </AccordionItem>
+                  </CharCountedTextarea>
+                )}
+              />
 
-            <AccordionItem value="thumbnails" className="border-0 px-4">
-              <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-black">
-                  <Icon
-                    icon={Album01Icon}
-                    size={18}
-                    className="text-muted-foreground"
-                  />
-                  Thumbnails
-                  {thumbnailsHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-red-500"
+              <FormField
+                control={form.control}
+                name="instructions"
+                render={({ field }) => (
+                  <CharCountedTextarea
+                    max={INSTRUCTIONS_MAX}
+                    value={field.value ?? ""}
+                  >
+                    <Input
+                      id={field.name}
+                      labelVariant="body"
+                      label="Instructions"
+                      labelTooltip="Steps users should follow to set up and run the agent."
+                      type="textarea"
+                      rows={2}
+                      placeholder="Explain inputs, setup, and what to expect after a run"
+                      error={form.formState.errors.instructions?.message}
+                      {...field}
                     />
-                  ) : thumbnailsComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-purple-500"
-                    />
-                  ) : null}
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="px-1 pt-0 pb-4">
-                <ThumbnailImages
-                  agentId={agentId}
-                  onImagesChange={handleImagesChange}
-                  initialImages={initialImages}
-                  initialSelectedImage={initialSelectedImage}
-                  errorMessage={form.formState.errors.root?.message}
-                />
-              </AccordionContent>
-            </AccordionItem>
+                  </CharCountedTextarea>
+                )}
+              />
 
-            <AccordionItem value="experience" className="border-0 px-4">
-              <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-black">
-                  <Icon
-                    icon={SparklesIcon}
-                    size={18}
-                    className="text-muted-foreground"
-                  />
-                  Experience details
-                  {experienceHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-red-500"
-                    />
-                  ) : experienceComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-purple-500"
-                    />
-                  ) : null}
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="px-1 pt-0 pb-4">
+              <div className="grid gap-x-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
-                  name="description"
+                  name="youtubeLink"
                   render={({ field }) => (
-                    <CharCountedTextarea
-                      max={DESCRIPTION_MAX}
-                      value={field.value ?? ""}
-                    >
-                      <Input
-                        id={field.name}
-                        labelVariant="body"
-                        label="Description"
-                        labelTooltip="What the agent does and the outcome users get."
-                        type="textarea"
-                        rows={2}
-                        placeholder="Describe the outcome this agent creates"
-                        error={form.formState.errors.description?.message}
-                        {...field}
-                      />
-                    </CharCountedTextarea>
+                    <Input
+                      id={field.name}
+                      labelVariant="body"
+                      label="YouTube video link"
+                      labelTooltip="Demo or walkthrough video hosted on YouTube."
+                      type="url"
+                      placeholder="https://youtube.com/watch?v=..."
+                      error={form.formState.errors.youtubeLink?.message}
+                      {...field}
+                    />
                   )}
                 />
 
                 <FormField
                   control={form.control}
-                  name="instructions"
+                  name="agentOutputDemo"
                   render={({ field }) => (
-                    <CharCountedTextarea
-                      max={INSTRUCTIONS_MAX}
-                      value={field.value ?? ""}
-                    >
-                      <Input
-                        id={field.name}
-                        labelVariant="body"
-                        label="Instructions"
-                        labelTooltip="Steps users should follow to set up and run the agent."
-                        type="textarea"
-                        rows={2}
-                        placeholder="Explain inputs, setup, and what to expect after a run"
-                        error={form.formState.errors.instructions?.message}
-                        {...field}
-                      />
-                    </CharCountedTextarea>
+                    <Input
+                      id={field.name}
+                      labelVariant="body"
+                      label="Output demo"
+                      labelTooltip="Link showing example output the agent produces."
+                      type="url"
+                      placeholder="https://youtube.com/watch?v=..."
+                      error={form.formState.errors.agentOutputDemo?.message}
+                      {...field}
+                    />
                   )}
                 />
+              </div>
 
-                <div className="grid gap-x-4 sm:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="youtubeLink"
-                    render={({ field }) => (
-                      <Input
-                        id={field.name}
-                        labelVariant="body"
-                        label="YouTube video link"
-                        labelTooltip="Demo or walkthrough video hosted on YouTube."
-                        type="url"
-                        placeholder="https://youtube.com/watch?v=..."
-                        error={form.formState.errors.youtubeLink?.message}
-                        {...field}
-                      />
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="agentOutputDemo"
-                    render={({ field }) => (
-                      <Input
-                        id={field.name}
-                        labelVariant="body"
-                        label="Output demo"
-                        labelTooltip="Link showing example output the agent produces."
-                        type="url"
-                        placeholder="https://youtube.com/watch?v=..."
-                        error={form.formState.errors.agentOutputDemo?.message}
-                        {...field}
-                      />
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="recommendedScheduleCron"
-                  render={({ field }) => (
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-1">
-                          <Text variant="body" as="span">
-                            Recommended schedule
-                          </Text>
-                          <InformationTooltip
-                            description="Suggested cron schedule users can run the agent on. Sets a run cadence for recurring use cases."
-                            iconSize={20}
-                          />
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setCronScheduleDialogOpen(true)}
-                        className="flex h-11.5 w-full items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-left text-sm font-normal text-black shadow-none transition-colors hover:border-zinc-300 focus:border-purple-400 focus:ring-1 focus:ring-purple-400 focus:outline-hidden"
-                      >
-                        <Icon
-                          icon={Calendar03Icon}
-                          size={16}
-                          className="shrink-0 text-muted-foreground"
+              <FormField
+                control={form.control}
+                name="recommendedScheduleCron"
+                render={({ field }) => (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-1">
+                        <Text variant="body" as="span">
+                          Recommended schedule
+                        </Text>
+                        <InformationTooltip
+                          description="Suggested cron schedule users can run the agent on. Sets a run cadence for recurring use cases."
+                          iconSize={20}
                         />
-                        <span
-                          className={cn(
-                            "truncate",
-                            !field.value && "text-zinc-400",
-                          )}
-                        >
-                          {field.value
-                            ? humanizeCronExpression(field.value)
-                            : "Set schedule"}
-                        </span>
-                      </button>
+                      </div>
                     </div>
-                  )}
-                />
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+                    <button
+                      type="button"
+                      onClick={() => setCronScheduleDialogOpen(true)}
+                      className="flex h-11.5 w-full items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-left text-sm font-normal text-black shadow-none transition-colors hover:border-zinc-300 focus:border-purple-400 focus:ring-1 focus:ring-purple-400 focus:outline-hidden"
+                    >
+                      <Icon
+                        icon={Calendar03Icon}
+                        size={16}
+                        className="shrink-0 text-muted-foreground"
+                      />
+                      <span
+                        className={cn(
+                          "truncate",
+                          !field.value && "text-zinc-400",
+                        )}
+                      >
+                        {field.value
+                          ? humanizeCronExpression(field.value)
+                          : "Set schedule"}
+                      </span>
+                    </button>
+                  </div>
+                )}
+              />
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
 
-          <StepFooter
-            secondary={
-              <Button
-                type="button"
-                onClick={onBack}
-                variant="secondary"
-                size="md"
-                className="w-full sm:w-auto"
-              >
-                Back
-              </Button>
-            }
-            primary={
-              <Button
-                type="submit"
-                size="md"
-                disabled={isSubmitDisabled}
-                loading={isSubmitting}
-                className="w-full sm:w-auto"
-              >
-                {isSubmitting ? "Submitting" : "Submit for review"}
-              </Button>
-            }
-          />
-        </form>
+        <StepFooter
+          secondary={
+            <Button
+              type="button"
+              onClick={onBack}
+              variant="secondary"
+              size="md"
+              className="w-full sm:w-auto"
+            >
+              Back
+            </Button>
+          }
+          primary={
+            <Button
+              type="submit"
+              size="md"
+              disabled={isSubmitDisabled}
+              loading={isSubmitting}
+              className="w-full sm:w-auto"
+            >
+              {isSubmitting ? "Submitting" : "Submit for review"}
+            </Button>
+          }
+        />
       </Form>
 
       <CronExpressionDialog

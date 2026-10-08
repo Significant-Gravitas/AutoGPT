@@ -1,4 +1,4 @@
-import type { Variants } from "framer-motion";
+import type { Variants } from "motion/react";
 
 // Header shows first; the nav/chat items fade+rise in after a short delay,
 // staggered. ease-out, well under Emil Kowalski's 300ms UI budget.

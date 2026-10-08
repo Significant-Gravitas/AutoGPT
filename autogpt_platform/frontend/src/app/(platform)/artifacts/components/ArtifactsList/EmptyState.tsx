@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { PlusSignIcon, Upload03Icon } from "@hugeicons/core-free-icons";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 import { useNewMenu } from "../NewMenu/useNewMenu";
 import type { EmptyStateContent } from "./helpers";
 

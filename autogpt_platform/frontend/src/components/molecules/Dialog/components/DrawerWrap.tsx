@@ -1,14 +1,18 @@
 import { Button } from "@/components/atoms/Button/Button";
-import { scrollbarStyles } from "@/components/styles/scrollbars";
-import { isComposingEvent } from "@/lib/keyboard";
-import { cn } from "@/lib/utils";
-import { PropsWithChildren } from "react";
-import { Drawer } from "vaul";
-import { DialogCtx } from "../useDialogCtx";
-import { compactStyles, drawerStyles, modalStyles } from "./styles";
-import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { scrollbarStyles } from "@/components/styles/scrollbars";
+import {
+  DrawerContent,
+  DrawerDescription,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { isComposingEvent } from "@/lib/keyboard";
+import { cn } from "@/lib/utils";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { PropsWithChildren } from "react";
+import { DialogCtx } from "../useDialogCtx";
+import { compactStyles, drawerStyles } from "./styles";
 
 type BaseProps = DialogCtx & PropsWithChildren;
 
@@ -41,90 +45,78 @@ export function DrawerWrap({
     if (isForceOpen || isComposingEvent(event)) event.preventDefault();
   }
 
-  const closeBtn = (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label="Close"
-      onClick={handleClose}
-      className="focus-visible:ring-0!"
-      withTooltip={false}
-    >
-      <Icon icon={Cancel01Icon} width={isCompact ? "1.25rem" : "1.5rem"} />
-    </Button>
-  );
-
   return (
-    <Drawer.Portal>
-      <Drawer.Overlay className={drawerStyles.overlay} />
-      <Drawer.Content
+    <DrawerContent
+      className={cn(
+        drawerStyles.content,
+        isCompact && compactStyles.drawerContent,
+        className,
+      )}
+      data-testid={testId}
+      onEscapeKeyDown={handleEscapeKeyDown}
+      {...(description ? {} : { "aria-describedby": undefined })}
+      // No onInteractOutside close: vaul dismisses outside taps itself and
+      // vetoes the focus a closing DropdownMenu hands back to its trigger.
+    >
+      <div
         className={cn(
-          drawerStyles.content,
-          isCompact && compactStyles.drawerContent,
-          className,
+          "flex w-full shrink-0 items-center justify-between",
+          hasVisibleHeader
+            ? isCompact
+              ? compactStyles.header
+              : "pb-6"
+            : "pb-0",
         )}
-        data-testid={testId}
-        onEscapeKeyDown={handleEscapeKeyDown}
-        {...(description ? {} : { "aria-describedby": undefined })}
-        // No onInteractOutside close: Radix dismisses outside taps itself and
-        // vetoes the focus a closing DropdownMenu hands back to its trigger.
       >
-        <div
-          className={cn(
-            "flex w-full shrink-0 items-center justify-between",
-            hasVisibleHeader
-              ? isCompact
-                ? compactStyles.header
-                : "pb-6"
-              : "pb-0",
+        <div className="flex min-w-0 flex-col gap-2">
+          {hasVisibleTitle ? (
+            <DrawerTitle
+              className={isCompact ? compactStyles.title : drawerStyles.title}
+            >
+              {accessibleTitle}
+            </DrawerTitle>
+          ) : (
+            <DrawerTitle className="sr-only">{accessibleTitle}</DrawerTitle>
           )}
-        >
-          <div className="flex min-w-0 flex-col gap-2">
-            {hasVisibleTitle ? (
-              <Drawer.Title
-                className={isCompact ? compactStyles.title : drawerStyles.title}
+          {description ? (
+            <DrawerDescription asChild>
+              <Text
+                variant="body"
+                tone="secondary"
+                className={cn(hideDescription && "sr-only")}
               >
-                {accessibleTitle}
-              </Drawer.Title>
-            ) : (
-              <Drawer.Title className="sr-only">{accessibleTitle}</Drawer.Title>
-            )}
-            {description ? (
-              <Drawer.Description asChild>
-                <Text
-                  variant="body"
-                  tone="secondary"
-                  className={cn(hideDescription && "sr-only")}
-                >
-                  {description}
-                </Text>
-              </Drawer.Description>
-            ) : null}
-          </div>
-
-          {!isForceOpen ? (
-            hasVisibleTitle ? (
-              closeBtn
-            ) : (
-              <div
-                className={`${modalStyles.iconWrap} transition-colors duration-200 hover:bg-muted`}
-              >
-                {closeBtn}
-              </div>
-            )
+                {description}
+              </Text>
+            </DrawerDescription>
           ) : null}
         </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div
-            className={cn(
-              "flex-1 overflow-x-hidden overflow-y-auto",
-              scrollbarStyles,
-            )}
+
+        {isForceOpen ? null : (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Close"
+            onClick={handleClose}
+            className="focus-visible:ring-0!"
+            withTooltip={false}
           >
-            {children}
-          </div>
+            <Icon
+              icon={Cancel01Icon}
+              width={isCompact ? "1.25rem" : "1.5rem"}
+            />
+          </Button>
+        )}
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div
+          className={cn(
+            "flex-1 overflow-x-hidden overflow-y-auto",
+            scrollbarStyles,
+          )}
+        >
+          {children}
         </div>
-      </Drawer.Content>
-    </Drawer.Portal>
+      </div>
+    </DrawerContent>
   );
 }

@@ -1,5 +1,5 @@
 import { act, render } from "@testing-library/react";
-import { motionValue } from "framer-motion";
+import { motionValue } from "motion/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStreakStore, type StreakField } from "../streaks";
 import { VoiceStreaks } from "../VoiceStreaks";
