@@ -11,7 +11,7 @@ _MAX_ATTEMPTS = 3
 
 
 def create_trace_export_session() -> Session:
-    """Share the OTLP exporter's timeout across bounded transport retries."""
+    """Retry OTLP requests within a window of at most three request timeouts."""
     return _TraceExportSession()
 
 
@@ -23,13 +23,14 @@ class _TraceExportSession(Session):
         json: Any = None,
         **kwargs: Any,
     ) -> Response:
-        deadline = monotonic() + float(kwargs["timeout"])
+        request_timeout = float(kwargs["timeout"])
+        deadline = monotonic() + request_timeout * _MAX_ATTEMPTS
         last_error: RequestException | None = None
         for attempt in range(_MAX_ATTEMPTS):
             remaining = deadline - monotonic()
             if remaining <= 0:
                 break
-            kwargs["timeout"] = Timeout(total=remaining / (_MAX_ATTEMPTS - attempt))
+            kwargs["timeout"] = Timeout(total=min(request_timeout, remaining))
             try:
                 return super().post(url, data=data, json=json, **kwargs)
             except SSLError as error:

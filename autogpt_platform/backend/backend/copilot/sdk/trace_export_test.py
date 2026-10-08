@@ -30,6 +30,7 @@ class _TraceServer(ThreadingHTTPServer):
         self.accepted: list[bytes] = []
         self.fail_requests = 1
         self.response_delay = 1.2
+        self.success_delay = 0.0
         self.response_status = 200
 
 
@@ -43,6 +44,7 @@ class _TraceHandler(BaseHTTPRequestHandler):
             time.sleep(receiver.response_delay)
             status = 504
         elif status == 200:
+            time.sleep(receiver.success_delay)
             receiver.accepted.append(body)
         self.send_response(status)
         self.send_header("Content-Length", "0")
@@ -126,6 +128,19 @@ def test_langfuse_retries_timed_out_span_batch(
     assert exported[0].trace_id.hex() == span.trace_id
 
 
+def test_langfuse_allows_slow_success_within_request_timeout(
+    trace_receiver: _TraceServer, langfuse_client: Langfuse
+) -> None:
+    trace_receiver.fail_requests = 0
+    trace_receiver.success_delay = 0.6
+    with langfuse_client.start_as_current_span(name="copilot-sdk-turn"):
+        pass
+    langfuse_client.flush()
+
+    assert len(trace_receiver.bodies) == 1
+    assert len(trace_receiver.accepted) == 1
+
+
 @pytest.mark.parametrize("error_type", [ConnectionError, ReadTimeout])
 def test_trace_export_session_bounds_transport_retries(
     error_type: type[RequestException],
@@ -147,7 +162,7 @@ def test_trace_export_session_bounds_transport_retries(
     assert error.type is RequestException
 
 
-def test_exporter_shares_timeout_across_transport_retries(
+def test_exporter_bounds_retry_window_and_recovers_next_batch(
     trace_receiver: _TraceServer,
 ) -> None:
     trace_receiver.fail_requests = 100
@@ -155,7 +170,7 @@ def test_exporter_shares_timeout_across_transport_retries(
     with create_trace_export_session() as session:
         exporter = OTLPSpanExporter(
             endpoint=f"http://127.0.0.1:{trace_receiver.server_port}/v1/traces",
-            timeout=0.3,
+            timeout=0.1,
             session=session,
         )
         started = time.monotonic()
@@ -180,7 +195,7 @@ def test_exporter_does_not_retry_after_timeout_budget_is_spent() -> None:
             "backend.copilot.sdk.trace_export.Session.post",
             side_effect=ReadTimeout("request timed out"),
         ) as post,
-        patch("backend.copilot.sdk.trace_export.monotonic", side_effect=[0, 0, 2, 2]),
+        patch("backend.copilot.sdk.trace_export.monotonic", side_effect=[0, 0, 4, 4]),
         patch("backend.copilot.sdk.trace_export.sleep") as sleep,
     ):
         with pytest.raises(RequestException, match="retry budget exhausted"):
