@@ -1078,11 +1078,11 @@ def _build_catalog() -> CatalogPayload:
                 # here for the first time.
                 cost=CatalogModelCost(
                     run_credits=9,
-                    input_credits_per_1m=93.0,
-                    output_credits_per_1m=1845.0,
+                    input_credits_per_1m=450.0,
+                    output_credits_per_1m=2250.0,
                     cache_read_credits_per_1m=45.0,
-                    provider_input_usd_per_1m=0.62,
-                    provider_output_usd_per_1m=12.3,
+                    provider_input_usd_per_1m=3.00,
+                    provider_output_usd_per_1m=15.00,
                 ),
             ),
             CatalogModel(
