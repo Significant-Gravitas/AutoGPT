@@ -33,6 +33,7 @@ from backend.notifications.audience_enrichment import (
 )
 from backend.notifications.consent import audience_change_allowed
 from backend.notifications.subscriber_fields import queue_fields
+from backend.util.retry import func_retry
 
 logger = logging.getLogger(__name__)
 
@@ -139,9 +140,14 @@ async def signin_providers(user_id: str) -> list[str]:
     return [str(row["provider"]) for row in rows if row.get("provider")]
 
 
+@func_retry
 async def _record_excluded_country(
     user_id: str, countries: tuple[str | None, ...]
 ) -> None:
+    """Retried in place: this runs in the background, so a failure has no
+    caller to retry it, and the trial and billing events that follow the
+    checkout are only stopped by this record. A failure that outlasts the
+    retries is logged as an error by `queue_checkout_opened`."""
     if country := excluded_country(countries):
         await record_excluded_country(user_id, country)
 

@@ -367,3 +367,28 @@ def test_a_person_placed_in_iran_or_russia_is_counted_and_never_written(excluded
     assert plan.excluded_country == 1
     assert plan.opted_out == 0
     assert plan.statuses[S.SUBSCRIBED] == 1
+
+
+@pytest.mark.asyncio
+async def test_an_account_that_cannot_be_read_fails_alone_and_the_run_goes_on(
+    configured, monkeypatch, caplog
+):
+    client = MagicMock()
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _response(
+            200,
+            {"responses": [{"code": 200} for _ in kw["json"]["requests"]]},
+        )
+    )
+    monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
+    changes = backfill.plan([_person("in@x.io"), _person("gone@x.io")], {}).changes
+
+    async def kept_out(user_id: str) -> bool:
+        if user_id == "u-gone@x.io":
+            raise RuntimeError("db down")
+        return False
+
+    assert await backfill.apply(changes, kept_out=kept_out) == (1, 1, 0)
+    (batch,) = [c.kwargs["json"]["requests"] for c in client.post.await_args_list]
+    assert [r["body"]["email"] for r in batch] == ["in@x.io"]
+    assert "gone@x.io" not in caplog.text

@@ -146,6 +146,17 @@ async def test_an_opener_seen_in_iran_or_russia_is_recorded_and_never_queued(
 
 
 @pytest.mark.asyncio
+async def test_a_failed_record_of_a_russian_ip_is_retried(queued, recorded):
+    """This runs in the background, so nothing else would retry it, and the
+    events after the checkout carry no IP country."""
+    recorded.side_effect = [RuntimeError("db blip"), None]
+    await checkout_audience.queue_checkout_opened("user-1", ip_country="RU")
+    assert recorded.await_count == 2
+    recorded.assert_awaited_with("user-1", "RU")
+    queued.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_an_opener_whose_browser_sits_in_moscow_is_never_queued(
     queued, monkeypatch
 ):

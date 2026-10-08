@@ -524,3 +524,32 @@ async def test_apply_drops_anyone_who_may_no_longer_be_written(
     assert [r["body"]["email"] for r in batch] == ["in@x.io"]
     assert result.succeeded[Decision.ADD_CHANGELOG] == 1
     assert result.skipped == 1
+
+
+@pytest.mark.asyncio
+async def test_an_account_that_cannot_be_read_fails_alone_and_the_run_goes_on(
+    configured, no_sleep, monkeypatch, caplog
+):
+    client = MagicMock()
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _batch_ok(kw["json"]["requests"])
+    )
+    monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
+    audience = _audience()
+    changes = mailerlite_backfill.plan(
+        [_customer("in@x.io", "active"), _customer("gone@x.io", "active")], audience
+    )
+
+    async def kept_out(user_id: str) -> bool:
+        if user_id == "u-gone@x.io":
+            raise RuntimeError("db down")
+        return False
+
+    result = await mailerlite_backfill.apply(changes, audience, kept_out=kept_out)
+
+    (batch,) = [c.kwargs["json"]["requests"] for c in client.post.await_args_list]
+    assert [r["body"]["email"] for r in batch] == ["in@x.io"]
+    assert result.succeeded[Decision.ADD_CHANGELOG] == 1
+    assert result.failed[Decision.ADD_CHANGELOG] == 1
+    assert result.skipped == 0
+    assert "gone@x.io" not in caplog.text

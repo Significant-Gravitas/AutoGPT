@@ -37,6 +37,7 @@ from backend.notifications.mailerlite_backfill import (
     MEMBER_STATUSES,
     PAGE_SIZE,
     UPSERT_BATCH_INTERVAL_SECONDS,
+    BatchAnswer,
     Subscription,
     _refusal,
     _send_batch,
@@ -223,8 +224,8 @@ async def apply(
     """Write each change as a subscriber upsert, fifty to a batch, paced for
     MailerLite's import limit. With `kept_out`, each batch first drops anyone
     who may no longer be written: they opted out or were seen in Iran or
-    Russia since the plan. Returns (succeeded, failed, skipped); a failure is
-    left for the next run."""
+    Russia since the plan. Returns (succeeded, failed, skipped); a failure,
+    an account that can't be read then included, is left for the next run."""
     succeeded = failed = skipped = 0
     for start in range(0, len(changes), BATCH_SIZE):
         if start:
@@ -232,9 +233,9 @@ async def apply(
         chunk = changes[start : start + BATCH_SIZE]
         done = start + len(chunk)
         if kept_out:
-            allowed = [c for c in chunk if not await kept_out(c.person.user_id)]
-            skipped += len(chunk) - len(allowed)
-            chunk = allowed
+            chunk, dropped, unreadable = await _writable(chunk, kept_out)
+            skipped += dropped
+            failed += unreadable
         answers = await _send_batch([_upsert(c) for c in chunk]) if chunk else []
         for change, answer in zip(chunk, answers):
             if answer.code in (200, 201, 202, 204):
@@ -248,6 +249,30 @@ async def apply(
         if on_progress:
             on_progress(done, len(changes))
     return succeeded, failed, skipped
+
+
+async def _writable(
+    chunk: list[FieldChange], kept_out: KeptOut
+) -> tuple[list[FieldChange], int, int]:
+    """The batch without anyone `kept_out` rejects or whose account it can't
+    read, and how many of each were dropped."""
+    allowed: list[FieldChange] = []
+    rejected = unreadable = 0
+    for change in chunk:
+        try:
+            if await kept_out(change.person.user_id):
+                rejected += 1
+                continue
+        except Exception:
+            unreadable += 1
+            logger.warning(
+                f"Re-reading the account of "
+                f"{_refusal(change.person.email, BatchAnswer(code=0))} failed; "
+                "the next run retries it"
+            )
+            continue
+        allowed.append(change)
+    return allowed, rejected, unreadable
 
 
 def _upsert(change: FieldChange) -> dict:

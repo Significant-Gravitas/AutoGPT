@@ -241,7 +241,9 @@ async def apply(
     kept_out: KeptOut | None = None,
 ) -> ApplyResult:
     """With `kept_out`, each batch first drops anyone who may no longer be
-    written: they opted out or were seen in Iran or Russia since the plan."""
+    written: they opted out or were seen in Iran or Russia since the plan.
+    Someone whose account can't be read then is counted as failed and left
+    for the next run; the run goes on."""
     result = ApplyResult(
         succeeded={d: 0 for d in CHANGES}, failed={d: 0 for d in CHANGES}
     )
@@ -255,9 +257,7 @@ async def apply(
         if index:
             await asyncio.sleep(_interval_before(decision))
         if kept_out:
-            allowed = [c for c in chunk if not await kept_out(c.customer.user_id)]
-            result.skipped += len(chunk) - len(allowed)
-            chunk = allowed
+            chunk = await _writable(chunk, decision, result, kept_out)
         if not chunk:
             continue
         answers = await _send_batch(
@@ -266,6 +266,32 @@ async def apply(
         for change, answer in zip(chunk, answers):
             _record(result, decision, change, answer)
     return result
+
+
+async def _writable(
+    chunk: list[PlannedChange],
+    decision: Decision,
+    result: ApplyResult,
+    kept_out: KeptOut,
+) -> list[PlannedChange]:
+    """The batch without anyone `kept_out` rejects (counted as skipped) or
+    whose account it can't read (counted as failed)."""
+    allowed: list[PlannedChange] = []
+    for change in chunk:
+        try:
+            if await kept_out(change.customer.user_id):
+                result.skipped += 1
+                continue
+        except Exception:
+            result.failed[decision] += 1
+            logger.warning(
+                f"Re-reading the account of "
+                f"{_refusal(change.customer.email, BatchAnswer(code=0))} failed; "
+                "the next run retries it"
+            )
+            continue
+        allowed.append(change)
+    return allowed
 
 
 def _interval_before(decision: Decision) -> float:
