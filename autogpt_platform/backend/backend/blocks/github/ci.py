@@ -14,6 +14,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
+from backend.util.request import HTTPClientError
 
 from ._api import get_api
 from ._auth import (
@@ -176,22 +177,45 @@ class GithubGetCIResultsBlock(Block):
         )
 
     @staticmethod
+    async def _pr_head_sha(api, repo: str, number: int | str) -> str:
+        response = await api.get(f"https://api.github.com/repos/{repo}/pulls/{number}")
+        return response.json()["head"]["sha"]
+
+    @staticmethod
+    async def _resolve_commit_sha(api, repo: str, ref: str) -> str:
+        response = await api.get(f"https://api.github.com/repos/{repo}/commits/{ref}")
+        return response.json()["sha"]
+
+    @staticmethod
     async def get_commit_sha(api, repo: str, target: str | int) -> str:
-        """Get commit SHA from either a commit SHA or PR URL."""
-        # If it's already a SHA, return it
+        """Get commit SHA from either a commit SHA or a PR number."""
+        cls = GithubGetCIResultsBlock
 
-        if isinstance(target, str):
-            if re.match(r"^[0-9a-f]{6,40}$", target, re.IGNORECASE):
-                return target
-
-        # If it's a PR URL, get the head SHA
         if isinstance(target, int):
-            pr_url = f"https://api.github.com/repos/{repo}/pulls/{target}"
-            response = await api.get(pr_url)
-            pr_data = response.json()
-            return pr_data["head"]["sha"]
+            return await cls._pr_head_sha(api, repo, target)
 
-        raise ValueError("Target must be a commit SHA or PR URL")
+        target = target.strip()
+        if re.fullmatch(r"#[0-9]+", target):
+            return await cls._pr_head_sha(api, repo, target[1:])
+
+        if re.fullmatch(r"[0-9]+", target):
+            # All-digit input is ambiguous: an abbreviated SHA can be all
+            # digits. Try the likelier reading first and fall back on 404/422.
+            lookups = [cls._resolve_commit_sha, cls._pr_head_sha]
+            if len(target) < 7:
+                lookups.reverse()
+            try:
+                return await lookups[0](api, repo, target)
+            except HTTPClientError as e:
+                if e.status_code not in (404, 422):
+                    raise
+            return await lookups[1](api, repo, target)
+
+        # If it's already a SHA, return it
+        if re.match(r"^[0-9a-f]{6,40}$", target, re.IGNORECASE):
+            return target
+
+        raise ValueError("Target must be a commit SHA or PR number")
 
     @staticmethod
     async def search_in_logs(
@@ -336,15 +360,10 @@ class GithubGetCIResultsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        try:
-            target = int(input_data.target)
-        except ValueError:
-            target = input_data.target
-
         result = await self.get_ci_results(
             credentials,
             input_data.repo,
-            target,
+            input_data.target,
             input_data.search_pattern,
             input_data.check_name_filter,
         )
