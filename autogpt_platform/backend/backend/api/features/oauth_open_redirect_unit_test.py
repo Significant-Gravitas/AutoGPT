@@ -7,15 +7,13 @@ import pytest
 from fastapi import HTTPException
 from prisma.enums import APIKeyPermission
 
-from backend.api.features.oauth import (
-    AuthorizeRequest,
-    _error_redirect_url,
-    authorize,
-)
+from backend.api.features.oauth import AuthorizeRequest, _error_redirect_url, authorize
 from backend.data.auth.oauth import OAuthApplicationInfo
 
 
-def _make_app(*, redirect_uris: list[str], is_active: bool = True) -> OAuthApplicationInfo:
+def _make_app(
+    *, redirect_uris: list[str], is_active: bool = True
+) -> OAuthApplicationInfo:
     now = datetime.now(timezone.utc)
     return OAuthApplicationInfo(
         id="app-1",

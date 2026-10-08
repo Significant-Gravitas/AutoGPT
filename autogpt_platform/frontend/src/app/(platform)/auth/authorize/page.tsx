@@ -112,9 +112,7 @@ export default function AuthorizePage() {
       if (response.status === 200 && response.data.redirect_url) {
         // Defense in depth: only follow redirect_url if it matches the
         // registered redirect_uri (guards against backend error-path leaks).
-        if (
-          isSafeOAuthRedirectUrl(response.data.redirect_url, redirectURI)
-        ) {
+        if (isSafeOAuthRedirectUrl(response.data.redirect_url, redirectURI)) {
           window.location.href = response.data.redirect_url;
         } else {
           setAuthorizeError(
@@ -143,10 +141,7 @@ export default function AuthorizePage() {
       );
       return;
     }
-    window.location.href = buildOAuthAccessDeniedRedirect(
-      redirectURI!,
-      state,
-    );
+    window.location.href = buildOAuthAccessDeniedRedirect(redirectURI!, state);
   }
 
   // Show error if missing required parameters
@@ -202,6 +197,26 @@ export default function AuthorizePage() {
           />
           {/* Do not offer Return when app info is missing — redirect_uri
               cannot be verified against registered callbacks. */}
+        </AuthCard>
+      </div>
+    );
+  }
+
+  // Refuse an unregistered redirect_uri up front (#15048): never render the
+  // consent form or offer a Return/Deny button that could navigate to it.
+  if (!isRegisteredRedirectUri(redirectURI, appInfo.redirect_uris)) {
+    return (
+      <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
+        <AuthCard title="Invalid Request">
+          <ErrorCard
+            context="request parameters"
+            responseError={{
+              message:
+                "This link sends you back to an address the application has not registered.",
+            }}
+            hint="Please contact the administrator of the app that sent you here."
+            isOurProblem={false}
+          />
         </AuthCard>
       </div>
     );

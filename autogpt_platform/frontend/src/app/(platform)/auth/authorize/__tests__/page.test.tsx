@@ -78,15 +78,29 @@ describe("AuthorizePage open-redirect guards (#15048)", () => {
     vi.restoreAllMocks();
   });
 
-  it("Deny does not navigate to an evil redirect_uri", async () => {
+  it("refuses an unregistered redirect_uri before rendering consent", async () => {
     render(<AuthorizePage />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Deny" }));
-
+    expect(await screen.findByText("Invalid Request")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Authorize" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Deny" })).toBeNull();
     expect(hrefAssignments).toEqual([]);
-    expect(
-      await screen.findByText(/Invalid redirect_uri/i),
-    ).toBeTruthy();
+  });
+
+  it("does not offer Return to an unregistered redirect_uri on invalid scopes", async () => {
+    searchParams.set("scope", "WRITE_GRAPH");
+
+    try {
+      render(<AuthorizePage />);
+
+      expect(await screen.findByText("Invalid Request")).toBeTruthy();
+      expect(
+        screen.queryByRole("button", { name: "Return to Application" }),
+      ).toBeNull();
+      expect(hrefAssignments).toEqual([]);
+    } finally {
+      searchParams.set("scope", "EXECUTE_GRAPH");
+    }
   });
 
   it("Approve does not follow an evil backend redirect_url", async () => {

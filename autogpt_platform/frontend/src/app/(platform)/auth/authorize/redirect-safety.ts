@@ -17,7 +17,9 @@ export function isRegisteredRedirectUri(
 
 /**
  * Backend builds redirects as `{registered_redirect_uri}?{params}`.
- * Accept only when origin + pathname match the registered URI exactly.
+ * Accept only when protocol + host + pathname match the registered URI exactly.
+ * (Comparing `origin` is not enough: custom-scheme callbacks such as
+ * `myapp://callback` have an opaque `"null"` origin.)
  */
 export function isSafeOAuthRedirectUrl(
   redirectUrl: string | null | undefined,
@@ -30,7 +32,8 @@ export function isSafeOAuthRedirectUrl(
     const candidate = new URL(redirectUrl);
     const registered = new URL(registeredRedirectUri);
     return (
-      candidate.origin === registered.origin &&
+      candidate.protocol === registered.protocol &&
+      candidate.host === registered.host &&
       candidate.pathname === registered.pathname
     );
   } catch {
@@ -42,10 +45,11 @@ export function buildOAuthAccessDeniedRedirect(
   redirectUri: string,
   state: string | null | undefined,
 ): string {
-  const params = new URLSearchParams({
-    error: "access_denied",
-    error_description: "User denied access",
-    state: state || "",
-  });
-  return `${redirectUri}?${params.toString()}`;
+  // Use URL.searchParams so a registered redirect_uri that already carries a
+  // query string (or fragment) keeps it intact.
+  const url = new URL(redirectUri);
+  url.searchParams.set("error", "access_denied");
+  url.searchParams.set("error_description", "User denied access");
+  url.searchParams.set("state", state || "");
+  return url.toString();
 }

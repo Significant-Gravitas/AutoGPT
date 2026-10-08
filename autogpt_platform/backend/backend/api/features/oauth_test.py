@@ -482,7 +482,6 @@ async def test_authorize_unsupported_response_type(
     assert query_params["error"][0] == "unsupported_response_type"
 
 
-
 # ============================================================================
 # Open redirect / evil redirect_uri guards (#15047)
 # ============================================================================

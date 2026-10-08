@@ -11493,7 +11493,7 @@
       "post": {
         "tags": ["oauth"],
         "summary": "Authorize",
-        "description": "OAuth 2.0 Authorization Endpoint\n\nUser must be logged in (authenticated with Supabase JWT).\nThis endpoint creates an authorization code and returns a redirect URL.\n\nPKCE (Proof Key for Code Exchange) is REQUIRED for all authorization requests.\n\nThe frontend consent screen should call this endpoint after the user approves,\nthen redirect the user to the returned `redirect_url`.\n\nRequest Body:\n- client_id: The OAuth application's client ID\n- redirect_uri: Where to redirect after authorization (must match registered URI)\n- scopes: List of permissions (e.g., \"EXECUTE_GRAPH READ_GRAPH\")\n- state: Anti-CSRF token provided by client (will be returned in redirect)\n- response_type: Must be \"code\" (for authorization code flow)\n- code_challenge: PKCE code challenge (required)\n- code_challenge_method: \"S256\" (recommended) or \"plain\"\n\nReturns:\n- redirect_url: The URL to redirect the user to (includes authorization code)\n\nError cases return a redirect_url with error parameters, or raise HTTPException\nfor critical errors (like invalid redirect_uri).",
+        "description": "OAuth 2.0 Authorization Endpoint\n\nUser must be logged in (authenticated with Supabase JWT).\nThis endpoint creates an authorization code and returns a redirect URL.\n\nPKCE (Proof Key for Code Exchange) is REQUIRED for all authorization requests.\n\nThe frontend consent screen should call this endpoint after the user approves,\nthen redirect the user to the returned `redirect_url`.\n\nRequest Body:\n- client_id: The OAuth application's client ID\n- redirect_uri: Where to redirect after authorization (must match registered URI)\n- scopes: List of permissions (e.g., \"EXECUTE_GRAPH READ_GRAPH\")\n- state: Anti-CSRF token provided by client (will be returned in redirect)\n- response_type: Must be \"code\" (for authorization code flow)\n- code_challenge: PKCE code challenge (required)\n- code_challenge_method: \"S256\" (recommended) or \"plain\"\n\nReturns:\n- redirect_url: The URL to redirect the user to (includes authorization code)\n\nError cases: unknown/inactive client and unregistered redirect_uri raise\nHTTPException (JSON, no redirect). Other OAuth errors return a redirect_url\nwith error parameters to the registered redirect_uri only.",
         "operationId": "postOauthAuthorize",
         "requestBody": {
           "content": {
@@ -26862,8 +26862,7 @@
           "redirect_uris": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Redirect Uris",
-            "description": "Registered redirect URIs for the consent screen to validate redirect_uri client-side"
+            "title": "Redirect Uris"
           }
         },
         "type": "object",

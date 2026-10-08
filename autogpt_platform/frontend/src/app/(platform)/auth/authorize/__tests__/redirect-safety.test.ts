@@ -30,13 +30,19 @@ describe("isRegisteredRedirectUri", () => {
     expect(isRegisteredRedirectUri(null, [GOOD])).toBe(false);
     expect(isRegisteredRedirectUri("", [GOOD])).toBe(false);
   });
+
+  it("matches exactly, not by prefix", () => {
+    expect(
+      isRegisteredRedirectUri("http://localhost:3000.evil.example/cb", [
+        "http://localhost:3000",
+      ]),
+    ).toBe(false);
+  });
 });
 
 describe("isSafeOAuthRedirectUrl", () => {
   it("accepts backend success redirect to registered URI", () => {
-    expect(isSafeOAuthRedirectUrl(`${GOOD}?code=abc&state=s`, GOOD)).toBe(
-      true,
-    );
+    expect(isSafeOAuthRedirectUrl(`${GOOD}?code=abc&state=s`, GOOD)).toBe(true);
   });
 
   it("accepts backend error redirect to registered URI", () => {
@@ -64,6 +70,15 @@ describe("isSafeOAuthRedirectUrl", () => {
   it("rejects opaque / unparseable URLs", () => {
     expect(isSafeOAuthRedirectUrl("not a url", GOOD)).toBe(false);
   });
+
+  it("rejects a different custom-scheme callback", () => {
+    expect(
+      isSafeOAuthRedirectUrl("evil://other?code=x", "myapp://callback"),
+    ).toBe(false);
+    expect(
+      isSafeOAuthRedirectUrl("myapp://callback?code=x", "myapp://callback"),
+    ).toBe(true);
+  });
 });
 
 describe("buildOAuthAccessDeniedRedirect", () => {
@@ -73,5 +88,15 @@ describe("buildOAuthAccessDeniedRedirect", () => {
     expect(url).toContain("error=access_denied");
     expect(url).toContain("state=csrf");
     expect(url).not.toContain(EVIL);
+  });
+
+  it("preserves an existing query string on the registered URI", () => {
+    const url = new URL(
+      buildOAuthAccessDeniedRedirect(`${GOOD}?tenant=a`, "csrf"),
+    );
+    expect(`${url.origin}${url.pathname}`).toBe(GOOD);
+    expect(url.searchParams.get("tenant")).toBe("a");
+    expect(url.searchParams.get("error")).toBe("access_denied");
+    expect(url.searchParams.get("state")).toBe("csrf");
   });
 });
