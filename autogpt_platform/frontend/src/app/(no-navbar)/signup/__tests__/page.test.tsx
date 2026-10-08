@@ -132,6 +132,30 @@ describe("SignupPage", () => {
     ).toBeDefined();
   });
 
+  test.each([
+    ["new@agpt.com", true],
+    ["new@agpt.co.uk", true],
+    ["NEW@AGPT.CO", false],
+  ])(
+    "only the exact @agpt.co domain is sent to Google SSO (%s)",
+    async (email, reachesSignupAction) => {
+      render(<SignupPage />);
+      fillValidForm();
+      fireEvent.change(screen.getByLabelText("Email"), {
+        target: { value: email },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+
+      if (reachesSignupAction) {
+        await waitFor(() => expect(mockSignupAction).toHaveBeenCalledTimes(1));
+      } else {
+        // The hook bails out with an SSO toast before calling the action.
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(mockSignupAction).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   test("signs up without a terms checkbox", async () => {
     render(<SignupPage />);
 

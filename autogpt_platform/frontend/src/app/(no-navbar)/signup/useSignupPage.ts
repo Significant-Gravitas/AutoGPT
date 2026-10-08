@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { signup as signupAction } from "./actions";
+import { isTeamEmail } from "@/lib/auth/team-email";
 
 export function useSignupPage() {
   useCaptureMarketingPrompt();
@@ -124,7 +125,7 @@ export function useSignupPage() {
     setMarketingOptOutFlag(false);
     setIsLoading(true);
 
-    if (data.email.includes("@agpt.co")) {
+    if (isTeamEmail(data.email)) {
       toast({
         title:
           "Please use Google SSO to create an account using an AutoGPT email.",

@@ -1,5 +1,7 @@
 import type BackendAPI from "@/lib/autogpt-server-api/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { IMPERSONATION_STORAGE_KEY } from "@/lib/constants";
+import { ImpersonationState } from "@/lib/impersonation";
 import type { User } from "../../types";
 
 const getCurrentUserMock = vi.fn();
@@ -250,6 +252,22 @@ describe("handleStorageEvent", () => {
       shouldLogout: true,
       redirectPath: "/login?next=%2Fcopilot",
     });
+  });
+
+  it("drops this tab's admin impersonation when another tab logs out", () => {
+    isLogoutEventMock.mockReturnValue(true);
+    getRedirectPathMock.mockReturnValue(null);
+    ImpersonationState.set("impersonated-user");
+
+    handleStorageEvent({
+      event: new StorageEvent("storage", { key: "supabase-logout" }),
+      api: null,
+      router: null,
+      path: "/marketplace",
+    });
+
+    expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBeNull();
+    expect(ImpersonationState.get()).toBeNull();
   });
 
   it("handles logout without an api client", () => {
