@@ -14,6 +14,8 @@
 {% call ui.para(top=6, size=12, lh=18) %}
 <a href="{{ action_url }}" style="color:#4D36AD; text-decoration:underline; font-family:{{ ui.MONO }}; font-size:12px; overflow-wrap:anywhere; word-break:break-word;">{{ action_url }}</a>
 {% endcall %}
+{% if content.expiry %}{% call ui.para() %}The link expires in {{ content.expiry }}.{% endcall %}{% endif %}
+{% if content.note %}{% call ui.para() %}{{ content.note }}{% endcall %}{% endif %}
 {{ ui.close_row(content.reason, 'Something wrong? Ask in Discord', urls.discord) }}
 {{ ui.sheet_close() }}
 {{ ui.page_close() }}

@@ -3,6 +3,7 @@
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus } from "@/app/api/helpers";
 import { auth } from "@/lib/auth/auth";
+import { getEmailVerificationCallbackURL } from "@/lib/auth/email-verification";
 import { rollbackSession } from "@/lib/auth/server/rollbackSession";
 import { markAccountCreated } from "@/services/analytics/account-created-server";
 import {
@@ -20,6 +21,7 @@ export async function signup(
   password: string,
   confirmPassword: string,
   agreeToTerms: boolean,
+  next?: string | null,
 ) {
   try {
     const parsed = signupFormSchema.safeParse({
@@ -36,13 +38,15 @@ export async function signup(
       };
     }
 
+    let signUpResult;
     try {
       // The session cookie is set automatically by the nextCookies plugin.
-      await auth.api.signUpEmail({
+      signUpResult = await auth.api.signUpEmail({
         body: {
           email: parsed.data.email,
           password: parsed.data.password,
           name: parsed.data.email.split("@")[0],
+          callbackURL: getEmailVerificationCallbackURL(next),
         },
         headers: await headers(),
       });
@@ -74,6 +78,18 @@ export async function signup(
       throw error;
     }
 
+    // With email verification required there is no session yet: Better Auth
+    // has emailed a link instead (and answers an address that already has an
+    // account the same way). The platform user and the sign-up conversion
+    // wait for that link, which lands on /auth/callback.
+    if (!signUpResult.token) {
+      return {
+        success: true,
+        verificationRequired: true,
+        email: parsed.data.email,
+      };
+    }
+
     try {
       const createUserResponse = await postV1GetOrCreateUser();
       if (wasAccountCreated(createUserResponse)) {
@@ -96,7 +112,7 @@ export async function signup(
 
     return {
       success: true,
-      next: shouldShowOnboarding ? "/onboarding" : "/copilot",
+      next: shouldShowOnboarding ? "/onboarding" : "/home",
     };
   } catch (err) {
     Sentry.captureException(err);

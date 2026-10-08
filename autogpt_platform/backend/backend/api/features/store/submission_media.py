@@ -5,13 +5,16 @@ import prisma.enums
 import prisma.models
 from autogpt_libs.auth import User
 from gcloud.aio import storage as async_storage
+from google.cloud import storage as gcs_storage
 
-from backend.util.gcs_utils import is_not_found_error
+from backend.util.gcs_utils import generate_iam_signed_url, is_not_found_error
 from backend.util.settings import Settings
 
 from . import local_media
 
 PRIVATE_MEDIA_PREFIX = "/api/store/submissions/media/"
+PRIVATE_MEDIA_PROXY_BUFFER_BYTES = 4 * 1024 * 1024
+PRIVATE_MEDIA_SIGNED_URL_TTL_SECONDS = 60
 
 # The library's default is a 10-second total timeout, which covers the whole
 # body and so cuts off any video a client can't download in 10 seconds.
@@ -100,6 +103,19 @@ async def stream(
         )
         while chunk := await stream.read(64 * 1024):
             yield chunk
+
+
+async def signed_url(user_id: str, media_type: str, filename: str) -> str | None:
+    bucket_name = Settings().config.resolved_private_user_data_bucket
+    if not bucket_name:
+        return None
+    storage_path = object_path(user_id, media_type, filename)
+    return await generate_iam_signed_url(
+        gcs_storage.Client.create_anonymous_client(),
+        bucket_name,
+        storage_path,
+        PRIVATE_MEDIA_SIGNED_URL_TTL_SECONDS,
+    )
 
 
 def object_path(user_id: str, media_type: str, filename: str) -> str:

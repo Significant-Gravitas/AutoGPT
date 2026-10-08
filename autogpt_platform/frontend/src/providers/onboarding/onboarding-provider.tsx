@@ -205,7 +205,7 @@ export default function OnboardingProvider({
           isOnOnboardingRoute &&
           shouldRedirectFromOnboarding(onboarding.completedSteps, pathname)
         ) {
-          router.replace("/copilot");
+          router.replace("/home");
         }
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
