@@ -23,6 +23,9 @@ import {
 
 const ICON_SIZE = 20;
 
+// The profile submit rejects a longer role, and the whole profile is then lost.
+const OTHER_ROLE_MAX_LENGTH = 100;
+
 const ROLES = [
   {
     id: "Founder/CEO",
@@ -123,6 +126,7 @@ export function RoleStep() {
                   placeholder="Describe your role..."
                   value={otherRole}
                   onChange={(e) => setOtherRole(e.target.value)}
+                  maxLength={OTHER_ROLE_MAX_LENGTH}
                   autoFocus
                 />
               </div>
