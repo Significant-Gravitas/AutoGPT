@@ -43,10 +43,7 @@ final class NativePush: NSObject, UNUserNotificationCenterDelegate {
       guard (try? await center.requestAuthorization(options: [.alert, .badge, .sound])) == true
       else { return ["permission": "denied"] }
     }
-    let settings = await center.notificationSettings()
-    guard
-      settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
-    else { return ["permission": "denied"] }
+    guard await hasPermission(center) else { return ["permission": "denied"] }
     let expectedAccount = account
     let registered = await registrationToken()
     guard current == generation, defaults.string(forKey: "pushAccount") == expectedAccount,
@@ -70,6 +67,16 @@ final class NativePush: NSObject, UNUserNotificationCenterDelegate {
       Task { @MainActor in
         try? await Task.sleep(for: .seconds(15))
         if !callbacks.isEmpty { registered(nil) }
+      }
+    }
+  }
+
+  private func hasPermission(_ center: UNUserNotificationCenter) async -> Bool {
+    await withCheckedContinuation { continuation in
+      center.getNotificationSettings { settings in
+        continuation.resume(
+          returning: settings.authorizationStatus == .authorized
+            || settings.authorizationStatus == .provisional)
       }
     }
   }

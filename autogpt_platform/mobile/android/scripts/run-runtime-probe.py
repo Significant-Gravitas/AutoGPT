@@ -52,7 +52,7 @@ print(output, end="")
 if args.output:
     args.output.write_text(output)
 expected_suite = "fixture" if args.fixture_origin else "platform"
-expected_count = 5 if args.fixture_origin else 4
+expected_count = 6 if args.fixture_origin else 5
 required = [
     r"^INSTRUMENTATION_CODE: -1$",
     r"^INSTRUMENTATION_RESULT: probe_status=PASS$",
