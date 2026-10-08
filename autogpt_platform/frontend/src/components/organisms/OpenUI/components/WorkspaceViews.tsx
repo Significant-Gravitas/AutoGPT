@@ -32,7 +32,7 @@ export function MetricsView({
   renderNode,
 }: ComponentRenderProps<z.infer<typeof catalog.Metrics.props>>) {
   return (
-    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,9rem),1fr))] gap-3">
       {renderNode(props.items?.slice(0, 4))}
     </div>
   );
@@ -44,7 +44,12 @@ export function MetricView({
   return (
     <div className="min-w-0 rounded-xl border border-zinc-200 bg-white p-3.5">
       <p className="text-xs font-medium text-zinc-600">{props.label}</p>
-      <p className="my-2 break-words text-2xl font-semibold tracking-tight text-zinc-900">
+      <p
+        className={cn(
+          "my-2 break-words font-semibold tracking-tight text-zinc-900",
+          (props.value?.length ?? 0) > 8 ? "text-base" : "text-2xl",
+        )}
+      >
         {props.value}
       </p>
       <p

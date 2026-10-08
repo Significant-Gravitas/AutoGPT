@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolUIPart } from "ai";
 import { render } from "@/tests/integrations/test-utils";
@@ -30,17 +31,19 @@ function showResult(
     output: result,
   };
   return render(
-    <CopilotChatActionsProvider
-      onSend={options.onSend ?? vi.fn()}
-      chatSurface={options.readOnly ? "share" : "copilot"}
-    >
-      <ChainMessageParts
-        parts={[part]}
-        messageID="ui-message"
-        isCurrentlyStreaming={false}
-        readOnly={options.readOnly}
-      />
-    </CopilotChatActionsProvider>,
+    <StrictMode>
+      <CopilotChatActionsProvider
+        onSend={options.onSend ?? vi.fn()}
+        chatSurface={options.readOnly ? "share" : "copilot"}
+      >
+        <ChainMessageParts
+          parts={[part]}
+          messageID="ui-message"
+          isCurrentlyStreaming={false}
+          readOnly={options.readOnly}
+        />
+      </CopilotChatActionsProvider>
+    </StrictMode>,
   );
 }
 
@@ -60,9 +63,13 @@ describe("OpenUI results in a Copilot conversation", () => {
   });
 
   it("keeps local input edits through presentation changes and remounts", async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
     const first = showResult();
     fireEvent.change(await screen.findByLabelText("Audience"), {
       target: { value: "Local bookshops" },
+    });
+    fireEvent.change(screen.getByLabelText("Budget"), {
+      target: { value: "$2,400" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Summary" }));
     expect(await screen.findByText(output.message)).toBeDefined();
@@ -71,10 +78,17 @@ describe("OpenUI results in a Copilot conversation", () => {
       "Local bookshops",
     );
     first.unmount();
-    showResult();
+    showResult(output, { onSend: send });
     expect(
       ((await screen.findByLabelText("Audience")) as HTMLInputElement).value,
     ).toBe("Local bookshops");
+    expect((screen.getByLabelText("Budget") as HTMLInputElement).value).toBe(
+      "$2,400",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Build my plan" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    expect(send.mock.calls[0][0]).toContain("Local bookshops");
+    expect(send.mock.calls[0][0]).toContain("$2,400");
   });
 
   it("does not send the same action twice while its first send is pending", async () => {

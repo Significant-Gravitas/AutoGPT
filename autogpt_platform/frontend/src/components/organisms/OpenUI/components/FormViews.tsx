@@ -1,10 +1,6 @@
 import {
   FormNameContext,
   useIsStreaming,
-  useFormName,
-  useGetFieldValue,
-  useSetDefaultValue,
-  useStateField,
   useTriggerAction,
   type ComponentRenderProps,
 } from "@openuidev/react-lang";
@@ -16,22 +12,14 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { useOpenUIDisabled } from "../interactionContext";
+import { useFieldView } from "./useFieldView";
 
 export function FieldView({
   props,
 }: ComponentRenderProps<z.infer<typeof Field.props>>) {
   const id = useId();
   const disabled = useOpenUIDisabled();
-  const formName = useFormName();
-  const getFieldValue = useGetFieldValue();
-  useSetDefaultValue({
-    formName,
-    componentType: "Field",
-    name: props.name,
-    existingValue: getFieldValue(formName, props.name),
-    defaultValue: props.value ?? "",
-  });
-  const field = useStateField(props.name, props.value);
+  const field = useFieldView(props.name, props.value);
   return (
     <Input
       id={id}
