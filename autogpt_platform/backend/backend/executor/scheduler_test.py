@@ -777,16 +777,20 @@ async def test_copilot_turn_schedule_requires_cron_xor_run_at(server: SpinTestSe
         ("*", "*"),
         ("?", "?"),
         ("mon-fri", "mon-fri"),
-        ("1-5", "0-4"),
+        ("1-5", "0,1,2,3,4"),
         ("1,3,5", "0,2,4"),
         ("0", "6"),
         ("7", "6"),
         ("0,6", "6,5"),
-        ("6-7", "5-6"),
-        ("0-4", "6-6,0-3"),
-        ("5-2", "4-6,0-1"),
-        ("*/2", "*/2"),
-        ("1-5/1", "0-4/1"),
+        ("6-7", "5,6"),
+        ("0-4", "0,1,2,3,6"),
+        ("5-2", "0,1,4,5,6"),
+        # Numeric tokens expand to their day set before mapping (#15276):
+        # */2 is Sun/Tue/Thu/Sat, 0-7 is every day, wrap+step keeps its phase.
+        ("*/2", "1,3,5,6"),
+        ("1-5/1", "0,1,2,3,4"),
+        ("0-7", "0,1,2,3,4,5,6"),
+        ("5-2/2", "1,4,6"),
     ],
 )
 def test_normalize_cron_day_of_week_field_translates_unix_to_apscheduler(
@@ -794,7 +798,7 @@ def test_normalize_cron_day_of_week_field_translates_unix_to_apscheduler(
 ):
     """Unix-cron uses 0=Sun..6=Sat; APScheduler uses 0=Mon..6=Sun.
     The numbers must be translated, but named tokens and ``*``/``?`` pass
-    through unchanged. Wrap-around ranges split into two APS ranges."""
+    through unchanged. Numeric tokens become explicit APS day lists."""
     cron = f"0 9 * * {raw}"
     assert _normalize_cron_day_of_week(cron) == f"0 9 * * {expected}"
 
