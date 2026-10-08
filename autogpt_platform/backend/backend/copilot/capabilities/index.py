@@ -40,6 +40,9 @@ OTHER_KINDS_LIMIT = 3
 # How far below the best coverage a connected MCP server the query names
 # still counts as covering the query; one whole concept.
 CONNECTED_COVERAGE_MARGIN = 1.0
+# Platform tools that help connect an account and never do a service's job,
+# so a query naming a service does not pull them into its list.
+CONNECTION_HELPER_TOOLS = frozenset({"connect_integration"})
 
 
 class SearchHit(BaseModel):
@@ -388,9 +391,11 @@ class CapabilityIndex:
 
         Not the whole description: connect_integration says "do NOT call it
         for Google, Gmail, Slack", and matching that put it in every Google,
-        Slack and GitHub query."""
+        Slack and GitHub query.  A connection helper never joins, whatever it
+        names: connect_integration's purpose lists "github", and it led every
+        GitHub query over the GitHub blocks and MCP server."""
         entry = self.entries[idx]
-        if entry.kind != "tool":
+        if entry.kind != "tool" or entry.name in CONNECTION_HELPER_TOOLS:
             return False
         document = {
             *tokenize(entry.name),

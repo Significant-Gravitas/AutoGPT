@@ -767,6 +767,26 @@ def test_other_kinds_look_past_the_filtered_kind_filling_the_top_slots():
     assert result.hidden_by_kind == 1
 
 
+def test_a_connection_helper_does_not_join_a_service_query(index):
+    """connect_integration's purpose names "github" and its description
+    "credential issues", so it tied the GitHub blocks on "github issue" and,
+    as a tool, led the list.  It only connects an account for the sandbox."""
+    helper = _tool(
+        "connect_integration",
+        "Prompt the user to connect a required integration. Supported "
+        "providers: 'github'.",
+        description=(
+            "Prompt the user to connect a required integration. Supported "
+            "providers: 'github'. Do NOT call this for agent block credential "
+            "issues."
+        ),
+    )
+    result = index.with_entries([helper]).search("github issue")
+    assert result.service == "github"
+    assert result.names[0] == "GithubMakeIssueBlock"
+    assert "connect_integration" not in result.names
+
+
 # --- #15199: an expert chat lists a service's MCP server before its blocks ---
 
 
@@ -806,7 +826,9 @@ def twin_index() -> CapabilityIndex:
                 "linear",
                 "Issues, projects and cycles in Linear.",
             ),
-            _service_mcp("mcp.sentry.dev", "Sentry", "sentry", "Errors and traces in Sentry."),
+            _service_mcp(
+                "mcp.sentry.dev", "Sentry", "sentry", "Errors and traces in Sentry."
+            ),
         ]
     )
 
@@ -908,9 +930,11 @@ def test_an_expert_chat_with_a_service_mcp_server_ranks_connection_first(
     discord_ids = {f"block:{DISCORD_ID}", f"block:{DISCORD_READ_ID}"}
     index = CapabilityIndex(
         [
-            entry.model_copy(update={"service": "discord"})
-            if entry.id in discord_ids
-            else entry
+            (
+                entry.model_copy(update={"service": "discord"})
+                if entry.id in discord_ids
+                else entry
+            )
             for entry in rival_index.entries
         ]
         + [
