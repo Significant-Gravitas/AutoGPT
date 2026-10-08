@@ -43,7 +43,7 @@
     ('📦', 'End-to-end marketing', 'Pulled release notes from GitHub, wrote a changelog email in our brand voice, and built it in send-ready HTML.'),
     ('📈', 'Strategy & competitive intel', 'Analyzed 13 competitors, built a SWOT with threat scores, and delivered an interactive strategy report.'),
     ('🔍', 'Talent sourcing & outreach', 'Took a job description, sourced and scored candidates, and wrote personalized outreach, ready to send.'),
-    ('🎯', 'Sales funnel & demo prep', 'Found leads matching our ICP, built curated demo agents, and wrote scripts and follow-up questions.'),
+    ('🎯', 'Sales funnel & demo prep', 'Found leads matching our ICP, built curated demo workflows, and wrote scripts and follow-up questions.'),
 ]) }}
 {{ ui.media_link('Watch all five in 6 minutes', 'Everything in the demo ran autonomously, and these five are just what fit in six minutes.', urls.demo_video) }}
 {% call ui.para() %}Pick the one closest to your work, open Otto, and describe it in your own words. That's it. No setup, no flowcharts.{% endcall %}
@@ -55,8 +55,8 @@
 {% call ui.para() %}Hi {{ user_name }}, now that you've run a task or two, here's what the rest of your workspace does for you. Three things worth knowing about, so you know them when you see them:{% endcall %}
 {{ ui.emoji_cards([
     ('🎨', 'Artifacts, right in the conversation', 'Reports open as interactive documents, charts render live, and PDFs are readable in a side panel. No downloads, no tab-juggling.'),
-    ('📋', 'Agent briefings at a glance', "Your Home screen shows a live briefing for each agent: what it's doing, what it finished, and what's next. Scheduled agents surface their upcoming runs automatically."),
-    ('💬', 'Chat with your builder', 'Building a custom workflow? The flow builder has its own AI chat panel that knows your graph and helps you debug or extend it without switching context.'),
+    ('📋', 'Workflow briefings at a glance', "Your Home screen shows a live briefing for each workflow: what it's doing, what it finished, and what's next. Scheduled workflows surface their upcoming runs automatically."),
+    ('💬', 'Chat with your builder', 'Building a custom workflow? The flow builder has its own AI chat panel that knows your workflow and helps you debug or extend it without switching context.'),
 ]) }}
 {{ ui.cta('Open AutoGPT', urls.dashboard) }}
 {% call ui.para(color='#575072', size=13, lh=20, top=18) %}Next up: a quick personal check-in from me. No screenshots, no buttons. Just a question.{% endcall %}
@@ -75,8 +75,8 @@
 {% call ui.para(top=22) %}<strong style="color:#171925;">Shipped in the last few weeks:</strong>{% endcall %}
 {{ ui.emoji_cards([
     ('🎨', 'Rich artifacts in a side panel', 'Reports, charts, PDFs, and even playable games open right beside the conversation.'),
-    ('📋', 'Live agent briefings', 'On your Home screen, with upcoming run times for every scheduled agent.'),
-    ('💬', 'An AI chat panel inside the flow builder', 'It knows your graph and helps you debug or extend it.'),
+    ('📋', 'Live workflow briefings', 'On your Home screen, with upcoming run times for every scheduled workflow.'),
+    ('💬', 'An AI chat panel inside the flow builder', 'It knows your workflow and helps you debug or extend it.'),
     ('🔔', 'Web push notifications', 'Plus long-term memory blocks and the latest models: Claude Opus 4.7 and Grok.'),
 ]) }}
 {{ ui.cta("See what's new", urls.changelog) }}

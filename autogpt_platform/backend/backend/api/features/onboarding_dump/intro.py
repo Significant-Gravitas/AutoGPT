@@ -299,7 +299,7 @@ def fallback_prompts() -> list[SuggestedPrompt]:
     """
     return [
         SuggestedPrompt(
-            title="Build an agent that drafts your Monday status report before you wake up",
+            title="Build a workflow that drafts your Monday status report before you wake up",
             prompt=(
                 "I want a recurring weekly summary of my work. Ask me what "
                 "sources to pull from, then draft the first report so I can "
@@ -335,7 +335,7 @@ def fallback_prompts() -> list[SuggestedPrompt]:
             icon="megaphone",
         ),
         SuggestedPrompt(
-            title="Find the two tasks eating your week and hand them to an agent today",
+            title="Find the two tasks eating your week and hand them to an expert today",
             prompt=(
                 "Help me find what to automate. Interview me briefly about "
                 "what repeats every week, then propose the two tasks you'd "
