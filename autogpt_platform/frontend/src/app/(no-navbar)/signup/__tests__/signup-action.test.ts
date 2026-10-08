@@ -105,7 +105,7 @@ describe("signup", () => {
     expect(result).toEqual({ success: true, next: "/onboarding" });
   });
 
-  it("routes straight to copilot when onboarding is already complete", async () => {
+  it("routes straight to /home when onboarding is already complete", async () => {
     signUpEmailMock.mockResolvedValue({
       token: "session-token",
       user: { id: "user-1" },
@@ -118,7 +118,7 @@ describe("signup", () => {
 
     const result = await signupWithValidPayload();
 
-    expect(result).toEqual({ success: true, next: "/copilot" });
+    expect(result).toEqual({ success: true, next: "/home" });
   });
 
   it("reports user_already_exists when Better Auth rejects a duplicate email", async () => {

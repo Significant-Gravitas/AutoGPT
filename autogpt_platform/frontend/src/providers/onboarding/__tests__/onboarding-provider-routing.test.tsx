@@ -145,7 +145,7 @@ describe("OnboardingProvider routing — logged-in user", () => {
     );
   });
 
-  test("completed user on /signup is redirected to /copilot", async () => {
+  test("completed user on /signup is redirected to /home", async () => {
     mockPathname = "/signup";
     mockIsCompleted = true;
 
@@ -155,10 +155,10 @@ describe("OnboardingProvider routing — logged-in user", () => {
       </OnboardingProvider>,
     );
 
-    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/copilot"));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
   });
 
-  test("completed user on /login is redirected to /copilot", async () => {
+  test("completed user on /login is redirected to /home", async () => {
     mockPathname = "/login";
     mockIsCompleted = true;
 
@@ -168,7 +168,7 @@ describe("OnboardingProvider routing — logged-in user", () => {
       </OnboardingProvider>,
     );
 
-    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/copilot"));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
   });
 
   test("a safe ?next= deep link defers to the auth page — no redirect from provider", async () => {
