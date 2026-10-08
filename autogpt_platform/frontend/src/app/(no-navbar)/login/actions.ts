@@ -6,6 +6,7 @@ import {
   EMAIL_NOT_VERIFIED_CODE,
   getEmailVerificationCallbackURL,
 } from "@/lib/auth/email-verification";
+import { recordSignupConsent } from "@/lib/auth/server/recordSignupConsent";
 import { rollbackSession } from "@/lib/auth/server/rollbackSession";
 import { markAccountCreated } from "@/services/analytics/account-created-server";
 import {
@@ -33,8 +34,9 @@ export async function login(
       };
     }
 
+    let userID: string;
     try {
-      await auth.api.signInEmail({
+      const signInResult = await auth.api.signInEmail({
         body: {
           email: parsed.data.email,
           password: parsed.data.password,
@@ -43,6 +45,7 @@ export async function login(
         },
         headers: await headers(),
       });
+      userID = signInResult.user.id;
     } catch (error) {
       if (error instanceof APIError) {
         // Right password, unverified address: Better Auth has just emailed a
@@ -78,6 +81,10 @@ export async function login(
     if (accountCreated) {
       await scheduleAccountCreatedGoal("email");
       await markAccountCreated("email");
+      // The account was made on /signup, under its legal line, so the terms
+      // are recorded here. A refusal made there rode in the verification link
+      // and can't be recovered at login (SECRT-2851). Never throws.
+      await recordSignupConsent({ userID, marketingOptOut: false });
     }
 
     const { shouldShowOnboarding } = await getOnboardingStatus();
