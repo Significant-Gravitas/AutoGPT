@@ -1,0 +1,16 @@
+{"id": "1-0", "data": {"type": "data-status", "message": "Message received…"}}
+{"id": "2-0", "data": {"type": "data-status", "message": "Setting up your environment…"}}
+{"id": "3-0", "data": {"type": "start", "messageId": "00000000-0000-4000-8000-000000000001", "sessionId": "drift-session"}}
+{"id": "4-0", "data": {"type": "start-step"}}
+{"id": "5-0", "data": {"type": "text-start", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "6-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000002", "delta": "I "}}
+{"id": "7-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000002", "delta": "counted: "}}
+{"id": "8-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000002", "delta": "1... "}}
+{"id": "9-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000002", "delta": "2... "}}
+{"id": "10-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000002", "delta": "3. "}}
+{"id": "11-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000002", "delta": "All "}}
+{"id": "12-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000002", "delta": "done!"}}
+{"id": "13-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "14-0", "data": {"type": "finish-step"}}
+{"id": "15-0", "data": {"type": "data-checkpoint", "rows": 1, "sequence": 1, "digest": "27775965ee2a9b702875c6a0c7a615d3f8bb40120c172d509b9882eab852b439"}}
+{"id": "16-0", "data": {"type": "finish"}}

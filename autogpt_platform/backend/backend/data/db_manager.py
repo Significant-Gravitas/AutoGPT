@@ -40,7 +40,11 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
-from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
+from backend.api.features.orgs.db import (
+    get_user_default_team,
+    resolve_default_tenancy,
+    users_share_active_org,
+)
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     delete_content_embedding,
@@ -186,6 +190,10 @@ from backend.data.user import (
     get_user_integrations,
     get_user_notification_preference,
     get_user_subscription_tier,
+    heal_orphaned_auth_identities,
+    is_marketing_opted_out,
+    record_marketing_opt_out_by_email,
+    record_signup_consent,
     release_welcome_email,
     set_last_briefing_at,
     set_user_credentials,
@@ -378,6 +386,8 @@ class DatabaseManager(AppService):
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
+    record_signup_consent = _(record_signup_consent)
+    record_marketing_opt_out_by_email = _(record_marketing_opt_out_by_email)
     # The scheduler routes unattended chats by the user's saved default.
     get_user_default_chat_route = _(get_user_default_chat_route)
     get_user_subscription_tier = _(get_user_subscription_tier)
@@ -387,6 +397,8 @@ class DatabaseManager(AppService):
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
     # full LaunchDarkly context — see backend/util/feature_flag.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
+    # Exposed for the scheduler's auth-identity invariant monitor.
+    heal_orphaned_auth_identities = _(heal_orphaned_auth_identities)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
     get_user_credentials = _(get_user_credentials)
@@ -544,6 +556,7 @@ class DatabaseManager(AppService):
     # ============ Orgs ============ #
     get_user_default_team = _(get_user_default_team)
     resolve_default_tenancy = _(resolve_default_tenancy)
+    users_share_active_org = _(users_share_active_org)
 
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
@@ -701,6 +714,8 @@ class DatabaseManager(AppService):
     # second process has no Prisma connection, so these cross the RPC.
     get_billing_email_recipient = _(get_billing_email_recipient)
     claim_welcome_email = _(claim_welcome_email)
+    # Read by the audience consumer right before each MailerLite write.
+    is_marketing_opted_out = _(is_marketing_opted_out)
     release_welcome_email = _(release_welcome_email)
     update_briefing_content = _(update_briefing_content)
 
@@ -737,6 +752,8 @@ class DatabaseManagerClient(AppServiceClient):
     get_block_error_stats = _(d.get_block_error_stats)
     # Execution accuracy monitoring
     get_accuracy_trends_and_alerts = _(d.get_accuracy_trends_and_alerts)
+    # Auth identity invariant monitoring
+    heal_orphaned_auth_identities = _(d.heal_orphaned_auth_identities)
     get_frequently_executed_graphs = _(d.get_frequently_executed_graphs)
     get_marketplace_graphs_for_monitoring = _(d.get_marketplace_graphs_for_monitoring)
 
@@ -822,12 +839,15 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
+    record_signup_consent = d.record_signup_consent
+    record_marketing_opt_out_by_email = d.record_marketing_opt_out_by_email
     get_user_default_chat_route = d.get_user_default_chat_route
     get_user_subscription_tier = d.get_user_subscription_tier
     get_subscription_trial = d.get_subscription_trial
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
     record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
+    heal_orphaned_auth_identities = d.heal_orphaned_auth_identities
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
     get_user_credentials = d.get_user_credentials
@@ -876,6 +896,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     set_last_briefing_at = d.set_last_briefing_at
     get_billing_email_recipient = d.get_billing_email_recipient
     claim_welcome_email = d.claim_welcome_email
+    is_marketing_opted_out = d.is_marketing_opted_out
     release_welcome_email = d.release_welcome_email
 
     # ============ Morning Briefing ============ #
@@ -992,6 +1013,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     find_server_link_owner = d.find_server_link_owner
     get_user_default_team = d.get_user_default_team
     resolve_default_tenancy = d.resolve_default_tenancy
+    users_share_active_org = d.users_share_active_org
     find_user_link_owner = d.find_user_link_owner
     resolve_server_link = d.resolve_server_link
     resolve_user_link = d.resolve_user_link

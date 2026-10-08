@@ -189,6 +189,7 @@ async def test_every_audience_action_has_a_handler(monkeypatch):
         "update_fields",
         "record_signup",
         "record_checkout_opened",
+        "unsubscribe",
     ):
         handlers[name] = AsyncMock()
         monkeypatch.setattr(mailerlite, name, handlers[name])

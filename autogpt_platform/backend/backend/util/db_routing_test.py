@@ -78,9 +78,12 @@ async def test_message_session_ownership_check_routes_through_database_manager(
         "list_recent_chat_sessions",
         "get_chat_session_metadata",
         "get_chat_session_status",
+        "record_signup_consent",
+        "record_marketing_opt_out_by_email",
+        "users_share_active_org",
     ],
 )
-def test_session_rpc_request_schemas_are_constructible(method: str):
+def test_routed_rpc_request_schemas_are_constructible(method: str):
     manager = DatabaseManager()
     manager._create_fastapi_endpoint(vars(DatabaseManager)[method])
     assert method in vars(DatabaseManagerAsyncClient)
