@@ -20,6 +20,7 @@ from backend.data.diagnostics import (
     ScheduleHealthMetrics,
 )
 from backend.data.execution import GraphExecutionMeta
+from backend.executor.utils import ExecutionNotRequeuedError
 
 app = fastapi.FastAPI()
 app.include_router(diagnostics_admin_routes.router)
@@ -209,6 +210,81 @@ def test_requeue_single_execution_with_add_graph_execution(
     assert call_kwargs["graph_exec_id"] == "exec-stuck-123"  # Requeue mode!
     assert call_kwargs["graph_id"] == "graph-456"
     assert call_kwargs["user_id"] == "user-123"
+    # QUEUED -> QUEUED is not a valid CAS transition; admin mode skips it.
+    assert call_kwargs["admin_requeue"] is True
+
+
+def _queued_meta(exec_id: str) -> GraphExecutionMeta:
+    return GraphExecutionMeta(
+        id=exec_id,
+        user_id="user-123",
+        graph_id="graph-456",
+        graph_version=1,
+        inputs=None,
+        credential_inputs=None,
+        nodes_input_masks=None,
+        preset_id=None,
+        status=AgentExecutionStatus.QUEUED,
+        started_at=datetime.now(timezone.utc),
+        ended_at=datetime.now(timezone.utc),
+        stats=None,
+    )
+
+
+def test_requeue_single_not_requeued_reports_failure(
+    mocker: pytest_mock.MockFixture,
+    admin_user_id: str,
+):
+    """#15282: a skipped publish must not be reported as a successful requeue."""
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.get_graph_executions",
+        return_value=[_queued_meta("exec-stuck-123")],
+    )
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.add_graph_execution",
+        side_effect=ExecutionNotRequeuedError("not requeued"),
+    )
+
+    response = client.post(
+        "/admin/diagnostics/executions/requeue",
+        json={"execution_id": "exec-stuck-123"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is False
+    assert data["requeued_count"] == 0
+
+
+def test_requeue_bulk_counts_only_published_executions(
+    mocker: pytest_mock.MockFixture,
+    admin_user_id: str,
+):
+    """#15282: requeued_count excludes executions whose publish was skipped."""
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.get_graph_executions",
+        return_value=[_queued_meta("exec-0"), _queued_meta("exec-1")],
+    )
+
+    async def fake_add(**kwargs):
+        assert kwargs["admin_requeue"] is True
+        if kwargs["graph_exec_id"] == "exec-1":
+            raise ExecutionNotRequeuedError("not requeued")
+
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.add_graph_execution",
+        side_effect=fake_add,
+    )
+
+    response = client.post(
+        "/admin/diagnostics/executions/requeue-bulk",
+        json={"execution_ids": ["exec-0", "exec-1"]},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["requeued_count"] == 1
 
 
 def test_requeue_single_expert_workspace_unavailable_returns_503(

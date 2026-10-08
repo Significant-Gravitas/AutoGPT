@@ -1262,6 +1262,11 @@ async def _enforce_expert_credential_scope(
         )
 
 
+class ExecutionNotRequeuedError(Exception):
+    """An admin requeue did not publish the execution to the queue, e.g.
+    because it left QUEUED (picked up, finished, stopped) in the meantime."""
+
+
 async def add_graph_execution(
     graph_id: str,
     user_id: str,
@@ -1283,6 +1288,7 @@ async def add_graph_execution(
     trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
     trigger_ref: Optional[str] = None,
     pause_irreversible_actions: bool = False,
+    admin_requeue: bool = False,
 ) -> GraphExecutionWithNodes:
     """Add a graph execution to the queue, recording the outcome.
 
@@ -1312,6 +1318,7 @@ async def add_graph_execution(
             trigger=trigger,
             trigger_ref=trigger_ref,
             pause_irreversible_actions=pause_irreversible_actions,
+            admin_requeue=admin_requeue,
         )
     except GraphValidationError:
         record_graph_execution(
@@ -1348,6 +1355,7 @@ async def _add_graph_execution(
     trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
     trigger_ref: Optional[str] = None,
     pause_irreversible_actions: bool = False,
+    admin_requeue: bool = False,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -1382,6 +1390,11 @@ async def _add_graph_execution(
         pause_irreversible_actions: Pause before every irreversible block
             whatever the graph's ``sensitive_action_safe_mode`` setting. On
             resume it is re-derived from the chat that started the run.
+        admin_requeue: Admin recovery of a stuck execution. A row that is
+            still QUEUED is republished as-is (QUEUED -> QUEUED is not a valid
+            status transition, so the usual compare-and-set would always skip
+            the publish). If the publish is skipped anyway, raises
+            ``ExecutionNotRequeuedError`` instead of returning silently.
     Returns:
         GraphExecutionWithNodes: The execution entry.
     Raises:
@@ -1704,22 +1717,42 @@ async def _add_graph_execution(
         # when update_tenancy=True with no organization_id, which would
         # fail the whole requeue — the exact case the admin fallback serves.
         persist_tenancy = expert_id is not None and organization_id is not None
-        updated_exec = await edb.update_graph_execution_stats(
-            graph_exec_id=graph_exec.id,
-            status=ExecutionStatus.QUEUED,
-            update_tenancy=persist_tenancy,
-            organization_id=organization_id if persist_tenancy else None,
-            team_id=team_id if persist_tenancy else None,
-        )
-
-        # Verify the status update succeeded (prevents duplicate queueing in race conditions)
-        # If another request already updated the status, this execution will not be QUEUED
-        if not updated_exec or updated_exec.status != ExecutionStatus.QUEUED:
-            logger.warning(
-                f"Skipping queue publish for execution {graph_exec.id} - "
-                f"status update failed or execution already queued by another request"
+        if admin_requeue and graph_exec.status == ExecutionStatus.QUEUED:
+            # A stuck QUEUED row can't pass the QUEUED CAS below (QUEUED is
+            # not a valid source for QUEUED), so admin recovery used to skip
+            # the publish while reporting success (#15282). Publish directly;
+            # a duplicate delivery is deduped by the consumer's cluster lock
+            # and its status check.
+            if persist_tenancy:
+                await edb.update_graph_execution_stats(
+                    graph_exec_id=graph_exec.id,
+                    update_tenancy=True,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                )
+        else:
+            updated_exec = await edb.update_graph_execution_stats(
+                graph_exec_id=graph_exec.id,
+                status=ExecutionStatus.QUEUED,
+                update_tenancy=persist_tenancy,
+                organization_id=organization_id if persist_tenancy else None,
+                team_id=team_id if persist_tenancy else None,
             )
-            return graph_exec
+
+            # Verify the status update succeeded (prevents duplicate queueing in race conditions)
+            # If another request already updated the status, this execution will not be QUEUED
+            if not updated_exec or updated_exec.status != ExecutionStatus.QUEUED:
+                logger.warning(
+                    f"Skipping queue publish for execution {graph_exec.id} - "
+                    f"status update failed or execution already queued by another request"
+                )
+                if admin_requeue:
+                    current = updated_exec.status if updated_exec else graph_exec.status
+                    raise ExecutionNotRequeuedError(
+                        f"Execution #{graph_exec.id} was not requeued: it is "
+                        f"{current}, not QUEUED"
+                    )
+                return graph_exec
 
         graph_exec.status = ExecutionStatus.QUEUED
 
@@ -1732,6 +1765,9 @@ async def _add_graph_execution(
             exchange=GRAPH_EXECUTION_EXCHANGE,
         )
         logger.info(f"Published execution {graph_exec.id} to RabbitMQ queue")
+    except ExecutionNotRequeuedError:
+        # Nothing was changed; don't mark a live execution FAILED.
+        raise
     except BaseException as e:
         err = str(e) or type(e).__name__
         if not graph_exec:
