@@ -822,6 +822,9 @@ class _LocalSandbox:
         cmd: str,
         envs: dict[str, str] | None = None,
         cwd: str = "/home/user",
+        background: bool = False,
+        on_stdout: Any = None,
+        on_stderr: Any = None,
         **_: Any,
     ) -> SimpleNamespace:
         user_home = (envs or {}).get("HOME", "/home/user")
@@ -833,11 +836,18 @@ class _LocalSandbox:
             text=True,
             timeout=10,
         )
-        return SimpleNamespace(
+        result = SimpleNamespace(
             exit_code=done.returncode,
             stdout=done.stdout.replace(self.home, "/home/user"),
             stderr=done.stderr,
         )
+        if not background:
+            return result
+        # bash_exec follows its command through E2B's background handle.
+        for emit, text in ((on_stdout, result.stdout), (on_stderr, result.stderr)):
+            if emit and text:
+                emit(text)
+        return SimpleNamespace(pid=1, wait=AsyncMock(return_value=result))
 
 
 @pytest.fixture

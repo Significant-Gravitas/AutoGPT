@@ -8,6 +8,9 @@ strongest country it has seen (`audience_enrichment.merge_with_held`).
 
 It runs in the background and never raises. A checkout must not wait on, or
 fail because of, MailerLite bookkeeping; the backfill catches anyone missed.
+
+Nothing is queued for an account that opted out of marketing: it never enters
+MailerLite (`notifications/consent.py`).
 """
 
 import asyncio
@@ -20,6 +23,7 @@ from backend.data.db import query_raw_with_schema
 from backend.data.notifications import AudienceAction
 from backend.data.user import get_user_by_id
 from backend.notifications.audience_enrichment import checkout_fields
+from backend.notifications.consent import audience_change_allowed
 from backend.notifications.subscriber_fields import queue_fields
 
 logger = logging.getLogger(__name__)
@@ -61,6 +65,8 @@ async def queue_checkout_opened(
 ) -> None:
     try:
         user = await get_user_by_id(user_id)
+        if not audience_change_allowed(user, AudienceAction.CHECKOUT_OPENED):
+            return
         fields = checkout_fields(
             email=user.email,
             created_at=user.created_at,

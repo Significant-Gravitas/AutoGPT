@@ -22,7 +22,7 @@ import { getEligibleTrialOffer } from "@/components/organisms/SubscriptionPlans/
 import { useTrialCard } from "@/components/organisms/TrialCard/useTrialCard";
 import {
   getSubscriptionValue,
-  trackAdsConversion,
+  trackAdsConversionBeforeNavigation,
 } from "@/services/analytics/google-ads";
 import {
   trackCheckoutAbandoned,
@@ -118,6 +118,11 @@ export function usePaywallModal() {
   const trial = useTrialCard("billing");
   const trialOffer = getEligibleTrialOffer(trial, plans);
 
+  // selectedTier spans the whole click: the request, the wait for the Ads
+  // conversion and the start of the redirect. isPending alone ends before the
+  // redirect, which left the plan buttons clickable for a second checkout.
+  const isCheckingOut = isPending || selectedTier !== null;
+
   const hasActiveStripeSubscription = Boolean(
     subscription?.has_active_stripe_subscription,
   );
@@ -148,7 +153,7 @@ export function usePaywallModal() {
         // plan definition is only the fallback for a tier priced nowhere else.
         const plan = plans.find((candidate) => candidate.key === tier);
         const apiValue = isYearly ? plan?.usdYearly : plan?.usdMonthly;
-        trackAdsConversion("begin_checkout", {
+        await trackAdsConversionBeforeNavigation("begin_checkout", {
           value: apiValue ?? getSubscriptionValue(tier, cycle),
         });
         window.location.href = url;
@@ -174,7 +179,7 @@ export function usePaywallModal() {
   }
 
   async function handleSelectPlan(tier: string) {
-    if (isPending) return;
+    if (isCheckingOut) return;
     trackPlanSelected({
       subscription_tier: tier,
       billing_cycle: selectedCycle,
@@ -199,7 +204,7 @@ export function usePaywallModal() {
   }
 
   async function confirmPendingTier() {
-    if (!pendingTier) return;
+    if (!pendingTier || isCheckingOut) return;
     const tier = pendingTier;
     await fireUpdate(tier);
     setPendingTier(null);
@@ -234,7 +239,7 @@ export function usePaywallModal() {
     selectedCycle,
     setSelectedCycle,
     handleSelectPlan,
-    isPending,
+    isPending: isCheckingOut,
     selectedTier,
     pendingTier,
     pendingTierLabel,

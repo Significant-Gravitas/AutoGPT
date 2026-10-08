@@ -4,7 +4,9 @@ Signups were never synced and the lifecycle handlers only react to new
 events, so this works out each account's fields from scratch: the signup date
 from our database, the rest from Stripe, by the rules in `subscriber_fields.py`.
 Only accounts with a Stripe customer are given (see `cli/mailerlite_backfill`):
-MailerLite holds checkout openers, not every signup.
+MailerLite holds checkout openers, not every signup. An account that opted out
+of marketing is never written, since a field write creates the subscriber
+(`consent.py`).
 
 Resumable by construction: the fields MailerLite already holds are read first
 and only the difference is written, so an interrupted or repeated run picks up
@@ -20,6 +22,7 @@ from urllib.parse import urlencode
 from pydantic import BaseModel, EmailStr, TypeAdapter, ValidationError
 
 from backend.data.notifications import SubscriberField, SubscriptionStatus
+from backend.notifications.consent import marketing_allowed
 from backend.notifications.mailerlite import (
     API_BASE,
     MailerLiteError,
@@ -59,6 +62,8 @@ class Person(BaseModel):
     stripe_customer_id: str | None = None
     # The browser's IANA timezone, for the checkout opener's country.
     timezone: str | None = None
+    # Set when they refused marketing: they must never enter MailerLite.
+    marketing_opt_out_at: datetime | None = None
 
 
 class FieldChange(BaseModel):
@@ -75,6 +80,8 @@ class FieldPlan(BaseModel):
     changes: list[FieldChange]
     # Addresses MailerLite would refuse, such as a reserved domain.
     invalid: int
+    # People who refused marketing, left out of the plan and the statuses.
+    opted_out: int
 
 
 def standing(subscriptions: list[Subscription]) -> tuple[SubscriptionStatus, Fields]:
@@ -131,9 +138,15 @@ def plan(people: list[Person], current: Current, *, create: bool = True) -> Fiel
     backfill brings new people in, since a Stripe customer alone does not
     mean they opened checkout (the billing portal creates one too)."""
     result = FieldPlan(
-        statuses={s: 0 for s in SubscriptionStatus}, changes=[], invalid=0
+        statuses={s: 0 for s in SubscriptionStatus},
+        changes=[],
+        invalid=0,
+        opted_out=0,
     )
     for person in people:
+        if not marketing_allowed(person):
+            result.opted_out += 1
+            continue
         if not _valid(person.email):
             result.invalid += 1
             continue

@@ -66,6 +66,46 @@ def test_valid_request_sends_and_returns_204(send_mock):
     assert VALID_BODY["url"] in text
 
 
+def test_set_password_email_says_why_it_came_and_when_it_expires(send_mock):
+    res = _post({**VALID_BODY, "type": "set_password"})
+
+    assert res.status_code == 204
+    _, subject, body, text = send_mock.call_args.args
+    assert subject == "Set your AutoGPT Platform password"
+    for part in (body, text):
+        assert "asked to sign up for, or verify" in part
+        assert "set a password and finish signing up" in part
+        assert "expires in 1 hour" in part
+
+
+def test_set_password_email_warns_an_earlier_password_no_longer_works(send_mock):
+    # Someone who resubmits the sign-up form gets this email, and the password
+    # they signed up with stops working, even if they finish through the
+    # first link.
+    _post({**VALID_BODY, "type": "set_password"})
+
+    _, _, body, text = send_mock.call_args.args
+    assert "the password you chose then no longer works" in body
+    assert "&#34;Forgot password&#34;" in body
+    assert '"Forgot password"' in text
+
+
+def test_reset_email_carries_no_set_password_note(send_mock):
+    _post(VALID_BODY)
+
+    _, _, body, text = send_mock.call_args.args
+    assert "no longer works" not in body
+    assert "no longer works" not in text
+
+
+def test_verify_email_states_its_24_hour_expiry(send_mock):
+    _post({**VALID_BODY, "type": "verify_email"})
+
+    _, _, body, text = send_mock.call_args.args
+    assert "expires in 24 hours" in body
+    assert "expires in 24 hours" in text
+
+
 def test_rejects_link_on_untrusted_host(send_mock):
     res = _post({**VALID_BODY, "url": "https://evil.example.com/reset"})
     assert res.status_code == 400
@@ -219,6 +259,7 @@ def test_rejects_malformed_trusted_origin_regex_at_startup():
         ("reset_password", "Reset your AutoGPT Platform password", "Reset password"),
         ("verify_email", "Verify your AutoGPT Platform email", "Verify email"),
         ("change_email", "Confirm your new AutoGPT Platform email", "Confirm email"),
+        ("set_password", "Set your AutoGPT Platform password", "Set password"),
     ],
 )
 def test_auth_email_design_and_plain_text(send_mock, email_type, subject, button):
