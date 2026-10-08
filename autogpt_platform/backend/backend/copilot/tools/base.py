@@ -9,7 +9,10 @@ from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
-from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.response_model import (
+    _MAX_TOOL_OUTPUT_SIZE,
+    StreamToolOutputAvailable,
+)
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
 from backend.util.truncate import truncate
@@ -55,10 +58,19 @@ _OUTLINE_SCALAR_CHARS = 120
 # so a nested field added here would make the two drift.
 _BINARY_FIELD_NAMES = {"content_base64"}
 
+# Image MIME types whose base64 content should be preserved as-is: the model
+# can process them as vision content and the full data is needed end-to-end.
+_IMAGE_MIME_PREFIXES = ("image/",)
+
+
+def _is_image_mime_type(value: object) -> bool:
+    return isinstance(value, str) and value.lower().startswith(_IMAGE_MIME_PREFIXES)
+
 
 def _summarize_binary_fields(raw_json: str) -> str:
     """Replace known binary fields with a size summary so truncate() doesn't
-    produce garbled base64 in the middle-out preview."""
+    produce garbled base64 in the middle-out preview.  Image content is kept
+    intact so the model can receive it as a vision block."""
     try:
         data = json.loads(raw_json)
     except (json.JSONDecodeError, TypeError):
@@ -67,9 +79,14 @@ def _summarize_binary_fields(raw_json: str) -> str:
     if not isinstance(data, dict):
         return raw_json
 
+    mime_type = data.get("mime_type", "")
+    is_image = _is_image_mime_type(mime_type)
+
     changed = False
     for key in _BINARY_FIELD_NAMES:
         if key in data and isinstance(data[key], str) and len(data[key]) > 1_000:
+            if is_image:
+                continue  # preserve image base64 for vision processing
             byte_size = len(data[key]) * 3 // 4  # approximate decoded size
             data[key] = f"<binary, ~{byte_size:,} bytes>"
             changed = True
@@ -90,6 +107,21 @@ async def _persist_and_summarize(
     On failure, returns the original ``raw_output`` unchanged so that the
     existing ``model_post_init`` middle-out truncation handles it as before.
     """
+    try:
+        payload = json.loads(raw_output)
+    except (json.JSONDecodeError, TypeError):
+        payload = None
+    if (
+        isinstance(payload, dict)
+        and _is_image_mime_type(payload.get("mime_type"))
+        and isinstance(payload.get("content_base64"), str)
+    ):
+        if len(raw_output) > _MAX_TOOL_OUTPUT_SIZE:
+            raise ValueError(
+                "Inline image exceeds the tool output limit; request a file URL instead"
+            )
+        return raw_output
+
     file_path = f"tool-outputs/{tool_call_id}.json"
 
     # The outline quotes offsets into the persisted file, so the file has to be
