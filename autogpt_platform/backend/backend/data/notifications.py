@@ -430,6 +430,10 @@ class AudienceAction(Enum):
     # Someone opened Stripe checkout: into the checkout openers group, with
     # the fields GTM segments them on (see `mailerlite.record_checkout_opened`).
     CHECKOUT_OPENED = "checkout_opened"
+    # The account refused marketing: an existing subscriber is marked
+    # unsubscribed, and nobody is created (see `mailerlite.unsubscribe`). The
+    # only change queued for an opted-out account, since it is the refusal.
+    UNSUBSCRIBE = "unsubscribe"
 
 
 class SubscriberField(str, Enum):

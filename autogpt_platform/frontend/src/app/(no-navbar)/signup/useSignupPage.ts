@@ -2,6 +2,8 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { setMarketingOptOutFlag } from "@/services/analytics/marketing-opt-out-cookie";
+import { trackSignupMarketingOptOut } from "@/services/analytics/signup-analytics";
 import { environment } from "@/services/environment";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -24,6 +26,9 @@ export function useSignupPage() {
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState<string | null>(
+    null,
+  );
   const isCloudEnv = environment.isCloud();
 
   // Same-origin redirect target; off-site values are dropped so a crafted
@@ -47,15 +52,26 @@ export function useSignupPage() {
     }
   }, [isLoggedIn, isSigningUp, nextUrl, router]);
 
-  const form = useForm<z.infer<typeof signupFormSchema>>({
+  const form = useForm<
+    z.input<typeof signupFormSchema>,
+    unknown,
+    z.output<typeof signupFormSchema>
+  >({
     resolver: zodResolver(signupFormSchema),
     defaultValues: {
       email: "",
       password: "",
       confirmPassword: "",
-      agreeToTerms: false,
+      marketingOptOut: false,
     },
   });
+
+  function handleToggleMarketingOptOut() {
+    if (isSigningUp) return;
+    const optOut = !form.getValues("marketingOptOut");
+    form.setValue("marketingOptOut", optOut, { shouldDirty: true });
+    if (optOut) trackSignupMarketingOptOut();
+  }
 
   async function handleProviderSignup(provider: LoginProvider) {
     setIsGoogleLoading(true);
@@ -67,6 +83,8 @@ export function useSignupPage() {
         ? `/auth/callback?next=${encodeURIComponent(nextUrl)}`
         : `/auth/callback`;
       const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
+
+      setMarketingOptOutFlag(form.getValues("marketingOptOut") ?? false);
 
       const response = await fetch("/api/auth/login/with-provider", {
         method: "POST",
@@ -99,7 +117,11 @@ export function useSignupPage() {
     }
   }
 
-  async function handleSignup(data: z.infer<typeof signupFormSchema>) {
+  async function handleSignup(data: z.output<typeof signupFormSchema>) {
+    // The server action records this signup's choice; the cookie is only for
+    // the Google round trip. Clear it so neither this choice nor one left from
+    // an abandoned Google attempt is applied to a later Google sign-in.
+    setMarketingOptOutFlag(false);
     setIsLoading(true);
 
     if (data.email.includes("@agpt.co")) {
@@ -120,7 +142,8 @@ export function useSignupPage() {
         data.email,
         data.password,
         data.confirmPassword,
-        data.agreeToTerms,
+        data.marketingOptOut,
+        nextUrl,
       );
 
       if (!result.success) {
@@ -139,6 +162,16 @@ export function useSignupPage() {
           title: result.error || "Signup failed",
           variant: "destructive",
         });
+        setIsSigningUp(false);
+        return;
+      }
+
+      if (result.verificationRequired) {
+        // There is no session yet, so the action recorded nothing. The emailed
+        // link carries the refusal and lands on /auth/callback, which records
+        // it with the terms.
+        setVerificationEmail(result.email);
+        setIsLoading(false);
         setIsSigningUp(false);
         return;
       }
@@ -163,18 +196,29 @@ export function useSignupPage() {
     }
   }
 
+  function handleStartAgain() {
+    setVerificationEmail(null);
+    form.resetField("email");
+  }
+
   return {
     form,
     feedback,
+    nextUrl,
+    verificationEmail,
     isLoggedIn: !!user,
     hasInitializedAuth,
     isLoading,
     isGoogleLoading,
+    isSigningUp,
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
+    optedOut: form.watch("marketingOptOut") ?? false,
     handleSubmit: form.handleSubmit(handleSignup),
+    handleToggleMarketingOptOut,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleProviderSignup,
+    handleStartAgain,
   };
 }
