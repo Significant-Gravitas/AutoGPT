@@ -26,7 +26,10 @@ Before writing code, read:
    (append .md to any docs URL for Markdown): Quickstart, Authentication and permissions,
    Run agents, and Errors, rate limits, and pagination.
 2. The OpenAPI spec of the instance we use: $AUTOGPT_API_URL/openapi.json. Use only
-   endpoints, fields and enum values that appear there. Don't use /external-api/v1.
+   endpoints, fields and enum values that appear there. An agent's own input and output
+   names, and a graph's node settings, aren't in the spec: take them from the agent's
+   input_schema and output_schema and from the docs. The spec doesn't list every status
+   code; the Errors page does. Don't use /external-api/v1.
 
 Configuration:
 - Read the base URL from AUTOGPT_API_URL and the key from AUTOGPT_API_KEY. If the project
@@ -35,16 +38,24 @@ Configuration:
   configurable: the same code has to work against AutoGPT Cloud
   (https://backend.agpt.co/external-api/v2) and a self-hosted instance.
 - Send the key as the X-API-Key header on every request.
+- The key needs Identity, Read Library, Write Library, Write Graph, Run Agent, Read Run
+  and Read Integrations for the steps below. GET /me lists what it has under scopes.
 
 Rules the integration must follow:
-- The client's first call is GET /me. Stop on any non-200 and report it: 401 means a bad
-  key, 404 a bad base URL, 403 a missing permission or no access to the organization or
-  team (error.message says which).
+- The client's first call is GET /me, retried like any read. If it still isn't 200,
+  stop and report it: 401 means a bad key (after five in a minute they turn into 429
+  "5 requests per 60s"), 404 a bad base URL, 403 a missing permission or no access to
+  the organization or team (error.message says which).
 - Run agents with POST /library/agents/{agent_id}/runs, using the library agent ID, not
-  the graph ID. Send an Idempotency-Key header on every run you start.
+  the graph ID. Send an Idempotency-Key header on every run you start. Let callers pass
+  their own key (such as a job ID) and generate one only when they don't.
+- The API doesn't validate inputs: unknown names are ignored, and a run missing a
+  required input still starts. Check inputs against the agent's input_schema
+  (properties and required) before starting a run.
 - A run is asynchronous. Poll GET /runs/{run_id} with backoff until status is COMPLETED,
   FAILED or TERMINATED, under one overall deadline that also bounds each request and each
-  sleep. Treat REVIEW as waiting on a person, never as finished.
+  sleep. Treat REVIEW as waiting on a person, never as finished: by default, stop
+  polling and report the run ID so someone can answer the review.
 - COMPLETED doesn't guarantee success: check that the outputs you need exist, and collect
   `error` outputs from node_executions with status FAILED.
 - Outputs map each output name to a list of values.
@@ -54,18 +65,20 @@ Rules the integration must follow:
   Retries: reads on 429 (after Retry-After), 500, 502, 503 and network errors; a run start
   on the same, plus 409, always resending the same Idempotency-Key; any other write on
   429 only.
-- If an agent needs credentials, read GET /library/agents/{agent_id}/credentials and pass
-  credentials_inputs keyed by field_name.
+- Before an agent's first run, read GET /library/agents/{agent_id}/credentials. An empty
+  list means it needs none. Otherwise pass credentials_inputs keyed by field_name, and
+  when several credentials match, let the caller choose instead of picking one.
 
 Then:
 1. Say which language, HTTP client and file layout you'll use, matching this project.
 2. Implement a small client: identity check, list library agents, start a run, wait for it,
-   return its outputs or raise with the node errors.
+   return its outputs or raise with the node errors. If the project has no obvious place
+   to call agents from yet, stop at the client and say where you'd wire it in.
 3. Prove it works against the real instance: create the sample "Hello from the API" agent
    from the Quickstart, run it with {"name": "Ada"}, and check the output is
-   {"greeting": ["Hello, Ada!"]}. Remove it from the library afterwards with
-   DELETE /library/agents/{agent_id}, even if the check fails. Its graph and run stay on the
-   account; that's expected.
+   {"greeting": ["Hello, Ada!"]}. Afterwards remove the library agent you created, by its
+   ID because names aren't unique, with DELETE /library/agents/{agent_id}, even if the
+   check fails. Its graph and run stay on the account; that's expected.
 4. Add tests that don't touch the network. Record only response status codes and bodies,
    never request headers or the key, and mark hand-written fixtures as synthetic.
 5. Report only what you verified: the GET /me result (email and permissions, not the key),
@@ -103,7 +116,7 @@ permissions: tell me which tools are missing.
 | [agpt.co/docs/llms.txt](https://agpt.co/docs/llms.txt) | An index of every docs page with a one-line summary. Start here. |
 | [agpt.co/docs/llms-full.txt](https://agpt.co/docs/llms-full.txt) | The full text of the docs, in parts of 100 pages (`/llms-full.txt/1`, `/llms-full.txt/2`, ...). |
 | Any page + `.md` | That page as Markdown, e.g. [.../api-guide/quickstart.md](https://agpt.co/docs/platform/api-and-integrations/api-guide/quickstart.md). Sending `Accept: text/markdown` to the normal URL works too. |
-| `$AUTOGPT_API_URL/openapi.json` | The exact API the instance runs, as OpenAPI 3.1. Prefer it to anything remembered from training data. |
+| `$AUTOGPT_API_URL/openapi.json` | The exact API the instance runs, as OpenAPI 3.1, served without a key. Prefer it to anything remembered from training data. |
 | The API reference pages | One page per endpoint, each with a self-contained OpenAPI description of that endpoint. See [API reference](api-reference.md). |
 | `https://agpt.co/docs/~gitbook/mcp` | An MCP server for these docs, with search and page tools. |
 
@@ -131,14 +144,16 @@ Coding agents read standing instructions from `AGENTS.md` (Codex, Cursor, Copilo
 - Run agents by library agent ID: POST /library/agents/{agent_id}/runs, always with an
   Idempotency-Key header. Get a graph's library agent with GET /graphs/{graph_id}/library-agent.
   GET /library/agents leaves input_schema empty: read it from GET /library/agents/{agent_id}.
+- The API ignores unknown input names and doesn't reject a run that lacks a required input.
+  Check inputs against input_schema (properties and required) before starting a run.
 - Runs are asynchronous: poll GET /runs/{run_id} with backoff and a deadline until COMPLETED,
   FAILED or TERMINATED. REVIEW waits for a person. COMPLETED can still lack outputs: check
   them, and read `error` outputs from node_executions with status FAILED.
 - outputs maps each output name to a list of values.
 - Lists: limit (max 100) + cursor; follow next_cursor until null.
 - Errors: {"error": {"code", "message", "details"}}. Branch on code. Retry reads on 429
-  (honour Retry-After), 500, 502, 503; run starts the same plus 409, with the same
-  Idempotency-Key; other writes on 429 only.
+  (honour Retry-After), 500, 502, 503 and network errors; run starts the same plus 409,
+  with the same Idempotency-Key; other writes on 429 only.
 - Limits: 200 requests/min per user; 60 run starts/min.
 ```
 {% endcode %}
@@ -167,20 +182,20 @@ description: Integrate with the AutoGPT Platform API v2 - run AutoGPT agents, re
 
 ## Running an agent
 1. Find it: GET /library/agents (items[].id is the library agent ID). From a graph ID: GET /graphs/{graph_id}/library-agent.
-2. Inputs: keys of input_schema.properties from GET /library/agents/{agent_id} (the list leaves input_schema empty). File inputs (format "file") take a file_uri from POST /files/upload.
+2. Inputs: keys of input_schema.properties from GET /library/agents/{agent_id} (the list leaves input_schema empty). The API ignores unknown names and doesn't reject missing required ones, so check against input_schema.required yourself. File inputs (format "file") take a file_uri from POST /files/upload.
 3. Credentials: GET /library/agents/{agent_id}/credentials. Pass credentials_inputs {field_name: {id, provider, type}} from matching_credentials.
 4. Start: POST /library/agents/{agent_id}/runs with {"inputs": {...}, "credentials_inputs": {...}} and an Idempotency-Key header. Answers 202 with the run.
-5. Wait: GET /runs/{run_id} with backoff and one overall deadline until COMPLETED, FAILED or TERMINATED. REVIEW means a person must answer (GET /runs/reviews, POST /runs/{run_id}/reviews); stop the run with POST /runs/{run_id}/stop if nobody will.
-6. Result: outputs maps each output name to a list. COMPLETED without the outputs you need means a block failed: read `error` from node_executions with status FAILED.
+5. Wait: GET /runs/{run_id} with backoff and one overall deadline until COMPLETED, FAILED or TERMINATED. REVIEW means a person must answer (GET /runs/reviews, POST /runs/{run_id}/reviews): by default stop polling and report the run ID; stop the run with POST /runs/{run_id}/stop if nobody will answer.
+6. Result: outputs maps each output name to a list. COMPLETED without the outputs you need is a failure: read `error` from node_executions with status FAILED, and if there is none, check the run's inputs.
 
 ## Conventions
 - Lists: ?limit=1..100&cursor=; response {items, next_cursor, total_count}; follow next_cursor until null.
-- Errors: {"error": {"code", "message", "details"}}; branch on code. Retry reads on 429 (Retry-After), 500, 502, 503; run starts the same plus 409, resending the same Idempotency-Key; other writes on 429 only.
+- Errors: {"error": {"code", "message", "details"}}; branch on code. Retry reads on 429 (Retry-After), 500, 502, 503 and network errors; run starts the same plus 409, resending the same Idempotency-Key; other writes on 429 only.
 - Rate limits: 200 req/min per user; runs 60/min; uploads 20 per 5 min; search 30/min.
 - 402 payment_required on AutoGPT Cloud: no active plan or a zero balance.
 
 ## Building agents
-Graph = nodes (block_id + input_default) + links (source_id/source_name -> sink_id/sink_name). POST /graphs creates version 1 and adds it to the library; PUT /graphs/{graph_id} saves the next version. Inputs: AgentInputBlock c0a8e994-ebf1-4a9c-a4d8-89d09c86741b. Outputs: AgentOutputBlock 363ae599-353e-4804-937e-b2ee3cef3da4. Discover blocks with GET /blocks.
+Graph = nodes (block_id + input_default) + links (source_id/source_name -> sink_id/sink_name). POST /graphs creates version 1 and adds it to the library; PUT /graphs/{graph_id} with the full graph (no id needed) saves the next version, even if nothing changed. Inputs: AgentInputBlock c0a8e994-ebf1-4a9c-a4d8-89d09c86741b. Outputs: AgentOutputBlock 363ae599-353e-4804-937e-b2ee3cef3da4; outputs record exactly what reaches its value pin. Shape text with FillTextTemplateBlock db7d8f02-2f44-4c55-ab7a-eae0941f0c30, whose format is a sandboxed Jinja2 template (filters such as upper work). Fill one key of a dict input with sink_name values_#_key. Discover blocks with GET /blocks (all pages; search can be empty on a new self-hosted instance).
 ```
 {% endcode %}
 
@@ -198,4 +213,6 @@ Graph = nodes (block_id + input_default) + links (source_id/source_name -> sink_
 | Retrying `POST .../runs` without an idempotency key | Send `Idempotency-Key`, or a retry starts and bills a second run. |
 | Retrying other writes after a `5xx` | The write may have happened. Retry only on `429`, and check before repeating. |
 | Sending an input name the agent doesn't have | It's silently ignored. Check names against `input_schema` first. |
+| Leaving out a required input | The run still starts and finishes with no outputs. Check `input_schema.required` first. |
+| Treating an MCP tool result as a success because `is_error` isn't set | Some failures arrive as an ordinary result whose JSON is `{"type": "error", "message": ...}`. Check `is_error` and `type`. |
 | Getting `429` with `5 requests per 60s` | Requests aren't carrying a valid key, so they count as anonymous. Fix the header. |

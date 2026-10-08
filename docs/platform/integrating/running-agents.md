@@ -55,14 +55,18 @@ There is no filter by name. To find an agent by name, read every page and match 
 def find_agent_by_name(name: str) -> dict:
     matches, params = [], {"limit": 100}
     while True:
-        page = requests.get(f"{API_URL}/library/agents", headers=HEADERS, params=params, timeout=30).json()
+        response = requests.get(f"{API_URL}/library/agents", headers=HEADERS, params=params, timeout=30)
+        response.raise_for_status()
+        page = response.json()
         matches += [a for a in page["items"] if a["name"].casefold() == name.casefold()]
         if not page["next_cursor"]:
             break
         params["cursor"] = page["next_cursor"]
     if len(matches) != 1:
         raise LookupError(f"{len(matches)} library agents are named {name!r}")
-    return requests.get(f"{API_URL}/library/agents/{matches[0]['id']}", headers=HEADERS, timeout=30).json()
+    response = requests.get(f"{API_URL}/library/agents/{matches[0]['id']}", headers=HEADERS, timeout=30)
+    response.raise_for_status()
+    return response.json()
 ```
 
 Other ways to find agents:
@@ -94,13 +98,14 @@ Read the agent's `input_schema` from `GET /library/agents/{agent_id}` (the list 
 So `inputs` for this agent is `{"topic": "...", "document": "..."}`, with `max_words` optional.
 
 * `type` is present when the agent declares one. Inputs made with the general-purpose input block have none and accept any JSON value; send what the input's `title` and `description` ask for.
-* `"format": "file"` marks an input that takes a [file reference](#pass-files-to-an-agent).
+* `"format": "file"` marks an input that takes a [file reference](#pass-files-to-an-agent). Other formats, such as `long-text`, are hints for the app's form: send a plain string.
+* An input can be `required` while its type also allows `null`, like `document` above. Send a value for it: `null` counts as missing.
 * `advanced: true` marks an optional input the app tucks away under advanced settings. `secret: true` marks a value the app masks, such as a password. Neither changes how you send it.
-* The API **doesn't reject input names the agent doesn't have**. A misspelled name is ignored and the agent runs with its default, so check your input names against `input_schema` before you start a run.
+* The API **doesn't check `inputs` against `input_schema`**. A misspelled name is ignored and the agent runs with its default. A run without a `required` input starts anyway, and usually ends `COMPLETED` with no outputs and no error. Check your inputs against `input_schema` before you start a run.
 
 ## Supply credentials it needs
 
-Agents that call third-party services (an AI model provider, GitHub, Google, ...) need credentials from your account. Ask which ones (needs **Read Integrations**):
+Agents that call third-party services (an AI model provider, GitHub, Google, ...) need credentials from your account. Ask which ones (needs **Read Integrations**). An agent that needs none returns an empty list:
 
 ```bash
 curl -s "$AUTOGPT_API_URL/library/agents/$AGENT_ID/credentials" -H "X-API-Key: $AUTOGPT_API_KEY"
@@ -133,7 +138,7 @@ curl -s "$AUTOGPT_API_URL/library/agents/$AGENT_ID/credentials" -H "X-API-Key: $
 }
 ```
 
-For each requirement, pick one of its `matching_credentials` and pass it under the requirement's `field_name`:
+For each requirement, pick one of its `matching_credentials` and pass it under the requirement's `field_name`. When several match, let whoever owns the integration choose, for example by `title`, and store the choice; picking the first one silently can use the wrong account:
 
 ```json
 {
@@ -147,6 +152,8 @@ For each requirement, pick one of its `matching_credentials` and pass it under t
   }
 }
 ```
+
+A requirement can be optional: the agent's builder may let some blocks run without their credentials. The graph's `credentials_input_schema`, from `GET /graphs/{graph_id}` (needs **Read Graph**), lists the requirements that must be filled under `required`.
 
 If a requirement has no matching credentials, add one first:
 
@@ -163,7 +170,7 @@ If a requirement has no matching credentials, add one first:
 On AutoGPT Cloud, some providers have **platform-provided credentials** (`"is_managed": true`), such as built-in AI model access. You can pass them like your own.
 
 {% hint style="warning" %}
-A run with a missing credential is still accepted. It fails when the block that needs the credential runs, so always check the requirements before the first run.
+A run with a missing credential is still accepted. It fails when the block that needs the credential runs, so always check the requirements before the first run. Without **Read Integrations** you can't check, so only skip this for agents you know need no credentials.
 {% endhint %}
 
 ## Start the run
@@ -183,7 +190,7 @@ curl -s -X POST "$AUTOGPT_API_URL/library/agents/$AGENT_ID/runs" \
 
 ## Wait for it to finish
 
-Read the run until its status is `COMPLETED`, `FAILED` or `TERMINATED`. Poll every one to five seconds, back off on long runs, and always set a deadline. A run in `REVIEW` waits for a person and never finishes on its own.
+Read the run until its status is `COMPLETED`, `FAILED` or `TERMINATED`. Poll every one to five seconds, back off on long runs, and keep everything inside one deadline: each request's timeout and each sleep are cut to the time that's left. (A `requests` timeout limits each wait for the server, not a whole slow response; if you need a hard limit, use a client with an overall timeout.) A run in `REVIEW` waits for a person and never finishes on its own.
 
 {% tabs %}
 {% tab title="Python" %}
@@ -197,20 +204,21 @@ FINAL = {"COMPLETED", "FAILED", "TERMINATED"}
 
 def wait_for_run(run_id: str, timeout_s: float = 600) -> dict:
     deadline = time.monotonic() + timeout_s
-    delay = 1.0
-    while True:
-        response = requests.get(f"{API_URL}/runs/{run_id}", headers=HEADERS, timeout=30)
+    delay, status = 1.0, "unknown"
+    while (remaining := deadline - time.monotonic()) > 0:
+        response = requests.get(
+            f"{API_URL}/runs/{run_id}", headers=HEADERS, timeout=min(30, remaining)
+        )
         response.raise_for_status()
         run = response.json()
-        if run["status"] in FINAL:
+        status = run["status"]
+        if status in FINAL:
             return run
-        if run["status"] == "REVIEW":
+        if status == "REVIEW":
             raise RuntimeError(f"Run {run_id} is waiting for a human review")
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError(f"Run {run_id} still {run['status']} after {timeout_s}s")
-        time.sleep(min(delay, remaining))
+        time.sleep(max(0, min(delay, deadline - time.monotonic())))
         delay = min(delay * 1.5, 10)
+    raise TimeoutError(f"Run {run_id} still {status} after {timeout_s}s")
 ```
 {% endtab %}
 
@@ -221,20 +229,21 @@ const FINAL = new Set(["COMPLETED", "FAILED", "TERMINATED"]);
 async function waitForRun(runId: string, timeoutMs = 600_000) {
   const deadline = Date.now() + timeoutMs;
   let delay = 1000;
-  while (true) {
+  let status = "unknown";
+  for (let remaining = timeoutMs; remaining > 0; remaining = deadline - Date.now()) {
     const response = await fetch(`${API_URL}/runs/${runId}`, {
       headers: HEADERS,
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(Math.min(30_000, remaining)),
     });
     if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
     const run = await response.json();
-    if (FINAL.has(run.status)) return run;
-    if (run.status === "REVIEW") throw new Error(`Run ${runId} is waiting for a human review`);
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) throw new Error(`Run ${runId} still ${run.status} after ${timeoutMs} ms`);
-    await new Promise((r) => setTimeout(r, Math.min(delay, remaining)));
+    status = run.status;
+    if (FINAL.has(status)) return run;
+    if (status === "REVIEW") throw new Error(`Run ${runId} is waiting for a human review`);
+    await new Promise((r) => setTimeout(r, Math.max(0, Math.min(delay, deadline - Date.now()))));
     delay = Math.min(delay * 1.5, 10_000);
   }
+  throw new Error(`Run ${runId} still ${status} after ${timeoutMs} ms`);
 }
 ```
 {% endtab %}
@@ -269,9 +278,9 @@ If your deadline passes and you no longer want the result, stop the run so it do
 }
 ```
 
-Most agents produce each output once, so read `outputs["name"][0]`, or the last element for the latest value. An output the run never produced is missing from `outputs`. Outputs that are files arrive as `workspace://` references; see [Get files back](#get-files-back).
+While the run is going, `outputs` and `node_executions` hold what has finished so far, and can be empty. Most agents produce each output once, so read `outputs["name"][0]`, or the last element for the latest value. An output the run never produced is missing from `outputs`. Outputs that are files arrive as `workspace://` references; see [Get files back](#get-files-back).
 
-`node_executions` lists every block that ran, with its inputs and outputs, which is what you need to debug a run. `cost_cents` is what the run cost.
+`node_executions` lists every block that ran, with its inputs and outputs, which is what you need to debug a run. The schema allows it to be `null`; treat that as no detail being available. `cost_cents` is what the run cost.
 
 ### Check that a run succeeded
 
@@ -291,7 +300,7 @@ Most agents produce each output once, so read `outputs["name"][0]`, or the last 
 }
 ```
 
-So treat a run as successful only when it is `COMPLETED` **and** the outputs you need are present. When they aren't, collect the errors:
+So treat a run as successful only when it is `COMPLETED` **and** the outputs you need are present. When they aren't, collect the errors. If there are none, check that the run got every required input:
 
 ```python
 errors = [

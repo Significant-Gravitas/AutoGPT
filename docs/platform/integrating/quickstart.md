@@ -90,8 +90,9 @@ If you get something else, fix it before going on:
 | You got | It means |
 | --- | --- |
 | `401 unauthorized` | The key is wrong or revoked, or the header name is not `X-API-Key`. |
+| `403 forbidden` | The key lacks **Identity**, or you are no longer a member of the organization it was created in. The message says which. |
 | `404` | `AUTOGPT_API_URL` is wrong. It must end in `/external-api/v2`. |
-| `429` with `5 requests per 60s` | The API didn't recognise a key, so the request counted as anonymous. Check the key and header, then wait a minute. |
+| `429` with `5 requests per 60s` | The API didn't recognise a key, so the request counted as anonymous: after five `401`s in a minute, you get this instead. Check the key and header, then wait a minute. |
 | A connection error | The instance isn't running at that address. |
 {% endstep %}
 
@@ -231,7 +232,9 @@ You have run an agent through the API.
 
 ## The whole flow as one script
 
-Each script creates the sample agent, runs it with an idempotency key, waits for it with a deadline, fails loudly unless the greeting came back, and removes the sample agent from your library again. The graph and its run stay on your account.
+Each script creates the sample agent, runs it with an idempotency key, waits for it with a deadline, fails unless the output is exactly `{"greeting": ["Hello, Ada!"]}`, and removes the sample agent from your library again. The graph and its run stay on your account. If a request fails before the script has the agent's ID, remove the agent in the app.
+
+The scripts show the flow, not production code: they don't retry, and they don't branch on error codes. [Errors, rate limits, and pagination](api-conventions.md) covers both.
 
 {% tabs %}
 {% tab title="Python" %}
@@ -239,7 +242,7 @@ Each script creates the sample agent, runs it with an idempotency key, waits for
 ```python
 """AutoGPT API quickstart: create a sample agent, run it, print its output, clean up.
 
-Needs: pip install requests
+Needs: pip install requests (and python-dotenv to read a .env file)
 Env:   AUTOGPT_API_URL, AUTOGPT_API_KEY (permissions: Identity, Write Graph,
        Read Library, Write Library, Run Agent, Read Run)
 """
@@ -249,6 +252,13 @@ import time
 import uuid
 
 import requests
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
 
 API_URL = os.environ["AUTOGPT_API_URL"].rstrip("/")
 HEADERS = {"X-API-Key": os.environ["AUTOGPT_API_KEY"]}
@@ -293,10 +303,10 @@ HELLO_AGENT = {
 }
 
 
-def api(method: str, path: str, **kwargs):
+def api(method: str, path: str, timeout: float = 30, **kwargs):
     response = requests.request(
         method, f"{API_URL}{path}", headers=HEADERS | kwargs.pop("headers", {}),
-        timeout=30, **kwargs,
+        timeout=timeout, **kwargs,
     )
     if not response.ok:
         raise RuntimeError(f"{method} {path} -> {response.status_code}: {response.text}")
@@ -305,18 +315,17 @@ def api(method: str, path: str, **kwargs):
 
 def wait_for_run(run_id: str, timeout_s: float = 300) -> dict:
     deadline = time.monotonic() + timeout_s
-    delay = 1.0
-    while True:
-        run = api("GET", f"/runs/{run_id}")
-        if run["status"] in FINAL_STATUSES:
+    delay, status = 1.0, "unknown"
+    while (remaining := deadline - time.monotonic()) > 0:
+        run = api("GET", f"/runs/{run_id}", timeout=min(30, remaining))
+        status = run["status"]
+        if status in FINAL_STATUSES:
             return run
-        if run["status"] == "REVIEW":
+        if status == "REVIEW":
             raise RuntimeError(f"Run {run_id} is waiting for a human review")
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError(f"Run {run_id} still {run['status']} after {timeout_s}s")
-        time.sleep(min(delay, remaining))
+        time.sleep(max(0, min(delay, deadline - time.monotonic())))
         delay = min(delay * 1.5, 10)
+    raise TimeoutError(f"Run {run_id} still {status} after {timeout_s}s")
 
 
 def node_errors(run: dict) -> list[str]:
@@ -332,9 +341,10 @@ me = api("GET", "/me")
 print(f"Authenticated as {me['email']} in {me['organization']['name']}")
 
 graph = api("POST", "/graphs", json=HELLO_AGENT)
-agent = api("GET", f"/graphs/{graph['id']}/library-agent")
-print(f"Created agent {agent['id']}")
+agent = None
 try:
+    agent = api("GET", f"/graphs/{graph['id']}/library-agent")
+    print(f"Created agent {agent['id']}")
     run = api(
         "POST",
         f"/library/agents/{agent['id']}/runs",
@@ -344,17 +354,17 @@ try:
     print(f"Started run {run['id']} ({run['status']})")
 
     run = wait_for_run(run["id"])
-    greeting = run["outputs"].get("greeting")
-    if run["status"] != "COMPLETED" or not greeting:
+    if run["status"] != "COMPLETED" or run["outputs"] != {"greeting": ["Hello, Ada!"]}:
         raise RuntimeError(f"Run {run['id']} {run['status']}: {node_errors(run) or run['outputs']}")
-    print(f"Run {run['status']}: {greeting[0]}")
+    print(f"Run {run['status']}: {run['outputs']['greeting'][0]}")
 finally:
-    api("DELETE", f"/library/agents/{agent['id']}")
-    print("Removed the sample agent from the library")
+    if agent:
+        api("DELETE", f"/library/agents/{agent['id']}")
+        print("Removed the sample agent from the library")
 ```
 {% endcode %}
 
-Run it with `python quickstart.py`. It prints:
+Run it with `python quickstart.py`. With `python-dotenv` installed it also reads a `.env` file in the current folder. It prints:
 
 ```
 Authenticated as you@example.com in Ada
@@ -415,12 +425,18 @@ const HELLO_AGENT = {
   ],
 };
 
-async function api(method: string, path: string, body?: unknown, headers: Record<string, string> = {}) {
+async function api(
+  method: string,
+  path: string,
+  body?: unknown,
+  headers: Record<string, string> = {},
+  timeoutMs = 30_000,
+) {
   const response = await fetch(`${API_URL}${path}`, {
     method,
     headers: { "X-API-Key": API_KEY, "Content-Type": "application/json", ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     throw new Error(`${method} ${path} -> ${response.status}: ${await response.text()}`);
@@ -431,15 +447,17 @@ async function api(method: string, path: string, body?: unknown, headers: Record
 async function waitForRun(runId: string, timeoutMs = 300_000) {
   const deadline = Date.now() + timeoutMs;
   let delay = 1000;
-  while (true) {
-    const run = await api("GET", `/runs/${runId}`);
-    if (FINAL_STATUSES.has(run.status)) return run;
-    if (run.status === "REVIEW") throw new Error(`Run ${runId} is waiting for a human review`);
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) throw new Error(`Run ${runId} still ${run.status} after ${timeoutMs} ms`);
-    await new Promise((resolve) => setTimeout(resolve, Math.min(delay, remaining)));
+  let status = "unknown";
+  for (let remaining = timeoutMs; remaining > 0; remaining = deadline - Date.now()) {
+    const run = await api("GET", `/runs/${runId}`, undefined, {}, Math.min(30_000, remaining));
+    status = run.status;
+    if (FINAL_STATUSES.has(status)) return run;
+    if (status === "REVIEW") throw new Error(`Run ${runId} is waiting for a human review`);
+    const pause = Math.max(0, Math.min(delay, deadline - Date.now()));
+    await new Promise((resolve) => setTimeout(resolve, pause));
     delay = Math.min(delay * 1.5, 10_000);
   }
+  throw new Error(`Run ${runId} still ${status} after ${timeoutMs} ms`);
 }
 
 function nodeErrors(run: { node_executions?: { status: string; outputs: Record<string, unknown[]> }[] }) {
@@ -452,27 +470,30 @@ const me = await api("GET", "/me");
 console.log(`Authenticated as ${me.email} in ${me.organization.name}`);
 
 const graph = await api("POST", "/graphs", HELLO_AGENT);
-const agent = await api("GET", `/graphs/${graph.id}/library-agent`);
-console.log(`Created agent ${agent.id}`);
+let agent: { id: string } | undefined;
 try {
+  agent = await api("GET", `/graphs/${graph.id}/library-agent`);
+  console.log(`Created agent ${agent!.id}`);
   let run = await api(
     "POST",
-    `/library/agents/${agent.id}/runs`,
+    `/library/agents/${agent!.id}/runs`,
     { inputs: { name: "Ada" } },
     { "Idempotency-Key": crypto.randomUUID() },
   );
   console.log(`Started run ${run.id} (${run.status})`);
 
   run = await waitForRun(run.id);
-  const greeting = run.outputs?.greeting;
-  if (run.status !== "COMPLETED" || !greeting?.length) {
+  const expected = JSON.stringify({ greeting: ["Hello, Ada!"] });
+  if (run.status !== "COMPLETED" || JSON.stringify(run.outputs) !== expected) {
     const errors = nodeErrors(run);
     throw new Error(`Run ${run.id} ${run.status}: ${JSON.stringify(errors.length ? errors : run.outputs)}`);
   }
-  console.log(`Run ${run.status}: ${greeting[0]}`);
+  console.log(`Run ${run.status}: ${run.outputs.greeting[0]}`);
 } finally {
-  await api("DELETE", `/library/agents/${agent.id}`);
-  console.log("Removed the sample agent from the library");
+  if (agent) {
+    await api("DELETE", `/library/agents/${agent.id}`);
+    console.log("Removed the sample agent from the library");
+  }
 }
 ```
 {% endcode %}
@@ -493,7 +514,7 @@ The step-by-step version above leaves the sample agent in your library. Remove i
 
 ## Next steps
 
-* **Run your own agents.** List your library with `GET /library/agents` (needs **Read Library**), read an agent's `input_schema`, and run it the same way. [Run agents](running-agents.md) covers credentials, files, human reviews, schedules and failures.
+* **Run your own agents.** List your library with `GET /library/agents` (needs **Read Library**), read an agent's `input_schema` from `GET /library/agents/{agent_id}`, and run it the same way. Add **Read Integrations** to the key to check which credentials an agent needs. [Run agents](running-agents.md) covers credentials, files, human reviews, schedules and failures.
 * **Build agents in code.** [Build agents](building-agents.md) explains blocks, links and versions.
 * **Handle errors and limits.** [Errors, rate limits, and pagination](api-conventions.md).
 * **Connect an AI tool.** [MCP server](mcp-server.md) lets Claude, Cursor and other MCP clients do all of this conversationally.

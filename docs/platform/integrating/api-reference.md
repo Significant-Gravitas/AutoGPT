@@ -25,10 +25,10 @@ Authenticate every request with an API key in the `X-API-Key` header, or with `A
 
 Download the specification your code will talk to from the instance itself, since each instance serves the version it runs:
 
-* `$AUTOGPT_API_URL/openapi.json`. AutoGPT Cloud: [backend.agpt.co/external-api/v2/openapi.json](https://backend.agpt.co/external-api/v2/openapi.json).
+* `$AUTOGPT_API_URL/openapi.json`, which needs no key. AutoGPT Cloud: [backend.agpt.co/external-api/v2/openapi.json](https://backend.agpt.co/external-api/v2/openapi.json).
 * `$AUTOGPT_API_URL/docs` is an interactive explorer (Swagger UI), and `$AUTOGPT_API_URL/redoc` a readable one.
 
-Generate a typed client from it with any OpenAPI generator, for example:
+Generate a typed client from it with any OpenAPI generator, and give the client your `$AUTOGPT_API_URL` as its base URL. Don't rely on the spec's `servers` list: an instance's copy starts with a path relative to where you fetched it, which is wrong behind the single container's `/_agpt` prefix. For example:
 
 {% tabs %}
 {% tab title="TypeScript" %}

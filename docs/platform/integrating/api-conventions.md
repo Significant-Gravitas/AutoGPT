@@ -11,7 +11,7 @@ Every v2 endpoint follows the conventions on this page. Write your client agains
 
 ## Errors
 
-Every response that is not `2xx` has the same body:
+Every response from the API that is not `2xx` has the same body:
 
 ```json
 {
@@ -26,6 +26,7 @@ Every response that is not `2xx` has the same body:
 * `code` is a stable, snake_case identifier. Branch on it.
 * `message` is for people. It can be reworded at any time, so don't parse it.
 * `details` carries structured context when there is any, and is `null` otherwise.
+* Something in front of the API, such as a proxy or a wrong base URL, can answer with an HTML or empty body. Treat an error body that isn't this JSON as an unexpected error, and log its status.
 
 ### Error codes
 
@@ -83,7 +84,7 @@ A `422` lists every field that failed in `details.errors`. `loc` is the path to 
 
 The limits are per user, not per key: every key and token for the same account shares them. Each window is fixed and starts on a clock boundary, so a full window empties at the next minute (or five-minute) mark rather than one request at a time.
 
-Every response carries your position in the 200-per-minute window:
+Every response carries your position in the window that applies to it: the endpoint's own limit for the endpoints in the table that have one, and the 200-per-minute window for everything else.
 
 | Header | Meaning |
 | --- | --- |
@@ -113,9 +114,9 @@ What you can retry depends on the request:
 | Starting a run with an `Idempotency-Key` | The same, plus `409 conflict` (the first attempt is still starting the run). Always resend the same key. |
 | Every other write (`POST`, `PUT`, `PATCH`, `DELETE`) | `429` only. The request was refused before it did anything. After a `5xx` or a network error the write may have happened, so check before you repeat it. |
 
-Wait `Retry-After` seconds when it is present; otherwise back off exponentially with jitter, and give up after a few attempts. Don't retry any other `4xx`: it will fail the same way.
+Wait `Retry-After` seconds when it is present; otherwise back off exponentially with jitter. Give up after five attempts, or sooner if you're working to a deadline: inside a polling loop, pass a smaller `timeout` and fewer attempts so the retries fit in the time that's left. Don't retry any other `4xx`: it will fail the same way.
 
-This helper retries the statuses you pass it. Use the defaults for reads and keyed run starts, and `retry_on={429}` for other writes:
+This helper takes the set of statuses to retry. Pass `READS` for reads, `RUN_STARTS` for a run start that carries an `Idempotency-Key`, and `OTHER_WRITES` for everything else:
 
 {% tabs %}
 {% tab title="Python" %}
@@ -125,13 +126,23 @@ import time
 
 import requests
 
-RETRYABLE = frozenset({409, 429, 500, 502, 503})
+READS = frozenset({429, 500, 502, 503})  # network errors are retried too
+RUN_STARTS = READS | {409}  # resend the same Idempotency-Key
+OTHER_WRITES = frozenset({429})  # refused before it ran
 
 
-def request_with_retries(method, url, *, retry_on=RETRYABLE, max_attempts=5, **kwargs):
+def request_with_retries(method, url, retry_on, *, max_attempts=5, **kwargs):
+    kwargs.setdefault("timeout", 30)
     for attempt in range(1, max_attempts + 1):
-        response = requests.request(method, url, timeout=30, **kwargs)
-        if response.status_code not in retry_on or attempt == max_attempts:
+        last = attempt == max_attempts
+        try:
+            response = requests.request(method, url, **kwargs)
+        except (requests.ConnectionError, requests.Timeout):
+            if last or retry_on is OTHER_WRITES:
+                raise
+            time.sleep(min(2**attempt, 30) + random.uniform(0, 1))
+            continue
+        if response.status_code not in retry_on or last:
             return response
         retry_after = response.headers.get("Retry-After")
         delay = float(retry_after) if retry_after else min(2**attempt, 30)
@@ -141,20 +152,32 @@ def request_with_retries(method, url, *, retry_on=RETRYABLE, max_attempts=5, **k
 
 {% tab title="TypeScript" %}
 ```typescript
-const RETRYABLE = new Set([409, 429, 500, 502, 503]);
+export const READS = new Set([429, 500, 502, 503]); // network errors are retried too
+export const RUN_STARTS = new Set([...READS, 409]); // resend the same Idempotency-Key
+export const OTHER_WRITES = new Set([429]); // refused before it ran
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function requestWithRetries(
   url: string,
   init: RequestInit,
-  retryOn: Set<number> = RETRYABLE,
+  retryOn: Set<number>,
   maxAttempts = 5,
 ): Promise<Response> {
   for (let attempt = 1; ; attempt++) {
-    const response = await fetch(url, { ...init, signal: AbortSignal.timeout(30_000) });
-    if (!retryOn.has(response.status) || attempt === maxAttempts) return response;
+    const last = attempt === maxAttempts;
+    let response: Response;
+    try {
+      response = await fetch(url, { ...init, signal: AbortSignal.timeout(30_000) });
+    } catch (error) {
+      if (last || retryOn === OTHER_WRITES) throw error;
+      await sleep((Math.min(2 ** attempt, 30) + Math.random()) * 1000);
+      continue;
+    }
+    if (!retryOn.has(response.status) || last) return response;
     const retryAfter = response.headers.get("Retry-After");
     const delay = retryAfter ? Number(retryAfter) : Math.min(2 ** attempt, 30);
-    await new Promise((r) => setTimeout(r, (delay + Math.random()) * 1000));
+    await sleep((delay + Math.random()) * 1000);
   }
 }
 ```
@@ -165,7 +188,7 @@ Retrying `POST /library/agents/{agent_id}/runs` after a timeout or `5xx` can sta
 
 ## Pagination
 
-Every list endpoint takes the same two query parameters and returns the same envelope.
+List endpoints take the same two query parameters and return the same envelope.
 
 | Parameter | Meaning |
 | --- | --- |
@@ -181,9 +204,10 @@ Every list endpoint takes the same two query parameters and returns the same env
 ```
 
 * Pass `next_cursor` back as `cursor` to get the next page. It is `null` on the last page.
-* Cursors are opaque. Don't decode, build or edit them, and don't use one endpoint's cursor on another: either is rejected with `400 bad_request`.
+* Cursors are opaque: don't decode, build or edit them. A malformed cursor is rejected with `400 bad_request`.
+* Use a cursor only on the endpoint that returned it, with the same filters. Another endpoint may accept it and return the wrong page.
 * `total_count` counts the matches across all pages. It is always present, and `null` where the source can't count: `GET /credits/transactions` (it groups the charges of one run into one item) and `GET /credits/invoices`.
-* `GET /credits/invoices` returns a single page and never a `next_cursor`. Raise `limit` to see further back.
+* `GET /credits/invoices` is the one list that doesn't page: its `next_cursor` is always `null`. Raise `limit` to see further back. The helpers below read that one page and stop.
 
 Read every page like this:
 
@@ -193,9 +217,11 @@ Read every page like this:
 def list_all(path, params=None):
     params = dict(params or {}, limit=100)
     while True:
-        page = requests.get(
+        response = requests.get(
             f"{API_URL}{path}", headers=HEADERS, params=params, timeout=30
-        ).json()
+        )
+        response.raise_for_status()
+        page = response.json()
         yield from page["items"]
         if not page["next_cursor"]:
             return
@@ -212,7 +238,11 @@ for agent in list_all("/library/agents"):
 async function* listAll<T>(path: string, params: Record<string, string> = {}) {
   const query = new URLSearchParams({ ...params, limit: "100" });
   while (true) {
-    const response = await fetch(`${API_URL}${path}?${query}`, { headers: HEADERS });
+    const response = await fetch(`${API_URL}${path}?${query}`, {
+      headers: HEADERS,
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
     const page = (await response.json()) as { items: T[]; next_cursor: string | null };
     yield* page.items;
     if (!page.next_cursor) return;
@@ -239,10 +269,11 @@ curl -s -X POST "$AUTOGPT_API_URL/library/agents/$AGENT_ID/runs" \
   -d '{"inputs": {"topic": "Q3 results"}}'
 ```
 
-* Use a value that identifies the job, such as an order ID or a UUID you store with it. Up to 255 characters.
+* Use a value that identifies the job, such as an order ID or a UUID you store with it. Up to 255 characters. A key made up fresh for each call protects only that call's own retries, so a library should let its callers pass the key.
 * A key lasts 24 hours and is scoped to your user and organization.
 * The first request with a key starts the run. Every later request with that key returns `202` and the same run, **even if its body is different**. To start a different run, use a new key.
 * If the first request is still starting the run, a duplicate gets `409 conflict`. Wait a moment and retry with the same key.
+* If `409` persists, the first request probably started a run but couldn't record it under the key, and the key stays blocked until it expires. Don't start the job again under a new key until you've looked for that run with `GET /runs?graph_id=...&started_after=...`.
 * If the first request failed before a run started, the key is released and a retry starts the run.
 
 ## Status codes

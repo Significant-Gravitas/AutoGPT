@@ -68,6 +68,8 @@ console.log(await response.json());
 
 `Authorization: Bearer <key>` works too. Use it with tools that can only send a bearer token, such as most MCP clients.
 
+Use the base URL exactly as given, with `https` for AutoGPT Cloud, so no redirect is involved: most HTTP clients send a custom header such as `X-API-Key` on to wherever a redirect points.
+
 {% hint style="danger" %}
 An API key is a password to your account. Keep it on servers and in secret stores. Never put it in browser code, a mobile app, a public repository or a log line. If a key leaks, revoke it on the API keys page and create a new one.
 {% endhint %}
@@ -107,7 +109,7 @@ Grant each key the smallest set that works. These sets cover the common integrat
 | …and answer human-in-the-loop reviews | add Read Run Review, Write Run Review |
 | …and pass files to agents | add Read Files, Write Files |
 | …and run agents on a schedule | add Read Schedule, Write Schedule |
-| Build and update agents | Identity, Read Block, Read Graph, Write Graph, Read Library |
+| Build and update agents | Identity, Read Block, Read Graph, Write Graph, Read Library. To try them too, add Run Agent and Read Run, and Write Library to remove them from your library. |
 | Supply third-party credentials an agent needs | Read Integrations, Manage Integrations |
 | An AI coding agent working on your behalf over [MCP](mcp-server.md) | Identity, Read Library, Write Library, Read Graph, Write Graph, Read Block, Run Agent, Read Run, Read Files, Write Files, Read Schedule, Write Schedule |
 | Billing dashboards | Read Credits |

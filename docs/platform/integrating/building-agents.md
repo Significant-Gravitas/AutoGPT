@@ -9,7 +9,7 @@ icon: diagram-project
 
 An agent is a **graph**: a set of **nodes**, each an instance of a **block**, joined by **links** that carry one node's output into another node's input. The API takes the same graph JSON the visual builder saves, so an agent created through the API opens in the builder, and the reverse.
 
-Building needs **Read Block** (to discover blocks), **Write Graph** (to save), and usually **Read Graph** and **Read Library**.
+Building needs **Read Block** (to discover blocks), **Write Graph** (to save), and usually **Read Graph** and **Read Library**. To try the agent as well, add **Run Agent** and **Read Run**, and **Write Library** to remove it from your library afterwards.
 
 {% hint style="info" %}
 To start from an agent that already works, build it in the visual builder, read it with `GET /graphs/{graph_id}`, then change the JSON. It's the fastest way to learn which inputs a block needs.
@@ -62,19 +62,34 @@ To start from an agent that already works, build it in the visual builder, read 
 `GET /blocks` lists every block on the instance, about 430 on a current release, so read all the pages. Each block has an `id`, a `name`, a `description`, `categories`, an `input_schema` and an `output_schema` (both JSON Schema), a `block_type` and its `costs`.
 
 ```python
-blocks, params = [], {"limit": 100}
-while True:
-    page = requests.get(f"{API_URL}/blocks", headers=HEADERS, params=params, timeout=30).json()
-    blocks += page["items"]
-    if not page["next_cursor"]:
-        break
-    params["cursor"] = page["next_cursor"]
+def list_blocks() -> list[dict]:
+    blocks, params = [], {"limit": 100}
+    while True:
+        response = requests.get(f"{API_URL}/blocks", headers=HEADERS, params=params, timeout=30)
+        response.raise_for_status()
+        page = response.json()
+        blocks += page["items"]
+        if not page["next_cursor"]:
+            return blocks
+        params["cursor"] = page["next_cursor"]
 
-by_name = {block["name"]: block for block in blocks}
-print(by_name["FillTextTemplateBlock"]["input_schema"]["properties"].keys())
+
+def find_blocks(blocks: list[dict], *words: str) -> list[dict]:
+    return [
+        block
+        for block in blocks
+        if all(word.casefold() in f"{block['name']} {block['description']}".casefold() for word in words)
+    ]
+
+
+blocks = list_blocks()
+for block in find_blocks(blocks, "word", "count"):
+    print(block["id"], block["name"], "-", block["description"])
 ```
 
-`GET /search?query=send%20email&content_types=BLOCK` finds blocks by meaning. Search uses the instance's search index, which a new self-hosted instance may not have built yet. If search returns nothing, filter the full block list by name and description instead.
+A block's `name` is its class name, such as `WordCharacterCountBlock`. The [block reference](https://agpt.co/docs/integrations) describes each block under a spaced-out title without the suffix, such as **Word Character Count**, so drop `Block` and add the spaces to match the two. The block's `input_schema` and `output_schema` from `GET /blocks` are what the API checks your graph against.
+
+`GET /search?query=count%20words&content_types=BLOCK` finds blocks by meaning, using the instance's search index. A new self-hosted instance usually hasn't built that index, so expect to filter the full list there.
 
 ## Inputs and outputs
 
@@ -85,7 +100,7 @@ What a graph takes and returns is defined by its input and output blocks. The AP
 | `AgentInputBlock` | `c0a8e994-ebf1-4a9c-a4d8-89d09c86741b` | Any input. |
 | `AgentShortTextInputBlock` | `7fcd3bcb-8e1b-4e69-903d-32d3d4a92158` | A line of text. |
 | `AgentLongTextInputBlock` | `90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba` | A paragraph or more. |
-| `AgentNumberInputBlock` | `96dae2bb-97a2-41c2-bd2f-13a3b5a8ea98` | A number. |
+| `AgentNumberInputBlock` | `96dae2bb-97a2-41c2-bd2f-13a3b5a8ea98` | A whole number. A decimal is truncated (`2.5` becomes `2`), not rejected, so use `AgentInputBlock` for decimals. |
 | `AgentToggleInputBlock` | `cbf36ab5-df4a-43b6-8a7f-f7ed8652116e` | A true/false switch. |
 | `AgentDropdownInputBlock` | `655d6fdf-a334-421c-b733-520549c07cd1` | One of a fixed set of options. |
 | `AgentDateInputBlock` | `7e198b09-4994-47db-8b4d-952d98241817` | A date. |
@@ -94,9 +109,11 @@ What a graph takes and returns is defined by its input and output blocks. The AP
 | `AgentTableInputBlock` | `5603b273-f41e-4020-af7d-fbc9c6a8d928` | Rows of data. |
 | `AgentOutputBlock` | `363ae599-353e-4804-937e-b2ee3cef3da4` | A result of the run. |
 
-Every input block takes `name` (the key callers use in `inputs`), and optionally `title`, `description` and `value` (the default). An input with a default becomes optional. Each input block sends what it receives out of its `result` pin.
+Every input block takes `name` (the key callers use in `inputs`), and optionally `title`, `description` and `value` (the default). An input with a default becomes optional. Each input block sends what it receives out of its `result` pin. A run started through the REST API without an input that has no default still starts; that input sends nothing, so the steps after it don't run.
 
 An output block takes `name` (the key in the run's `outputs`) and receives its data on its `value` pin. A run's `outputs` record exactly the value that arrives on that pin, so format text with a block such as `FillTextTemplateBlock` before it reaches the output block. The output block's own `format` field doesn't change what the API returns.
+
+`FillTextTemplateBlock` is the usual way to shape text. Its `format` is a [Jinja2](https://jinja.palletsprojects.com/en/stable/templates/) template rendered in a sandbox, so filters, conditions and loops work: `{{ ticket | upper }}`, `{{ tags | join(", ") }}`, `{% if urgent %}URGENT: {% endif %}`. Some changes, such as upper-casing text, have no block of their own. Values go in as they are; set `escape_html` to `true` when the result is HTML.
 
 ## Dict, list and object pins
 
@@ -140,7 +157,7 @@ A block that calls a third-party service declares a credentials input. You don't
 
 ## Update an agent
 
-Graphs are versioned, and a saved version never changes. `PUT /graphs/{graph_id}` with a complete graph definition saves it as the next version:
+Graphs are versioned, and a saved version never changes. `PUT /graphs/{graph_id}` with a complete graph definition, in the same shape as for `POST /graphs`, saves it as the next version. The body needs no `id` or `version`:
 
 ```bash
 curl -s -X PUT "$AUTOGPT_API_URL/graphs/$GRAPH_ID" \
@@ -148,7 +165,9 @@ curl -s -X PUT "$AUTOGPT_API_URL/graphs/$GRAPH_ID" \
   --data @hello_agent_v2.json
 ```
 
-* The new version becomes the **active** one unless you send `"is_active": false`, and your library agent moves to it.
+* The new version becomes the **active** one unless you send `"is_active": false`, and your library agent moves to it, keeping its ID.
+* Every `PUT` saves a new version, even when nothing changed. A deploy script should skip the call when its graph JSON is the same as last time.
+* To update an agent you made earlier, [find it by name](running-agents.md#find-the-agent) and use its `graph_id`.
 * `GET /graphs/{graph_id}/versions` lists every version. `GET /graphs/{graph_id}?version=2` reads one.
 * `PUT /graphs/{graph_id}/versions/active` with `{"active_graph_version": 1}` rolls back.
 * A run uses the version its library agent points at. `PATCH /library/agents/{agent_id}` with `{"graph_version": 1}` pins it to a version, and `{"auto_update_version": true}` makes it follow the active one.
