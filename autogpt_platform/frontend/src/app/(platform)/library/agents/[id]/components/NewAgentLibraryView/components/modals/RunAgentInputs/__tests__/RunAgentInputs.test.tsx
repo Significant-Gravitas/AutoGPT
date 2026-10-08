@@ -42,7 +42,7 @@ describe("RunAgentInputs", () => {
         />,
       );
 
-      expect(screen.getByRole("checkbox", { name: "SMS" })).toBeDefined();
+      screen.getByRole("checkbox", { name: "SMS" });
       fireEvent.click(screen.getByRole("checkbox", { name: "Email" }));
 
       expect(onChange).toHaveBeenCalledWith({ email: true, sms: false });
