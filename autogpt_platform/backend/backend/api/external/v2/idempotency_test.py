@@ -92,6 +92,45 @@ async def test_a_run_that_started_keeps_its_key_even_if_the_response_fails(
     redis.delete.assert_not_awaited()
 
 
+async def test_a_run_whose_key_could_not_be_recorded_is_never_run_twice(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Recording can fail; if the response then fails too, releasing the key
+    would let the retry start, and charge for, a second run."""
+    store: dict[str, str] = {}
+
+    async def set_(name: str, value: str, nx: bool = False, ex: int = 0) -> bool:
+        if not nx:
+            raise ConnectionError("redis dropped the write")
+        if name in store:
+            return False
+        store[name] = value
+        return True
+
+    async def delete(name: str) -> None:
+        store.pop(name, None)
+
+    mocker.patch(
+        "backend.api.external.v2.idempotency.get_redis_async",
+        new_callable=mock.AsyncMock,
+        return_value=mock.Mock(
+            set=mock.AsyncMock(side_effect=set_),
+            get=mock.AsyncMock(side_effect=store.get),
+            delete=mock.AsyncMock(side_effect=delete),
+        ),
+    )
+
+    with pytest.raises(RuntimeError):
+        async with idempotent_run(KEY, _tenant()) as claim:
+            await claim.record("run-1")
+            raise RuntimeError("serialising the response failed")
+
+    with pytest.raises(fastapi.HTTPException) as retry:
+        async with idempotent_run(KEY, _tenant()):
+            pass
+    assert retry.value.status_code == 409
+
+
 async def test_no_key_means_no_claim(redis: mock.AsyncMock) -> None:
     async with idempotent_run(None, _tenant()) as claim:
         assert claim.existing_run_id is None
