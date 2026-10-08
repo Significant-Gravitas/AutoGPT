@@ -19,7 +19,7 @@ import java.util.UUID
 import org.json.JSONObject
 
 class NativePush(private val activity: ComponentActivity) {
-    private val preferences = activity.getSharedPreferences("push", Context.MODE_PRIVATE)
+    private val preferences by lazy { activity.getSharedPreferences("push", Context.MODE_PRIVATE) }
     private var view: WebView? = null
     private var generation = 0
     private var pendingPermission: ((Boolean) -> Unit)? = null
