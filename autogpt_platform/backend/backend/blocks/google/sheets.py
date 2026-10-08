@@ -43,6 +43,9 @@ def parse_a1_notation(a1: str) -> tuple[str | None, str]:
     (None, "A1:B2")
     """
 
+    quoted_sheet = re.match(r"^('(?:''|[^'])*')!(.*)$", a1)
+    if quoted_sheet:
+        return quoted_sheet.group(1), quoted_sheet.group(2)
     if "!" in a1:
         sheet, cell_range = a1.split("!", 1)
         return sheet, cell_range
@@ -79,10 +82,11 @@ def format_sheet_name(sheet_name: str) -> str:
     # If sheet name contains spaces, special characters, or starts with a digit, wrap in quotes
     if (
         " " in sheet_name
-        or any(char in sheet_name for char in "!@#$%^&*()+-=[]{}|;:,.<>?")
+        or any(char in sheet_name for char in "'!@#$%^&*()+-=[]{}|;:,.<>?")
         or (sheet_name and sheet_name[0].isdigit())
     ):
-        return f"'{sheet_name}'"
+        escaped_sheet_name = sheet_name.replace("'", "''")
+        return f"'{escaped_sheet_name}'"
     return sheet_name
 
 
