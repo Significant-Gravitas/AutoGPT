@@ -26,8 +26,15 @@ const mockSentry = vi.hoisted(() => ({
   getReplay: vi.fn(),
 }));
 
+const mockUseAuth = vi.hoisted(() => ({
+  current: { isLoggedIn: true, isUserLoading: false },
+}));
+
 vi.mock("@/lib/auth/actions", () => mockAuth);
 vi.mock("@sentry/nextjs", () => mockSentry);
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => mockUseAuth.current,
+}));
 
 async function renderRow() {
   render(<AccountMenuFeedbackRow />);
@@ -38,9 +45,8 @@ async function renderRow() {
 describe("AccountMenuFeedbackRow", () => {
   beforeEach(() => {
     mockSidebar.current = null;
-    mockAuth.getCurrentUser.mockResolvedValue({
-      user: { email: "user@example.com" },
-    });
+    mockUseAuth.current = { isLoggedIn: true, isUserLoading: false };
+    mockAuth.getCurrentUser.mockReset();
     mockSentry.getReplay.mockReturnValue({ getReplayId: () => "replay-123" });
     window.history.replaceState({}, "", "/library?sort=updatedAt");
   });
@@ -63,13 +69,27 @@ describe("AccountMenuFeedbackRow", () => {
 
   test("marks values that are not known yet", async () => {
     mockSentry.getReplay.mockReturnValue(undefined);
-    mockAuth.getCurrentUser.mockReturnValue(new Promise(() => {}));
+    mockUseAuth.current = { isLoggedIn: false, isUserLoading: true };
     const button = await renderRow();
 
     expect(button.getAttribute("data-sentry-replay-id")).toBe(
       "not-initialized",
     );
     expect(button.getAttribute("data-is-authenticated")).toBe("unknown");
+  });
+
+  test("reads auth from the client store, not the getCurrentUser server action", async () => {
+    await renderRow();
+
+    expect(mockAuth.getCurrentUser).not.toHaveBeenCalled();
+  });
+
+  test("hides the decorative icon from assistive tech", async () => {
+    const button = await renderRow();
+
+    expect(button.querySelector("svg")?.getAttribute("aria-hidden")).toBe(
+      "true",
+    );
   });
 
   test("closes the mobile sidebar sheet so the Tally popup is usable", async () => {
