@@ -12,13 +12,13 @@ import { GoogleDrivePickerInput } from "@/components/contextual/GoogleDrivePicke
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { TimePicker } from "@/components/molecules/TimePicker/TimePicker";
 import {
-  BlockIOObjectSubSchema,
   BlockIOSubSchema,
   BlockIOTableSubSchema,
   DataType,
   determineDataType,
   TableRow,
 } from "@/lib/autogpt-server-api/types";
+import { getMultiSelectProperties, getSelectOptions } from "./helpers";
 import { useRunAgentInputs } from "./useRunAgentInputs";
 import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -208,30 +208,24 @@ export function RunAgentInputs({
       break;
 
     case DataType.SELECT:
-      if (
-        "enum" in schema &&
-        Array.isArray(schema.enum) &&
-        schema.enum.length > 0
-      ) {
-        innerInputElement = (
-          <DSSelect
-            id={`${baseId}-select`}
-            label={schema.title ?? placeholder ?? "Select"}
-            hideLabel
-            value={value ?? ""}
-            onValueChange={(val: string) => onChange(val)}
-            placeholder={placeholder || "Select an option"}
-            options={schema.enum
-              .filter((opt) => opt)
-              .map((opt) => ({ value: opt, label: String(opt) }))}
-          />
-        );
-        break;
-      }
+      innerInputElement = (
+        <DSSelect
+          id={`${baseId}-select`}
+          label={schema.title ?? placeholder ?? "Select"}
+          hideLabel
+          value={value ?? ""}
+          onValueChange={(val: string) => onChange(val)}
+          placeholder={placeholder || "Select an option"}
+          options={getSelectOptions(schema)
+            .filter((opt) => opt)
+            .map((opt) => ({ value: opt, label: String(opt) }))}
+        />
+      );
+      break;
 
     case DataType.MULTI_SELECT: {
-      const _schema = schema as BlockIOObjectSubSchema;
-      const allKeys = Object.keys(_schema.properties);
+      const properties = getMultiSelectProperties(schema);
+      const allKeys = Object.keys(properties);
       const selectedValues = Object.entries(value || {})
         .filter(([_, v]) => v)
         .map(([k]) => k);
@@ -240,7 +234,7 @@ export function RunAgentInputs({
         <MultiToggle
           items={allKeys.map((key) => ({
             value: key,
-            label: _schema.properties[key]?.title ?? key,
+            label: properties[key]?.title ?? key,
           }))}
           selectedValues={selectedValues}
           onChange={(values: string[]) =>
