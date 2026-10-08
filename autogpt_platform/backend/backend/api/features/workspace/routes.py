@@ -53,18 +53,21 @@ def _sanitize_filename_for_header(
     Uses RFC5987 encoding for non-ASCII characters.
     """
     # Remove CR, LF, and null bytes (header injection prevention)
-    sanitized = re.sub(r"[\r\n\x00]", "", filename)
-    # Escape quotes
-    sanitized = sanitized.replace('"', '\\"')
+    cleaned = re.sub(r"[\r\n\x00]", "", filename)
     # For non-ASCII, use RFC5987 filename* parameter
     # Check if filename has non-ASCII characters
     try:
-        sanitized.encode("ascii")
-        return f'{disposition}; filename="{sanitized}"'
+        cleaned.encode("ascii")
     except UnicodeEncodeError:
-        # Use RFC5987 encoding for UTF-8 filenames
-        encoded = quote(sanitized, safe="")
+        # Use RFC5987 encoding for UTF-8 filenames. Encode the raw name, not
+        # the quoted-string escaped one, so `"` arrives as %22 (not %5C%22).
+        encoded = quote(cleaned, safe="")
         return f"{disposition}; filename*=UTF-8''{encoded}"
+    # Quoted-string: escape backslash before quote. Otherwise `\"` in the
+    # name becomes `\\"`, the quote closes the string, and the rest of the
+    # name is parsed as extra parameters (e.g. an injected filename*).
+    escaped = cleaned.replace("\\", "\\\\").replace('"', '\\"')
+    return f'{disposition}; filename="{escaped}"'
 
 
 logger = logging.getLogger(__name__)

@@ -1012,6 +1012,43 @@ class TestSanitizeFilenameForHeader:
         result = _sanitize_filename_for_header("")
         assert result == 'attachment; filename=""'
 
+    @staticmethod
+    def _parse(header_value: str):
+        from email import policy
+        from email.message import EmailMessage
+
+        msg = EmailMessage(policy=policy.default)
+        msg["Content-Disposition"] = header_value
+        header = msg["Content-Disposition"]
+        return header.content_disposition, dict(header.params), header.defects
+
+    def test_backslash_quote_cannot_inject_params(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        name = "report.pdf\\\"; filename*=UTF-8''pwn.exe; x=\""
+        disposition, params, defects = self._parse(_sanitize_filename_for_header(name))
+        assert disposition == "attachment"
+        assert not defects
+        assert params == {"filename": name}
+
+    def test_trailing_backslash_is_well_formed(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header("a\\")
+        assert result == 'attachment; filename="a\\\\"'
+        _, params, defects = self._parse(result)
+        assert not defects
+        assert params == {"filename": "a\\"}
+
+    def test_unicode_encodes_raw_name(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header('日本"語\\.pdf')
+        assert "%5C%22" not in result
+        _, params, defects = self._parse(result)
+        assert not defects
+        assert params == {"filename": '日本"語\\.pdf'}
+
 
 # -- _create_streaming_response tests --
 
