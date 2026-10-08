@@ -131,6 +131,7 @@ class FindCapabilityTool(BaseTool):
             kind=_KIND_ARG.get(kind or ""),
             connections=connections,
             permissions=get_current_permissions(),
+            prefer_mcp=session.expert_id is not None and context != "graph",
         )
         if not result.hits and not result.fallback:
             return NoResultsResponse(

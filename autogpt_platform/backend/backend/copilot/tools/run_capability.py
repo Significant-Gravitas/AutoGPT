@@ -23,6 +23,7 @@ from backend.copilot.capabilities.registry import configured_tool, get_registry
 from backend.copilot.capabilities.resolve import resolve_entry
 from backend.copilot.capabilities.sources import skill_name
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
+from backend.copilot.context import get_current_permissions
 from backend.copilot.gate import METERED, gate_active
 from backend.copilot.gate.subject import NO_OP, Subject, block_subject, mcp_subject
 from backend.copilot.model import ChatSession
@@ -38,11 +39,16 @@ from .describe_capability import (
     describe_expert,
     describe_skill,
 )
-from .helpers import required_input_keys, resolve_block_credentials
+from .helpers import (
+    prepare_block_for_execution,
+    required_input_keys,
+    resolve_block_credentials,
+)
 from .models import (
     CapabilityDetailsResponse,
     ErrorResponse,
     ReviewRequiredResponse,
+    SetupRequirementsResponse,
     ToolResponseBase,
 )
 from .run_block import RunBlockTool
@@ -116,7 +122,7 @@ class RunCapabilityTool(BaseTool):
             return NO_OP
         if entry.kind == "mcp_server":
             return _mcp_subject(entry.implementations[0].ref, payload or {})
-        if entry.kind != "block":
+        if entry.kind != "block" or (payload or {}).get("connect", False):
             return NO_OP
         block_id = next(
             (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
@@ -166,11 +172,11 @@ class RunCapabilityTool(BaseTool):
         if not user_id:
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
-            )
+            ).from_outside()
         if input is not None and not isinstance(input, dict):
             return ErrorResponse(
                 message="input must be an object", session_id=session_id
-            )
+            ).from_outside()
         payload: dict[str, Any] = dict(input or {})
         entry = await resolve_session_entry(user_id, session, id)
         if entry is None and id.strip().lower().startswith("https://"):
@@ -189,9 +195,11 @@ class RunCapabilityTool(BaseTool):
                     "server's secure endpoint."
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
         if entry is None:
-            return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session_id)
+            return ErrorResponse(
+                message=UNKNOWN_ID_HINT, session_id=session_id
+            ).from_outside()
         if entry.kind == "block":
             return await _run_block(
                 entry, user_id, session, payload, validate_only, approved
@@ -210,14 +218,14 @@ class RunCapabilityTool(BaseTool):
                 return ErrorResponse(
                     message=setup_hint(entry.schema_ref or entry.id),
                     session_id=session_id,
-                )
+                ).from_outside()
             return await _run_mcp(
                 entry, server_url, user_id, session, payload, validate_only
             )
         return ErrorResponse(
             message=f"Capabilities of kind '{entry.kind}' cannot run yet.",
             session_id=session_id,
-        )
+        ).from_outside()
 
 
 async def _run_block(
@@ -233,6 +241,43 @@ async def _run_block(
     block_id = next(
         (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
     )
+    if payload.pop("connect", False):
+        permissions = get_current_permissions()
+        if permissions is not None and not permissions.is_block_allowed(
+            block_id, entry.name
+        ):
+            return ErrorResponse(
+                message=(
+                    f"Block '{entry.name}' ({block_id}) is not permitted by the "
+                    "current execution permissions. Use find_capability to discover "
+                    "blocks that are allowed."
+                ),
+                session_id=session.session_id,
+            )
+        prep = await prepare_block_for_execution(
+            block_id=block_id,
+            input_data=payload,
+            user_id=user_id,
+            session=session,
+            session_id=session.session_id,
+            dry_run=False,
+            validate_only=False,
+        )
+        picker_only = (
+            isinstance(prep, SetupRequirementsResponse)
+            and prep.setup_info.user_readiness.has_all_credentials
+        )
+        if isinstance(prep, ToolResponseBase) and not picker_only:
+            return prep
+        return CapabilityDetailsResponse(
+            message=(
+                f"The user is already connected for {entry.name}. "
+                "Nothing was run. Call again without connect to act."
+            ),
+            capability=entry.listing(),
+            parameters={},
+            session_id=session.session_id,
+        )
     return await RunBlockTool()._execute(
         user_id,
         session,
@@ -264,7 +309,9 @@ async def _describe_tool(
     name = entry.implementations[0].ref
     tool = configured_tool(name)
     if tool is None:
-        return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session.session_id)
+        return ErrorResponse(
+            message=UNKNOWN_ID_HINT, session_id=session.session_id
+        ).from_outside()
     if gate_denied(name):
         return gate_denied_error(name, session.session_id)
     return CapabilityDetailsResponse(
@@ -272,7 +319,7 @@ async def _describe_tool(
         capability=entry.listing(),
         parameters=tool.parameters,
         session_id=session.session_id,
-    )
+    ).from_outside()
 
 
 async def _run_skill(
@@ -308,7 +355,7 @@ async def _run_mcp(
     if arguments is not None and not isinstance(arguments, dict):
         return ErrorResponse(
             message="input.arguments must be an object", session_id=session.session_id
-        )
+        ).from_outside()
     connect = bool(payload.get("connect", False))
     if validate_only:
         return CapabilityDetailsResponse(
@@ -321,7 +368,7 @@ async def _run_mcp(
             ),
             parameters=MCP_RUN_PARAMETERS,
             session_id=session.session_id,
-        )
+        ).from_outside()
     host = urlsplit(server_url).hostname or server_url
     # With the gate on it has already decided this call on the server's
     # effect map; the verb heuristic is the flag-off path only.
@@ -353,7 +400,7 @@ async def _run_mcp(
             block_name=f"{host}/{tool_name}",
             review_id=review_id,
             input_data=review.model_dump(),
-        )
+        ).from_outside()
     if tool_name:
         emit_tool_display_name(f"{host}: {tool_name}")
     return await RunMCPToolTool()._execute(

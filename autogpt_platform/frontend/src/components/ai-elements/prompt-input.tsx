@@ -251,6 +251,9 @@ export function PromptInputTextarea({
 
       if (isKey(e, "Enter")) {
         if (e.shiftKey) return;
+        // On touch-first devices (phones/tablets) Enter inserts a newline;
+        // users send with the submit button instead.
+        if (window.matchMedia?.("(pointer: coarse)")?.matches) return;
         e.preventDefault();
 
         e.currentTarget.form?.requestSubmit();
