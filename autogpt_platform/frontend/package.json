@@ -35,6 +35,7 @@
     "defaults"
   ],
   "dependencies": {
+    "@ai-sdk/openai-compatible": "2.0.81",
     "@ai-sdk/react": "3.0.61",
     "@better-auth/core": "1.6.22",
     "@faker-js/faker": "10.0.0",
@@ -42,6 +43,8 @@
     "@hookform/resolvers": "5.2.2",
     "@hugeicons/core-free-icons": "^4.2.3",
     "@hugeicons/react": "^1.1.9",
+    "@openuidev/lang-core": "0.3.0",
+    "@openuidev/react-lang": "0.3.0",
     "@phosphor-icons/react": "2.1.10",
     "@posthog/react": "1.7.0",
     "@radix-ui/react-accordion": "1.2.12",

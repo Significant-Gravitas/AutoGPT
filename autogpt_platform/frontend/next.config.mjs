@@ -1,4 +1,5 @@
 import { withSentryConfig } from "@sentry/nextjs";
+import { fileURLToPath } from "node:url";
 
 // Allow Docker builds to skip source-map generation (halves memory usage).
 // Defaults to true so Vercel/local builds are unaffected.
@@ -17,6 +18,11 @@ const nextConfig = {
   },
   // Suppress the "X-Powered-By: Next.js" header (framework fingerprinting).
   poweredByHeader: false,
+  turbopack: {
+    resolveAlias: {
+      "@openuidev/devtools": "./src/lib/openui/disabled-devtools.ts",
+    },
+  },
   async rewrites() {
     return [
       {
@@ -51,6 +57,9 @@ const nextConfig = {
   // cssnano-simple comment parser when processing very large CSS chunks.
   // CSS is still bundled correctly; gzip handles most of the size savings anyway.
   webpack: (config, { dev }) => {
+    config.resolve.alias["@openuidev/devtools"] = fileURLToPath(
+      new URL("./src/lib/openui/disabled-devtools.ts", import.meta.url),
+    );
     if (!dev) {
       // Next.js adds CssMinimizerPlugin internally (after user config), so we
       // can't filter it from config.plugins. Instead, intercept the webpack
