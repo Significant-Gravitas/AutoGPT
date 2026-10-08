@@ -160,7 +160,17 @@ class AuthorizeResponse(BaseModel):
     redirect_url: str = Field(description="URL to redirect the user to")
 
 
-@router.post("/authorize")
+@router.post(
+    "/authorize",
+    responses={
+        400: {
+            "description": (
+                "Unknown or inactive client_id, or redirect_uri not registered "
+                "for the application (JSON error, no redirect)"
+            )
+        },
+    },
+)
 async def authorize(
     request: AuthorizeRequest = Body(),
     user_id: str = Security(get_user_id),

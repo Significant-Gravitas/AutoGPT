@@ -11512,6 +11512,9 @@
               }
             }
           },
+          "400": {
+            "description": "Unknown or inactive client_id, or redirect_uri not registered for the application (JSON error, no redirect)"
+          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
