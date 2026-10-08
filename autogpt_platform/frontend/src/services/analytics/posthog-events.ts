@@ -1,6 +1,6 @@
 // Every PostHog event name the browser sends, in one place. What each one
 // means, who sends it and which properties it carries is in
-// docs/platform/tracking-plan.md; the backend's list is
+// docs/engineering/tracking-plan.md; the backend's list is
 // backend/util/posthog_events.py.
 //
 // The names follow the product analytics plan ("Every Second Counts"). Never
@@ -21,6 +21,15 @@ export const PageEvent = {
 // PostHog resolved the same flag to different values.
 export const FeatureFlagEvent = {
   FEATURE_FLAG_MISMATCHED: "feature_flag_mismatched",
+} as const;
+
+// Marketing email refusals made in the app. `surface` says where; the
+// refusal itself is stored on the user (`marketingOptOutAt`).
+export const MarketingConsentEvent = {
+  // `surface: "signup"`: "opt out" in the legal line under the signup buttons
+  // was clicked (not Undo). Nothing else rides along: there is no user yet,
+  // so it only measures the opt-out rate.
+  MARKETING_OPTED_OUT: "marketing_opted_out",
 } as const;
 
 export const ExpertsFunnelEvent = {
@@ -163,6 +172,7 @@ export const MonetizationEvent = {
 export const PostHogEvent = {
   ...PageEvent,
   ...FeatureFlagEvent,
+  ...MarketingConsentEvent,
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,
   ...BrainDumpEvent,
