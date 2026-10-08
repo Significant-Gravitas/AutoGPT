@@ -19,7 +19,7 @@ from e2b.envd.rpc import handle_rpc_exception
 from e2b.exceptions import NotFoundException, TimeoutException
 
 from ._test_data import make_session
-from .bash_exec import BashExecTool
+from .bash_exec import _KILL_TREE_SCRIPT, BashExecTool
 from .models import BashExecResponse, ErrorResponse
 
 _USER = "user-bash-exec-test"
@@ -919,8 +919,24 @@ def _alive(pid: int) -> bool:
 def test_kill_tree_script_kills_a_compound_commands_children():
     # The reviewer's repro: killing the shell of `sleep 30 && echo done` left
     # sleep running under a new parent.
-    from .bash_exec import _KILL_TREE_SCRIPT
+    _kill_tree_of_sleep_then_echo()
 
+
+@pytest.mark.skipif(sys.platform != "linux", reason="reads /proc")
+def test_kill_tree_script_holds_while_other_processes_exit():
+    # A process exiting between the /proc glob and awk reading its stat file
+    # aborted awk, so the listing came back empty and the child was left
+    # running, or stopped and orphaned once the shell was killed.
+    churn = subprocess.Popen(["bash", "-c", "while :; do /bin/true; done"])
+    try:
+        for _ in range(10):
+            _kill_tree_of_sleep_then_echo()
+    finally:
+        churn.kill()
+        churn.wait(timeout=10)
+
+
+def _kill_tree_of_sleep_then_echo() -> None:
     shell = subprocess.Popen(["bash", "-c", "sleep 30 && echo done"])
     try:
         for _ in range(50):

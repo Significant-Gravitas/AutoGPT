@@ -77,23 +77,34 @@ _HUNG_CAP_MARGIN_SECONDS = 120
 # shell first, so it cannot start the next step once a child dies, then stops
 # and kills every process under it. The shell itself is left for envd's kill.
 # Exits non-zero if any of them is still alive afterwards (e.g. one run as root).
+# /proc is read through cat because awk aborts on an input file that vanished
+# after the glob expanded, which any process exiting meanwhile causes, and the
+# listing would then come back empty. A child can fork between a listing and
+# its STOP, so the stopping repeats until the listing holds still.
 _KILL_TREE_SCRIPT = r"""
 p=__PID__
 kill -STOP "$p" 2>/dev/null || exit 0
 under() {
-  awk -v root="$p" '
+  cat /proc/[0-9]*/stat 2>/dev/null | awk -v root="$p" '
     { pid = $1; s = $0; sub(/.*\) /, "", s); split(s, f, " ")
       parent[pid] = f[2]; state[pid] = f[1] }
     END { q[1] = root; n = 1
           while (n) { r = q[n--]
                       for (k in parent) if (parent[k] == r) {
                         q[++n] = k; if (state[k] != "Z") print k } } }
-  ' /proc/[0-9]*/stat 2>/dev/null
+  ' | sort -n
 }
-kids=$(under); [ -n "$kids" ] && kill -STOP $kids 2>/dev/null
-kids=$(under); [ -n "$kids" ] && kill -KILL $kids 2>/dev/null
-sleep 0.2
-[ -z "$(under)" ]
+kids=
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  now=$(under); [ "$now" = "$kids" ] && break
+  kids=$now; [ -n "$kids" ] && kill -STOP $kids 2>/dev/null
+done
+[ -n "$kids" ] && kill -KILL $kids 2>/dev/null
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [ -z "$(under)" ] && exit 0
+  sleep 0.1
+done
+exit 1
 """
 
 
