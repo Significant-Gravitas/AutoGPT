@@ -118,7 +118,7 @@ class ListAgentTriggersTool(BaseTool):
             parent = await ldb.get_library_agent(id=library_agent_id, user_id=user_id)
         except NotFoundError as e:
             return ErrorResponse(
-                message=f"Library agent not found: {e}",
+                message=f"Library workflow not found: {e}",
                 error="library_agent_not_found",
                 session_id=session_id,
             )
@@ -175,7 +175,7 @@ class ListAgentTriggersTool(BaseTool):
         ]
 
         message = (
-            f"Found {len(triggers)} trigger(s) for this agent."
+            f"Found {len(triggers)} trigger(s) for this workflow."
             if triggers
             else "No triggers configured."
         )

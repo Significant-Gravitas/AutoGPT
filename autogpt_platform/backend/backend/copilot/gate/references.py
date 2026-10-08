@@ -242,7 +242,7 @@ async def _library_folder(folder_id: str, call: _Call) -> _Found | None:
         name=folder.name,
         href=f"/library?{urlencode({'folder': folder.id})}",
         meta=[
-            _count(folder.agent_count, "agent"),
+            _count(folder.agent_count, "workflow"),
             _count(folder.subfolder_count, "subfolder"),
             f"In {parent.name}" if parent else None,
         ],
@@ -282,7 +282,7 @@ async def _preset(preset_id: str, call: _Call) -> _Found | None:
         href=_agent_href(agent.id, activeTab=tab, activeItem=item) if agent else None,
         description=preset.description,
         meta=[
-            f"Agent: {agent.name}" if agent else None,
+            f"Workflow: {agent.name}" if agent else None,
             None if preset.is_active else "Inactive",
         ],
     )
@@ -312,7 +312,7 @@ async def _schedule(schedule_id: str, call: _Call) -> _Found | None:
         meta=[
             _cron(job.cron) if job.cron else "Runs once",
             _when("Next run", when) if when else "Paused",
-            f"Agent: {agent.name}" if agent else None,
+            f"Workflow: {agent.name}" if agent else None,
         ],
     )
 
@@ -409,7 +409,7 @@ async def _routine(routine_id: str, call: _Call) -> _Found | None:
 async def _store_listing(version_id: str, call: _Call) -> _Found | None:
     agent = await store_db().get_store_agent_by_version_id(version_id)
     return _Found(
-        kind="Marketplace agent",
+        kind="Marketplace workflow",
         name=agent.agent_name,
         href=f"/marketplace/agent/{quote(agent.creator, safe='')}/"
         f"{quote(agent.slug, safe='')}",
@@ -534,7 +534,7 @@ async def _parent_folder(parent_id: str, call: _Call) -> LibraryFolder | None:
 
 def _agent(agent: LibraryAgent) -> _Found:
     return _Found(
-        kind="Agent",
+        kind="Workflow",
         name=agent.name,
         href=_agent_href(agent.id),
         description=agent.description,

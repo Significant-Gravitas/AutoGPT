@@ -81,8 +81,8 @@ class CustomizeAgentTool(BaseTool):
             session=session,
             session_id=session_id,
             missing_message=(
-                "Please provide agent_json with the complete customized agent "
-                "graph, or agent_json_ref pointing at the workspace agent file."
+                "Please provide agent_json with the complete customized "
+                "workflow, or agent_json_ref pointing at the workspace workflow file."
             ),
         )
         if resolve_error is not None:
@@ -115,7 +115,7 @@ class CustomizeAgentTool(BaseTool):
             session_id=session_id,
             save=save,
             is_update=False,
-            default_name="Customized Agent",
+            default_name="Customized Workflow",
             library_agents=library_agents,
             folder_id=folder_id,
         )

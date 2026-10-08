@@ -116,7 +116,7 @@ class InstallExpertWorkflowTool(BaseTool):
                 listing_id = await _listing_id_from_slug(username_agent_slug)
                 if listing_id is None:
                     return ErrorResponse(
-                        message=f"Marketplace agent '{username_agent_slug}' not found",
+                        message=f"Marketplace workflow '{username_agent_slug}' not found",
                         session_id=session_id,
                     )
             await settle_expert_grants(user_id, session)

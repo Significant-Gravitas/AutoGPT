@@ -72,7 +72,7 @@ class ValidateAgentGraphTool(BaseTool):
             missing_message=(
                 "Please provide a valid agent JSON object via agent_json (inline "
                 'or an "@@agptfile:<path>" string), or agent_json_ref pointing '
-                "at the workspace agent file."
+                "at the workspace workflow file."
             ),
             missing_error="Missing or invalid agent_json parameter",
             invalid_error="Missing or invalid agent_json parameter",
@@ -85,7 +85,7 @@ class ValidateAgentGraphTool(BaseTool):
 
         if not nodes:
             return ErrorResponse(
-                message="The agent JSON has no nodes. An agent needs at least one block.",
+                message="The agent JSON has no nodes. A workflow needs at least one block.",
                 error="empty_agent",
                 session_id=session_id,
             )
@@ -104,7 +104,7 @@ class ValidateAgentGraphTool(BaseTool):
 
         if is_valid:
             return ValidationResultResponse(
-                message="Agent graph is valid! No issues found.",
+                message="Workflow is valid! No issues found.",
                 valid=True,
                 errors=[],
                 error_count=0,

@@ -533,7 +533,7 @@ async def test_run_agent_rejects_unknown_input_fields(setup_test_data):
         "unknown_field",
     }
     assert "inputs" in result_data  # Contains the valid schema
-    assert "Agent was not executed" in result_data["message"]
+    assert "Workflow was not executed" in result_data["message"]
 
 
 # ---------------------------------------------------------------------------

@@ -91,9 +91,9 @@ class EditAgentTool(BaseTool):
             elif agent_id != builder_graph_id:
                 return ErrorResponse(
                     message=(
-                        "This chat is bound to the builder's current agent. "
-                        "Editing a different agent is not allowed here — "
-                        "open that agent in the builder instead."
+                        "This chat is bound to the builder's current workflow. "
+                        "Editing a different workflow is not allowed here — "
+                        "open that workflow in the builder instead."
                     ),
                     error="builder_session_graph_mismatch",
                     session_id=session_id,
@@ -105,7 +105,7 @@ class EditAgentTool(BaseTool):
 
         if not agent_id:
             return ErrorResponse(
-                message="Please provide the agent ID to edit.",
+                message="Please provide the workflow ID to edit.",
                 error="missing_agent_id",
                 session_id=session_id,
             )
@@ -127,9 +127,9 @@ class EditAgentTool(BaseTool):
             session=session,
             session_id=session_id,
             missing_message=(
-                "Please provide agent_json with the complete updated agent "
-                'graph (inline or as an "@@agptfile:<path>" string), or '
-                "agent_json_ref pointing at the workspace agent file."
+                "Please provide agent_json with the complete updated "
+                'workflow (inline or as an "@@agptfile:<path>" string), or '
+                "agent_json_ref pointing at the workspace workflow file."
             ),
         )
         if resolve_error is not None:
@@ -148,7 +148,7 @@ class EditAgentTool(BaseTool):
         current_agent = await get_agent_as_json(agent_id, user_id)
         if current_agent is None:
             return ErrorResponse(
-                message=f"Could not find agent with ID '{agent_id}' in your library.",
+                message=f"Could not find workflow with ID '{agent_id}' in your library.",
                 error="agent_not_found",
                 session_id=session_id,
             )
@@ -161,7 +161,7 @@ class EditAgentTool(BaseTool):
                 message=(
                     "This edit changes the webhook trigger block's configuration "
                     f"({', '.join(changed_trigger_fields)}), which can't be set "
-                    "by editing the graph — that would change the agent's global "
+                    "by editing the graph — that would change the workflow's global "
                     "default for everyone who uses it. A trigger's configuration "
                     "lives on a per-trigger preset: use the "
                     "tool:setup_agent_webhook_trigger tool with these fields as "
@@ -185,7 +185,7 @@ class EditAgentTool(BaseTool):
             session_id=session_id,
             save=save,
             is_update=True,
-            default_name="Updated Agent",
+            default_name="Updated Workflow",
             library_agents=library_agents,
         )
 

@@ -144,12 +144,12 @@ export function createAgent(id = "agent") {
     subject: {
       kind: "tool",
       key: "create_agent",
-      name: "Create an agent",
+      name: "Create a workflow",
       effect: "platform",
       irreversible: false,
     },
     chatRules: ["allow", "judge"],
-    headline: { ask: "Create an agent" },
+    headline: { ask: "Create a workflow" },
   });
 }
 

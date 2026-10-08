@@ -201,7 +201,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         if not (trigger_node := graph.webhook_input_node):
             return ErrorResponse(
                 message=(
-                    f"Agent '{graph.name}' has no webhook trigger block, so it "
+                    f"Workflow '{graph.name}' has no webhook trigger block, so it "
                     "can't have a webhook trigger. Run or schedule it instead."
                 ),
                 error="no_webhook_trigger",
@@ -283,7 +283,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 )
             except NotFoundError:
                 return None, ErrorResponse(
-                    message=f"Library agent '{library_agent_id}' not found.",
+                    message=f"Library workflow '{library_agent_id}' not found.",
                     error="library_agent_not_found",
                     session_id=session_id,
                 )
@@ -296,7 +296,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         )
         if not graph:
             return None, ErrorResponse(
-                message=f"Agent graph '{graph_id}' not found.",
+                message=f"Workflow '{graph_id}' not found.",
                 error="graph_not_found",
                 session_id=session_id,
             )

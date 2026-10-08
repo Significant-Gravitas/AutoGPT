@@ -49,7 +49,7 @@ async def fix_validate_and_save(
     session_id: str | None,
     save: bool = True,
     is_update: bool = False,
-    default_name: str = "Agent",
+    default_name: str = "Workflow",
     preview_message: str | None = None,
     save_message: str | None = None,
     library_agents: list[dict[str, Any]] | None = None,
@@ -114,7 +114,7 @@ async def fix_validate_and_save(
     except Exception as e:
         logger.error(f"Validation failed with exception: {e}", exc_info=True)
         return ErrorResponse(
-            message="Failed to validate the agent. Please try again.",
+            message="Failed to validate the workflow. Please try again.",
             error="validation_exception",
             details={"exception": str(e)},
             session_id=session_id,
@@ -133,6 +133,12 @@ async def fix_validate_and_save(
         "updated agent",
         "new agent",
         "my agent",
+        "workflow",
+        "generated workflow",
+        "customized workflow",
+        "updated workflow",
+        "new workflow",
+        "my workflow",
     }
     metadata_warnings: list[str] = []
     if not agent_json.get("name") or agent_name.lower().strip() in _GENERIC_NAMES:
@@ -143,7 +149,7 @@ async def fix_validate_and_save(
     if metadata_warnings:
         missing = " and ".join(metadata_warnings)
         metadata_hint = (
-            f" Note: the agent is missing a meaningful {missing}. "
+            f" Note: the workflow is missing a meaningful {missing}. "
             f"Please update the agent_json to include them."
         )
 
@@ -152,7 +158,7 @@ async def fix_validate_and_save(
             message=(
                 (
                     preview_message
-                    or f"Agent '{agent_name}' with {node_count} blocks is ready."
+                    or f"Workflow '{agent_name}' with {node_count} blocks is ready."
                 )
                 + metadata_hint
             ),
@@ -166,7 +172,7 @@ async def fix_validate_and_save(
 
     if not user_id:
         return ErrorResponse(
-            message="You must be logged in to save agents.",
+            message="You must be logged in to save workflows.",
             error="auth_required",
             session_id=session_id,
         )
@@ -181,7 +187,7 @@ async def fix_validate_and_save(
         )
         return AgentSavedResponse(
             message=(
-                (save_message or f"Agent '{created_graph.name}' has been saved!")
+                (save_message or f"Workflow '{created_graph.name}' has been saved!")
                 + metadata_hint
             ),
             agent_id=created_graph.id,
@@ -195,7 +201,7 @@ async def fix_validate_and_save(
     except Exception as e:
         logger.error(f"Failed to save agent: {e}", exc_info=True)
         return ErrorResponse(
-            message=f"Failed to save the agent: {str(e)}",
+            message=f"Failed to save the workflow: {str(e)}",
             error="save_failed",
             details={"exception": str(e)},
             session_id=session_id,

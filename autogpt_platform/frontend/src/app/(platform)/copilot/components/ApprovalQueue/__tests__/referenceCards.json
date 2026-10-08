@@ -32,7 +32,7 @@
             "description": null,
             "meta": [
               {
-                "text": "4 agents",
+                "text": "4 workflows",
                 "cron": null,
                 "label": null,
                 "at": null
@@ -53,7 +53,7 @@
             "avatar_url": null,
             "avatar_color": null,
             "skills": [],
-            "summary": "4 agents · 1 subfolder · In Finance"
+            "summary": "4 workflows · 1 subfolder · In Finance"
           }
         ],
         "reference_totals": {
@@ -132,7 +132,7 @@
             "description": null,
             "meta": [
               {
-                "text": "4 agents",
+                "text": "4 workflows",
                 "cron": null,
                 "label": null,
                 "at": null
@@ -147,7 +147,7 @@
             "avatar_url": null,
             "avatar_color": null,
             "skills": [],
-            "summary": "4 agents · 1 subfolder"
+            "summary": "4 workflows · 1 subfolder"
           },
           {
             "key": "agent_ids",
@@ -155,7 +155,7 @@
             "id": "lib-digest",
             "name": "Morning digest",
             "href": "/library/agents/lib-digest",
-            "kind": "Agent",
+            "kind": "Workflow",
             "description": "Summarises overnight email and news at 7am.",
             "meta": [
               {
@@ -202,7 +202,7 @@
             "id": "lib-triage",
             "name": "Inbox triage",
             "href": "/library/agents/lib-triage",
-            "kind": "Agent",
+            "kind": "Workflow",
             "description": "Labels and routes new support email.",
             "meta": [
               {
@@ -235,7 +235,7 @@
             "id": "lib-notes",
             "name": "Meeting notes",
             "href": "/library/agents/lib-notes",
-            "kind": "Agent",
+            "kind": "Workflow",
             "description": "Turns call recordings into action items.",
             "meta": [
               {
@@ -268,7 +268,7 @@
             "id": "lib-invoices",
             "name": "Invoice chaser",
             "href": "/library/agents/lib-invoices",
-            "kind": "Agent",
+            "kind": "Workflow",
             "description": "Nudges clients about overdue invoices.",
             "meta": [
               {
@@ -306,7 +306,7 @@
         "subject": {
           "kind": "tool",
           "key": "move_agents_to_folder",
-          "name": "Move agents into library folder",
+          "name": "Move workflows into library folder",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -316,7 +316,7 @@
         "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
-          "ask": "Move agents into library folder",
+          "ask": "Move workflows into library folder",
           "object": "Archive",
           "object_key": "folder_id"
         },
@@ -372,7 +372,7 @@
                 "at": "2026-09-25T07:00:00+00:00"
               },
               {
-                "text": "Agent: Morning digest",
+                "text": "Workflow: Morning digest",
                 "cron": null,
                 "label": null,
                 "at": null
@@ -381,7 +381,7 @@
             "avatar_url": null,
             "avatar_color": null,
             "skills": [],
-            "summary": "Runs 0 7 * * * · Next run 2026-09-25 · Agent: Morning digest"
+            "summary": "Runs 0 7 * * * · Next run 2026-09-25 · Workflow: Morning digest"
           }
         ],
         "reference_totals": {
@@ -722,7 +722,7 @@
             "id": "g-digest",
             "name": "Morning digest",
             "href": "/library/agents/lib-digest",
-            "kind": "Agent",
+            "kind": "Workflow",
             "description": "Summarises overnight email and news at 7am.",
             "meta": [
               {
@@ -759,7 +759,7 @@
         "subject": {
           "kind": "tool",
           "key": "edit_agent",
-          "name": "Edit an agent",
+          "name": "Edit a workflow",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -769,7 +769,7 @@
         "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
-          "ask": "Edit an agent",
+          "ask": "Edit a workflow",
           "object": "Morning digest",
           "object_key": "agent_id"
         },
@@ -813,7 +813,7 @@
             "description": "The digest, but Mondays only.",
             "meta": [
               {
-                "text": "Agent: Morning digest",
+                "text": "Workflow: Morning digest",
                 "cron": null,
                 "label": null,
                 "at": null
@@ -822,7 +822,7 @@
             "avatar_url": null,
             "avatar_color": null,
             "skills": [],
-            "summary": "Agent: Morning digest"
+            "summary": "Workflow: Morning digest"
           }
         ],
         "reference_totals": {
@@ -888,7 +888,7 @@
             "description": "Runs when an invoice lands.",
             "meta": [
               {
-                "text": "Agent: Morning digest",
+                "text": "Workflow: Morning digest",
                 "cron": null,
                 "label": null,
                 "at": null
@@ -897,7 +897,7 @@
             "avatar_url": null,
             "avatar_color": null,
             "skills": [],
-            "summary": "Agent: Morning digest"
+            "summary": "Workflow: Morning digest"
           }
         ],
         "reference_totals": {
@@ -1039,7 +1039,7 @@
             "id": "slv-receipts",
             "name": "Receipt matcher",
             "href": "/marketplace/agent/ledgerly/receipt-matcher",
-            "kind": "Marketplace agent",
+            "kind": "Marketplace workflow",
             "description": "Matches card spend to emailed receipts.",
             "meta": [
               {

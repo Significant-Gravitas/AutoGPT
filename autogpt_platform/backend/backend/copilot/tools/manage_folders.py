@@ -478,7 +478,7 @@ class DeleteFolderTool(BaseTool):
             )
 
         return FolderDeletedResponse(
-            message="Folder deleted. Any agents inside were moved to root level.",
+            message="Folder deleted. Any workflows inside were moved to root level.",
             folder_id=folder_id,
             session_id=session_id,
         )
@@ -533,7 +533,7 @@ class MoveAgentsToFolderTool(BaseTool):
 
         if not agent_ids:
             return ErrorResponse(
-                message="Please provide at least one agent ID.",
+                message="Please provide at least one workflow ID.",
                 error="missing_agent_ids",
                 session_id=session_id,
             )
@@ -546,7 +546,7 @@ class MoveAgentsToFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to move agents: {e}",
+                message=f"Failed to move workflows: {e}",
                 error="move_agents_failed",
                 session_id=session_id,
             )
@@ -555,7 +555,7 @@ class MoveAgentsToFolderTool(BaseTool):
         agent_names = [a.name for a in moved]
         dest = "the folder" if folder_id else "root level"
         names_str = (
-            ", ".join(agent_names) if agent_names else f"{len(agent_ids)} agent(s)"
+            ", ".join(agent_names) if agent_names else f"{len(agent_ids)} workflow(s)"
         )
         return AgentsMovedToFolderResponse(
             message=f"Moved {names_str} to {dest}.",

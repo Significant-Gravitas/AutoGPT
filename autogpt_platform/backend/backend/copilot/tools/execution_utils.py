@@ -247,15 +247,15 @@ def build_run_health_warning(
         return (
             f"WARNING: {len(node_failures)} node(s) FAILED despite the COMPLETED "
             f"status ({details}). Treat this run as unsuccessful — inspect "
-            "node_executions, fix the agent, and re-verify before reporting "
+            "node_executions, fix the workflow, and re-verify before reporting "
             "success."
         )
     if not outputs:
         return (
             "WARNING: the run COMPLETED but produced no outputs. If this "
-            "agent declares AgentOutput blocks, that usually means a broken "
+            "workflow declares AgentOutput blocks, that usually means a broken "
             "link or a node that silently produced nothing — inspect "
             "node_executions before reporting success. (Side-effect-only "
-            "agents with no declared outputs legitimately finish this way.)"
+            "workflows with no declared outputs legitimately finish this way.)"
         )
     return None

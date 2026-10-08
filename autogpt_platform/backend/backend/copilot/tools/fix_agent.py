@@ -85,7 +85,7 @@ class FixAgentGraphTool(BaseTool):
             missing_message=(
                 "Please provide a valid agent JSON object via agent_json (inline "
                 'or an "@@agptfile:<path>" string), or agent_json_ref pointing '
-                "at the workspace agent file."
+                "at the workspace workflow file."
             ),
             missing_error="Missing or invalid agent_json parameter",
             invalid_error="Missing or invalid agent_json parameter",
@@ -98,7 +98,7 @@ class FixAgentGraphTool(BaseTool):
 
         if not nodes:
             return ErrorResponse(
-                message="The agent JSON has no nodes. An agent needs at least one block.",
+                message="The agent JSON has no nodes. A workflow needs at least one block.",
                 error="empty_agent",
                 session_id=session_id,
             )
@@ -127,7 +127,7 @@ class FixAgentGraphTool(BaseTool):
             is_valid = False
 
         if is_valid:
-            message = f"Applied {len(fixes_applied)} fix(es). Agent graph is now valid!"
+            message = f"Applied {len(fixes_applied)} fix(es). Workflow is now valid!"
         else:
             message = (
                 f"Applied {len(fixes_applied)} fix(es), but "

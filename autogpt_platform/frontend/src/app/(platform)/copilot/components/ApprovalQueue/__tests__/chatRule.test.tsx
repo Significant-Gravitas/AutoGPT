@@ -48,7 +48,7 @@ async function openMenu() {
 
 const MAIL = "Gmail Send";
 const MCP = "create_issue on mcp.linear.app";
-const TOOL = "“Create an agent”";
+const TOOL = "“Create a workflow”";
 
 test.each([
   [`Approve ${MAIL} from now on`, "allow", mail("m1")],

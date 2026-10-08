@@ -71,8 +71,8 @@ async def test_a_single_id_resolves_to_its_name_and_page():
         name="Q3 reports",
         href="/library?folder=f-111",
         kind="Library folder",
-        meta=[Fact(text="0 agents"), Fact(text="0 subfolders")],
-        summary="0 agents · 0 subfolders",
+        meta=[Fact(text="0 workflows"), Fact(text="0 subfolders")],
+        summary="0 workflows · 0 subfolders",
     )
     lib.get_folder.assert_awaited_once_with("f-111", "user-1")
 
@@ -305,7 +305,7 @@ async def test_a_resolved_agent_carries_its_card_for_the_hover():
     ref = await _resolved_agent(description="Sends the morning digest")
 
     assert (ref.kind, ref.name, ref.description) == (
-        "Agent",
+        "Workflow",
         "Digest",
         "Sends the morning digest",
     )
