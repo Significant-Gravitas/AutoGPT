@@ -162,6 +162,35 @@ def test_no_tool_is_exposed_unscoped_without_a_stated_reason():
 
 
 @pytest.mark.parametrize(
+    "token, refusal",
+    [
+        (None, "Authentication required"),
+        (SimpleNamespace(client_id="user-1", scopes=[]), "Missing required permission"),
+    ],
+)
+async def test_a_call_without_the_right_credentials_reaches_the_client_as_an_error(
+    mocker: pytest_mock.MockerFixture, token, refusal: str
+):
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token", return_value=token
+    )
+    run = mocker.patch.object(type(TOOL_REGISTRY["delete_folder"]), "_execute")
+
+    result = await create_mcp_server()._mcp_server.request_handlers[CallToolRequest](
+        CallToolRequest(
+            method="tools/call",
+            params=CallToolRequestParams(
+                name="delete_folder", arguments={"folder_id": "folder-1"}
+            ),
+        )
+    )
+
+    run.assert_not_called()
+    assert result.root.isError
+    assert refusal in result.root.content[0].text
+
+
+@pytest.mark.parametrize(
     "tool_name, args",
     [
         ("delete_folder", {"folder_id": "folder-1"}),
