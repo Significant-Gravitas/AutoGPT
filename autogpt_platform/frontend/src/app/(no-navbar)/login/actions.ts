@@ -84,7 +84,7 @@ export async function login(
 
     return {
       success: true,
-      next: shouldShowOnboarding ? "/onboarding" : "/copilot",
+      next: shouldShowOnboarding ? "/onboarding" : "/home",
     };
   } catch (err) {
     Sentry.captureException(err);
