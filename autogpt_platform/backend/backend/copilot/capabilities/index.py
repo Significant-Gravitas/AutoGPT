@@ -430,13 +430,15 @@ class CapabilityIndex:
         words = query.lower().split()
         if len(words) < 2 or words[-1] == "block":
             return []
+        # An exact hit can be the alternative too: a tool sharing the block's
+        # name is pinned itself, so it is never in *main*.
         alternative = any(
             self.entries[idx].kind == "tool"
             or (
                 self.entries[idx].kind == "mcp_server"
                 and resolve_connected(self.entries[idx], connections)
             )
-            for idx in main
+            for idx in (*exact, *main)
         )
         if not alternative:
             return []

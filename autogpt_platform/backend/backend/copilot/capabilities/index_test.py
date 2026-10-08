@@ -430,6 +430,28 @@ def test_an_exact_block_name_keeps_its_pin_with_no_connected_alternative(
         assert result.hits[0].reason == "exact_name"
 
 
+def test_an_exact_tool_name_unpins_the_block_that_shares_it(rival_index):
+    """A tool with the block's name is an exact hit itself, so it never
+    reached the list of alternatives and the block kept its pin above it."""
+    tool = CapabilityEntry(
+        id="tool:linear_create_issue",
+        kind="tool",
+        name="linear_create_issue",
+        purpose="Create an issue in Linear.",
+        tags=["linear", "create", "issue"],
+        context="direct",
+        implementations=[
+            Implementation(kind="tool", ref="linear_create_issue", context="direct")
+        ],
+    )
+    result = rival_index.with_entries([tool]).search(
+        "Linear create issue", connections=ConnectionState()
+    )
+    assert result.names[0] == "linear_create_issue"
+    block = next(h for h in result.hits if h.entry.name == "LinearCreateIssueBlock")
+    assert block.reason == "search"
+
+
 def test_a_distant_connected_service_is_not_lifted(rival_index):
     """A connected server the query does not name competes on coverage like
     anything else: Sentry matches only "issue" here, so it must not displace
