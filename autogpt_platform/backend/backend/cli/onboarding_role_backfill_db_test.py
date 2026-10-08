@@ -43,3 +43,17 @@ async def test_both_records_of_the_role_are_read(account):
 @pytest.mark.asyncio
 async def test_an_account_with_no_role_is_not_read(account):
     assert account not in {r.user_id for r in await cli._records()}
+
+
+@pytest.mark.asyncio
+async def test_the_country_a_checkout_recorded_is_read(account):
+    await save_onboarding_role(account, OnboardingRole(choice="Marketing"))
+    await prisma.models.User.prisma().update(
+        where={"id": account},
+        data={"stripeCustomerId": f"cus_{account}", "marketingExcludedCountry": "RU"},
+    )
+
+    (record,) = [r for r in await cli._records() if r.user_id == account]
+
+    assert record.stripe_customer_id == f"cus_{account}"
+    assert record.excluded_country == "RU"

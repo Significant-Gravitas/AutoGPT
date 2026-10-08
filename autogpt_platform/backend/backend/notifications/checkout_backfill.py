@@ -28,11 +28,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from pydantic import BaseModel
 
 from backend.data.notifications import SubscriberField
-from backend.notifications.audience_enrichment import (
-    checkout_fields,
-    merge_with_held,
-    points_at_excluded_country,
-)
+from backend.notifications.audience_enrichment import checkout_fields, merge_with_held
 from backend.notifications.consent import marketing_allowed
 from backend.notifications.mailerlite import (
     API_BASE,
@@ -131,11 +127,7 @@ def plan(
             opted_out += 1
             continue
         email = opener.person.email
-        if points_at_excluded_country(
-            email=email,
-            timezone=opener.person.timezone,
-            countries=(opener.stripe_country,),
-        ):
+        if opener.person.placed_in_excluded_country(opener.stripe_country):
             excluded_country += 1
             continue
         if not _valid(email):

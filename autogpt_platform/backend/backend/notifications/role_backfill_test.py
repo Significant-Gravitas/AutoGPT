@@ -70,12 +70,14 @@ def test_anyone_mailerlite_may_not_hold_still_reaches_posthog():
             "moscow@x.io", understanding_role="Marketing", timezone="Europe/Moscow"
         ),
         _record("sam@firma.ir", understanding_role="Marketing"),
+        _record("billed@x.io", understanding_role="Marketing", billing_country="RU"),
+        _record("seen@x.io", understanding_role="Marketing", excluded_country="IR"),
     ]
     current = {r.email: {} for r in records}
     plan = role_backfill.plan(records, current)
     assert plan.mailerlite == []
-    assert (plan.opted_out, plan.excluded_country) == (1, 2)
-    assert len(plan.posthog) == 3
+    assert (plan.opted_out, plan.excluded_country) == (1, 4)
+    assert len(plan.posthog) == 5
 
 
 def _assignment(email: str = "sam@x.io") -> RoleAssignment:

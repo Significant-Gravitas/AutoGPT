@@ -77,12 +77,14 @@ def test_onboarding_profile_success(profile):
         ("Dentist", OnboardingRole(choice="Other", other="Dentist")),
     ],
 )
-def test_the_pick_is_kept_and_sent_to_mailerlite_and_posthog(profile, user_role, role):
+def test_the_pick_is_kept_and_sent_to_mailerlite_and_posthog(
+    profile, test_user_id, user_role, role
+):
     assert _submit(user_role).status_code == 200
-    profile["save_onboarding_role"].assert_awaited_once_with("test-user-id", role)
-    profile["queue_onboarding_role"].assert_awaited_once_with("test-user-id", role)
+    profile["save_onboarding_role"].assert_awaited_once_with(test_user_id, role)
+    profile["queue_onboarding_role"].assert_awaited_once_with(test_user_id, role)
     profile["set_onboarding_role"].assert_called_once_with(
-        user_id="test-user-id", role=role
+        user_id=test_user_id, role=role
     )
 
 

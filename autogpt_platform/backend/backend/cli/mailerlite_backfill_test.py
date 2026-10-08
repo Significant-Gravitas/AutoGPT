@@ -60,7 +60,9 @@ def test_the_command_exits_non_zero_when_anyone_failed(monkeypatch):
     assert "1 checkout openers were not written" in result.output
 
 
-def _account(user_id: str, opted_out_at: datetime | None) -> SimpleNamespace:
+def _account(
+    user_id: str, opted_out_at: datetime | None, excluded_country: str | None = None
+) -> SimpleNamespace:
     """A `User` row as `_people` reads it."""
     return SimpleNamespace(
         id=user_id,
@@ -69,14 +71,15 @@ def _account(user_id: str, opted_out_at: datetime | None) -> SimpleNamespace:
         stripeCustomerId=f"cus_{user_id}",
         timezone=None,
         marketingOptOutAt=opted_out_at,
+        marketingExcludedCountry=excluded_country,
     )
 
 
 @pytest.mark.asyncio
-async def test_each_account_carries_its_opt_out_into_the_backfills():
+async def test_each_account_carries_its_consent_and_countries_into_the_backfills():
     users = MagicMock(
         find_many=AsyncMock(
-            return_value=[_account("out", OPTED_OUT), _account("in", None)]
+            return_value=[_account("out", OPTED_OUT, "IR"), _account("in", None)]
         )
     )
     trials = MagicMock(find_many=AsyncMock(return_value=[]))
@@ -85,11 +88,16 @@ async def test_each_account_carries_its_opt_out_into_the_backfills():
         patch("prisma.models.SubscriptionTrial.prisma", return_value=trials),
     ):
         out, kept = await cli._people(
-            {"cus_out": [Subscription(status="active")], "cus_in": []}
+            {"cus_out": [Subscription(status="active")], "cus_in": []},
+            {"cus_out": "RU"},
         )
     assert out.marketing_opt_out_at == OPTED_OUT
     assert kept.marketing_opt_out_at is None
-    assert cli._customer(out).marketing_opt_out_at == OPTED_OUT
+    assert (out.billing_country, out.excluded_country) == ("RU", "IR")
+    assert (kept.billing_country, kept.excluded_country) == (None, None)
+    customer = cli._customer(out)
+    assert customer.marketing_opt_out_at == OPTED_OUT
+    assert (customer.billing_country, customer.excluded_country) == ("RU", "IR")
     assert cli._customer(kept).marketing_opt_out_at is None
 
 

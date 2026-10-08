@@ -8,6 +8,12 @@ Every MailerLite write upserts the subscriber, a group removal or a field update
 included (see `mailerlite.py`), so every path that queues an audience change asks
 `audience_change_allowed` first, and the backfills leave such accounts out of
 their plan. Billing and account emails are service mail and are not affected.
+
+An IP or billing country is only seen at checkout, so a checkout that sees an
+Iranian or Russian one records it on the account (`User.marketingExcludedCountry`).
+The audience consumer re-reads all of it right before every write
+(`data.user.is_marketing_opted_out`), which also stops what a later trial or
+billing event queues without that country.
 """
 
 import logging
@@ -82,6 +88,16 @@ def log_excluded_skip(email: str, what: str) -> None:
     """Like an opt-out: at debug level and by pseudonym."""
     logger.debug(
         "Skipping MailerLite %s for %s: placed in an excluded country",
+        what,
+        pseudonym(email),
+    )
+
+
+def log_kept_out_skip(email: str, what: str) -> None:
+    """For the consumer's last check, which can't tell which rule applied."""
+    logger.debug(
+        "Skipping MailerLite %s for %s: opted out of marketing or placed in an "
+        "excluded country",
         what,
         pseudonym(email),
     )

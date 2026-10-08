@@ -49,7 +49,15 @@ def graph_cleanup():
 
 
 @pytest.fixture
-def queued(monkeypatch):
+def recorded(monkeypatch):
+    """Where an Iranian or Russian country would be recorded on the account."""
+    record = AsyncMock()
+    monkeypatch.setattr(checkout_audience, "record_excluded_country", record)
+    return record
+
+
+@pytest.fixture
+def queued(monkeypatch, recorded):
     queue = AsyncMock(return_value=NotificationResult(success=True))
     monkeypatch.setattr(subscriber_fields, "queue_audience_change", queue)
     monkeypatch.setattr(
@@ -76,10 +84,11 @@ def queued(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_opening_checkout_queues_the_enriched_change(queued):
+async def test_opening_checkout_queues_the_enriched_change(queued, recorded):
     checkout_audience.schedule_checkout_opened("user-1", ip_country="US")
     for task in list(checkout_audience._tasks):
         await task
+    recorded.assert_not_awaited()
     event = queued.await_args.args[0]
     assert event.action is AudienceAction.CHECKOUT_OPENED
     assert event.fields[SubscriberField.COUNTRY_CODE] == "US"
@@ -112,16 +121,24 @@ async def test_an_opener_without_a_readable_role_is_still_queued(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "countries",
-    [dict(ip_country="RU"), dict(stripe_country="IR"), dict(ip_country="ir")],
+    "countries, code",
+    [
+        (dict(ip_country="RU"), "RU"),
+        (dict(stripe_country="IR"), "IR"),
+        (dict(ip_country="ir"), "IR"),
+        (dict(ip_country="US", stripe_country="RU"), "RU"),
+    ],
 )
-async def test_an_opener_seen_in_iran_or_russia_is_never_queued(
-    queued, monkeypatch, caplog, countries
+async def test_an_opener_seen_in_iran_or_russia_is_recorded_and_never_queued(
+    queued, recorded, monkeypatch, caplog, countries, code
 ):
+    """Recorded on the account, since the trial and billing events that
+    follow carry no IP or billing country."""
     providers = AsyncMock(return_value=["credential"])
     monkeypatch.setattr(checkout_audience, "signin_providers", providers)
     with caplog.at_level(logging.DEBUG, logger=consent.__name__):
         await checkout_audience.queue_checkout_opened("user-1", **countries)
+    recorded.assert_awaited_once_with("user-1", code)
     queued.assert_not_awaited()
     providers.assert_not_awaited()
     assert pseudonym(EMAIL) in caplog.text
@@ -226,6 +243,40 @@ async def test_an_opted_out_customers_completed_checkout_queues_nothing(
 
 def _user_prisma(user):
     return MagicMock(find_first=AsyncMock(return_value=user))
+
+
+@pytest.mark.asyncio
+async def test_a_checkout_billed_to_russia_is_recorded_before_it_returns(
+    monkeypatch,
+):
+    """The webhook then queues the trial notice, whose MailerLite change only
+    this record can stop, so it must not wait for the background task."""
+    order = []
+    monkeypatch.setattr(
+        checkout_audience,
+        "record_excluded_country",
+        AsyncMock(side_effect=lambda *args: order.append(("recorded", *args))),
+    )
+    monkeypatch.setattr(
+        checkout_audience,
+        "schedule_checkout_opened",
+        MagicMock(side_effect=lambda *_, **kw: order.append(("scheduled", kw))),
+    )
+    with patch(
+        "prisma.models.User.prisma",
+        return_value=_user_prisma(SimpleNamespace(id="user-1")),
+    ):
+        await checkout_audience.record_checkout_completed(
+            {
+                "customer": "cus_1",
+                "created": 1788305400,
+                "customer_details": {"address": {"country": "RU"}},
+            }
+        )
+    assert order == [
+        ("recorded", "user-1", "RU"),
+        ("scheduled", {"stripe_country": "RU", "opened_at": 1788305400}),
+    ]
 
 
 @pytest.mark.asyncio
@@ -362,3 +413,8 @@ def test_the_subscription_checkout_and_the_webhook_are_wired():
     )
     webhook = _source(subscription_routes.stripe_webhook)
     assert "awaitcheckout_audience.record_checkout_completed(data_object)" in webhook
+    # Before the trial notice is queued, so an Iranian or Russian billing
+    # country is on record by the time its MailerLite change is consumed.
+    assert webhook.index("record_checkout_completed(") < webhook.index(
+        "_notify_checkout_completed("
+    )

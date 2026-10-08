@@ -481,8 +481,16 @@ async def test_apply_never_writes_an_opted_out_customer(
         _customer("a@x.io", "canceled").model_copy(
             update={"timezone": "Europe/Moscow"}
         ),
+        _customer("a@x.io", "active").model_copy(update={"billing_country": "RU"}),
+        _customer("a@x.io", "trialing").model_copy(update={"excluded_country": "IR"}),
     ],
-    ids=["paying-in-tehran", "russian-address", "churned-in-moscow"],
+    ids=[
+        "paying-in-tehran",
+        "russian-address",
+        "churned-in-moscow",
+        "billed-to-russia",
+        "recorded-by-a-checkout",
+    ],
 )
 def test_a_customer_placed_in_iran_or_russia_is_only_ever_skipped(customer):
     audience = _audience(changelog=[customer.email])

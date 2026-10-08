@@ -267,15 +267,20 @@ def _consent_row(
     marketing_opt_out_at: datetime | None = None,
     marketing_opt_out_source: str | None = None,
     email: str | None = "user@example.com",
+    timezone: str = "Europe/London",
+    excluded_country: str | None = None,
 ) -> MagicMock:
-    """A Prisma User row carrying only what record_signup_consent reads."""
+    """A Prisma User row carrying only what record_signup_consent and the
+    MailerLite checks read."""
     return MagicMock(
         id="user-1",
         email=email,
+        timezone=timezone,
         termsAcceptedAt=terms_accepted_at,
         termsVersion=terms_version,
         marketingOptOutAt=marketing_opt_out_at,
         marketingOptOutSource=marketing_opt_out_source,
+        marketingExcludedCountry=excluded_country,
     )
 
 
@@ -924,6 +929,12 @@ class TestIsMarketingOptedOut:
             pytest.param(_accepted(True), True, id="opted-out"),
             pytest.param(_accepted(False), False, id="opted-in"),
             pytest.param(None, True, id="deleted-account"),
+            # Seen in Iran or Russia, by a checkout or the account itself.
+            pytest.param(
+                _consent_row(excluded_country="RU"), True, id="checkout-in-russia"
+            ),
+            pytest.param(_consent_row(timezone="Asia/Tehran"), True, id="tehran"),
+            pytest.param(_consent_row(email="sam@firma.ru"), True, id="ru-address"),
         ],
     )
     async def test_reads_the_row_not_the_cache(
@@ -950,6 +961,20 @@ class TestIsMarketingOptedOut:
 
             with pytest.raises(DatabaseError, match="user-1"):
                 await is_marketing_opted_out("user-1")
+
+
+@pytest.mark.asyncio
+async def test_the_first_excluded_country_seen_is_kept():
+    with patch.object(user_module, "PrismaUser") as mock_prisma_user:
+        db = mock_prisma_user.prisma.return_value
+        db.update_many = AsyncMock(return_value=1)
+
+        await user_module.record_excluded_country("user-1", "RU")
+
+    db.update_many.assert_awaited_once_with(
+        where={"id": "user-1", "marketingExcludedCountry": None},
+        data={"marketingExcludedCountry": "RU"},
+    )
 
 
 class TestGetBillingEmailRecipient:

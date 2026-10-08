@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 _ROLE_RECORDS = """
     SELECT u."id" AS user_id, u."email", u."timezone",
            u."marketingOptOutAt" AS marketing_opt_out_at,
+           u."stripeCustomerId" AS stripe_customer_id,
+           u."marketingExcludedCountry" AS excluded_country,
            o."role" AS choice, o."roleOther" AS other,
            c."data"->'business'->>'user_role' AS understanding_role
     FROM {schema_prefix}"User" u
@@ -38,8 +40,8 @@ def onboarding_role_backfill_command(apply: bool, yes: bool):
     PostHog gets onboarding_role and onboarding_role_other with $set_once, so
     a role it already holds stays. MailerLite gets role and role_other only on
     subscribers that have no role yet. Nobody is created there, and anyone who
-    opted out of marketing or whom a signal places in Iran or Russia is left
-    out.
+    opted out of marketing or whom a signal places in Iran or Russia, their
+    Stripe billing country included, is left out.
 
     Dry run by default, with counts only. Idempotent, so a repeated --apply
     resumes an interrupted one; run the dry run again afterwards to confirm
@@ -51,20 +53,25 @@ def onboarding_role_backfill_command(apply: bool, yes: bool):
 
 
 async def _run(*, apply: bool, yes: bool) -> None:
+    from backend.cli.mailerlite_backfill import stripe_billing_countries
     from backend.data.db import connect, disconnect
     from backend.notifications import mailerlite
     from backend.notifications import mailerlite_field_backfill as field_backfill
     from backend.notifications import role_backfill
     from backend.notifications.mailerlite import MailerLiteNotConfigured
     from backend.util.posthog_client import get_posthog_client
+    from backend.util.settings import Settings
 
+    if not Settings().secrets.stripe_api_key:
+        raise click.ClickException("STRIPE_API_KEY is not set.")
     try:
         current = await field_backfill.read_current()
     except MailerLiteNotConfigured as e:
         raise click.ClickException(str(e))
+    billing_countries = await stripe_billing_countries()
     await connect()
     try:
-        records = await _records()
+        records = _with_billing_countries(await _records(), billing_countries)
     finally:
         await disconnect()
 
@@ -98,6 +105,21 @@ async def _records() -> "list[RoleRecord]":
     from backend.notifications.role_backfill import RoleRecord
 
     return await query_raw_with_schema(_ROLE_RECORDS, model=RoleRecord)
+
+
+def _with_billing_countries(
+    records: "list[RoleRecord]", billing_countries: dict[str, str]
+) -> "list[RoleRecord]":
+    return [
+        record.model_copy(
+            update={
+                "billing_country": billing_countries.get(
+                    record.stripe_customer_id or ""
+                )
+            }
+        )
+        for record in records
+    ]
 
 
 def _report(plan: "RolePlan") -> None:

@@ -140,9 +140,10 @@ async def _run(
     except MailerLiteNotConfigured as e:
         raise click.ClickException(str(e))
     subscriptions = await _stripe_subscriptions()
+    billing_countries = await stripe_billing_countries()
     await connect()
     try:
-        people = await _people(subscriptions)
+        people = await _people(subscriptions, billing_countries)
     finally:
         await disconnect()
 
@@ -197,6 +198,23 @@ async def _stripe_subscriptions() -> "dict[str, list[Subscription]]":
     return subscriptions
 
 
+async def stripe_billing_countries() -> dict[str, str]:
+    """Every Stripe customer's billing address country, by customer ID."""
+    import stripe
+
+    from backend.data.stripe_client import stripe_call, stripe_list_items
+    from backend.util.settings import Settings
+
+    stripe.api_key = Settings().secrets.stripe_api_key
+    countries: dict[str, str] = {}
+    page = await stripe_call(stripe.Customer.list_async, limit=100)
+    async for customer in stripe_list_items(page):
+        country = (customer.get("address") or {}).get("country")
+        if country:
+            countries[customer.id] = str(country)
+    return countries
+
+
 def _subscription(sub) -> "Subscription":
     from backend.notifications.mailerlite_backfill import Subscription
 
@@ -239,12 +257,16 @@ def _refresher(converted: set[str]):
     return refresh
 
 
-async def _people(subscriptions: "dict[str, list[Subscription]]") -> "list[Person]":
+async def _people(
+    subscriptions: "dict[str, list[Subscription]]",
+    billing_countries: dict[str, str],
+) -> "list[Person]":
     """Every account with a Stripe customer, paged, with its Stripe
-    subscriptions. Accounts without one never reached checkout, so they are
-    not read at all. Having one is not proof of a checkout either: callers
-    that create MailerLite subscribers must also check for a Checkout Session.
-    The account's email is used, as the live handlers do, never Stripe's."""
+    subscriptions and billing country. Accounts without one never reached
+    checkout, so they are not read at all. Having one is not proof of a
+    checkout either: callers that create MailerLite subscribers must also
+    check for a Checkout Session. The account's email is used, as the live
+    handlers do, never Stripe's."""
     import prisma.models
 
     from backend.notifications.mailerlite_field_backfill import Person
@@ -279,6 +301,8 @@ async def _people(subscriptions: "dict[str, list[Subscription]]") -> "list[Perso
                     stripe_customer_id=user.stripeCustomerId,
                     timezone=user.timezone,
                     marketing_opt_out_at=user.marketingOptOutAt,
+                    billing_country=billing_countries.get(user.stripeCustomerId or ""),
+                    excluded_country=user.marketingExcludedCountry,
                 )
             )
         if len(page) < _ACCOUNT_PAGE:
@@ -295,6 +319,8 @@ def _customer(person: "Person") -> "Customer":
         subscriptions=person.subscriptions,
         marketing_opt_out_at=person.marketing_opt_out_at,
         timezone=person.timezone,
+        billing_country=person.billing_country,
+        excluded_country=person.excluded_country,
     )
 
 
@@ -373,17 +399,12 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
             first_open[customer] = min(
                 first_open.get(customer, session.created), session.created
             )
-    billing_countries: dict[str, str] = {}
-    page = await stripe_call(stripe.Customer.list_async, limit=100)
-    async for customer in stripe_list_items(page):
-        country = (customer.get("address") or {}).get("country")
-        if country:
-            billing_countries[customer.id] = str(country)
+    billing_countries = await stripe_billing_countries()
     subscriptions = await _stripe_subscriptions()
 
     await connect()
     try:
-        people = await _people(subscriptions)
+        people = await _people(subscriptions, billing_countries)
         providers = await _signin_providers()
     finally:
         await disconnect()
@@ -393,7 +414,7 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
             person=person,
             opened_at=first_open[person.stripe_customer_id],
             signin_providers=providers.get(person.user_id, []),
-            stripe_country=billing_countries.get(person.stripe_customer_id),
+            stripe_country=person.billing_country,
         )
         for person in people
         if person.stripe_customer_id in first_open

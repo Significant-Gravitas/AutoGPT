@@ -65,6 +65,19 @@ class Person(BaseModel):
     timezone: str | None = None
     # Set when they refused marketing: they must never enter MailerLite.
     marketing_opt_out_at: datetime | None = None
+    # The Stripe customer's billing address country, when it has one.
+    billing_country: str | None = None
+    # The Iranian or Russian country a checkout recorded (`consent.py`).
+    excluded_country: str | None = None
+
+    def placed_in_excluded_country(self, *countries: str | None) -> bool:
+        """Whether any signal, `countries` included, places them in Iran or
+        Russia, so they must never enter MailerLite (`consent.py`)."""
+        return points_at_excluded_country(
+            email=self.email,
+            timezone=self.timezone,
+            countries=(self.billing_country, self.excluded_country, *countries),
+        )
 
 
 class FieldChange(BaseModel):
@@ -151,7 +164,7 @@ def plan(people: list[Person], current: Current, *, create: bool = True) -> Fiel
         if not marketing_allowed(person):
             result.opted_out += 1
             continue
-        if points_at_excluded_country(email=person.email, timezone=person.timezone):
+        if person.placed_in_excluded_country():
             result.excluded_country += 1
             continue
         if not _valid(person.email):

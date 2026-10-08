@@ -136,6 +136,10 @@ model User {
   termsVersion          String?
   marketingOptOutAt     DateTime?
   marketingOptOutSource String? // "signup" | "email_unsubscribe" | "settings"
+  // The first Iranian or Russian country a checkout saw for the account (its
+  // IP or billing country). Like an opt-out, it keeps the account out of
+  // MailerLite for good (backend/notifications/consent.py).
+  marketingExcludedCountry String?
 
   // Default AutoPilot connection for chats the caller didn't route explicitly
   // (bot links, schedules, a fresh /copilot session). NULL means "automatic" —

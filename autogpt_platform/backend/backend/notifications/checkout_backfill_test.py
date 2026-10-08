@@ -26,6 +26,7 @@ def _opener(email="sam@acme.com", subscriptions=None, **kwargs):
             stripe_customer_id="cus_1",
             timezone=kwargs.pop("timezone", "Asia/Kolkata"),
             marketing_opt_out_at=kwargs.pop("opted_out_at", None),
+            excluded_country=kwargs.pop("excluded_country", None),
         ),
         opened_at=OPENED,
         signin_providers=["google"],
@@ -350,8 +351,9 @@ async def test_an_opted_out_opener_is_never_written(monkeypatch):
         _opener(email="ru@acme.com", stripe_country="RU", timezone="Europe/London"),
         _opener(email="ir@acme.com", timezone="Asia/Tehran"),
         _opener(email="sam@firma.ru"),
+        _opener(email="seen@acme.com", excluded_country="IR"),
     ],
-    ids=["billing", "timezone", "email"],
+    ids=["billing", "timezone", "email", "recorded-by-a-checkout"],
 )
 def test_an_opener_placed_in_iran_or_russia_is_counted_but_never_planned(excluded):
     email = excluded.person.email

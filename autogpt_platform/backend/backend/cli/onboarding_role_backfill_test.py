@@ -73,3 +73,13 @@ def test_the_command_exits_non_zero_when_anyone_failed(monkeypatch):
 def test_a_run_with_failures_reports_then_fails():
     with pytest.raises(click.ClickException, match="2 MailerLite subscribers"):
         cli._finish(1, 2, 0)
+
+
+def test_each_record_gets_its_stripe_billing_country():
+    records = [
+        RoleRecord(user_id="1", email="a@x.io", stripe_customer_id="cus_1"),
+        RoleRecord(user_id="2", email="b@x.io", stripe_customer_id="cus_2"),
+        RoleRecord(user_id="3", email="c@x.io"),
+    ]
+    filled = cli._with_billing_countries(records, {"cus_1": "RU", "cus_2": "US"})
+    assert [r.billing_country for r in filled] == ["RU", "US", None]

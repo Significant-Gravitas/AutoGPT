@@ -112,8 +112,11 @@ class Customer(BaseModel):
     subscriptions: list[Subscription]
     # Set when they refused marketing: they must never enter MailerLite.
     marketing_opt_out_at: datetime | None = None
-    # The browser's IANA timezone, which may place them in Iran or Russia.
+    # The browser's IANA timezone, the Stripe billing address country, and
+    # the country a checkout recorded: any may place them in Iran or Russia.
     timezone: str | None = None
+    billing_country: str | None = None
+    excluded_country: str | None = None
 
 
 class Audience(BaseModel):
@@ -174,7 +177,11 @@ def decide(
         return PlannedChange(
             customer=customer, standing=standing, decisions=[Decision.SKIP_OPTED_OUT]
         )
-    if points_at_excluded_country(email=customer.email, timezone=customer.timezone):
+    if points_at_excluded_country(
+        email=customer.email,
+        timezone=customer.timezone,
+        countries=(customer.billing_country, customer.excluded_country),
+    ):
         return PlannedChange(
             customer=customer,
             standing=standing,

@@ -62,6 +62,11 @@ class RoleRecord(BaseModel):
     email: str
     timezone: str | None = None
     marketing_opt_out_at: datetime | None = None
+    stripe_customer_id: str | None = None
+    # The Stripe billing address country, and the Iranian or Russian country a
+    # checkout recorded: either may place them in Iran or Russia.
+    billing_country: str | None = None
+    excluded_country: str | None = None
     # The pick the wizard kept, if it kept one.
     choice: str | None = None
     other: str | None = None
@@ -144,7 +149,11 @@ def _plan_mailerlite(
     if not marketing_allowed(record):
         result.opted_out += 1
         return
-    if points_at_excluded_country(email=record.email, timezone=record.timezone):
+    if points_at_excluded_country(
+        email=record.email,
+        timezone=record.timezone,
+        countries=(record.billing_country, record.excluded_country),
+    ):
         result.excluded_country += 1
         return
     held = current.get(record.email.strip().lower())

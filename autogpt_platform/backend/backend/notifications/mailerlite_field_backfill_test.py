@@ -322,8 +322,14 @@ def test_an_opted_out_person_is_counted_and_never_written(create):
             update={"timezone": "Europe/Moscow"}
         ),
         _person("out@firma.ir", _paid("active")),
+        _person("out@x.io", _paid("active")).model_copy(
+            update={"billing_country": "RU"}
+        ),
+        _person("out@x.io", _paid("active")).model_copy(
+            update={"excluded_country": "IR"}
+        ),
     ],
-    ids=["timezone", "email"],
+    ids=["timezone", "email", "billing", "recorded-by-a-checkout"],
 )
 def test_a_person_placed_in_iran_or_russia_is_counted_and_never_written(excluded):
     plan = backfill.plan(

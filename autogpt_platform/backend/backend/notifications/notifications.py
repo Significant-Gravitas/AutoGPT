@@ -36,7 +36,7 @@ from backend.data.user import (
     generate_unsubscribe_link,
 )
 from backend.notifications import briefing_runner, mailerlite
-from backend.notifications.consent import log_opted_out_skip
+from backend.notifications.consent import log_kept_out_skip
 from backend.notifications.dedupe import claim_daily_send
 from backend.notifications.email import EmailSender
 from backend.notifications.preferences import SERVICE_MESSAGES, wants_notification
@@ -75,11 +75,13 @@ def _utc_today() -> date:
     return datetime.now(tz=timezone.utc).date()
 
 
-async def _opted_out_since_queued(event: AudienceEventModel) -> bool:
-    """Re-read the opt-out right before the write. A change queued just before
-    the account refused marketing must not reach MailerLite: every write but the
-    unsubscribe upserts the subscriber. The unsubscribe is the refusal itself,
-    so it always goes through."""
+async def _kept_out_since_queued(event: AudienceEventModel) -> bool:
+    """Re-read, right before the write, whether the account may be in
+    MailerLite at all. A change queued just before the account refused
+    marketing must not reach MailerLite: every write but the unsubscribe
+    upserts the subscriber. Nor may one queued without the country a checkout
+    recorded, such as a trial start, for an account seen in Iran or Russia.
+    The unsubscribe is the refusal itself, so it always goes through."""
     if event.action is AudienceAction.UNSUBSCRIBE:
         return False
     return await get_database_manager_async_client(
@@ -405,8 +407,8 @@ class NotificationManager(AppService):
                 _mailerlite_off_logged = True
             return True
 
-        if await _opted_out_since_queued(event):
-            log_opted_out_skip(event.email, event.action.value)
+        if await _kept_out_since_queued(event):
+            log_kept_out_skip(event.email, event.action.value)
             return True
 
         handler = {

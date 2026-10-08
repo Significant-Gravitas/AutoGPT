@@ -208,14 +208,21 @@ def points_at_excluded_country(
     *, email: str, timezone: str | None, countries: Iterable[str | None] = ()
 ) -> bool:
     """Whether any signal places the account in Iran or Russia: a country it
-    was seen in (the Stripe billing address, the visitor's IP country), the
-    browser's timezone, or the address's country-code domain. Any signal, as
-    for exclude_de_at: a billing address elsewhere does not outweigh a Moscow
-    timezone."""
-    codes = {country_code(c) for c in countries} | {timezone_country(timezone)}
-    if codes & EXCLUDED_COUNTRIES:
+    was seen in (the Stripe billing address, the visitor's IP country, the one
+    a checkout recorded on the account), the browser's timezone, or the
+    address's country-code domain. Any signal, as for exclude_de_at: a billing
+    address elsewhere does not outweigh a Moscow timezone."""
+    if excluded_country([*countries, timezone_country(timezone)]):
         return True
     return email_domain(email).rsplit(".", 1)[-1] in _EXCLUDED_DOMAINS
+
+
+def excluded_country(countries: Iterable[str | None]) -> str | None:
+    """The first of `countries` that MailerLite must never hold, as its code."""
+    return next(
+        (code for c in countries if (code := country_code(c)) in EXCLUDED_COUNTRIES),
+        None,
+    )
 
 
 def billing_country(session: dict) -> str | None:
