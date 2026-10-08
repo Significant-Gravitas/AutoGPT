@@ -1,0 +1,46 @@
+:root {
+  --ring-duration: 150ms;
+}
+
+@utility transition-ring {
+  transition-property:
+    color, background-color, border-color, box-shadow, outline-color, outline-offset;
+  transition-duration: var(--ring-duration);
+  transition-timing-function: var(--ease-out);
+
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 0ms;
+  }
+}
+
+@layer base {
+  .arc {
+    overflow: clip;
+
+    mask-image:
+      linear-gradient(to right, transparent, #000 8%, #000 92%, transparent),
+      linear-gradient(to bottom, #000 88%, transparent);
+    mask-composite: intersect;
+    -webkit-mask-composite: source-in;
+
+    --u: 1px;
+  }
+@supports (width: 1cqw) {
+    .arc {
+      --u: min(1px, calc(100cqw / var(--fan, 546)));
+    }
+}
+.arc {
+    --arc-turn: 460ms;
+  }
+}
+
+@keyframes radio-dot-in {
+  from {
+    scale: 0.25;
+  }
+
+  to {
+    scale: 1;
+  }
+}

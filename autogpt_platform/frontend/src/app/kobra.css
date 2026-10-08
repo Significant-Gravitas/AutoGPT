@@ -29,6 +29,17 @@
   --color-info: var(--info);
 }
 
+/* avatar.css */
+:root {
+  --shell-canvas: #fafafa;
+}
+.dark {
+  --shell-canvas: #191919;
+}
+@theme inline {
+  --color-shell-canvas: var(--shell-canvas);
+}
+
 /* badge.css */
 :root {
   --badge-blue-bg: oklch(0.62 0.19 258 / 0.12);
@@ -859,6 +870,27 @@
   }
 }
 
+/* conversation.css */
+:root {
+  --ring-duration: 150ms;
+  --blue: #0a7cff;
+  --blue-foreground: #ffffff;
+  --bubble-sent: var(--blue);
+  --bubble-sent-foreground: var(--blue-foreground);
+  --bubble-received: #e9e9eb;
+  --bubble-received-foreground: #000000;
+}
+.dark {
+  --bubble-received: #3b3b3d;
+  --bubble-received-foreground: #ffffff;
+}
+@theme inline {
+  --color-bubble-sent: var(--bubble-sent);
+  --color-bubble-sent-foreground: var(--bubble-sent-foreground);
+  --color-bubble-received: var(--bubble-received);
+  --color-bubble-received-foreground: var(--bubble-received-foreground);
+}
+
 /* pagination.css */
 :root {
   --tabs-duration: 250ms;
@@ -1032,6 +1064,38 @@
 @keyframes popover-fade-out {
   to {
     opacity: 0;
+  }
+}
+
+/* radio-group.css */
+@layer base {
+  .arc {
+    overflow: clip;
+
+    mask-image:
+      linear-gradient(to right, transparent, #000 8%, #000 92%, transparent),
+      linear-gradient(to bottom, #000 88%, transparent);
+    mask-composite: intersect;
+    -webkit-mask-composite: source-in;
+
+    --u: 1px;
+  }
+@supports (width: 1cqw) {
+    .arc {
+      --u: min(1px, calc(100cqw / var(--fan, 546)));
+    }
+}
+.arc {
+    --arc-turn: 460ms;
+  }
+}
+@keyframes radio-dot-in {
+  from {
+    scale: 0.25;
+  }
+
+  to {
+    scale: 1;
   }
 }
 

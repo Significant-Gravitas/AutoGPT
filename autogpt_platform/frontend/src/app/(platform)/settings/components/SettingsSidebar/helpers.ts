@@ -1,4 +1,5 @@
 import {
+  AiChat02Icon,
   BrainIcon,
   ChartIncreaseIcon,
   CreditCardIcon,
@@ -25,6 +26,7 @@ export const settingsNavItems: SettingsNavItem[] = [
     href: "/settings/account",
     Icon: SlidersHorizontalIcon,
   },
+  { label: "Agent", href: "/settings/agent", Icon: AiChat02Icon },
   {
     label: "Memory",
     href: "/settings/memory",
