@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import os
 import tempfile
 from unittest.mock import MagicMock
@@ -16,9 +17,12 @@ from backend.copilot.context import (
     get_execution_context,
     get_sdk_cwd,
     is_allowed_local_path,
+    is_unattended_turn,
     resolve_sandbox_path,
     set_execution_context,
+    set_turn_unattended,
 )
+from backend.copilot.model import ChatSessionMetadata
 from backend.copilot.permissions import CopilotPermissions
 
 
@@ -356,3 +360,32 @@ class TestEnvelopeDoesNotEscapeItsTurn:
             # An assertion failure here must not cascade into the sibling
             # test: this generator leaks the contextvar deliberately.
             set_execution_context(None, None, envelope=None)
+
+
+# ---------------------------------------------------------------------------
+# Whether anyone is watching the turn (SECRT-2804)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "origin, scheduled, unattended",
+    [
+        ("automation", False, True),
+        ("interactive", True, True),
+        ("interactive", False, False),
+        (None, False, False),
+    ],
+    ids=["automation chat", "scheduled into a user chat", "user chat", "legacy chat"],
+)
+def test_set_turn_unattended(origin, scheduled, unattended):
+    session = MagicMock(metadata=ChatSessionMetadata(origin=origin))
+
+    def turn() -> bool:
+        set_turn_unattended(session, scheduled=scheduled)
+        return is_unattended_turn()
+
+    assert contextvars.copy_context().run(turn) is unattended
+
+
+def test_a_turn_is_watched_until_the_executor_says_otherwise():
+    assert contextvars.copy_context().run(is_unattended_turn) is False

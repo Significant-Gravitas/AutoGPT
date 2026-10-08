@@ -208,7 +208,7 @@ class WebFetchTool(BaseTool):
                 message="Please provide a URL to fetch.",
                 error="missing_url",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         try:
             client = Requests(raise_for_status=False, retry_max_attempts=1)
@@ -219,14 +219,14 @@ class WebFetchTool(BaseTool):
                 message=f"URL blocked: {e}",
                 error="url_blocked",
                 session_id=session_id,
-            )
+            ).from_outside()
         except Exception as e:
             logger.warning(f"[web_fetch] Request failed for {url}: {e}")
             return ErrorResponse(
                 message=f"Failed to fetch URL: {e}",
                 error="fetch_failed",
                 session_id=session_id,
-            )
+            ).from_outside(str(e))
 
         content_type = response.headers.get("content-type", "")
         if not _is_text_content(content_type):
@@ -234,7 +234,7 @@ class WebFetchTool(BaseTool):
                 message=f"Non-text content type: {content_type.split(';')[0]}",
                 error="unsupported_content_type",
                 session_id=session_id,
-            )
+            ).from_outside(content_type.split(";")[0])
 
         raw_bytes = response.content[:_MAX_DOWNLOAD_BYTES]
         raw_text = raw_bytes.decode("utf-8", errors="replace")
@@ -259,6 +259,7 @@ class WebFetchTool(BaseTool):
             text_truncated = True
 
         truncated = raw_truncated or text_truncated
+        page = text
 
         message = f"Fetched {url}"
 
@@ -294,4 +295,4 @@ class WebFetchTool(BaseTool):
             content_length=len(response.content),
             truncated=truncated,
             session_id=session_id,
-        )
+        ).from_outside(page, title, response.url, content_type.split(";")[0].strip())

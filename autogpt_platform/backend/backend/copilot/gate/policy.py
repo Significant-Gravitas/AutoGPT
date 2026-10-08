@@ -163,10 +163,12 @@ _EFFECTS: dict[str, Effect] = {
 }
 
 _MODE_VERDICTS: dict[AutopilotMode, dict[Effect, Verdict]] = {
+    # Work in the chat's own sandbox never asks; the supervisor still holds a
+    # command that reaches outside it.
     "ask_first": {
         Effect.READ: Verdict.RUN,
         Effect.WORKSPACE: Verdict.RUN,
-        Effect.SHELL: Verdict.ASK,
+        Effect.SHELL: Verdict.JUDGE,
         Effect.PLATFORM: Verdict.ASK,
         Effect.EXTERNAL: Verdict.ASK,
     },

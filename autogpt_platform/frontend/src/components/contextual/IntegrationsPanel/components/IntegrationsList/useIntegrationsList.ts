@@ -1,9 +1,13 @@
 "use client";
 
-import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import {
+  useGetV1ListCredentials,
+  useGetV1ListProviders,
+} from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
 
 import {
+  blockServiceKeys,
   filterProviders,
   groupCredentialsByProvider,
   type ProviderGroupView,
@@ -25,9 +29,17 @@ export function useIntegrationsList(query: string) {
     },
   });
 
+  const providersQuery = useGetV1ListProviders({
+    query: {
+      select: (response) => (response.status === 200 ? response.data : []),
+    },
+  });
+
   const credentials = credentialsQuery.data ?? [];
-  const allProviders: ProviderGroupView[] =
-    groupCredentialsByProvider(credentials);
+  const allProviders: ProviderGroupView[] = groupCredentialsByProvider(
+    credentials,
+    blockServiceKeys(providersQuery.data ?? []),
+  );
   const providers = filterProviders(allProviders, debouncedQuery);
 
   const allCredentialIds = allProviders.flatMap((p) =>

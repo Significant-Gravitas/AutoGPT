@@ -41,7 +41,10 @@ export function useBalanceCard() {
     if (!isValid) return;
     try {
       const result = await requestTopUp({
-        data: { credit_amount: Math.round(numericAmount * 100) },
+        data: {
+          credit_amount: Math.round(numericAmount * 100),
+          surface: "billing",
+        },
       });
       const status = (result as { status?: number } | undefined)?.status;
       const body = result?.data as

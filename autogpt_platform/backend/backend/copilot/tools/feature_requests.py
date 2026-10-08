@@ -174,7 +174,7 @@ class SearchFeatureRequestsTool(BaseTool):
                 message="Please provide a search query.",
                 error="Missing query parameter",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         try:
             client, project_id, _team_id = _get_linear_config()
@@ -200,7 +200,7 @@ class SearchFeatureRequestsTool(BaseTool):
                         "You can create a new feature request if none exists",
                     ],
                     session_id=session_id,
-                )
+                ).from_outside()
 
             results = [
                 FeatureRequestInfo(
@@ -217,14 +217,14 @@ class SearchFeatureRequestsTool(BaseTool):
                 count=len(results),
                 query=query,
                 session_id=session_id,
-            )
+            ).from_outside(results)
         except Exception as e:
             logger.exception("Failed to search feature requests")
             return ErrorResponse(
                 message="Failed to search feature requests.",
                 error=str(e),
                 session_id=session_id,
-            )
+            ).from_outside(str(e))
 
 
 class CreateFeatureRequestTool(BaseTool):
