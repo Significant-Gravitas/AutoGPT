@@ -114,7 +114,7 @@ def map_segment(segment: dict[str, Any], env: str) -> MappedCohort:
         payload={
             "name": cohort_name(key),
             "description": (
-                f"{segment.get('name') or key}: synced from LaunchDarkly segment "
+                f"{_text(segment.get('name'), key)}: synced from LaunchDarkly segment "
                 f"`{key}` ({env})."
             ),
             "is_static": False,
@@ -175,7 +175,7 @@ def map_flag(
 
     mapped.payload = {
         "key": key,
-        "name": flag.get("name") or key,
+        "name": _text(flag.get("name"), key),
         "active": active,
         "filters": filters,
         "ensure_experience_continuity": False,
@@ -310,8 +310,14 @@ def describe_property(prop: dict[str, Any]) -> str:
     elif prop.get("key") == "distinct_id":
         shown = "<user-id pattern>"
     else:
-        shown = _redact(json.dumps(value))
+        shown = redact(json.dumps(value))
     return f"{prop.get('key')} {prop.get('operator') or 'exact'} {shown}"
+
+
+def redact(text: str) -> str:
+    """Payloads and patterns can carry addresses and user ids; the output never does."""
+    text = _LOCAL_PART.sub("<email>@", _EMAIL.sub("<email>", text))
+    return _UUID.sub("<user-id>", text)
 
 
 class Unmappable(Exception):
@@ -520,6 +526,11 @@ def _iso_date(value: Any) -> datetime:
     return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 
 
+def _text(value: str | None, fallback: str) -> str:
+    """LaunchDarkly free text as PostHog stores it: trimmed, or a re-plan never matches."""
+    return (value or "").strip() or fallback
+
+
 def _boolean_filters(
     flag: dict[str, Any], paths: list[_Path]
 ) -> tuple[dict[str, Any], bool]:
@@ -548,8 +559,12 @@ def _boolean_filters(
         if not path.is_target:
             raise Unmappable("a rule serves false ahead of a rule serving true")
         exclusions += path.groups[0][0]["value"]
+    serves_anyone = bool(groups)
+    # PostHog refuses a flag with no condition group; one at 0% serves nobody.
+    if not groups:
+        groups = [{"properties": [], "rollout_percentage": 0, "variant": None}]
     filters = {"groups": groups, "multivariate": None, "payloads": {}}
-    return filters, bool(groups)
+    return filters, serves_anyone
 
 
 def _multivariate_filters(
@@ -700,11 +715,5 @@ def _canonical_payload(payload: Any) -> Any:
 
 
 def _short(value: Any, limit: int = 80) -> str:
-    text = _redact(json.dumps(value, sort_keys=True))
+    text = redact(json.dumps(value, sort_keys=True))
     return text if len(text) <= limit else text[: limit - 1] + "…"
-
-
-def _redact(text: str) -> str:
-    """Payloads and patterns can carry addresses and user ids; the output never does."""
-    text = _LOCAL_PART.sub("<email>@", _EMAIL.sub("<email>", text))
-    return _UUID.sub("<user-id>", text)

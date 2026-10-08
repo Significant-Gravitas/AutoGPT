@@ -12,6 +12,7 @@ def test_test_database_matches_ci_without_mounting_development_data():
     assert database["image"] == "pgvector/pgvector:pg15"
     assert "extends" not in database
     assert database["environment"]["POSTGRES_DB"] == "agpt_test"
+    assert database["ports"] == ["${POSTGRES_PORT:-5432}:5432"]
     assert database["volumes"] == [
         "../db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro",
         "test-db-data:/var/lib/postgresql/data",

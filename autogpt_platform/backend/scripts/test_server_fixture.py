@@ -56,6 +56,29 @@ def test_service_collection_starts_only_one_preload(monkeypatch):
     thread.return_value.start.assert_called_once_with()
 
 
+@pytest.mark.parametrize("failure", ["configure", "start"])
+def test_preload_setup_failure_does_not_mark_it_started(monkeypatch, failure):
+    monkeypatch.delenv("CI", raising=False)
+    item = Mock(spec=pytest.Function)
+    item.config = Mock()
+    item.fixturenames = ["server"]
+    item.config.getoption.return_value = False
+    with (
+        patch.object(fixtures, "_preload_started", False),
+        patch.object(fixtures, "get_all_start_methods", return_value=["forkserver"]),
+        patch.object(fixtures, "set_forkserver_preload") as configure,
+        patch.object(fixtures, "Thread") as thread,
+    ):
+        operation = configure if failure == "configure" else thread.return_value.start
+        operation.side_effect = RuntimeError("preload setup failed")
+        with pytest.raises(RuntimeError, match="preload setup failed"):
+            fixtures.pytest_itemcollected(item)
+        assert not fixtures._preload_started
+        operation.side_effect = None
+        fixtures.pytest_itemcollected(item)
+        assert fixtures._preload_started
+
+
 def test_server_starts_on_demand_and_cleans_up(pytester: pytest.Pytester):
     events = pytester.path / "events.txt"
     backend_dir = Path(__file__).resolve().parents[1]

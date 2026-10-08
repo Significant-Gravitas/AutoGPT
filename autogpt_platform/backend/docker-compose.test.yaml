@@ -24,7 +24,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: agpt_test
     ports:
-      - ${POSTGRES_PORT}:5432
+      - ${POSTGRES_PORT:-5432}:5432
     volumes:
       - ../db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
       - test-db-data:/var/lib/postgresql/data

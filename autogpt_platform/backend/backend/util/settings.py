@@ -355,6 +355,38 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
     )
 
+    # Auth identity <-> platform User invariant monitoring
+    auth_identity_orphan_sweep_enabled: bool = Field(
+        default=False,
+        description=(
+            "Run the sweep that heals auth identities with no platform User row. "
+            "Off by default: its first run backfills every such identity, and "
+            "each heal counts as a sign-up in PostHog."
+        ),
+    )
+    auth_identity_orphan_check_interval_secs: int = Field(
+        default=15 * 60,
+        ge=60,
+        description=(
+            "Interval in seconds between sweeps for auth identities that have no "
+            "platform User row. Each sweep heals what it finds and alerts."
+        ),
+    )
+    auth_identity_orphan_grace_secs: int = Field(
+        default=5 * 60,
+        ge=0,
+        description=(
+            "Age in seconds an auth identity must reach before it counts as "
+            "orphaned, so a sign-up still in flight is not flagged or healed early."
+        ),
+    )
+    auth_identity_orphan_check_limit: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description="Maximum orphaned auth identities healed per sweep.",
+    )
+
     # Execution Accuracy Monitoring
     execution_accuracy_check_interval_hours: int = Field(
         default=24,
@@ -613,6 +645,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The email address to use for sending emails",
     )
 
+    # Auth mail (verify email, reset password, change email) is not gated by
+    # this: it always sends, so sign-in keeps working with notifications off.
+    enable_user_notifications: bool = Field(
+        default=True,
+        description=(
+            "Send notification emails to users: Briefings, Alerts, Verdicts, "
+            "subscription and trial mail. When false they are dropped, not "
+            "deferred. Auth emails and internal ops mail are unaffected."
+        ),
+    )
+
     # Separated so each kind carries its own reputation. Marketing mail goes
     # from MailerLite as hello@news.agpt.co and has no sender here.
     billing_sender_email: str = Field(
@@ -622,6 +665,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     product_sender_email: str = Field(
         default="AutoGPT <notify@agpt.co>",
         description="Sender for the Briefing, Alert and Verdict families",
+    )
+    billing_reply_to_email: str = Field(
+        default="contact@agpt.co",
+        description="Shared inbox for replies to billing and account service messages",
+    )
+    product_reply_to_email: str = Field(
+        default="hello@agpt.co",
+        description="Reply-to address for Briefing, Alert and Verdict notifications",
     )
     ops_sender_email: str = Field(
         default="AutoGPT Platform <platform@agpt.co>",
@@ -1079,6 +1130,13 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="MailerLite API token used to manage tour and changelog audiences",
     )
+    mailerlite_webhook_secret: str = Field(
+        default="",
+        description=(
+            "Signing secret of the MailerLite webhook that reports unsubscribes. "
+            "Blank refuses every call to that webhook."
+        ),
+    )
 
     unsubscribe_secret_key: str = Field(
         default="",
@@ -1313,10 +1371,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     posthog_host: str = Field(
         default="https://eu.i.posthog.com", description="PostHog host URL"
     )
-    posthog_personal_api_key: str = Field(
+    posthog_secret_key: str = Field(
         default="",
-        description="PostHog personal API key. Only used for local feature-flag "
-        "evaluation; without it flag reads fall back to a remote /flags call.",
+        description="PostHog Feature Flags Secure API Key (project settings > "
+        "Feature Flags), for local flag evaluation; without it flag reads fall back "
+        "to a remote /flags call. A personal API key also works, but PostHog is "
+        "deprecating that use.",
     )
 
     # Add more secret fields as needed

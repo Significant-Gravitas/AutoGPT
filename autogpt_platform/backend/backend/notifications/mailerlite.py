@@ -19,6 +19,14 @@ transition:
    checkout joins it, and nobody else enters MailerLite through us: a signup
    alone does not create a subscriber. GTM segments it for outreach.
 
+Someone who opted out of marketing enters none of these. Every write below
+upserts the subscriber, a removal or a field update included, so nothing is
+queued for them at all (`consent.py`), the backfills leave them out, and the
+consumer re-reads the opt-out right before each write, which drops a change
+queued just before the refusal. The one exception is `unsubscribe`, which
+carries the refusal itself to someone MailerLite already has, and never
+creates a subscriber.
+
 Subscriber fields (`SubscriberField`) are the backend's alone: every write
 comes from here, and MailerLite automations only read them.
 
@@ -42,7 +50,7 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 
 
-def _pseudonym(email: str) -> str:
+def pseudonym(email: str) -> str:
     """A stable, non-reversible handle for logs.
 
     A subscriber's address is personal data; putting it in a log line or an
@@ -57,6 +65,9 @@ settings = Settings()
 
 API_BASE = settings.config.mailerlite_api_url.rstrip("/")
 _OK_STATUSES = (200, 201, 202, 204)
+# Subscriber statuses MailerLite sends nothing to, so an unsubscribe has
+# nothing left to do. The API cannot set them back to active either.
+_NOT_MAILED_STATUSES = ("unsubscribed", "bounced", "junk")
 
 # The type MailerLite stores each of our custom fields as, which is also what
 # `ensure_fields` creates. A date is written YYYY-MM-DD.
@@ -208,6 +219,38 @@ async def record_checkout_opened(email: str, fields: Fields | None = None) -> No
     )
 
 
+async def unsubscribe(email: str, fields: Fields | None = None) -> None:
+    """The account refused marketing: mark the subscriber unsubscribed so no
+    campaign or automation reaches them. Someone MailerLite does not have is
+    left alone, since creating a subscriber is exactly what the refusal rules
+    out, and so is one MailerLite already does not mail. `fields` is ignored:
+    nothing else is written for someone who refused.
+
+    An update by subscriber ID (`PUT /subscribers/{id}`), not the upsert the
+    other writes use, so it can never create anyone."""
+    _require_token()
+    subscriber = await _find_subscriber(email)
+    if subscriber is None or not subscriber.get("id"):
+        logger.info(
+            f"No MailerLite subscriber for {pseudonym(email)}; nothing to unsubscribe"
+        )
+        return
+    if subscriber.get("status") in _NOT_MAILED_STATUSES:
+        return
+    response = await _client().put(
+        f"{API_BASE}/subscribers/{subscriber['id']}",
+        headers=_headers(),
+        json={"status": "unsubscribed"},
+    )
+    # 404 means the subscriber was deleted since the lookup: nobody to mail.
+    if response.status not in _OK_STATUSES and response.status != 404:
+        raise MailerLiteError(
+            f"Unsubscribing MailerLite subscriber {pseudonym(email)} failed with "
+            f"{response.status}"
+        )
+    logger.info(f"Unsubscribed {pseudonym(email)} in MailerLite")
+
+
 async def ensure_fields() -> list[SubscriberField]:
     """Create any of our fields MailerLite does not have yet, and return the
     ones created. Idempotent, and checked once per process."""
@@ -279,7 +322,7 @@ async def _remove_from_group(
     subscriber_id = await _find_subscriber_id(email)
     if subscriber_id is None:
         logger.info(
-            "No MailerLite subscriber for %s; nothing to remove", _pseudonym(email)
+            "No MailerLite subscriber for %s; nothing to remove", pseudonym(email)
         )
         return
 
@@ -290,10 +333,10 @@ async def _remove_from_group(
     # 404 means they are already out of the group, which is the desired state.
     if response.status not in _OK_STATUSES and response.status != 404:
         raise MailerLiteError(
-            f"Removing subscriber {_pseudonym(email)} from the {description} group "
+            f"Removing subscriber {pseudonym(email)} from the {description} group "
             f"failed with {response.status}"
         )
-    logger.info(f"Removed {_pseudonym(email)} from the MailerLite {description} group")
+    logger.info(f"Removed {pseudonym(email)} from the MailerLite {description} group")
 
 
 async def _add_to_group(
@@ -308,7 +351,7 @@ async def _add_to_group(
         await ensure_fields()
         body["fields"] = _payload(fields)
     await _upsert(email, body, f"{description} group")
-    logger.info("Added %s to the MailerLite %s group", _pseudonym(email), description)
+    logger.info("Added %s to the MailerLite %s group", pseudonym(email), description)
 
 
 async def _upsert(email: str, body: dict, description: str) -> None:
@@ -317,7 +360,7 @@ async def _upsert(email: str, body: dict, description: str) -> None:
     )
     if response.status not in _OK_STATUSES:
         raise MailerLiteError(
-            f"MailerLite {description} for subscriber {_pseudonym(email)} "
+            f"MailerLite {description} for subscriber {pseudonym(email)} "
             f"failed with {response.status}"
         )
 
@@ -338,7 +381,7 @@ async def _find_subscriber(email: str) -> dict | None:
         return None
     if response.status not in _OK_STATUSES:
         raise MailerLiteError(
-            f"Looking up MailerLite subscriber {_pseudonym(email)} failed with "
+            f"Looking up MailerLite subscriber {pseudonym(email)} failed with "
             f"{response.status}"
         )
     return (response.json() or {}).get("data") or {}

@@ -10,6 +10,9 @@ the tour group is left alone: they are either mid-tour, and must not get the
 changelog yet, or they finished it and MailerLite's automation has already
 moved them across.
 
+A customer who opted out of marketing is left out entirely, removals
+included: they never enter MailerLite (`consent.py`).
+
 Idempotent by construction: current membership is read first, so a second run
 finds nothing to do and a failed call is simply picked up by the next run.
 """
@@ -17,19 +20,21 @@ finds nothing to do and a failed call is simply picked up by the next run.
 import asyncio
 import logging
 import re
+from datetime import datetime
 from enum import Enum
 from typing import Any
 from urllib.parse import urlencode
 
 from pydantic import BaseModel
 
+from backend.notifications.consent import marketing_allowed
 from backend.notifications.mailerlite import (
     API_BASE,
     MailerLiteError,
     _client,
     _headers,
-    _pseudonym,
     _require_config,
+    pseudonym,
 )
 from backend.util.settings import Settings
 
@@ -66,6 +71,7 @@ class Decision(str, Enum):
     SKIP_IN_TOUR = "skip_in_tour"
     SKIP_NO_TRIAL_GROUP = "skip_no_trial_group"
     SKIP_UNSETTLED = "skip_unsettled"
+    SKIP_OPTED_OUT = "skip_opted_out"
     ALREADY_CORRECT = "already_correct"
 
 
@@ -101,6 +107,8 @@ class Customer(BaseModel):
     user_id: str
     email: str
     subscriptions: list[Subscription]
+    # Set when they refused marketing: they must never enter MailerLite.
+    marketing_opt_out_at: datetime | None = None
 
 
 class Audience(BaseModel):
@@ -157,6 +165,10 @@ def decide(
     customer: Customer, audience: Audience, trial_enabled: bool
 ) -> PlannedChange:
     standing = classify(customer.subscriptions)
+    if not marketing_allowed(customer):
+        return PlannedChange(
+            customer=customer, standing=standing, decisions=[Decision.SKIP_OPTED_OUT]
+        )
     email = customer.email.strip().lower()
     in_tour = email in audience.tour
     in_changelog = email in audience.changelog
@@ -283,7 +295,7 @@ def _refusal(email: str, answer: BatchAnswer) -> str:
     """A refused call, for the log: the pseudonym, the top-level domain and
     MailerLite's reason. Enough to spot a pattern without naming anyone."""
     return (
-        f"{_pseudonym(email)} at {_top_level_domain(email)} with {answer.code} "
+        f"{pseudonym(email)} at {_top_level_domain(email)} with {answer.code} "
         f"({_failure_reason(answer.body, email)})"
     )
 
@@ -314,7 +326,7 @@ def _failure_reason(body: Any, email: str) -> str:
             listed = problems if isinstance(problems, list) else [problems]
             parts.append(f"{field}: {'; '.join(str(p) for p in listed)}")
     reason = " | ".join(parts) or "no reason given"
-    return re.sub(re.escape(email.strip()), _pseudonym(email), reason, flags=re.I)
+    return re.sub(re.escape(email.strip()), pseudonym(email), reason, flags=re.I)
 
 
 async def _send_batch(requests: list[dict]) -> list[BatchAnswer]:

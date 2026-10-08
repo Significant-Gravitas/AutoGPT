@@ -35,9 +35,9 @@ def pytest_itemcollected(item: pytest.Function) -> None:
         or "forkserver" not in get_all_start_methods()
     ):
         return
-    _preload_started = True
     set_forkserver_preload(["scripts.server_preload"])
     Thread(target=_warm_test_forkserver, daemon=True).start()
+    _preload_started = True
 
 
 def _warm_test_forkserver() -> None:

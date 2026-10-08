@@ -145,7 +145,17 @@ def tear_down_stack():
     if owners := other_stack_owners():
         print(f"Leaving the test stack up for {', '.join(sorted(owners))}.")
         return
-    run_command(["docker", "compose", "-f", "docker-compose.test.yaml", "down"])
+    run_command(
+        [
+            "docker",
+            "compose",
+            "-f",
+            "docker-compose.test.yaml",
+            "--env-file",
+            "../.env",
+            "down",
+        ]
+    )
 
 
 def other_stack_owners():

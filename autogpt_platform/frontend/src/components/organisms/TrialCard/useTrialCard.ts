@@ -4,6 +4,7 @@ import {
 } from "@/app/api/__generated__/endpoints/trials/trials";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { trackAdsConversionBeforeNavigation } from "@/services/analytics/google-ads";
+import { markTrialCheckoutStarted } from "@/services/analytics/monetization-analytics";
 import { TrialEvent } from "@/services/analytics/posthog-events";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 import { updateTrialStatusCache } from "@/services/trials/updateTrialStatusCache";
@@ -37,7 +38,7 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
     const identity = `${userID}:${offer.token}`;
     if (seenOffer.current === identity) return;
     seenOffer.current = identity;
-    posthog?.capture(TrialEvent.SUBSCRIPTION_TRIAL_OFFER_VIEWED, {
+    posthog?.capture(TrialEvent.TRIAL_OFFER_VIEWED, {
       trial_offer_version: offer.version,
       subscription_tier: offer.tier,
       trial_duration_days: offer.duration_days,
@@ -56,10 +57,7 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
       if (useAuthStore.getState().user?.id !== userID) return;
       if (response.status !== 200)
         throw new Error("Unable to start trial checkout.");
-      posthog?.capture(TrialEvent.SUBSCRIPTION_TRIAL_CHECKOUT_STARTED, {
-        trial_offer_version: offer.version,
-        surface: returnTo,
-      });
+      markTrialCheckoutStarted(returnTo);
       await trackAdsConversionBeforeNavigation("begin_checkout", {
         value: getTrialChargeAmount(offer),
         currency: offer.currency.toUpperCase(),
