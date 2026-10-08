@@ -35,7 +35,9 @@ function getAGPTServerApiUrl() {
 }
 
 function getAGPTServerBaseUrl() {
-  return getAGPTServerApiUrl().replace("/api", "");
+  // Only strip a trailing "/api"; a plain replace("/api", "") would hit the
+  // first "/api" anywhere, e.g. the host in https://api.example.com/api.
+  return getAGPTServerApiUrl().replace(/\/api\/?$/, "");
 }
 
 function getAGPTWsServerUrl() {
