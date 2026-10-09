@@ -41,6 +41,8 @@ logger = logging.getLogger(__name__)
 # paying. ``incomplete`` is left alone: its first payment may still be
 # authenticated, and Stripe expires it on its own.
 _UNPAID_STATUSES = ("past_due", "unpaid")
+# Invoice states still payable through a payment link or the portal.
+_PAYABLE_INVOICE_STATUSES = ("open", "uncollectible")
 
 
 class FailedInvoice(BaseModel):
@@ -94,7 +96,7 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         return
     if failed.is_latest and failed.subscription.get("status") == "canceled":
         # An earlier delivery cancelled it but did not finish voiding.
-        await _void_open_invoices(failed.sub_id)
+        await _void_unpaid_invoices(failed.sub_id)
         await sync_subscription_from_stripe(failed.subscription)
         return
     if not failed.is_unpaid:
@@ -178,7 +180,7 @@ async def _end_unpaid_subscription(failed: FailedInvoice) -> None:
     # Cancel first: Stripe stops retrying invoices of a cancelled subscription.
     # If voiding then fails, the retry finishes it from the cancelled state.
     canceled = await _cancel_subscription(failed.sub_id)
-    await _void_open_invoices(failed.sub_id)
+    await _void_unpaid_invoices(failed.sub_id)
     await sync_subscription_from_stripe(canceled)
 
 
@@ -197,33 +199,39 @@ async def _cancel_subscription(sub_id: str) -> dict:
         raise
 
 
-async def _void_open_invoices(sub_id: str) -> None:
+async def _void_unpaid_invoices(sub_id: str) -> None:
     """Close a cancelled subscription's unpaid invoices.
 
-    Cancelling only pauses automatic collection; the invoice stays payable
-    through its payment link and the portal, which would take money for a plan
-    the customer no longer has. An invoice with a payment still processing is
-    left for that payment's own success or failure event.
+    Cancelling only pauses automatic collection; an ``open`` or
+    ``uncollectible`` invoice stays payable through its payment link and the
+    portal, which would take money for a plan the customer no longer has. An
+    invoice with a payment still processing is left for that payment's own
+    success or failure event.
     """
-    invoices = await stripe_call(
-        stripe.Invoice.list_async, subscription=sub_id, status="open", limit=100
-    )
-    async for invoice in stripe_list_items(invoices):
-        invoice_id: str = invoice["id"]
-        if await payment_in_progress(dict(invoice)):
-            logger.warning(f"Not voiding invoice {invoice_id}: payment processing")
-            continue
-        try:
-            await stripe_call(stripe.Invoice.void_invoice_async, invoice_id)
-        except stripe.StripeError:
-            current = await stripe_call(stripe.Invoice.retrieve_async, invoice_id)
-            if current.get("status") == "open":
-                raise
-            if current.get("status") == "paid":
-                logger.error(
-                    f"Invoice {invoice_id} was paid after subscription {sub_id}"
-                    " was cancelled for non-payment; needs a manual fix"
-                )
+    for status in _PAYABLE_INVOICE_STATUSES:
+        invoices = await stripe_call(
+            stripe.Invoice.list_async, subscription=sub_id, status=status, limit=100
+        )
+        async for invoice in stripe_list_items(invoices):
+            await _void_invoice(sub_id, dict(invoice))
+
+
+async def _void_invoice(sub_id: str, invoice: dict) -> None:
+    invoice_id: str = invoice["id"]
+    if await payment_in_progress(invoice):
+        logger.warning(f"Not voiding invoice {invoice_id}: payment processing")
+        return
+    try:
+        await stripe_call(stripe.Invoice.void_invoice_async, invoice_id)
+    except stripe.StripeError:
+        current = await stripe_call(stripe.Invoice.retrieve_async, invoice_id)
+        if current.get("status") in _PAYABLE_INVOICE_STATUSES:
+            raise
+        if current.get("status") == "paid":
+            logger.error(
+                f"Invoice {invoice_id} was paid after subscription {sub_id}"
+                " was cancelled for non-payment; needs a manual fix"
+            )
 
 
 async def _is_unconverted_trial(user_id: str, sub_id: str) -> bool:

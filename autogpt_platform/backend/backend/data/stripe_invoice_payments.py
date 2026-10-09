@@ -86,8 +86,14 @@ def stripe_id(value: Any) -> str:
 
 
 async def _retrieve_with_payments(invoice_id: str) -> dict:
-    params = {"expand": ["payments"]} if stripe.api_version >= _BASIL else {}
-    return dict(await stripe_call(stripe.Invoice.retrieve_async, invoice_id, **params))
+    """The invoice at the SDK's version, with its payments where that has them."""
+    if stripe.api_version < _BASIL:
+        return dict(await stripe_call(stripe.Invoice.retrieve_async, invoice_id))
+    return dict(
+        await stripe_call(
+            stripe.Invoice.retrieve_async, invoice_id, expand=["payments"]
+        )
+    )
 
 
 def _payments(invoice: dict) -> list[dict] | None:

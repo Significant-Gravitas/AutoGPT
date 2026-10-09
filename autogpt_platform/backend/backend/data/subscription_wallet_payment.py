@@ -60,7 +60,11 @@ async def pay_invoice_from_wallet(
             ),
         )
     except InsufficientBalanceError:
-        return False
+        # The balance is checked before the key, so a concurrent delivery
+        # that took the debit first shows up here when the wallet cannot
+        # cover a second bill; that payment must be finished, not cancelled.
+        if await find_wallet_payment(user_id, invoice_id) is None:
+            return False
     except UniqueViolationError:
         # A concurrent delivery of the same failure took the debit first.
         pass

@@ -1280,14 +1280,26 @@ def test_stripe_webhook_dispatches_invoice_payment_failed(
     failure_mock.assert_awaited_once_with(invoice_obj)
 
 
-def test_stripe_webhook_paid_invoice_refunds_an_unfinished_wallet_debit(
+@pytest.mark.parametrize(
+    "event_type", ["invoice.payment_succeeded", "invoice_payment.paid"]
+)
+def test_stripe_webhook_paid_invoice_reconciles_the_wallet_payment_first(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    event_type: str,
 ) -> None:
-    """A card payment that lands while a wallet payment for the same invoice is
-    unfinished must give the wallet debit back before the success handler."""
+    """Both paid events settle or refund an unfinished wallet payment before
+    the success handler, whose credit grant reads the settled state."""
     invoice_obj = {"id": "in_test", "customer": "cus_test", "amount_paid": 1999}
-    event = {"type": "invoice.payment_succeeded", "data": {"object": invoice_obj}}
+    data_object = (
+        invoice_obj
+        if event_type == "invoice.payment_succeeded"
+        else {"object": "invoice_payment", "invoice": "in_test"}
+    )
+    event = {"type": event_type, "data": {"object": data_object}}
+    mocker.patch.object(
+        stripe.Invoice, "retrieve_async", AsyncMock(return_value=invoice_obj)
+    )
 
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",

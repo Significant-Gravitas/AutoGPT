@@ -21,6 +21,7 @@ from backend.data.subscription_payment_failure_test import (
     _renewal_failed,
 )
 from backend.data.subscription_wallet_payment import (
+    pay_invoice_from_wallet,
     reconcile_wallet_payment_on_paid_invoice,
 )
 
@@ -97,14 +98,14 @@ async def test_crash_after_stripe_paid_before_settlement_was_recorded(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("sdk_version", [ACACIA, ENDIVE])
-async def test_lost_pay_response_is_settled_by_the_retry(sdk_version):
-    """The pay reached Stripe but its response was lost: the retry finds the
-    invoice paid with no card payment and settles instead of refunding."""
+async def test_lost_pay_response_is_settled_not_refunded(sdk_version):
+    """The pay reached Stripe but its response was lost: re-reading the
+    invoice finds it paid with no card payment, so it settles, not refunds."""
     with World(balance=5000, api_version=sdk_version) as world:
         event = _renewal_failed(world)
         world.stripe.fail_next["pay_response"] = 1
-        with pytest.raises(stripe.APIConnectionError):
-            await handle_subscription_payment_failure(event)
+        await handle_subscription_payment_failure(event)
+        assert world.ledger.settled("in_1")
 
         await handle_subscription_payment_failure(event)
 
@@ -192,3 +193,23 @@ async def test_unfinished_wallet_payment_waits_for_a_processing_payment():
     assert world.ledger.transactions == {"in_1": -2000}
     assert world.stripe.paid_out_of_band == []
     assert world.synced[-1]["status"] == "past_due"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_delivery_without_balance_for_a_second_bill_finishes_it():
+    """Two deliveries of one failure: the second finds too little balance
+    (checked before the key) and must finish the first's payment, not report
+    that the wallet cannot pay, which would cancel the plan being paid for."""
+    with World(balance=3000) as world:
+        event = _renewal_failed(world)
+        world.stripe.fail_next["pay"] = 1
+        with pytest.raises(stripe.APIConnectionError):
+            await pay_invoice_from_wallet("user-1", "cus_1", "sub_1", event)
+        assert world.ledger.balance == 1000
+
+        assert await pay_invoice_from_wallet("user-1", "cus_1", "sub_1", event)
+
+    assert world.stripe.paid_out_of_band == ["in_1"]
+    assert world.ledger.transactions == {"in_1": -2000}
+    assert world.ledger.settled("in_1")
+    assert world.stripe.cancelled == []

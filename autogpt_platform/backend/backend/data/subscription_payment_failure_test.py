@@ -154,7 +154,7 @@ class FakeStripe:
     async def void(self, invoice_id: str):
         self._maybe_fail("void")
         invoice = self.invoices[invoice_id]
-        if invoice["status"] != "open":
+        if invoice["status"] not in ("open", "uncollectible"):
             raise stripe.InvalidRequestError("not open", None)
         invoice["status"] = "void"
         self.voided.append(invoice_id)
@@ -170,7 +170,8 @@ def _invoice_payment(status: str, pi_id: str) -> dict:
 
 
 class FakeLedger:
-    """The wallet: a balance plus transactions unique by key, like the DB."""
+    """The wallet: a balance plus transactions unique by key, like the DB,
+    which checks the balance before the key."""
 
     def __init__(self, balance: int) -> None:
         self.balance = balance
@@ -179,8 +180,6 @@ class FakeLedger:
         self.fail_next_update = 0
 
     async def add_transaction(self, *, user_id, amount, transaction_key, **kwargs):
-        if transaction_key in self.transactions:
-            raise UniqueViolationError({"error": "duplicate key"})
         if kwargs.get("fail_insufficient_credits") and self.balance + amount < 0:
             raise InsufficientBalanceError(
                 message="no balance",
@@ -188,6 +187,8 @@ class FakeLedger:
                 balance=self.balance,
                 amount=amount,
             )
+        if transaction_key in self.transactions:
+            raise UniqueViolationError({"error": "duplicate key"})
         self.transactions[transaction_key] = amount
         self.metadata[transaction_key] = dict(kwargs["metadata"].data)
         self.balance += amount
@@ -554,3 +555,27 @@ async def test_non_subscription_invoice_is_ignored():
         )
 
     assert world.ledger.transactions == {}
+
+
+@pytest.mark.asyncio
+async def test_cancelled_subscription_also_voids_its_uncollectible_invoices():
+    with World(balance=0) as world:
+        event = _renewal_failed(world)
+        world.stripe.add_invoice("in_0", "sub_1", status="uncollectible")
+        await handle_subscription_payment_failure(event)
+
+    assert world.stripe.cancelled == ["sub_1"]
+    assert sorted(world.stripe.voided) == ["in_0", "in_1"]
+
+
+@pytest.mark.asyncio
+async def test_resumed_void_skips_an_invoice_whose_payment_is_processing():
+    with World(balance=0) as world:
+        event = _renewal_failed(world)
+        world.stripe.subscriptions["sub_1"]["status"] = "canceled"
+        world.stripe.add_invoice("in_2", "sub_1", payment_intent="pi_2")
+        world.stripe.payment_intents["pi_2"] = {"id": "pi_2", "status": "processing"}
+        await handle_subscription_payment_failure(event)
+
+    assert world.stripe.voided == ["in_1"]
+    assert world.stripe.invoices["in_2"]["status"] == "open"
