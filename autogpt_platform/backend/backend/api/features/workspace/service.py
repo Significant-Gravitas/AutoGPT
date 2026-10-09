@@ -37,7 +37,7 @@ async def store_workspace_upload(
     outage.
     """
     filename = _sanitized_filename(file)
-    content = await _read_within_size_limit(file)
+    content = await read_within_size_limit(file, Config().max_file_size_mb)
 
     workspace = await get_or_create_workspace(user_id)
     manager = WorkspaceManager(user_id, workspace.id, session_id)
@@ -66,19 +66,21 @@ def _sanitized_filename(file: UploadFile) -> str:
     return os.path.basename(file.filename or "upload") or "upload"
 
 
-async def _read_within_size_limit(file: UploadFile) -> bytes:
-    """Read the upload, aborting as soon as it passes the per-file cap."""
-    max_file_size_mb = Config().max_file_size_mb
-    max_file_bytes = max_file_size_mb * 1024 * 1024
+async def read_within_size_limit(file: UploadFile, max_size_mb: int) -> bytes:
+    """Read the upload, refusing it with a 413 as soon as it passes the cap, or
+    before reading at all when the multipart parser already counted its size."""
+    max_bytes = max_size_mb * 1024 * 1024
+    too_large = fastapi.HTTPException(
+        status_code=413, detail=f"File exceeds maximum size of {max_size_mb} MB"
+    )
+    if file.size is not None and file.size > max_bytes:
+        raise too_large
     chunks: list[bytes] = []
     total_size = 0
     while chunk := await file.read(64 * 1024):
         total_size += len(chunk)
-        if total_size > max_file_bytes:
-            raise fastapi.HTTPException(
-                status_code=413,
-                detail=f"File exceeds maximum size of {max_file_size_mb} MB",
-            )
+        if total_size > max_bytes:
+            raise too_large
         chunks.append(chunk)
     return b"".join(chunks)
 

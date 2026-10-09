@@ -31,6 +31,7 @@ from backend.api.features.store.db import (
     StoreCreatorsSortOptions,
 )
 from backend.api.features.store.model import ProfileUpdateRequest
+from backend.api.features.workspace.service import read_within_size_limit
 from backend.util.virus_scanner import scan_content_safe
 
 from .models import (
@@ -401,20 +402,13 @@ async def upload_submission_media(
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_STORE)),
 ) -> MarketplaceMediaUploadResponse:
     """
-    Upload an image or video for a marketplace submission. Max size: 10MB.
+    Upload an image or video for a marketplace submission. Max size: 10 MB.
 
     **Rate limit:** 10 requests per 5 minutes per user.
     """
     await enforce(media_upload_limiter, auth.user_id, response)
 
-    max_size = 10 * 1024 * 1024  # 10MB limit for external API
-
-    content = await file.read()
-    if len(content) > max_size:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File size ({len(content)} bytes) exceeds the 10MB limit",
-        )
+    content = await read_within_size_limit(file, max_size_mb=10)
 
     # Virus scan
     await scan_content_safe(content, filename=file.filename or "upload")
