@@ -170,6 +170,14 @@ def flag_on(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def personalization_admission(mocker: MockerFixture) -> AsyncMock:
+    return mocker.patch(
+        "backend.api.features.onboarding_dump.service.enforce_personalization_budget",
+        new=AsyncMock(),
+    )
+
+
+@pytest.fixture(autouse=True)
 def dumps(mocker: MockerFixture) -> DumpStore:
     store = DumpStore()
     module = "backend.api.features.onboarding_dump.db"
@@ -364,7 +372,7 @@ def test_part_over_the_per_part_limit_is_rejected():
 
 
 def test_part_pushing_the_recording_over_the_total_limit_is_rejected(
-    storage_mocks: dict[str, AsyncMock]
+    storage_mocks: dict[str, AsyncMock],
 ):
     storage_mocks["buffered_size"].return_value = MAX_RECORDING_BYTES
 
@@ -376,7 +384,7 @@ def test_part_pushing_the_recording_over_the_total_limit_is_rejected(
 
 
 def test_a_racing_part_that_blows_the_total_limit_is_rejected_after_the_write(
-    storage_mocks: dict[str, AsyncMock]
+    storage_mocks: dict[str, AsyncMock],
 ):
     """The pre-check races; the post-check is the authoritative one.
 
