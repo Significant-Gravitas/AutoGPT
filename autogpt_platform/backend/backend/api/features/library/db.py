@@ -404,18 +404,14 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
     return library_model.LibraryAgent.from_db(
         library_agent,
         sub_graphs=sub_graphs,
-        schedule_info=schedule_info,
         store_listing=store_listing,
+        schedule_info=schedule_info,
     )
 
 
 async def _fetch_store_listing(graph_id: str) -> prisma.models.StoreListing | None:
-    """The graph's live marketplace listing, whichever version it lists.
-
-    By graph id rather than through the library agent's exact graph version, so
-    an agent that is behind the listing still shows it (and the frontend can
-    offer the update).
-    """
+    # Keyed on the graph, not its version: the owner's library agent follows
+    # every save, and a later version is still the listed agent.
     return await prisma.models.StoreListing.prisma().find_first(
         where={
             "agentGraphId": graph_id,

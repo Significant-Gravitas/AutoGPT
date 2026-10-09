@@ -135,29 +135,6 @@ class MarketplaceListing(pydantic.BaseModel):
     slug: str
     creator: MarketplaceListingCreator
 
-    @staticmethod
-    def from_store_listing(
-        store_listing: Optional[prisma.models.StoreListing],
-    ) -> Optional["MarketplaceListing"]:
-        """The listing as a library agent shows it, or None if it isn't live.
-
-        Needs `ActiveVersion` and `CreatorProfile` included on the listing.
-        """
-        if store_listing is None or store_listing.isDeleted:
-            return None
-        version = store_listing.ActiveVersion
-        profile = store_listing.CreatorProfile
-        if version is None or profile is None:
-            return None
-        return MarketplaceListing(
-            id=store_listing.id,
-            name=version.name,
-            slug=store_listing.slug,
-            creator=MarketplaceListingCreator(
-                name=profile.name, id=profile.id, slug=profile.username
-            ),
-        )
-
 
 class LibraryAgentRef(pydantic.BaseModel):
     """Just enough of a library agent to label and deep-link a run.
@@ -279,17 +256,13 @@ class LibraryAgent(pydantic.BaseModel):
     def from_db(
         agent: prisma.models.LibraryAgent,
         sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
+        store_listing: Optional[prisma.models.StoreListing] = None,
         execution_count_override: Optional[int] = None,
         schedule_info: Optional[dict[str, str]] = None,
-        store_listing: Optional[prisma.models.StoreListing] = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
         model instance.
-
-        `store_listing` is the graph's marketplace listing, loaded with its
-        `ActiveVersion` and `CreatorProfile`; `marketplace_listing` is only set
-        when it is given.
         """
         if not agent.AgentGraph:
             raise ValueError("Associated Agent record is required.")
@@ -379,6 +352,26 @@ class LibraryAgent(pydantic.BaseModel):
         can_access_graph = agent.AgentGraph.userId == agent.userId
         is_latest_version = True
 
+        active_listing = store_listing.ActiveVersion if store_listing else None
+        creator_profile = store_listing.CreatorProfile if store_listing else None
+        marketplace_listing_info = (
+            MarketplaceListing(
+                id=store_listing.id,
+                name=active_listing.name,
+                slug=store_listing.slug,
+                creator=MarketplaceListingCreator(
+                    name=creator_profile.name,
+                    id=creator_profile.id,
+                    slug=creator_profile.username,
+                ),
+            )
+            if store_listing
+            and active_listing
+            and creator_profile
+            and not store_listing.isDeleted
+            else None
+        )
+
         return LibraryAgent(
             id=agent.id,
             graph_id=agent.agentGraphId,
@@ -429,7 +422,7 @@ class LibraryAgent(pydantic.BaseModel):
                 schedule_info.get(agent.agentGraphId) if schedule_info else None
             ),
             settings=_parse_settings(agent.settings),
-            marketplace_listing=MarketplaceListing.from_store_listing(store_listing),
+            marketplace_listing=marketplace_listing_info,
         )
 
 

@@ -272,3 +272,37 @@ async def test_listed_versions_carry_the_credentials_their_sub_graphs_need(
 
     assert single.credentials_input_schema["properties"]
     assert listed.items[0].credentials_input_schema == single.credentials_input_schema
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_page_of_versions_resolves_only_its_own_sub_graphs(
+    server: SpinTestServer, mocker: pytest_mock.MockFixture
+) -> None:
+    """Every version's sub-graphs cost round trips, so a page pays only for its own."""
+    user_id = str(uuid4())
+    await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
+    first = await graph_db.create_graph(
+        graph_db.Graph(name="Versions", description="", nodes=[]), user_id
+    )
+    for version in (2, 3):
+        later = graph_db.make_graph_model(
+            graph_db.Graph(
+                id=first.id, version=version, name="Versions", description=""
+            ),
+            user_id,
+        )
+        later.reassign_ids(user_id=user_id, reassign_graph_id=False)
+        await graph_db.create_graph(later, user_id)
+    resolve = mocker.patch.object(
+        graph_db, "get_sub_graphs", wraps=graph_db.get_sub_graphs
+    )
+    auth = _AUTH.model_copy(update={"user_id": user_id})
+
+    newest = await list_graph_versions(first.id, page=PageRequest(limit=1), auth=auth)
+    older = await list_graph_versions(
+        first.id, page=PageRequest(limit=1, cursor=newest.next_cursor), auth=auth
+    )
+
+    assert [v.version for v in newest.items + older.items] == [3, 2]
+    assert newest.total_count == 3
+    assert resolve.await_count == 2

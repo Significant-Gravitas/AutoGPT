@@ -493,12 +493,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     trusted_proxy_count: int = Field(
-        default=1,
+        # Prod is Cloudflare -> Google LB -> pod, so the client is 3rd from the
+        # right; 1 keys every anonymous caller on the LB's address, one bucket.
+        default=3,
         ge=0,
-        description="How many proxies between the client and this app append to "
-        "X-Forwarded-For. The client IP is that many entries from the right; "
-        "everything further left is caller-controlled and must not be trusted. "
-        "0 ignores the header and uses the socket peer.",
+        description="How many X-Forwarded-For entries our own proxies append. "
+        "The client IP is that many entries from the right; everything further "
+        "left is caller-controlled and must not be trusted. The default is the "
+        "hosted platform: Cloudflare appends the client, Google's load balancer "
+        "appends Cloudflare's address and its own. 0 ignores the header and uses "
+        "the socket peer.",
     )
 
     e2b_egress_proxy_address: str = Field(
