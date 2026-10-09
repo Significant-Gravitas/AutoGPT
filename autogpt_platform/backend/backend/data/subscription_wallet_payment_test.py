@@ -5,6 +5,7 @@ Uses the stateful fakes of ``subscription_payment_failure_test``. From
 so these tests prove the wallet's own record decides, not those fields.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -12,11 +13,14 @@ import stripe
 
 from backend.data.stripe_invoice_payments import paid_by_stripe_collection
 from backend.data.subscription_payment_failure import (
+    FailedInvoice,
     handle_subscription_payment_failure,
 )
 from backend.data.subscription_payment_failure_test import (
     ACACIA,
+    CUSTOMER,
     ENDIVE,
+    USER,
     World,
     _renewal_failed,
 )
@@ -213,3 +217,71 @@ async def test_concurrent_delivery_without_balance_for_a_second_bill_finishes_it
     assert world.ledger.transactions == {"in_1": -2000}
     assert world.ledger.settled("in_1")
     assert world.stripe.cancelled == []
+
+
+def _stale_delivery(world: World, stale_invoice: dict):
+    """A delivery that read the invoice before another one paid it and the
+    subscription after: ``open`` but ``active``, so it will not pay."""
+    stale = FailedInvoice(
+        user_id=USER,
+        customer_id=CUSTOMER,
+        invoice=stale_invoice,
+        subscription=dict(world.stripe.subscriptions["sub_1"]),
+    )
+    return patch(
+        "backend.data.subscription_payment_failure._load_failed_invoice",
+        AsyncMock(return_value=stale),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sdk_version", [ACACIA, ENDIVE])
+async def test_racing_delivery_with_a_stale_open_invoice_never_refunds(sdk_version):
+    """Sentry's race: delivery A pays the invoice; delivery B, holding a stale
+    ``open`` copy, found A's debit unsettled and refunded it while Stripe kept
+    the invoice paid. B now waits for A's lock and finds the debit settled."""
+    with World(balance=5000, api_version=sdk_version) as world:
+        event = _renewal_failed(world)
+        stale_invoice = world.stripe.view("in_1")
+        a_paid, release_a = asyncio.Event(), asyncio.Event()
+
+        async def pause_between_pay_and_settlement():
+            a_paid.set()
+            await release_a.wait()
+
+        world.stripe.after_pay = pause_between_pay_and_settlement
+        a = asyncio.create_task(handle_subscription_payment_failure(event))
+        await a_paid.wait()
+        world.stripe.after_pay = None
+        with _stale_delivery(world, stale_invoice):
+            b = asyncio.create_task(handle_subscription_payment_failure(event))
+            for _ in range(50):
+                await asyncio.sleep(0)
+            assert not b.done()
+            release_a.set()
+            await asyncio.gather(a, b)
+
+    assert world.ledger.transactions == {"in_1": -2000}
+    assert world.ledger.settled("in_1")
+    assert world.stripe.paid_out_of_band == ["in_1"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sdk_version", [ACACIA, ENDIVE])
+async def test_stale_open_copy_after_an_unrecorded_wallet_pay_never_refunds(
+    sdk_version,
+):
+    """A paid at Stripe and died before recording it; B arrives with a stale
+    ``open`` copy. The decision re-reads the invoice, finds it paid with no
+    card payment, and settles instead of refunding."""
+    with World(balance=5000, api_version=sdk_version) as world:
+        event = _renewal_failed(world)
+        stale_invoice = world.stripe.view("in_1")
+        world.ledger.fail_next_update = 1
+        with pytest.raises(ConnectionError):
+            await handle_subscription_payment_failure(event)
+        with _stale_delivery(world, stale_invoice):
+            await handle_subscription_payment_failure(event)
+
+    assert world.ledger.transactions == {"in_1": -2000}
+    assert world.ledger.settled("in_1")

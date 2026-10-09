@@ -92,7 +92,9 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
     if await _left_to_settle(failed, payment):
         return
     if payment is not None:
-        await settle_wallet_payment(payment, failed.invoice, may_pay=failed.is_unpaid)
+        await settle_wallet_payment(
+            failed.user_id, failed.invoice_id, may_pay=failed.is_unpaid
+        )
         return
     if failed.is_latest and failed.subscription.get("status") == "canceled":
         # An earlier delivery cancelled it but did not finish voiding.

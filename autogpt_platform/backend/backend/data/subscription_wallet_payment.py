@@ -6,16 +6,24 @@ failure twice or late. The debit is keyed by the invoice id, so it is both
 the guard against a second debit and the record that a payment was started;
 every later delivery resumes from it until it is settled (the invoice is
 paid out of band with it) or refunded. See ``wallet_payment_state``.
+
+Deliveries for one invoice can run at once, so every decision on its wallet
+payment is made under a per-invoice lock, from our state and the invoice
+re-read inside that lock, never from a copy an earlier read left behind.
 """
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import stripe
+from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import User
 
 from backend.data.credit import UserCredit
+from backend.data.redis_client import get_redis_async
 from backend.data.stripe_client import stripe_call
 from backend.data.stripe_invoice_payments import paid_by_stripe_collection
 from backend.data.wallet_payment_state import (
@@ -32,6 +40,8 @@ logger = logging.getLogger(__name__)
 
 # Invoice states ``Invoice.pay`` still accepts.
 _PAYABLE_INVOICE_STATUSES = ("open", "uncollectible")
+# Outlasts the few Stripe calls (30s timeout each) made while it is held.
+_LOCK_TIMEOUT_SECONDS = 300
 
 
 async def pay_invoice_from_wallet(
@@ -68,26 +78,34 @@ async def pay_invoice_from_wallet(
     except UniqueViolationError:
         # A concurrent delivery of the same failure took the debit first.
         pass
-    payment = await find_wallet_payment(user_id, invoice_id)
-    if payment is None:
+    if not await settle_wallet_payment(user_id, invoice_id, may_pay=True):
         raise RuntimeError(f"Wallet debit for invoice {invoice_id} is missing")
-    await settle_wallet_payment(payment, invoice, may_pay=True)
     return True
 
 
 async def settle_wallet_payment(
-    payment: WalletPayment, invoice: dict, *, may_pay: bool
-) -> None:
+    user_id: str, invoice_id: str, *, may_pay: bool
+) -> bool:
     """Finish a started wallet payment: mark the invoice paid, or refund the debit.
 
-    Safe to repeat. ``may_pay`` is False once the invoice no longer pays for a
-    live plan; the debit is then given back instead of spent on it. A settled
-    or refunded payment is left as it is: once refunded, the debit must never
-    pay the invoice, even if the invoice is reopened and payable again.
+    Safe to repeat, and to run concurrently. ``may_pay`` is False once the
+    invoice no longer pays for a live plan; the debit is then given back
+    instead of spent on it. A settled or refunded payment is left as it is:
+    once refunded, the debit must never pay the invoice, even if the invoice
+    is reopened and payable again. Returns False when there is no debit.
     """
-    if payment.state != WalletPaymentState.DEBITED:
-        return
+    async with _wallet_payment_lock(invoice_id):
+        payment = await find_wallet_payment(user_id, invoice_id)
+        if payment is None:
+            return False
+        if payment.state == WalletPaymentState.DEBITED:
+            await _settle_locked(payment, may_pay=may_pay)
+        return True
+
+
+async def _settle_locked(payment: WalletPayment, *, may_pay: bool) -> None:
     invoice_id = payment.invoice_id
+    invoice = dict(await stripe_call(stripe.Invoice.retrieve_async, invoice_id))
     if may_pay and invoice.get("status") in _PAYABLE_INVOICE_STATUSES:
         try:
             # Out of band, so Stripe does not also retry the card that failed.
@@ -128,14 +146,27 @@ async def reconcile_wallet_payment_on_paid_invoice(invoice: dict) -> None:
     user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
     if not user:
         return
-    payment = await find_wallet_payment(user.id, invoice_id)
-    if payment is None or payment.state != WalletPaymentState.DEBITED:
-        return
-    await _settle_unpayable(payment, invoice)
+    async with _wallet_payment_lock(invoice_id):
+        payment = await find_wallet_payment(user.id, invoice_id)
+        if payment is None or payment.state != WalletPaymentState.DEBITED:
+            return
+        fresh = dict(await stripe_call(stripe.Invoice.retrieve_async, invoice_id))
+        await _settle_unpayable(payment, fresh)
+
+
+@asynccontextmanager
+async def _wallet_payment_lock(invoice_id: str) -> AsyncIterator[None]:
+    mutex = AsyncRedisKeyedMutex(await get_redis_async(), _LOCK_TIMEOUT_SECONDS)
+    async with mutex.locked(f"subscription-wallet-payment:{invoice_id}"):
+        yield
 
 
 async def _settle_unpayable(payment: WalletPayment, invoice: dict) -> None:
-    """Decide an unfinished debit whose invoice we will not (or cannot) pay."""
+    """Decide an unfinished debit whose invoice we will not (or cannot) pay.
+
+    ``invoice`` must have been read under the lock: a stale ``open`` copy of
+    an invoice another delivery has since paid would refund a paid bill.
+    """
     status = invoice.get("status")
     if status != "paid":
         # Voided, or no longer for a live plan: the wallet must not keep it.

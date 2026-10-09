@@ -7,7 +7,9 @@ Fake Stripe shapes each invoice by API version like the real one: before
 basil on it has neither, and ``payments`` only when expanded.
 """
 
-from contextlib import ExitStack
+import asyncio
+from collections.abc import Awaitable, Callable
+from contextlib import ExitStack, asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -44,6 +46,8 @@ class FakeStripe:
         self.voided: list[str] = []
         self.paid_out_of_band: list[str] = []
         self.fail_next: dict[str, int] = {}
+        # Runs after Stripe applied a pay, before the response returns.
+        self.after_pay: Callable[[], Awaitable[None]] | None = None
 
     def add_subscription(self, sub_id: str, status: str, latest_invoice: str = ""):
         self.subscriptions[sub_id] = {
@@ -125,6 +129,8 @@ class FakeStripe:
         sub = self.subscriptions[invoice["subscription"]]
         if sub["latest_invoice"] == invoice_id:
             sub["status"] = "active"
+        if self.after_pay:
+            await self.after_pay()
         # The request reached Stripe, but its response was lost.
         self._maybe_fail("pay_response")
         return self.view(invoice_id)
@@ -224,7 +230,13 @@ class World:
         self.ledger = FakeLedger(balance)
         self.synced: list[dict] = []
         self.trial = trial
+        self.locks: dict[str, asyncio.Lock] = {}
         self._stack = ExitStack()
+
+    @asynccontextmanager
+    async def _lock(self, invoice_id: str):
+        async with self.locks.setdefault(invoice_id, asyncio.Lock()):
+            yield
 
     async def _sync(self, subscription: dict, **kwargs):
         self.synced.append(dict(subscription))
@@ -249,6 +261,10 @@ class World:
                 ),
             ),
             patch.object(stripe, "api_version", self.api_version),
+            patch(
+                "backend.data.subscription_wallet_payment._wallet_payment_lock",
+                self._lock,
+            ),
             patch(
                 "backend.data.subscription_wallet_payment.UserCredit._add_transaction",
                 side_effect=self.ledger.add_transaction,
