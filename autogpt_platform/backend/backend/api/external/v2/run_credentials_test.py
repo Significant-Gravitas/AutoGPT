@@ -35,6 +35,7 @@ def test_a_run_request_parses_credentials_into_models() -> None:
 def test_a_schedule_request_parses_credentials_into_models() -> None:
     request = AgentRunScheduleCreateRequest.model_validate(
         {
+            "graph_id": "graph-1",
             "name": "Daily",
             "cron": "0 9 * * *",
             "credentials_inputs": {FIELD: CREDENTIAL},
@@ -62,7 +63,7 @@ async def test_a_run_hands_the_executor_credential_models(
         new_callable=AsyncMock,
     )
     mocker.patch(
-        "backend.api.external.v2.library.agents.get_credit_model",
+        "backend.api.external.v2.library.helpers.get_credit_model",
         new_callable=AsyncMock,
         return_value=Mock(get_credits=AsyncMock(return_value=100)),
     )

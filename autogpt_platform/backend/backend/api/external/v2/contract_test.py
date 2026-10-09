@@ -356,7 +356,7 @@ def test_every_post_declares_whether_it_creates_or_enqueues():
         "create_credential": 201,
         "create_folder": 201,
         "create_graph": 201,
-        "create_graph_schedule": 201,
+        "create_schedule": 201,
         "create_submission": 201,
         "fork_library_agent": 201,
         "add_agent_to_library": 201,

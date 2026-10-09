@@ -30,6 +30,7 @@ from .models import (
     AgentRunReview,
     AgentRunReviewsSubmitRequest,
     AgentRunReviewsSubmitResponse,
+    AgentRunReviewStatus,
     AgentRunShareResponse,
 )
 from .pagination import Page, PageRequest, page_request
@@ -58,7 +59,7 @@ async def list_reviews(
     run_id: Optional[str] = Query(
         default=None, description="Filter by graph execution ID"
     ),
-    status: Optional[ReviewStatus] = Query(
+    status: Optional[AgentRunReviewStatus] = Query(
         default=None,
         description="Filter by review status",
     ),
@@ -75,7 +76,7 @@ async def list_reviews(
     reviews, pagination = await review_db.get_reviews(
         user_id=auth.user_id,
         graph_exec_id=run_id,
-        status=status,
+        status=ReviewStatus(status) if status else None,
         page=page.page,
         page_size=page.limit,
         organization_id=auth.organization_id,
