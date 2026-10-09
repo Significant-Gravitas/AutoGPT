@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 export const SelectField = defineComponent({
   name: "SelectField",
   description:
-    "A labeled dropdown inside a Form. The initial value must match an option value. Use unique nonempty option values.",
+    "A labeled dropdown with one to 12 options inside a Form. The initial value must match an option value. Use unique nonempty option values.",
   props: z
     .object({
       name: z.string(),

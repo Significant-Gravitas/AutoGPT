@@ -16,7 +16,6 @@ export function useRenderUI(
   const [initialState] = useState(() =>
     locked || !key ? {} : readUIDraft(key, source),
   );
-  const [view, setView] = useState<"interactive" | "summary">("interactive");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -56,8 +55,6 @@ export function useRenderUI(
   return {
     locked,
     initialState,
-    view,
-    setView,
     isSending,
     error,
     sent,

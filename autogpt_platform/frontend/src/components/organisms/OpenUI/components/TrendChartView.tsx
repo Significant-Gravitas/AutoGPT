@@ -20,10 +20,7 @@ export function TrendChartView({
     .slice(0, 60)
     .filter((point) => point && Number.isFinite(point.value));
   return (
-    <section
-      className="min-w-0 rounded-xl border border-zinc-200 bg-white p-5"
-      aria-label={props.title}
-    >
+    <section className="min-w-0" aria-label={props.title}>
       <ChartHeading {...props} />
       <div
         className="h-48 min-w-0"

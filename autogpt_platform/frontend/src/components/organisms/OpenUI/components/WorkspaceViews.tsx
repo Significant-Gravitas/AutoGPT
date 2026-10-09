@@ -13,9 +13,9 @@ export function WorkspaceView({
   renderNode,
 }: ComponentRenderProps<z.infer<typeof catalog.Workspace.props>>) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-7">
       <div className="pb-1">
-        <h2 className="text-2xl font-semibold tracking-tight text-zinc-900">
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-900">
           {props.title}
         </h2>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-600">

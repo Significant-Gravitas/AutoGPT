@@ -1,15 +1,14 @@
 import { useId } from "react";
 import type { ComponentRenderProps } from "@openuidev/react-lang";
 import type { z } from "zod/v4";
-import type {
-  SelectField,
-  NumberField,
-  DateField,
-} from "@/lib/openui/catalog-fields";
+import type { SelectField, DateField } from "@/lib/openui/catalog-fields";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
 import { useOpenUIDisabled } from "../interactionContext";
 import { useFieldView } from "./useFieldView";
+import { useFieldValidation } from "./useFieldValidation";
+import { FieldFeedback } from "./FieldFeedback";
+import { cn } from "@/lib/utils";
 
 export function SelectFieldView({
   props,
@@ -49,43 +48,27 @@ export function DateFieldView({
   const id = useId();
   const disabled = useOpenUIDisabled();
   const field = useFieldView(props.name, props.value ?? "");
-  return (
-    <Input
-      id={id}
-      label={props.label}
-      labelVariant="body-medium"
-      type="date"
-      value={field.value}
-      onChange={(event) => field.setValue(event.target.value)}
-      disabled={disabled}
-      required
-    />
+  const { error, ...handlers } = useFieldValidation(
+    field.value ? "" : "Choose a valid date.",
   );
-}
-
-export function NumberFieldView({
-  props,
-}: ComponentRenderProps<z.infer<typeof NumberField.props>>) {
-  const id = useId();
-  const disabled = useOpenUIDisabled();
-  const field = useFieldView<string | number>(props.name, props.value ?? "");
   return (
-    <Input
-      id={id}
-      label={props.label}
-      labelVariant="body-medium"
-      type="number"
-      value={field.value}
-      min={props.min ?? undefined}
-      max={props.max ?? undefined}
-      step={props.step ?? 1}
-      onChange={(event) =>
-        field.setValue(
-          event.target.value === "" ? "" : Number(event.target.value),
-        )
-      }
-      disabled={disabled}
-      required
-    />
+    <FieldFeedback id={`${id}-error`} error={error}>
+      <Input
+        {...handlers}
+        id={id}
+        label={props.label}
+        labelVariant="body-medium"
+        type="date"
+        value={field.value}
+        onChange={(event) => field.setValue(event.target.value)}
+        aria-invalid={!!error}
+        aria-describedby={`${id}-error`}
+        className={cn(
+          error && "border-red-500 focus:border-red-500 focus:ring-red-500",
+        )}
+        disabled={disabled}
+        required
+      />
+    </FieldFeedback>
   );
 }

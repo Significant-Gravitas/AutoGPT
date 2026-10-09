@@ -62,7 +62,7 @@ describe("OpenUI results in a Copilot conversation", () => {
     ).toBe("Small B2B marketing teams");
   });
 
-  it("keeps local input edits through presentation changes and remounts", async () => {
+  it("keeps local input edits through remounts", async () => {
     const send = vi.fn().mockResolvedValue(undefined);
     const first = showResult();
     fireEvent.change(await screen.findByLabelText("Audience"), {
@@ -71,9 +71,6 @@ describe("OpenUI results in a Copilot conversation", () => {
     fireEvent.change(screen.getByLabelText("Budget"), {
       target: { value: "$2,400" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Summary" }));
-    expect(await screen.findByText(output.message)).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Explore" }));
     expect((screen.getByLabelText("Audience") as HTMLInputElement).value).toBe(
       "Local bookshops",
     );

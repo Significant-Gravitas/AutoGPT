@@ -25,10 +25,7 @@ export function TimelineView({
   props,
 }: ComponentRenderProps<z.infer<typeof Timeline.props>>) {
   return (
-    <section
-      aria-label={props.title}
-      className="rounded-xl border border-zinc-200 bg-white p-5"
-    >
+    <section aria-label={props.title}>
       <h3 className="mb-5 text-sm font-semibold text-zinc-800">
         {props.title}
       </h3>

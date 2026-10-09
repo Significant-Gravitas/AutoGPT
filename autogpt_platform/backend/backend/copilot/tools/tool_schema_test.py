@@ -261,7 +261,9 @@ from ._test_data import make_session
 # OpenUI adds a deferred component library: 82,865 measured, plus existing margin.
 # Maps, timelines, two charts and three typed fields add 2,664 deferred chars.
 # Measured 85,529; preserve the existing 300-char margin. Wire budget is unchanged.
-_CHAR_BUDGET = 85_829
+# Explicit component limits and splitting guidance add 426 deferred characters.
+# Measured 85,955; preserve the existing 300-char margin. Wire budget is unchanged.
+_CHAR_BUDGET = 86_255
 
 
 @pytest.fixture(scope="module")

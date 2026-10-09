@@ -71,8 +71,6 @@ describe("useful generated views in chat", () => {
     fireEvent.error(tile!);
     expect(await screen.findByText(/Map tiles could not load/)).toBeDefined();
     fireEvent.click(marker);
-    fireEvent.click(screen.getByRole("button", { name: "Summary" }));
-    fireEvent.click(screen.getByRole("button", { name: "Explore" }));
     expect(screen.getByText("Afternoon partner visit")).toBeDefined();
     first.unmount();
     showResult(places);

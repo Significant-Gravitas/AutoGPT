@@ -32,7 +32,7 @@ export function ChecklistView({
     field.setValue([...next]);
   }
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-5">
+    <section>
       <div className="mb-4 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-zinc-800">{props.title}</h3>
         <span className="text-xs text-zinc-500" aria-live="polite">

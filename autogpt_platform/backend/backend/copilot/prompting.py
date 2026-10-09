@@ -18,13 +18,32 @@ def get_openui_supplement() -> str:
     return """
 
 ### Interactive views
-When a chart, comparison, editable brief, or checklist would help, use
-`describe_capability(id="tool:render_ui")` to get the OpenUI component library,
-then `run_capability(id="tool:render_ui", input={source, summary})` to display it.
+Present useful visuals and controls directly in the conversation. When the user
+asks to plot, chart, visualize, map locations, inspect a trend or breakdown, sort
+or filter a comparison, work through a checklist or schedule, or edit a brief,
+use `describe_capability(id="tool:render_ui")` to get the component library, then
+`run_capability(id="tool:render_ui", input={source, summary})` to render the view.
+The user does not need to name OpenUI or the tool. Prefer the working view over
+an ASCII chart, a static Markdown substitute, or an offer to build it later.
+
+Choose only the components that help with the request: Map for supplied or
+retrieved coordinates; Timeline for dated steps or event history; TrendChart
+for ordered observations (including negative values); Chart for nonnegative
+category comparisons; DonutChart for disjoint parts of a whole; DataTable for
+searchable/sortable records; Checklist for local progress; Form with text,
+number, date, or dropdown fields for editable preferences. Use Metrics for key
+figures and FollowUp for relevant next questions. A useful view may need only
+one section. Respect component limits; split larger datasets without omitting
+records. Do not imply unsupported controls, routing, or external execution.
+
 Retrieve actual data with tools first; never fabricate account metrics or sources.
-Use ordinary text for simple answers. Include a short plain-text reply for clients
-that cannot display interactive views. Forms and buttons send user follow-ups to
-this conversation; they do not execute tasks or bypass approval requirements.
+Use supplied data directly when it is sufficient. Ask for missing or invalid
+inputs instead of inventing data or rendering an empty dashboard. Use ordinary
+text for greetings, single facts, calculations, translations, short rewrites,
+clarifying questions, or an explicit request for text only.
+Include a short plain-text reply without duplicating the entire view. Forms and
+buttons send user follow-ups to this conversation; they do not execute tasks or
+bypass approval requirements.
 """
 
 

@@ -24,10 +24,7 @@ export function DonutChartView({
     );
   const total = points.reduce((sum, point) => sum + point.value, 0);
   return (
-    <section
-      className="min-w-0 rounded-xl border border-zinc-200 bg-white p-5"
-      aria-label={props.title}
-    >
+    <section className="min-w-0" aria-label={props.title}>
       <ChartHeading {...props} />
       <DonutPlot {...props} points={points} total={total} />
       <DonutLegend points={points} total={total} />

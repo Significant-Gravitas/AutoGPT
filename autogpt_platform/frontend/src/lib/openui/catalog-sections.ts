@@ -14,7 +14,7 @@ export type MapLocation = z.infer<typeof mapLocationSchema>;
 export const Map = defineComponent({
   name: "Map",
   description:
-    "An interactive geographic map with numbered markers, searchable places, details, zoom, and a button to discuss the selected place in this chat. Supply verified latitude/longitude from the user or tools; never guess coordinates. This does not geocode, calculate routes, or request the user's location.",
+    "An interactive geographic map with one to 50 numbered markers, searchable places, details, zoom, and a button to discuss the selected place in this chat. Supply verified latitude/longitude from the user or tools; never guess coordinates. This does not geocode, calculate routes, or request the user's location.",
   props: z.object({
     title: z.string(),
     description: z.string(),
@@ -26,7 +26,7 @@ export const Map = defineComponent({
 export const Timeline = defineComponent({
   name: "Timeline",
   description:
-    "A chronological itinerary, milestone plan, or event history. Preserve supplied dates and time zones; label proposed times as a plan.",
+    "A chronological itinerary, milestone plan, or event history with at most 20 items. Preserve supplied dates and time zones; label proposed times as a plan.",
   props: z.object({
     title: z.string(),
     items: z
@@ -46,7 +46,7 @@ export const Timeline = defineComponent({
 export const TrendChart = defineComponent({
   name: "TrendChart",
   description:
-    "An interactive line chart for ordered observations or a time series. Values may be negative. Include only supplied observations; never invent missing periods.",
+    "An interactive line chart for at most 60 ordered observations or time series points. Values may be negative. Include only supplied observations; never invent missing periods.",
   props: z.object({
     title: z.string(),
     description: z.string(),
@@ -59,7 +59,7 @@ export const TrendChart = defineComponent({
 export const DonutChart = defineComponent({
   name: "DonutChart",
   description:
-    "A part-to-whole breakdown with a total, legend, values, and percentages. Use nonnegative amounts in the same unit; do not combine overlapping categories.",
+    "A part-to-whole breakdown with at most 12 categories, a total, legend, values, and percentages. Use nonnegative amounts in the same unit; do not combine overlapping categories.",
   props: z.object({
     title: z.string(),
     description: z.string(),

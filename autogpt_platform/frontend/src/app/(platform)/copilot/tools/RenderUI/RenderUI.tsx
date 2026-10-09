@@ -28,7 +28,7 @@ export function RenderUI({
     return (
       <section
         aria-label="Interactive view being created"
-        className="my-3 min-w-0 space-y-4 rounded-xl border border-zinc-200 bg-zinc-50 p-5"
+        className="my-3 min-w-0 space-y-4"
         aria-busy
       >
         <div className="flex items-center gap-2 text-xs text-zinc-500">
@@ -80,39 +80,34 @@ function CompletedUI({
   readOnly,
 }: CompletedProps) {
   const ui = useRenderUI(draftID, source, title, readOnly);
+  const fallback = (
+    <SavedSummary
+      summary={summary}
+      valid={false}
+      locked={ui.locked}
+      isSending={ui.isSending}
+      onRebuild={() =>
+        void ui.send(
+          "Please rebuild the previous interactive view using the same data and valid OpenUI components.",
+        )
+      }
+    />
+  );
   return (
-    <ResponseFrame valid={valid} {...ui}>
-      <div className="max-h-[44rem] overflow-auto p-4 sm:p-5">
-        {valid && (
-          <div hidden={ui.view !== "interactive"}>
-            <OpenUI
-              source={source}
-              isStreaming={false}
-              disabled={ui.locked || ui.isSending}
-              revision={1}
-              initialState={ui.initialState}
-              onStateUpdate={ui.onStateUpdate}
-              onAction={ui.onAction}
-              fallback={
-                <p className="whitespace-pre-wrap text-sm">{summary}</p>
-              }
-            />
-          </div>
-        )}
-        {(!valid || ui.view === "summary") && (
-          <SavedSummary
-            summary={summary}
-            valid={valid}
-            locked={ui.locked}
-            isSending={ui.isSending}
-            onRebuild={() =>
-              void ui.send(
-                "Please rebuild the previous interactive view using the same data and valid OpenUI components.",
-              )
-            }
-          />
-        )}
-      </div>
+    <ResponseFrame {...ui}>
+      {valid && (
+        <OpenUI
+          source={source}
+          isStreaming={false}
+          disabled={ui.locked || ui.isSending}
+          revision={1}
+          initialState={ui.initialState}
+          onStateUpdate={ui.onStateUpdate}
+          onAction={ui.onAction}
+          fallback={fallback}
+        />
+      )}
+      {!valid && fallback}
     </ResponseFrame>
   );
 }

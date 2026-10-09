@@ -26,11 +26,8 @@ import { MapView } from "./components/MapView/MapView";
 import { TimelineView } from "./components/TimelineView";
 import { TrendChartView } from "./components/TrendChartView";
 import { DonutChartView } from "./components/DonutChartView";
-import {
-  SelectFieldView,
-  NumberFieldView,
-  DateFieldView,
-} from "./components/TypedFieldViews";
+import { SelectFieldView, DateFieldView } from "./components/TypedFieldViews";
+import { NumberFieldView } from "./components/NumberFieldView";
 
 export const autoGPTLibrary = createLibrary({
   root: "Workspace",

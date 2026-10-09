@@ -19,10 +19,7 @@ export function ChartView({
     .slice(0, 24)
     .filter((point) => point && Number.isFinite(point.value));
   return (
-    <section
-      className="min-w-0 rounded-xl border border-zinc-200 bg-white p-5"
-      aria-label={props.title}
-    >
+    <section className="min-w-0" aria-label={props.title}>
       <div className="mb-5 flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-zinc-800">{props.title}</h3>
