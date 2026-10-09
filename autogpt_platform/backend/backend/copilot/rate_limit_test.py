@@ -2883,12 +2883,15 @@ class TestGetRemainingUsdBudget:
         assert result == 0.5
 
     @pytest.mark.asyncio
-    async def test_an_active_trial_gets_the_same_failure_sentinel(self, mocker):
-        """Every tier answers a brown-out with ``floor_usd``. A trial that
-        returned a hardcoded 0.0 instead was indistinguishable from a trial
-        that had genuinely spent its last cent."""
+    async def test_trial_with_tighter_windows_gets_the_same_failure_sentinel(
+        self, mocker
+    ):
+        """A trial requiring Redis windows answers a brown-out with ``floor_usd``.
+        A hardcoded 0.0 would be indistinguishable from exhausted allowance.
+        """
         trial = MagicMock(spec=TrialState)
         trial.active = True
+        trial.offer = MagicMock(total_cost_limit=100_000_000)
         store = MagicMock()
         store.get_subscription_trial = AsyncMock(return_value=trial)
         mocker.patch("backend.copilot.rate_limit.credit_db", return_value=store)

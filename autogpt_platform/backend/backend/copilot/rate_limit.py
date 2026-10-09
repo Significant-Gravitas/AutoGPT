@@ -10,7 +10,8 @@ Failure-mode policy:
 * Enforcement path (:func:`check_rate_limit`) **fails closed** — if Redis
   is unreachable we raise :class:`RateLimitUnavailable` so the API layer
   returns HTTP 503. A brown-out must not let a user bypass their
-  daily / weekly USD cap.
+  daily / weekly USD cap. Trials whose lifetime cap makes both windows
+  redundant use their durable trial counter instead of Redis.
 * Observability paths (:func:`get_usage_status`, the reset-count
   read/write helpers, the recording path :func:`record_cost_usage`) keep
   fail-open / best-effort semantics — losing a usage gauge or a single
@@ -74,6 +75,8 @@ from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_e
 
 if TYPE_CHECKING:
     import stripe
+
+    from backend.data.subscription_trial import TrialState
 
 logger = logging.getLogger(__name__)
 
@@ -433,6 +436,8 @@ class CoPilotUsagePublic(BaseModel):
                 pct = 100.0
             else:
                 pct = round(100.0 * w.used / w.limit, 1)
+                if status.tier == SubscriptionTier.TRIAL:
+                    pct = min(pct, 99.9)
             return UsageWindowPublic(
                 percent_used=pct,
                 resets_at=w.resets_at,
@@ -514,6 +519,19 @@ async def get_usage_status(
         # SET) — same fail-open semantics, returns zeros.
         logger.warning("Redis unavailable for usage status, returning zeros")
 
+    weekly_reset = _weekly_reset_time(now=now)
+    if tier == SubscriptionTier.TRIAL:
+        trial = await credit_db().get_subscription_trial(user_id)
+        if trial and _trial_uses_total_budget(
+            trial, daily_cost_limit, weekly_cost_limit
+        ):
+            # The client's weekly gauge also gates sending: it must retain
+            # lifetime exhaustion after calendar resets and exclude beta spend.
+            daily_used = min(daily_used, trial.cost_microdollars)
+            weekly_used = trial.cost_microdollars
+            weekly_cost_limit = trial.offer.total_cost_limit
+            weekly_reset = trial.ends_at or now
+
     return CoPilotUsageStatus(
         daily=UsageWindow(
             used=daily_used,
@@ -523,7 +541,7 @@ async def get_usage_status(
         weekly=UsageWindow(
             used=weekly_used,
             limit=weekly_cost_limit,
-            resets_at=_weekly_reset_time(now=now),
+            resets_at=weekly_reset,
         ),
         tier=tier,
         reset_cost=0 if tier == SubscriptionTier.TRIAL else rate_limit_reset_cost,
@@ -544,14 +562,17 @@ async def get_remaining_usd_budget(
     user is close to their actual cap, and to feed the baseline path's
     per-turn budget hint via :func:`build_budget_ctx`.
 
+    Trials whose daily and weekly caps are at least their total cap use
+    the durable lifetime remainder directly, independent of Redis windows.
+
     A limit of ``0`` is treated as "no spend allowed" — remaining = 0
     on that window; callers should not pass 0 expecting it to mean "no
     cap". A negative limit means that window has no cap (the self-hosted
     default); when both windows are uncapped the result is ``inf``.
 
     Failure modes:
-        * Redis brown-out → ``floor_usd``, on every tier (so callers using
-          the value as a soft hint don't pretend the user has full budget;
+        * Redis brown-out → ``floor_usd`` for Redis-backed windows (so callers
+          using the value as a soft hint don't pretend the user has full budget;
           the pre-turn gate has already failed closed at 503 in this case,
           so we only land here from observability paths).  A caller that
           must tell "unknown" from "$0.00 left" passes a negative floor.
@@ -572,6 +593,11 @@ async def get_remaining_usd_budget(
         trial = await credit_db().get_subscription_trial(user_id)
         if trial is None or not trial.active:
             return 0.0
+        if _trial_uses_total_budget(trial, daily_cost_limit, weekly_cost_limit):
+            return (
+                max(0, trial.offer.total_cost_limit - trial.cost_microdollars)
+                / 1_000_000
+            )
     now = datetime.now(UTC)
     try:
         redis = await get_redis_async()
@@ -671,6 +697,10 @@ async def check_rate_limit(
     caller must fail closed (HTTP 503) — the daily/weekly USD caps are
     real money and cannot be bypassed by a Redis brown-out.
 
+    Trials whose period caps are at least their lifetime cap use the durable
+    trial counter alone. Their remaining allowance survives Redis outages,
+    and resetting Redis cannot replenish their lifetime budget.
+
     A limit of ``0`` means "no spend allowed", not "unlimited". A negative
     limit disables that window's check entirely — the explicit "no cap"
     sentinel that self-hosted distributions export (see ChatConfig) — so
@@ -698,6 +728,8 @@ async def check_rate_limit(
             raise RateLimitExceeded("trial", now)
         if trial.cost_microdollars >= trial.offer.total_cost_limit:
             raise RateLimitExceeded("trial", trial.ends_at or now)
+        if _trial_uses_total_budget(trial, daily_cost_limit, weekly_cost_limit):
+            return
     if (skip_daily or daily_cost_limit < 0) and weekly_cost_limit < 0:
         return
     try:
@@ -736,6 +768,16 @@ async def check_rate_limit(
 
     if weekly_cost_limit >= 0 and weekly_used >= weekly_cost_limit:
         raise RateLimitExceeded("weekly", _weekly_reset_time(now=now))
+
+
+def _trial_uses_total_budget(
+    trial: "TrialState", daily_cost_limit: int, weekly_cost_limit: int
+) -> bool:
+    """Redundant window caps must not count spending from before the trial."""
+    return (
+        daily_cost_limit >= trial.offer.total_cost_limit
+        and weekly_cost_limit >= trial.offer.total_cost_limit
+    )
 
 
 async def reset_daily_usage(user_id: str, daily_cost_limit: int = 0) -> bool:
