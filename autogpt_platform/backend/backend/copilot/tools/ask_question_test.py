@@ -15,8 +15,19 @@ from backend.copilot.tools.models import ClarificationNeededResponse
 
 
 @pytest.fixture()
-def tool() -> AskQuestionTool:
+def tool(monkeypatch: pytest.MonkeyPatch) -> AskQuestionTool:
+    db = MagicMock(set_session_pending_question=AsyncMock())
+    monkeypatch.setattr(
+        "backend.copilot.tools.ask_question.chat_db", MagicMock(return_value=db)
+    )
     return AskQuestionTool()
+
+
+@pytest.fixture(autouse=True)
+def notify_attention_mock(monkeypatch: pytest.MonkeyPatch):
+    notify = AsyncMock()
+    monkeypatch.setattr("backend.copilot.tools.ask_question.notify_attention", notify)
+    return notify
 
 
 @pytest.fixture()
@@ -445,7 +456,7 @@ async def test_rejects_non_list_questions(tool: AskQuestionTool, session: ChatSe
 
 @pytest.mark.asyncio
 async def test_asking_parks_the_question_on_the_session(
-    tool: AskQuestionTool, session: ChatSession
+    tool: AskQuestionTool, session: ChatSession, notify_attention_mock: AsyncMock
 ):
     db = MagicMock()
     db.set_session_pending_question = AsyncMock()
@@ -463,11 +474,16 @@ async def test_asking_parks_the_question_on_the_session(
     db.set_session_pending_question.assert_awaited_once()
     assert db.set_session_pending_question.await_args.args[0] == session.session_id
     assert db.set_session_pending_question.await_args.args[1] == session.user_id
+    notify_attention_mock.assert_awaited_once_with(
+        session.user_id,
+        f"question:{session.session_id}:{session.metadata.pending_question.asked_at.isoformat()}",
+        session.session_id,
+    )
 
 
 @pytest.mark.asyncio
 async def test_a_failed_write_never_costs_the_user_the_question(
-    tool: AskQuestionTool, session: ChatSession
+    tool: AskQuestionTool, session: ChatSession, notify_attention_mock: AsyncMock
 ):
     db = MagicMock()
     db.set_session_pending_question = AsyncMock(side_effect=RuntimeError("down"))
@@ -481,6 +497,7 @@ async def test_a_failed_write_never_costs_the_user_the_question(
         )
 
     assert isinstance(result, ClarificationNeededResponse)
+    notify_attention_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio

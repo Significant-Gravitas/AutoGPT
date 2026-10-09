@@ -45,12 +45,33 @@ vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
   postV2StoreABearerTokenForAnMcpServer: vi.fn(),
 }));
 
+const mockGrant = vi.fn();
+let mockExpertGrants: { credential_id: string }[] = [];
+vi.mock("@/app/api/__generated__/endpoints/experts/experts", () => ({
+  grantExpertCredentials: (...args: unknown[]) => mockGrant(...args),
+  useListExpertCredentials: () => ({
+    data: mockExpertGrants,
+    isFetchedAfterMount: true,
+    isError: false,
+  }),
+  getListExpertCredentialsQueryKey: (id: string) => [
+    "experts",
+    id,
+    "credentials",
+  ],
+  getGetExpertQueryKey: (id: string) => ["experts", id],
+  getListExpertSetupItemsQueryKey: () => ["experts", "setup"],
+  getListExpertsQueryKey: () => ["experts"],
+  getListExpertIdentitiesQueryKey: () => ["experts", "identities"],
+}));
+
 // Mock the credentials list hook used for the on-mount live-cred re-sync.
 // Default: no stored creds → ``liveHasCred=false`` matches the persisted
 // ``has_all_credentials=false`` snapshot so the existing tests don't have
 // to thread a connected state through MSW.  ``setMockLiveCreds`` lets
 // individual tests override the live state to verify the refresh path.
 let mockLiveCreds: Array<{
+  id?: string;
   provider: string;
   host?: string | null;
   mcp_auth_scheme?: "basic" | "bearer" | null;
@@ -61,6 +82,7 @@ let mockLiveCredsFetched = true;
 let mockLiveCredsError = false;
 function setMockLiveCreds(
   next: Array<{
+    id?: string;
     provider: string;
     host?: string | null;
     mcp_auth_scheme?: "basic" | "bearer" | null;
@@ -133,6 +155,7 @@ describe("MCPSetupCard", () => {
     // `not.toHaveBeenCalled()` assertion silently depends on declaration order.
     vi.clearAllMocks();
     setMockLiveCreds([]);
+    mockExpertGrants = [];
     currentOnSend = mockOnSend;
   });
 
@@ -1252,5 +1275,288 @@ describe("MCPSetupCard", () => {
         token: "Basic encoded-chain-value",
       });
     });
+  });
+
+  function makeExpertOutput(credentials: { id: string; title: string }[]) {
+    const output = makeSetupOutput();
+    output.setup_info.user_readiness.missing_credentials = {
+      credentials: {
+        id: "credentials",
+        provider: "mcp",
+        type: "oauth2",
+        title: "MCP",
+        expert_grant: { expert_id: "expert-maria", credentials },
+      },
+    } as never;
+    return output;
+  }
+
+  it("offers Grant access when the account already has the server and grants on click", async () => {
+    mockGrant.mockResolvedValue({
+      status: 200,
+      data: [
+        {
+          credential_id: "cred-existing",
+          provider: "mcp",
+          title: "x",
+          type: "oauth2",
+          service: "sentry",
+        },
+      ],
+      headers: new Headers(),
+    });
+    render(
+      <MCPSetupCard
+        output={makeExpertOutput([{ id: "cred-existing", title: "Sentry" }])}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Grant access/ }),
+    );
+
+    await waitFor(() =>
+      expect(mockGrant).toHaveBeenCalledWith("expert-maria", {
+        credential_ids: ["cred-existing"],
+      }),
+    );
+    await waitFor(() => expect(mockOnSend).toHaveBeenCalled());
+  });
+
+  it("offers Grant access even though the account's own credential list has the server", async () => {
+    setMockLiveCreds([
+      {
+        id: "cred-existing",
+        provider: "mcp",
+        host: "https://mcp.example.com/mcp",
+      },
+    ]);
+    render(
+      <MCPSetupCard
+        output={makeExpertOutput([{ id: "cred-existing", title: "Sentry" }])}
+      />,
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /Grant access/ }),
+    ).toBeDefined();
+    expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
+  });
+
+  it("shows Connected once the expert has been granted the account's credential for the server", () => {
+    setMockLiveCreds([
+      {
+        id: "cred-existing",
+        provider: "mcp",
+        host: "https://mcp.example.com/mcp",
+      },
+    ]);
+    mockExpertGrants = [{ credential_id: "cred-existing" }];
+    render(
+      <MCPSetupCard
+        output={makeExpertOutput([{ id: "cred-existing", title: "Sentry" }])}
+      />,
+    );
+
+    expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Grant access/ })).toBeNull();
+  });
+
+  it("grants the credential an OAuth sign-in returns and retries only after the grant lands", async () => {
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        login_url: "https://auth.example.com/authorize",
+        state_token: "st",
+      },
+      headers: new Headers(),
+    } as never);
+    const { openOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(openOAuthPopup).mockReturnValueOnce({
+      promise: Promise.resolve({ code: "auth-code", state: "st" }),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+    const mcpOAuthCallback = vi.fn().mockResolvedValue({
+      id: "cred-oauth",
+      provider: "mcp",
+      type: "oauth2",
+    });
+    const providers = {
+      mcp: { mcpOAuthCallback },
+    } as unknown as CredentialsProvidersContextType;
+    let resolveGrant: (value: unknown) => void = () => {};
+    mockGrant.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveGrant = resolve;
+      }),
+    );
+
+    render(
+      <CredentialsProvidersContext.Provider value={providers}>
+        <MCPSetupCard output={makeExpertOutput([])} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    await waitFor(() =>
+      expect(mockGrant).toHaveBeenCalledWith("expert-maria", {
+        credential_ids: ["cred-oauth"],
+      }),
+    );
+    expect(mockOnSend).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveGrant({ status: 200, data: [], headers: new Headers() });
+    });
+
+    await waitFor(() => expect(mockOnSend).toHaveBeenCalledTimes(1));
+  });
+
+  it("grants only once when Grant access is clicked twice", async () => {
+    mockGrant.mockResolvedValue({
+      status: 200,
+      data: [],
+      headers: new Headers(),
+    });
+    render(
+      <MCPSetupCard
+        output={makeExpertOutput([{ id: "cred-existing", title: "Sentry" }])}
+      />,
+    );
+
+    const grant = await screen.findByRole("button", { name: /Grant access/ });
+    fireEvent.click(grant);
+    fireEvent.click(grant);
+
+    await waitFor(() => expect(mockOnSend).toHaveBeenCalled());
+    expect(mockGrant).toHaveBeenCalledTimes(1);
+    expect(mockOnSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers to retry granting a freshly connected credential when the grant fails", async () => {
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
+      headers: new Headers(),
+    } as never);
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        id: "cred-new",
+        provider: "mcp",
+        type: "oauth2",
+        title: "t",
+        scopes: [],
+      },
+      headers: new Headers(),
+    } as never);
+    mockGrant
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce({ status: 200, data: [], headers: new Headers() });
+
+    render(<MCPSetupCard output={makeExpertOutput([])} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
+    });
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
+      target: { value: "my-secret-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /use token/i }));
+
+    expect(await screen.findByText(/could not grant/i)).toBeDefined();
+    expect(mockOnSend).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Grant access/ }));
+
+    await waitFor(() => expect(mockOnSend).toHaveBeenCalled());
+    expect(mockGrant).toHaveBeenLastCalledWith("expert-maria", {
+      credential_ids: ["cred-new"],
+    });
+  });
+
+  it("grants a freshly connected credential to the expert", async () => {
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
+      headers: new Headers(),
+    } as never);
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: { tools: [], server_url: "https://mcp.example.com/mcp" },
+      headers: new Headers(),
+    } as never);
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        id: "cred-new",
+        provider: "mcp",
+        type: "oauth2",
+        title: "t",
+        scopes: [],
+      },
+      headers: new Headers(),
+    } as never);
+    mockGrant.mockResolvedValue({
+      status: 200,
+      data: [],
+      headers: new Headers(),
+    });
+
+    render(<MCPSetupCard output={makeExpertOutput([])} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
+    });
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
+      target: { value: "my-secret-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /use token/i }));
+
+    await waitFor(() =>
+      expect(mockGrant).toHaveBeenCalledWith("expert-maria", {
+        credential_ids: ["cred-new"],
+      }),
+    );
+    await waitFor(() => expect(mockOnSend).toHaveBeenCalled());
+  });
+
+  it("keeps the connection and shows the failure when the grant fails", async () => {
+    mockGrant.mockRejectedValue(new Error("boom"));
+    render(
+      <MCPSetupCard
+        output={makeExpertOutput([{ id: "cred-existing", title: "Sentry" }])}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Grant access/ }),
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(
+      /could not grant/i,
+    );
+    expect(screen.getByRole("button", { name: /Grant access/ })).toBeDefined();
+    expect(mockOnSend).not.toHaveBeenCalled();
   });
 });
