@@ -23,7 +23,7 @@ from ..models import (
 from ..pagination import Page, PageRequest, page_request
 from ..rate_limit import enforce, graph_exec_limiter
 from ..tenancy import TenantContext, in_tenant, require_permission
-from .helpers import assert_can_pay
+from .helpers import assert_can_pay, assert_inputs_match
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +189,7 @@ async def execute_agent(
             auth,
             f"Agent #{agent_id}",
         )
+        assert_inputs_match(library_agent.input_schema, request.inputs)
 
         result = await execution_utils.add_graph_execution(
             graph_id=library_agent.graph_id,
