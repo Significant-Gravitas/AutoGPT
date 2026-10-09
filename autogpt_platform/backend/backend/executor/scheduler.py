@@ -31,6 +31,7 @@ from sqlalchemy import MetaData, create_engine
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.dream.scheduling import (
     COMMUNITY_REBUILD_REGISTRATION_PREFIX,
@@ -42,6 +43,13 @@ from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
+from backend.copilot.rate_limit import (
+    RateLimitExceeded,
+    RateLimitUnavailable,
+    check_rate_limit,
+    get_global_rate_limits,
+    is_user_paywalled,
+)
 from backend.copilot.transports import resolve_default_chat_route
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
@@ -462,6 +470,8 @@ async def _execute_copilot_turn(**kwargs):
             llm_auth_provider, llm_credential_id = await resolve_default_chat_route(
                 args.user_id
             )
+            if not await _owner_may_spend(args, llm_auth_provider):
+                return
             new_session = await create_chat_session(
                 args.user_id,
                 dry_run=False,
@@ -550,6 +560,8 @@ async def _execute_copilot_turn(**kwargs):
                 if expert_status != "active":
                     await _skip_inactive_expert_scope(args, expert_status)
                     return
+            if not await _owner_may_spend(args, session.metadata.llm_auth_provider):
+                return
             target_session_id = args.session_id
             target_session = session
             # The target may be the user's own interactive Otto chat,
@@ -656,6 +668,51 @@ async def _execute_copilot_turn(**kwargs):
             f"{_session_id_label(args)} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+async def _owner_may_spend(
+    args: "CopilotTurnJobArgs", llm_auth_provider: CopilotLlmAuthProvider
+) -> bool:
+    """Gate a platform-billed fire on the owner's subscription and cost caps,
+    as ``dispatch_next_for_user`` gates a queued turn.
+
+    A refusal skips this fire only: the schedule stays registered, so it
+    resumes once the owner subscribes or the window resets.
+    """
+    if llm_auth_provider != "platform":
+        return True
+    if await is_user_paywalled(args.user_id):
+        logger.info(
+            f"Skipping scheduled copilot turn {args.schedule_id}: the owner has "
+            "no subscription; the schedule stays registered"
+        )
+        return False
+    config = ChatConfig()
+    try:
+        daily_limit, weekly_limit, _ = await get_global_rate_limits(
+            args.user_id,
+            config.daily_cost_limit_microdollars,
+            config.weekly_cost_limit_microdollars,
+        )
+        await check_rate_limit(
+            user_id=args.user_id,
+            daily_cost_limit=daily_limit,
+            weekly_cost_limit=weekly_limit,
+        )
+    except RateLimitExceeded as exc:
+        logger.info(
+            f"Skipping scheduled copilot turn {args.schedule_id}: the owner is "
+            f"over their {exc.window} usage limit; the schedule stays registered"
+        )
+        return False
+    except RateLimitUnavailable:
+        # A brown-out must not let an unwatched turn past a cap it may be over.
+        logger.warning(
+            f"Skipping scheduled copilot turn {args.schedule_id}: usage limits "
+            "are unreadable"
+        )
+        return False
+    return True
 
 
 def _credential_pins_for_turn(
