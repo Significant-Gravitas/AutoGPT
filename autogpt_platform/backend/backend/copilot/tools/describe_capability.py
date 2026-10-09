@@ -188,7 +188,7 @@ def describe_expert(entry: CapabilityEntry, session_id: str) -> ToolResponseBase
             f"id='{entry.id}', input={{...}}) calls {name}. {tool.description}"
         ),
         capability=entry.listing(),
-        parameters=_without_properties(tool.parameters, set(bound)),
+        parameters=_without_properties(tool.model_parameters, set(bound)),
         session_id=session_id,
     ).from_outside()
 
