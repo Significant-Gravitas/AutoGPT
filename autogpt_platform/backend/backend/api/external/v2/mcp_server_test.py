@@ -92,6 +92,11 @@ async def test_the_advertised_schema_names_required_arguments_and_nothing_extra(
 
     # Presets have no v2 permission, and the sandbox paths no sandbox.
     assert "preset_id" not in registered["run_agent"].inputSchema["properties"]
+    # A blocking wait holds a request and an event-bus connection; poll instead.
+    assert "wait_for_result" not in registered["run_agent"].inputSchema["properties"]
+    assert "wait_if_running" not in (
+        registered["view_agent_output"].inputSchema["properties"]
+    )
     assert "save_to_path" not in (
         registered["read_workspace_file"].inputSchema["properties"]
     )

@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.api.features.library.exceptions import (
+    LibraryAgentInAnotherOrganizationError,
+)
 from backend.blocks.http import SendAuthenticatedWebRequestBlock
+from backend.copilot.tools.utils import get_or_create_library_agent
 from backend.data.model import CredentialsFieldInfo, HostScopedCredentials
 
 
@@ -450,3 +454,21 @@ async def test_a_pin_for_one_host_is_not_blamed_for_a_step_on_another():
     assert result.error == "missing_credentials"
     assert "has no http credential" in result.message
     assert "example-host" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_library_entry_in_another_organization_is_not_reused():
+    """Running a marketplace agent over the External API reuses the user's
+    entry for it, which must be the key's organization's."""
+    lib = MagicMock()
+    lib.get_library_agent_by_graph_id = AsyncMock(
+        return_value=MagicMock(organization_id="org-b")
+    )
+    lib.create_library_agent = AsyncMock()
+
+    with patch("backend.copilot.tools.utils.library_db", return_value=lib):
+        with pytest.raises(LibraryAgentInAnotherOrganizationError):
+            await get_or_create_library_agent(
+                MagicMock(id="graph-1"), "user-1", "org-a", "team-a"
+            )
+    lib.create_library_agent.assert_not_awaited()

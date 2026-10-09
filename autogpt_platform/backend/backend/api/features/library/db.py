@@ -463,6 +463,21 @@ async def get_library_agent_by_store_version_id(
     return library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
 
 
+async def get_library_agent_organizations(
+    user_id: str, library_agent_ids: list[str]
+) -> dict[str, str | None]:
+    """The organization of each of the user's live library agents among these ids.
+
+    Deleted entries and ids that aren't the user's are left out.
+    """
+    if not library_agent_ids:
+        return {}
+    rows = await prisma.models.LibraryAgent.prisma().find_many(
+        where={"id": {"in": library_agent_ids}, "userId": user_id, "isDeleted": False}
+    )
+    return {row.id: row.organizationId for row in rows}
+
+
 async def get_library_agent_id_by_graph_id(user_id: str, graph_id: str) -> str | None:
     """Id-only lookup for building deep links (e.g. the expert run post) —
     no relation includes, no schedule info, unlike the full getter below."""
@@ -1245,6 +1260,8 @@ async def add_store_agent_to_library(
     user_id: str,
     *,
     track_listing_added: bool = True,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent:
     """Adds a marketplace agent to the user's library.
 
@@ -1252,6 +1269,10 @@ async def add_store_agent_to_library(
     add. Pass ``False`` when the system installs the agent on the user's
     behalf (an expert's preloads or workflows), which is not the user adding
     a listing.
+
+    With ``organization_id`` a new entry is tagged with it (and ``team_id``),
+    and an existing entry in another organization raises
+    ``LibraryAgentInAnotherOrganizationError`` rather than being restored.
 
     See also: `add_store_agent_to_library_as_admin()` which uses
     `get_graph_as_admin` to bypass marketplace status checks for admin review.
@@ -1261,6 +1282,8 @@ async def add_store_agent_to_library(
         user_id,
         tx=None,
         track_listing_added=track_listing_added,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
 
@@ -1285,6 +1308,8 @@ async def _add_store_agent_to_library(
     *,
     tx: prisma.Prisma | None,
     track_listing_added: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent:
     logger.debug(
         "Adding agent from store listing version #%s to library for user #%s",
@@ -1297,14 +1322,21 @@ async def _add_store_agent_to_library(
     if tx is None:
         # The transactional path upserts instead, so an existing entry is
         # restored atomically with the caller's other writes.
-        existing = await restore_existing_library_agent(store_listing_version, user_id)
+        existing = await restore_existing_library_agent(
+            store_listing_version, user_id, organization_id=organization_id
+        )
         if existing is not None:
             return existing
     graph_model = await resolve_graph_model_for_library(
         store_listing_version, user_id, admin=False
     )
     library_agent = await add_graph_to_library(
-        graph_model, user_id, store_listing_version, tx=tx
+        graph_model,
+        user_id,
+        store_listing_version,
+        tx=tx,
+        organization_id=organization_id,
+        team_id=team_id,
     )
     if track_listing_added:
         track_listing_added_to_library(
@@ -1502,6 +1534,8 @@ async def create_folder(
     parent_id: Optional[str] = None,
     icon: Optional[str] = None,
     color: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
 ) -> library_model.LibraryFolder:
     """
     Creates a new folder for the user.
@@ -1512,6 +1546,8 @@ async def create_folder(
         parent_id: Optional parent folder ID.
         icon: Optional icon identifier.
         color: Optional hex color code.
+        organization_id, team_id: Tenancy to tag the folder with; without
+            them it is untagged, which every organization of the user sees.
 
     Returns:
         The created LibraryFolder.
@@ -1538,6 +1574,10 @@ async def create_folder(
         create_data["color"] = color
     if parent_id:
         create_data["Parent"] = {"connect": {"id": parent_id}}
+    if organization_id is not None:
+        create_data["organizationId"] = organization_id
+    if team_id is not None:
+        create_data["Team"] = {"connect": {"id": team_id}}
 
     try:
         folder = await prisma.models.LibraryFolder.prisma().create(data=create_data)
@@ -2588,7 +2628,10 @@ async def delete_preset(user_id: str, preset_id: str) -> None:
 
 
 async def fork_library_agent(
-    library_agent_id: str, user_id: str
+    library_agent_id: str,
+    user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent:
     """
     Clones a library agent and its underyling graph and nodes (with new ids) for the given user.
@@ -2596,6 +2639,8 @@ async def fork_library_agent(
     Args:
         library_agent_id: The ID of the library agent to fork.
         user_id: The ID of the user who owns the library agent.
+        organization_id, team_id: Tenancy for the copy; without them the graph
+            is untagged and the library entry goes to the user's default team.
 
     Returns:
         The forked parent (if it has sub-graphs) LibraryAgent.
@@ -2622,7 +2667,11 @@ async def fork_library_agent(
     # GraphActivationError, but the forked graph row exists; callers should
     # surface that as a 400 to the user.
     new_graph = await graph_db.fork_graph(
-        original_agent.graph_id, original_agent.graph_version, user_id
+        original_agent.graph_id,
+        original_agent.graph_version,
+        user_id,
+        organization_id=organization_id,
+        team_id=team_id,
     )
     new_graph = await before_graph_activate(new_graph, user_id=user_id)
 
@@ -2633,6 +2682,8 @@ async def fork_library_agent(
             user_id,
             hitl_safe_mode=original_agent.settings.human_in_the_loop_safe_mode,
             sensitive_action_safe_mode=original_agent.settings.sensitive_action_safe_mode,
+            organization_id=organization_id,
+            team_id=team_id,
         )
     )[0]
 

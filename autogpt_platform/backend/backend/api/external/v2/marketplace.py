@@ -23,6 +23,9 @@ from prisma.enums import APIKeyPermission
 from starlette import status
 
 from backend.api.features.library import db as library_db
+from backend.api.features.library.exceptions import (
+    LibraryAgentInAnotherOrganizationError,
+)
 from backend.api.features.store import cache as store_cache
 from backend.api.features.store import db as store_db
 from backend.api.features.store import media as store_media
@@ -156,10 +159,15 @@ async def add_agent_to_library(
         username=username, agent_name=agent_name
     )
 
-    agent = await library_db.add_store_agent_to_library(
-        store_listing_version_id=agent_details.store_listing_version_id,
-        user_id=auth.user_id,
-    )
+    try:
+        agent = await library_db.add_store_agent_to_library(
+            store_listing_version_id=agent_details.store_listing_version_id,
+            user_id=auth.user_id,
+            organization_id=auth.organization_id,
+            team_id=auth.team_id,
+        )
+    except LibraryAgentInAnotherOrganizationError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
     return LibraryAgent.from_internal(agent)
 

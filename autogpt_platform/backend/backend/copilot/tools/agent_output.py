@@ -19,7 +19,7 @@ from backend.data.execution import (
     GraphExecutionWithNodes,
 )
 
-from .base import BaseTool
+from .base import BaseTool, parameters_without
 from .execution_utils import (
     TERMINAL_STATUSES,
     NodeFailureSummary,
@@ -138,6 +138,12 @@ class AgentOutputTool(BaseTool):
     @property
     def allow_external_use(self):
         return True, [APIKeyPermission.READ_RUN]
+
+    @property
+    def external_parameters(self) -> dict[str, Any]:
+        # An external caller polls instead: each wait holds the request and an
+        # event-bus connection open for as long as the run takes.
+        return parameters_without(self.parameters, "wait_if_running")
 
     @property
     def description(self) -> str:

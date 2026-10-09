@@ -59,12 +59,26 @@ async def resolve_request_auth(
     """`resolve_auth_info`, verified at most once per request.
 
     v2's rate limiter and route dependency both need the caller, and an API key
-    costs a Scrypt hash per check. Failures are not remembered, so a retry retries.
+    costs a Scrypt hash per check. A rejection is remembered too, so an invalid
+    key costs one hash, not two; an error that isn't a rejection (the database
+    unreachable) is not, so the route's own check tries again.
     """
     state = scope.setdefault("state", {})
     if _REQUEST_AUTH not in state:
-        state[_REQUEST_AUTH] = await resolve_auth_info(api_key=api_key, bearer=bearer)
-    return state[_REQUEST_AUTH]
+        try:
+            state[_REQUEST_AUTH] = await resolve_auth_info(
+                api_key=api_key, bearer=bearer
+            )
+        except HTTPException as rejection:
+            state[_REQUEST_AUTH] = rejection
+    resolved = state[_REQUEST_AUTH]
+    if isinstance(resolved, HTTPException):
+        raise HTTPException(
+            status_code=resolved.status_code,
+            detail=resolved.detail,
+            headers=resolved.headers,
+        )
+    return resolved
 
 
 async def require_auth(

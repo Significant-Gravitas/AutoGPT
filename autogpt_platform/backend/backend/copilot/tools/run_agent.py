@@ -243,7 +243,9 @@ class RunAgentTool(BaseTool):
     @property
     def external_parameters(self) -> dict[str, Any]:
         # Presets aren't part of the v2 surface and have no API-key permission.
-        return parameters_without(self.parameters, "preset_id")
+        # An external caller polls view_agent_output rather than holding a
+        # request (and an event-bus connection) open while the run finishes.
+        return parameters_without(self.parameters, "preset_id", "wait_for_result")
 
     def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
         needed = []

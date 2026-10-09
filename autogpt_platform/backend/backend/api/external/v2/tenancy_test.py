@@ -587,9 +587,6 @@ _ITEM_HANDLERS_WITHOUT_TENANTED_ROWS = {
     "get_agent_details",
     "get_creator_details",
     "get_marketplace_listing_for_graph",
-    # Adds a public listing to the caller's own library; the row it creates is
-    # untagged, like the internal route's.
-    "add_agent_to_library",
 }
 
 

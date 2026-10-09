@@ -6,6 +6,9 @@ from collections.abc import Mapping
 from typing import Any
 
 from backend.api.features.library import model as library_model
+from backend.api.features.library.exceptions import (
+    LibraryAgentInAnotherOrganizationError,
+)
 from backend.copilot.context import is_unattended_turn
 from backend.copilot.credential_selection import (
     selected_credentials,
@@ -251,7 +254,8 @@ async def get_or_create_library_agent(
         graph: The Graph to add to library
         user_id: The user's ID
         organization_id, team_id: Tenancy for a new entry; None means the
-            user's default team
+            user's default team. An existing entry in another organization
+            raises LibraryAgentInAnotherOrganizationError.
 
     Returns:
         LibraryAgent instance
@@ -260,6 +264,15 @@ async def get_or_create_library_agent(
         graph_id=graph.id, user_id=user_id
     )
     if existing:
+        # Unique per user and graph, so another organization's entry can be
+        # neither reused here nor joined by a second one.
+        if organization_id is not None and existing.organization_id not in (
+            None,
+            organization_id,
+        ):
+            raise LibraryAgentInAnotherOrganizationError(
+                "This agent is already in your library in another organization"
+            )
         return existing
 
     library_agents = await library_db().create_library_agent(

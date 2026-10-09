@@ -16,6 +16,8 @@ from backend.util.exceptions import MissingConfigError, NotFoundError
 
 from . import db
 from . import model as library_model
+from ._add_to_library import restore_existing_library_agent
+from .exceptions import LibraryAgentInAnotherOrganizationError
 
 
 @pytest.mark.parametrize("expert_id", [None, "expert-1"])
@@ -2216,3 +2218,20 @@ async def test_cleanup_trigger_agents_processes_each_independently(mocker):
     recursive_delete.assert_awaited_once_with(
         library_agent_id="sole", user_id="test-user", soft_delete=True
     )
+
+
+@pytest.mark.asyncio
+async def test_re_adding_a_listing_leaves_another_organizations_entry_alone(mocker):
+    """The entry is unique per user, so a re-add from another org would restore
+    and hand back a row that org can't see."""
+    delegate = MagicMock()
+    delegate.find_unique = AsyncMock(return_value=MagicMock(organizationId="org-b"))
+    delegate.update = AsyncMock()
+    mocker.patch("prisma.models.LibraryAgent.prisma", return_value=delegate)
+    listing_version = MagicMock(AgentGraph=MagicMock(id="graph-1", version=1))
+
+    with pytest.raises(LibraryAgentInAnotherOrganizationError):
+        await restore_existing_library_agent(
+            listing_version, "user-1", organization_id="org-a"
+        )
+    delegate.update.assert_not_awaited()

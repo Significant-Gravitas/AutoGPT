@@ -4,6 +4,7 @@ The MCP server checks the ids a call names (`api/external/v2/mcp_tenancy.py`);
 these pin what the tools find, list and create on their own.
 """
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import APIKeyPermission
 
+from backend.api.features.library.model import LibraryFolder
 from backend.copilot.model import ChatSession
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.agent_output import AgentOutputTool, _run_visible
@@ -26,7 +28,7 @@ from backend.copilot.tools.external_scope import (
     in_tenant,
 )
 from backend.copilot.tools.helpers import require_guide_read, require_library_check
-from backend.copilot.tools.manage_folders import ListFoldersTool
+from backend.copilot.tools.manage_folders import CreateFolderTool, ListFoldersTool
 from backend.copilot.tools.manage_schedules import _is_in_session_scope
 from backend.copilot.tools.models import ErrorResponse
 
@@ -265,3 +267,19 @@ async def test_an_agent_created_over_the_external_api_lands_in_its_organization(
 
     assert save.await_args.kwargs["organization_id"] == "org-1"
     assert save.await_args.kwargs["team_id"] == "team-1"
+
+
+async def test_a_folder_created_over_the_external_api_lands_in_its_organization():
+    now = datetime.now(UTC)
+    lib = MagicMock()
+    lib.create_folder = AsyncMock(
+        return_value=LibraryFolder(
+            id="folder-1", user_id=USER, name="Reports", created_at=now, updated_at=now
+        )
+    )
+
+    with patch("backend.copilot.tools.manage_folders.library_db", return_value=lib):
+        await CreateFolderTool()._execute(USER, _external(), name="Reports")
+
+    kwargs = lib.create_folder.await_args.kwargs
+    assert (kwargs["organization_id"], kwargs["team_id"]) == ("org-1", "team-1")

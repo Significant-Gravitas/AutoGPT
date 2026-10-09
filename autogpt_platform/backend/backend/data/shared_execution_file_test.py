@@ -1,5 +1,8 @@
 """Tests for SharedExecutionFile workspace URI extraction logic."""
 
+from unittest.mock import AsyncMock, Mock
+
+from backend.data.execution import get_shared_execution_file
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
 
@@ -122,3 +125,22 @@ class TestExtractWorkspaceFileIds:
         assert extract_workspace_file_ids(content) == {
             "b5c4f6df-f043-4826-88a2-33c33389c17d"
         }
+
+
+async def test_a_file_download_needs_the_run_still_shared_under_that_token(
+    mocker,
+):
+    """An allowlist row left behind by an unshare, re-share or delete that
+    failed halfway, or by two that raced, must not authorise a download."""
+    find_first = AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.data.execution.SharedExecutionFile.prisma",
+        return_value=Mock(find_first=find_first),
+    )
+
+    assert await get_shared_execution_file("token-1", "file-1") is None
+
+    where = find_first.await_args.kwargs["where"]
+    assert where["Execution"] == {
+        "is": {"isShared": True, "isDeleted": False, "shareToken": "token-1"}
+    }

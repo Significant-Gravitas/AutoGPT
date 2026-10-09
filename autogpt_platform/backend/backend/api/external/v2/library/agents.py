@@ -98,6 +98,14 @@ async def update_library_agent(
 ) -> LibraryAgent:
     """Update properties of a library agent."""
     await _assert_agent_in_tenant(agent_id, auth)
+    if request.folder_id:
+        in_tenant(
+            await library_db.get_folder(
+                folder_id=request.folder_id, user_id=auth.user_id
+            ),
+            auth,
+            f"Folder #{request.folder_id}",
+        )
 
     updated = await library_db.update_library_agent(
         library_agent_id=agent_id,
@@ -151,6 +159,8 @@ async def fork_library_agent(
     forked = await library_db.fork_library_agent(
         library_agent_id=agent_id,
         user_id=auth.user_id,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id,
     )
     return LibraryAgent.from_internal(forked)
 

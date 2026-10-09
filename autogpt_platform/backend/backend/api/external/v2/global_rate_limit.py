@@ -6,6 +6,9 @@ endpoints. Authenticated users get 200 req/min keyed by user ID; unauthenticated
 sessions get 5 req/min keyed by client IP.
 
 Identifies the user through the auth middleware's `resolve_request_auth`.
+Verifying an API key costs a Scrypt hash, so failed attempts are capped per
+client IP too, and once the cap is reached a credential isn't verified at all
+until the window rolls over.
 
 Every response carries the caller's `X-RateLimit-*` position, and a 429 adds
 `Retry-After`, so a client can back off on the numbers instead of guessing.
@@ -14,6 +17,7 @@ On auth-resolution failure or Redis errors the request passes through — the
 endpoint's own auth dependency handles 401, and the rate limiter fails open.
 """
 
+import contextlib
 import logging
 from typing import Optional
 
@@ -32,6 +36,9 @@ settings = Settings()
 
 _authenticated_limiter = RateLimiter("v2:global", max_requests=200, window_seconds=60)
 _anonymous_limiter = RateLimiter("v2:global:anon", max_requests=5, window_seconds=60)
+_failed_auth_limiter = RateLimiter(
+    "v2:global:auth-failures", max_requests=30, window_seconds=60
+)
 
 
 class GlobalRateLimitMiddleware:
@@ -53,10 +60,24 @@ class GlobalRateLimitMiddleware:
                 scheme="Bearer", credentials=auth_header[7:]
             )
 
+        ip = client_ip(scope, headers)
+        if (api_key or bearer) and await _failed_auth_limiter.exhausted(ip):
+            # Refused before the hash: the cap exists to bound that work.
+            response = error_response(
+                429,
+                "Too many failed authentication attempts. Try again shortly.",
+                headers={"Retry-After": str(_failed_auth_limiter.window_seconds)},
+            )
+            await response(scope, receive, send)
+            return
+
         try:
             auth = await resolve_request_auth(scope, api_key=api_key, bearer=bearer)
-        except HTTPException:
+        except HTTPException as rejection:
             auth = None
+            if rejection.status_code == 401:
+                with contextlib.suppress(HTTPException):
+                    await _failed_auth_limiter.check(ip)
         except Exception as exc:
             # Fail open on anything the auth backend throws that is not a
             # rejection; the route's own dependency will answer 401 or 500.
@@ -67,7 +88,7 @@ class GlobalRateLimitMiddleware:
             if auth:
                 state = await _authenticated_limiter.check(auth.user_id)
             else:
-                state = await _anonymous_limiter.check(client_ip(scope, headers))
+                state = await _anonymous_limiter.check(ip)
         except HTTPException as exc:
             # The middleware sits outside the app, so the v2 exception handlers
             # never see this — build the same envelope by hand.

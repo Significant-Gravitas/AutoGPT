@@ -10,7 +10,7 @@ from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db
 
 from .base import BaseTool
-from .external_scope import external_tenant
+from .external_scope import external_tenancy, external_tenant
 from .models import (
     AgentsMovedToFolderResponse,
     ErrorResponse,
@@ -149,12 +149,15 @@ class CreateFolderTool(BaseTool):
             )
 
         try:
+            organization_id, team_id = external_tenancy(session)
             folder = await library_db().create_folder(
                 user_id=user_id,
                 name=name,
                 parent_id=parent_id,
                 icon=icon,
                 color=color,
+                organization_id=organization_id,
+                team_id=team_id,
             )
         except Exception as e:
             return ErrorResponse(

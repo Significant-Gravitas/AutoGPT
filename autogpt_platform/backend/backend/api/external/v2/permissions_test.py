@@ -315,6 +315,12 @@ async def search_with(
         new_callable=mock.AsyncMock,
         return_value=None,
     )
+    # Every library agent a row names is the caller's, in this organization.
+    mocker.patch(
+        "backend.api.external.v2.search.library_db.get_library_agent_organizations",
+        new_callable=mock.AsyncMock,
+        side_effect=lambda _user, ids: {i: ORG_ID for i in ids},
+    )
     return await search(
         response=fastapi.Response(),
         query="q",
@@ -404,6 +410,11 @@ def _offline(mocker: pytest_mock.MockFixture) -> None:
         "backend.api.utils.rate_limit.RateLimiter.check",
         new_callable=mock.AsyncMock,
         return_value=None,
+    )
+    mocker.patch(
+        "backend.api.utils.rate_limit.RateLimiter.exhausted",
+        new_callable=mock.AsyncMock,
+        return_value=False,
     )
     mocker.patch(
         "backend.api.external.v2.tenancy.resolve_credential_tenancy",

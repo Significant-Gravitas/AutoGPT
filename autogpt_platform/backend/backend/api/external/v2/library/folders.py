@@ -95,12 +95,17 @@ async def create_folder(
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> LibraryFolder:
     """Create a new folder in the user's library."""
+    if request.parent_id:
+        await _assert_folder_in_tenant(request.parent_id, auth)
+
     folder = await library_db.create_folder(
         user_id=auth.user_id,
         name=request.name,
         parent_id=request.parent_id,
         icon=request.icon,
         color=request.color,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id,
     )
     return LibraryFolder.from_internal(folder)
 
@@ -140,6 +145,8 @@ async def move_folder(
 ) -> LibraryFolder:
     """Move a folder to a new parent. Set target_parent_id to null to move to root."""
     await _assert_folder_in_tenant(folder_id, auth)
+    if request.target_parent_id:
+        await _assert_folder_in_tenant(request.target_parent_id, auth)
 
     folder = await library_db.move_folder(
         folder_id=folder_id,

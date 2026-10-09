@@ -10,6 +10,7 @@ import pytest
 import pytest_mock
 from fastapi import HTTPException, Response
 
+from backend.api.external.middleware import resolve_request_auth
 from backend.api.external.v2 import credits
 from backend.api.external.v2.global_rate_limit import (
     GlobalRateLimitMiddleware,
@@ -145,3 +146,70 @@ def _scope() -> dict:
 
 async def _receive() -> dict:
     return {"type": "http.request"}
+
+
+async def test_failed_authentication_is_capped_per_ip_before_the_hash(
+    mocker: pytest_mock.MockFixture, redis: mock.AsyncMock
+) -> None:
+    """Each attempt with a key costs a Scrypt hash; past the cap, none run."""
+    redis.get.return_value = b"30"
+    verify = mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(),
+    )
+    sent: list[dict] = []
+
+    async def app(scope, receive, send):
+        raise AssertionError("the request reached the app")
+
+    async def send(message):
+        sent.append(message)
+
+    scope = _scope()
+    scope["headers"] = [(b"x-api-key", b"agpt_wrongkey")]
+    await GlobalRateLimitMiddleware(app)(scope, _receive, send)
+
+    assert sent[0]["status"] == 429
+    verify.assert_not_awaited()
+
+
+async def test_a_rejected_credential_counts_against_the_failure_cap(
+    mocker: pytest_mock.MockFixture, redis: mock.AsyncMock
+) -> None:
+    redis.get.return_value = None
+    redis.incr.return_value = 1
+    mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(side_effect=HTTPException(status_code=401, detail="no")),
+    )
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 401, "headers": []})
+
+    async def send(message):
+        pass
+
+    scope = _scope()
+    scope["headers"] = [(b"x-api-key", b"agpt_wrongkey")]
+    await GlobalRateLimitMiddleware(app)(scope, _receive, send)
+
+    counted = [call.args[0] for call in redis.incr.await_args_list]
+    assert any(":auth-failures:" in key and PEER in key for key in counted)
+
+
+async def test_a_request_verifies_its_credential_once_even_when_rejected(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The rate limiter and the route both ask; an invalid key is hashed once."""
+    validate = mocker.patch(
+        "backend.api.external.middleware.validate_api_key",
+        new=mock.AsyncMock(return_value=None),
+    )
+    scope: dict = {"type": "http"}
+
+    for _ in range(2):
+        with pytest.raises(HTTPException) as raised:
+            await resolve_request_auth(scope, api_key="agpt_wrongkey", bearer=None)
+        assert raised.value.status_code == 401
+
+    validate.assert_awaited_once()
