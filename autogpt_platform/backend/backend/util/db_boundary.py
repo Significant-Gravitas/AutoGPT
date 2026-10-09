@@ -6,6 +6,7 @@ connection-aware accessors and DatabaseManager clients stop that propagation.
 """
 
 import json
+from collections import Counter
 from pathlib import Path
 
 from backend.util.db_boundary_ast import collect_references, resolve_alias
@@ -34,24 +35,41 @@ def main() -> int:
 
 
 def check_database_boundary(root: Path) -> list[str]:
-    violations = find_violations(read_sources(root))
+    references = find_database_references(read_sources(root))
     baseline_path = root / "util" / "database_boundary_legacy.json"
-    baseline: dict[str, int] = json.loads(baseline_path.read_text(encoding="utf-8"))
-    failures: list[str] = []
-    for key in sorted(violations.keys() | baseline.keys()):
-        lines = violations.get(key, [])
-        allowed = baseline.get(key, 0)
-        if len(lines) > allowed:
-            path, detail = key.split("::", 1)
-            locations = ",".join(map(str, sorted(set(lines))))
-            failures.append(
-                f"backend/{path}:{locations} {detail} ({len(lines)} references; {allowed} legacy)"
-            )
-        elif len(lines) < allowed:
-            failures.append(
-                f"Remove stale legacy database exception: {key} ({allowed} -> {len(lines)})"
-            )
-    return failures
+    baseline: dict[str, list[str]] = json.loads(
+        baseline_path.read_text(encoding="utf-8")
+    )
+    return [
+        failure
+        for key in sorted(references.keys() | baseline.keys())
+        for failure in _compare_legacy_references(
+            key, references.get(key, []), baseline.get(key, [])
+        )
+    ]
+
+
+def _compare_legacy_references(
+    key: str, references: list[tuple[int, str]], allowed: list[str]
+) -> list[str]:
+    path, detail = key.split("::", 1)
+    locations = ",".join(map(str, sorted({line for line, _ in references})))
+    if len(references) > len(allowed):
+        return [
+            f"backend/{path}:{locations} {detail} "
+            f"({len(references)} references; {len(allowed)} legacy)"
+        ]
+    if len(references) < len(allowed):
+        return [
+            f"Remove stale legacy database exception: {key} "
+            f"({len(allowed)} -> {len(references)})"
+        ]
+    if Counter(identity for _, identity in references) != Counter(allowed):
+        return [
+            f"Changed legacy database reference: backend/{path}:{locations} {detail}. "
+            "Route replacement queries through the database gateway."
+        ]
+    return []
 
 
 def read_sources(root: Path) -> dict[str, str]:
@@ -73,11 +91,20 @@ def read_sources(root: Path) -> dict[str, str]:
 
 
 def find_violations(sources: dict[str, str]) -> dict[str, list[int]]:
+    return {
+        key: [line for line, _ in references]
+        for key, references in find_database_references(sources).items()
+    }
+
+
+def find_database_references(
+    sources: dict[str, str],
+) -> dict[str, list[tuple[int, str]]]:
     references, aliases, callables, rpc_clients = collect_references(sources)
     resolved = {
         scope: [
-            (resolved_target, line)
-            for target, line in targets
+            (resolved_target, line, identity)
+            for target, line, identity in targets
             for resolved_target in resolve_alias(target, aliases)
         ]
         for scope, targets in references.items()
@@ -87,7 +114,7 @@ def find_violations(sources: dict[str, str]) -> dict[str, list[int]]:
 
 
 def _query_callables(
-    references: dict[str, list[tuple[str, int]]],
+    references: dict[str, list[tuple[str, int, str]]],
     callables: set[str],
     rpc_clients: set[str],
 ) -> set[str]:
@@ -100,7 +127,7 @@ def _query_callables(
             and scope not in rpc_clients
             and any(
                 _unsafe_target(target, unsafe, callables, rpc_clients)
-                for target, _ in references[scope]
+                for target, _, _ in references[scope]
             )
         }
         if not discovered:
@@ -110,13 +137,13 @@ def _query_callables(
 
 
 def _module_violations(
-    references: dict[str, list[tuple[str, int]]],
+    references: dict[str, list[tuple[str, int, str]]],
     sources: dict[str, str],
     unsafe: set[str],
     callables: set[str],
     rpc_clients: set[str],
-) -> dict[str, list[int]]:
-    violations: dict[str, list[int]] = {}
+) -> dict[str, list[tuple[int, str]]]:
+    violations: dict[str, list[tuple[int, str]]] = {}
     modules = sorted(sources, key=len, reverse=True)
     for scope, targets in references.items():
         module = next(
@@ -126,7 +153,7 @@ def _module_violations(
             continue
         path = module.removeprefix("backend.").replace(".", "/") + ".py"
         owner = scope.removeprefix(module + ".") if scope != module else "<module>"
-        for target, line in targets:
+        for target, line, identity in targets:
             if is_connection_owner_dispatch(module, target):
                 continue
             if scope in rpc_clients and not _unsafe_target(
@@ -136,7 +163,7 @@ def _module_violations(
             query = _unsafe_target(target, unsafe, callables, rpc_clients)
             if query:
                 key = f"{path}::{owner} -> {query}"
-                violations.setdefault(key, []).append(line)
+                violations.setdefault(key, []).append((line, identity))
     return violations
 
 

@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from backend.util.db_boundary import check_database_boundary, find_violations
+from backend.util.db_boundary import (
+    check_database_boundary,
+    find_database_references,
+    find_violations,
+)
 from backend.util.db_boundary_policy import DATABASE_IMPLEMENTATIONS
 
 QUERY_SOURCE = """
@@ -246,9 +250,11 @@ def test_legacy_counts_cannot_hide_an_extra_call_or_a_later_regression(tmp_path:
     notification.write_text(source, encoding="utf-8")
     baseline = tmp_path / "util" / "database_boundary_legacy.json"
     baseline.parent.mkdir()
-    original = find_violations({"backend.notifications.example": source})
+    original = find_database_references({"backend.notifications.example": source})
     baseline.write_text(
-        json.dumps({key: len(lines) for key, lines in original.items()}),
+        json.dumps(
+            {key: [identity for _, identity in refs] for key, refs in original.items()}
+        ),
         encoding="utf-8",
     )
     assert not check_database_boundary(tmp_path)

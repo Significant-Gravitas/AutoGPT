@@ -2,10 +2,14 @@
 
 import ast
 
+from backend.util.db_boundary_identity import reference_identity
+
 
 def collect_references(
     sources: dict[str, str],
-) -> tuple[dict[str, list[tuple[str, int]]], dict[str, set[str]], set[str], set[str]]:
+) -> tuple[
+    dict[str, list[tuple[str, int, str]]], dict[str, set[str]], set[str], set[str]
+]:
     trees = {name: ast.parse(source, filename=name) for name, source in sources.items()}
     exports = {name: _export_names(tree) for name, tree in trees.items()}
     exports.update(
@@ -15,7 +19,7 @@ def collect_references(
             if name.endswith(".__init__")
         }
     )
-    references: dict[str, list[tuple[str, int]]] = {}
+    references: dict[str, list[tuple[str, int, str]]] = {}
     aliases: dict[str, set[str]] = {}
     callables: set[str] = set()
     rpc_clients: set[str] = set()
@@ -78,7 +82,8 @@ class _References(ast.NodeVisitor):
         self.module = module
         self.scope = module
         self.bindings: dict[str, set[str]] = {}
-        self.references: dict[str, list[tuple[str, int]]] = {module: []}
+        self.references: dict[str, list[tuple[str, int, str]]] = {module: []}
+        self.calls: list[ast.Call] = []
         self.exports: dict[str, set[str]] = {}
         self.callables: set[str] = set()
         self.rpc_clients: set[str] = set()
@@ -99,7 +104,7 @@ class _References(ast.NodeVisitor):
         for alias in node.names:
             name = alias.asname or alias.name.split(".")[0]
             self._bind(name, alias.name if alias.asname else name)
-            self._record(alias.name, node.lineno)
+            self._record_import(alias.name, node.lineno)
 
     def visit_ImportFrom(self, node: ast.ImportFrom):
         module = node.module or ""
@@ -119,7 +124,7 @@ class _References(ast.NodeVisitor):
             for name in names:
                 target = f"{module}.{name}"
                 self._bind(alias.asname or name, target)
-                self._record(target, node.lineno)
+                self._record_import(target, node.lineno)
 
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef):
         for decorator in node.decorator_list:
@@ -153,18 +158,25 @@ class _References(ast.NodeVisitor):
             if isinstance(
                 child, (ast.FunctionDef, ast.AsyncFunctionDef)
             ) and child.name in {"__init__", "__new__"}:
-                self.references[target].append((f"{target}.{child.name}", child.lineno))
+                self.references[target].append(
+                    (f"{target}.{child.name}", child.lineno, "constructor")
+                )
+
+    def visit_Call(self, node: ast.Call):
+        self.calls.append(node)
+        self.generic_visit(node)
+        self.calls.pop()
 
     def visit_Name(self, node: ast.Name):
         if isinstance(node.ctx, ast.Load) and node.id in self.bindings:
             for target in self.bindings[node.id]:
-                self._record(target, node.lineno)
+                self._record(target, node)
 
     def visit_Attribute(self, node: ast.Attribute):
         targets = self._target(node)
         if targets:
             for target in targets:
-                self._record(target, node.lineno)
+                self._record(target, node)
             self._visit_receiver_arguments(node.value)
         else:
             self.generic_visit(node)
@@ -244,8 +256,13 @@ class _References(ast.NodeVisitor):
                     targets
                 )
 
-    def _record(self, target: str, lineno: int):
-        self.references[self.scope].append((target, lineno))
+    def _record_import(self, target: str, lineno: int):
+        self.references[self.scope].append((target, lineno, "import"))
+
+    def _record(self, target: str, node: ast.expr):
+        syntax = self.calls[-1] if self.calls else node
+        identity = reference_identity(syntax, self._target)
+        self.references[self.scope].append((target, node.lineno, identity))
 
     def _target(self, node: ast.expr) -> set[str]:
         if isinstance(node, ast.Name):
