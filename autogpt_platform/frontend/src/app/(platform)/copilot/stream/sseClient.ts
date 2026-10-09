@@ -23,11 +23,12 @@ export async function fetchSse(
   url: string,
   init: RequestInit,
   onFrame: (frame: SseFrame) => void,
+  fetchImpl: typeof fetch = fetch,
 ): Promise<SseResult> {
-  const response = await fetch(url, init);
+  const response = await fetchImpl(url, init);
   if (!response.ok || !response.body) {
-    const body = await response.json().catch(() => null);
-    return { ok: false, status: response.status, body };
+    const text = await response.text().catch(() => "");
+    return { ok: false, status: response.status, body: parseBody(text) };
   }
   await readSseFrames(response.body, onFrame, init.signal ?? undefined);
   return { ok: true };
@@ -84,4 +85,14 @@ function toFrame(id: string | undefined, data: string): SseFrame | null {
   const parsed = id ? parseFrameId(id) : null;
   if (!parsed) return { kind: "synthetic", chunk };
   return { kind: "entry", entry: { ...parsed, chunk } };
+}
+
+// A refusal is JSON from the API, or plain text from a proxy in front of it.
+function parseBody(text: string): unknown {
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
 }

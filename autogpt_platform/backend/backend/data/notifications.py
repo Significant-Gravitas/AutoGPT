@@ -434,6 +434,10 @@ class AudienceAction(Enum):
     # unsubscribed, and nobody is created (see `mailerlite.unsubscribe`). The
     # only change queued for an opted-out account, since it is the refusal.
     UNSUBSCRIBE = "unsubscribe"
+    # The onboarding answers. On cloud the paywall comes first, so they are
+    # given after checkout opened: they fill in someone MailerLite already has
+    # and never create anyone (see `mailerlite.record_onboarding_profile`).
+    ONBOARDING_PROFILE = "onboarding_profile"
 
 
 class SubscriberField(str, Enum):
@@ -451,6 +455,10 @@ class SubscriberField(str, Enum):
     CHECKOUT_OPENED = "checkout_opened_date"
     EMAIL_TYPE = "email_type"
     SIGNIN_METHOD = "signin_method"
+    # The role picked in onboarding, as labelled there, and what was typed
+    # after picking Other (see `data/onboarding_role.py`).
+    ROLE = "role"
+    ROLE_OTHER = "role_other"
     # Built into MailerLite, so never created: the full English name.
     COUNTRY = "country"
     COUNTRY_CODE = "country_code"

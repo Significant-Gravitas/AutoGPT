@@ -158,7 +158,7 @@ describe("MCP preset access options", () => {
 
   test("Customer.io defaults to read access and adds only documented draft writes when selected", async () => {
     const dialog = await openPreset("Customer.io");
-    const changes = within(dialog).getByRole("checkbox", {
+    const changes = within(dialog).getByRole("switch", {
       name: /allow changes/i,
     });
     expect(changes.getAttribute("aria-checked")).toBe("false");
