@@ -17,9 +17,7 @@ from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
 from backend.data.subscription_payment_failure import (
     handle_subscription_payment_failure,
 )
-from backend.data.subscription_wallet_payment import (
-    refund_wallet_debit_if_paid_by_card,
-)
+from backend.data.subscription_wallet_payment import refund_wallet_debit_if_paid_by_card
 from backend.util.exceptions import InsufficientBalanceError
 
 CUSTOMER = "cus_1"
@@ -198,7 +196,9 @@ class World:
             patch.object(stripe.Invoice, "pay_async", fs.pay),
             patch.object(stripe.Invoice, "list_async", fs.list_invoices),
             patch.object(stripe.Invoice, "void_invoice_async", fs.void),
-            patch.object(stripe.Subscription, "retrieve_async", fs.retrieve_subscription),
+            patch.object(
+                stripe.Subscription, "retrieve_async", fs.retrieve_subscription
+            ),
             patch.object(stripe.Subscription, "cancel_async", fs.cancel),
             patch.object(
                 stripe.PaymentIntent, "retrieve_async", fs.retrieve_payment_intent
@@ -444,9 +444,7 @@ async def test_card_paying_first_refunds_the_unfinished_wallet_debit():
         world.stripe.invoices["in_1"]["status"] = "paid"
         world.stripe.subscriptions["sub_1"]["status"] = "active"
 
-        await refund_wallet_debit_if_paid_by_card(
-            dict(world.stripe.invoices["in_1"])
-        )
+        await refund_wallet_debit_if_paid_by_card(dict(world.stripe.invoices["in_1"]))
         await handle_subscription_payment_failure(event)
 
     assert world.ledger.balance == 5000
@@ -474,9 +472,7 @@ async def test_wallet_paid_invoice_is_not_refunded_on_its_success_event():
     with World(balance=5000) as world:
         event = _renewal_failed(world)
         await handle_subscription_payment_failure(event)
-        await refund_wallet_debit_if_paid_by_card(
-            dict(world.stripe.invoices["in_1"])
-        )
+        await refund_wallet_debit_if_paid_by_card(dict(world.stripe.invoices["in_1"]))
 
     assert world.ledger.balance == 3000
     assert "in_1:wallet-refund" not in world.ledger.transactions

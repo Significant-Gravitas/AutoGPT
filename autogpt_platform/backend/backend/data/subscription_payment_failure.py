@@ -187,18 +187,19 @@ async def _void_open_invoices(sub_id: str) -> None:
         stripe.Invoice.list_async, subscription=sub_id, status="open", limit=100
     )
     async for invoice in stripe_list_items(invoices):
+        invoice_id: str = invoice["id"]
         if await _payment_in_progress(dict(invoice)):
-            logger.warning(f"Not voiding invoice {invoice.id}: payment processing")
+            logger.warning(f"Not voiding invoice {invoice_id}: payment processing")
             continue
         try:
-            await stripe_call(stripe.Invoice.void_invoice_async, invoice.id)
+            await stripe_call(stripe.Invoice.void_invoice_async, invoice_id)
         except stripe.StripeError:
-            current = await stripe_call(stripe.Invoice.retrieve_async, invoice.id)
+            current = await stripe_call(stripe.Invoice.retrieve_async, invoice_id)
             if current.get("status") == "open":
                 raise
             if current.get("status") == "paid":
                 logger.error(
-                    f"Invoice {invoice.id} was paid after subscription {sub_id}"
+                    f"Invoice {invoice_id} was paid after subscription {sub_id}"
                     " was cancelled for non-payment; needs a manual fix"
                 )
 

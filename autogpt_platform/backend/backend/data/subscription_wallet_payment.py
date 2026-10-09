@@ -82,9 +82,7 @@ async def settle_wallet_payment(
             logger.info(f"Paid invoice {invoice_id} of user {user_id} from wallet")
             return
         except stripe.StripeError:
-            invoice = dict(
-                await stripe_call(stripe.Invoice.retrieve_async, invoice_id)
-            )
+            invoice = dict(await stripe_call(stripe.Invoice.retrieve_async, invoice_id))
             if invoice.get("status") in _PAYABLE_INVOICE_STATUSES:
                 logger.warning(
                     f"Wallet debit taken for invoice {invoice_id} (user {user_id})"

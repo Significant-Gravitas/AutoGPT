@@ -55,9 +55,7 @@ from backend.data.subscription_trial_billing import (
     TRIAL_BILLING_EVENTS,
     sync_trials_for_billing_event,
 )
-from backend.data.subscription_wallet_payment import (
-    refund_wallet_debit_if_paid_by_card,
-)
+from backend.data.subscription_wallet_payment import refund_wallet_debit_if_paid_by_card
 from backend.data.user import get_user_by_id
 from backend.notifications import lifecycle
 from backend.notifications.queue import queue_pass_work
