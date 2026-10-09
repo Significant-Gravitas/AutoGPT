@@ -109,7 +109,7 @@ class HireExpertTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"No expert template with id {template_id.strip()} is on "
-                    "the roster. List the roster and pick a current one."
+                    'the roster. Find one with find_capability(kind="expert").'
                 ),
                 session_id=session_id,
             )

@@ -174,13 +174,13 @@ class CapabilityIndex:
         rest = [idx for idx in scores if idx not in exact]
         fallback: list[SearchHit] = []
         if service_indices is not None:
-            # User skills and custom MCP endpoints can match a service
+            # Skills, experts and custom MCP endpoints can match a service
             # without a catalog service tag, so keep their lexical matches.
             main = [
                 idx
                 for idx in rest
                 if idx in service_indices
-                or self.entries[idx].kind == "skill"
+                or self.entries[idx].kind in ("skill", "expert")
                 or (
                     self.entries[idx].kind == "mcp_server"
                     and self.entries[idx].id.lower().startswith("https://")
@@ -243,6 +243,14 @@ class CapabilityIndex:
                     entry.kind == "skill"
                     and allowed_tools is not None
                     and SKILL_TOOL not in allowed_tools
+                ):
+                    continue
+                # An expert runs as the tool it dispatches to (hire or
+                # delegate), and is shown only where that tool may run.
+                if (
+                    entry.kind == "expert"
+                    and allowed_tools is not None
+                    and entry.implementations[0].ref not in allowed_tools
                 ):
                     continue
             allowed.add(idx)
