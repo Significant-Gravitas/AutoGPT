@@ -3021,7 +3021,12 @@ class LoadedSkillVersion(BaseModel):
 
 
 async def resolve_loaded_skill_version(
-    user_id: str, expert_id: str | None, name: str, text: str
+    user_id: str,
+    expert_id: str | None,
+    name: str,
+    text: str,
+    *,
+    manager: WorkspaceManager | None = None,
 ) -> LoadedSkillVersion:
     """Pin the loaded content to its exact version, refusing paused skills.
 
@@ -3043,7 +3048,7 @@ async def resolve_loaded_skill_version(
     if current is None or current.content_hash != content_hash(text):
         return LoadedSkillVersion()
     if current.files is not None:
-        manager = await _get_user_skill_manager(user_id)
+        manager = manager or await _get_user_skill_manager(user_id)
         listed = await _list_package_files(manager, skill_folder(expert_id), name)
         if not _matches_version_files(
             listed, current.files, f"{skill_folder(expert_id)}/{name}/"
@@ -3190,7 +3195,7 @@ class ReadSkillTool(BaseTool):
 
         try:
             loaded = await resolve_loaded_skill_version(
-                user_id, owner.expert_id, name, text
+                user_id, owner.expert_id, name, text, manager=manager
             )
         except SkillUsePausedError:
             return ErrorResponse(
@@ -3220,6 +3225,12 @@ class ReadSkillTool(BaseTool):
             logger.warning(
                 "[skills] failed to list package files for %s", name, exc_info=True
             )
+            if loaded.files is not None:
+                return ErrorResponse(
+                    message="The skill package is unavailable; retry tool:read_skill.",
+                    error="skill_package_unavailable",
+                    session_id=session_id,
+                )
             package_files = []
             listed = False
 

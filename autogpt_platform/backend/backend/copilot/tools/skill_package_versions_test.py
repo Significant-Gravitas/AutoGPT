@@ -36,6 +36,7 @@ async def test_script_only_change_is_an_immutable_new_version(
         )
     versions = await fake_learning_store.list_versions("user-1", "personal", "checks")
     assert len(versions) == 2 and versions[0].content_hash == versions[1].content_hash
+    versions = [await fake_learning_store.get_version("user-1", v.id) for v in versions]
     assert versions[0].files[0].content == b"print('second')"
     assert versions[1].files[0].content == b"print('first')"
 

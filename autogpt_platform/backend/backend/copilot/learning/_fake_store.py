@@ -593,15 +593,21 @@ class FakeLearningStore:
     ) -> None:
         version = self.versions.get(version_id)
         if (
-            version
-            and version.user_id == user_id
-            and version.state == PENDING_WRITE_STATE
+            version is None
+            or version.user_id != user_id
+            or version.state != PENDING_WRITE_STATE
+            or (review_id is not None and version.review_id != review_id)
         ):
-            self.versions[version_id] = version.model_copy(
-                update={"state": "ready", "state_reason": reason}
-            )
+            return
+        self.versions[version_id] = version.model_copy(
+            update={"state": "ready", "state_reason": reason}
+        )
         found = self._find_review(review_id)
-        if found:
+        if (
+            found
+            and found[1].user_id == user_id
+            and found[1].applied_version_id == version_id
+        ):
             key, review = found
             self.reviews[key] = review.model_copy(
                 update={
@@ -622,15 +628,21 @@ class FakeLearningStore:
     ) -> None:
         version = self.versions.get(version_id)
         if (
-            version
-            and version.user_id == user_id
-            and version.state == PENDING_WRITE_STATE
+            version is None
+            or version.user_id != user_id
+            or version.state != PENDING_WRITE_STATE
+            or (review_id is not None and version.review_id != review_id)
         ):
-            self.versions[version_id] = version.model_copy(
-                update={"state": "stale", "state_reason": reason}
-            )
+            return
+        self.versions[version_id] = version.model_copy(
+            update={"state": "stale", "state_reason": reason}
+        )
         found = self._find_review(review_id)
-        if found:
+        if (
+            found
+            and found[1].user_id == user_id
+            and found[1].applied_version_id == version_id
+        ):
             key, review = found
             self.reviews[key] = review.model_copy(
                 update={
@@ -668,7 +680,10 @@ class FakeLearningStore:
             and v.owner_key == owner_key
             and v.skill_name == skill_name
         ]
-        return sorted(rows, key=lambda v: v.version, reverse=True)[:limit]
+        return [
+            v.model_copy(update={"files": None})
+            for v in sorted(rows, key=lambda v: v.version, reverse=True)[:limit]
+        ]
 
     async def list_recent_versions(
         self,
@@ -687,7 +702,10 @@ class FakeLearningStore:
             and (origin is None or v.origin == origin)
             and (state is None or v.state == state)
         ]
-        return sorted(rows, key=lambda v: v.created_at, reverse=True)[:limit]
+        return [
+            v.model_copy(update={"files": None})
+            for v in sorted(rows, key=lambda v: v.created_at, reverse=True)[:limit]
+        ]
 
     async def list_open_decisions(
         self, user_id: str, owner_key: str | None = None
@@ -704,7 +722,10 @@ class FakeLearningStore:
             for v in self.versions.values()
             if v.user_id == user_id and v.state in states
         ]
-        return sorted(rows, key=lambda v: v.created_at, reverse=True)[:limit]
+        return [
+            v.model_copy(update={"files": None})
+            for v in sorted(rows, key=lambda v: v.created_at, reverse=True)[:limit]
+        ]
 
     # ---- suppressions + use events -------------------------------------
 

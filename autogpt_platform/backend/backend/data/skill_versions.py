@@ -23,6 +23,7 @@ from backend.data.skill_version_files import (
     parse_version_files,
     version_files_json,
 )
+from backend.data.skill_version_queries import list_version_summaries
 from backend.util.json import SafeJson
 
 ACTIVE_VERSION_STATES = frozenset({"ready"})
@@ -337,10 +338,11 @@ async def get_version(user_id: str, version_id: str) -> SkillVersionRecord | Non
 async def list_versions(
     user_id: str, owner_key: str, skill_name: str, *, limit: int = 50
 ) -> list[SkillVersionRecord]:
-    rows = await prisma.models.SkillVersion.prisma().find_many(
-        where={"userId": user_id, "ownerKey": owner_key, "skillName": skill_name},
-        order={"version": "desc"},
-        take=limit,
+    rows = await list_version_summaries(
+        user_id,
+        owner_key=owner_key,
+        skill_name=skill_name,
+        limit=limit,
     )
     return [SkillVersionRecord.from_db(row) for row in rows]
 
@@ -353,15 +355,12 @@ async def list_recent_versions(
     state: str | None = None,
     limit: int = 50,
 ) -> list[SkillVersionRecord]:
-    where: prisma.types.SkillVersionWhereInput = {"userId": user_id}
-    if owner_key is not None:
-        where["ownerKey"] = owner_key
-    if origin is not None:
-        where["origin"] = origin
-    if state is not None:
-        where["state"] = state
-    rows = await prisma.models.SkillVersion.prisma().find_many(
-        where=where, order={"createdAt": "desc"}, take=limit
+    rows = await list_version_summaries(
+        user_id,
+        owner_key=owner_key,
+        origin=origin,
+        states=[state] if state is not None else None,
+        limit=limit,
     )
     return [SkillVersionRecord.from_db(row) for row in rows]
 
@@ -377,9 +376,9 @@ async def list_open_decisions(
 async def list_versions_in_states(
     user_id: str, states: list[str], *, limit: int = 500
 ) -> list[SkillVersionRecord]:
-    rows = await prisma.models.SkillVersion.prisma().find_many(
-        where={"userId": user_id, "state": {"in": states}},
-        order={"createdAt": "desc"},
-        take=limit,
+    rows = await list_version_summaries(
+        user_id,
+        states=states,
+        limit=limit,
     )
     return [SkillVersionRecord.from_db(row) for row in rows]

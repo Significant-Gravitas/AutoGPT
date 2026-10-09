@@ -10,7 +10,6 @@ The workspace write happens afterwards; ``complete_publication`` and
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 import prisma.errors
@@ -20,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.skill_learning import LearningSourceRecord, canonical_revision
+from backend.data.skill_publication_settlement import settle_publication
 from backend.data.skill_reviews import review_data, upsert_review_in
 from backend.data.skill_version_files import SkillVersionFile, version_files_json
 from backend.data.skill_versions import (
@@ -269,19 +269,14 @@ async def complete_publication(
     user_id: str, *, version_id: str, review_id: str | None, reason: str = ""
 ) -> None:
     """Mark the workspace write done: version ready, ledger row applied."""
-    await prisma.models.SkillVersion.prisma().update_many(
-        where={"id": version_id, "userId": user_id, "state": PENDING_WRITE_STATE},
-        data={"state": "ready", "stateReason": reason[:1000]},
+    await settle_publication(
+        user_id,
+        version_id=version_id,
+        review_id=review_id,
+        state="ready",
+        disposition="applied",
+        reason=reason,
     )
-    if review_id is not None:
-        await prisma.models.SkillLearningReview.prisma().update_many(
-            where={"id": review_id, "userId": user_id},
-            data={
-                "disposition": "applied",
-                "reason": reason[:2000],
-                "completedAt": datetime.now(timezone.utc),
-            },
-        )
 
 
 async def abandon_publication(
@@ -294,16 +289,11 @@ async def abandon_publication(
 ) -> None:
     """A pending version that can no longer be written: stale, and the
     ledger records the conflict so the source is reviewed again later."""
-    await prisma.models.SkillVersion.prisma().update_many(
-        where={"id": version_id, "userId": user_id, "state": PENDING_WRITE_STATE},
-        data={"state": "stale", "stateReason": reason[:1000]},
+    await settle_publication(
+        user_id,
+        version_id=version_id,
+        review_id=review_id,
+        state="stale",
+        disposition=disposition,
+        reason=reason,
     )
-    if review_id is not None:
-        await prisma.models.SkillLearningReview.prisma().update_many(
-            where={"id": review_id, "userId": user_id},
-            data={
-                "disposition": disposition,
-                "reason": reason[:2000],
-                "completedAt": datetime.now(timezone.utc),
-            },
-        )

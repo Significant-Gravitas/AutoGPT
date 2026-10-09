@@ -199,14 +199,15 @@ async def get_skill_detail(
         )
     versions = await versions_data.list_versions(user_id, owner_key, slug)
     by_id = {v.id: v for v in versions}
+    hydrated: set[str] = set()
 
     async def include_version(
         required_id: str | None,
     ) -> versions_data.SkillVersionRecord | None:
         if required_id is None:
             return None
-        version = by_id.get(required_id)
-        if version is None:
+        version = by_id.get(required_id) if required_id in hydrated else None
+        if required_id not in hydrated:
             version = await versions_data.get_version(user_id, required_id)
         if (
             version is None
@@ -215,6 +216,7 @@ async def get_skill_detail(
         ):
             raise HTTPException(status_code=404, detail="Skill version not found")
         by_id[version.id] = version
+        hydrated.add(version.id)
         return version
 
     selected = await include_version(version_id)
@@ -222,8 +224,18 @@ async def get_skill_detail(
     for version in (selected, current):
         if version:
             await include_version(version.base_version_id)
+    open_id = next(
+        (
+            v.id
+            for v in sorted(by_id.values(), key=lambda v: v.version, reverse=True)
+            if v.state == "needs_decision"
+        ),
+        None,
+    )
+    open_decision = await include_version(open_id)
+    if open_decision:
+        await include_version(open_decision.base_version_id)
     versions = sorted(by_id.values(), key=lambda v: v.version, reverse=True)
-    open_decision = next((v for v in versions if v.state == "needs_decision"), None)
     events = await use_data.list_use_events(user_id, owner_key, slug)
     if head.use_paused_at is not None:
         state, label = "paused", "Paused (not in use)"

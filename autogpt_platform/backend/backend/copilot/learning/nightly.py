@@ -324,7 +324,10 @@ async def _acquire_lease(user_id: str) -> AsyncClusterLock | None:
         owner_id=uuidlib.uuid4().hex,
         timeout=LEASE_TTL_SECONDS,
     )
-    if await lock.try_acquire() != lock.owner_id:
+    owner = await lock.try_acquire()
+    if owner is None:
+        raise RuntimeError("skill learning lease unavailable")
+    if owner != lock.owner_id:
         return None
     return lock
 

@@ -34,7 +34,8 @@ async def test_package_retry_update_and_restore_preserve_file_versions(
     publication_files.side_effect = OSError("temporary storage failure")
     pending = await publish.publish_learned_version(request(files))
     assert pending.status == "write_failed"
-    pending_version = (await fake_store.list_pending_publications("user-1"))[0]
+    pending_summary = (await fake_store.list_pending_publications("user-1"))[0]
+    pending_version = await fake_store.get_version("user-1", pending_summary.id)
     assert pending_version.files[0].content == SCRIPT.encode()
     publication_files.side_effect = None
     assert await publish.reconcile_pending("user-1") == 1

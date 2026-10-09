@@ -544,7 +544,10 @@ async def reconcile_pending(user_id: str) -> int:
                 reason="superseded before its workspace write completed",
             )
             continue
-        outcome = await write_committed_version(user_id, pending, pending.review_id)
+        snapshot = await versions.get_version(user_id, pending.id)
+        if snapshot is None or snapshot.state != "pending_write":
+            continue
+        outcome = await write_committed_version(user_id, snapshot, snapshot.review_id)
         if outcome.status == "applied":
             completed += 1
     return completed
