@@ -1,5 +1,5 @@
 """Search the capability registry: integrations, blocks, MCP servers,
-platform tools and the session owner's skills behind one query."""
+platform tools, the session owner's skills and experts behind one query."""
 
 import asyncio
 import logging
@@ -27,12 +27,13 @@ from .session_registry import session_registry
 logger = logging.getLogger(__name__)
 
 CONTEXTS = ("direct", "graph")
-KINDS = ("tool", "block", "mcp_server", "skill")
+KINDS = ("tool", "block", "mcp_server", "skill", "expert")
 _KIND_ARG: dict[str, CapabilityKindName] = {
     "tool": "tool",
     "block": "block",
     "mcp_server": "mcp_server",
     "skill": "skill",
+    "expert": "expert",
 }
 
 
@@ -50,7 +51,8 @@ class FindCapabilityTool(BaseTool):
     def description(self) -> str:
         return (
             "Search everything the platform can do: integrations, blocks, MCP "
-            "servers, platform tools and skills, by service name or action. "
+            "servers, platform tools, skills and experts to hire, by service, "
+            "action or role. "
             "Results are ranked and show whether the user has connected each "
             "one. Call this before saying something is not possible. Then "
             "describe_capability(id) to see inputs, and run_capability(id, "
@@ -148,6 +150,7 @@ class FindCapabilityTool(BaseTool):
                 len(result.hits),
                 len(result.fallback),
                 skills=any(hit.entry.kind == "skill" for hit in result.hits),
+                experts=any(hit.entry.kind == "expert" for hit in result.hits),
                 needs_grant=any(
                     c.get("connected") == NEEDS_EXPERT_GRANT
                     for c in capabilities + fallback
@@ -179,6 +182,7 @@ def _message(
     fallback: int,
     *,
     skills: bool = False,
+    experts: bool = False,
     needs_grant: bool = False,
 ) -> str:
     parts = [f"Found {hits} capabilit{'y' if hits == 1 else 'ies'}"]
@@ -205,5 +209,11 @@ def _message(
             " A kind=skill result is a saved procedure: "
             "run_capability(id, input={}) loads its body and package files; "
             "read it before acting."
+        )
+    if experts:
+        text += (
+            " A kind=expert result is an AI expert: hired=false is on the "
+            "roster and running it proposes the hire on an approval card; "
+            "hired=true is on the user's team and running it delegates a task."
         )
     return text

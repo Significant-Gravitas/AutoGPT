@@ -7,6 +7,7 @@ from typing import Any
 from backend.copilot.capabilities.models import SKILL_TOOL, CapabilityEntry
 from backend.copilot.capabilities.registry import configured_tool
 from backend.copilot.capabilities.schema_trim import collapse_large_enums
+from backend.copilot.capabilities.sources import expert_dispatch
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 UNKNOWN_ID_HINT = (
     "Unknown capability id. Use the exact 'id' from a find_capability result "
-    "(tool:<name>, block:<uuid>, mcp:<host>, skill:<name>)."
+    "(tool:<name>, block:<uuid>, mcp:<host>, skill:<name>, expert:<id>)."
 )
 
 # A skill takes no input: running it is loading it.
@@ -117,6 +118,8 @@ class DescribeCapabilityTool(BaseTool):
             if gate_denied(SKILL_TOOL):
                 return gate_denied_error(SKILL_TOOL, session_id)
             return describe_skill(entry, session_id)
+        if entry.kind == "expert":
+            return describe_expert(entry, session_id)
         if entry.kind == "tool":
             name = entry.implementations[0].ref
             if gate_denied(name):
@@ -163,6 +166,43 @@ def describe_skill(entry: CapabilityEntry, session_id: str) -> ToolResponseBase:
         parameters=NO_INPUT,
         session_id=session_id,
     ).from_outside()
+
+
+def describe_expert(entry: CapabilityEntry, session_id: str) -> ToolResponseBase:
+    """What running an expert id does: propose hiring a roster template, or
+    hand a teammate a task.  The id carries the expert, so the input is the
+    rest of that tool's parameters."""
+    dispatch = expert_dispatch(entry.id)
+    tool = configured_tool(dispatch[0]) if dispatch else None
+    if dispatch is None or tool is None:
+        return ErrorResponse(
+            message=UNKNOWN_ID_HINT, session_id=session_id
+        ).from_outside()
+    name, bound = dispatch
+    if gate_denied(name):
+        return gate_denied_error(name, session_id)
+    action = "On the user's team" if entry.hired else "On the roster, not yet hired"
+    return CapabilityDetailsResponse(
+        message=(
+            f"{entry.name} — {entry.purpose} {action}: run_capability("
+            f"id='{entry.id}', input={{...}}) calls {name}. {tool.description}"
+        ),
+        capability=entry.listing(),
+        parameters=_without_properties(tool.parameters, set(bound)),
+        session_id=session_id,
+    ).from_outside()
+
+
+def _without_properties(schema: dict[str, Any], names: set[str]) -> dict[str, Any]:
+    return {
+        **schema,
+        "properties": {
+            key: value
+            for key, value in (schema.get("properties") or {}).items()
+            if key not in names
+        },
+        "required": [key for key in schema.get("required") or [] if key not in names],
+    }
 
 
 def _describe_tool(
