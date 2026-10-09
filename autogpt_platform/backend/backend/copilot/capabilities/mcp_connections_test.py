@@ -4,6 +4,7 @@ from .index import CapabilityIndex
 from .mcp_connections import connected_mcp_entries, custom_mcp_entry
 from .models import CapabilityEntry, Connection
 from .ranking import ConnectionState
+from .sources.mcp_catalog import mcp_catalog_entries
 
 
 def test_custom_connections_preserve_distinct_case_sensitive_paths():
@@ -82,3 +83,44 @@ def test_custom_servers_still_match_a_service_already_in_the_catalog():
     ]
     result = CapabilityIndex([block, *unrelated, server]).search("paypal")
     assert server.id in result.ids
+
+
+@pytest.mark.parametrize(
+    "url, name",
+    [
+        ("https://mcp.paypal.com/mcp", "PayPal (Production)"),
+        ("HTTPS://MCP.Sandbox.PayPal.COM/mcp/", "PayPal (Sandbox)"),
+        ("https://cloud.langfuse.com/api/public/mcp", "Langfuse (EU)"),
+        ("https://us.cloud.langfuse.com/api/public/mcp", "Langfuse (US)"),
+        ("https://mcp.amplitude.com/mcp", "Amplitude (US)"),
+        ("https://mcp.eu.amplitude.com/mcp", "Amplitude (EU)"),
+    ],
+)
+def test_bound_catalog_options_include_endpoint_labels(url: str, name: str):
+    catalog = CapabilityIndex(mcp_catalog_entries())
+    state = ConnectionState(server_urls=frozenset({url}))
+
+    entries = connected_mcp_entries(catalog, state)
+
+    assert len(entries) == 1
+    assert entries[0].listing()["name"] == name
+    assert entries[0].implementations[0].name == name
+    assert entries[0].implementations[0].ref == url
+    preset = catalog.get(entries[0].id)
+    assert preset is not None
+    assert " (" not in preset.name
+
+
+def test_multiple_connected_options_keep_distinct_endpoint_labels():
+    catalog = CapabilityIndex(mcp_catalog_entries())
+    sandbox = "https://mcp.sandbox.paypal.com/mcp"
+    state = ConnectionState(
+        server_urls=frozenset({"https://mcp.paypal.com/mcp", sandbox})
+    )
+
+    entries = connected_mcp_entries(catalog, state)
+
+    assert {entry.id: entry.listing()["name"] for entry in entries} == {
+        "mcp:paypal": "PayPal (Production)",
+        sandbox: "PayPal (Sandbox)",
+    }

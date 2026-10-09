@@ -61,13 +61,23 @@ def catalog_mcp_entry(
         catalog.connection.key
     ) == normalize_server_url(server_url):
         return catalog
+    option_label = next(
+        (
+            option.label
+            for option in preset.mcp_server.server_url_options
+            if normalize_server_url(option.url) == normalize_server_url(server_url)
+        ),
+        None,
+    )
+    name = f"{catalog.name} ({option_label})" if option_label else catalog.name
     return catalog.model_copy(
         update={
+            "name": name,
             "connection": Connection(
                 required=True, key_type="server_url", key=server_url
             ),
             "implementations": [
-                Implementation(kind="mcp_server", ref=server_url, name=catalog.name)
+                Implementation(kind="mcp_server", ref=server_url, name=name)
             ],
         }
     )

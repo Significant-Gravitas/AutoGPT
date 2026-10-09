@@ -22,7 +22,7 @@ from backend.copilot.tools.models import (
 from backend.copilot.tools.run_capability import RunCapabilityTool
 
 USER = "user-custom-mcp-search"
-SERVER_URL = "https://mcp.paypal.com/mcp"
+SERVER_URL = "https://mcp.custom-payments.example.com/mcp"
 
 
 @pytest.fixture(autouse=True)
@@ -65,7 +65,9 @@ def registry(monkeypatch: pytest.MonkeyPatch) -> CapabilityIndex:
     return index
 
 
-@pytest.mark.parametrize("query", ["paypal", "mcp.paypal.com", SERVER_URL])
+@pytest.mark.parametrize(
+    "query", ["custom-payments", "mcp.custom-payments.example.com", SERVER_URL]
+)
 async def test_find_connected_custom_mcp_server(
     query: str, registry: CapabilityIndex, monkeypatch: pytest.MonkeyPatch
 ):
@@ -80,15 +82,14 @@ async def test_find_connected_custom_mcp_server(
     result = await FindCapabilityTool()._execute(USER, make_session(USER), query=query)
 
     assert isinstance(result, CapabilityListResponse)
-    assert result.capabilities == [
-        {
-            "id": SERVER_URL,
-            "name": "mcp.paypal.com",
-            "purpose": "MCP server connected at mcp.paypal.com.",
-            "kind": "mcp_server",
-            "connected": True,
-        }
-    ]
+    assert result.capabilities[0] == {
+        "id": SERVER_URL,
+        "name": "mcp.custom-payments.example.com",
+        "purpose": "MCP server connected at mcp.custom-payments.example.com.",
+        "kind": "mcp_server",
+        "connected": True,
+    }
+    assert sum(c["id"] == SERVER_URL for c in result.capabilities) == 1
     assert len(registry) == 3
     load_state.assert_awaited_once_with(USER, None)
 
@@ -103,10 +104,10 @@ async def test_custom_servers_are_isolated_and_connections_refresh(
         AsyncMock(side_effect=[ConnectionState(), connected, ConnectionState()]),
     )
     tool = FindCapabilityTool()
-    before = await tool._execute(USER, make_session(USER), query="paypal")
-    after = await tool._execute(USER, make_session(USER), query="paypal")
+    before = await tool._execute(USER, make_session(USER), query="custom-payments")
+    after = await tool._execute(USER, make_session(USER), query="custom-payments")
     other_user = await tool._execute(
-        "another-user", make_session("another-user"), query="paypal"
+        "another-user", make_session("another-user"), query="custom-payments"
     )
 
     assert isinstance(before, NoResultsResponse)
@@ -129,13 +130,13 @@ async def test_catalog_metadata_is_preserved_without_duplicate_results(
         "backend.copilot.tools.find_capability.load_connection_state",
         AsyncMock(
             return_value=ConnectionState(
-                server_urls=frozenset({"HTTPS://MCP.PayPal.COM/mcp/"})
+                server_urls=frozenset({"HTTPS://MCP.Custom-Payments.Example.COM/mcp/"})
             )
         ),
     )
 
     result = await FindCapabilityTool()._execute(
-        USER, make_session(USER), query="paypal"
+        USER, make_session(USER), query="custom-payments"
     )
 
     assert isinstance(result, CapabilityListResponse)
@@ -147,7 +148,7 @@ async def test_distinct_endpoints_on_one_host_are_not_deduplicated(
     path: str, registry: CapabilityIndex, monkeypatch: pytest.MonkeyPatch
 ):
     """A custom path stays discoverable and runnable beside a catalog endpoint."""
-    tenant_url = f"https://mcp.paypal.com/{path}"
+    tenant_url = f"https://mcp.custom-payments.example.com/{path}"
     catalog_index = registry.with_entries([_catalog_entry()])
     monkeypatch.setattr(
         "backend.copilot.tools.find_capability.session_registry",
@@ -163,11 +164,14 @@ async def test_distinct_endpoints_on_one_host_are_not_deduplicated(
     )
 
     result = await FindCapabilityTool()._execute(
-        USER, make_session(USER), query="mcp.paypal.com"
+        USER, make_session(USER), query="mcp.custom-payments.example.com"
     )
 
     assert isinstance(result, CapabilityListResponse)
-    assert {c["id"] for c in result.capabilities} == {"mcp:mcp.paypal.com", tenant_url}
+    assert {c["id"] for c in result.capabilities} == {
+        "mcp:mcp.custom-payments.example.com",
+        tenant_url,
+    }
     custom = next(c for c in result.capabilities if c["id"] == tenant_url)
     assert custom["connected"] is True
     monkeypatch.setattr(
@@ -201,7 +205,7 @@ async def test_custom_server_connection_respects_expert_grants(
     )
 
     result = await FindCapabilityTool()._execute(
-        USER, make_session(USER, expert_id="expert-1"), query="paypal"
+        USER, make_session(USER, expert_id="expert-1"), query="custom-payments"
     )
 
     assert isinstance(result, CapabilityListResponse)
@@ -224,7 +228,7 @@ async def test_custom_servers_respect_search_filters(
     )
 
     result = await FindCapabilityTool()._execute(
-        USER, make_session(USER), query="paypal", **options
+        USER, make_session(USER), query="custom-payments", **options
     )
 
     assert isinstance(result, NoResultsResponse)
@@ -232,7 +236,11 @@ async def test_custom_servers_respect_search_filters(
 
 @pytest.mark.parametrize(
     "url",
-    ["invalid-paypal-url", "http://mcp.paypal.com/mcp", "https://[invalid-paypal/mcp"],
+    [
+        "invalid-custom-payments-url",
+        "http://mcp.custom-payments.example.com/mcp",
+        "https://[invalid-custom-payments/mcp",
+    ],
 )
 async def test_invalid_stored_urls_do_not_break_search(
     url: str, registry: CapabilityIndex, monkeypatch: pytest.MonkeyPatch
@@ -243,7 +251,7 @@ async def test_invalid_stored_urls_do_not_break_search(
         AsyncMock(return_value=ConnectionState(server_urls=frozenset({url}))),
     )
     result = await FindCapabilityTool()._execute(
-        USER, make_session(USER), query="paypal"
+        USER, make_session(USER), query="custom-payments"
     )
     assert isinstance(result, NoResultsResponse)
 
@@ -283,11 +291,11 @@ async def test_discovered_custom_server_id_can_be_described_and_run(
 def _catalog_entry() -> CapabilityEntry:
     """Build a catalog server with richer metadata than a custom fallback."""
     return CapabilityEntry(
-        id="mcp:mcp.paypal.com",
+        id="mcp:mcp.custom-payments.example.com",
         kind="mcp_server",
-        name="PayPal",
-        purpose="Manage PayPal invoices and payments.",
-        tags=["mcp", "paypal", "mcp.paypal.com"],
+        name="Custom Payments",
+        purpose="Manage custom invoices and payments.",
+        tags=["mcp", "custom-payments", "mcp.custom-payments.example.com"],
         context="direct",
         connection=Connection(required=True, key_type="server_url", key=SERVER_URL),
         implementations=[Implementation(kind="mcp_server", ref=SERVER_URL)],

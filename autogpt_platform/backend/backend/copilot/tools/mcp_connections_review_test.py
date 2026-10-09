@@ -14,6 +14,7 @@ from .find_capability import NEEDS_EXPERT_GRANT, FindCapabilityTool
 from .models import (
     CapabilityDetailsResponse,
     CapabilityListResponse,
+    MCPToolOutputResponse,
     MCPToolsDiscoveredResponse,
     ReviewRequiredResponse,
 )
@@ -36,6 +37,9 @@ def catalog(monkeypatch: pytest.MonkeyPatch) -> CapabilityIndex:
     index = CapabilityIndex(mcp_catalog_entries())
     monkeypatch.setattr(session_registry_module, "get_registry", lambda: index)
     monkeypatch.setattr(
+        "backend.copilot.tools.run_capability.get_registry", lambda: index
+    )
+    monkeypatch.setattr(
         "backend.copilot.tools.find_capability.session_registry",
         AsyncMock(return_value=index),
     )
@@ -54,16 +58,17 @@ def connections(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 
 @pytest.mark.parametrize(
-    "slug, url",
+    "slug, url, label",
     [
-        ("paypal", "https://mcp.paypal.com/mcp"),
-        ("langfuse", "https://cloud.langfuse.com/api/public/mcp"),
-        ("amplitude", "https://mcp.eu.amplitude.com/mcp"),
+        ("paypal", "https://mcp.paypal.com/mcp", "Production"),
+        ("langfuse", "https://cloud.langfuse.com/api/public/mcp", "EU"),
+        ("amplitude", "https://mcp.eu.amplitude.com/mcp", "EU"),
     ],
 )
 async def test_catalog_options_are_connected_and_work_through_describe_run(
     slug: str,
     url: str,
+    label: str,
     catalog: CapabilityIndex,
     connections: AsyncMock,
     monkeypatch: pytest.MonkeyPatch,
@@ -75,7 +80,9 @@ async def test_catalog_options_are_connected_and_work_through_describe_run(
     assert isinstance(result, CapabilityListResponse)
     preset = catalog.get(f"mcp:{slug}")
     assert preset is not None
-    assert result.capabilities == [{**preset.listing(), "connected": True}]
+    assert result.capabilities == [
+        {**preset.listing(), "name": f"{preset.name} ({label})", "connected": True}
+    ]
     assert preset.connection.key is None
     discovered = MCPToolsDiscoveredResponse(message="Tools", server_url=url, tools=[])
     runner = AsyncMock(return_value=discovered)
@@ -133,6 +140,10 @@ async def test_multiple_catalog_options_remain_distinct_and_prefer_granted_url(
     assert {c["id"]: c["connected"] for c in result.capabilities} == {
         "mcp:paypal": True,
         ungranted: NEEDS_EXPERT_GRANT,
+    }
+    assert {c["id"]: c["name"] for c in result.capabilities} == {
+        "mcp:paypal": "PayPal (Sandbox)",
+        ungranted: "PayPal (Production)",
     }
     resolved = await session_registry_module.resolve_session_entry(
         USER, session, "mcp:paypal"
@@ -203,4 +214,75 @@ async def test_connected_custom_url_keeps_the_write_review_gate(
     )
     assert isinstance(result, ReviewRequiredResponse)
     assert review.await_args.kwargs["payload"].server_url == url
+    runner.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "slug, url",
+    [
+        ("paypal", "https://mcp.paypal.com/mcp"),
+        ("langfuse", "https://cloud.langfuse.com/api/public/mcp"),
+        ("amplitude", "https://mcp.eu.amplitude.com/mcp"),
+    ],
+)
+@pytest.mark.parametrize("use_preset_id", [False, True])
+@pytest.mark.parametrize(
+    "tool_name, gate_on, dry_run",
+    [
+        ("create_invoice", False, False),
+        ("list_invoices", False, False),
+        ("create_invoice", True, False),
+        ("create_invoice", False, True),
+    ],
+)
+async def test_catalog_option_write_review_respects_execution_mode(
+    slug: str,
+    url: str,
+    use_preset_id: bool,
+    tool_name: str,
+    gate_on: bool,
+    dry_run: bool,
+    catalog: CapabilityIndex,
+    connections: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    connections.return_value = ConnectionState(server_urls=frozenset({url}))
+    review = AsyncMock(return_value="option-review")
+    output = MCPToolOutputResponse(message="Done", server_url=url, tool_name=tool_name)
+    runner = AsyncMock(return_value=output)
+    monkeypatch.setattr("backend.copilot.tools.run_capability.open_mcp_review", review)
+    monkeypatch.setattr(
+        "backend.copilot.tools.run_capability.gate_active",
+        AsyncMock(return_value=gate_on),
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.run_capability.RunMCPToolTool._execute", runner
+    )
+    session = make_session(USER)
+    session.metadata.dry_run = dry_run
+    arguments = {"amount": "10.00"}
+
+    result = await RunCapabilityTool()._execute(
+        USER,
+        session,
+        id=f"mcp:{slug}" if use_preset_id else url,
+        input={"tool": tool_name, "arguments": arguments},
+    )
+
+    if tool_name == "list_invoices" or gate_on or dry_run:
+        assert result is output
+        review.assert_not_awaited()
+        runner.assert_awaited_once()
+        assert runner.await_args.kwargs["server_url"] == url
+        assert runner.await_args.kwargs["tool_name"] == tool_name
+        assert runner.await_args.kwargs["tool_arguments"] == arguments
+        return
+
+    assert isinstance(result, ReviewRequiredResponse)
+    assert result.review_id == "option-review"
+    review.assert_awaited_once()
+    assert review.await_args.kwargs["user_id"] == USER
+    assert review.await_args.kwargs["session_id"] == session.session_id
+    assert review.await_args.kwargs["payload"].server_url == url
+    assert review.await_args.kwargs["payload"].arguments == arguments
     runner.assert_not_awaited()

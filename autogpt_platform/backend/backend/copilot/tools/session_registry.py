@@ -37,7 +37,8 @@ logger = logging.getLogger(__name__)
 # re-indexed at once.
 _LAYERED_MAX = 128
 _layered: OrderedDict[
-    tuple[int, int, tuple[tuple[str, str], ...]], tuple[float, CapabilityIndex]
+    tuple[int, int, tuple[tuple[str, str], ...]],
+    tuple[float, CapabilityIndex, CapabilityIndex],
 ] = OrderedDict()
 
 
@@ -55,11 +56,12 @@ def layered_index(
     key = (id(base), len(base), tuple((e.id, e.model_dump_json()) for e in entries))
     now = time.monotonic()
     cached = _layered.get(key)
-    if cached is not None and cached[0] > now:
+    if cached is not None and cached[0] > now and cached[2] is base:
         _layered.move_to_end(key)
         return cached[1]
     index = base.with_entries(entries)
-    _layered[key] = (now + SKILLS_INDEX_CACHE_TTL_S, index)
+    # Retain the base so an evicted skills layer's address cannot be reused.
+    _layered[key] = (now + SKILLS_INDEX_CACHE_TTL_S, index, base)
     _layered.move_to_end(key)
     while len(_layered) > _LAYERED_MAX:
         _layered.popitem(last=False)
