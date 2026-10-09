@@ -53,6 +53,7 @@ const CATCHING_UP_AFTER_MS = 2_000;
 const TICK_MS = 5_000;
 const EMIT_THROTTLE_MS = 30;
 const FROZEN_POLL_MS = 10_000;
+const QUEUED_POLL_MS = 5_000;
 const FINISH_PROBE_MS = 500;
 // A server-started continuation (engine switch, approval wake) is dispatched
 // after the turn ends; its meta can lag the finish by a few seconds.
@@ -97,6 +98,7 @@ export interface RuntimeSnapshot {
 export interface SessionView {
   messages?: readonly unknown[] | null;
   has_more_messages?: boolean;
+  chat_status?: string | null;
   active_stream?: {
     turn_id: string;
     checkpoint?: TurnCheckpoint | null;
@@ -178,6 +180,7 @@ export class TurnRuntime {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private frozenTimer: ReturnType<typeof setInterval> | null = null;
+  private queueTimer: ReturnType<typeof setInterval> | null = null;
   private emitTimer: ReturnType<typeof setTimeout> | null = null;
   private reveal = new TextReveal(
     () => this.segments,
@@ -324,6 +327,7 @@ export class TurnRuntime {
       this.ensureConnected();
     }
     if (!running && !this.isPostPending() && !active) this.settleTail(view);
+    this.followQueue(view);
     this.emitNow();
   }
 
@@ -356,7 +360,7 @@ export class TurnRuntime {
     this.abortConnections();
     this.clearRetry();
     this.reveal.dispose();
-    for (const timer of [this.tickTimer, this.frozenTimer]) {
+    for (const timer of [this.tickTimer, this.frozenTimer, this.queueTimer]) {
       if (timer) clearInterval(timer);
     }
     if (this.emitTimer) clearTimeout(this.emitTimer);
@@ -698,6 +702,21 @@ export class TurnRuntime {
       if (active && active !== turnId) return;
       if (!active && !awaitContinuation) return;
     }
+  }
+
+  // A turn queued behind the user's running cap starts when another of their
+  // turns ends, which nothing tells this tab; watch the view until it runs.
+  private followQueue(view: SessionView) {
+    if (view.chat_status !== "queued" || view.active_stream) {
+      if (this.queueTimer) clearInterval(this.queueTimer);
+      this.queueTimer = null;
+      return;
+    }
+    if (this.queueTimer) return;
+    this.queueTimer = setInterval(async () => {
+      const next = await this.fetchView();
+      if (next && !this.disposed) this.observe(next);
+    }, QUEUED_POLL_MS);
   }
 
   /**

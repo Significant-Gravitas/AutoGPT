@@ -7,6 +7,16 @@ const HEARTBEAT_MS = 10_000;
 // The route's listener checks the meta after each empty read of this length.
 const LISTENER_READ_MS = 5_000;
 const encoder = new TextEncoder();
+// What the route answers a send it queued: framing, no ids, no turn.
+const QUEUED_STREAM = [
+  { type: "start", messageId: "queued" },
+  { type: "start-step" },
+  { type: "finish-step" },
+  { type: "finish" },
+]
+  .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+  .concat("data: [DONE]\n\n")
+  .join("");
 
 export interface FakeConnection {
   method: string;
@@ -41,6 +51,8 @@ export function fakeBackend(turn: RecordedTurn) {
   let running = false;
   let started = false;
   let stoppedWithoutFinish = false;
+  // "queued" until a running turn ends and the backend promotes it.
+  let queue: "none" | "queued" | "left" = "none";
   const connections: FakeConnection[] = [];
   // Every request, refused ones included.
   const requests: { method: string; url: URL }[] = [];
@@ -68,6 +80,12 @@ export function fakeBackend(turn: RecordedTurn) {
       return new Response(JSON.stringify(answer.body), {
         status: answer.status,
         headers: { "content-type": "application/json" },
+      });
+    }
+    if (method === "POST" && queue === "queued") {
+      return new Response(QUEUED_STREAM, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
       });
     }
     if (method === "POST") {
@@ -175,10 +193,19 @@ export function fakeBackend(turn: RecordedTurn) {
       stoppedWithoutFinish = true;
       pumps.forEach((pump) => pump());
     },
-    /** The turn is already running when the page loads. */
+    /** The turn is already running when the page loads, or leaves the queue for a slot. */
     beginRunning() {
+      if (queue === "queued") queue = "left";
       started = true;
       running = true;
+    },
+    /** The user is at the running cap: the next send is persisted and queued. */
+    queueNextTurn() {
+      queue = "queued";
+    },
+    /** The user cancels the queued turn; its prompt row stays. */
+    cancelQueued() {
+      queue = "left";
     },
     respond(next: Responder) {
       responder = next;
@@ -200,13 +227,17 @@ export function fakeBackend(turn: RecordedTurn) {
     view(rows?: PersistedRow[]): SessionView {
       const shown = started
         ? (rows ?? turn.rows.slice(0, persistedCount()))
-        : [];
+        : queue !== "none"
+          ? turn.rows.slice(0, 1)
+          : [];
       return {
         messages: shown.map((row, sequence) => ({ ...row, sequence })),
         has_more_messages: false,
         active_stream: running
           ? { turn_id: turnId, checkpoint: this.lastCheckpoint() }
           : null,
+        chat_status:
+          queue === "queued" ? "queued" : running ? "running" : "idle",
       };
     },
     open() {

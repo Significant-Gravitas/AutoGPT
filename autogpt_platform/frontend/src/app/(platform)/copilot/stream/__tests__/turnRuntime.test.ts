@@ -315,6 +315,35 @@ describe("recovery", () => {
       PROMPT,
     ]);
   });
+
+  it("a send the backend queued behind the running cap is followed into its turn", async () => {
+    backend.queueNextTurn();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+    expect(snapshot().phase).toBe("idle");
+
+    // Another of the user's turns ends, and the backend starts this one.
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    await advance(10_000);
+    expect(backend.connections.at(-1)?.url.searchParams.get("turn")).toBe(
+      backend.turnId,
+    );
+    expect(snapshot().phase).toBe("live");
+    expect(textsOf(render())).toEqual([PROMPT, FIRST_TEXT]);
+  });
+
+  it("stops reading the session once its queued turn is cancelled", async () => {
+    backend.queueNextTurn();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+    backend.cancelQueued();
+    await advance(10_000);
+
+    const views = vi.spyOn(backend, "view");
+    await advance(60_000);
+    expect(views).not.toHaveBeenCalled();
+  });
 });
 
 describe("one connection slot", () => {
