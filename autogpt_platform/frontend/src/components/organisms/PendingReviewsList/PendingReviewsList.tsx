@@ -20,6 +20,9 @@ interface PendingReviewsListProps {
   emptyMessage?: string;
 }
 
+// Copilot action-gate approvals bind exact arguments; auto-approve cannot apply.
+export const COPILOT_GATE_NODE_PREFIX = "copilot-node-gate-";
+
 export function PendingReviewsList({
   reviews,
   onReviewComplete,
@@ -155,10 +158,7 @@ export function PendingReviewsList({
     }
 
     try {
-      const res = await submitReviewAction(
-        reviewItems,
-        groupReviews.map((review) => review.graph_exec_id),
-      );
+      const res = await submitReviewAction(reviewItems, groupReviews);
 
       if (res.status !== 200) {
         toast({
@@ -232,8 +232,9 @@ export function PendingReviewsList({
           </Text>
         </div>
         <Text variant="large" className="text-textGrey">
-          This task is paused until you approve the changes below. Please review
-          and edit if needed.
+          {reviews.every((review) => isGateReview(review.node_id))
+            ? "Otto is waiting for your approval before the action below."
+            : "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed."}
         </Text>
       </div>
 
@@ -245,8 +246,9 @@ export function PendingReviewsList({
             pendingAction?.nodeId === nodeId ? pendingAction.action : null;
 
           const firstReview = nodeReviews[0];
-          const blockName = firstReview?.instructions;
-          const reviewTitle = `Review required for ${blockName}`;
+          const reviewTitle =
+            firstReview?.action ?? firstReview?.instructions ?? "Review";
+          const workflowName = firstReview?.agent_name;
 
           const getShortenedNodeId = (id: string) => {
             if (id.length <= 8) return id;
@@ -276,9 +278,14 @@ export function PendingReviewsList({
                   <Text variant="body" className="font-semibold text-gray-900">
                     {reviewTitle}
                   </Text>
-                  <Text variant="small" className="text-gray-500">
-                    Node #{getShortenedNodeId(nodeId)}
-                  </Text>
+                  {(workflowName ||
+                    (!firstReview?.action && !isGateReview(nodeId))) && (
+                    <Text variant="small" className="text-gray-500">
+                      {workflowName
+                        ? `In workflow “${workflowName}”`
+                        : `Node #${getShortenedNodeId(nodeId)}`}
+                    </Text>
+                  )}
                 </div>
                 <span className="text-xs text-gray-600">
                   {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
@@ -298,17 +305,19 @@ export function PendingReviewsList({
                     />
                   ))}
 
-                  <div className="flex items-center gap-3 pt-2">
-                    <Switch
-                      checked={autoApproveFutureMap[nodeId] || false}
-                      onCheckedChange={(enabled: boolean) =>
-                        handleAutoApproveFutureToggle(nodeId, enabled)
-                      }
-                    />
-                    <Text variant="small" className="text-gray-700">
-                      Auto-approve future executions of this node
-                    </Text>
-                  </div>
+                  {!isGateReview(nodeId) && (
+                    <div className="flex items-center gap-3 pt-2">
+                      <Switch
+                        checked={autoApproveFutureMap[nodeId] || false}
+                        onCheckedChange={(enabled: boolean) =>
+                          handleAutoApproveFutureToggle(nodeId, enabled)
+                        }
+                      />
+                      <Text variant="small" className="text-gray-700">
+                        Auto-approve future executions of this node
+                      </Text>
+                    </div>
+                  )}
 
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Button
@@ -347,4 +356,8 @@ export function PendingReviewsList({
       </Text>
     </div>
   );
+}
+
+function isGateReview(nodeId: string | null | undefined) {
+  return !!nodeId?.startsWith(COPILOT_GATE_NODE_PREFIX);
 }

@@ -1,0 +1,10 @@
+{
+  "body": "",
+  "headers": {
+    "cache-control": "no-store",
+    "content-length": "0",
+    "location": "https://6080-sandbox.e2b.app/vnc.html?password=private",
+    "referrer-policy": "no-referrer"
+  },
+  "status": 307
+}

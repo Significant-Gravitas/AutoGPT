@@ -1,12 +1,12 @@
 "use client";
 
+import { useListExpertCredentials } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import {
   postV2DiscoverAvailableToolsOnAnMcpServer,
-  postV2ExchangeOauthCodeForMcpTokens,
-  postV2InitiateOauthLoginForAnMcpServer,
   postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
+import { okData } from "@/app/api/helpers";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
@@ -23,15 +23,18 @@ import {
   validateMCPAuthCredential,
   type MCPAuthScheme,
 } from "@/lib/mcp-auth";
-import { getAPIResponseError, getErrorStatus } from "@/lib/mcp-errors";
+import { getErrorMessage } from "@/lib/mcp-errors";
 import { normalizeMcpUrl } from "@/lib/mcp-url";
-import { openOAuthPopup } from "@/lib/oauth-popup";
+import { connectMCPOAuth } from "@/lib/mcp-oauth";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import { grantToExpert } from "@/services/experts/grant-to-expert";
+import { useQueryClient } from "@tanstack/react-query";
 import { useContext, useEffect, useId, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import { ChainActionsContext } from "../../../../components/ToolChain/chainActions";
 import { CredentialRejectionNotice } from "../../../../components/CredentialRejectionNotice/CredentialRejectionNotice";
+import { coerceExpertGrant } from "../../../../components/SetupRequirementsCard/helpers";
 
 interface Props {
   output: SetupRequirementsResponse;
@@ -53,6 +56,7 @@ interface Props {
  */
 export function MCPSetupCard({ output, retryInstruction }: Props) {
   const { onSend } = useCopilotChatActions();
+  const queryClient = useQueryClient();
   const allProviders = useContext(CredentialsProvidersContext);
   const chainActions = useContext(ChainActionsContext);
   const actionId = useId();
@@ -64,6 +68,13 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // agent_name is computed by the backend as the display name for the service
   const service = output.setup_info.agent_name;
   const rejection = output.rejection ?? null;
+  const expertGrant = Object.values(
+    output.setup_info.user_readiness?.missing_credentials ?? {},
+  )
+    .map((entry) =>
+      coerceExpertGrant((entry as { expert_grant?: unknown }).expert_grant),
+    )
+    .find(Boolean);
 
   // Initial connection state comes from the backend.  When the model
   // calls `run_mcp_tool` with `surface_connect_card=true`, the response's
@@ -110,20 +121,46 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // ``isFetchedAfterMount`` rather than ``isFetching``: this query key is
   // app-wide, so ``isFetching`` also goes true on window focus and on every
   // credential mutation elsewhere, blanking a genuinely connected card.
-  const liveCredential = !Array.isArray(liveCredsRes)
-    ? null
-    : liveCredsRes.find(
+  // On an expert's card the account's own credential is not enough: only one
+  // granted to the expert counts, so an ungranted one still offers Grant
+  // access. The grant list follows the same tri-state rule as the cred list.
+  const {
+    data: expertGrants,
+    isFetchedAfterMount: expertGrantsFetched,
+    isError: expertGrantsError,
+  } = useListExpertCredentials(expertGrant?.expertId ?? "", {
+    query: {
+      enabled: Boolean(expertGrant),
+      select: (res) => okData(res) ?? [],
+    },
+  });
+  const grantedIds = expertGrant
+    ? new Set((expertGrants ?? []).map((grant) => grant.credential_id))
+    : null;
+  const serverCredentials = !Array.isArray(liveCredsRes)
+    ? []
+    : liveCredsRes.filter(
         (c) =>
           c.provider === "mcp" &&
           typeof c.host === "string" &&
           normalizeMcpUrl(c.host) === normalizedServer,
       );
+  const liveCredential = serverCredentials.find(
+    (c) => !grantedIds || grantedIds.has(c.id),
+  );
+  const grantsUnknown =
+    Boolean(expertGrant) && (!expertGrantsFetched || expertGrantsError);
   const liveHasCred: boolean | "unknown" =
-    !liveCredsFetched || liveCredsError || !Array.isArray(liveCredsRes)
+    !liveCredsFetched ||
+    liveCredsError ||
+    !Array.isArray(liveCredsRes) ||
+    grantsUnknown
       ? "unknown"
       : Boolean(liveCredential);
   const storedManualAuthScheme: MCPAuthScheme =
-    liveCredential?.mcp_auth_scheme === "basic" ? "basic" : "bearer";
+    (liveCredential ?? serverCredentials[0])?.mcp_auth_scheme === "basic"
+      ? "basic"
+      : "bearer";
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,8 +184,12 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // user couldn't see the error banner or the manual-token input.  Reset
   // on the next attempt so the user can retry.
   const [forceDisconnected, setForceDisconnected] = useState(false);
-  const oauthAbortRef = useRef<(() => void) | null>(null);
-
+  const oauthRequest = useRef<AbortController | null>(null);
+  const [granting, setGranting] = useState(false);
+  const grantInFlight = useRef(false);
+  const [grantError, setGrantError] = useState<string | null>(null);
+  const [failedGrantId, setFailedGrantId] = useState<string | null>(null);
+  const grantableId = failedGrantId ?? expertGrant?.credentials[0]?.id ?? null;
   // Combined view:
   //   1. ``forceDisconnected`` (set by the catch block) wins.
   //   2. ``localConnected`` (just completed sign-in in this component) wins.
@@ -166,118 +207,84 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // ``true`` after a successful flow or ``false`` to drop the pill.
   const setConnected = setLocalConnected;
 
-  // Abort any in-progress OAuth popup when the component unmounts.
-  useEffect(() => () => oauthAbortRef.current?.(), []);
+  useEffect(() => () => oauthRequest.current?.abort(), []);
+
+  async function finish(credentialId: string | undefined) {
+    if (expertGrant && credentialId) {
+      if (grantInFlight.current) return;
+      grantInFlight.current = true;
+      setGranting(true);
+      setGrantError(null);
+      let ok = false;
+      try {
+        ok = await grantToExpert(
+          queryClient,
+          expertGrant.expertId,
+          credentialId,
+        );
+      } finally {
+        grantInFlight.current = false;
+        setGranting(false);
+      }
+      if (!ok) {
+        setFailedGrantId(credentialId);
+        setGrantError(
+          "Connected, but could not grant access. Try Grant access again.",
+        );
+        return;
+      }
+    }
+    setConnected(true);
+    onSend(retryInstruction ?? "I've connected. Please retry.");
+  }
+
+  function handleGrantExisting() {
+    if (grantableId) void finish(grantableId);
+  }
 
   async function handleConnect() {
-    // Re-entrancy guard: a rapid double-click would otherwise race the
-    // two in-flight ``handleConnect`` invocations — the second one aborts
-    // the first's popup (``oauthAbortRef.current?.()``) but the first's
-    // ``await promise`` then rejects with ``OAUTH_ERROR_FLOW_CANCELED``,
-    // which flips ``forceDisconnected=true`` even though the second
-    // attempt is still alive.  Bail out cheaply when a flow is already
-    // running.  Button is also ``disabled={loading}`` but disabled
-    // <button> elements still fire ``click`` in some browsers.
-    if (loading) return;
+    if (loading || oauthRequest.current) return;
+    const controller = new AbortController();
+    oauthRequest.current = controller;
+    const { signal } = controller;
     setError(null);
-    // Reset showManualToken so a prior 400 doesn't keep the input visible
-    // when a later attempt fails with a non-400 (e.g. network) error.
+    setGrantError(null);
     setShowManualToken(false);
     setLoading(true);
-    oauthAbortRef.current?.();
-
     try {
-      // Only a 400 from the *initiate* call means "this server has no OAuth
-      // to offer" and justifies the manual-token fallback.  A 400 from the
-      // callback is a rejected authorization response — a failed issuer
-      // check, say — and must surface as the error it is rather than an
-      // invitation to paste a credential instead.
-      let loginRes: Awaited<
-        ReturnType<typeof postV2InitiateOauthLoginForAnMcpServer>
-      >;
-      try {
-        loginRes = await postV2InitiateOauthLoginForAnMcpServer({
-          server_url: serverUrl,
-        });
-        if (!(loginRes.status >= 200 && loginRes.status < 300)) {
-          throw getAPIResponseError(loginRes.status, loginRes.data);
-        }
-      } catch (e: unknown) {
-        if (getErrorStatus(e) === 400) {
-          setConnected(false);
-          setForceDisconnected(true);
-          setShowManualToken(true);
-          setError(
-            "This server does not support OAuth sign-in. Choose how its API credential should be sent.",
-          );
-          return;
-        }
-        throw e;
-      }
-      const { login_url, state_token } = loginRes.data as {
-        login_url: string;
-        state_token: string;
-      };
-
-      const { promise, cleanup } = openOAuthPopup(login_url, {
-        stateToken: state_token,
-        useCrossOriginListeners: true,
+      const credential = await connectMCPOAuth({
+        serverURL: serverUrl,
+        signal,
+        exchange: allProviders?.mcp?.mcpOAuthCallback,
       });
-      oauthAbortRef.current = cleanup.abort;
-
-      const result = await promise;
-
-      const mcpProvider = allProviders?.["mcp"];
-      if (mcpProvider) {
-        await mcpProvider.mcpOAuthCallback(
-          result.code,
-          state_token,
-          result.iss,
-        );
-      } else {
-        const cbRes = await postV2ExchangeOauthCodeForMcpTokens({
-          code: result.code,
-          state_token,
-          iss: result.iss,
-        });
-        if (!(cbRes.status >= 200 && cbRes.status < 300)) {
-          throw getAPIResponseError(cbRes.status, cbRes.data);
-        }
+      signal.throwIfAborted();
+      if ("reason" in credential) {
+        setConnected(false);
+        setForceDisconnected(true);
+        if (credential.noOAuth) setShowManualToken(true);
+        setError(credential.reason);
+        return;
       }
-
-      // Only clear the force-disconnect override AFTER the OAuth dance
-      // completes successfully.  Clearing it earlier would let
-      // ``liveHasCred=true`` (Reconnect path) render the Connected pill
-      // mid-flight, briefly contradicting the in-progress "Reconnecting…"
-      // affordance.
       setForceDisconnected(false);
-      setConnected(true);
-      onSend(retryInstruction ?? "I've connected. Please retry.");
-    } catch (e: unknown) {
-      const err = e as Record<string, unknown>;
-      // Reconnect failures must drop the Connected view so the user sees
-      // the error / manual-token input rendered by the not-connected
-      // branch.  Setting ``localConnected=false`` alone isn't enough when
-      // a stored cred still exists (``liveHasCred=true``) — flip
-      // ``forceDisconnected`` so the not-connected branch wins until the
-      // user retries.
+      await finish(credential.id);
+    } catch (error: unknown) {
+      if (signal.aborted) return;
       setConnected(false);
       setForceDisconnected(true);
-      if (
-        typeof err?.message === "string" &&
-        err.message === "OAuth flow timed out"
-      ) {
-        setError("OAuth sign-in timed out. Please try again.");
-      } else {
-        const msg =
-          (typeof err?.message === "string" ? err.message : null) ||
-          (typeof err?.detail === "string" ? err.detail : null) ||
-          "Failed to complete sign-in. Please try again.";
-        setError(msg);
-      }
+      const message = getErrorMessage(
+        error,
+        "Failed to complete sign-in. Please try again.",
+      );
+      setError(
+        message === "OAuth flow timed out"
+          ? "OAuth sign-in timed out. Please try again."
+          : message,
+      );
     } finally {
-      setLoading(false);
-      oauthAbortRef.current = null;
+      if (oauthRequest.current === controller) {
+        oauthRequest.current = null;
+        if (!signal.aborted) setLoading(false);
+      }
     }
   }
 
@@ -305,6 +312,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
     setLoading(true);
     setError(null);
+    setGrantError(null);
     try {
       // Probe before storing so a rejected credential never shows as Connected.
       const probe = await postV2DiscoverAvailableToolsOnAnMcpServer({
@@ -342,8 +350,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       // Connected pill while the request is still in flight, briefly
       // showing a false "Connected" state to the user.
       setForceDisconnected(false);
-      setConnected(true);
-      onSend(retryInstruction ?? "I've connected. Please retry.");
+      await finish(res.status === 200 ? res.data.id : undefined);
     } catch (e: unknown) {
       // Keep the force-disconnect override on so the not-connected
       // branch (error banner + manual-token input) stays visible — an
@@ -362,10 +369,12 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
   const handleConnectRef = useRef(handleConnect);
   const handleManualTokenRef = useRef(handleManualToken);
+  const handleGrantRef = useRef(handleGrantExisting);
 
   useEffect(() => {
     handleConnectRef.current = handleConnect;
     handleManualTokenRef.current = handleManualToken;
+    handleGrantRef.current = handleGrantExisting;
   });
 
   // Inside a tool chain the card renders nothing itself — it registers an
@@ -383,14 +392,17 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         serverUrl,
         connected,
         loading,
-        error,
+        error: error ?? grantError,
         showManualToken,
         authScheme: manualAuthScheme,
+        grantable: Boolean(grantableId),
+        granting,
         onConnect: () => void handleConnectRef.current(),
         onUseToken: (token) => {
           setManualToken(token);
           void handleManualTokenRef.current(token);
         },
+        onGrant: () => handleGrantRef.current(),
       },
     });
     return () => chainActions.unregister(actionId);
@@ -400,6 +412,9 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     connected,
     loading,
     error,
+    grantError,
+    grantableId,
+    granting,
     showManualToken,
     manualAuthScheme,
     serverUrl,
@@ -442,22 +457,33 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       {rejection && <CredentialRejectionNotice rejection={rejection} />}
 
       <div className="rounded-2xl border bg-background p-4">
+        {grantableId ? (
+          <Button
+            variant="primary"
+            size="small"
+            onClick={handleGrantExisting}
+            disabled={granting || loading}
+            className="mr-2"
+          >
+            {granting ? "Granting…" : "Grant access"}
+          </Button>
+        ) : null}
         <Button
-          variant="primary"
+          variant={grantableId ? "secondary" : "primary"}
           size="small"
           onClick={handleConnect}
-          disabled={loading}
+          disabled={loading || granting}
         >
           {loading ? "Connecting…" : `Connect ${service}`}
         </Button>
 
-        {error && (
+        {(error || grantError) && (
           <div
             role="alert"
             aria-live="polite"
             className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
           >
-            {error}
+            {error ?? grantError}
           </div>
         )}
 

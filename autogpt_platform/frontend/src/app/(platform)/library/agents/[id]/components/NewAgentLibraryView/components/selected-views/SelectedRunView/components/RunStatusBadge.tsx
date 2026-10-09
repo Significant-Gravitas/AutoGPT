@@ -1,3 +1,4 @@
+import { getRunStatusInfo } from "@/components/molecules/RunStatusBadge/RunStatusBadge";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
@@ -75,7 +76,7 @@ export function RunStatusBadge({ status }: Props) {
         variant="small-medium"
         className={cn(statusIconMap[status].textColor, "capitalize")}
       >
-        {status.toLowerCase()}
+        {getRunStatusInfo(status).label}
       </Text>
     </div>
   );

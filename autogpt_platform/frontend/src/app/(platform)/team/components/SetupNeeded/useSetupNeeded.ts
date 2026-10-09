@@ -7,7 +7,7 @@ import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/cre
 import type { ExpertSetupItem } from "@/app/api/__generated__/models/expertSetupItem";
 import { okData } from "@/app/api/helpers";
 import { toConnectableProviders } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
-import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import { serviceName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { invalidateExpertGrantQueries } from "@/services/experts/invalidate-experts";
 import { useQueryClient } from "@tanstack/react-query";
@@ -46,12 +46,21 @@ export function useSetupNeeded({ enabled }: Args) {
 
   function grantTo(
     item: ExpertSetupItem,
-    credential: { id: string; provider?: string },
+    credential: {
+      id: string;
+      provider?: string;
+      service?: string;
+      service_name?: string | null;
+    },
   ) {
     // A row can name a credential without naming its provider, and half a
     // sentence is worse than a general one.
     const service = credential.provider
-      ? formatProviderName(credential.provider)
+      ? serviceName({
+          provider: credential.provider,
+          service: credential.service,
+          service_name: credential.service_name,
+        })
       : "this service";
     grant(
       { expertId: item.expert_id, data: { credential_ids: [credential.id] } },

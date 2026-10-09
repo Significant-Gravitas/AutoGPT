@@ -18,10 +18,10 @@ interface WorkspaceUploadResponse {
  */
 
 // Backend upload size limits (keep in sync with the backend):
-// - store submission media (agent thumbnails, profile avatars): 50MB
-//   (backend/api/features/store/media.py)
+// - private submission images (agent thumbnails, profile avatars): 4MB so the
+//   authenticated Vercel proxy can buffer the entire response safely
 // - OAuth app logos: 3MB (backend/api/features/oauth.py)
-export const SUBMISSION_MEDIA_MAX_SIZE_MB = 50;
+export const SUBMISSION_MEDIA_MAX_SIZE_MB = 4;
 export const OAUTH_LOGO_MAX_SIZE_MB = 3;
 
 const BYTES_PER_MB = 1024 * 1024;
@@ -141,12 +141,16 @@ export async function uploadFileDirect(
 
 /**
  * Uploads store submission media (agent thumbnails, profile avatars) directly
- * to the backend. Returns the public URL of the stored media.
+ * to private storage through the backend. Returns its authenticated media URL.
  */
-export async function uploadSubmissionMediaDirect(file: File): Promise<string> {
+export async function uploadSubmissionMediaDirect(
+  file: File,
+  purpose: "submission" | "expert-avatar" = "submission",
+): Promise<string> {
   const res = await postFileToBackend({
     path: "/api/store/submissions/media",
     file,
+    searchParams: purpose === "expert-avatar" ? { purpose } : undefined,
   });
   if (!res.ok) throw new Error(await readUploadError(res));
   // The endpoint returns the URL as a JSON string.

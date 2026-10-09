@@ -1,6 +1,7 @@
 from backend.copilot.expert_kickoff import (
     expert_kickoff_message_id,
     expert_kickoff_metadata,
+    is_expert_kickoff_message,
     is_expert_kickoff_turn,
     is_hidden_chat_message,
     scoped_client_message_id,
@@ -65,6 +66,18 @@ def test_metadata_marks_kickoff_hidden_without_hiding_other_messages() -> None:
     assert is_hidden_chat_message(metadata)
     assert not is_hidden_chat_message(None)
     assert not is_hidden_chat_message({"hidden": False})
+
+
+def test_only_the_server_written_user_row_is_a_kickoff_message() -> None:
+    assert is_expert_kickoff_message(_kickoff_message())
+    assert not is_expert_kickoff_message(ChatMessage(role="user", content="hi"))
+    assert not is_expert_kickoff_message(
+        ChatMessage(
+            role="assistant",
+            content="You were just hired.",
+            metadata=expert_kickoff_metadata(EXPERT_ID),
+        )
+    )
 
 
 def test_kickoff_turn_is_the_one_answering_the_server_written_message() -> None:

@@ -55,7 +55,8 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 
 const outreach: MarketplaceSkillDetails = {
   slug: "outreach-playbook",
-  name: "Outreach playbook",
+  name: "outreach-playbook",
+  title: "Outreach playbook",
   description: "Run cold outreach that gets replies.",
   categories: ["sales"],
   required_providers: ["google"],
@@ -138,6 +139,45 @@ describe("Marketplace skill page", () => {
     expect(
       screen.getAllByRole("heading", { name: "Outreach playbook" }),
     ).toHaveLength(1);
+  });
+
+  test("links a vendored skill to its source and shows its license", async () => {
+    server.use(
+      getGetV2GetMarketplaceSkillMockHandler200({
+        ...outreach,
+        source_repo: "coreyhaines31/marketingskills",
+        source_url:
+          "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
+        license: "MIT",
+      }),
+      getGetV1ListCredentialsMockHandler200([]),
+      userSkillsHandler(),
+    );
+    render(<SkillPage slug="outreach-playbook" />);
+
+    const source = await screen.findByRole("link", {
+      name: "coreyhaines31/marketingskills",
+    });
+    expect(source.getAttribute("href")).toBe(
+      "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
+    );
+    expect(await screen.findByText("License: MIT")).toBeDefined();
+  });
+
+  test("shows a creator skill license without a source repo", async () => {
+    server.use(
+      getGetV2GetMarketplaceSkillMockHandler200({
+        ...outreach,
+        source_repo: null,
+        source_url: null,
+        license: "Proprietary",
+      }),
+      getGetV1ListCredentialsMockHandler200([]),
+      userSkillsHandler(),
+    );
+    render(<SkillPage slug="outreach-playbook" />);
+
+    expect(await screen.findByText("License: Proprietary")).toBeDefined();
   });
 
   test("installs in one click and offers the connect step afterwards", async () => {

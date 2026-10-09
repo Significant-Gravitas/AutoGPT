@@ -5,6 +5,7 @@ import { RateLimitGate } from "./components/RateLimitResetDialog/RateLimitGate";
 import { useCopilotPage } from "./useCopilotPage";
 import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 interface Props {
   droppedFiles: File[];
@@ -16,14 +17,27 @@ interface Props {
 
 /**
  * Session-scoped chat host. Parent mounts this with `key={sessionId}` so
- * session-local view state resets on switch, while the actual AI SDK Chat
- * instance is preserved in the per-session runtime registry.
+ * session-local view state resets on switch, while the stream itself is
+ * preserved in a per-session runtime registry. Keyed again by the stream
+ * flag, so flags resolving after mount swap the stream hook by remounting.
  */
-export function CopilotChatHost({
+export function CopilotChatHost(props: Props) {
+  const isStreamRuntime = useGetFlag(Flag.COPILOT_STREAM_RUNTIME) === true;
+  return (
+    <ChatHostBody
+      key={isStreamRuntime ? "stream-runtime" : "ai-sdk"}
+      {...props}
+      isStreamRuntime={isStreamRuntime}
+    />
+  );
+}
+
+function ChatHostBody({
   droppedFiles,
   onDroppedFilesConsumed,
   hasFloatingControls,
-}: Props) {
+  isStreamRuntime,
+}: Props & { isStreamRuntime: boolean }) {
   const {
     sessionId,
     messages,
@@ -42,23 +56,29 @@ export function CopilotChatHost({
     queuedMessages,
     isLoadingSession,
     isSessionError,
+    isSessionNotFound,
     isCreatingSession,
     isUploadingFiles,
+    pendingSend,
     hasMoreMessages,
     isLoadingMore,
     loadMore,
     turnStats,
     rateLimitMessage,
+    platformLimitFailure,
     dismissRateLimit,
     providerLimit,
     dismissProviderLimit,
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
+    sessionAutopilotMode,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
     isKickoffStarting,
-  } = useCopilotPage();
+    followBackendTurn,
+  } = useCopilotPage({ isStreamRuntime });
 
   return (
     <>
@@ -78,8 +98,11 @@ export function CopilotChatHost({
           error={error}
           sessionId={sessionId}
           sessionChatStatus={sessionChatStatus}
+          sessionSentFrom={sessionSentFrom}
+          sessionAutopilotMode={sessionAutopilotMode}
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
+          isSessionNotFound={isSessionNotFound}
           isCreatingSession={isCreatingSession}
           isReconnecting={isReconnecting}
           isFinishProbing={isFinishProbing}
@@ -93,6 +116,7 @@ export function CopilotChatHost({
           onEnqueue={onEnqueue}
           queuedMessages={queuedMessages}
           isUploadingFiles={isUploadingFiles}
+          pendingSend={pendingSend}
           hasMoreMessages={hasMoreMessages}
           isLoadingMore={isLoadingMore}
           onLoadMore={loadMore}
@@ -103,11 +127,14 @@ export function CopilotChatHost({
           isResolvingExpertIdentity={isResolvingExpertIdentity}
           isAdoptingExpertSession={isAdoptingExpertSession}
           isKickoffStarting={isKickoffStarting}
+          onBackendTurn={followBackendTurn}
           hasFloatingControls={hasFloatingControls}
         />
       </div>
       <RateLimitGate
         rateLimitMessage={rateLimitMessage}
+        failure={platformLimitFailure}
+        sessionId={sessionId}
         onDismiss={dismissRateLimit}
       />
       <ProviderLimitDialog

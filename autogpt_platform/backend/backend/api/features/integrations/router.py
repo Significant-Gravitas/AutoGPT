@@ -68,6 +68,7 @@ from backend.integrations.managed_providers.ayrshare import AyrshareManagedProvi
 from backend.integrations.managed_providers.ayrshare import (
     settings_available as ayrshare_settings_available,
 )
+from backend.integrations.mcp_catalog import get_mcp_catalog
 from backend.integrations.oauth import (
     CREDENTIALS_BY_PROVIDER,
     DEVICE_HANDLERS_BY_NAME,
@@ -75,6 +76,11 @@ from backend.integrations.oauth import (
 )
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
 from backend.integrations.providers import ProviderName, provider_key
+from backend.integrations.service_identity import (
+    service_for_catalog_entry,
+    service_for_credential,
+    service_for_provider,
+)
 from backend.integrations.webhooks import get_webhook_manager
 from backend.util import product_analytics
 from backend.util.exceptions import (
@@ -164,6 +170,9 @@ async def login(
     login_url = handler.get_login_url(
         requested_scopes, state_token, code_challenge=code_challenge
     )
+    product_analytics.track_credential_oauth_started(
+        user_id=user_id, provider=provider.value
+    )
 
     return LoginResponse(login_url=login_url, state_token=state_token)
 
@@ -245,6 +254,9 @@ class CredentialsMetaResponse(BaseModel):
         description="Manual authorization scheme for MCP credentials",
     )
     is_managed: bool = False
+    service: str = ""
+    service_name: str | None = None
+    service_icon: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -286,6 +298,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         if stored_scheme in get_args(MCPAuthScheme):
             mcp_auth_scheme = stored_scheme
 
+    identity = service_for_credential(cred)
     return CredentialsMetaResponse(
         id=cred.id,
         provider=cred.provider,
@@ -296,6 +309,9 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         host=CredentialsMetaResponse.get_host(cred),
         mcp_auth_scheme=mcp_auth_scheme,
         is_managed=cred.is_managed,
+        service=identity.service,
+        service_name=identity.name,
+        service_icon=identity.icon,
     )
 
 
@@ -340,14 +356,63 @@ async def callback(
 ) -> CredentialsMetaResponse:
     logger.debug(f"Received OAuth callback for provider: {provider}")
 
+    # Codex completes a ChatGPT device login here rather than a code exchange,
+    # and its login is not reported as an OAuth start either.
     if provider == ProviderName.CODEX:
         await enforce_codex_access_http(user_id)
+        valid_state = await _verify_callback_state(user_id, state_token, provider)
+        return await _complete_codex_login(user_id, code, valid_state)
 
-    # Verify the state token
+    failure_class: product_analytics.OAuthExchangeFailureClass = "invalid_state"
+    # Everything secret we send the provider, in case its error echoes it back.
+    redact = [code, state_token]
+    try:
+        valid_state = await _verify_callback_state(user_id, state_token, provider)
+        if valid_state.code_verifier:
+            redact.append(valid_state.code_verifier)
+
+        failure_class = "provider_unavailable"
+        handler = _get_provider_oauth_handler(request, provider)
+        client_secret = getattr(handler, "client_secret", None)
+        if isinstance(client_secret, str) and client_secret:
+            redact.append(client_secret)
+
+        failure_class = "token_exchange"
+        credentials = await _exchange_code_for_credentials(
+            handler, provider, code, valid_state
+        )
+
+        failure_class = "credential_merge"
+        # TODO: Allow specifying `title` to set on `credentials`
+        credentials = await _merge_or_create_credential(
+            user_id, provider, credentials, valid_state.credential_id
+        )
+    except Exception as e:
+        _track_oauth_exchange_failed(
+            user_id, provider, failure_class, e, redact=tuple(redact)
+        )
+        raise
+
+    logger.debug(
+        f"Successfully processed OAuth callback for user {user_id} "
+        f"and provider {provider.value}"
+    )
+    product_analytics.track_integration_connected(
+        user_id=user_id,
+        provider=provider.value,
+        credential_type=credentials.type,
+        method="oauth",
+    )
+
+    return to_meta_response(credentials)
+
+
+async def _verify_callback_state(
+    user_id: str, state_token: str, provider: ProviderName
+) -> OAuthState:
     valid_state = await creds_manager.store.verify_state_token(
         user_id, state_token, provider
     )
-
     if not valid_state:
         report_credential_failure(
             logger,
@@ -361,11 +426,15 @@ async def callback(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired state token",
         )
+    return valid_state
 
-    if provider == ProviderName.CODEX:
-        return await _complete_codex_login(user_id, code, valid_state)
 
-    handler = _get_provider_oauth_handler(request, provider)
+async def _exchange_code_for_credentials(
+    handler: "BaseOAuthHandler",
+    provider: ProviderName,
+    code: str,
+    valid_state: OAuthState,
+) -> OAuth2Credentials:
     try:
         scopes = valid_state.scopes
         logger.debug(f"Retrieved scopes from state token: {scopes}")
@@ -403,25 +472,49 @@ async def callback(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"OAuth2 callback failed to exchange code for tokens: {str(e)}",
+        ) from e
+
+    return credentials
+
+
+def _track_oauth_exchange_failed(
+    user_id: str,
+    provider: ProviderName,
+    failure_class: product_analytics.OAuthExchangeFailureClass,
+    error: Exception,
+    redact: tuple[str, ...],
+) -> None:
+    """Report a failed callback to PostHog, which the browser cannot do reliably
+    because its events wait for analytics consent."""
+    try:
+        status_code: int | None
+        if not isinstance(error, HTTPException):
+            # An unexpected error's message can carry anything; keep its class.
+            # The step it happened in stays the failure_class. Its status is set
+            # later by rest_api's exception handlers (ValueError -> 400, ...),
+            # so leave it out rather than guess.
+            status_code = None
+            detail = type(error).__name__
+        else:
+            status_code = error.status_code
+            # Prefer the provider's own error over our wrapper around it.
+            cause = error.__cause__
+            if cause is not None:
+                detail = f"{type(cause).__name__}: {cause}"
+            elif isinstance(error.detail, dict):
+                detail = str(error.detail.get("message", ""))
+            else:
+                detail = str(error.detail)
+        product_analytics.track_credential_oauth_exchange_failed(
+            user_id=user_id,
+            provider=provider.value,
+            failure_class=failure_class,
+            status_code=status_code,
+            detail=detail,
+            redact=redact,
         )
-
-    # TODO: Allow specifying `title` to set on `credentials`
-    credentials = await _merge_or_create_credential(
-        user_id, provider, credentials, valid_state.credential_id
-    )
-
-    logger.debug(
-        f"Successfully processed OAuth callback for user {user_id} "
-        f"and provider {provider.value}"
-    )
-    product_analytics.track_integration_connected(
-        user_id=user_id,
-        provider=provider.value,
-        credential_type=credentials.type,
-        method="oauth",
-    )
-
-    return to_meta_response(credentials)
+    except Exception:
+        logger.warning("Failed to track OAuth exchange failure", exc_info=True)
 
 
 # ================================================================== #
@@ -1949,8 +2042,9 @@ async def list_providers(
     a ``description`` declared via ``ProviderBuilder.with_description(...)`` in
     the provider's ``_config.py``.
 
-    Note: The complete list of provider names is also available as a constant
-    in the generated TypeScript client via PROVIDER_NAMES.
+    Official MCP catalog entries are appended as display metadata and use the
+    generic MCP connection flow. They are not registered credential providers,
+    so PROVIDER_NAMES continues to contain only credential-provider names.
     """
     # Ensure all block modules (and therefore every provider's _config.py) are
     # imported before we read from AutoRegistry. Cached on first call.
@@ -1966,13 +2060,32 @@ async def list_providers(
     all_providers = get_all_provider_names()
     if user_id is None or not await has_codex_access_for_discovery(user_id):
         all_providers = [name for name in all_providers if name != ProviderName.CODEX]
-    return [
-        ProviderMetadata(
+
+    def _native(name: str) -> ProviderMetadata:
+        identity = service_for_provider(name)
+        return ProviderMetadata(
             name=name,
             description=get_provider_description(name),
             supported_auth_types=get_supported_auth_types(name),
+            service=identity.service,
+            service_name=identity.name,
+            service_icon=identity.icon,
         )
-        for name in all_providers
+
+    def _catalog(entry) -> ProviderMetadata:
+        identity = service_for_catalog_entry(entry)
+        return ProviderMetadata(
+            name=entry.name,
+            display_name=entry.display_name,
+            description=entry.description,
+            mcp_server=entry.mcp_server,
+            service=identity.service,
+            service_name=identity.name,
+            service_icon=identity.icon,
+        )
+
+    return [_native(name) for name in all_providers] + [
+        _catalog(entry) for entry in get_mcp_catalog()
     ]
 
 

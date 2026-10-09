@@ -11,6 +11,7 @@ import { Badge } from "@/components/atoms/Badge/Badge";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { RunStatusBadge } from "@/components/molecules/RunStatusBadge/RunStatusBadge";
+import { getRunStatusGuidance } from "@/components/molecules/RunStatusBadge/helpers";
 import { useState } from "react";
 import { FilterIconMenu } from "../FilterIconMenu";
 import {
@@ -109,6 +110,9 @@ function ExpertRunRow({ run, onOpen }: { run: ExpertRun; onOpen: () => void }) {
         </Text>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <RunStatusBadge status={run.status} />
+          <Text variant="small" tone="secondary">
+            {getRunStatusGuidance(run.status)}
+          </Text>
           {run.needs_review && run.status.toUpperCase() !== "REVIEW" ? (
             <Badge variant="warning" size="small">
               Needs review

@@ -3,6 +3,7 @@ Comprehensive integration tests for authentication dependencies.
 Tests the full authentication flow from HTTP requests to user validation.
 """
 
+import asyncio
 import os
 from unittest.mock import AsyncMock, Mock
 
@@ -174,29 +175,34 @@ class TestAuthDependencies:
 class TestAuthDependenciesIntegration:
     """Integration tests for auth dependencies with FastAPI."""
 
-    acceptable_jwt_secret = "test-secret-with-proper-length-123456"
-
     @pytest.fixture
     def create_token(self, mocker: MockerFixture):
-        """Helper to create JWT tokens."""
+        """Helper to create ES256 tokens verified against a mocked JWK set."""
         import jwt
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from jwt.algorithms import ECAlgorithm
 
-        # JWT_JWKS_URL is required by Settings.validate(); HS256 tokens verify
-        # against JWT_VERIFY_KEY and never touch the JWKS client, so a
-        # present-but-unused URL is enough. Reset the cached settings so
-        # get_settings() rebuilds under this patched environment.
+        from autogpt_libs.auth import jwt_utils
+
+        kid = "test-key-1"
+        private_key = ec.generate_private_key(ec.SECP256R1())
+        jwk = ECAlgorithm.to_jwk(private_key.public_key(), as_dict=True)
+        jwk.update({"kid": kid, "alg": "ES256", "use": "sig"})
+
         mocker.patch.dict(
             os.environ,
-            {
-                "JWT_VERIFY_KEY": self.acceptable_jwt_secret,
-                "JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks",
-            },
+            {"JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks"},
             clear=True,
         )
         mocker.patch.object(config, "_settings", Settings())
+        mocker.patch.object(jwt_utils, "_jwks_client", None)
+        mocker.patch.object(jwt_utils, "_jwks_client_url", None)
+        mocker.patch.object(jwt.PyJWKClient, "fetch_data", return_value={"keys": [jwk]})
 
-        def _create_token(payload, secret=self.acceptable_jwt_secret):
-            return jwt.encode(payload, secret, algorithm="HS256")
+        def _create_token(payload):
+            return jwt.encode(
+                payload, private_key, algorithm="ES256", headers={"kid": kid}
+            )
 
         return _create_token
 
@@ -228,7 +234,6 @@ class TestAuthDependenciesIntegration:
 
         token = create_token(
             {"sub": "test-user", "role": "user", "aud": "authenticated"},
-            secret=self.acceptable_jwt_secret,
         )
 
         response = client.get("/test", headers={"Authorization": f"Bearer {token}"})
@@ -249,7 +254,6 @@ class TestAuthDependenciesIntegration:
         # Regular user token
         user_token = create_token(
             {"sub": "regular-user", "role": "user", "aud": "authenticated"},
-            secret=self.acceptable_jwt_secret,
         )
 
         response = client.get(
@@ -260,7 +264,6 @@ class TestAuthDependenciesIntegration:
         # Admin token
         admin_token = create_token(
             {"sub": "admin-user", "role": "admin", "aud": "authenticated"},
-            secret=self.acceptable_jwt_secret,
         )
 
         response = client.get(
@@ -772,6 +775,80 @@ class TestRequestContextProvisioning:
 
         ensure.assert_not_awaited()
 
+    @pytest.fixture
+    def bootstrap(self, mocker: MockerFixture, wiring):
+        """The row exists (the auth hook wrote it bare); stub the full
+        get-or-create that ``POST /auth/user`` would have run."""
+        import sys
+        import types
+
+        ensure, calls = wiring
+
+        async def _ensure(user_id, payload):
+            calls.append("ensure_platform_user")
+            return True
+
+        ensure.side_effect = _ensure
+
+        async def _get_or_create(payload):
+            calls.append("get_or_create_user_with_status")
+
+        provisioner = AsyncMock(side_effect=_get_or_create)
+        user_mod = types.ModuleType("backend.data.user")
+        mocker.patch.object(
+            user_mod, "get_or_create_user_with_status", provisioner, create=True
+        )
+        mocker.patch.dict(sys.modules, {"backend.data.user": user_mod})
+        return ensure, provisioner, calls
+
+    @pytest.mark.asyncio
+    async def test_finishes_the_account_bootstrap_for_a_bare_row(self, bootstrap):
+        """A session that never reached ``POST /auth/user`` still gets the
+        Profile and sign-up sync that call would have run, not the org alone."""
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        _, provisioner, calls = bootstrap
+        payload = {"sub": "user-1", "email": "new@example.com"}
+
+        await get_request_context(self._request(), payload)
+
+        provisioner.assert_awaited_once_with(payload)
+        assert calls == [
+            "ensure_platform_user",
+            "get_or_create_user_with_status",
+            "get_user_default_team",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_failed_account_bootstrap_still_runs_the_org_bootstrap(
+        self, bootstrap
+    ):
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        _, provisioner, calls = bootstrap
+        provisioner.side_effect = RuntimeError("profile insert failed")
+
+        ctx = await get_request_context(
+            self._request(), {"sub": "user-1", "email": "a@b.c"}
+        )
+
+        assert calls[-1] == "get_user_default_team"
+        assert ctx.org_id == "org-1"
+
+    @pytest.mark.asyncio
+    async def test_no_account_bootstrap_when_the_row_is_not_confirmed(self, bootstrap):
+        """Impersonation, a token without an email, or a failed provision:
+        ``_ensure_platform_user`` says no, and the claims must not be used."""
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        ensure, provisioner, _ = bootstrap
+        ensure.side_effect = None
+        ensure.return_value = False
+
+        await get_request_context(self._request(), {"sub": "user-1", "email": "a@b.c"})
+
+        provisioner.assert_not_awaited()
+
 
 class TestEnsurePlatformUserRaceLogging:
     """A losing create race must not be reported as a failure.
@@ -850,3 +927,359 @@ class TestEnsurePlatformUserRaceLogging:
         await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
 
         logger.error.assert_not_called()
+
+
+class TestGetUserIdSelfHeal:
+    """`get_user_id` must heal a missing platform User row on every request.
+
+    `get_request_context` only heals in its no-personal-org branch, and 150+
+    routes authenticate through `get_user_id` alone -- including the onboarding
+    read on every page load, push subscriptions and experiment assignments,
+    all of which write rows with a foreign key to `User`. Without the heal
+    here those routes 500 for a session whose row does not exist yet.
+    """
+
+    @staticmethod
+    def _request(headers: dict | None = None):
+        request = Mock(spec=Request)
+        request.headers = headers or {}
+        request.method = "GET"
+        request.url = "http://test/api/onboarding/completed"
+        return request
+
+    @pytest.fixture(autouse=True)
+    def _fresh_cache(self):
+        from autogpt_libs.auth import dependencies
+
+        dependencies._PROVISIONED_USER_IDS.clear()
+        dependencies._HEALS_IN_FLIGHT.clear()
+        yield
+        dependencies._PROVISIONED_USER_IDS.clear()
+        dependencies._HEALS_IN_FLIGHT.clear()
+
+    @staticmethod
+    def _stub_backend(mocker: MockerFixture, *, connected: bool = True):
+        import sys
+        import types
+
+        db_mod = types.ModuleType("backend.data.db")
+        mocker.patch.object(db_mod, "prisma", Mock(), create=True)
+        db_mod.prisma.is_connected = Mock(return_value=connected)
+        mocker.patch.dict(
+            sys.modules,
+            {
+                "backend": types.ModuleType("backend"),
+                "backend.data": types.ModuleType("backend.data"),
+                "backend.data.db": db_mod,
+            },
+        )
+        return db_mod
+
+    @pytest.mark.asyncio
+    async def test_heals_on_a_plain_authenticated_request(self, mocker: MockerFixture):
+        self._stub_backend(mocker)
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+            return_value=True,
+        )
+        payload = {"sub": "user-1", "role": "user", "email": "new@example.com"}
+
+        assert await get_user_id(self._request(), payload) == "user-1"
+
+        ensure.assert_awaited_once_with("user-1", payload)
+
+    @pytest.mark.asyncio
+    async def test_probe_runs_once_per_process_per_user(self, mocker: MockerFixture):
+        """A first page load fans out ~20 requests; after the first confirms
+        the row, the rest must not each pay for an indexed read."""
+        self._stub_backend(mocker)
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+            return_value=True,
+        )
+        payload = {"sub": "user-1", "role": "user", "email": "a@b.c"}
+
+        await get_user_id(self._request(), payload)
+        await get_user_id(self._request(), payload)
+        await get_user_id(self._request(), {**payload, "sub": "user-2"})
+
+        assert ensure.await_count == 2
+        assert [c.args[0] for c in ensure.await_args_list] == ["user-1", "user-2"]
+
+    @pytest.mark.asyncio
+    async def test_concurrent_first_requests_share_one_probe(
+        self, mocker: MockerFixture
+    ):
+        """A first page load's requests arrive together, before any heal has
+        settled: they wait on the one probe in flight instead of each running
+        their own, and none goes ahead before it confirms the row."""
+        self._stub_backend(mocker)
+        release = asyncio.Event()
+
+        async def slow_probe(user_id: str, payload: dict) -> bool:
+            await release.wait()
+            return True
+
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+            side_effect=slow_probe,
+        )
+        payload = {"sub": "user-1", "role": "user", "email": "a@b.c"}
+
+        requests = [
+            asyncio.create_task(get_user_id(self._request(), payload)) for _ in range(5)
+        ]
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert not any(r.done() for r in requests)
+
+        release.set()
+        assert await asyncio.gather(*requests) == ["user-1"] * 5
+        assert ensure.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_request_does_not_cancel_the_shared_heal(
+        self, mocker: MockerFixture
+    ):
+        """A client that drops its request mid-heal must not take the heal the
+        other requests for that user are waiting on down with it."""
+        self._stub_backend(mocker)
+        release = asyncio.Event()
+
+        async def slow_probe(user_id: str, payload: dict) -> bool:
+            await release.wait()
+            return True
+
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+            side_effect=slow_probe,
+        )
+        payload = {"sub": "user-1", "role": "user", "email": "a@b.c"}
+
+        first = asyncio.create_task(get_user_id(self._request(), payload))
+        second = asyncio.create_task(get_user_id(self._request(), payload))
+        for _ in range(5):
+            await asyncio.sleep(0)
+        first.cancel()
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        release.set()
+        assert await second == "user-1"
+        assert ensure.await_count == 1
+        assert first.cancelled()
+
+    @pytest.mark.asyncio
+    async def test_cached_confirmation_expires(self, mocker: MockerFixture):
+        """Nothing deletes a User row today, but the cache must not turn that
+        into a permanent assumption: after the TTL the row is probed again."""
+        from autogpt_libs.auth import dependencies
+
+        self._stub_backend(mocker)
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+            return_value=True,
+        )
+        clock = mocker.patch("autogpt_libs.auth.dependencies.time.monotonic")
+        payload = {"sub": "user-1", "role": "user", "email": "a@b.c"}
+
+        clock.return_value = 1_000.0
+        await get_user_id(self._request(), payload)
+        clock.return_value = 1_000.0 + dependencies._PROVISIONED_USER_TTL_SECS - 1
+        await get_user_id(self._request(), payload)
+        assert ensure.await_count == 1
+
+        clock.return_value = 1_000.0 + dependencies._PROVISIONED_USER_TTL_SECS
+        await get_user_id(self._request(), payload)
+        assert ensure.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_retries_a_failed_heal_after_the_backoff(self, mocker: MockerFixture):
+        """A declined or failed heal is retried, so the account does not stay
+        broken for the life of the process -- but only after a short backoff.
+        Retrying on every request would re-run the heal, and re-emit its
+        Sentry error, ~20 times per page load for an account nothing can
+        provision."""
+        from autogpt_libs.auth import dependencies
+
+        self._stub_backend(mocker)
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+            side_effect=[False, True, True],
+        )
+        clock = mocker.patch("autogpt_libs.auth.dependencies.time.monotonic")
+        payload = {"sub": "user-1", "role": "user", "email": "a@b.c"}
+
+        clock.return_value = 1_000.0
+        await get_user_id(self._request(), payload)  # fails -> backoff
+        await get_user_id(self._request(), payload)  # within backoff: no retry
+        assert ensure.await_count == 1
+
+        clock.return_value = 1_000.0 + dependencies._FAILED_HEAL_BACKOFF_SECS
+        await get_user_id(self._request(), payload)  # backoff over: retry, succeeds
+        await get_user_id(self._request(), payload)  # now cached as confirmed
+        assert ensure.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_a_failed_heal_is_backed_off_much_shorter_than_a_confirmed_one(
+        self, mocker: MockerFixture
+    ):
+        """The backoff must not be the confirmation TTL: an account that could
+        not be healed has to be tried again well before 15 minutes pass."""
+        from autogpt_libs.auth import dependencies
+
+        assert (
+            dependencies._FAILED_HEAL_BACKOFF_SECS
+            < dependencies._PROVISIONED_USER_TTL_SECS
+        )
+        assert dependencies._FAILED_HEAL_BACKOFF_SECS <= 60
+
+    @pytest.mark.asyncio
+    async def test_skips_without_a_database_connection(self, mocker: MockerFixture):
+        """Route unit tests and tooling resolve this dependency with no
+        database at all; the heal must be a no-op there, not an error."""
+        self._stub_backend(mocker, connected=False)
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+        )
+
+        assert (
+            await get_user_id(self._request(), {"sub": "user-1", "email": "a@b.c"})
+            == "user-1"
+        )
+
+        ensure.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_when_the_backend_package_is_absent(
+        self, mocker: MockerFixture
+    ):
+        import sys
+
+        # `None` in sys.modules makes the import raise ImportError, which is
+        # what autogpt_libs sees when used outside the backend.
+        mocker.patch.dict(
+            sys.modules,
+            {"backend": None, "backend.data": None, "backend.data.db": None},
+        )
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+        )
+
+        assert (
+            await get_user_id(self._request(), {"sub": "user-1", "email": "a@b.c"})
+            == "user-1"
+        )
+
+        ensure.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_failing_heal_never_fails_the_request(self, mocker: MockerFixture):
+        self._stub_backend(mocker)
+        logger = mocker.patch("autogpt_libs.auth.dependencies.logger")
+        mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("db down"),
+        )
+
+        assert (
+            await get_user_id(self._request(), {"sub": "user-1", "email": "a@b.c"})
+            == "user-1"
+        )
+
+        logger.warning.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_a_raising_heal_is_also_backed_off(self, mocker: MockerFixture):
+        self._stub_backend(mocker)
+        mocker.patch("autogpt_libs.auth.dependencies.logger")
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("db down"),
+        )
+        payload = {"sub": "user-1", "email": "a@b.c"}
+
+        await get_user_id(self._request(), payload)
+        await get_user_id(self._request(), payload)
+
+        ensure.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_impersonation_heals_the_admin_not_the_target(
+        self, mocker: MockerFixture
+    ):
+        self._stub_backend(mocker)
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+            return_value=True,
+        )
+        payload = {"sub": "admin-1", "role": "admin", "email": "admin@example.com"}
+        request = self._request({"X-Act-As-User-Id": "target-user"})
+
+        assert await get_user_id(request, payload) == "target-user"
+
+        # The claims describe the admin; provisioning the target from them
+        # would create the target's account under the admin's email.
+        ensure.assert_awaited_once_with("admin-1", payload)
+
+
+class TestEnsurePlatformUserOutcome:
+    """The return value drives the per-process cache in `get_user_id`, so
+    it must only be True when the row is actually known to exist."""
+
+    @pytest.mark.asyncio
+    async def test_true_when_the_row_already_exists(self, mocker: MockerFixture):
+        TestEnsurePlatformUser._stub_backend(
+            mocker, existing_user=Mock(), provisioner=AsyncMock()
+        )
+
+        assert (
+            await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
+            is True
+        )
+
+    @pytest.mark.asyncio
+    async def test_true_when_it_created_the_row(self, mocker: MockerFixture):
+        TestEnsurePlatformUser._stub_backend(
+            mocker,
+            existing_user=None,
+            provisioner=AsyncMock(return_value=Mock(was_created=True)),
+        )
+
+        assert (
+            await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
+            is True
+        )
+
+    @pytest.mark.asyncio
+    async def test_false_when_it_declined_or_failed(self, mocker: MockerFixture):
+        TestEnsurePlatformUser._stub_backend(
+            mocker,
+            existing_user=[None, None],
+            provisioner=AsyncMock(side_effect=RuntimeError("db down")),
+        )
+
+        assert (
+            await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
+            is False
+        )
+        # No email claim: nothing to provision with.
+        assert await _ensure_platform_user("user-1", {"sub": "user-1"}) is False
+        # Impersonation: the claims describe someone else.
+        assert (
+            await _ensure_platform_user(
+                "target", {"sub": "admin-1", "email": "admin@example.com"}
+            )
+            is False
+        )

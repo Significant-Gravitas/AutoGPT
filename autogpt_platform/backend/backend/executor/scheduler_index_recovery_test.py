@@ -19,7 +19,7 @@ def test_failed_upsert_keeps_persisted_schedule_visible_until_reconcile():
     args = GraphExecutionJobArgs(**_graph_job_kwargs("s1", "u1", "g1"))
     job = _mock_job(args.model_dump(mode="json"))
     scheduler.scheduler.get_jobs.return_value = []
-    assert scheduler._get_jobs_cached() == []
+    assert scheduler._get_active_jobs_cached() == []
     scheduler.scheduler.add_job.return_value = job
     scheduler.scheduler.get_jobs.return_value = [job]
     scheduler.scheduler.get_job.return_value = job
@@ -40,7 +40,7 @@ def test_failed_upsert_keeps_persisted_schedule_visible_until_reconcile():
     scheduler._reconcile_schedule_index()
     assert scheduler._schedule_index_ready is True
     assert index.all_job_ids() == {"s1"}
-    with patch.object(scheduler, "_get_jobs_cached") as full_scan:
+    with patch.object(scheduler, "_get_active_jobs_cached") as full_scan:
         assert [s.id for s in scheduler.get_execution_schedules(user_id="u1")] == ["s1"]
     full_scan.assert_not_called()
 
@@ -57,7 +57,7 @@ def test_transient_point_lookup_preserves_live_row_and_listing():
 
     assert [s.id for s in scheduler.get_execution_schedules(user_id="u1")] == ["s1"]
     assert index.all_job_ids() == {"s1"}
-    with patch.object(scheduler, "_get_jobs_cached") as full_scan:
+    with patch.object(scheduler, "_get_active_jobs_cached") as full_scan:
         assert [s.id for s in scheduler.get_execution_schedules(user_id="u1")] == ["s1"]
     full_scan.assert_not_called()
 

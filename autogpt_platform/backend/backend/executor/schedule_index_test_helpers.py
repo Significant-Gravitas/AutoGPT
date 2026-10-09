@@ -15,6 +15,12 @@ def _scheduler_with_index() -> Scheduler:
     scheduler._schedule_index.ensure_table()
     scheduler._schedule_index_ready = True
     scheduler.scheduler = MagicMock()
+    # Non-paused listings read the jobstore with a SQL next_run_time filter;
+    # serve them from the same stubbed scan the tests drive.
+    scheduler._execution_jobstore = MagicMock()
+    scheduler._execution_jobstore._get_jobs.side_effect = lambda *_: [
+        job for job in scheduler.scheduler.get_jobs() if job.next_run_time is not None
+    ]
     return scheduler
 
 

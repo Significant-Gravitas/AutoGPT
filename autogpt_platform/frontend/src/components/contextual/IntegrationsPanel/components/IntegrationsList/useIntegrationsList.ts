@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
-
-import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import {
+  useGetV1ListCredentials,
+  useGetV1ListProviders,
+} from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
 
 import {
+  blockServiceKeys,
   filterProviders,
   groupCredentialsByProvider,
   type ProviderGroupView,
@@ -17,8 +19,7 @@ import {
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useIntegrationsSelection } from "./useIntegrationsSelection";
 
-export function useIntegrationsList() {
-  const [query, setQuery] = useState("");
+export function useIntegrationsList(query: string) {
   const debouncedQuery = useDebouncedValue(query, 250);
 
   const credentialsQuery = useGetV1ListCredentials({
@@ -28,9 +29,17 @@ export function useIntegrationsList() {
     },
   });
 
+  const providersQuery = useGetV1ListProviders({
+    query: {
+      select: (response) => (response.status === 200 ? response.data : []),
+    },
+  });
+
   const credentials = credentialsQuery.data ?? [];
-  const allProviders: ProviderGroupView[] =
-    groupCredentialsByProvider(credentials);
+  const allProviders: ProviderGroupView[] = groupCredentialsByProvider(
+    credentials,
+    blockServiceKeys(providersQuery.data ?? []),
+  );
   const providers = filterProviders(allProviders, debouncedQuery);
 
   const allCredentialIds = allProviders.flatMap((p) =>
@@ -88,8 +97,6 @@ export function useIntegrationsList() {
   const isError = credentialsQuery.isError;
 
   return {
-    query,
-    setQuery,
     providers,
     isLoading,
     isError,

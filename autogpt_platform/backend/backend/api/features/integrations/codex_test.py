@@ -242,6 +242,9 @@ def test_codex_callback_persists_one_safe_credential():
         "host": None,
         "mcp_auth_scheme": None,
         "is_managed": False,
+        "service": "codex",
+        "service_name": None,
+        "service_icon": "codex",
     }
     raw_response = response.text
     assert "access-secret" not in raw_response
@@ -433,7 +436,9 @@ def test_provider_discovery_includes_codex_when_user_has_access():
         response = client.get("/providers")
 
     assert response.status_code == 200
-    assert [provider["name"] for provider in response.json()] == ["codex", "github"]
+    assert [
+        provider["name"] for provider in response.json() if not provider["mcp_server"]
+    ] == ["codex", "github"]
 
 
 def test_provider_discovery_omits_codex_when_user_lacks_access():
@@ -460,7 +465,9 @@ def test_provider_discovery_omits_codex_when_user_lacks_access():
         response = client.get("/providers")
 
     assert response.status_code == 200
-    assert [provider["name"] for provider in response.json()] == ["github"]
+    assert [
+        provider["name"] for provider in response.json() if not provider["mcp_server"]
+    ] == ["github"]
     access.assert_awaited_once_with(TEST_USER_ID)
 
 
@@ -489,7 +496,9 @@ def test_provider_discovery_remains_public_and_omits_codex_anonymously():
         response = client.get("/providers")
 
     assert response.status_code == 200
-    assert [provider["name"] for provider in response.json()] == ["github"]
+    assert [
+        provider["name"] for provider in response.json() if not provider["mcp_server"]
+    ] == ["github"]
     access.assert_not_awaited()
 
 

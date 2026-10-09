@@ -5,10 +5,11 @@ import {
 } from "@/tests/integrations/copilot-sse";
 import { screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetCopilotChatRegistry } from "../copilotChatRegistry";
 import {
   copilotStreamSequenceHandler,
   renderHost,
+  resetChatRuntimes,
+  STREAM_PATHS,
   TEST_BACKEND_BASE_URL,
   TEST_SESSION_ID,
   typeAndSend,
@@ -45,257 +46,280 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 
 // Keep mode/model toggles and artifacts off so the chat input renders a
 // single, predictable Submit button.
+const streamPath = vi.hoisted(() => ({ runtime: false }));
+
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
-    ARTIFACTS: "ARTIFACTS",
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
     ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
+    COPILOT_STREAM_RUNTIME: "copilot-stream-runtime",
   },
-  useGetFlag: () => false,
+  useGetFlag: (flag: string) =>
+    flag === "copilot-stream-runtime" ? streamPath.runtime : false,
 }));
 
 beforeEach(() => {
-  resetCopilotChatRegistry();
+  resetChatRuntimes();
 });
 
 afterEach(() => {
-  resetCopilotChatRegistry();
+  resetChatRuntimes();
 });
 
-describe("Otto streaming — content rendering", () => {
-  it("renders assistant text from a single text-delta frame", async () => {
-    server.use(
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: assistantTextChunks("Hello from the copilot."),
-      }),
-    );
-
-    renderHost();
-    await typeAndSend("hi");
-
-    expect(
-      await screen.findByText("Hello from the copilot.", undefined, {
-        timeout: 5000,
-      }),
-    ).toBeDefined();
+describe.each(STREAM_PATHS)("on the %s path", (path) => {
+  beforeEach(() => {
+    streamPath.runtime = path === "stream runtime";
   });
 
-  it("concatenates multiple text-delta frames into a single rendered message", async () => {
-    server.use(
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: [
-          { type: "start", messageId: "msg-1" },
-          { type: "start-step" },
-          { type: "text-start", id: "t1" },
-          { type: "text-delta", id: "t1", delta: "Hello " },
-          { type: "text-delta", id: "t1", delta: "from " },
-          { type: "text-delta", id: "t1", delta: "the copilot." },
-          { type: "text-end", id: "t1" },
-          { type: "finish-step" },
-          { type: "finish" },
-        ],
-      }),
-    );
+  describe("Otto streaming — content rendering", () => {
+    it("renders assistant text from a single text-delta frame", async () => {
+      server.use(
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: assistantTextChunks("Hello from the copilot."),
+        }),
+      );
 
-    renderHost();
-    await typeAndSend("hi");
+      renderHost();
+      await typeAndSend("hi");
 
-    expect(
-      await screen.findByText("Hello from the copilot.", undefined, {
-        timeout: 5000,
-      }),
-    ).toBeDefined();
-  });
+      expect(
+        await screen.findByText("Hello from the copilot.", undefined, {
+          timeout: 5000,
+        }),
+      ).toBeDefined();
+    });
 
-  it("renders the assistant's final text after reasoning chunks", async () => {
-    server.use(
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: [
-          { type: "start", messageId: "msg-1" },
-          { type: "start-step" },
-          { type: "reasoning-start", id: "r1" },
-          { type: "reasoning-delta", id: "r1", delta: "Thinking " },
-          { type: "reasoning-delta", id: "r1", delta: "step by step." },
-          { type: "reasoning-end", id: "r1" },
-          { type: "text-start", id: "t1" },
-          { type: "text-delta", id: "t1", delta: "Final answer." },
-          { type: "text-end", id: "t1" },
-          { type: "finish-step" },
-          { type: "finish" },
-        ],
-      }),
-    );
+    it("concatenates multiple text-delta frames into a single rendered message", async () => {
+      server.use(
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: [
+            { type: "start", messageId: "msg-1" },
+            { type: "start-step" },
+            { type: "text-start", id: "t1" },
+            { type: "text-delta", id: "t1", delta: "Hello " },
+            { type: "text-delta", id: "t1", delta: "from " },
+            { type: "text-delta", id: "t1", delta: "the copilot." },
+            { type: "text-end", id: "t1" },
+            { type: "finish-step" },
+            { type: "finish" },
+          ],
+        }),
+      );
 
-    renderHost();
-    await typeAndSend("hi");
+      renderHost();
+      await typeAndSend("hi");
 
-    expect(
-      await screen.findByText("Final answer.", undefined, { timeout: 5000 }),
-    ).toBeDefined();
-  });
+      expect(
+        await screen.findByText("Hello from the copilot.", undefined, {
+          timeout: 5000,
+        }),
+      ).toBeDefined();
+    });
 
-  it("renders text emitted after a tool call in the same turn", async () => {
-    server.use(
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: [
-          { type: "start", messageId: "msg-1" },
-          { type: "start-step" },
-          {
-            type: "tool-input-start",
-            toolCallId: "call-1",
-            toolName: "search",
-            dynamic: true,
-          },
-          {
-            type: "tool-input-available",
-            toolCallId: "call-1",
-            toolName: "search",
-            input: { query: "weather" },
-            dynamic: true,
-          },
-          {
-            type: "tool-output-available",
-            toolCallId: "call-1",
-            output: { result: "sunny" },
-            dynamic: true,
-          },
-          { type: "text-start", id: "t1" },
-          { type: "text-delta", id: "t1", delta: "The weather is sunny." },
-          { type: "text-end", id: "t1" },
-          { type: "finish-step" },
-          { type: "finish" },
-        ],
-      }),
-    );
+    it("renders the assistant's final text after reasoning chunks", async () => {
+      server.use(
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: [
+            { type: "start", messageId: "msg-1" },
+            { type: "start-step" },
+            { type: "reasoning-start", id: "r1" },
+            { type: "reasoning-delta", id: "r1", delta: "Thinking " },
+            { type: "reasoning-delta", id: "r1", delta: "step by step." },
+            { type: "reasoning-end", id: "r1" },
+            { type: "text-start", id: "t1" },
+            { type: "text-delta", id: "t1", delta: "Final answer." },
+            { type: "text-end", id: "t1" },
+            { type: "finish-step" },
+            { type: "finish" },
+          ],
+        }),
+      );
 
-    renderHost();
-    await typeAndSend("weather?");
+      renderHost();
+      await typeAndSend("hi");
 
-    expect(
-      await screen.findByText("The weather is sunny.", undefined, {
-        timeout: 5000,
-      }),
-    ).toBeDefined();
-  });
+      expect(
+        await screen.findByText("Final answer.", undefined, { timeout: 5000 }),
+      ).toBeDefined();
+    });
 
-  it("renders text from both steps of a two-step turn", async () => {
-    server.use(
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: [
-          { type: "start", messageId: "msg-1" },
-          { type: "start-step" },
-          { type: "text-start", id: "t1" },
-          { type: "text-delta", id: "t1", delta: "First step text." },
-          { type: "text-end", id: "t1" },
-          { type: "finish-step" },
-          { type: "start-step" },
-          { type: "text-start", id: "t2" },
-          { type: "text-delta", id: "t2", delta: "Second step text." },
-          { type: "text-end", id: "t2" },
-          { type: "finish-step" },
-          { type: "finish" },
-        ],
-      }),
-    );
+    it("renders text emitted after a tool call in the same turn", async () => {
+      server.use(
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: [
+            { type: "start", messageId: "msg-1" },
+            { type: "start-step" },
+            {
+              type: "tool-input-start",
+              toolCallId: "call-1",
+              toolName: "search",
+              dynamic: true,
+            },
+            {
+              type: "tool-input-available",
+              toolCallId: "call-1",
+              toolName: "search",
+              input: { query: "weather" },
+              dynamic: true,
+            },
+            {
+              type: "tool-output-available",
+              toolCallId: "call-1",
+              output: { result: "sunny" },
+              dynamic: true,
+            },
+            { type: "text-start", id: "t1" },
+            { type: "text-delta", id: "t1", delta: "The weather is sunny." },
+            { type: "text-end", id: "t1" },
+            { type: "finish-step" },
+            { type: "finish" },
+          ],
+        }),
+      );
 
-    renderHost();
-    await typeAndSend("hi");
+      renderHost();
+      await typeAndSend("weather?");
 
-    // Each step's text part renders in its own element, so assert both
-    // individually rather than as a single concatenated string.
-    expect(
-      await screen.findByText("First step text.", undefined, {
-        timeout: 5000,
-      }),
-    ).toBeDefined();
-    expect(await screen.findByText("Second step text.")).toBeDefined();
-  });
+      expect(
+        await screen.findByText("The weather is sunny.", undefined, {
+          timeout: 5000,
+        }),
+      ).toBeDefined();
+    });
 
-  it("completes the turn cleanly on an empty completion (no content, no error)", async () => {
-    server.use(
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: [
-          { type: "start", messageId: "msg-1" },
-          { type: "start-step" },
-          { type: "finish-step" },
-          { type: "finish" },
-        ],
-      }),
-    );
+    it("renders text from both steps of a two-step turn", async () => {
+      server.use(
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: [
+            { type: "start", messageId: "msg-1" },
+            { type: "start-step" },
+            { type: "text-start", id: "t1" },
+            { type: "text-delta", id: "t1", delta: "First step text." },
+            { type: "text-end", id: "t1" },
+            { type: "finish-step" },
+            { type: "start-step" },
+            { type: "text-start", id: "t2" },
+            { type: "text-delta", id: "t2", delta: "Second step text." },
+            { type: "text-end", id: "t2" },
+            { type: "finish-step" },
+            { type: "finish" },
+          ],
+        }),
+      );
 
-    renderHost();
-    await typeAndSend("hi");
+      renderHost();
+      await typeAndSend("hi");
 
-    await waitFor(
-      () => {
-        expect(screen.queryByRole("button", { name: /stop/i })).toBeNull();
+      if (path === "stream runtime") {
+        // The runtime renders the persisted row, and the backend appends a
+        // message's text blocks to one assistant row; a reload shows the same.
         expect(
-          screen.queryByRole("button", { name: /submit/i }),
-        ).not.toBeNull();
-      },
-      { timeout: 5000 },
-    );
-    expect(screen.queryByText(/encountered an error/i)).toBeNull();
-  });
+          await screen.findByText(
+            "First step text.Second step text.",
+            undefined,
+            {
+              timeout: 5000,
+            },
+          ),
+        ).toBeDefined();
+        return;
+      }
+      // Each step's text part renders in its own element, so assert both
+      // individually rather than as a single concatenated string.
+      expect(
+        await screen.findByText("First step text.", undefined, {
+          timeout: 5000,
+        }),
+      ).toBeDefined();
+      expect(await screen.findByText("Second step text.")).toBeDefined();
+    });
 
-  it("renders both assistant replies across two back-to-back turns in the same session", async () => {
-    server.use(
-      copilotStreamSequenceHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunksPerTurn: [
-          assistantTextChunks("First reply.", { messageId: "msg-1" }),
-          assistantTextChunks("Second reply.", { messageId: "msg-2" }),
-        ],
-      }),
-    );
+    it("completes the turn cleanly on an empty completion (no content, no error)", async () => {
+      server.use(
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: [
+            { type: "start", messageId: "msg-1" },
+            { type: "start-step" },
+            { type: "finish-step" },
+            { type: "finish" },
+          ],
+        }),
+      );
 
-    renderHost();
-    await typeAndSend("first message");
-    expect(
-      await screen.findByText("First reply.", undefined, { timeout: 5000 }),
-    ).toBeDefined();
+      renderHost();
+      await typeAndSend("hi");
 
-    await typeAndSend("second message");
-    expect(
-      await screen.findByText("Second reply.", undefined, { timeout: 5000 }),
-    ).toBeDefined();
+      await waitFor(
+        () => {
+          expect(screen.queryByRole("button", { name: /stop/i })).toBeNull();
+          expect(
+            screen.queryByRole("button", { name: /submit/i }),
+          ).not.toBeNull();
+        },
+        { timeout: 5000 },
+      );
+      expect(screen.queryByText(/encountered an error/i)).toBeNull();
+    });
 
-    // First reply must still be visible — both turns should accumulate in
-    // the chat log, not replace each other.
-    expect(screen.getByText("First reply.")).toBeDefined();
-  });
+    it("renders both assistant replies across two back-to-back turns in the same session", async () => {
+      server.use(
+        copilotStreamSequenceHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunksPerTurn: [
+            assistantTextChunks("First reply.", { messageId: "msg-1" }),
+            assistantTextChunks("Second reply.", { messageId: "msg-2" }),
+          ],
+        }),
+      );
 
-  it("renders inline markdown emphasis through the assistant's text pipeline", async () => {
-    server.use(
-      copilotStreamHandler({
-        baseUrl: TEST_BACKEND_BASE_URL,
-        sessionId: TEST_SESSION_ID,
-        chunks: assistantTextChunks("Hello **bold** world."),
-      }),
-    );
+      renderHost();
+      await typeAndSend("first message");
+      expect(
+        await screen.findByText("First reply.", undefined, { timeout: 5000 }),
+      ).toBeDefined();
 
-    renderHost();
-    await typeAndSend("emphasize this");
+      await typeAndSend("second message");
+      expect(
+        await screen.findByText("Second reply.", undefined, { timeout: 5000 }),
+      ).toBeDefined();
 
-    // The raw `**bold**` literal must not appear in the rendered text — if
-    // it did, the markdown step was bypassed entirely. (Streamdown wraps
-    // inline emphasis runs in spans for its streaming animation rather
-    // than a bare <strong>, so we don't pin the tag.)
-    await screen.findByText(/bold/i, undefined, { timeout: 5000 });
-    expect(screen.queryByText("**bold**", { exact: true })).toBeNull();
-    expect(screen.queryByText(/\*\*bold\*\*/)).toBeNull();
+      // First reply must still be visible — both turns should accumulate in
+      // the chat log, not replace each other.
+      expect(screen.getByText("First reply.")).toBeDefined();
+    });
+
+    it("renders inline markdown emphasis through the assistant's text pipeline", async () => {
+      server.use(
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: assistantTextChunks("Hello **bold** world."),
+        }),
+      );
+
+      renderHost();
+      await typeAndSend("emphasize this");
+
+      // The raw `**bold**` literal must not appear in the rendered text — if
+      // it did, the markdown step was bypassed entirely. (Streamdown wraps
+      // inline emphasis runs in spans for its streaming animation rather
+      // than a bare <strong>, so we don't pin the tag.)
+      await screen.findByText(/bold/i, undefined, { timeout: 5000 });
+      expect(screen.queryByText("**bold**", { exact: true })).toBeNull();
+      expect(screen.queryByText(/\*\*bold\*\*/)).toBeNull();
+    });
   });
 });

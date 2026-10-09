@@ -5,6 +5,13 @@ export const MAX_SKILL_DESCRIPTION_CHARS = 1024;
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---/;
 
+// A zip goes to the package endpoint, anything else to the single-file one.
+// Matched on the extension, not the MIME type: browsers report a zip as
+// application/zip, application/x-zip-compressed or "" depending on the OS.
+export function isSkillPackageFile(file: File): boolean {
+  return file.name.toLowerCase().endsWith(".zip");
+}
+
 // Best-effort, dependency-free pre-flight for an uploaded SKILL.md. The
 // backend remains the source of truth — this only catches the common,
 // confidently-detectable cases (missing frontmatter, over-long single-line

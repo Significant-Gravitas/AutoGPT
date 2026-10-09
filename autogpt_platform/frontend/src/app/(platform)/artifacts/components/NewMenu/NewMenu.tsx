@@ -20,9 +20,12 @@ import { useNewMenu } from "./useNewMenu";
 
 interface Props {
   selectedFolderId: string | null;
+  /** Open folder's name, shown in the create dialog so the destination is
+   *  visible before the folder is made. */
+  selectedFolderName?: string | null;
 }
 
-export function NewMenu({ selectedFolderId }: Props) {
+export function NewMenu({ selectedFolderId, selectedFolderName }: Props) {
   const {
     fileInputRef,
     isUploading,
@@ -85,6 +88,9 @@ export function NewMenu({ selectedFolderId }: Props) {
         isOpen={isCreateOpen}
         setIsOpen={setIsCreateOpen}
         mode="create"
+        location={
+          selectedFolderId ? (selectedFolderName ?? undefined) : undefined
+        }
         isSubmitting={isCreating}
         onSubmit={handleCreateFolder}
       />

@@ -2,8 +2,10 @@
 
 import argparse
 import json
+import os
 import sys
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -18,6 +20,110 @@ class JUnitSummary:
     @property
     def passed(self) -> int:
         return self.tests - self.failures - self.errors - self.skipped
+
+
+@dataclass(frozen=True)
+class SkipPolicy:
+    common: frozenset[str]
+    python_versions: dict[str, frozenset[str]] | None = None
+    secret_gated: Mapping[str, frozenset[str]] = field(default_factory=dict)
+
+    def for_python_version(self, version: str | None) -> set[str]:
+        if self.python_versions is None:
+            return set(self.common)
+        if version not in self.python_versions:
+            raise ValueError(
+                f"an explicitly configured Python version is required; got {version!r}"
+            )
+        return set(self.common | self.python_versions[version])
+
+    def secret_gated_ids(self, env: Mapping[str, str] | None = None) -> set[str]:
+        """IDs a missing repository secret is allowed to skip.
+
+        Given ``env``, only the IDs whose variable is absent there; without it,
+        all of them, for callers that cannot see the secrets themselves.
+        """
+        return {
+            skip_id
+            for variable, skip_ids in self.secret_gated.items()
+            if env is None or not env.get(variable)
+            for skip_id in skip_ids
+        }
+
+
+def _skip_ids(entries: object) -> frozenset[str]:
+    if (
+        not isinstance(entries, list)
+        or any(
+            not isinstance(entry, str)
+            or "." not in entry
+            or not entry.split(".", 1)[0].strip()
+            or not entry.rsplit(".", 1)[-1].strip()
+            for entry in entries
+        )
+        or len(set(entries)) != len(entries)
+    ):
+        raise ValueError(
+            "skip allowlist must contain unique nonempty classname.name IDs"
+        )
+    return frozenset(entries)
+
+
+def _secret_gated(
+    entries: object, unconditional: frozenset[str]
+) -> dict[str, frozenset[str]]:
+    if not isinstance(entries, dict):
+        raise ValueError("secret_gated must map environment variables to skip IDs")
+    gated = {}
+    for variable, skip_ids in entries.items():
+        if not (variable.isidentifier() and variable.isupper()):
+            raise ValueError(f"invalid secret_gated environment variable: {variable!r}")
+        gated[variable] = _skip_ids(skip_ids)
+        if repeated := unconditional & gated[variable]:
+            raise ValueError(
+                f"{variable} repeats unconditionally allowed skip IDs: "
+                f"{', '.join(sorted(repeated))}"
+            )
+    return gated
+
+
+def load_skip_policy(path: Path) -> SkipPolicy:
+    entries = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(entries, list):
+        return SkipPolicy(_skip_ids(entries))
+    if not isinstance(entries, dict) or not (
+        {"common", "python_versions"}
+        <= set(entries)
+        <= {"common", "python_versions", "secret_gated"}
+    ):
+        raise ValueError(
+            "skip policy must contain common and python_versions, "
+            "and may contain secret_gated"
+        )
+    common = _skip_ids(entries["common"])
+    versions = entries["python_versions"]
+    if not isinstance(versions, dict) or not versions:
+        raise ValueError(
+            "python_versions must explicitly configure every tested version"
+        )
+    version_skips = {}
+    for version, ids in versions.items():
+        parts = version.split(".")
+        if len(parts) != 2 or not all(part.isdigit() for part in parts):
+            raise ValueError(f"invalid Python version: {version!r}")
+        specific = _skip_ids(ids)
+        if duplicate := common & specific:
+            raise ValueError(
+                f"Python {version} repeats common skip IDs: {', '.join(sorted(duplicate))}"
+            )
+        version_skips[version] = specific
+    return SkipPolicy(
+        common,
+        version_skips,
+        _secret_gated(
+            entries.get("secret_gated", {}), common.union(*version_skips.values())
+        ),
+    )
 
 
 def _declared_count(element: ElementTree.Element, key: str, label: str) -> int | None:
@@ -154,6 +260,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=Path,
         help="reject skips not listed as exact classname.name IDs in this JSON file",
     )
+    parser.add_argument(
+        "--python-version", help="Python version that produced the reports"
+    )
     parser.add_argument("reports", nargs="+", type=Path)
     return parser.parse_args(argv)
 
@@ -164,22 +273,10 @@ def main(argv: list[str] | None = None) -> int:
     allowed_skips = None
     if args.allow_skips_from:
         try:
-            entries = json.loads(args.allow_skips_from.read_text(encoding="utf-8"))
-            if (
-                not isinstance(entries, list)
-                or any(
-                    not isinstance(entry, str)
-                    or "." not in entry
-                    or not entry.split(".", 1)[0].strip()
-                    or not entry.rsplit(".", 1)[-1].strip()
-                    for entry in entries
-                )
-                or len(set(entries)) != len(entries)
-            ):
-                raise ValueError(
-                    "skip allowlist must contain unique nonempty classname.name IDs"
-                )
-            allowed_skips = set(entries)
+            policy = load_skip_policy(args.allow_skips_from)
+            allowed_skips = policy.for_python_version(
+                args.python_version
+            ) | policy.secret_gated_ids(os.environ)
         except (OSError, ValueError) as exc:
             print(f"Invalid skip allowlist: {exc}", file=sys.stderr)
             return 1

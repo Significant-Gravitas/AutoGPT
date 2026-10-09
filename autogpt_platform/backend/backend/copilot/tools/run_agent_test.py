@@ -1,9 +1,11 @@
+import asyncio
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import orjson
 import pytest
 
+from backend.copilot.context import set_turn_unattended
 from backend.data.execution import ExecutionStatus
 from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.executor.scheduler import GraphExecutionJobInfo
@@ -580,10 +582,12 @@ async def test_build_setup_requirements_from_credential_validation_error(
     )
 
     # Race path: all credential fields shown as missing.
-    response = tool._build_setup_requirements_from_validation_error(
+    response = await tool._build_setup_requirements_from_validation_error(
         graph=graph,
         error=error,
         session_id="test-session",
+        user_id="test-user",
+        expert_id=None,
     )
 
     assert isinstance(response, SetupRequirementsResponse)
@@ -620,10 +624,12 @@ async def test_build_setup_requirements_shows_all_creds_missing_in_race(
         node_errors={"some-node-id": {"credentials": "These credentials are required"}},
     )
 
-    response = tool._build_setup_requirements_from_validation_error(
+    response = await tool._build_setup_requirements_from_validation_error(
         graph=graph,
         error=error,
         session_id="test-session",
+        user_id="test-user",
+        expert_id=None,
     )
 
     assert isinstance(response, SetupRequirementsResponse)
@@ -649,10 +655,12 @@ async def test_build_setup_requirements_returns_none_for_empty_node_errors(
         node_errors={},
     )
 
-    response = tool._build_setup_requirements_from_validation_error(
+    response = await tool._build_setup_requirements_from_validation_error(
         graph=graph,
         error=error,
         session_id="test-session",
+        user_id="test-user",
+        expert_id=None,
     )
 
     assert response is None
@@ -672,10 +680,12 @@ async def test_build_setup_requirements_returns_none_for_non_credential_error(
         node_errors={"some-node-id": {"url": "Input field 'url' is required"}},
     )
 
-    response = tool._build_setup_requirements_from_validation_error(
+    response = await tool._build_setup_requirements_from_validation_error(
         graph=graph,
         error=error,
         session_id="test-session",
+        user_id="test-user",
+        expert_id=None,
     )
 
     assert response is None
@@ -698,10 +708,12 @@ async def test_build_setup_requirements_returns_none_for_mixed_errors(
         },
     )
 
-    response = tool._build_setup_requirements_from_validation_error(
+    response = await tool._build_setup_requirements_from_validation_error(
         graph=graph,
         error=error,
         session_id="test-session",
+        user_id="test-user",
+        expert_id=None,
     )
 
     assert response is None
@@ -762,6 +774,7 @@ async def test_run_agent_schedule_credential_race_returns_setup_card(
 @pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_schedule_in_expert_session_stamps_expert_id(
     setup_test_data,
+    request,
 ):
     """A schedule created from an expert-scoped chat session must carry the
     session's expert_id, otherwise it never shows on the Team card / expert
@@ -788,6 +801,12 @@ async def test_run_agent_schedule_in_expert_session_stamps_expert_id(
         expert_id=expert_id,
     )
 
+    installed = patch(
+        "backend.copilot.tools.run_agent.require_installed_workflow",
+        new=AsyncMock(return_value=None),
+    )
+    installed.start()
+    request.addfinalizer(installed.stop)
     with patch(
         "backend.copilot.tools.run_agent.get_scheduler_client",
         return_value=fake_scheduler,
@@ -1073,6 +1092,7 @@ async def test_run_agent_execution_credential_race_returns_setup_card(
 @pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_expert_workspace_unavailable_returns_stable_error(
     setup_test_data,
+    request,
 ):
     user = setup_test_data["user"]
     store_submission = setup_test_data["store_submission"]
@@ -1080,6 +1100,12 @@ async def test_run_agent_expert_workspace_unavailable_returns_stable_error(
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
     session = make_session(user_id=user.id, expert_id="expert-1")
 
+    installed = patch(
+        "backend.copilot.tools.run_agent.require_installed_workflow",
+        new=AsyncMock(return_value=None),
+    )
+    installed.start()
+    request.addfinalizer(installed.stop)
     with patch(
         "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
         new_callable=AsyncMock,
@@ -1170,12 +1196,14 @@ async def test_run_agent_attributes_execution_to_session_org(mocker, expert_id):
         "backend.copilot.tools.run_agent.get_or_create_library_agent",
         AsyncMock(return_value=lib),
     )
-    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
     mocker.patch(
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
     default_team = AsyncMock(return_value=("personal-org", "personal-team"))
-    mocker.patch("backend.api.features.orgs.db.get_user_default_team", default_team)
+    mocker.patch(
+        "backend.copilot.tools.run_agent.orgs_db",
+        return_value=MagicMock(get_user_default_team=default_team),
+    )
 
     captured: dict = {}
 
@@ -1212,6 +1240,58 @@ async def test_run_agent_attributes_execution_to_session_org(mocker, expert_id):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "origin, dry_run, gate_approved, expected",
+    [
+        ("interactive", False, False, True),
+        (None, False, False, True),
+        ("automation", False, False, False),
+        ("interactive", True, False, False),
+        # The card was the question; the run keeps the graph's own setting.
+        ("interactive", False, True, False),
+    ],
+)
+async def test_run_agent_pauses_irreversible_actions_for_attended_chats(
+    mocker, origin, dry_run, gate_approved, expected
+):
+    from backend.copilot.model import ChatSessionMetadata
+
+    tool = RunAgentTool()
+    session = make_session(user_id="user-1")
+    session.metadata = ChatSessionMetadata(origin=origin)
+    session.organization_id = "org-1"
+
+    lib = MagicMock(graph_id="graph-1", graph_version=1, id="lib-1")
+    lib.name = "Test Agent"
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_or_create_library_agent",
+        AsyncMock(return_value=lib),
+    )
+    mocker.patch("backend.copilot.tools.run_agent.track_chat_outcome")
+    mocker.patch(
+        "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
+    )
+    add = mocker.patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        AsyncMock(return_value=MagicMock(id="exec-1")),
+    )
+    graph = MagicMock(id="graph-1", version=1)
+    graph.name = "Test Agent"
+
+    await tool._run_agent(
+        user_id="user-1",
+        session=session,
+        graph=graph,
+        graph_credentials={},
+        inputs={},
+        dry_run=dry_run,
+        gate_approved=gate_approved,
+    )
+
+    assert add.await_args.kwargs["pause_irreversible_actions"] is expected
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocker):
     """Sessions created before org tagging carry no org — the run must fall
     back to the user's default team instead of executing tenant-blind."""
@@ -1230,12 +1310,14 @@ async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocke
         "backend.copilot.tools.run_agent.get_or_create_library_agent",
         AsyncMock(return_value=lib),
     )
-    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
     mocker.patch(
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
     default_team = AsyncMock(return_value=("personal-org", "personal-team"))
-    mocker.patch("backend.api.features.orgs.db.get_user_default_team", default_team)
+    mocker.patch(
+        "backend.copilot.tools.run_agent.orgs_db",
+        return_value=MagicMock(get_user_default_team=default_team),
+    )
 
     captured: dict = {}
 
@@ -1428,7 +1510,6 @@ async def test_run_preset_executes_with_merged_inputs():
             "backend.copilot.tools.run_agent._safe_link_to_chat_share",
             new=AsyncMock(),
         ),
-        patch("backend.copilot.tools.run_agent.track_agent_run_success"),
     ):
         result = await tool._handle_preset_run(
             "preset-user", session, RunAgentInput(preset_id="p1", inputs={"b": 99})
@@ -1598,13 +1679,14 @@ def _completed_run_mocks(
         "backend.copilot.tools.run_agent.get_or_create_library_agent",
         AsyncMock(return_value=lib),
     )
-    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
     mocker.patch(
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
     mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
-        AsyncMock(return_value=("org-1", "team-1")),
+        "backend.copilot.tools.run_agent.orgs_db",
+        return_value=MagicMock(
+            get_user_default_team=AsyncMock(return_value=("org-1", "team-1"))
+        ),
     )
     execution = MagicMock()
     execution.id = "exec-1"
@@ -1727,6 +1809,28 @@ async def test_wet_run_omits_node_trace_dry_run_inlines_it(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_only_a_real_run_reports_agent_run_success(mocker, dry_run):
+    _completed_run_mocks(mocker, outputs={"result": ["ok"]}, node_executions=[])
+    mocker.patch("backend.copilot.tools.run_agent.charge_credits", AsyncMock())
+    tracked = mocker.patch("backend.copilot.tools.run_agent.track_chat_outcome")
+
+    await _run_waited(mocker, dry_run=dry_run)
+
+    if dry_run:
+        tracked.assert_not_called()
+    else:
+        tracked.assert_called_once_with(
+            "user-1",
+            mocker.ANY,
+            "agent_run_success",
+            graph_id="graph-1",
+            execution_id="exec-1",
+            library_agent_id="lib-1",
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_detailed_fetch_failure_degrades_to_summary(mocker):
     """When the per-node trace fetch raises, the run response still returns
     (summary only) instead of crashing."""
@@ -1739,3 +1843,114 @@ async def test_detailed_fetch_failure_degrades_to_summary(mocker):
 
     assert "completed successfully" in response.message
     assert response.execution.nodes_failed is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_preset_refuses_uninstalled_workflow_for_expert():
+    from backend.copilot.tools.run_agent import RunAgentInput
+
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user", expert_id="expert-a")
+    preset = MagicMock(
+        expert_id="expert-a", graph_id="graph-out", graph_version=1, inputs={}
+    )
+    lib_db = MagicMock()
+    lib_db.get_preset = AsyncMock(return_value=preset)
+    graph_db_mock = MagicMock()
+    graph_db_mock.get_graph = AsyncMock(
+        return_value=MagicMock(id="graph-out", name="Outside", version=1)
+    )
+    experts = MagicMock()
+    experts.get_expert = AsyncMock(
+        return_value=MagicMock(
+            workflows=[MagicMock(library_agent_id="lib-in", graph_id="graph-in")]
+        )
+    )
+    add_exec = AsyncMock()
+    with (
+        patch("backend.copilot.tools.run_agent.library_db", return_value=lib_db),
+        patch("backend.copilot.tools.run_agent.graph_db", return_value=graph_db_mock),
+        patch("backend.copilot.tools.expert_scope.experts_db", return_value=experts),
+        patch(
+            "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+            new=add_exec,
+        ),
+    ):
+        result = await tool._handle_preset_run(
+            "preset-user", session, RunAgentInput(preset_id="p1")
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "workflow_not_installed"
+    add_exec.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_validation_error_card_carries_expert_grants(
+    setup_firecrawl_test_data,
+):
+    """The race-path card is an expert connect card like every other one, so
+    the row must not fall back to the account's credential."""
+    graph = setup_firecrawl_test_data["graph"]
+    tool = RunAgentTool()
+    error = GraphValidationError(
+        message="Graph is invalid",
+        node_errors={"some-node-id": {"credentials": "These credentials are required"}},
+    )
+
+    async def annotate(user_id, expert_id, missing):
+        return {
+            key: {**entry, "expert_grant": {"expert_id": expert_id, "credentials": []}}
+            for key, entry in missing.items()
+        }
+
+    with patch(
+        "backend.copilot.tools.run_agent.annotate_expert_grants", side_effect=annotate
+    ):
+        response = await tool._build_setup_requirements_from_validation_error(
+            graph=graph,
+            error=error,
+            session_id="test-session",
+            user_id="test-user",
+            expert_id="expert-a",
+        )
+
+    assert isinstance(response, SetupRequirementsResponse)
+    missing = response.setup_info.user_readiness.missing_credentials
+    assert all(
+        entry["expert_grant"]["expert_id"] == "expert-a" for entry in missing.values()
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_validation_race_on_a_scheduled_turn_fails_instead_of_asking():
+    """A preset's stale credential reaches the race handler without the
+    prerequisite check; on a turn nobody watches, a setup card would never
+    be answered, so the step must fail naming the provider (SECRT-2804)."""
+    graph = MagicMock(id="graph-1", version=1)
+    graph.name = "Daily Scraper"
+    error = GraphValidationError(
+        message="Graph is invalid",
+        node_errors={"some-node-id": {"credentials": "These credentials are required"}},
+    )
+    session = make_session("test-user")
+    session.metadata.origin = "automation"
+
+    async def turn():
+        set_turn_unattended(session, scheduled=False)
+        return await RunAgentTool()._handle_graph_validation_race(
+            error=error,
+            graph=graph,
+            user_id="test-user",
+            session_id=session.session_id,
+            action_verb="running",
+        )
+
+    with patch(
+        "backend.copilot.tools.run_agent.build_missing_credentials_from_graph",
+        return_value={"credentials": {"provider": "firecrawl"}},
+    ):
+        response = await asyncio.create_task(turn())
+
+    assert isinstance(response, ErrorResponse)
+    assert response.error == "missing_credentials"
+    assert "firecrawl" in response.message

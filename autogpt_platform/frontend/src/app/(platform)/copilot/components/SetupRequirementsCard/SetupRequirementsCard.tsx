@@ -23,8 +23,8 @@ import {
   buildExpectedInputsSchema,
   buildPreviewRunMessage,
   buildRunMessage,
-  buildTriggerSetupMessage,
   buildSiblingInputsFromCredentials,
+  buildTriggerSetupMessage,
   checkAllCredentialsComplete,
   checkAllInputsComplete,
   checkCanRun,
@@ -34,6 +34,7 @@ import {
   getRequestedProviders,
   isRejectedCredentialSelected,
   mergeInputValues,
+  reportCredentialPicks,
 } from "./helpers";
 import { CredentialRejectionNotice } from "../CredentialRejectionNotice/CredentialRejectionNotice";
 
@@ -77,6 +78,10 @@ export function SetupRequirementsCard({
   >({});
   const [hasSent, setHasSent] = useState(false);
   const [justConnected, setJustConnected] = useState(false);
+  // Credentials a sign-in on the chain's row reported. A renewal keeps the
+  // credential's id, so this is how a renewed refused credential is told
+  // apart from the refused one still being selected.
+  const [renewedIds, setRenewedIds] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const { credentialFields, requiredCredentials } = coerceCredentialFields(
@@ -202,9 +207,15 @@ export function SetupRequirementsCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRun captures latest state; claim guards re-entry
   }, [chainActions, canAutoDismiss, hasSent]);
 
+  // Only a sign-in that renewed the refused credential itself lifts the
+  // rejection; any other sign-in leaves it refused.
+  const isRejectionRenewed = renewedIds.includes(
+    rejection?.credential_id ?? "",
+  );
   const canRun =
     checkCanRun(needsCredentials, isAllCredsComplete, isAllInputsDone) &&
-    !isRejectedCredentialSelected(rejection, inputCredentials);
+    (isRejectionRenewed ||
+      !isRejectedCredentialSelected(rejection, inputCredentials));
 
   // Inside a tool chain the card's own Proceed is replaced by the chain's
   // single Proceed step — register readiness + message with the chain.
@@ -218,6 +229,10 @@ export function SetupRequirementsCard({
       justConnected,
       credentialsReady: !needsCredentials || isAllCredsComplete,
       buildMessage: () => buildProceedMessage(),
+      // A trigger's line carries the chosen credential ids, and an edit-mode
+      // card's may carry run inputs; only a bare confirmation is shareable.
+      credentialsOnly: needsCredentials && !needsInputs && !isTriggerMode,
+      beforeSend: () => reportCredentialPicks(sessionID, inputCredentials),
       onSent: markSent,
       connectors: needsCredentials
         ? {
@@ -225,7 +240,11 @@ export function SetupRequirementsCard({
             fields: credentialFields,
             selected: inputCredentials,
             onChange: handleCredentialChange,
-            onConnected: () => setJustConnected(true),
+            onConnected: (credentialId) => {
+              setJustConnected(true);
+              if (credentialId) setRenewedIds((ids) => [...ids, credentialId]);
+            },
+            rejectedCredentialId: rejection?.credential_id ?? undefined,
           }
         : undefined,
       inputs:
@@ -290,7 +309,9 @@ export function SetupRequirementsCard({
   function handleRun() {
     const message = buildProceedMessage();
     markSent();
-    onSend(message);
+    void reportCredentialPicks(sessionID, inputCredentials).then(() =>
+      onSend(message),
+    );
   }
 
   return (

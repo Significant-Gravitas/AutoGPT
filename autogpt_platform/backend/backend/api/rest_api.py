@@ -30,22 +30,31 @@ import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
 import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
+import backend.api.features.billing.credits.routes as credits_routes
+import backend.api.features.billing.subscriptions.routes as subscriptions_routes
+import backend.api.features.blocks.routes as blocks_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
+import backend.api.features.chat.feedback as chat_feedback
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.chat.speech as chat_speech
-import backend.api.features.executions.review.routes
+import backend.api.features.desktop_preview
 import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
+import backend.api.features.graph_executions.review.routes
+import backend.api.features.graph_executions.routes as graph_executions_routes
+import backend.api.features.graphs.routes as graphs_routes
 import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
+import backend.api.features.mailerlite.routes as mailerlite_routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.memory.routes as memory_routes
 import backend.api.features.oauth
+import backend.api.features.onboarding.routes as onboarding_routes
 import backend.api.features.onboarding_dump.routes as onboarding_dump_routes
 import backend.api.features.orgs.invitation_routes
 import backend.api.features.orgs.routes as org_routes
@@ -54,13 +63,15 @@ import backend.api.features.otto.routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
+import backend.api.features.schedules.routes as schedules_routes
 import backend.api.features.search.routes as search_routes
+import backend.api.features.skills.routes as skills_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.store.skill_routes
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
-import backend.api.features.v1
+import backend.api.features.user.routes as user_routes
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
 import backend.api.features.workspace.routes as team_routes
 import backend.data.autopilot_migrate
@@ -95,7 +106,7 @@ from backend.util.exceptions import (
     NotFoundError,
     PreconditionFailed,
 )
-from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
+from backend.util.feature_flag import initialize_feature_flags, shutdown_feature_flags
 from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
 
@@ -118,13 +129,13 @@ _webhook_bot_backend = BotBackend()
 
 
 @contextlib.contextmanager
-def launch_darkly_context():
+def feature_flag_context():
     if settings.config.app_env != backend.util.settings.AppEnvironment.LOCAL:
-        initialize_launchdarkly()
+        initialize_feature_flags()
         try:
             yield
         finally:
-            shutdown_launchdarkly()
+            shutdown_feature_flags()
     else:
         yield
 
@@ -191,7 +202,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
 
-    with launch_darkly_context():
+    with feature_flag_context():
         yield
 
     try:
@@ -384,12 +395,59 @@ app.add_exception_handler(
 app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
-app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
+app.include_router(
+    backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"
+)
 app.include_router(subscription_trial_routes.router, prefix="/api")
 app.include_router(
     api_keys_routes.router,
     tags=["v1", "api-keys"],
     prefix="/api/api-keys",
+)
+app.include_router(
+    skills_routes.router,
+    tags=["v1", "skills"],
+    prefix="/api/skills",
+)
+app.include_router(
+    schedules_routes.router,
+    tags=["v1", "schedules"],
+    prefix="/api",
+)
+app.include_router(
+    graph_executions_routes.router,
+    tags=["v1"],
+    prefix="/api",
+)
+app.include_router(
+    graphs_routes.router,
+    tags=["v1", "graphs"],
+    prefix="/api",
+)
+app.include_router(
+    credits_routes.router,
+    tags=["v1", "credits"],
+    prefix="/api",
+)
+app.include_router(
+    subscriptions_routes.router,
+    tags=["v1", "credits"],
+    prefix="/api",
+)
+app.include_router(
+    blocks_routes.router,
+    tags=["v1"],
+    prefix="/api",
+)
+app.include_router(
+    onboarding_routes.router,
+    tags=["v1"],
+    prefix="/api",
+)
+app.include_router(
+    user_routes.router,
+    tags=["v1"],
+    prefix="/api",
 )
 app.include_router(
     auth_email_routes.auth_email_router,
@@ -482,7 +540,7 @@ if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL:
         prefix="/api",
     )
 app.include_router(
-    backend.api.features.executions.review.routes.router,
+    backend.api.features.graph_executions.review.routes.router,
     tags=["v2", "executions", "review"],
     prefix="/api/review",
 )
@@ -512,7 +570,17 @@ app.include_router(
     prefix="/api/email",
 )
 app.include_router(
+    mailerlite_routes.router,
+    tags=["v1", "email"],
+    prefix="/api/email",
+)
+app.include_router(
     chat_routes.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_feedback.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
 )
@@ -666,7 +734,7 @@ class AgentServer(backend.util.service.AppProcess):
             is_team_billing_manager=False,
             seat_status="ACTIVE",
         )
-        return await backend.api.features.v1.execute_graph(
+        return await graphs_routes.execute_graph(
             user_id=user_id,
             ctx=ctx,
             graph_id=graph_id,
@@ -699,13 +767,13 @@ class AgentServer(backend.util.service.AppProcess):
             is_team_billing_manager=False,
             seat_status="ACTIVE",
         )
-        return await backend.api.features.v1.get_graph(
+        return await graphs_routes.get_graph(
             graph_id, user_id, ctx, graph_version, for_export
         )
 
     @staticmethod
     async def test_create_graph(
-        create_graph: backend.api.features.v1.CreateGraph,
+        create_graph: graphs_routes.CreateGraph,
         user_id: str,
     ):
         from autogpt_libs.auth.models import RequestContext
@@ -725,9 +793,7 @@ class AgentServer(backend.util.service.AppProcess):
             is_team_billing_manager=False,
             seat_status="ACTIVE",
         )
-        return await backend.api.features.v1.create_new_graph(
-            create_graph, user_id, ctx
-        )
+        return await graphs_routes.create_new_graph(create_graph, user_id, ctx)
 
     @staticmethod
     async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
@@ -763,7 +829,7 @@ class AgentServer(backend.util.service.AppProcess):
             is_team_billing_manager=False,
             seat_status="ACTIVE",
         )
-        return await backend.api.features.v1.delete_graph(graph_id, user_id, ctx)
+        return await graphs_routes.delete_graph(graph_id, user_id, ctx)
 
     @staticmethod
     async def test_get_presets(user_id: str, page: int = 1, page_size: int = 10):

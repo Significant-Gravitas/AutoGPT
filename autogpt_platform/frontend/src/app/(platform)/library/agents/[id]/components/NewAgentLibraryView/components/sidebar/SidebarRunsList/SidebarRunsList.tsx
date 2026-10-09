@@ -40,6 +40,7 @@ interface Props {
     templatesCount: number;
     triggersCount: number;
     loading?: boolean;
+    hasError?: boolean;
   }) => void;
 }
 
@@ -64,6 +65,7 @@ export function SidebarRunsList({
     triggersCount,
     error,
     loading,
+    retryFailedQueries,
     fetchMoreRuns,
     hasMoreRuns,
     isFetchingMoreRuns,
@@ -75,7 +77,7 @@ export function SidebarRunsList({
   });
 
   if (error) {
-    return <ErrorCard responseError={error} />;
+    return <ErrorCard responseError={error} onRetry={retryFailedQueries} />;
   }
 
   if (loading) {

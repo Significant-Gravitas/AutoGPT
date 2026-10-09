@@ -394,6 +394,24 @@ class TestDelegation:
         assert mock_sessions[0].dry_run is True
 
     @pytest.mark.asyncio
+    async def test_the_result_carries_the_tree_state(
+        self, monkeypatch, roster, mock_turn, mock_sessions
+    ):
+        """The parent decides its next spawn from numbers, not a guess."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.build_spawn_state_note",
+            AsyncMock(return_value=" TREE-STATE"),
+        )
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert r.message.endswith(" TREE-STATE")
+
+    @pytest.mark.asyncio
     async def test_handoff_message_names_the_delegating_expert(
         self, roster, mock_turn, mock_sessions
     ):
@@ -423,6 +441,25 @@ class TestDelegation:
         )
         assert "Otto" in mock_turn.await_args.kwargs["message"]
         assert mock_sessions[0].metadata.delegated_by_expert_id is None
+
+    @pytest.mark.asyncio
+    async def test_delegated_message_carries_sender_provenance(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """The teammate's thread renders a "Sent from" badge off the message
+        row, so the delegating session and expert ride its metadata."""
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(session_id="s-parent", expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert mock_turn.await_args.kwargs["message_metadata"] == {
+            "from_session_id": "s-parent",
+            "from_expert_id": "expert-a",
+            "from_expert_name": "Ari",
+        }
 
     @pytest.mark.asyncio
     async def test_response_carries_target_identity(

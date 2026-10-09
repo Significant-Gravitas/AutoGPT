@@ -1,0 +1,7880 @@
+{
+ "source": "Langfuse find_block calls, prod+dev, 30 days to 2026-09-14; labels = what the turn did next",
+ "items": [
+  {
+   "query": "linear issue",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearCreateIssueBlock",
+    "LinearCreateCommentBlock",
+    "LinearSearchIssuesBlock",
+    "LinearGetProjectIssuesBlock",
+    "LinearSearchProjectsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "sentry",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "mcp.sentry.dev",
+   "label_kind": "mcp"
+  },
+  {
+   "query": "kubernetes pod metrics",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "grafana",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "SQLQueryBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Discord post message",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ReadDiscordMessagesBlock"
+   ],
+   "label": "web_fetch",
+   "label_kind": "tool"
+  },
+  {
+   "query": "Notion create page",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "NotionCreatePageBlock",
+    "NotionReadPageMarkdownBlock",
+    "NotionReadPageBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Notion update database page",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "NotionCreatePageBlock",
+    "NotionSearchBlock",
+    "NotionReadPageBlock",
+    "NotionReadPageMarkdownBlock",
+    "NotionReadDatabaseBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI text summarize",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AITextSummarizerBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "Notion append block content update page",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "NotionCreatePageBlock",
+    "NotionReadPageMarkdownBlock",
+    "NotionReadPageBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI text generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIImageGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIAdMakerVideoCreatorBlock",
+    "AIShortformVideoCreatorBlock",
+    "AITextSummarizerBlock",
+    "AIImageCustomizerBlock",
+    "VideoNarrationBlock",
+    "AIImageEditorBlock",
+    "IdeogramModelBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent input agent output",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "IfInputMatchesBlock",
+    "StoreValueBlock",
+    "AgentExecutorBlock",
+    "AIConditionBlock",
+    "AgentFileInputBlock"
+   ],
+   "label": "web_fetch",
+   "label_kind": "tool"
+  },
+  {
+   "query": "format text template concatenate string",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "CombineTextsBlock",
+    "FillTextTemplateBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "FillTextTemplateBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "current date time now",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GetCurrentDateAndTimeBlock",
+    "GetCurrentDateBlock",
+    "GetCurrentTimeBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "code sandbox execute script",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "base64 encode",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentMailGetMessageAttachmentBlock",
+    "AgentMailGetThreadAttachmentBlock"
+   ],
+   "label": "web_fetch",
+   "label_kind": "tool"
+  },
+  {
+   "query": "hash encode text",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "web_fetch",
+   "label_kind": "tool"
+  },
+  {
+   "query": "get current date",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GetCurrentDateBlock",
+    "GetCurrentDateAndTimeBlock"
+   ],
+   "label": "GetCurrentDateBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Outlook email",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Microsoft 365 email read",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "N-able",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "ticketing system tickets",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "send authenticated web request",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendAuthenticatedWebRequestBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "email",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ProfileEnrichmentBlock",
+    "AgentMailSendMessageBlock",
+    "SendEmailBlock",
+    "AgentMailCreateDraftBlock",
+    "GmailSendBlock",
+    "AgentMailForwardMessageBlock",
+    "ValidateEmailsBlock",
+    "GmailCreateDraftBlock",
+    "AgentMailCreateInboxBlock",
+    "GoogleSheetsShareSpreadsheetBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "notion create database",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "NotionCreatePageBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "structured json extraction ai",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExaCreateResearchBlock",
+    "CodeExtractionBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "gmail read emails",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GmailReadBlock",
+    "GmailGetThreadBlock",
+    "GmailSendBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "notion create database page",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "NotionCreatePageBlock",
+    "NotionSearchBlock",
+    "NotionReadPageMarkdownBlock",
+    "NotionReadPageBlock",
+    "NotionReadDatabaseBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "outlook read emails",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GmailReadBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "microsoft 365 email",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "email inbox",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentMailCreatePodInboxBlock",
+    "AgentMailCreateInboxBlock",
+    "AgentMailGetInboxBlock",
+    "AgentMailSendMessageBlock",
+    "AgentMailUpdateInboxBlock",
+    "AgentMailListInboxesBlock",
+    "AgentMailDeleteInboxBlock",
+    "AgentMailGetDraftBlock",
+    "AgentMailCreateDraftBlock",
+    "AgentMailGetInboxThreadBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "exchange office365 mail read",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "microsoft",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "authenticated web request",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SendAuthenticatedWebRequestBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "Linear create project",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearCreateIssueBlock",
+    "LinearSearchProjectsBlock"
+   ],
+   "label": "mcp.linear.app",
+   "label_kind": "mcp"
+  },
+  {
+   "query": "Linear project create ticket",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearCreateIssueBlock"
+   ],
+   "label": "browser_navigate",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AI Text Generator LLM prompt",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIConversationBlock",
+    "AIStructuredResponseGeneratorBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Store Value",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "StoreValueBlock",
+    "PersistInformationBlock",
+    "CompanySearchBlock",
+    "PeopleSearchBlock",
+    "StripeLinkCreateTokenSpendRequestBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Agent Input",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentInputBlock",
+    "AgentGoogleDriveFileInputBlock",
+    "IfInputMatchesBlock",
+    "AgentNumberInputBlock",
+    "AgentTimeInputBlock",
+    "AgentToggleInputBlock",
+    "AgentDateInputBlock",
+    "AgentTableInputBlock",
+    "AgentDropdownInputBlock",
+    "AgentFileInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Agent Output",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentOutputBlock",
+    "StoreValueBlock",
+    "AutoPilotBlock",
+    "IfInputMatchesBlock",
+    "AgentExecutorBlock",
+    "AIConditionBlock",
+    "ConditionBlock",
+    "AgentFileInputBlock",
+    "OrchestratorBlock",
+    "StepThroughItemsBlock"
+   ],
+   "label": "AITextGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "AutoPilot session",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AutoPilotBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "AutoPilot transport codex",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AutoPilotBlock"
+   ],
+   "label": "search_docs",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AutoPilot session",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AutoPilotBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "linear get issue",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearGetProjectIssuesBlock",
+    "LinearCreateIssueBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "linear list issues search",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchIssuesBlock",
+    "LinearSearchProjectsBlock"
+   ],
+   "label": "LinearSearchIssuesBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "linear create issue",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearCreateIssueBlock",
+    "LinearCreateCommentBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "Technocore",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "MCP model context protocol tool",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "MCPToolBlock",
+    "OrchestratorBlock"
+   ],
+   "label": "web_fetch",
+   "label_kind": "tool"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "send web request HTTP GET",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SendWebRequestBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code sandbox script",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "python",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GithubCreateRepositoryBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "web search",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "PerplexityBlock",
+    "TavilySearchBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "FirecrawlExtractBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google sheets read write row",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsWriteBlock",
+    "GoogleSheetsReadBlock",
+    "GoogleSheetsInsertRowBlock",
+    "GoogleSheetsAppendRowBlock",
+    "GoogleSheetsGetRowCountBlock"
+   ],
+   "label": "PerplexityBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "AI text generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIImageGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIAdMakerVideoCreatorBlock",
+    "AITextSummarizerBlock",
+    "AIShortformVideoCreatorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "VideoNarrationBlock",
+    "IdeogramModelBlock"
+   ],
+   "label": "PersistInformationBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "video clip generation",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AIShortformVideoCreatorBlock",
+    "VideoConcatBlock"
+   ],
+   "label": "AIShortformVideoCreatorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Bybit",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "BaasBotFetchMeetingDataBlock",
+    "BaasBotJoinMeetingBlock",
+    "BaasBotLeaveMeetingBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "MailerLite API key group ID",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AgentMailGetDraftBlock",
+    "AgentMailGetMessageBlock",
+    "AgentMailSendDraftBlock",
+    "AgentMailCreatePodBlock",
+    "AgentMailUpdateMessageBlock",
+    "AgentMailListDraftsBlock",
+    "AgentMailListMessagesBlock",
+    "AgentMailListOrgDraftsBlock",
+    "AgentMailListInboxesBlock",
+    "AgentMailListOrgThreadsBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "Discord post message",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ReadDiscordMessagesBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "Discord send message",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendDiscordMessageBlock",
+    "SendDiscordDMBlock",
+    "SendDiscordFileBlock",
+    "SendDiscordEmbedBlock",
+    "ReadDiscordMessagesBlock",
+    "CreateDiscordThreadBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Slack new message trigger",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendSlackMessageBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Slack trigger webhook event",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Slack read messages",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GetRedditInboxBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "webhook trigger generic",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Slack",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendSlackMessageBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "webhook",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "BannerbearTextOverlayBlock",
+    "BaasBotJoinMeetingBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "message received trigger",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GetTelegramFileBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "get slack channel history messages list",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendSlackMessageBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "tradingview data",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "Linear",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchProjectsBlock",
+    "LinearCreateCommentBlock",
+    "LinearSearchIssuesBlock",
+    "LinearCreateIssueBlock",
+    "LinearGetProjectIssuesBlock"
+   ],
+   "label": "LinearSearchIssuesBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "binance",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "coinbase",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AirtableCreateBaseBlock",
+    "AirtableListBasesBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "tradovate",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "interactive brokers",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "futures trading",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "crypto trading",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "stock trading",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "backtest",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "historical price data",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "OHLCV data",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "GitHub search repository code",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GithubSearchCodeBlock"
+   ],
+   "label": "GithubSearchCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Discord send edit message",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ReplyToDiscordMessageBlock"
+   ],
+   "label": "ReplyToDiscordMessageBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Discord edit message",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Discord",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "DiscordUserInfoBlock",
+    "SendDiscordDMBlock",
+    "DiscordGetCurrentUserBlock",
+    "ReadDiscordMessagesBlock",
+    "DiscordChannelInfoBlock",
+    "ReplyToDiscordMessageBlock",
+    "SendDiscordMessageBlock",
+    "SendDiscordFileBlock",
+    "CreateDiscordThreadBlock",
+    "SendDiscordEmbedBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "authenticated web request HTTP PATCH API",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendAuthenticatedWebRequestBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "structured response generator JSON schema AI",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIStructuredResponseGeneratorBlock"
+   ],
+   "label": "AIStructuredResponseGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Linear search issues",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchIssuesBlock",
+    "LinearSearchProjectsBlock"
+   ],
+   "label": "LinearSearchIssuesBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "web search",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "PerplexityBlock",
+    "TavilySearchBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "FirecrawlExtractBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "get webpage read page content",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExtractWebsiteContentBlock"
+   ],
+   "label": "SearchTheWebBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "AI Structured Response Generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIStructuredResponseGeneratorBlock"
+   ],
+   "label": "AITextGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute code",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "FillTextTemplateBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "web search get webpage extract citation",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "FirecrawlExtractBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "structured output json schema router",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "web search google",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI structured output JSON",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExaCreateResearchBlock",
+    "AIStructuredResponseGeneratorBlock",
+    "JSONEncoderBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "conversation memory session history",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "search the web",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "PerplexityBlock",
+    "TavilySearchBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "FirecrawlExtractBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "retrieve information persist",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "RetrieveInformationBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "execute python code block",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "execute code python sandbox run script",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ClaudeCodeBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "code block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "CodeExtractionBlock",
+    "GithubSearchCodeBlock",
+    "ExaCodeContextBlock",
+    "ClaudeCodeBlock",
+    "ExecuteCodeBlock",
+    "ExecuteCodeStepBlock",
+    "CodeGenerationBlock",
+    "InstantiateCodeSandboxBlock",
+    "DataForSeoKeywordSuggestionsBlock",
+    "DataForSeoRelatedKeywordsBlock"
+   ],
+   "label": "ExecuteCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "web search",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "PerplexityBlock",
+    "TavilySearchBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "FirecrawlExtractBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "browse web page fetch",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "FirecrawlExtractBlock",
+    "FirecrawlScrapeBlock",
+    "FirecrawlCrawlBlock"
+   ],
+   "label": "SearchTheWebBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "AI text generator",
+   "for_agent_generation": true,
+   "result_type": null,
+   "returned": [],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AI text generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIImageGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIAdMakerVideoCreatorBlock",
+    "AITextSummarizerBlock",
+    "AIShortformVideoCreatorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "VideoNarrationBlock",
+    "ReplicateFluxAdvancedModelBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AI text generator prompt",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIImageGeneratorBlock",
+    "AITextGeneratorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "AIListGeneratorBlock",
+    "ReplicateFluxAdvancedModelBlock",
+    "IdeogramModelBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AI text generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIImageGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIAdMakerVideoCreatorBlock",
+    "AITextSummarizerBlock",
+    "AIShortformVideoCreatorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "VideoNarrationBlock",
+    "ReplicateFluxAdvancedModelBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "AITextGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Linear search projects issues",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchProjectsBlock",
+    "LinearSearchIssuesBlock"
+   ],
+   "label": "LinearSearchProjectsBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Linear list issues in project",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearGetProjectIssuesBlock",
+    "LinearSearchProjectsBlock",
+    "LinearCreateIssueBlock"
+   ],
+   "label": "LinearGetProjectIssuesBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Linear GraphQL query list all project issues",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearGetProjectIssuesBlock",
+    "GithubListIssuesBlock"
+   ],
+   "label": "mcp.linear.app",
+   "label_kind": "mcp"
+  },
+  {
+   "query": "retrieve information memory",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "RetrieveInformationBlock",
+    "SearchMemoryBlock",
+    "GetLatestMemoryBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "condition if compare values",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ConditionBlock",
+    "IfInputMatchesBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "YouTube transcript",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "TranscribeYoutubeVideoBlock"
+   ],
+   "label": "TranscribeYoutubeVideoBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "AI text generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIImageGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIAdMakerVideoCreatorBlock",
+    "AITextSummarizerBlock",
+    "AIShortformVideoCreatorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "VideoNarrationBlock",
+    "IdeogramModelBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "youtube video transcript timestamps captions",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "AITextGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "webhook",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GenericWebhookTriggerBlock",
+    "AirtableWebhookTriggerBlock",
+    "AllQuietIncidentTriggerBlock",
+    "StripeSubscriptionTriggerBlock",
+    "BannerbearTextOverlayBlock",
+    "BaasBotJoinMeetingBlock",
+    "GithubPullRequestTriggerBlock",
+    "GithubDiscussionTriggerBlock",
+    "GithubReleaseTriggerBlock",
+    "GithubIssuesTriggerBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "Uber Eats",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "replicate model image generation",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ReplicateFluxAdvancedModelBlock",
+    "AIImageGeneratorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "ReplicateModelBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "execute code python sandbox",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ClaudeCodeBlock"
+   ],
+   "label": "AITextGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "condition if else logic block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "IfInputMatchesBlock",
+    "ConditionBlock",
+    "AIConditionBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "text match contains string check",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExtractTextInformationBlock",
+    "MatchTextPatternBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "match text pattern regex",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "MatchTextPatternBlock",
+    "ExtractTextInformationBlock"
+   ],
+   "label": "MatchTextPatternBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute code deterministic python format string",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "condition if else branch",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ConditionBlock",
+    "IfInputMatchesBlock"
+   ],
+   "label": "IfInputMatchesBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "agent input text",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentLongTextInputBlock",
+    "AgentShortTextInputBlock",
+    "AgentDropdownInputBlock",
+    "AgentInputBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "condition block if",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIConditionBlock",
+    "ConditionBlock",
+    "GoogleSheetsFilterRowsBlock",
+    "IfInputMatchesBlock",
+    "ExaWebsetReadyCheckBlock",
+    "CompanySearchBlock",
+    "PeopleSearchBlock",
+    "PersistInformationBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "long text input agent",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentLongTextInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "dropdown input agent",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentDropdownInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "run python code",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "ConditionBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "python",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GithubCreateRepositoryBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "store value constant",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "StoreValueBlock"
+   ],
+   "label": "StoreValueBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "FillTextTemplateBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "current date time now",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GetCurrentDateAndTimeBlock",
+    "GetCurrentDateBlock",
+    "GetCurrentTimeBlock"
+   ],
+   "label": "GetCurrentDateAndTimeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "condition if else branch",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ConditionBlock",
+    "IfInputMatchesBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent input block text field",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentShortTextInputBlock",
+    "AgentDropdownInputBlock",
+    "AgentLongTextInputBlock",
+    "AgentInputBlock",
+    "AgentNumberInputBlock",
+    "AgentTimeInputBlock"
+   ],
+   "label": "ConditionBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "google calendar create event",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleCalendarCreateEventBlock",
+    "GoogleCalendarReadEventsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "notion page database",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "NotionCreatePageBlock",
+    "NotionSearchBlock",
+    "NotionReadPageBlock",
+    "NotionReadPageMarkdownBlock",
+    "NotionReadDatabaseBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "airtable",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AirtableListRecordsBlock",
+    "AirtableCreateRecordsBlock",
+    "AirtableGetRecordBlock",
+    "AirtableListSchemaBlock",
+    "AirtableCreateTableBlock",
+    "AirtableDeleteRecordsBlock",
+    "AirtableUpdateRecordsBlock",
+    "AirtableCreateFieldBlock",
+    "AirtableUpdateFieldBlock",
+    "AirtableListBasesBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "twitter x post",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PostToXBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "sms text message twilio",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendTelegramVoiceBlock",
+    "SendTelegramMessageBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "trading card game price TCGplayer",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "eventbrite event ticket",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "instagram comments",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PostToInstagramBlock",
+    "PostToTikTokBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "instagram read",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PostToInstagramBlock",
+    "PostToTikTokBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "instagram get post",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PostToInstagramBlock",
+    "PostToTikTokBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "instagram DM",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "twitter search",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "TwitterSearchSpacesBlock",
+    "TwitterSearchRecentTweetsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "twitter mentions",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "TwitterGetUserMentionsBlock",
+    "TwitterSearchRecentTweetsBlock",
+    "TwitterGetHomeTimelineBlock",
+    "TwitterGetUserTweetsBlock",
+    "TwitterGetBookmarkedTweetsBlock",
+    "TwitterGetSpaceTweetsBlock",
+    "TwitterGetListTweetsBlock",
+    "TwitterGetTweetsBlock",
+    "TwitterGetQuoteTweetsBlock",
+    "TwitterGetTweetBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "reddit search",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SearchRedditBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "instagram",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PostToInstagramBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "web scrape",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ExtractWebsiteContentBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "social media monitoring",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google search",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleMapsSearchBlock",
+    "GmailReadBlock",
+    "DataForSeoRelatedKeywordsBlock",
+    "GoogleCalendarReadEventsBlock",
+    "GoogleSheetsFindBlock",
+    "GoogleSheetsFindReplaceBlock",
+    "GoogleSheetsLookupRowBlock",
+    "DataForSeoKeywordSuggestionsBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "condition if else branch",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ConditionBlock",
+    "IfInputMatchesBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent dropdown input",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentDropdownInputBlock"
+   ],
+   "label": "ConditionBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "condition block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ConditionBlock",
+    "AIConditionBlock",
+    "GoogleSheetsFilterRowsBlock",
+    "IfInputMatchesBlock",
+    "ExaWebsetReadyCheckBlock",
+    "CompanySearchBlock",
+    "PersistInformationBlock",
+    "PeopleSearchBlock"
+   ],
+   "label": "ConditionBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "http request",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SendAuthenticatedWebRequestBlock",
+    "SendWebRequestBlock",
+    "StripeLinkGetPaymentChallengeBlock",
+    "StripeLinkMPPPayBlock",
+    "StripeLinkCreateTokenSpendRequestBlock",
+    "AutoPilotBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "webhook trigger",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AirtableWebhookTriggerBlock",
+    "GenericWebhookTriggerBlock",
+    "AllQuietIncidentTriggerBlock",
+    "StripeSubscriptionTriggerBlock",
+    "GithubPullRequestTriggerBlock",
+    "GithubReleaseTriggerBlock",
+    "GithubIssuesTriggerBlock",
+    "GithubDiscussionTriggerBlock",
+    "GithubStarTriggerBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "MCP tool remote server",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "MCPToolBlock"
+   ],
+   "label": "SendAuthenticatedWebRequestBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute code sandbox",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeStepBlock",
+    "ExecuteCodeBlock",
+    "InstantiateCodeSandboxBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "SendWebRequestBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "code execution",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "InstantiateCodeSandboxBlock",
+    "ExecuteCodeStepBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "ExecuteCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "regex find replace text",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExtractTextInformationBlock",
+    "MatchTextPatternBlock",
+    "GoogleDocsFindReplacePlainTextBlock",
+    "GoogleDocsReplaceContentWithMarkdownBlock",
+    "TextReplaceBlock",
+    "GoogleSheetsFindReplaceBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AI text generator LLM",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AITextSummarizerBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "web search",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "TavilySearchBlock",
+    "PerplexityBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "FirecrawlExtractBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "AITextGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "all quiet",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietListTeamsBlock",
+    "AllQuietGetIncidentBlock",
+    "AllQuietGetOnCallBlock",
+    "AllQuietUpdateIncidentBlock",
+    "AllQuietListIncidentsBlock",
+    "AllQuietCreateIncidentBlock"
+   ],
+   "label": "AllQuietGetOnCallBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "allquiet",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "incident on call schedule",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietCreateIncidentBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AllQuiet",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "on-call responder shift",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietCreateIncidentBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "authenticated web request",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendAuthenticatedWebRequestBlock"
+   ],
+   "label": "web_fetch",
+   "label_kind": "tool"
+  },
+  {
+   "query": "pagerduty on call",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "persist information store information",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "PersistInformationBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "retrieve information",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "RetrieveInformationBlock",
+    "GetWeatherInformationBlock",
+    "TwitterGetTweetBlock",
+    "TwitterGetTweetsBlock",
+    "TwitterGetSpaceByIdBlock",
+    "TwitterGetUsersBlock",
+    "TwitterGetSpacesBlock",
+    "TwitterGetUserBlock",
+    "TwitterGetListBlock",
+    "GithubReadIssueBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "hash digest checksum",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "JSON structured data record",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AirtableGetRecordBlock",
+    "JSONEncoderBlock",
+    "JSONDecoderBlock",
+    "AirtableCreateRecordsBlock",
+    "AirtableUpdateRecordsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "condition deterministic filter",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ConditionBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "webhook authenticated web request",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "cache invalidation",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "MCP tool",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "MCPToolBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent executor",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentExecutorBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "dictionary key value store",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "version compare",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "checksum",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "hash",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ReplicateModelBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "cache",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GetLinkedinProfileBlock",
+    "ScreenshotWebPageBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "authenticated http request",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SendAuthenticatedWebRequestBlock",
+    "StripeLinkCreateTokenSpendRequestBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "webhook",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GenericWebhookTriggerBlock",
+    "AirtableWebhookTriggerBlock",
+    "AllQuietIncidentTriggerBlock",
+    "StripeSubscriptionTriggerBlock",
+    "BannerbearTextOverlayBlock",
+    "BaasBotJoinMeetingBlock",
+    "GithubPullRequestTriggerBlock",
+    "GithubDiscussionTriggerBlock",
+    "GithubReleaseTriggerBlock",
+    "GithubIssuesTriggerBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "key value",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "CreateDictionaryBlock",
+    "AddToDictionaryBlock",
+    "RetrieveInformationBlock",
+    "PersistInformationBlock",
+    "RemoveFromDictionaryBlock",
+    "ReplaceDictionaryValueBlock",
+    "ExaUpdateWebsetBlock",
+    "ExaCreateOrFindWebsetBlock",
+    "FindInDictionaryBlock",
+    "PeopleSearchBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "dictionary",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AddToDictionaryBlock",
+    "DictionaryIsEmptyBlock",
+    "RemoveFromDictionaryBlock",
+    "FindInDictionaryBlock",
+    "ReplaceDictionaryValueBlock",
+    "StepThroughItemsBlock",
+    "CreateDictionaryBlock",
+    "CountItemsBlock",
+    "DataSamplingBlock",
+    "AITextGeneratorBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "version",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AddToLibraryFromStoreBlock",
+    "AgentExecutorBlock",
+    "ReplicateModelBlock",
+    "AddToDictionaryBlock",
+    "IdeogramModelBlock",
+    "AddToListBlock",
+    "AIMusicGeneratorBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "compare",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GithubCompareBranchesBlock",
+    "GoogleSheetsRemoveDuplicatesBlock"
+   ],
+   "label": "PersistInformationBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Linear create comment",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearCreateCommentBlock",
+    "LinearCreateIssueBlock",
+    "GithubCreateCommentObjectBlock"
+   ],
+   "label": "LinearCreateCommentBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Linear create issue",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearCreateIssueBlock",
+    "LinearCreateCommentBlock"
+   ],
+   "label": "LinearCreateIssueBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Gmail",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GmailGetThreadBlock",
+    "GmailListLabelsBlock",
+    "GmailGetProfileBlock",
+    "GmailRemoveLabelBlock",
+    "GmailAddLabelBlock",
+    "GmailReadBlock",
+    "GmailCreateDraftBlock",
+    "GmailSendBlock",
+    "GmailForwardBlock",
+    "GmailDraftReplyBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Google Drive",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleDocsReadBlock",
+    "GoogleDocsSetPublicAccessBlock",
+    "GoogleDocsExportBlock",
+    "GoogleDocsGetMetadataBlock",
+    "GoogleSheetsBatchOperationsBlock",
+    "GoogleSheetsFormatBlock",
+    "GoogleDocsInsertPageBreakBlock",
+    "GoogleDocsReplaceAllWithMarkdownBlock",
+    "GoogleSheetsMetadataBlock",
+    "GoogleSheetsClearBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Dropbox",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Google Calendar Docs Sheets Contacts",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleCalendarCreateEventBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "NotebookLM",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Perplexity",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PerplexityBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Suno Udio music generation",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AIMusicGeneratorBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "DaVinci Resolve CapCut video editing",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Ideogram image generation",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "IdeogramModelBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "ElevenLabs voice",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "VideoNarrationBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Gamma Napkin AI presentation",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Pro Tools audio engineering",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "Consensus academic research",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AI Structured Response Generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIStructuredResponseGeneratorBlock"
+   ],
+   "label": "AIStructuredResponseGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Replicate model image generation",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ReplicateFluxAdvancedModelBlock",
+    "AIImageGeneratorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "ReplicateModelBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "text concatenation format string",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "TextEncoderBlock",
+    "CombineTextsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent input block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentInputBlock",
+    "AgentGoogleDriveFileInputBlock",
+    "AgentNumberInputBlock",
+    "AgentTimeInputBlock",
+    "AgentDateInputBlock",
+    "AgentToggleInputBlock",
+    "AgentTableInputBlock",
+    "AgentFileInputBlock",
+    "AgentDropdownInputBlock",
+    "AgentLongTextInputBlock"
+   ],
+   "label": "CombineTextsBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "AgentOutputBlock output display format template",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentOutputBlock",
+    "AgentTableInputBlock",
+    "AgentTimeInputBlock"
+   ],
+   "label": "run_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AllQuietGetIncidentBlock",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietGetIncidentBlock",
+    "GetAllMemoriesBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AllQuietListIncidentsBlock",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietListIncidentsBlock",
+    "AllQuietUpdateIncidentBlock",
+    "AllQuietGetIncidentBlock",
+    "AllQuietCreateIncidentBlock",
+    "AllQuietListTeamsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "LinearSearchIssuesBlock",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchIssuesBlock",
+    "LinearSearchProjectsBlock",
+    "LinearGetProjectIssuesBlock",
+    "LinearCreateIssueBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "LinearSearchProjectsBlock",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchProjectsBlock",
+    "LinearSearchIssuesBlock",
+    "LinearGetProjectIssuesBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "sentry issue",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "LinearSearchIssuesBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Linear search issues",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchIssuesBlock",
+    "LinearSearchProjectsBlock",
+    "LinearGetProjectIssuesBlock"
+   ],
+   "label": "LinearSearchIssuesBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "All Quiet incident comment timeline event",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietUpdateIncidentBlock",
+    "AllQuietGetIncidentBlock",
+    "AllQuietCreateIncidentBlock",
+    "AllQuietListIncidentsBlock"
+   ],
+   "label": "AllQuietGetIncidentBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "all quiet status",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietListIncidentsBlock",
+    "AllQuietCreateIncidentBlock",
+    "AllQuietUpdateIncidentBlock",
+    "AllQuietListTeamsBlock",
+    "AllQuietGetOnCallBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "incident status page",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietCreateIncidentBlock",
+    "AllQuietListIncidentsBlock",
+    "AllQuietUpdateIncidentBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "AllQuietGetIncidentBlock",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietGetIncidentBlock",
+    "GetAllMemoriesBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AllQuietListIncidentsBlock",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietListIncidentsBlock",
+    "AllQuietUpdateIncidentBlock",
+    "AllQuietGetIncidentBlock",
+    "AllQuietCreateIncidentBlock",
+    "AllQuietListTeamsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "LinearSearchProjectsBlock",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchProjectsBlock",
+    "LinearSearchIssuesBlock",
+    "LinearGetProjectIssuesBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "LinearSearchIssuesBlock",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchIssuesBlock",
+    "LinearSearchProjectsBlock",
+    "LinearGetProjectIssuesBlock",
+    "LinearCreateIssueBlock"
+   ],
+   "label": "AllQuietGetIncidentBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Sentry",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "mcp.sentry.dev",
+   "label_kind": "mcp"
+  },
+  {
+   "query": "search the web",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "PerplexityBlock",
+    "TavilySearchBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "FirecrawlExtractBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "extract website content jina",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExtractWebsiteContentBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "allquiet get incident",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietGetIncidentBlock",
+    "AllQuietUpdateIncidentBlock",
+    "AllQuietCreateIncidentBlock",
+    "AllQuietListIncidentsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "allquiet list incidents",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietListIncidentsBlock",
+    "AllQuietListTeamsBlock",
+    "AllQuietUpdateIncidentBlock",
+    "AllQuietCreateIncidentBlock",
+    "AllQuietGetIncidentBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "linear search issues",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchIssuesBlock",
+    "LinearSearchProjectsBlock"
+   ],
+   "label": "AllQuietGetIncidentBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "extract website content",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExtractWebsiteContentBlock",
+    "TavilyCrawlBlock",
+    "FirecrawlScrapeBlock",
+    "TavilyMapBlock",
+    "ExaContentsBlock",
+    "FirecrawlCrawlBlock"
+   ],
+   "label": "SearchTheWebBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "get webpage content extract",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "TavilyExtractBlock",
+    "ExtractWebsiteContentBlock",
+    "FirecrawlExtractBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "search the web",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "PerplexityBlock",
+    "TavilySearchBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "FirecrawlExtractBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "create agent build agent factory",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent executor sub agent",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "agent executor",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentExecutorBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "search the web",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "PerplexityBlock",
+    "TavilySearchBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "FirecrawlExtractBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "extract website content url",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExtractWebsiteContentBlock",
+    "TavilyMapBlock",
+    "TavilyCrawlBlock",
+    "FirecrawlScrapeBlock",
+    "FirecrawlCrawlBlock",
+    "TavilyExtractBlock",
+    "ExaContentsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "image vision analyze multimodal",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "vision image analysis",
+   "for_agent_generation": true,
+   "result_type": null,
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "video analysis",
+   "for_agent_generation": true,
+   "result_type": null,
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "vision image understanding",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "SearchTheWebBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "image understanding describe photo",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AI structured response generator",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AIStructuredResponseGeneratorBlock",
+    "AITextGeneratorBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "web search",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "TavilySearchBlock",
+    "PerplexityBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "FirecrawlExtractBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AI Text Generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIImageGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIAdMakerVideoCreatorBlock",
+    "AITextSummarizerBlock",
+    "AIShortformVideoCreatorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "VideoNarrationBlock",
+    "IdeogramModelBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "linear create issue",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearCreateIssueBlock",
+    "LinearCreateCommentBlock"
+   ],
+   "label": "LinearCreateIssueBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "linear team list",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietListTeamsBlock"
+   ],
+   "label": "LinearCreateIssueBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "web search read-only research",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI text generator LLM prompt",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIConversationBlock",
+    "AIStructuredResponseGeneratorBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "get webpage scrape url",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "FirecrawlScrapeBlock",
+    "ExtractWebsiteContentBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "search engine google search",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleMapsSearchBlock"
+   ],
+   "label": "AIStructuredResponseGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "AI text generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIImageGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIAdMakerVideoCreatorBlock",
+    "AITextSummarizerBlock",
+    "AIShortformVideoCreatorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "VideoNarrationBlock",
+    "ReplicateFluxAdvancedModelBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "elevenlabs text to speech",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "VideoNarrationBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AI text generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIImageGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIAdMakerVideoCreatorBlock",
+    "AITextSummarizerBlock",
+    "AIShortformVideoCreatorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "VideoNarrationBlock",
+    "ReplicateFluxAdvancedModelBlock"
+   ],
+   "label": "AITextGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "store value",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "StoreValueBlock",
+    "PersistInformationBlock",
+    "CompanySearchBlock",
+    "PeopleSearchBlock",
+    "StripeLinkCreateTokenSpendRequestBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AgentExecutorBlock",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Persist Information",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PersistInformationBlock",
+    "RetrieveInformationBlock",
+    "ExaCreateWebsetBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Store Value",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "StoreValueBlock",
+    "PersistInformationBlock",
+    "CompanySearchBlock",
+    "PeopleSearchBlock",
+    "StripeLinkCreateTokenSpendRequestBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute agent",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PersistInformationBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "gmail",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GmailGetThreadBlock",
+    "GmailListLabelsBlock",
+    "GmailGetProfileBlock",
+    "GmailReadBlock",
+    "GmailAddLabelBlock",
+    "GmailRemoveLabelBlock",
+    "GmailSendBlock",
+    "GmailCreateDraftBlock",
+    "GmailForwardBlock",
+    "GmailDraftReplyBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google contacts",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleCalendarCreateEventBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google calendar",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleCalendarReadEventsBlock",
+    "GoogleCalendarCreateEventBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google drive",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleDocsReadBlock",
+    "GoogleDocsSetPublicAccessBlock",
+    "GoogleDocsExportBlock",
+    "GoogleDocsGetMetadataBlock",
+    "GoogleSheetsBatchOperationsBlock",
+    "GoogleDocsInsertPageBreakBlock",
+    "GoogleSheetsFormatBlock",
+    "GoogleDocsReplaceAllWithMarkdownBlock",
+    "GoogleSheetsMetadataBlock",
+    "GoogleSheetsClearBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "contacts",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "HubSpotContactBlock",
+    "HubSpotEngagementBlock",
+    "GetLinkedinProfileBlock",
+    "SearchPeopleBlock",
+    "PeopleSearchBlock",
+    "ProfileEnrichmentBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "datafast analytics",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "discord member list",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "discord user lookup",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "discord",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "DiscordUserInfoBlock",
+    "SendDiscordDMBlock",
+    "DiscordGetCurrentUserBlock",
+    "ReadDiscordMessagesBlock",
+    "DiscordChannelInfoBlock",
+    "ReplyToDiscordMessageBlock",
+    "SendDiscordMessageBlock",
+    "SendDiscordFileBlock",
+    "CreateDiscordThreadBlock",
+    "SendDiscordEmbedBlock"
+   ],
+   "label": "ReadDiscordMessagesBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "send authenticated web request",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendAuthenticatedWebRequestBlock"
+   ],
+   "label": "SendAuthenticatedWebRequestBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "discord server members list role members",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "DiscordChannelInfoBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "all quiet",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietListTeamsBlock",
+    "AllQuietGetIncidentBlock",
+    "AllQuietGetOnCallBlock",
+    "AllQuietUpdateIncidentBlock",
+    "AllQuietListIncidentsBlock",
+    "AllQuietCreateIncidentBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "linear search issues",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchIssuesBlock",
+    "LinearSearchProjectsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "all quiet incident",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietGetIncidentBlock",
+    "AllQuietUpdateIncidentBlock",
+    "AllQuietListIncidentsBlock",
+    "AllQuietCreateIncidentBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "linear search issues",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchIssuesBlock",
+    "LinearSearchProjectsBlock"
+   ],
+   "label": "mcp.sentry.dev",
+   "label_kind": "mcp"
+  },
+  {
+   "query": "google contacts",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleCalendarCreateEventBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "contacts read",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "people api",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SearchFilterTypeaheadBlock",
+    "SmartSearchBlock",
+    "PeopleSearchBlock"
+   ],
+   "label": "run_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "gmail read messages",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GmailReadBlock",
+    "GmailGetThreadBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google calendar list events",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleCalendarReadEventsBlock",
+    "GoogleCalendarCreateEventBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google contacts list",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GmailListLabelsBlock",
+    "GoogleCalendarCreateEventBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "google drive search files",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsFindBlock",
+    "GoogleSheetsLookupRowBlock",
+    "GoogleSheetsFindReplaceBlock",
+    "AgentGoogleDriveFileInputBlock",
+    "GoogleDocsFindReplacePlainTextBlock",
+    "GoogleDocsReplaceContentWithMarkdownBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google contacts people search",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "PeopleSearchBlock",
+    "SearchPeopleBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google drive search file list",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsListNamedRangesBlock",
+    "GoogleSheetsFindBlock",
+    "GoogleSheetsBatchOperationsBlock",
+    "GoogleSheetsFindReplaceBlock",
+    "AgentGoogleDriveFileInputBlock",
+    "GoogleDocsReadBlock",
+    "GoogleDocsFindReplacePlainTextBlock",
+    "GoogleDocsGetStructureBlock",
+    "GoogleDocsReplaceContentWithMarkdownBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google people api contacts",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleMapsSearchBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google drive list files search",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsListNamedRangesBlock",
+    "GoogleSheetsFindBlock",
+    "GoogleSheetsBatchOperationsBlock",
+    "GoogleSheetsFindReplaceBlock",
+    "AgentGoogleDriveFileInputBlock",
+    "GoogleDocsReadBlock",
+    "GoogleDocsFindReplacePlainTextBlock",
+    "GoogleDocsSetPublicAccessBlock",
+    "GoogleDocsGetStructureBlock",
+    "GoogleDocsReplaceContentWithMarkdownBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "contacts",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "HubSpotContactBlock",
+    "HubSpotEngagementBlock",
+    "GetLinkedinProfileBlock",
+    "SearchPeopleBlock",
+    "PeopleSearchBlock",
+    "ProfileEnrichmentBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google drive search",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsLookupRowBlock",
+    "GoogleSheetsFindBlock",
+    "GoogleSheetsFindReplaceBlock",
+    "GoogleDocsReplaceContentWithMarkdownBlock",
+    "GoogleDocsFindReplacePlainTextBlock",
+    "GoogleDocsReplaceAllWithMarkdownBlock",
+    "GoogleDocsReadBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "gmail search read email",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GmailReadBlock"
+   ],
+   "label": "GmailReadBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute python code",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "code",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ClaudeCodeBlock",
+    "ExecuteCodeBlock",
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ExaCodeContextBlock",
+    "CodeExtractionBlock",
+    "DataForSeoKeywordSuggestionsBlock",
+    "GithubSearchCodeBlock",
+    "DataForSeoRelatedKeywordsBlock",
+    "CodeGenerationBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "text formatter template",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "FillTextTemplateBlock"
+   ],
+   "label": "FillTextTemplateBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Google Drive file picker agent input",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentGoogleDriveFileInputBlock",
+    "GoogleSheetsAddDropdownBlock",
+    "GoogleSheetsUpdateCellBlock",
+    "GoogleDocsReadBlock",
+    "GoogleDocsGetMetadataBlock",
+    "GoogleDocsExportBlock",
+    "GoogleSheetsReadBlock",
+    "GoogleSheetsBatchOperationsBlock",
+    "GoogleDocsInsertPageBreakBlock",
+    "GoogleDocsSetPublicAccessBlock"
+   ],
+   "label": "run_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "condition if else branch",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ConditionBlock",
+    "IfInputMatchesBlock"
+   ],
+   "label": "ConditionBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute code python custom code block",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "code",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ClaudeCodeBlock",
+    "ExecuteCodeBlock",
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ExaCodeContextBlock",
+    "CodeExtractionBlock",
+    "DataForSeoKeywordSuggestionsBlock",
+    "GithubSearchCodeBlock",
+    "DataForSeoRelatedKeywordsBlock",
+    "CodeGenerationBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "condition branch gate skip",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ConditionBlock",
+    "GithubDeleteBranchBlock",
+    "GithubMakeBranchBlock",
+    "GithubListBranchesBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AgentGoogleDriveFileInputBlock",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentGoogleDriveFileInputBlock",
+    "GoogleDocsReadBlock",
+    "GoogleDocsGetMetadataBlock",
+    "GoogleSheetsListNamedRangesBlock",
+    "GoogleSheetsMetadataBlock",
+    "GoogleSheetsFormatBlock",
+    "GoogleDocsExportBlock",
+    "GoogleDocsGetStructureBlock",
+    "GoogleDocsInsertPageBreakBlock",
+    "GoogleSheetsClearBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AgentGoogleDriveFileInputBlock",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentGoogleDriveFileInputBlock",
+    "GoogleDocsReadBlock",
+    "GoogleDocsGetMetadataBlock",
+    "GoogleSheetsListNamedRangesBlock",
+    "GoogleSheetsMetadataBlock",
+    "GoogleSheetsFormatBlock",
+    "GoogleDocsExportBlock",
+    "GoogleDocsGetStructureBlock",
+    "GoogleDocsInsertPageBreakBlock",
+    "GoogleSheetsClearBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "boolean constant value type cast",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "UniversalTypeConverterBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "web search",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "TavilySearchBlock",
+    "PerplexityBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "FirecrawlExtractBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "fetch webpage get page content",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExtractWebsiteContentBlock",
+    "FirecrawlScrapeBlock",
+    "FirecrawlCrawlBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI structured response generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIStructuredResponseGeneratorBlock",
+    "AITextGeneratorBlock"
+   ],
+   "label": "SearchTheWebBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "execute code python json",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "regex extract text",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExtractTextInformationBlock",
+    "CodeExtractionBlock",
+    "TextDecoderBlock",
+    "MatchTextPatternBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "extract json field",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "ExtractTextInformationBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "AI text generator LLM prompt",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIConversationBlock",
+    "AIStructuredResponseGeneratorBlock"
+   ],
+   "label": "AIStructuredResponseGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "agent input output block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIConditionBlock",
+    "StoreValueBlock",
+    "IfInputMatchesBlock",
+    "AgentExecutorBlock",
+    "AgentFileInputBlock",
+    "AgentInputBlock",
+    "AgentTimeInputBlock",
+    "AgentNumberInputBlock",
+    "AgentLongTextInputBlock",
+    "AgentTableInputBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "notion",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "NotionReadPageBlock",
+    "NotionReadPageMarkdownBlock",
+    "NotionReadDatabaseBlock",
+    "NotionCreatePageBlock",
+    "NotionSearchBlock"
+   ],
+   "label": "NotionSearchBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "replicate model",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ReplicateModelBlock",
+    "ReplicateFluxAdvancedModelBlock",
+    "AIImageGeneratorBlock",
+    "AIMusicGeneratorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "send web request HTTP POST",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SendWebRequestBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "code execution python",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "regex extract text",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExtractTextInformationBlock",
+    "CodeExtractionBlock",
+    "TextDecoderBlock",
+    "MatchTextPatternBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "exa web scrape",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ExaSearchBlock",
+    "ExaListWebsetsBlock",
+    "ExaWebsetStatusBlock",
+    "ExaWebsetItemsSummaryBlock",
+    "ExaGetWebsetSearchBlock",
+    "ExaContentsBlock",
+    "ExaWebsetSummaryBlock",
+    "ExaListWebsetItemsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "scrape website content",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ExtractWebsiteContentBlock",
+    "FirecrawlScrapeBlock"
+   ],
+   "label": "ExaContentsBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "text replace",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "TextReplaceBlock",
+    "GoogleDocsFindReplacePlainTextBlock",
+    "GoogleSheetsFindReplaceBlock",
+    "GoogleDocsReplaceContentWithMarkdownBlock"
+   ],
+   "label": "TextReplaceBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "text replace",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "TextReplaceBlock",
+    "GoogleDocsFindReplacePlainTextBlock",
+    "GoogleSheetsFindReplaceBlock",
+    "GoogleDocsReplaceContentWithMarkdownBlock"
+   ],
+   "label": "TextReplaceBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute code block python sandbox",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ClaudeCodeBlock"
+   ],
+   "label": "ExecuteCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "text replace find and replace string",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "TextReplaceBlock",
+    "GoogleDocsReplaceAllWithMarkdownBlock",
+    "GoogleSheetsFindReplaceBlock",
+    "GoogleDocsFindReplacePlainTextBlock",
+    "GoogleDocsReplaceContentWithMarkdownBlock"
+   ],
+   "label": "TextReplaceBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "find and replace text string",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "TextReplaceBlock",
+    "GoogleSheetsFindReplaceBlock",
+    "GoogleDocsFindReplacePlainTextBlock",
+    "GoogleDocsReplaceContentWithMarkdownBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "text formatter template block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "FillTextTemplateBlock",
+    "AgentShortTextInputBlock",
+    "AgentLongTextInputBlock",
+    "TextEncoderBlock",
+    "TextReplaceBlock",
+    "TextDecoderBlock",
+    "GetCurrentDateAndTimeBlock"
+   ],
+   "label": "TextReplaceBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "convert object to JSON string stringify",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "JSONDecoderBlock",
+    "JSONEncoderBlock"
+   ],
+   "label": "TextReplaceBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "base64 encode decode",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "ExecuteCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "text encode escape hex unicode",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "linear search issues",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchIssuesBlock",
+    "LinearSearchProjectsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "linear create issue",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearCreateIssueBlock",
+    "LinearCreateCommentBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "linear search projects",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchProjectsBlock",
+    "LinearSearchIssuesBlock"
+   ],
+   "label": "LinearSearchIssuesBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "sentry",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AI structured response generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIStructuredResponseGeneratorBlock",
+    "AITextGeneratorBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "execute code sandbox",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeStepBlock",
+    "ExecuteCodeBlock",
+    "InstantiateCodeSandboxBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "google drive read files list",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsListNamedRangesBlock",
+    "GoogleDocsReadBlock",
+    "GoogleSheetsReadBlock",
+    "GoogleDocsSetPublicAccessBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google photos read",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GmailReadBlock",
+    "GoogleDocsReadBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google drive search",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsLookupRowBlock",
+    "GoogleSheetsFindBlock",
+    "GoogleSheetsFindReplaceBlock",
+    "GoogleDocsReplaceContentWithMarkdownBlock",
+    "GoogleDocsFindReplacePlainTextBlock",
+    "GoogleDocsReplaceAllWithMarkdownBlock",
+    "GoogleDocsReadBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "drive folder list files",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "allquiet alerts",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "all quiet",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietListTeamsBlock",
+    "AllQuietGetIncidentBlock",
+    "AllQuietGetOnCallBlock",
+    "AllQuietUpdateIncidentBlock",
+    "AllQuietListIncidentsBlock",
+    "AllQuietCreateIncidentBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "incident alert monitoring",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "AllQuietListIncidentsBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "google calendar list events read",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleCalendarReadEventsBlock",
+    "GoogleCalendarCreateEventBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google contacts read",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GmailReadBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "contacts",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "HubSpotContactBlock",
+    "HubSpotEngagementBlock",
+    "GetLinkedinProfileBlock",
+    "SearchPeopleBlock",
+    "PeopleSearchBlock",
+    "ProfileEnrichmentBlock"
+   ],
+   "label": "GoogleCalendarReadEventsBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "gmail send email read email",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GmailSendBlock",
+    "GmailReadBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "facebook instagram tiktok post social media",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PostToTikTokBlock",
+    "PostToInstagramBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google photos cloud storage",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "post to facebook page",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PostToInstagramBlock",
+    "PostToLinkedInBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute python code",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "code execution sandbox",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeStepBlock",
+    "ExecuteCodeBlock",
+    "InstantiateCodeSandboxBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "condition",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ConditionBlock",
+    "AIConditionBlock",
+    "IfInputMatchesBlock",
+    "ExaWebsetReadyCheckBlock",
+    "PeopleSearchBlock",
+    "CompanySearchBlock",
+    "PersistInformationBlock"
+   ],
+   "label": "ExecuteCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "AI structured response generator JSON schema",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIStructuredResponseGeneratorBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "condition branch if else",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ConditionBlock",
+    "IfInputMatchesBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "AIStructuredResponseGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "AI text generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIImageGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIAdMakerVideoCreatorBlock",
+    "AITextSummarizerBlock",
+    "AIShortformVideoCreatorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "VideoNarrationBlock",
+    "ReplicateFluxAdvancedModelBlock"
+   ],
+   "label": "AITextGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute python code",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "filter list items by condition",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "PeopleSearchBlock",
+    "CompanySearchBlock",
+    "ListLibraryAgentsBlock",
+    "AirtableListRecordsBlock",
+    "SearchFilterTypeaheadBlock",
+    "AirtableListBasesBlock",
+    "LinearSearchIssuesBlock"
+   ],
+   "label": "run_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "Notion read database",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "NotionReadDatabaseBlock",
+    "NotionSearchBlock",
+    "NotionReadPageBlock",
+    "NotionReadPageMarkdownBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "hash sha256",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "condition if else branch",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ConditionBlock",
+    "IfInputMatchesBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "deduplicate cache idempotency",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent executor",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentExecutorBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "store persistent data key value",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "PersistInformationBlock"
+   ],
+   "label": "search_docs",
+   "label_kind": "tool"
+  },
+  {
+   "query": "historian audit log record",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "code execution python sandbox",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ClaudeCodeBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "checksum crypto",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "text formatter template concatenate",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "CombineTextsBlock",
+    "FillTextTemplateBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "store value block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "StoreValueBlock",
+    "PersistInformationBlock",
+    "UniversalTypeConverterBlock",
+    "ReplaceDictionaryValueBlock",
+    "CompanySearchBlock",
+    "PeopleSearchBlock",
+    "StripeLinkCreateTokenSpendRequestBlock",
+    "GoogleSheetsInsertRowBlock",
+    "GoogleSheetsAppendRowBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent output block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentOutputBlock",
+    "AgentExecutorBlock",
+    "StoreValueBlock",
+    "AutoPilotBlock",
+    "IfInputMatchesBlock",
+    "AgentFileInputBlock",
+    "AIConditionBlock",
+    "AddMemoryBlock",
+    "ConditionBlock",
+    "AgentInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent input block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentInputBlock",
+    "AgentGoogleDriveFileInputBlock",
+    "AgentNumberInputBlock",
+    "AgentTimeInputBlock",
+    "AgentDateInputBlock",
+    "AgentToggleInputBlock",
+    "AgentTableInputBlock",
+    "AgentFileInputBlock",
+    "AgentDropdownInputBlock",
+    "AgentLongTextInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "current time date block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GetCurrentDateAndTimeBlock",
+    "AgentDateInputBlock",
+    "AgentTimeInputBlock",
+    "GetCurrentDateBlock",
+    "GetCurrentTimeBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "web search google",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "search engine",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "news search",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "TavilySearchBlock",
+    "ExaSearchBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "duckduckgo",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "get webpage extract",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "TavilyExtractBlock",
+    "FirecrawlExtractBlock",
+    "ExtractWebsiteContentBlock"
+   ],
+   "label": "ExaSearchBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "serp google search api",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "DataForSeoKeywordSuggestionsBlock",
+    "DataForSeoRelatedKeywordsBlock",
+    "GoogleMapsSearchBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AgentExecutorBlock",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentExecutorBlock"
+   ],
+   "label": "ConditionBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "condition if else branch",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ConditionBlock",
+    "IfInputMatchesBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "hash digest sha256",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "code execution python",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent input block for creation",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentNumberInputBlock",
+    "AgentTimeInputBlock",
+    "AgentTableInputBlock",
+    "AgentFileInputBlock",
+    "AgentShortTextInputBlock",
+    "AgentLongTextInputBlock",
+    "AgentInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute python code sandbox",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ClaudeCodeBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "uuid generate unique id",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "text compare equals",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "get current date time",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GetCurrentDateAndTimeBlock"
+   ],
+   "label": "ConditionBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "human approval review",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent dropdown input",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentDropdownInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "merge combine first non null value coalesce",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "CombineTextsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "text formatter template",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "FillTextTemplateBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "smart decision maker tool calling agent",
+   "for_agent_generation": true,
+   "result_type": null,
+   "returned": [],
+   "label": "search_docs",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AI agent with tools tool calling orchestrator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "OrchestratorBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "persist information",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PersistInformationBlock",
+    "RetrieveInformationBlock",
+    "ExaCreateWebsetBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "ExecuteCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "json",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "JSONDecoderBlock",
+    "JSONEncoderBlock",
+    "AIStructuredResponseGeneratorBlock",
+    "SendWebRequestBlock",
+    "SendAuthenticatedWebRequestBlock",
+    "AIListGeneratorBlock",
+    "ExaExportWebsetBlock",
+    "ExaCreateResearchBlock",
+    "NotionReadPageBlock",
+    "FirecrawlExtractBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "add item to list",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExaCreateWebsetSearchBlock",
+    "AddToListBlock",
+    "RemoveFromListBlock",
+    "ReplaceListItemBlock",
+    "GetListItemBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "text formatter template",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "FillTextTemplateBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "current date time now",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GetCurrentDateAndTimeBlock",
+    "GetCurrentDateBlock",
+    "GetCurrentTimeBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "condition if else branch",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ConditionBlock",
+    "IfInputMatchesBlock"
+   ],
+   "label": "JSONDecoderBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "regex replace text",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExtractTextInformationBlock",
+    "TextReplaceBlock",
+    "GoogleDocsFindReplacePlainTextBlock",
+    "GoogleDocsReplaceContentWithMarkdownBlock",
+    "GoogleSheetsFindReplaceBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "get list length count",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "CountItemsBlock",
+    "ListIsEmptyBlock",
+    "WordCharacterCountBlock"
+   ],
+   "label": "TextReplaceBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "create dictionary object from values",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "GetCurrentDateAndTimeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "create dictionary object from key value fields",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "JSON encoder",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "JSONEncoderBlock",
+    "JSONDecoderBlock",
+    "TextEncoderBlock"
+   ],
+   "label": "JSONEncoderBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "SQL query postgres",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PineconeQueryBlock",
+    "SQLQueryBlock"
+   ],
+   "label": "SQLQueryBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "authenticated HTTP web request Basic Auth",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendAuthenticatedWebRequestBlock"
+   ],
+   "label": "SQLQueryBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Langfuse trace session observability",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "SQL PostgreSQL query database",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SQLQueryBlock",
+    "PineconeQueryBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "Linear update issue status",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearGetProjectIssuesBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Linear update",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Linear issue state",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearGetProjectIssuesBlock",
+    "LinearCreateIssueBlock"
+   ],
+   "label": "mcp.linear.app",
+   "label_kind": "mcp"
+  },
+  {
+   "query": "Linear create issue",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearCreateIssueBlock",
+    "LinearCreateCommentBlock",
+    "LinearGetProjectIssuesBlock"
+   ],
+   "label": "LinearCreateIssueBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "format text template string",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentOutputBlock",
+    "FillTextTemplateBlock",
+    "TextEncoderBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "combine values into list",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "CreateListBlock",
+    "CombineTextsBlock",
+    "ConcatenateListsBlock",
+    "VideoConcatBlock",
+    "ListIntersectionBlock",
+    "CreateDictionaryBlock",
+    "InterleaveListsBlock"
+   ],
+   "label": "CreateListBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "split text into list",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "TextSplitBlock",
+    "CombineTextsBlock",
+    "TextDecoderBlock",
+    "CodeExtractionBlock"
+   ],
+   "label": "TextSplitBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "agent input block text",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentLongTextInputBlock",
+    "AgentShortTextInputBlock",
+    "AgentDropdownInputBlock",
+    "AgentInputBlock",
+    "AgentNumberInputBlock",
+    "AgentTimeInputBlock",
+    "AgentFileInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AgentGoogleDriveFileInputBlock",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentGoogleDriveFileInputBlock",
+    "GoogleDocsReadBlock",
+    "GoogleDocsGetMetadataBlock",
+    "GoogleSheetsListNamedRangesBlock",
+    "GoogleSheetsMetadataBlock",
+    "GoogleSheetsFormatBlock",
+    "GoogleDocsExportBlock",
+    "GoogleDocsGetStructureBlock",
+    "GoogleDocsInsertPageBreakBlock",
+    "GoogleSheetsClearBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent output block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentOutputBlock",
+    "AgentExecutorBlock",
+    "AIConditionBlock",
+    "StoreValueBlock",
+    "IfInputMatchesBlock",
+    "AutoPilotBlock",
+    "AgentFileInputBlock",
+    "AddMemoryBlock",
+    "ConditionBlock",
+    "AgentTimeInputBlock"
+   ],
+   "label": "AITextGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "current date time now",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GetCurrentDateAndTimeBlock",
+    "GetCurrentDateBlock",
+    "GetCurrentTimeBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent input block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentInputBlock",
+    "AgentGoogleDriveFileInputBlock",
+    "AgentNumberInputBlock",
+    "AgentTimeInputBlock",
+    "AgentDateInputBlock",
+    "AgentToggleInputBlock",
+    "AgentTableInputBlock",
+    "AgentFileInputBlock",
+    "AgentDropdownInputBlock",
+    "AgentLongTextInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent output block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentOutputBlock",
+    "AgentExecutorBlock",
+    "AIConditionBlock",
+    "StoreValueBlock",
+    "IfInputMatchesBlock",
+    "AutoPilotBlock",
+    "AgentFileInputBlock",
+    "AddMemoryBlock",
+    "ConditionBlock",
+    "AgentTimeInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google drive file picker input",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentGoogleDriveFileInputBlock",
+    "GoogleSheetsUpdateCellBlock",
+    "GoogleSheetsAddDropdownBlock",
+    "GoogleSheetsAppendRowBlock",
+    "GoogleSheetsInsertRowBlock",
+    "GoogleDocsReadBlock",
+    "GoogleDocsGetMetadataBlock",
+    "GoogleDocsInsertPageBreakBlock",
+    "GoogleSheetsFormatBlock",
+    "GoogleDocsExportBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI structured response generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIStructuredResponseGeneratorBlock",
+    "AITextGeneratorBlock"
+   ],
+   "label": "GoogleSheetsAppendRowBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "ExecuteCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Google Sheets append row",
+   "for_agent_generation": true,
+   "result_type": null,
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI structured response generator classify",
+   "for_agent_generation": true,
+   "result_type": null,
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI text generator",
+   "for_agent_generation": true,
+   "result_type": null,
+   "returned": [],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "Google Sheets append row",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsAppendRowBlock",
+    "GoogleSheetsInsertRowBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI text generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIImageGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIAdMakerVideoCreatorBlock",
+    "AITextSummarizerBlock",
+    "AIShortformVideoCreatorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "VideoNarrationBlock",
+    "ReplicateFluxAdvancedModelBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI structured response generator classify",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIStructuredResponseGeneratorBlock"
+   ],
+   "label": "GoogleSheetsAppendRowBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "google sheets create spreadsheet",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsCreateSpreadsheetBlock",
+    "GoogleSheetsManageSheetBlock",
+    "GoogleSheetsCreateNamedRangeBlock"
+   ],
+   "label": "GoogleSheetsCreateSpreadsheetBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "web search",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "TavilySearchBlock",
+    "PerplexityBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "FirecrawlExtractBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI text generator LLM prompt",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIConversationBlock",
+    "AIStructuredResponseGeneratorBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "web search news",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "TavilySearchBlock",
+    "ExaSearchBlock"
+   ],
+   "label": "TavilySearchBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "AI text generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIImageGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIAdMakerVideoCreatorBlock",
+    "AITextSummarizerBlock",
+    "AIShortformVideoCreatorBlock",
+    "AIImageCustomizerBlock",
+    "VideoNarrationBlock",
+    "AIImageEditorBlock",
+    "JinaEmbeddingBlock"
+   ],
+   "label": "AITextGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "twitter search tweets by user",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "TwitterSearchRecentTweetsBlock",
+    "TwitterGetUserTweetsBlock",
+    "TwitterSearchSpacesBlock",
+    "TwitterGetUserMentionsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "send email",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendEmailBlock",
+    "GmailSendBlock",
+    "HubSpotEngagementBlock",
+    "GoogleCalendarCreateEventBlock",
+    "AgentMailSendMessageBlock",
+    "GoogleSheetsShareSpreadsheetBlock",
+    "GoogleDocsShareBlock",
+    "AgentMailCreateListEntryBlock",
+    "AgentMailCreateDraftBlock",
+    "AgentMailSendDraftBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "for each loop iterate list",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "StepThroughItemsBlock",
+    "InterleaveListsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "twitter get user by username lookup",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "TwitterGetSpaceBuyersBlock",
+    "TwitterGetListBlock",
+    "TwitterGetUserBlock",
+    "TwitterGetUsersBlock",
+    "TwitterGetSpaceTweetsBlock",
+    "TwitterGetUserTweetsBlock",
+    "TwitterGetFollowersBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "TwitterGetUserBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "linkedin profile",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GetLinkedinProfilePictureBlock",
+    "ProfileEnrichmentBlock",
+    "GetLinkedinProfileBlock",
+    "LinkedinRoleLookupBlock",
+    "LinkedinPersonLookupBlock",
+    "PostToLinkedInBlock",
+    "ExaSearchBlock",
+    "CompanyEnrichmentBlock",
+    "SmartSearchBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "Google Sheets add row write",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsInsertRowBlock",
+    "GoogleSheetsAppendRowBlock"
+   ],
+   "label": "GoogleSheetsAppendRowBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Google Sheets append multiple rows batch",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsBatchOperationsBlock",
+    "GoogleSheetsAppendRowBlock",
+    "GoogleSheetsInsertRowBlock"
+   ],
+   "label": "GoogleSheetsBatchOperationsBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Google Search Console",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "DataForSeoKeywordSuggestionsBlock",
+    "GoogleMapsSearchBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "Google Search Console",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "DataForSeoKeywordSuggestionsBlock",
+    "GoogleMapsSearchBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "agent input",
+   "for_agent_generation": true,
+   "result_type": null,
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent output",
+   "for_agent_generation": true,
+   "result_type": null,
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "format text template fill",
+   "for_agent_generation": true,
+   "result_type": null,
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "format text template fill",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "FillTextTemplateBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent input",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentInputBlock",
+    "AgentGoogleDriveFileInputBlock",
+    "IfInputMatchesBlock",
+    "AgentNumberInputBlock",
+    "AgentTimeInputBlock",
+    "AgentToggleInputBlock",
+    "AgentDateInputBlock",
+    "AgentTableInputBlock",
+    "AgentFileInputBlock",
+    "AgentDropdownInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent output",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentOutputBlock",
+    "AutoPilotBlock",
+    "AgentExecutorBlock",
+    "IfInputMatchesBlock",
+    "AIConditionBlock",
+    "StoreValueBlock",
+    "ConditionBlock",
+    "AgentFileInputBlock",
+    "StepThroughItemsBlock"
+   ],
+   "label": "FillTextTemplateBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "image generation",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AIImageGeneratorBlock",
+    "IdeogramModelBlock",
+    "AIImageCustomizerBlock",
+    "ReplicateFluxAdvancedModelBlock",
+    "AIImageEditorBlock",
+    "AIAdMakerVideoCreatorBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "openai dall-e gpt-image",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AIImageCustomizerBlock"
+   ],
+   "label": "AIImageGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Gmail read email",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GmailReadBlock",
+    "GmailGetThreadBlock",
+    "GmailListLabelsBlock",
+    "GmailSendBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Google Calendar create event",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleCalendarCreateEventBlock",
+    "GoogleCalendarReadEventsBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "zoom",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "VideoNarrationBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "screenshot website html to image",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ScreenshotWebPageBlock"
+   ],
+   "label": "ScreenshotWebPageBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Linear issue",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearCreateIssueBlock",
+    "LinearCreateCommentBlock",
+    "LinearSearchIssuesBlock",
+    "LinearGetProjectIssuesBlock",
+    "LinearSearchProjectsBlock"
+   ],
+   "label": "LinearSearchIssuesBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Gmail list labels",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GmailListLabelsBlock",
+    "GmailAddLabelBlock",
+    "GmailRemoveLabelBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "Calculator",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "CalculatorBlock"
+   ],
+   "label": "CalculatorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Agent Input",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentInputBlock",
+    "AgentGoogleDriveFileInputBlock",
+    "IfInputMatchesBlock",
+    "AgentNumberInputBlock",
+    "AgentTimeInputBlock",
+    "AgentToggleInputBlock",
+    "AgentDateInputBlock",
+    "AgentTableInputBlock",
+    "AgentDropdownInputBlock",
+    "AgentFileInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Agent Output",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentOutputBlock",
+    "StoreValueBlock",
+    "AutoPilotBlock",
+    "IfInputMatchesBlock",
+    "AgentExecutorBlock",
+    "AIConditionBlock",
+    "ConditionBlock",
+    "AgentFileInputBlock",
+    "StepThroughItemsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "text format template",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "FillTextTemplateBlock",
+    "AgentOutputBlock",
+    "GoogleDocsReplaceContentWithMarkdownBlock"
+   ],
+   "label": "FillTextTemplateBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Linear",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchProjectsBlock",
+    "LinearCreateCommentBlock",
+    "LinearSearchIssuesBlock",
+    "LinearCreateIssueBlock",
+    "LinearGetProjectIssuesBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "uppercase text",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "TextEncoderBlock",
+    "TextDecoderBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "InstantiateCodeSandboxBlock",
+    "ExecuteCodeStepBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "text formatter case",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "MatchTextPatternBlock",
+    "TextEncoderBlock"
+   ],
+   "label": "ExecuteCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "OpenWeatherMap weather",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GetWeatherInformationBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "calculator math operation",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "CalculatorBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "agent input",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentInputBlock",
+    "AgentGoogleDriveFileInputBlock",
+    "IfInputMatchesBlock",
+    "AgentNumberInputBlock",
+    "AgentTimeInputBlock",
+    "AgentToggleInputBlock",
+    "AgentDateInputBlock",
+    "AgentTableInputBlock",
+    "AgentFileInputBlock",
+    "AgentDropdownInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent output",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentOutputBlock",
+    "AutoPilotBlock",
+    "AgentExecutorBlock",
+    "IfInputMatchesBlock",
+    "StoreValueBlock",
+    "AIConditionBlock",
+    "ConditionBlock",
+    "AgentFileInputBlock",
+    "OrchestratorBlock",
+    "StepThroughItemsBlock"
+   ],
+   "label": "search_docs",
+   "label_kind": "tool"
+  },
+  {
+   "query": "reddit search posts",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SearchRedditBlock",
+    "GetRedditPostsBlock",
+    "RedditGetMyPostsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "twitter search tweets",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "TwitterSearchRecentTweetsBlock",
+    "TwitterSearchSpacesBlock",
+    "TwitterGetUserMentionsBlock",
+    "TwitterGetUserTweetsBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AI text generator prompt",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIImageGeneratorBlock",
+    "AITextGeneratorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "AIListGeneratorBlock",
+    "AIVideoGeneratorBlock",
+    "ReplicateFluxAdvancedModelBlock",
+    "AIStructuredResponseGeneratorBlock",
+    "IdeogramModelBlock",
+    "AIMusicGeneratorBlock"
+   ],
+   "label": "SearchRedditBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "langfuse",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "agent input",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentInputBlock",
+    "AgentGoogleDriveFileInputBlock",
+    "IfInputMatchesBlock",
+    "AgentNumberInputBlock",
+    "AgentTimeInputBlock",
+    "AgentToggleInputBlock",
+    "AgentDateInputBlock",
+    "AgentTableInputBlock",
+    "AgentFileInputBlock",
+    "AgentDropdownInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent output",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentOutputBlock",
+    "AgentExecutorBlock",
+    "IfInputMatchesBlock",
+    "StoreValueBlock",
+    "AutoPilotBlock",
+    "ConditionBlock",
+    "AIConditionBlock",
+    "AddMemoryBlock",
+    "OrchestratorBlock",
+    "AgentFileInputBlock"
+   ],
+   "label": "run_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AgentOutputBlock",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentOutputBlock",
+    "AgentInputBlock",
+    "StoreValueBlock",
+    "AgentTimeInputBlock",
+    "AgentExecutorBlock",
+    "AgentFileInputBlock",
+    "AgentNumberInputBlock",
+    "AgentToggleInputBlock",
+    "AgentTableInputBlock",
+    "AgentShortTextInputBlock"
+   ],
+   "label": "web_fetch",
+   "label_kind": "tool"
+  },
+  {
+   "query": "format text template fill",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "FillTextTemplateBlock",
+    "GoogleDocsInsertPlainTextBlock",
+    "GoogleDocsAppendPlainTextBlock",
+    "TextReplaceBlock"
+   ],
+   "label": "FillTextTemplateBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Agent Input Block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentInputBlock",
+    "AgentGoogleDriveFileInputBlock",
+    "AgentNumberInputBlock",
+    "AgentTimeInputBlock",
+    "AgentToggleInputBlock",
+    "AgentDateInputBlock",
+    "AgentTableInputBlock",
+    "AgentDropdownInputBlock",
+    "AgentFileInputBlock",
+    "AgentShortTextInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "Agent Output Block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentOutputBlock",
+    "StoreValueBlock",
+    "AgentExecutorBlock",
+    "AIConditionBlock",
+    "AgentFileInputBlock",
+    "AutoPilotBlock",
+    "IfInputMatchesBlock",
+    "AgentInputBlock",
+    "AgentTimeInputBlock",
+    "AddMemoryBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "text format fill template",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "FillTextTemplateBlock"
+   ],
+   "label": "FillTextTemplateBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "web search",
+   "for_agent_generation": false,
+   "result_type": null,
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI text generation summarize",
+   "for_agent_generation": false,
+   "result_type": null,
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "web search",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "TavilySearchBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "PerplexityBlock",
+    "FirecrawlExtractBlock",
+    "NotionSearchBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI text generation",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIImageGeneratorBlock",
+    "AIShortformVideoCreatorBlock",
+    "AIAdMakerVideoCreatorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "AITextSummarizerBlock",
+    "AIVideoGeneratorBlock",
+    "ReplicateFluxAdvancedModelBlock",
+    "IdeogramModelBlock"
+   ],
+   "label": "SearchTheWebBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "agent input output",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "IfInputMatchesBlock",
+    "StoreValueBlock",
+    "AIConditionBlock",
+    "AgentExecutorBlock",
+    "AgentFileInputBlock",
+    "AgentInputBlock",
+    "AgentNumberInputBlock",
+    "AgentTimeInputBlock",
+    "AgentToggleInputBlock",
+    "AgentLongTextInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AgentOutputBlock",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentOutputBlock",
+    "AgentInputBlock",
+    "StoreValueBlock",
+    "AgentTimeInputBlock",
+    "AgentExecutorBlock",
+    "AgentNumberInputBlock",
+    "AgentFileInputBlock",
+    "AgentTableInputBlock",
+    "AgentToggleInputBlock",
+    "AgentShortTextInputBlock"
+   ],
+   "label": "bash_exec",
+   "label_kind": "tool"
+  },
+  {
+   "query": "Replicate model image generation",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ReplicateFluxAdvancedModelBlock",
+    "AIImageGeneratorBlock",
+    "AIImageCustomizerBlock",
+    "AIImageEditorBlock",
+    "ReplicateModelBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "github pull request reviewers",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GithubListPRReviewersBlock",
+    "GithubAssignPRReviewerBlock",
+    "GithubUnassignPRReviewerBlock",
+    "GithubGetPRReviewCommentsBlock",
+    "GithubListPRReviewsBlock",
+    "GithubSubmitPendingReviewBlock",
+    "GithubCreatePRReviewBlock",
+    "GithubResolveReviewDiscussionBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "github get pull request details",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GithubGetPRReviewCommentsBlock",
+    "GithubListPullRequestsBlock",
+    "GithubMakePullRequestBlock",
+    "GithubReadPullRequestBlock",
+    "GithubMergePullRequestBlock"
+   ],
+   "label": "GithubListPRReviewersBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "github get pull request details reviewers",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GithubListPRReviewersBlock",
+    "GithubGetPRReviewCommentsBlock",
+    "GithubListPRReviewsBlock",
+    "GithubSubmitPendingReviewBlock",
+    "GithubAssignPRReviewerBlock",
+    "GithubCreatePRReviewBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "github get authenticated user login",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GithubGetUserInfoBlock",
+    "DiscordGetCurrentUserBlock",
+    "GmailGetProfileBlock",
+    "GithubGetNotificationThreadBlock",
+    "GithubListStargazersBlock",
+    "GithubGetRepositoryInfoBlock",
+    "GithubAssignIssueBlock",
+    "GetUserPostsBlock",
+    "GithubReadFileBlock"
+   ],
+   "label": "GithubGetUserInfoBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "github pull request details requested teams reviewers",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GithubListPRReviewersBlock",
+    "GithubListPRReviewsBlock",
+    "GithubSubmitPendingReviewBlock",
+    "GithubGetPRReviewCommentsBlock",
+    "GithubAssignPRReviewerBlock"
+   ],
+   "label": "GithubListNotificationsBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "github notification",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GithubGetNotificationThreadBlock",
+    "GithubMarkNotificationThreadAsDoneBlock",
+    "GithubMarkNotificationThreadAsReadBlock",
+    "GithubUnsubscribeNotificationThreadBlock",
+    "GithubMarkNotificationsAsReadBlock",
+    "GithubListNotificationsBlock",
+    "GithubIssuesTriggerBlock",
+    "GithubReleaseTriggerBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "github notifications mark read done subscription",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GithubMarkNotificationThreadAsDoneBlock",
+    "GithubMarkNotificationsAsReadBlock",
+    "GithubMarkNotificationThreadAsReadBlock",
+    "GithubUnsubscribeNotificationThreadBlock",
+    "GithubListNotificationsBlock",
+    "GithubGetNotificationThreadBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "zendesk",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AgentMailListPodDraftsBlock",
+    "AgentMailListOrgDraftsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "intercom",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietUpdateIncidentBlock",
+    "AllQuietCreateIncidentBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "slack post message",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PostToLinkedInBlock",
+    "PostToXBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "send authenticated web request http api",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendAuthenticatedWebRequestBlock",
+    "SendWebRequestBlock",
+    "StripeLinkMPPPayBlock",
+    "SearchTheWebBlock",
+    "StripeLinkGetPaymentChallengeBlock",
+    "StripeLinkCreateTokenSpendRequestBlock",
+    "ScreenshotWebPageBlock",
+    "ExtractWebsiteContentBlock",
+    "AskWolframBlock",
+    "ExaCancelWebsetBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google sheets",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsBatchOperationsBlock",
+    "GoogleSheetsMetadataBlock",
+    "GoogleSheetsReadBlock",
+    "GoogleSheetsFormatBlock",
+    "GoogleSheetsWriteBlock",
+    "GoogleSheetsClearBlock",
+    "GoogleSheetsUpdateCellBlock",
+    "GoogleSheetsFindReplaceBlock",
+    "GoogleSheetsGetRowCountBlock",
+    "GoogleSheetsFindBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI text generation LLM prompt block",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIConversationBlock",
+    "AITextSummarizerBlock",
+    "AIStructuredResponseGeneratorBlock",
+    "AIConditionBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "gmail email read send",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GmailReadBlock",
+    "GmailSendBlock",
+    "AgentMailSendMessageBlock",
+    "SendEmailBlock",
+    "GmailCreateDraftBlock",
+    "GmailReplyBlock",
+    "GmailDraftReplyBlock",
+    "GmailForwardBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "webhook trigger",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "search_docs",
+   "label_kind": "tool"
+  },
+  {
+   "query": "AgentInputBlock",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentInputBlock",
+    "AgentTimeInputBlock",
+    "AgentNumberInputBlock",
+    "AgentShortTextInputBlock",
+    "AgentFileInputBlock",
+    "AgentLongTextInputBlock",
+    "AgentDateInputBlock",
+    "AgentToggleInputBlock",
+    "AgentTableInputBlock",
+    "AgentDropdownInputBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AgentOutputBlock",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentOutputBlock",
+    "AgentInputBlock",
+    "StoreValueBlock",
+    "AgentTimeInputBlock",
+    "AgentExecutorBlock",
+    "AgentFileInputBlock",
+    "AgentNumberInputBlock",
+    "AgentToggleInputBlock",
+    "AgentTableInputBlock",
+    "AgentShortTextInputBlock"
+   ],
+   "label": "AIStructuredResponseGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "AI structured response generator",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIStructuredResponseGeneratorBlock",
+    "AIVideoGeneratorBlock",
+    "AIImageGeneratorBlock",
+    "AITextGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIMusicGeneratorBlock",
+    "AIConditionBlock",
+    "CodeExtractionBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "long text input",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentLongTextInputBlock",
+    "CombineTextsBlock",
+    "AgentShortTextInputBlock"
+   ],
+   "label": "AIStructuredResponseGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "notion",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "NotionReadPageBlock",
+    "NotionReadPageMarkdownBlock",
+    "NotionReadDatabaseBlock",
+    "NotionCreatePageBlock",
+    "NotionSearchBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "linear issues",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "LinearSearchIssuesBlock",
+    "LinearGetProjectIssuesBlock",
+    "LinearCreateIssueBlock",
+    "LinearCreateCommentBlock",
+    "LinearSearchProjectsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "slack post message",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PostToLinkedInBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "InstantiateCodeSandboxBlock",
+    "ExecuteCodeStepBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "discord send message",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendDiscordMessageBlock",
+    "SendDiscordDMBlock",
+    "SendDiscordFileBlock",
+    "SendDiscordEmbedBlock",
+    "SendTelegramMessageBlock",
+    "SendRedditMessageBlock",
+    "ReplyToDiscordMessageBlock",
+    "SendTelegramVoiceBlock",
+    "CreateDiscordThreadBlock",
+    "ReadDiscordMessagesBlock"
+   ],
+   "label": "SendDiscordDMBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "github pull requests list",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GithubListPullRequestsBlock",
+    "GithubListCommentsBlock",
+    "GithubListPRReviewsBlock",
+    "GithubListPRReviewersBlock"
+   ],
+   "label": "GithubListPullRequestsBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "send email",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendEmailBlock",
+    "AgentMailSendMessageBlock",
+    "GmailSendBlock",
+    "HubSpotEngagementBlock",
+    "GoogleCalendarCreateEventBlock",
+    "AgentMailCreateListEntryBlock",
+    "AgentMailCreateDraftBlock",
+    "GoogleSheetsShareSpreadsheetBlock",
+    "GoogleDocsShareBlock",
+    "AgentMailSendDraftBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "github search issues pull requests review requested",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GithubListPRReviewsBlock",
+    "GithubSubmitPendingReviewBlock",
+    "GithubGetPRReviewCommentsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "github api request",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GithubCommentBlock",
+    "GithubReadPullRequestBlock",
+    "GithubListPRReviewsBlock",
+    "GithubListPRReviewersBlock",
+    "GithubAssignPRReviewerBlock",
+    "GithubListCommentsBlock",
+    "GithubSubmitPendingReviewBlock",
+    "GithubRemoveLabelBlock",
+    "GithubUnassignPRReviewerBlock",
+    "GithubGetPRReviewCommentsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "github search",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GithubSearchCodeBlock",
+    "ExaCodeContextBlock",
+    "GithubGetCIResultsBlock",
+    "ExaSearchBlock",
+    "AllQuietListIncidentsBlock"
+   ],
+   "label": "GithubReadPullRequestBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "authenticated web request",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendAuthenticatedWebRequestBlock"
+   ],
+   "label": "SendAuthenticatedWebRequestBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "CSV file create write",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsImportCsvBlock",
+    "ReadSpreadsheetBlock",
+    "GoogleSheetsExportCsvBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "save file output",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ReplicateFluxAdvancedModelBlock",
+    "FileStoreBlock"
+   ],
+   "label": "FileStoreBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeStepBlock",
+    "ExecuteCodeBlock",
+    "InstantiateCodeSandboxBlock",
+    "CodeExtractionBlock",
+    "ExaCodeContextBlock",
+    "ClaudeCodeBlock",
+    "CodeGenerationBlock",
+    "AgentExecutorBlock"
+   ],
+   "label": "ExecuteCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "web search",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "TavilySearchBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "PerplexityBlock",
+    "FirecrawlExtractBlock",
+    "NotionSearchBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google sheets append row",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsAppendRowBlock",
+    "GoogleSheetsInsertRowBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "read file csv",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ReadSpreadsheetBlock",
+    "FileReadBlock",
+    "GithubReadFileBlock",
+    "GoogleSheetsImportCsvBlock",
+    "GoogleSheetsExportCsvBlock",
+    "GoogleSheetsReadBlock",
+    "ExaCreateImportBlock"
+   ],
+   "label": "ExaCreateResearchBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "AI text generator LLM structured output",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIStructuredResponseGeneratorBlock",
+    "AITextGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AITextSummarizerBlock",
+    "AIConversationBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeStepBlock",
+    "ExecuteCodeBlock",
+    "InstantiateCodeSandboxBlock",
+    "CodeExtractionBlock",
+    "ExaCodeContextBlock",
+    "ClaudeCodeBlock",
+    "CodeGenerationBlock",
+    "AgentExecutorBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google sheets write multiple rows batch update",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsBatchOperationsBlock",
+    "GoogleSheetsUpdateCellBlock",
+    "GoogleSheetsInsertRowBlock",
+    "GoogleSheetsUpdateRowBlock",
+    "GoogleSheetsWriteBlock",
+    "GoogleSheetsAppendRowBlock",
+    "GoogleSheetsManageSheetBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "for each loop iterate list items",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "StepThroughItemsBlock",
+    "ExaListWebsetItemsBlock",
+    "GetListItemBlock",
+    "CountItemsBlock",
+    "ReverseListOrderBlock",
+    "InterleaveListsBlock"
+   ],
+   "label": "StepThroughItemsBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "current date time now",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GetCurrentDateAndTimeBlock",
+    "GetCurrentTimeBlock",
+    "GetCurrentDateBlock",
+    "AgentDateInputBlock"
+   ],
+   "label": "GetCurrentDateBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "create list from values combine",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "CreateListBlock",
+    "CombineTextsBlock",
+    "ConcatenateListsBlock",
+    "CreateDictionaryBlock",
+    "AirtableListBasesBlock"
+   ],
+   "label": "CreateListBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "agent input block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentInputBlock",
+    "AgentGoogleDriveFileInputBlock",
+    "AgentNumberInputBlock",
+    "AgentTimeInputBlock",
+    "AgentDateInputBlock",
+    "AgentToggleInputBlock",
+    "AgentTableInputBlock",
+    "AgentFileInputBlock",
+    "AgentDropdownInputBlock",
+    "AgentLongTextInputBlock"
+   ],
+   "label": "search_docs",
+   "label_kind": "tool"
+  },
+  {
+   "query": "format text template placeholder fill",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "FillTextTemplateBlock",
+    "GoogleDocsReplaceContentWithMarkdownBlock",
+    "BannerbearTextOverlayBlock",
+    "TextReplaceBlock",
+    "GoogleDocsInsertPlainTextBlock",
+    "GoogleDocsAppendPlainTextBlock"
+   ],
+   "label": "FillTextTemplateBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "save CSV file",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsExportCsvBlock",
+    "GoogleSheetsImportCsvBlock",
+    "ReadSpreadsheetBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "web search",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "TavilySearchBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "PerplexityBlock",
+    "FirecrawlExtractBlock",
+    "NotionSearchBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI text generation LLM prompt",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AIConversationBlock",
+    "AIStructuredResponseGeneratorBlock",
+    "OrchestratorBlock",
+    "AITextSummarizerBlock"
+   ],
+   "label": "AIStructuredResponseGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "sentiment analysis text classification",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "CodeExtractionBlock",
+    "ExtractTextInformationBlock",
+    "MatchTextPatternBlock",
+    "AITextSummarizerBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "zendesk intercom helpdesk support ticket",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "github create repository",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GithubCreateRepositoryBlock",
+    "GithubCreateFileBlock",
+    "GithubCreateStatusBlock",
+    "GithubStarRepositoryBlock",
+    "GithubCreatePRReviewBlock",
+    "GithubMakeIssueBlock",
+    "GithubForkRepositoryBlock",
+    "GithubMakePullRequestBlock",
+    "GithubMakeBranchBlock",
+    "GithubMultiFileCommitBlock"
+   ],
+   "label": "GithubCreateRepositoryBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "datafast analytics",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "twitter get user tweets timeline",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "TwitterGetHomeTimelineBlock",
+    "TwitterGetUserTweetsBlock",
+    "TwitterGetUserMentionsBlock",
+    "TwitterSearchRecentTweetsBlock",
+    "TwitterGetMutedUsersBlock",
+    "TwitterGetUsersBlock",
+    "TwitterGetUserBlock",
+    "TwitterGetFollowingBlock",
+    "TwitterGetFollowersBlock",
+    "TwitterGetListTweetsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "twitter search tweets",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "TwitterSearchRecentTweetsBlock",
+    "TwitterSearchSpacesBlock"
+   ],
+   "label": "TwitterGetUserTweetsBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "google sheets write update row",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsUpdateCellBlock",
+    "GoogleSheetsWriteBlock",
+    "GoogleSheetsUpdateRowBlock",
+    "GoogleSheetsInsertRowBlock",
+    "GoogleSheetsAppendRowBlock"
+   ],
+   "label": "GoogleSheetsAppendRowBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "google sheets read",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsReadBlock"
+   ],
+   "label": "GoogleSheetsReadBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "firecrawl scrape",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "FirecrawlScrapeBlock",
+    "FirecrawlCrawlBlock",
+    "FirecrawlExtractBlock",
+    "FirecrawlSearchBlock",
+    "FirecrawlMapWebsiteBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "stripe",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "StripeLinkGetSpendRequestStatusBlock",
+    "StripeLinkGetUserInfoBlock",
+    "StripeLinkGetShippingAddressBlock",
+    "StripeLinkListPaymentMethodsBlock",
+    "StripeLinkCreateTokenSpendRequestBlock",
+    "StripeLinkMPPPayBlock",
+    "StripeLinkGetPaymentChallengeBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "stripe payments",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "StripeLinkListPaymentMethodsBlock",
+    "StripeLinkGetPaymentChallengeBlock",
+    "StripeLinkMPPPayBlock",
+    "StripeLinkGetSpendRequestStatusBlock",
+    "StripeLinkCreateTokenSpendRequestBlock",
+    "StripeLinkGetShippingAddressBlock",
+    "StripeLinkGetUserInfoBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "stripe sales",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "StripeLinkGetShippingAddressBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "github read repository files content",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GithubReadFileBlock",
+    "GithubGetRepositoryTreeBlock",
+    "GithubReadFolderBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "AI text generation LLM prompt",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AITextGeneratorBlock",
+    "AIListGeneratorBlock",
+    "AITextSummarizerBlock",
+    "AIConversationBlock",
+    "AIStructuredResponseGeneratorBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "stripe payment checkout",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "StripeLinkCreateTokenSpendRequestBlock",
+    "StripeLinkMPPPayBlock",
+    "StripeLinkGetUserInfoBlock",
+    "StripeLinkListPaymentMethodsBlock",
+    "StripeLinkGetPaymentChallengeBlock",
+    "StripeLinkGetShippingAddressBlock",
+    "Slant3DTrackingBlock",
+    "Slant3DEstimateShippingBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "generate PDF document",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "PostToLinkedInBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "send email",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SendEmailBlock",
+    "AgentMailSendMessageBlock",
+    "GmailSendBlock",
+    "HubSpotEngagementBlock",
+    "GoogleCalendarCreateEventBlock",
+    "AgentMailCreateListEntryBlock",
+    "AgentMailCreateDraftBlock",
+    "GoogleSheetsShareSpreadsheetBlock",
+    "GoogleDocsShareBlock",
+    "AgentMailSendDraftBlock"
+   ],
+   "label": "GithubGetRepositoryTreeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "for each loop iterate over list",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "StepThroughItemsBlock",
+    "FindInListBlock",
+    "LoopVideoBlock",
+    "ReverseListOrderBlock",
+    "InterleaveListsBlock",
+    "ListIsEmptyBlock",
+    "GetListItemBlock",
+    "CountItemsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "markdown to pdf file convert",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleDocsAppendMarkdownBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute python code sandbox",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ExecuteCodeBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "ClaudeCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "fill text template format string with variables",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "FillTextTemplateBlock",
+    "TextEncoderBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "Codex code agent OpenAI",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "CodeGenerationBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "OpenAI ChatGPT subscription sandbox coding agent",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "CodeGenerationBlock"
+   ],
+   "label": "CodeGenerationBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "GitHub read repository file contents",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GithubReadFileBlock",
+    "GithubGetRepositoryTreeBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "GitHub list repository files tree",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GithubGetRepositoryTreeBlock",
+    "GithubMultiFileCommitBlock"
+   ],
+   "label": "GithubReadFileBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "for each loop iterate list block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "StepThroughItemsBlock",
+    "LoopVideoBlock",
+    "AIListGeneratorBlock",
+    "FindInListBlock",
+    "CreateListBlock",
+    "ReplaceListItemBlock",
+    "ListIsEmptyBlock",
+    "GetListItemBlock",
+    "ReverseListOrderBlock",
+    "InterleaveListsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code python sandbox",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ExecuteCodeBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "ExecuteCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Gmail send email attachment",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GmailSendBlock",
+    "GmailForwardBlock",
+    "GmailDraftReplyBlock",
+    "GmailReplyBlock",
+    "GmailCreateDraftBlock"
+   ],
+   "label": "GmailSendBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "All Quiet incident",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "AllQuietGetIncidentBlock",
+    "AllQuietUpdateIncidentBlock",
+    "AllQuietListIncidentsBlock",
+    "AllQuietCreateIncidentBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "AllQuiet",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "authenticated web request",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SendAuthenticatedWebRequestBlock"
+   ],
+   "label": "SendAuthenticatedWebRequestBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute code",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent short text input",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentShortTextInputBlock",
+    "AgentNumberInputBlock",
+    "AgentLongTextInputBlock"
+   ],
+   "label": "ExecuteCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "agent secret input",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "agent password input",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AgentNumberInputBlock"
+   ],
+   "label": "run_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "stripe payment link",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "StripeLinkListPaymentMethodsBlock",
+    "StripeLinkGetPaymentChallengeBlock",
+    "StripeLinkMPPPayBlock",
+    "StripeLinkGetSpendRequestStatusBlock",
+    "StripeLinkCreateTokenSpendRequestBlock",
+    "StripeLinkGetShippingAddressBlock",
+    "StripeLinkGetUserInfoBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "Instagram Graph API posts",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "Instagram read posts",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "PostToInstagramBlock",
+    "RedditGetMyPostsBlock",
+    "GetUserPostsBlock",
+    "PostToTikTokBlock",
+    "PostToLinkedInBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "Google Sheets write rows create spreadsheet",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsInsertRowBlock",
+    "GoogleSheetsAppendRowBlock"
+   ],
+   "label": "GoogleSheetsAppendRowBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Google Sheets write range batch update multiple rows",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsBatchOperationsBlock",
+    "GoogleSheetsUpdateCellBlock",
+    "GoogleSheetsWriteBlock",
+    "GoogleSheetsUpdateRowBlock",
+    "GoogleSheetsFormatBlock",
+    "GoogleSheetsCreateNamedRangeBlock",
+    "GoogleSheetsReadBlock",
+    "GoogleSheetsAppendRowBlock",
+    "GoogleSheetsClearBlock",
+    "GoogleSheetsListNamedRangesBlock"
+   ],
+   "label": "GoogleSheetsWriteBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "InstantiateCodeSandboxBlock",
+    "ExecuteCodeStepBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "calculator math operation",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "CalculatorBlock"
+   ],
+   "label": "CalculatorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "sandbox exec code e2b",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "InstantiateCodeSandboxBlock",
+    "ClaudeCodeBlock",
+    "ExecuteCodeStepBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "discord post message channel approval",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ReadDiscordMessagesBlock",
+    "ReplyToDiscordMessageBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code python block",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ExecuteCodeBlock",
+    "CodeExtractionBlock",
+    "AgentExecutorBlock"
+   ],
+   "label": "ExecuteCodeStepBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "InstantiateCodeSandboxBlock",
+    "ExecuteCodeStepBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "condition if else compare",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ConditionBlock",
+    "IfInputMatchesBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "github get pull request details",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GithubGetPRReviewCommentsBlock",
+    "GithubMakePullRequestBlock",
+    "GithubListPullRequestsBlock",
+    "GithubReadPullRequestBlock",
+    "GithubMergePullRequestBlock"
+   ],
+   "label": "ClaudeCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "OpenAI Codex code agent sandbox",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "CodeGenerationBlock",
+    "ClaudeCodeBlock",
+    "InstantiateCodeSandboxBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "ChatGPT coding agent e2b",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "CodeGenerationBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Execute Code Step sandbox",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeStepBlock",
+    "InstantiateCodeSandboxBlock",
+    "ExecuteCodeBlock",
+    "ClaudeCodeBlock"
+   ],
+   "label": "ExecuteCodeStepBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "send email",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SendEmailBlock",
+    "AgentMailSendMessageBlock",
+    "GmailSendBlock",
+    "GoogleCalendarCreateEventBlock",
+    "HubSpotEngagementBlock",
+    "AgentMailCreateListEntryBlock",
+    "AgentMailCreateDraftBlock",
+    "GoogleSheetsShareSpreadsheetBlock",
+    "GoogleDocsShareBlock",
+    "AgentMailSendDraftBlock"
+   ],
+   "label": "web_search",
+   "label_kind": "tool"
+  },
+  {
+   "query": "google sheets write append",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsAppendRowBlock",
+    "GoogleSheetsWriteBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "google sheets read",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsReadBlock"
+   ],
+   "label": "GoogleSheetsReadBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Google Sheets read rows",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleSheetsReadBlock"
+   ],
+   "label": "GoogleSheetsReadBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "Micro Center inventory stock",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "Slant3DEstimateShippingBlock",
+    "Slant3DEstimateOrderBlock"
+   ],
+   "label": "browser_navigate",
+   "label_kind": "tool"
+  },
+  {
+   "query": "reddit search posts comments",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SearchRedditBlock",
+    "GetRedditPostCommentsBlock",
+    "GetRedditPostsBlock",
+    "RedditGetMyPostsBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "hacker news posts",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "twitter x search posts",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "TwitterSearchRecentTweetsBlock",
+    "TwitterSearchSpacesBlock"
+   ],
+   "label": "find_library_agent",
+   "label_kind": "tool"
+  },
+  {
+   "query": "website traffic analytics similarweb visits",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "github repository stars metrics",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "execute code python",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ExecuteCodeBlock",
+    "InstantiateCodeSandboxBlock",
+    "ExecuteCodeStepBlock"
+   ],
+   "label": "ExecuteCodeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "text replace find substitute string",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "GoogleDocsFindReplacePlainTextBlock",
+    "GoogleDocsReplaceContentWithMarkdownBlock",
+    "TextReplaceBlock",
+    "GoogleSheetsFindReplaceBlock",
+    "ExtractTextInformationBlock",
+    "GoogleSheetsFindBlock",
+    "GoogleDocsReplaceAllWithMarkdownBlock"
+   ],
+   "label": "TextReplaceBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "website change monitor",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "FirecrawlMapWebsiteBlock",
+    "ScreenshotWebPageBlock",
+    "ExaDeleteMonitorBlock",
+    "ExaUpdateMonitorBlock",
+    "ExaGetMonitorBlock",
+    "ExaCreateMonitorBlock",
+    "ExaListMonitorsBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  },
+  {
+   "query": "send HTTP GET request webpage fetch",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "FirecrawlScrapeBlock",
+    "FirecrawlExtractBlock",
+    "FirecrawlCrawlBlock",
+    "FirecrawlMapWebsiteBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "discord post message channel",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "ReadDiscordMessagesBlock",
+    "SendDiscordMessageBlock",
+    "ReplyToDiscordMessageBlock",
+    "CreateDiscordThreadBlock",
+    "SendRedditMessageBlock"
+   ],
+   "label": "SendDiscordMessageBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "web search research online AI perplexity",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "PerplexityBlock"
+   ],
+   "label": "FirecrawlScrapeBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "twitter get my tweets timeline user",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "TwitterGetHomeTimelineBlock",
+    "TwitterFollowUserBlock",
+    "TwitterSearchRecentTweetsBlock",
+    "TwitterGetUserTweetsBlock",
+    "TwitterGetUserMentionsBlock",
+    "TwitterGetUserBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "github user activity commits events",
+   "for_agent_generation": false,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "github",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "GithubUpdateCommentBlock",
+    "GithubCommentBlock",
+    "GithubStarRepositoryBlock",
+    "GithubGetRepositoryInfoBlock",
+    "GithubReadIssueBlock",
+    "GithubListReleasesBlock",
+    "GithubSearchCodeBlock",
+    "GithubListDiscussionsBlock",
+    "GithubListPRReviewsBlock",
+    "GithubListTagsBlock"
+   ],
+   "label": "TwitterGetUserTweetsBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "send authenticated web request http api",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "SendAuthenticatedWebRequestBlock",
+    "SendWebRequestBlock"
+   ],
+   "label": "TwitterGetUserBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "search the web",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "SearchTheWebBlock",
+    "PerplexityBlock",
+    "TavilySearchBlock",
+    "ExaCreateWebsetBlock",
+    "FirecrawlSearchBlock",
+    "ExaSearchBlock",
+    "FirecrawlExtractBlock",
+    "ExtractWebsiteContentBlock",
+    "ExaCreateResearchBlock"
+   ],
+   "label": "SearchTheWebBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "AI text generator LLM",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "AIListGeneratorBlock",
+    "AITextGeneratorBlock",
+    "AITextSummarizerBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "retrieve information",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "RetrieveInformationBlock",
+    "GetWeatherInformationBlock",
+    "TwitterGetTweetBlock",
+    "TwitterGetTweetsBlock",
+    "TwitterGetSpaceByIdBlock",
+    "TwitterGetUsersBlock",
+    "TwitterGetSpacesBlock",
+    "TwitterGetUserBlock",
+    "TwitterGetListBlock",
+    "HubSpotContactBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "persist information",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "PersistInformationBlock",
+    "RetrieveInformationBlock"
+   ],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "twitter analytics engagement metrics",
+   "for_agent_generation": true,
+   "result_type": "no_results",
+   "returned": [],
+   "label": "re-search",
+   "label_kind": "none"
+  },
+  {
+   "query": "twitter post tweet",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "TwitterPostTweetBlock",
+    "TwitterLikeTweetBlock",
+    "TwitterRetweetBlock",
+    "PostToXBlock"
+   ],
+   "label": "AITextGeneratorBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "twitter get tweet",
+   "for_agent_generation": true,
+   "result_type": "block_list",
+   "returned": [
+    "TwitterGetTweetBlock",
+    "TwitterGetTweetsBlock",
+    "TwitterGetBookmarkedTweetsBlock",
+    "TwitterGetSpaceTweetsBlock",
+    "TwitterGetListTweetsBlock",
+    "TwitterGetQuoteTweetsBlock",
+    "TwitterGetLikedTweetsBlock",
+    "TwitterGetUserTweetsBlock",
+    "TwitterGetRetweetersBlock",
+    "TwitterGetLikingUsersBlock"
+   ],
+   "label": "TwitterGetTweetBlock",
+   "label_kind": "block"
+  },
+  {
+   "query": "DataForB2B",
+   "for_agent_generation": false,
+   "result_type": "block_list",
+   "returned": [
+    "CompanyEnrichmentBlock",
+    "SearchFilterTypeaheadBlock",
+    "SmartSearchBlock",
+    "ProfileEnrichmentBlock",
+    "CompanySearchBlock",
+    "PeopleSearchBlock"
+   ],
+   "label": "gave-up-or-end",
+   "label_kind": "none"
+  }
+ ],
+ "mcp_tool_names": {
+  "mcp.linear.app": [
+   "create_attachment",
+   "create_attachment_from_upload",
+   "create_initiative_label",
+   "create_issue_label",
+   "delete_attachment",
+   "delete_comment",
+   "delete_customer",
+   "delete_customer_need",
+   "delete_diff_comment",
+   "delete_status_update",
+   "extract_images",
+   "get_agent_skill",
+   "get_attachment",
+   "get_diff",
+   "get_diff_threads",
+   "get_document",
+   "get_initiative",
+   "get_issue",
+   "get_issue_status",
+   "get_milestone",
+   "get_notifications",
+   "get_project",
+   "get_release",
+   "get_release_note",
+   "get_status_updates",
+   "get_team",
+   "get_template",
+   "get_user",
+   "get_workspace",
+   "list_agent_skills",
+   "list_comments",
+   "list_customers",
+   "list_cycles",
+   "list_diffs",
+   "list_documents",
+   "list_initiative_labels",
+   "list_initiatives",
+   "list_issue_labels",
+   "list_issue_statuses",
+   "list_issues",
+   "list_milestones",
+   "list_project_labels",
+   "list_projects",
+   "list_release_notes",
+   "list_release_pipelines",
+   "list_releases",
+   "list_teams",
+   "list_templates",
+   "list_users",
+   "mark_notification",
+   "merge_diff",
+   "prepare_attachment_upload",
+   "resolve_diff_thread",
+   "restore_initiative_label",
+   "restore_issue_label",
+   "restore_project_label",
+   "retire_initiative_label",
+   "retire_issue_label",
+   "retire_project_label",
+   "save_comment",
+   "save_customer",
+   "save_customer_need",
+   "save_diff_comment",
+   "save_document",
+   "save_initiative",
+   "save_initiative_label",
+   "save_issue",
+   "save_issue_label",
+   "save_milestone",
+   "save_project",
+   "save_project_label",
+   "save_release",
+   "save_release_note",
+   "save_status_update",
+   "search_documentation",
+   "share_issue",
+   "submit_diff_review",
+   "unshare_issue",
+   "update_diff"
+  ],
+  "mcp.sentry.dev": [
+   "analyze_issue_with_seer",
+   "execute_sentry_tool",
+   "find_organizations",
+   "find_projects",
+   "get_sentry_resource",
+   "search_events",
+   "search_issues",
+   "search_sentry_tools",
+   "update_issue"
+  ],
+  "mcp.technocore.chat": [
+   "claim_room",
+   "discover_rooms",
+   "list_notes",
+   "list_rooms",
+   "read_docs",
+   "read_note",
+   "read_room",
+   "say",
+   "say_signed",
+   "set_room_allow",
+   "wait_for_message",
+   "whoami",
+   "write_note"
+  ],
+  "treg.to": [
+   "balance",
+   "call",
+   "catalog_get",
+   "catalog_request",
+   "catalog_search",
+   "feedback",
+   "my_tools",
+   "review"
+  ],
+  "cloud.langfuse.com": [
+   "addDashboardPlacement",
+   "attachEvaluatorToEvaluationRule",
+   "createAnnotationQueue",
+   "createAnnotationQueueAssignment",
+   "createAnnotationQueueItem",
+   "createChatPrompt",
+   "createComment",
+   "createDashboard",
+   "createDashboardWidget",
+   "createDatasetRunItem",
+   "createEvaluationRule",
+   "createEvaluator",
+   "createModel",
+   "createScore",
+   "createScoreConfig",
+   "createTextPrompt",
+   "deleteAnnotationQueueAssignment",
+   "deleteAnnotationQueueItem",
+   "deleteDashboard",
+   "deleteDashboardPlacement",
+   "deleteDashboardWidget",
+   "deleteDatasetItem",
+   "deleteDatasetRun",
+   "deleteEvaluationRule",
+   "deleteEvaluator",
+   "deleteModel",
+   "deleteScoreConfig",
+   "detachEvaluatorFromEvaluationRule",
+   "getAlert",
+   "getAnnotationQueue",
+   "getAnnotationQueueItem",
+   "getComment",
+   "getDashboard",
+   "getDashboardWidget",
+   "getDataset",
+   "getDatasetItem",
+   "getDatasetRun",
+   "getEvaluationRule",
+   "getEvaluator",
+   "getHealth",
+   "getMedia",
+   "getMetricsSchema",
+   "getModel",
+   "getObservation",
+   "getObservationFieldSchema",
+   "getObservationFilterSchema",
+   "getObservationFilterValues",
+   "getPrompt",
+   "getPromptUnresolved",
+   "getScore",
+   "getScoreConfig",
+   "getV4MigrationData",
+   "listAlerts",
+   "listAnnotationQueueItems",
+   "listAnnotationQueues",
+   "listComments",
+   "listDashboardWidgets",
+   "listDashboards",
+   "listDatasetItems",
+   "listDatasetRunItems",
+   "listDatasetRuns",
+   "listDatasets",
+   "listEvaluationRules",
+   "listEvaluators",
+   "listExperimentItems",
+   "listExperiments",
+   "listManagedEvaluatorTemplates",
+   "listModels",
+   "listObservations",
+   "listPrompts",
+   "listScoreConfigs",
+   "listScores",
+   "queryMetrics",
+   "submitFeedback",
+   "testEvaluator",
+   "updateAnnotationQueueItem",
+   "updateDashboard",
+   "updateDashboardPlacement",
+   "updateDashboardWidget",
+   "updateEvaluationRule",
+   "updateEvaluator",
+   "updatePromptLabels",
+   "updateScoreConfig",
+   "upsertDataset",
+   "upsertDatasetItem"
+  ],
+  "mcp.stripe.com": [
+   "list_available_accounts_or_orgs",
+   "manage_stripe_accounts",
+   "search_stripe_documentation",
+   "send_stripe_mcp_feedback",
+   "stripe_analytics",
+   "stripe_api_details",
+   "stripe_api_read",
+   "stripe_api_search",
+   "stripe_api_write",
+   "stripe_implementation_planner"
+  ]
+ }
+}

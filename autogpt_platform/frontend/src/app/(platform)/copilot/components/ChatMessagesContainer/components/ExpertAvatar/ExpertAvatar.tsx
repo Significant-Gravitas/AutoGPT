@@ -1,14 +1,5 @@
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
+import { ExpertAvatar as SharedExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  expertAvatarConfig,
-  isUploadedAvatar,
-} from "@/components/molecules/BotAvatar/helpers";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -45,22 +36,12 @@ export function ExpertAvatar({
     return <AutopilotAvatar size={isSmall ? 24 : 36} />;
   }
 
-  if (!isUploadedAvatar(avatarUrl)) {
-    return (
-      <BotAvatar
-        config={expertAvatarConfig({ name, avatarUrl, color })}
-        size={isSmall ? 24 : 36}
-        animated={!isSmall}
-        showBadge={false}
-        title={name}
-      />
-    );
-  }
-
   return (
-    <Avatar className={cn("border border-stone-500", sizeClass)}>
-      <AvatarImage src={avatarUrl ?? undefined} alt={name} />
-      <AvatarFallback className={sizeClass}>{name}</AvatarFallback>
-    </Avatar>
+    <SharedExpertAvatar
+      name={name}
+      avatarUrl={avatarUrl}
+      color={color}
+      size={isSmall ? 24 : 36}
+    />
   );
 }

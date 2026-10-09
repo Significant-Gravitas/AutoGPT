@@ -18,10 +18,18 @@ import {
   type PlanDef,
   TEAM_INTAKE_FORM_URL,
 } from "@/components/molecules/PlanCard/plans";
+import { getEligibleTrialOffer } from "@/components/organisms/SubscriptionPlans/helpers";
+import { useTrialCard } from "@/components/organisms/TrialCard/useTrialCard";
 import {
   getSubscriptionValue,
-  trackAdsConversion,
+  trackAdsConversionBeforeNavigation,
 } from "@/services/analytics/google-ads";
+import {
+  trackCheckoutAbandoned,
+  trackPaywallViewed,
+  trackPlanSelected,
+} from "@/services/analytics/monetization-analytics";
+import { buildPaywallCancelUrl, consumePaywallCheckoutCancel } from "./helpers";
 
 interface CheckoutResponse {
   url?: string;
@@ -77,6 +85,13 @@ export function usePaywallModal() {
   // calls can only 401.
   useMountEffect(() => {
     void validateSession();
+    trackPaywallViewed("paywall_gate");
+    if (consumePaywallCheckoutCancel()) {
+      trackCheckoutAbandoned({
+        checkout_kind: "subscription",
+        surface: "paywall_gate",
+      });
+    }
   });
   const [selectedCycle, setSelectedCycle] = useState<"monthly" | "yearly">(
     "monthly",
@@ -97,6 +112,17 @@ export function usePaywallModal() {
     subscription?.tier_costs_yearly,
   );
 
+  // Trial checkout returns to /settings/billing, which renders the trial
+  // confirmation. By then the enrollment has set a real tier, so the gate
+  // lifts and the user lands on their active trial rather than back here.
+  const trial = useTrialCard("billing");
+  const trialOffer = getEligibleTrialOffer(trial, plans);
+
+  // selectedTier spans the whole click: the request, the wait for the Ads
+  // conversion and the start of the redirect. isPending alone ends before the
+  // redirect, which left the plan buttons clickable for a second checkout.
+  const isCheckingOut = isPending || selectedTier !== null;
+
   const hasActiveStripeSubscription = Boolean(
     subscription?.has_active_stripe_subscription,
   );
@@ -115,8 +141,9 @@ export function usePaywallModal() {
           // was on so the paywall re-gates immediately. /profile/* is
           // paywall-exempt — landing there let users wander an app that
           // looks unlocked until the next non-exempt navigation.
-          cancel_url: window.location.href,
+          cancel_url: buildPaywallCancelUrl(window.location.href),
           billing_cycle: cycle,
+          surface: "paywall_gate",
         },
       });
       const url = (result?.data as CheckoutResponse | undefined)?.url;
@@ -126,7 +153,7 @@ export function usePaywallModal() {
         // plan definition is only the fallback for a tier priced nowhere else.
         const plan = plans.find((candidate) => candidate.key === tier);
         const apiValue = isYearly ? plan?.usdYearly : plan?.usdMonthly;
-        trackAdsConversion("begin_checkout", {
+        await trackAdsConversionBeforeNavigation("begin_checkout", {
           value: apiValue ?? getSubscriptionValue(tier, cycle),
         });
         window.location.href = url;
@@ -152,7 +179,12 @@ export function usePaywallModal() {
   }
 
   async function handleSelectPlan(tier: string) {
-    if (isPending) return;
+    if (isCheckingOut) return;
+    trackPlanSelected({
+      subscription_tier: tier,
+      billing_cycle: selectedCycle,
+      surface: "paywall_gate",
+    });
     // Team (BUSINESS) is contact-sales, not a self-serve Stripe Checkout —
     // divert to the intake form like onboarding + Settings billing do.
     // Without this, the POST hits the backend with tier=BUSINESS which 422s
@@ -172,7 +204,7 @@ export function usePaywallModal() {
   }
 
   async function confirmPendingTier() {
-    if (!pendingTier) return;
+    if (!pendingTier || isCheckingOut) return;
     const tier = pendingTier;
     await fireUpdate(tier);
     setPendingTier(null);
@@ -204,16 +236,17 @@ export function usePaywallModal() {
     retryLoadPlans,
     isRetryingPlans: isFetching,
     country,
-    isYearly,
     selectedCycle,
     setSelectedCycle,
     handleSelectPlan,
-    isPending,
+    isPending: isCheckingOut,
     selectedTier,
     pendingTier,
     pendingTierLabel,
     confirmPendingTier,
     cancelPendingTier,
     handleLogout,
+    trial,
+    trialOffer,
   };
 }

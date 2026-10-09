@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from backend.copilot.model import ChatSession
+    from backend.copilot.model import ChatMessage, ChatSession
 
 EXPERT_KICKOFF_KIND = "expert_kickoff"
 
@@ -59,18 +59,26 @@ def is_hidden_chat_message(metadata: Mapping[str, Any] | None) -> bool:
     return metadata is not None and metadata.get("hidden") is True
 
 
-def is_expert_kickoff_turn(session: "ChatSession") -> bool:
-    """Whether the turn being served answers the hire's kickoff message.
+def is_expert_kickoff_message(message: "ChatMessage") -> bool:
+    """Whether a persisted user row is the server-written kickoff message.
 
     ``expert_kickoff_metadata`` is the only writer of this ``kind`` and the
     chat route never copies request fields into message metadata, so a true
-    here means the server wrote the last user message itself. Nobody has
-    asked for anything yet, which is what makes it safe for callers to
-    narrow the turn down to the onboarding card.
+    here means the server wrote the row itself.
+    """
+    if message.role != "user":
+        return False
+    metadata = message.metadata
+    return metadata is not None and metadata.get("kind") == EXPERT_KICKOFF_KIND
+
+
+def is_expert_kickoff_turn(session: "ChatSession") -> bool:
+    """Whether the turn being served answers the hire's kickoff message.
+
+    Nobody has asked for anything yet on that turn, which is what makes it
+    safe for callers to narrow it down to the onboarding card.
     """
     for message in reversed(session.messages):
-        if message.role != "user":
-            continue
-        metadata = message.metadata
-        return metadata is not None and metadata.get("kind") == EXPERT_KICKOFF_KIND
+        if message.role == "user":
+            return is_expert_kickoff_message(message)
     return False

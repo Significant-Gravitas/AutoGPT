@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { ThumbnailImages } from "../ThumbnailImages";
 
 vi.mock("next/image", async () => {
@@ -38,7 +43,8 @@ describe("local marketplace image previews", () => {
     const image = await screen.findByRole("img", { name: "Thumbnail 1" });
     expect(image.getAttribute("src")).toBe(url);
     expect(image.hasAttribute("srcset")).toBe(false);
-    expect(onImagesChange).toHaveBeenCalledWith([url]);
+    // The image commits before the effect that reports it; a bare assert races it.
+    await waitFor(() => expect(onImagesChange).toHaveBeenCalledWith([url]));
   });
 
   it("keeps GCS thumbnails optimized", () => {

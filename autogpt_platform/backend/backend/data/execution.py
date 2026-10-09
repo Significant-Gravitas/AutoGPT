@@ -630,6 +630,7 @@ async def get_graph_executions(
     offset: Optional[int] = None,
     order_by: Literal["createdAt", "startedAt", "updatedAt"] = "createdAt",
     order_direction: Literal["asc", "desc"] = "desc",
+    expert_id: Optional[str] = None,
 ) -> list[GraphExecutionMeta]:
     """
     Get graph executions with optional filters and ordering.
@@ -661,6 +662,8 @@ async def get_graph_executions(
         where_filter["agentGraphId"] = graph_id
     if graph_version is not None:
         where_filter["agentGraphVersion"] = graph_version
+    if expert_id:
+        where_filter["expertId"] = expert_id
     if created_time_gte or created_time_lte:
         where_filter["createdAt"] = {
             "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
@@ -1360,6 +1363,13 @@ async def update_node_execution_status(
     if res := await AgentNodeExecution.prisma().find_unique(
         where={"id": node_exec_id}, include=EXECUTION_RESULT_INCLUDE
     ):
+        if res.executionStatus != status:
+            # VALID_STATUS_TRANSITIONS rejected the write. Say so: callers get
+            # the unchanged row back and can't tell the update didn't happen.
+            logger.warning(
+                f"Node execution #{node_exec_id} can't go from "
+                f"{res.executionStatus} to {status}; it stays {res.executionStatus}"
+            )
         return NodeExecutionResult.from_db(res)
 
     raise ValueError(f"Execution {node_exec_id} not found.")

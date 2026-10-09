@@ -19,6 +19,7 @@ describe("IntegrationsPanel", () => {
     expect(headings.map((heading) => heading.textContent)).toEqual([
       "AI subscriptions",
       "Tools your agents use",
+      "Available integrations",
     ]);
   });
 

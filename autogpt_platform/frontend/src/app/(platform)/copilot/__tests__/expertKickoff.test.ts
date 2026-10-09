@@ -64,6 +64,9 @@ describe("buildKickoffMessage", () => {
     expect(message.text).toContain("expert_onboarding");
     // The hire's first turn is an intake, not a first job.
     expect(message.text).toContain("Do not run a workflow");
+    // The card is about the expert's own role, not whatever else the model
+    // knows about the user or their teammates.
+    expect(message.text).toContain("Do not ask about work outside your role");
     expect(message.text).not.toContain("run_agent");
     expect(message.text).not.toContain("EXPERT_KICKOFF");
     expect(message.text).not.toContain(EXPERT_ID);

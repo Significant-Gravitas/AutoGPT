@@ -4,15 +4,16 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from autogpt_libs import auth
 from fastapi import APIRouter, HTTPException, Query, Response, Security
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.api.features.experts import experts_db
+from backend.blocks.desktop._api import DesktopStream
 from backend.copilot import active_turns
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry, turn_queue
@@ -21,8 +22,15 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
-from backend.copilot.builder_context import resolve_session_permissions
+from backend.copilot.computer import (
+    ComputerInfo,
+    computer_owner,
+    describe_computer,
+    mounts_for,
+    open_desktop,
+)
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
+from backend.copilot.credential_selection import remember_selection
 from backend.copilot.db import (
     chat_message_has_assistant_reply,
     get_chat_messages_paginated,
@@ -36,6 +44,7 @@ from backend.copilot.expert_kickoff import (
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_RUNNING,
+    AutopilotMode,
     ChatSessionInfo,
     ChatSessionMetadata,
     create_chat_session,
@@ -44,6 +53,7 @@ from backend.copilot.model import (
     get_or_create_builder_session,
     get_or_create_expert_kickoff_session,
     get_user_sessions,
+    update_session_autopilot_mode,
     update_session_llm_route,
     update_session_pinned,
     update_session_title,
@@ -65,6 +75,7 @@ from backend.copilot.pending_messages import (
     clear_pending_messages_unsafe,
     peek_pending_messages,
 )
+from backend.copilot.provider_failure import ProviderFailure, ProviderFailureKind
 from backend.copilot.provider_tiers import (
     ProviderTiersResponse,
     describe_provider_tiers,
@@ -93,6 +104,7 @@ from backend.copilot.response_model import (
     StreamStatus,
 )
 from backend.copilot.service import strip_injected_context_for_display
+from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.manage_presets import (
     PresetDeletedResponse,
@@ -102,6 +114,7 @@ from backend.copilot.tools.manage_presets import (
 from backend.copilot.tools.manage_schedules import (
     ScheduleDeletedResponse,
     ScheduleListResponse,
+    ScheduleToggledResponse,
 )
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
@@ -146,9 +159,13 @@ from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block
+from backend.data.workspace_folder import resolve_attachable_workspace_folders
 from backend.integrations.codex.access import enforce_codex_access_http
+from backend.integrations.credentials_store import provider_matches
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -277,6 +294,12 @@ class StreamChatRequest(BaseModel):
     file_ids: list[str] | None = Field(
         default=None, max_length=20
     )  # Workspace file IDs attached to this message
+    folder_ids: list[str] | None = Field(
+        default=None,
+        max_length=5,
+        description="Workspace folder IDs attached to this message. Named in "
+        "the message for the model to open, never expanded into their files.",
+    )
     model: CopilotLLMModel | None = Field(
         default=None,
         description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
@@ -305,6 +328,11 @@ class StreamChatRequest(BaseModel):
             "derives its owner-scoped message ID and persistence metadata."
         ),
     )
+    autopilot_mode: AutopilotMode | None = Field(
+        default=None,
+        description="The chat's approval mode from this turn on; None keeps "
+        "the mode it already has.",
+    )
 
 
 class QueuePendingMessageRequest(BaseModel):
@@ -313,6 +341,7 @@ class QueuePendingMessageRequest(BaseModel):
     message: str = Field(max_length=64_000)
     context: dict[str, str] | None = None
     file_ids: list[str] | None = Field(default=None, max_length=20)
+    folder_ids: list[str] | None = Field(default=None, max_length=5)
 
 
 class PeekPendingMessagesResponse(BaseModel):
@@ -345,7 +374,7 @@ class CreateSessionRequest(BaseModel):
       hides tools that conflict with the panel's scope
       (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``
       — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups
-      (``find_block``, ``find_agent``, ``search_docs``, …) stay open.
+      (``find_capability``, ``find_agent``, ``search_docs``, …) stay open.
 
     ``expert_id`` scopes the session to a hired expert. It must reference
     an expert owned by the caller that is neither a template nor archived,
@@ -390,6 +419,8 @@ class ActiveStreamInfo(BaseModel):
     # turns show honest "time since turn started" instead of the misleading
     # "time since this mount resumed the SSE".
     started_at: str | None = None
+    # The turn's last checkpoint: seed from its rows, resume the stream after it.
+    checkpoint: stream_registry.TurnCheckpoint | None = None
 
 
 class SessionDetailResponse(BaseModel):
@@ -740,7 +771,7 @@ async def create_session(
     Two modes, selected by the request body:
 
     - Default: create a fresh session for the user. ``dry_run=True`` forces
-      run_block and run_agent calls to use dry-run simulation.
+      run_capability and run_agent calls to use dry-run simulation.
     - Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed
       on ``(user_id, builder_graph_id)``. Returns the existing session for
       that graph or creates one locked to it.  Graph ownership is validated
@@ -850,6 +881,76 @@ async def create_session(
     )
 
 
+@router.get(
+    "/sessions/{session_id}/computer",
+    dependencies=[Security(auth.requires_user)],
+    responses={404: {"description": "Session not found or access denied"}},
+)
+async def get_session_computer(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> ComputerInfo:
+    """The computer behind this chat.
+
+    A plain chat has its own box; a chat that runs as a hired expert reports
+    the expert's persistent computer instead. Listing never wakes a paused box.
+    """
+    # Metadata only: the panel polls this, and the history is not needed.
+    session = await _validate_and_get_session(session_id, user_id)
+    return await describe_computer(
+        computer_owner(session_id, session.expert_id),
+        mounts_for(user_id, session.expert_id),
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/desktop",
+    dependencies=[Security(auth.requires_user)],
+    responses={
+        404: {"description": "Session not found or access denied"},
+        502: {"description": "The desktop could not be started"},
+        503: {"description": "E2B is not configured"},
+    },
+)
+async def start_session_desktop(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> DesktopStream:
+    """Start or resume the desktop behind this chat and return its live stream.
+
+    Same box the ``start_desktop`` tool uses from inside a turn, so the side
+    panel and the model always look at one screen.
+    """
+    # Same gate as a turn: an archived expert's chat must not resurrect the
+    # expert's box (the archive already killed it, and nothing would kill
+    # the new one).
+    session = await _validate_and_get_writable_session(session_id, user_id)
+    api_key = ChatConfig().active_e2b_api_key
+    if not api_key:
+        raise HTTPException(
+            status_code=503, detail="E2B is not configured on this deployment."
+        )
+    try:
+        stream, _created, _shared = await open_desktop(
+            computer_owner(session_id, session.expert_id),
+            mounts_for(user_id, session.expert_id),
+            api_key,
+            user_id=user_id,
+            session_id=session_id,
+        )
+    except Exception as exc:
+        logger.error(
+            "[E2B] start_session_desktop failed for %s: %s",
+            session_id[:12],
+            exc,
+            exc_info=True,
+        )
+        # The cause is in the server log; provider errors can carry sandbox
+        # ids and infrastructure detail that the client has no use for.
+        raise HTTPException(status_code=502, detail="Failed to start the desktop.")
+    return stream
+
+
 @router.delete(
     "/sessions/{session_id}",
     dependencies=[Security(auth.requires_user)],
@@ -918,6 +1019,60 @@ async def disconnect_session_stream(
     await _validate_and_get_session(session_id, user_id)
     await stream_registry.disconnect_all_listeners(session_id)
     return Response(status_code=204)
+
+
+class CredentialSelectionRequest(BaseModel):
+    """The credential the user picked for each provider on a connect card."""
+
+    selections: dict[str, str] = Field(
+        description="Provider slug to credential id.",  # gitleaks:allow (schema text)
+        max_length=20,
+    )
+
+
+@router.put(
+    "/sessions/{session_id}/credential-selection",
+    summary="Record credential picks for this chat",
+    dependencies=[Security(auth.requires_user)],
+    status_code=200,
+    responses={404: {"description": "Session or credential not found"}},
+)
+async def select_session_credentials_route(
+    session_id: str,
+    request: CredentialSelectionRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> dict:
+    """Keep the account the user chose on a connect card for the rest of the chat.
+
+    The card shows one account and the tools used to re-match on their own, so
+    with two accounts for a provider a run could land on the other one. The
+    tools now use exactly what is recorded here, and ask when several
+    credentials qualify and nothing was picked.
+
+    Every id is checked against the caller's own credentials and the provider
+    it is filed under; one bad entry rejects the request and records nothing.
+    """
+    if await get_chat_session_metadata(session_id, user_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+
+    store = IntegrationCredentialsManager().store
+    selections: dict[str, str] = {}
+    for provider, credential_id in request.selections.items():
+        provider = provider.strip().lower()
+        if provider in selections:
+            # " GitHub " and "github" name the same provider; keeping only the
+            # later one would silently drop a credential the caller validated.
+            raise HTTPException(status_code=422, detail="duplicate_provider")
+        credential = await store.get_creds_by_id(user_id, credential_id)
+        if credential is None or not provider_matches(credential.provider, provider):
+            raise HTTPException(status_code=404, detail="credential_not_found")
+        selections[provider] = credential_id
+
+    await remember_selection(session_id, selections)
+    return {"status": "ok"}
 
 
 class ChangeSessionConnectionRequest(BaseModel):
@@ -1113,6 +1268,7 @@ async def get_session(
                 turn_id=active_session.turn_id,
                 last_message_id=last_message_id,
                 started_at=active_session.created_at.isoformat(),
+                checkpoint=active_session.checkpoint,
             )
         elif page.session.chat_status == CHAT_STATUS_RUNNING:
             # DB says running but Redis has no live stream — either the
@@ -1373,6 +1529,12 @@ async def reset_copilot_usage(
     )
 
 
+# A delivered cancel has been measured missing this window while the executor
+# was still tearing the turn down, so timing out here is a normal outcome.
+_CANCEL_CONFIRM_TIMEOUT_SECONDS = 5.0
+_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS = 0.5
+
+
 async def _clear_pending_best_effort(session_id: str) -> None:
     """Drop the session's pending buffer, swallowing Redis errors.
 
@@ -1453,13 +1615,15 @@ async def cancel_session_task(
     logger.info(f"[CANCEL] Published cancel for session ...{session_id[-8:]}")
 
     # Poll until the executor confirms the task is no longer running.
-    poll_interval = 0.5
-    max_wait = 5.0
     waited = 0.0
-    while waited < max_wait:
-        await asyncio.sleep(poll_interval)
-        waited += poll_interval
+    while waited < _CANCEL_CONFIRM_TIMEOUT_SECONDS:
+        await asyncio.sleep(_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS)
+        waited += _CANCEL_CONFIRM_POLL_INTERVAL_SECONDS
         session_state = await stream_registry.get_session(session_id)
+        # A turn the cancelled one's end woke is not the one the user stopped,
+        # and its queued follow-ups are its own.
+        if session_state and session_state.turn_id != active_session.turn_id:
+            return CancelSessionResponse(cancelled=True)
         if session_state is None or session_state.status != "running":
             logger.info(
                 f"[CANCEL] Session ...{session_id[-8:]} confirmed stopped "
@@ -1472,13 +1636,35 @@ async def cancel_session_task(
             return CancelSessionResponse(cancelled=True)
 
     logger.warning(
-        f"[CANCEL] Session ...{session_id[-8:]} not confirmed after {max_wait}s, force-completing"
+        f"[CANCEL] Session ...{session_id[-8:]} not confirmed after "
+        f"{_CANCEL_CONFIRM_TIMEOUT_SECONDS}s, completing the turn as cancelled"
     )
-    await stream_registry.mark_session_completed(session_id, error_message="Cancelled")
+    # The user asked for this stop, so publishing a StreamError would paint
+    # the "assistant encountered an error" banner over their own cancel.
+    await stream_registry.mark_session_completed(
+        session_id,
+        error_message=stream_registry.CANCELLED_MESSAGE,
+        skip_error_publish=True,
+        turn_id=active_session.turn_id,
+    )
     # Status is now force-flipped out of "running"; re-clear to drop any
     # follow-up that landed during the poll window.
     await _clear_pending_best_effort(session_id)
-    return CancelSessionResponse(cancelled=True)
+    return CancelSessionResponse(
+        cancelled=True, reason="cancel_published_not_confirmed"
+    )
+
+
+async def _apply_autopilot_mode(
+    session: ChatSessionInfo, user_id: str, mode: AutopilotMode | None
+) -> None:
+    """Persist a changed mode before the turn is scheduled, so the turn runs on it."""
+    if mode is None or mode == session.metadata.autopilot_mode:
+        return
+    if not await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False):
+        return
+    await update_session_autopilot_mode(session.session_id, user_id, mode)
+    session.metadata.autopilot_mode = mode
 
 
 def _ui_message_stream_headers() -> dict[str, str]:
@@ -1573,6 +1759,7 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_writable_session(session_id, user_id)
+    await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
 
     # Microsoft 365 Copilot owns its model choice and ignores AutoGPT's tier.
     # Every other route can spend platform-gated premium inference, so a client
@@ -1678,6 +1865,7 @@ async def stream_chat_post(
                 message=message,
                 context=request.context,
                 file_ids=request.file_ids,
+                folder_ids=request.folder_ids,
                 expert_id=session.expert_id,
             )
             return _empty_ui_message_stream_response()
@@ -1722,7 +1910,18 @@ async def stream_chat_post(
                 weekly_cost_limit=weekly_limit,
             )
         except RateLimitExceeded as e:
-            raise HTTPException(status_code=429, detail=str(e)) from e
+            # Structured envelope (not a bare string) so the frontend can
+            # offer "switch to another connection" (e.g. a connected
+            # BYOSUB/Codex credential) instead of only "upgrade your plan" --
+            # the platform cap does not apply once the turn is billed to a
+            # user-supplied credential instead of platform dollars.
+            failure = ProviderFailure(
+                kind=ProviderFailureKind.USAGE_LIMIT,
+                message=str(e),
+                auth_provider="platform",
+                resets_at=int(e.resets_at.timestamp()),
+            )
+            raise HTTPException(status_code=429, detail=failure.as_part()) from e
         except RateLimitUnavailable as e:
             # Fail-closed on Redis brown-out: the user may already be at or
             # past their USD cap and we cannot prove otherwise. 503 + a short
@@ -1740,15 +1939,18 @@ async def stream_chat_post(
     # Expert sessions may only attach files from the expert's own
     # conversations; anything else is a 400 rather than a silent drop.
     sanitized_file_ids: list[str] | None = None
-    if request.file_ids:
+    if request.file_ids or request.folder_ids:
         files = await resolve_attachments_for_http(
             user_id,
-            request.file_ids,
+            request.file_ids or [],
             session_id=session_id,
             expert_id=session.expert_id,
         )
+        folders = await resolve_attachable_workspace_folders(
+            user_id, request.folder_ids or [], expert_id=session.expert_id
+        )
         sanitized_file_ids = [wf.id for wf in files] or None
-        message += build_files_block(files)
+        message += build_files_block(files, folders)
 
     # Atomically append user message to session BEFORE creating task to avoid
     # race condition where GET_SESSION sees task as "running" but message isn't
@@ -1775,6 +1977,7 @@ async def stream_chat_post(
             is_user_message=request.is_user_message,
             expert_id=session.expert_id,
             session_origin=session.metadata.origin,
+            session_source_platform=session.metadata.source_platform,
             context=request.context,
             voice=request.voice,
             file_ids=sanitized_file_ids,
@@ -1890,7 +2093,8 @@ async def stream_chat_post(
             )
             while True:
                 try:
-                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
+                    entry = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
+                    _, chunk = entry
                     chunks_yielded += 1
 
                     if not first_chunk_yielded:
@@ -1908,7 +2112,7 @@ async def stream_chat_post(
                             },
                         )
 
-                    yield chunk.to_sse()
+                    yield stream_registry.sse_frame(entry)
 
                     if isinstance(chunk, StreamFinish):
                         total_time = time_module.perf_counter() - event_gen_start
@@ -2028,6 +2232,7 @@ async def queue_pending_message(
         message=request.message,
         context=request.context,
         file_ids=request.file_ids,
+        folder_ids=request.folder_ids,
         expert_id=session.expert_id,
     )
 
@@ -2057,27 +2262,56 @@ async def get_pending_messages(
     )
 
 
+class StreamResumeRefusal(BaseModel):
+    """Why a resume at a cursor cannot be served from the stream."""
+
+    reason: Literal["trimmed", "expired"]
+    # For "trimmed": seed from the DB rows up to here, then resume after it.
+    checkpoint: stream_registry.TurnCheckpoint | None = None
+
+
 @router.get(
     "/sessions/{session_id}/stream",
+    responses={
+        409: {"model": StreamResumeRefusal, "description": "Cursor was trimmed"},
+        410: {"model": StreamResumeRefusal, "description": "Stream expired"},
+    },
 )
 async def resume_session_stream(
     session_id: str,
+    turn: str | None = Query(
+        default=None, description="Turn to read; with it, only its stored entries"
+    ),
+    after: str = Query(
+        default="0-0",
+        pattern=r"^\d+-\d+$",
+        description="Stream entry id the client last applied",
+    ),
     last_chunk_id: str | None = Query(default=None, include_in_schema=False),
     user_id: str = Security(auth.get_user_id),
 ):
     """
-    Resume an active stream for a session.
+    Resume a session's stream.
 
-    Called by the AI SDK's ``useChat(resume: true)`` on page load.
-    Checks for an active (in-progress) task on the session and either replays
-    the full SSE stream or returns 204 No Content if nothing is running.
+    With ``turn``, serves exactly that turn's stored entries after ``after``
+    (``0-0`` for all of them) and then its live ones: 409 when entries after
+    the cursor were trimmed, 410 when the stream is gone. Every entry frame
+    carries ``id: <turn>:<entry>``.
 
-    Always replays the active turn from ``0-0``. The AI SDK UI-message parser
-    keeps text/reasoning part state inside a single parser instance; resuming
-    from a Redis cursor can skip the ``*-start`` events required by later
-    ``*-delta`` chunks.
+    Without ``turn``, replays the active turn from ``0-0``, or returns 204
+    when nothing is running: the AI SDK's parser cannot continue a block it
+    did not see start.
     """
-    import asyncio
+    if turn is not None:
+        try:
+            subscriber_queue = await stream_registry.subscribe_to_turn(
+                session_id, user_id, turn, after
+            )
+        except stream_registry.TurnStreamTrimmed as trimmed:
+            return _resume_refusal(409, "trimmed", trimmed.checkpoint)
+        except stream_registry.TurnStreamGone:
+            return _resume_refusal(410, "expired")
+        return _resume_response(session_id, subscriber_queue, cursor=True)
 
     active_session, _latest_backend_id = await stream_registry.get_active_session(
         session_id, user_id
@@ -2100,6 +2334,26 @@ async def resume_session_stream(
 
     if subscriber_queue is None:
         return Response(status_code=204)
+    return _resume_response(session_id, subscriber_queue, cursor=False)
+
+
+def _resume_refusal(
+    status_code: int,
+    reason: Literal["trimmed", "expired"],
+    checkpoint: stream_registry.TurnCheckpoint | None = None,
+) -> JSONResponse:
+    body = StreamResumeRefusal(reason=reason, checkpoint=checkpoint)
+    return JSONResponse(status_code=status_code, content=body.model_dump())
+
+
+def _resume_response(
+    session_id: str,
+    subscriber_queue: "asyncio.Queue[stream_registry.StreamEntry]",
+    *,
+    cursor: bool,
+) -> StreamingResponse:
+    """Stream the queue as SSE. A ``cursor`` read writes no made-up frame: a
+    stream that stops without the turn's finish just ends the response."""
 
     async def event_generator() -> AsyncGenerator[str, None]:
         chunk_count = 0
@@ -2107,24 +2361,29 @@ async def resume_session_stream(
         try:
             while True:
                 try:
-                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
-                    if chunk_count < 3:
-                        logger.info(
-                            "Resume stream chunk",
-                            extra={
-                                "session_id": session_id,
-                                "chunk_type": str(chunk.type),
-                            },
-                        )
-                    if not first_chunk_type:
-                        first_chunk_type = str(chunk.type)
-                    chunk_count += 1
-                    yield chunk.to_sse()
-
-                    if isinstance(chunk, StreamFinish):
-                        break
+                    entry = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
                 except asyncio.TimeoutError:
                     yield StreamHeartbeat().to_sse()
+                    continue
+                frame_id, chunk = entry
+                if (
+                    cursor
+                    and frame_id is None
+                    and not isinstance(chunk, StreamHeartbeat)
+                ):
+                    break
+                if chunk_count < 3:
+                    logger.info(
+                        "Resume stream chunk",
+                        extra={"session_id": session_id, "chunk_type": str(chunk.type)},
+                    )
+                if not first_chunk_type:
+                    first_chunk_type = str(chunk.type)
+                chunk_count += 1
+                yield stream_registry.sse_frame(entry)
+
+                if isinstance(chunk, StreamFinish):
+                    break
         except GeneratorExit:
             pass
         except Exception as e:
@@ -2136,7 +2395,7 @@ async def resume_session_stream(
                 )
             except Exception as unsub_err:
                 logger.error(
-                    f"Error unsubscribing from session {active_session.session_id}: {unsub_err}",
+                    f"Error unsubscribing from session {session_id}: {unsub_err}",
                     exc_info=True,
                 )
             logger.info(
@@ -2312,6 +2571,7 @@ ToolResponseUnion = (
     | TaskDecompositionResponse
     | ScheduleListResponse
     | ScheduleDeletedResponse
+    | ScheduleToggledResponse
     | PresetListResponse
     | PresetUpdatedResponse
     | PresetDeletedResponse

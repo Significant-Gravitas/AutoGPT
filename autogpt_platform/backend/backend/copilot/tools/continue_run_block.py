@@ -6,11 +6,7 @@ from typing import Any
 from prisma.enums import ReviewStatus
 
 from backend.blocks import get_block
-from backend.copilot.constants import (
-    COPILOT_NODE_PREFIX,
-    COPILOT_SESSION_PREFIX,
-    parse_node_id_from_exec_id,
-)
+from backend.copilot.constants import COPILOT_NODE_PREFIX, parse_node_id_from_exec_id
 from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.db_accessors import review_db
@@ -25,7 +21,7 @@ logger = logging.getLogger(__name__)
 class ContinueRunBlockTool(BaseTool):
     """Tool for continuing a block execution after human review approval."""
 
-    # Returns execute_block's result, same as run_block.
+    # Returns execute_block's result, same as run_capability.
     digest_large_output = True
 
     @property
@@ -34,7 +30,7 @@ class ContinueRunBlockTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Resume block execution after a run_block call returned review_required. Pass the review_id."
+        return "Resume block execution after a run_capability call returned review_required. Pass the review_id."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -66,12 +62,12 @@ class ContinueRunBlockTool(BaseTool):
         if not review_id:
             return ErrorResponse(
                 message="Please provide a review_id", session_id=session_id
-            )
+            ).from_outside()
 
         if not user_id:
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
-            )
+            ).from_outside()
 
         # Look up and validate the review record via adapter
         reviews = await review_db().get_reviews_by_node_exec_ids([review_id], user_id)
@@ -81,31 +77,30 @@ class ContinueRunBlockTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"Review '{review_id}' not found or already executed. "
-                    "It may have been consumed by a previous continue_run_block call."
+                    "It may have been consumed by a previous resume_capability call."
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
 
         # Validate the review belongs to this session
-        expected_graph_exec_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
-        if review.graph_exec_id != expected_graph_exec_id:
+        if review.session_id != session_id:
             return ErrorResponse(
                 message="Review does not belong to this session.",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         if review.status == ReviewStatus.WAITING:
             return ErrorResponse(
                 message="Review has not been approved yet. "
                 "Please wait for the user to approve the review first.",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         if review.status == ReviewStatus.REJECTED:
             return ErrorResponse(
                 message="Review was rejected. The block will not execute.",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         # Extract block_id from review_id: copilot-node-{block_id}:{random_hex}
         block_id = parse_node_id_from_exec_id(review_id).removeprefix(
@@ -115,7 +110,7 @@ class ContinueRunBlockTool(BaseTool):
         if not block:
             return ErrorResponse(
                 message=f"Block '{block_id}' not found", session_id=session_id
-            )
+            ).from_outside()
 
         emit_tool_display_name(block.name)
 
@@ -132,16 +127,16 @@ class ContinueRunBlockTool(BaseTool):
         )
 
         matched_creds, missing_creds = await resolve_block_credentials(
-            user_id, block, input_data
+            user_id, block, input_data, session.expert_id, session_id=session_id
         )
         if missing_creds:
             return ErrorResponse(
                 message=f"Block '{block.name}' requires credentials that are not configured.",
                 session_id=session_id,
-            )
+            ).from_outside()
 
-        # dry_run=False is safe here: run_block's dry-run fast-path (line ~241)
-        # skips HITL entirely, so continue_run_block is never called during a
+        # dry_run=False is safe here: run_capability's dry-run fast-path skips
+        # HITL entirely, so resume_capability is never called during a
         # dry run — only real executions reach the human review gate.
         result = await execute_block(
             block=block,

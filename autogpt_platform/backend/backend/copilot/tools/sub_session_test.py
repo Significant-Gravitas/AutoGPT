@@ -245,6 +245,23 @@ class TestRunSubSession:
         mock_queue["enqueue_turn"].assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_the_result_carries_the_tree_state(
+        self, monkeypatch, mock_queue, mock_waiter, mock_model
+    ):
+        """The parent decides its next spawn from numbers, not a guess."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.build_spawn_state_note",
+            AsyncMock(return_value=" TREE-STATE"),
+        )
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert r.message.endswith(" TREE-STATE")
+
+    @pytest.mark.asyncio
     async def test_propagates_dry_run_to_sub(self, mock_queue, mock_waiter, mock_model):
         """Fresh sub-session must inherit the parent's dry_run flag."""
         parent = _session("alice")
@@ -448,6 +465,23 @@ class TestRunSubSession:
         )
         mock_waiter.assert_awaited_once()
         assert mock_waiter.await_args.kwargs["permissions"] is perms
+
+    @pytest.mark.asyncio
+    async def test_sub_message_carries_parent_provenance(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """A plain Otto parent stamps its session with no expert, so the
+        sub's thread can link back and label the sender as Otto."""
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", session_id="s-parent"),
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert mock_waiter.await_args.kwargs["message_metadata"] == {
+            "from_session_id": "s-parent",
+            "from_expert_id": None,
+        }
 
     @pytest.mark.asyncio
     async def test_wait_for_result_zero_returns_running(

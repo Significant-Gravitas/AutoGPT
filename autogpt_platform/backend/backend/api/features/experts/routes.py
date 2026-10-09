@@ -1,10 +1,13 @@
+import logging
+
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from fastapi import APIRouter, Security
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from backend.api.features.experts import avatar_routes
 from backend.api.features.experts import credentials as expert_credentials
-from backend.api.features.experts import experts_db, scheduling
+from backend.api.features.experts import experts_db, onboarding, scheduling
 from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import (
@@ -28,18 +31,32 @@ from backend.api.features.experts.models import (
     ExpertTemplate,
     ExpertWorkflowRef,
     HireResult,
+    HireSurface,
     RaiseAttachment,
     RaiseResult,
     validate_avatar_url,
 )
-from backend.util import product_analytics
+from backend.blocks.desktop._api import DesktopStream
+from backend.copilot.computer import (
+    ComputerInfo,
+    describe_computer,
+    mounts_for,
+    open_desktop,
+)
+from backend.copilot.config import ChatConfig
+from backend.copilot.tools.e2b_sandbox import SandboxOwner, kill_expert_sandbox
 from backend.util.exceptions import NotFoundError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/experts",
     tags=["experts", "private"],
     dependencies=[Security(autogpt_auth_lib.requires_user)],
 )
+
+router.include_router(avatar_routes.router)
+router.include_router(onboarding.router)
 
 # Templates are marketplace content: the expert page shows them to signed-out
 # visitors, so they live on a router without the session requirement. It must
@@ -51,6 +68,7 @@ public_router = APIRouter(prefix="/experts", tags=["experts"])
 class HireRequest(BaseModel):
     template_id: str
     name: str | None = Field(default=None, max_length=100)
+    surface: HireSurface | None = None
 
 
 class InstallWorkflowRequest(BaseModel):
@@ -90,6 +108,7 @@ class AssignPodRequest(BaseModel):
 class CreateRaisedExpertRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     role: str | None = Field(default=None, max_length=100)
+    job_title: str | None = Field(default=None, max_length=100)
     avatar_url: str | None = Field(
         default=None, max_length=EXPERT_AVATAR_URL_MAX_LENGTH
     )
@@ -121,11 +140,11 @@ class CreateRaisedExpertRequest(BaseModel):
     def check_avatar_url(cls, value: str | None) -> str | None:
         return validate_avatar_url(value)
 
-    @field_validator("color", "about")
+    @field_validator("job_title", "color", "about", mode="before")
     @classmethod
-    def strip_optional_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
+    def strip_optional_text(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
         return value.strip() or None
 
 
@@ -159,8 +178,8 @@ async def hire_expert(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> HireResult:
     try:
-        result = await experts_db.hire_expert(
-            user_id, request.template_id, request.name
+        return await experts_db.hire_expert(
+            user_id, request.template_id, request.name, request.surface
         )
     except experts_db.ExpertTemplateNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
@@ -181,13 +200,6 @@ async def hire_expert(
             status_code=409,
             detail={"code": "active_expert_limit", "limit": e.limit},
         )
-    product_analytics.track_expert_hired(
-        user_id=user_id,
-        expert_id=result.expert.id,
-        template_id=request.template_id,
-        name=result.expert.name,
-    )
-    return result
 
 
 @router.post(
@@ -208,6 +220,7 @@ async def create_raised_expert(
             request.name,
             request.role,
             request.voice_preferences,
+            job_title=request.job_title,
             avatar_url=request.avatar_url,
             color=request.color,
             about=request.about,
@@ -357,6 +370,81 @@ async def get_expert_activity(
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
 
+@router.get(
+    "/{expert_id}/computer",
+    operation_id="getV2GetExpertComputer",
+    responses={404: {"description": "Expert not found"}},
+)
+async def get_expert_computer(
+    expert_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ComputerInfo:
+    """The expert's own computer: its box as E2B lists it, and whether its
+    screen is on. E2B knows nothing about the screen; that flag is ours,
+    kept beside the box id, because asking the box would wake it.
+
+    Listing never wakes a paused box, so the Computer tab can refresh freely.
+    """
+    expert = await experts_db.get_expert(user_id, expert_id, include_workflows=False)
+    if expert is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f"Expert {expert_id} not found"
+        )
+    return await describe_computer(
+        SandboxOwner(kind="expert", id=expert_id), mounts_for(user_id, expert_id)
+    )
+
+
+@router.post(
+    "/{expert_id}/computer/desktop",
+    operation_id="postV2StartExpertDesktop",
+    responses={
+        404: {"description": "Expert not found"},
+        502: {"description": "The desktop could not be started"},
+        503: {"description": "E2B is not configured"},
+    },
+)
+async def start_expert_desktop(
+    expert_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> DesktopStream:
+    """Start or resume the expert's desktop and return its live stream.
+
+    This is the same box the expert's next ``start_desktop`` turn reconnects
+    to, so what the user does here is what the expert sees.
+    """
+    expert = await experts_db.get_expert(user_id, expert_id, include_workflows=False)
+    if expert is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f"Expert {expert_id} not found"
+        )
+    api_key = ChatConfig().active_e2b_api_key
+    if not api_key:
+        raise fastapi.HTTPException(
+            status_code=503, detail="E2B is not configured on this deployment."
+        )
+    try:
+        stream, _created, _shared = await open_desktop(
+            SandboxOwner(kind="expert", id=expert_id),
+            mounts_for(user_id, expert_id),
+            api_key,
+            user_id=user_id,
+        )
+    except Exception as exc:
+        logger.error(
+            "[E2B] start_expert_desktop failed for %s: %s",
+            expert_id[:12],
+            exc,
+            exc_info=True,
+        )
+        # The cause is in the server log; provider errors can carry sandbox
+        # ids and infrastructure detail that the client has no use for.
+        raise fastapi.HTTPException(
+            status_code=502, detail="Failed to start the desktop."
+        )
+    return stream
+
+
 class GrantCredentialsRequest(BaseModel):
     credential_ids: list[str] = Field(min_length=1, max_length=50)
 
@@ -437,7 +525,10 @@ async def update_expert_soul(
 @router.put(
     "/{expert_id}/skills",
     operation_id="update_expert_skills",
-    responses={404: {"description": "Expert or skill not found"}},
+    responses={
+        400: {"description": "A marketplace skill is both attached and removed"},
+        404: {"description": "Expert or skill not found"},
+    },
 )
 async def update_expert_skills(
     expert_id: str,
@@ -450,9 +541,14 @@ async def update_expert_skills(
             expert_id,
             request.skills,
             marketplace_listing_ids=request.marketplace_listing_ids,
+            remove=request.remove,
         )
     except NotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        # A listing resolves to its name only inside update_skills, so this
+        # attach-and-remove contradiction can't be caught by the request model.
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
 
 
 @router.patch(
@@ -465,6 +561,9 @@ async def update_expert_avatar(
     request: ExpertAvatarUpdate,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> Expert:
+    current = await experts_db.get_expert(user_id, expert_id)
+    if current is None:
+        raise fastapi.HTTPException(404, "Expert not found")
     try:
         return await experts_db.update_avatar(user_id, expert_id, request.avatar_url)
     except experts_db.ExpertNotFoundError as e:
@@ -583,4 +682,16 @@ async def archive_expert(
         await experts_db.archive_expert(user_id, expert_id)
     except experts_db.ExpertNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
+    # The expert's computer goes with it. Best-effort: the archive is already
+    # committed and a slow E2B call must not turn it into a 5xx. Its volume is
+    # deliberately kept — files outlive the machine.
+    if api_key := ChatConfig().active_e2b_api_key:
+        try:
+            await kill_expert_sandbox(expert_id, api_key)
+        except Exception:
+            logger.warning(
+                "[E2B] Failed to kill the sandbox for archived expert %s",
+                expert_id[:12],
+                exc_info=True,
+            )
     return fastapi.Response(status_code=204)

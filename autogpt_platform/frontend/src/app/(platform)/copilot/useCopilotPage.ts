@@ -4,10 +4,15 @@ import { isValidUUID } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { UIMessage } from "ai";
 import { parseAsString, useQueryState } from "nuqs";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
 import { getLatestAssistantStatusMessage } from "./messageParts";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
+import {
+  forgetHeldFollowUp,
+  rememberHeldFollowUp,
+  takeHeldFollowUps,
+} from "./helpers/heldFollowUps";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import { useCopilotStreamStore } from "./copilotStreamStore";
@@ -23,10 +28,11 @@ import {
 } from "./expertKickoff";
 import { useExpertKickoff } from "./useExpertKickoff";
 import { useCopilotNotifications } from "./useCopilotNotifications";
+import { useCopilotRuntimeStream } from "./useCopilotRuntimeStream";
 import { useCopilotStream } from "./useCopilotStream";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
-import { useSendMessage } from "./useSendMessage";
+import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
 import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
@@ -62,7 +68,9 @@ function getLatestKickoffAttemptToken(messages: UIMessage[]) {
   return null;
 }
 
-export function useCopilotPage() {
+export function useCopilotPage({
+  isStreamRuntime = false,
+}: { isStreamRuntime?: boolean } = {}) {
   const { user, isUserLoading, isLoggedIn } = useAuth();
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
@@ -117,12 +125,13 @@ export function useCopilotPage() {
     setKickoffParam,
   ]);
 
-  const { copilotLlmModel, isDryRun } = useCopilotUIStore();
+  const { copilotLlmModel, isDryRun, setInitialPrompt } = useCopilotUIStore();
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
     sessionId,
     setSessionId,
+    sessionView,
     sessionLlmAuthProvider,
     sessionLlmCredentialId,
     sessionExpertId,
@@ -137,11 +146,14 @@ export function useCopilotPage() {
     oldestSequence,
     isLoadingSession,
     isSessionError,
+    isSessionNotFound,
     createSession,
     isCreatingSession,
     refetchSession,
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
+    sessionAutopilotMode,
   } = useChatSession({
     dryRun: isDryRun,
     expertId,
@@ -166,25 +178,10 @@ export function useCopilotPage() {
   const isExpertSendLocked =
     isResolvingExpertIdentity || Boolean(expertIdentity?.isArchived);
 
-  const {
-    messages: currentMessages,
-    setMessages,
-    sendMessage,
-    stop,
-    status,
-    error,
-    isReconnecting,
-    isFinishProbing,
-    isRestoringActiveSession,
-    isUserStoppingRef,
-    isUserStopping,
-    rateLimitMessage,
-    dismissRateLimit,
-    providerLimit,
-    dismissProviderLimit,
-  } = useCopilotStream({
+  const streamArgs = {
     userId: user?.id ?? null,
     sessionId,
+    sessionView,
     hydratedMessages,
     rawSessionMessages,
     sessionAuthProvider: sessionLlmAuthProvider,
@@ -197,24 +194,53 @@ export function useCopilotPage() {
     // so gating the value on that flag silently ran the turn on the tier the
     // user had not chosen. Entitlement is the server's call, not the flag's.
     copilotModel: copilotLlmModel,
-  });
+  };
+  // The host keys its mount by the flag, so this never changes within one.
+  const useStream = isStreamRuntime
+    ? useCopilotRuntimeStream
+    : useCopilotStream;
+  const stream = useStream(streamArgs);
+  const runtimeStream = "appendLocalUserRows" in stream ? stream : null;
+  const {
+    followBackendTurn,
+    messages: currentMessages,
+    sendMessage,
+    stop,
+    status,
+    error,
+    isReconnecting,
+    isFinishProbing,
+    isRestoringActiveSession,
+    isUserStoppingRef,
+    isUserStopping,
+    rateLimitMessage,
+    platformLimitFailure,
+    dismissRateLimit,
+    providerLimit,
+    dismissProviderLimit,
+  } = stream;
   const kickoffAttemptToken = getLatestKickoffAttemptToken(currentMessages);
 
   const { pagedMessages, pagedTurnStats, hasMore, isLoadingMore, loadMore } =
     useLoadMoreMessages({
       sessionId,
-      initialOldestSequence: oldestSequence,
+      initialOldestSequence: runtimeStream
+        ? runtimeStream.oldestSequence
+        : oldestSequence,
       initialHasMore: hasMoreMessages,
       initialPageRawMessages: rawSessionMessages,
     });
 
   // Merge the older-pages and current-page stat maps; current-page (historical)
   // wins on overlap since it was persisted more recently.
+  const currentTurnStats = runtimeStream
+    ? runtimeStream.turnStats
+    : historicalTurnStats;
   const turnStats = useMemo(() => {
     const merged = new Map(pagedTurnStats);
-    historicalTurnStats?.forEach((v, k) => merged.set(k, v));
+    currentTurnStats?.forEach((v, k) => merged.set(k, v));
     return merged;
-  }, [pagedTurnStats, historicalTurnStats]);
+  }, [pagedTurnStats, currentTurnStats]);
 
   // Ref that mirrors whether a stream turn is currently in-flight.
   // Updated synchronously on every render so it always reflects the latest
@@ -226,6 +252,66 @@ export function useCopilotPage() {
   const isInflightRef = useRef(false);
   isInflightRef.current =
     !isUserStopping && (status === "streaming" || status === "submitted");
+
+  // Whether this tab has finished drawing the previous turn. The server's
+  // turn can end well before the screen does: the smoothing transform paces
+  // text out word by word (copilotStreamSmoothing.ts), and the post-finish
+  // probe may still turn into a reconnect. A follow-up the backend refused
+  // to queue (409, no active turn) waits here before going out as a new
+  // turn — see onSend.
+  const isLocalStreamSettled =
+    !isInflightRef.current && !isFinishProbing && !isReconnecting;
+  const isLocalStreamSettledRef = useRef(isLocalStreamSettled);
+  isLocalStreamSettledRef.current = isLocalStreamSettled;
+  // Each waiter learns whether the stream settled (send now) or the hook
+  // went away first (the chat host unmounts on a chat switch and on reload;
+  // the follow-up then stays in sessionStorage, see below).
+  const settleWaitersRef = useRef<Array<(settled: boolean) => void>>([]);
+  useEffect(() => {
+    if (!isLocalStreamSettled) return;
+    settleWaitersRef.current.splice(0).forEach((resolve) => resolve(true));
+  }, [isLocalStreamSettled]);
+  useEffect(
+    () => () => {
+      settleWaitersRef.current.splice(0).forEach((resolve) => resolve(false));
+    },
+    [],
+  );
+
+  function waitForLocalSettle() {
+    if (isLocalStreamSettledRef.current) return Promise.resolve(true);
+    return new Promise<boolean>((resolve) => {
+      settleWaitersRef.current.push(resolve);
+    });
+  }
+
+  // Follow-ups waiting on the settle above. Shown as "Queued" chips beside
+  // the backend-buffered ones, since from the user's side they are the same
+  // thing. Mirrored into sessionStorage: this host is unmounted on a chat
+  // switch and gone on a reload, and the only copy was in memory.
+  const [heldFollowUps, setHeldFollowUps] = useState<string[]>([]);
+  function holdFollowUp(forSessionId: string, text: string) {
+    setHeldFollowUps((prev) => [...prev, text]);
+    rememberHeldFollowUp(forSessionId, text);
+  }
+  function releaseFollowUp(forSessionId: string, text: string) {
+    setHeldFollowUps((prev) => {
+      const index = prev.indexOf(text);
+      return index === -1 ? prev : prev.filter((_, i) => i !== index);
+    });
+    forgetHeldFollowUp(forSessionId, text);
+  }
+  useEffect(() => {
+    if (!sessionId) return;
+    const leftBehind = takeHeldFollowUps(sessionId);
+    if (leftBehind.length === 0) return;
+    setInitialPrompt(leftBehind.join("\n\n"));
+    toast({
+      title: "Follow-up not sent",
+      description:
+        "You left the chat before it could go out. It's back in the composer.",
+    });
+  }, [sessionId, setInitialPrompt]);
 
   // Combine paginated messages with current page messages, merging consecutive
   // assistant UIMessages at the page boundary so reasoning + response parts
@@ -252,18 +338,22 @@ export function useCopilotPage() {
     () => stripReplayPrefix(cachedRawMessages),
     [cachedRawMessages],
   );
-  const restoreStatusMessage = useMemo(
+  const latestStatusMessage = useMemo(
     () =>
       isRestoringActiveSession
         ? getLatestAssistantStatusMessage(messages)
         : null,
     [isRestoringActiveSession, messages],
   );
+  // The runtime's restore state is a passive notice; it never trims the list.
+  const restoreStatusMessage = runtimeStream
+    ? runtimeStream.restoreStatusMessage
+    : latestStatusMessage;
   const displayMessages = useMemo(() => {
-    if (!isRestoringActiveSession) return messages;
+    if (!isRestoringActiveSession || runtimeStream) return messages;
     if (hasAssistantTail(cachedMessages)) return cachedMessages;
     return trimVisibleMessagesForActiveRestore(messages);
-  }, [isRestoringActiveSession, messages, cachedMessages]);
+  }, [isRestoringActiveSession, runtimeStream, messages, cachedMessages]);
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
@@ -271,7 +361,12 @@ export function useCopilotPage() {
     sessionId,
     status,
     messages,
-    setMessages,
+    ...("setMessages" in stream
+      ? { setMessages: stream.setMessages }
+      : {
+          appendLocalUserRows: stream.appendLocalUserRows,
+          drainedCount: stream.drainedCount,
+        }),
   });
 
   useCopilotNotifications(sessionId);
@@ -279,6 +374,7 @@ export function useCopilotPage() {
   const {
     onSend: sendNewMessage,
     isUploadingFiles,
+    pendingSend,
     setPendingFileParts,
   } = useSendMessage({
     sessionId,
@@ -320,7 +416,12 @@ export function useCopilotPage() {
       trackBrainDump("intro_followup_sent", { chars: trimmed.length });
     }
 
-    if (sessionId && isInflightRef.current) {
+    let heldForLocalSettle = false;
+    // A loop, not an `if`: a held follow-up re-checks the in-flight ref once
+    // the screen settles, because another held follow-up may have dispatched
+    // a new turn in the same settle (in which case this one queues behind
+    // it) — and never sends while a turn is still being drawn.
+    while (sessionId && isInflightRef.current) {
       if (hasAttachments) {
         toast({
           title: "Please wait to attach files",
@@ -333,23 +434,29 @@ export function useCopilotPage() {
 
       try {
         await queueFollowUpMessage(sessionId, trimmed);
+        if (heldForLocalSettle) releaseFollowUp(sessionId, trimmed);
         queueMessage(trimmed);
+        return;
       } catch (err) {
+        // Any other failure propagates to the composer, which restores the
+        // draft and shows the one toast for it.
         if (
-          err instanceof Error &&
-          err.name === "QueueFollowUpNotActiveError"
+          !(err instanceof Error && err.name === "QueueFollowUpNotActiveError")
         ) {
-          await sendNewMessage(message, files, workspaceFiles, metadata);
-          return;
+          if (heldForLocalSettle) releaseFollowUp(sessionId, trimmed);
+          throw err;
         }
-        toast({
-          title: "Could not queue message",
-          description: "Please wait for the current response to finish.",
-          variant: "destructive",
-        });
-        throw err;
       }
-      return;
+
+      // The backend's turn is already over, but this tab may still be
+      // drawing it. Starting a second `useChat` request now cuts the live
+      // answer off mid-sentence: AI SDK only streams into the last message
+      // while its id matches, and the new user bubble takes that slot (see
+      // midTurnSplit.ts). Hold the follow-up until the local stream has
+      // settled, then send it as a normal turn below the finished answer.
+      if (!heldForLocalSettle) holdFollowUp(sessionId, trimmed);
+      heldForLocalSettle = true;
+      if (!(await waitForLocalSettle())) return;
     }
 
     // Mark in-flight synchronously before dispatching so a rapid second
@@ -357,6 +464,17 @@ export function useCopilotPage() {
     // instead of triggering a duplicate /stream POST.
     if (sessionId) {
       isInflightRef.current = true;
+      isLocalStreamSettledRef.current = false;
+    }
+    if (heldForLocalSettle && sessionId) {
+      releaseFollowUp(sessionId, trimmed);
+      // Resolve once dispatched, not when the whole answer has streamed:
+      // the composer's enqueue path is waiting on this, and holding it for
+      // the entire turn would lock Enter and the queue button again.
+      void sendNewMessage(message, files, workspaceFiles, metadata).catch(
+        (err: unknown) => recoverFailedDeferredSend(trimmed, [], err),
+      );
+      return;
     }
     await sendNewMessage(message, files, workspaceFiles, metadata);
   }
@@ -410,8 +528,10 @@ export function useCopilotPage() {
     isUserStopping,
     isLoadingSession,
     isSessionError,
+    isSessionNotFound,
     isCreatingSession,
     isUploadingFiles,
+    pendingSend,
     isUserLoading,
     isLoggedIn,
     createSession,
@@ -419,12 +539,16 @@ export function useCopilotPage() {
     // onEnqueue delegates to onSend, which internally routes to the queue
     // endpoint when isInflightRef.current is true.
     onEnqueue: onSend,
-    queuedMessages,
+    queuedMessages:
+      heldFollowUps.length > 0
+        ? [...queuedMessages, ...heldFollowUps]
+        : queuedMessages,
     hasMoreMessages: hasMore,
     isLoadingMore,
     loadMore,
     turnStats,
     rateLimitMessage,
+    platformLimitFailure,
     dismissRateLimit,
     providerLimit,
     dismissProviderLimit,
@@ -433,9 +557,12 @@ export function useCopilotPage() {
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
+    sessionAutopilotMode,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
     isKickoffStarting: isKickoffResolving || isKickoffStarting,
+    followBackendTurn,
   };
 }

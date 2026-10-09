@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Any
 
 from backend.copilot.model import ChatSession
@@ -19,17 +20,20 @@ logger = logging.getLogger(__name__)
 TOOL_NAME = "expert_onboarding"
 
 # The card is a one-question-at-a-time pager, so its length is the user's
-# patience, not a context budget: five steps is already a long walk before
-# anyone has seen the expert do anything.
-MIN_STEPS = 3
-MAX_STEPS = 5
-MAX_OPTIONS = 6
+# patience, not a context budget: every extra step or option is one more
+# chance to close the tab before the expert has done anything.
+MIN_STEPS = 2
+MAX_STEPS = 3
+MAX_OPTIONS = 4
 MAX_QUESTION_LENGTH = 200
 MAX_OPTION_LENGTH = 120
 MAX_GREETING_LENGTH = 600
 # Both arrays are model-authored and the model can be steered by an expert's
 # own user-supplied identity text, so every scan needs its own bound.
 MAX_SCAN = 200
+# Em and en dashes are the tell of machine-written copy, and models reach for
+# them even when told not to, so the greeting loses them either way.
+_DASH = re.compile(r"\s*[\u2013\u2014]+\s*")
 
 
 class ExpertOnboardingTool(BaseTool):
@@ -49,10 +53,10 @@ class ExpertOnboardingTool(BaseTool):
     def description(self) -> str:
         return (
             "Open your onboarding card on your first turn after being hired: "
-            "a short greeting plus 3-5 multiple-choice questions that settle "
-            "what the user wants from you and which services you need. Ask "
-            "for nothing else on that turn, and do not start work until the "
-            "answers come back."
+            f"a one-line greeting plus {MIN_STEPS}-{MAX_STEPS} short "
+            "multiple-choice questions that settle what the user wants from "
+            "you and which services you need. Ask for nothing else on that "
+            "turn, and do not start work until the answers come back."
         )
 
     @property
@@ -63,8 +67,9 @@ class ExpertOnboardingTool(BaseTool):
                 "greeting": {
                     "type": "string",
                     "description": (
-                        "One or two sentences introducing yourself, in your "
-                        "own voice. Shown above the questions."
+                        "One short sentence, under 15 words, introducing "
+                        "yourself in your own voice. No dashes. Shown under "
+                        "your name."
                     ),
                 },
                 "steps": {
@@ -76,19 +81,22 @@ class ExpertOnboardingTool(BaseTool):
                         "properties": {
                             "question": {
                                 "type": "string",
-                                "description": "The question text.",
+                                "description": (
+                                    "The question, under 10 words. No "
+                                    "preamble or explanation — just the "
+                                    "question."
+                                ),
                             },
                             "options": {
                                 "type": "array",
                                 "items": {"type": "string"},
                                 "description": (
-                                    "Up to 6 answers the user can tap. Make "
-                                    "them concrete and specific to your role "
-                                    "— the point is that answering costs no "
-                                    "typing. The user can always write their "
-                                    "own answer instead. Exactly one is "
-                                    "chosen, so split a question that needs "
-                                    "several answers into separate steps."
+                                    f"2-{MAX_OPTIONS} answers the user can "
+                                    "tap, 1-5 words each, concrete and "
+                                    "specific to your role. Exactly one is "
+                                    "chosen. Leave out "
+                                    "'not sure', 'later' and 'skip' answers: "
+                                    "the card already offers Other and Skip."
                                 ),
                             },
                             "keyword": {
@@ -99,9 +107,9 @@ class ExpertOnboardingTool(BaseTool):
                         "required": ["question", "options"],
                     },
                     "description": (
-                        "3-5 questions, shown one per step. Order them from "
-                        "what you most need to know to what is merely nice "
-                        "to know."
+                        f"{MIN_STEPS}-{MAX_STEPS} questions, shown one per "
+                        "step, about your role and installed workflows. Ask "
+                        "only what you need before you can start."
                     ),
                 },
             },
@@ -139,7 +147,13 @@ class ExpertOnboardingTool(BaseTool):
             )
 
         greeting = kwargs.get("greeting")
-        if not isinstance(greeting, str) or not greeting.strip():
+        if not isinstance(greeting, str):
+            raise ValueError("expert_onboarding requires a non-empty 'greeting'")
+        # Cap before the regex: its leading ``\s*`` backtracks quadratically
+        # over a long run of spaces. Checked after the strip, so a greeting
+        # that was nothing but dashes counts as empty too.
+        greeting = _strip_dashes(greeting.strip()[:MAX_GREETING_LENGTH])
+        if not greeting:
             raise ValueError("expert_onboarding requires a non-empty 'greeting'")
 
         raw_steps = kwargs.get("steps", [])
@@ -156,7 +170,7 @@ class ExpertOnboardingTool(BaseTool):
             message="; ".join(step.question for step in steps),
             session_id=session.session_id,
             expert_id=expert_id,
-            greeting=greeting.strip()[:MAX_GREETING_LENGTH],
+            greeting=greeting,
             steps=steps,
         )
 
@@ -187,6 +201,12 @@ def _has_onboarded(session: ChatSession) -> bool:
         ):
             return True
     return False
+
+
+def _strip_dashes(text: str) -> str:
+    """Turn every em or en dash into a comma: "I'm Jules — I write" reads
+    "I'm Jules, I write". A dash that ends the text is simply dropped."""
+    return _DASH.sub(", ", text.strip()).strip(", ")
 
 
 def _parse_steps(raw: list[Any]) -> list[ExpertOnboardingStep]:

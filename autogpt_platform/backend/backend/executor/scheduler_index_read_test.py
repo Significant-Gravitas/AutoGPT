@@ -48,7 +48,9 @@ def test_get_schedule_jobs_falls_back_without_index_or_before_backfill():
     scheduler = Scheduler(register_system_tasks=False)
     scheduler.scheduler = MagicMock()
     full_scan = [MagicMock()]
-    with patch.object(scheduler, "_get_jobs_cached", return_value=full_scan) as scan:
+    with patch.object(
+        scheduler, "_get_active_jobs_cached", return_value=full_scan
+    ) as scan:
         assert (
             scheduler._get_schedule_jobs(
                 user_id="u1",
@@ -63,7 +65,9 @@ def test_get_schedule_jobs_falls_back_without_index_or_before_backfill():
 
     scheduler = _scheduler_with_index()
     scheduler._schedule_index_ready = False
-    with patch.object(scheduler, "_get_jobs_cached", return_value=full_scan) as scan:
+    with patch.object(
+        scheduler, "_get_active_jobs_cached", return_value=full_scan
+    ) as scan:
         assert (
             scheduler._get_schedule_jobs(
                 user_id="u1",
@@ -80,7 +84,9 @@ def test_get_schedule_jobs_falls_back_without_index_or_before_backfill():
 def test_get_schedule_jobs_unfiltered_read_uses_full_scan():
     scheduler = _scheduler_with_index()
     full_scan = [MagicMock()]
-    with patch.object(scheduler, "_get_jobs_cached", return_value=full_scan) as scan:
+    with patch.object(
+        scheduler, "_get_active_jobs_cached", return_value=full_scan
+    ) as scan:
         assert (
             scheduler._get_schedule_jobs(
                 user_id=None,
@@ -108,7 +114,7 @@ def test_get_schedule_jobs_loads_candidates_and_drops_dangling_rows():
         live_job if job_id == "live" else None
     )
 
-    with patch.object(scheduler, "_get_jobs_cached") as scan:
+    with patch.object(scheduler, "_get_active_jobs_cached") as scan:
         jobs = scheduler._get_schedule_jobs(
             user_id="u1",
             graph_id=None,
@@ -132,7 +138,9 @@ def test_get_schedule_jobs_index_error_falls_back_to_full_scan():
             "candidate_job_ids",
             side_effect=RuntimeError("db down"),
         ),
-        patch.object(scheduler, "_get_jobs_cached", return_value=full_scan) as scan,
+        patch.object(
+            scheduler, "_get_active_jobs_cached", return_value=full_scan
+        ) as scan,
     ):
         assert (
             scheduler._get_schedule_jobs(
@@ -157,7 +165,7 @@ def test_get_execution_schedules_via_index_applies_exact_predicate():
     job = _mock_job(mine.model_dump(mode="json"))
     scheduler.scheduler.get_job.return_value = job
 
-    with patch.object(scheduler, "_get_jobs_cached") as scan:
+    with patch.object(scheduler, "_get_active_jobs_cached") as scan:
         results = scheduler.get_execution_schedules(user_id="u1")
     scan.assert_not_called()
     assert [r.id for r in results] == ["mine"]
@@ -173,6 +181,24 @@ def test_get_execution_schedules_via_index_applies_exact_predicate():
     )
     results = scheduler.get_execution_schedules(user_id="u1")
     assert [r.id for r in results] == ["mine"]
+
+
+def test_indexed_listing_hides_a_paused_schedule_unless_asked():
+    """The active-jobs scan drops paused rows in SQL; the index path loads
+    candidates by id, so it has to drop them itself."""
+    scheduler = _scheduler_with_index()
+    args = GraphExecutionJobArgs(**_graph_job_kwargs("paused", "u1", "g1"))
+    assert scheduler._schedule_index is not None
+    scheduler._schedule_index.upsert(_index_entry("paused", args))
+    job = _mock_job(args.model_dump(mode="json"))
+    job.next_run_time = None
+    scheduler.scheduler.get_job.return_value = job
+
+    assert scheduler.get_execution_schedules(user_id="u1") == []
+    assert [
+        s.id
+        for s in scheduler.get_execution_schedules(user_id="u1", include_paused=True)
+    ] == ["paused"]
 
 
 def test_persist_schedule_writes_index_row_and_delete_removes_it():

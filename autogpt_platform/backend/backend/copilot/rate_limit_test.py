@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from redis.exceptions import RedisClusterException, RedisError
 
+from backend.data.subscription_trial import TrialState
+
 from .rate_limit import (
     _DEFAULT_TIER_MULTIPLIERS,
     _DEFAULT_TIER_WORKSPACE_STORAGE_MB,
@@ -2881,6 +2883,32 @@ class TestGetRemainingUsdBudget:
         assert result == 0.5
 
     @pytest.mark.asyncio
+    async def test_an_active_trial_gets_the_same_failure_sentinel(self, mocker):
+        """Every tier answers a brown-out with ``floor_usd``. A trial that
+        returned a hardcoded 0.0 instead was indistinguishable from a trial
+        that had genuinely spent its last cent."""
+        trial = MagicMock(spec=TrialState)
+        trial.active = True
+        store = MagicMock()
+        store.get_subscription_trial = AsyncMock(return_value=trial)
+        mocker.patch("backend.copilot.rate_limit.credit_db", return_value=store)
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.TRIAL),
+        )
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            side_effect=RedisError("boom"),
+        ):
+            result = await get_remaining_usd_budget(
+                _USER,
+                daily_cost_limit=10_000_000,
+                weekly_cost_limit=50_000_000,
+                floor_usd=-1.0,
+            )
+        assert result == -1.0
+
+    @pytest.mark.asyncio
     async def test_daily_drives_when_weekly_is_loose(self):
         """Both limits constrain; whichever leaves less budget wins. Here a
         tight daily ($10 - $1 = $9) wins over a loose weekly."""
@@ -3013,3 +3041,198 @@ class TestBuildBudgetCtx:
                 default_weekly_cost_limit=1_000_000_000,
             )
         assert block == ""
+
+
+# ---------------------------------------------------------------------------
+# get_stripe_sweep_revert_warning — admin grant vs. the Stripe sweep
+# ---------------------------------------------------------------------------
+
+
+class TestGetStripeSweepRevertWarning:
+    """The Stripe reconciliation sweep sets every Stripe-customer user's tier
+    from their live subscription (SECRT-2770): a paid grant on a user with no
+    subscription goes back to NO_TIER, and a grant that differs from an active
+    subscription goes back to that subscription's tier. Admins granting either
+    must be told, since nothing else surfaces the revert."""
+
+    @staticmethod
+    def _user(stripe_customer_id: str | None) -> MagicMock:
+        user = MagicMock()
+        user.stripe_customer_id = stripe_customer_id
+        return user
+
+    @staticmethod
+    def _sub(price_id: str) -> MagicMock:
+        item = MagicMock()
+        item.price = price_id
+        items = MagicMock()
+        items.data = [item]
+        sub = MagicMock(id="sub_1")
+        sub.__getitem__.side_effect = lambda key: {"items": items}[key]
+        return sub
+
+    @pytest.mark.asyncio
+    async def test_warns_when_customer_has_no_active_subscription(self, caplog):
+        from backend.copilot.rate_limit import get_stripe_sweep_revert_warning
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=self._user("cus_old_topup"),
+            ),
+            patch(
+                "backend.data.credit._get_active_subscription",
+                new_callable=AsyncMock,
+                return_value=None,
+            ) as active_sub,
+            patch("backend.util.settings.Config") as config_cls,
+        ):
+            config_cls.return_value.stripe_tier_reconcile_interval_hours = 6
+            with caplog.at_level("WARNING", logger="backend.copilot.rate_limit"):
+                warning = await get_stripe_sweep_revert_warning(
+                    _USER, SubscriptionTier.PRO
+                )
+
+        active_sub.assert_awaited_once_with("cus_old_topup")
+        assert warning is not None
+        assert "PRO" in warning
+        assert "NO_TIER" in warning
+        assert "6 hours" in warning
+        assert "ENTERPRISE" in warning
+        assert any(
+            "will be reverted by the Stripe sweep" in r.getMessage()
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_warns_when_active_subscription_is_on_another_tier(self, caplog):
+        """MAX granted to a paying PRO user: the sweep puts them back on PRO."""
+        from backend.copilot.rate_limit import get_stripe_sweep_revert_warning
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=self._user("cus_paying"),
+            ),
+            patch(
+                "backend.data.credit._get_active_subscription",
+                new_callable=AsyncMock,
+                return_value=self._sub("price_pro_monthly"),
+            ),
+            patch(
+                "backend.data.credit.build_price_to_tier_map",
+                new_callable=AsyncMock,
+                return_value={
+                    "price_pro_monthly": SubscriptionTier.PRO,
+                    "price_max_monthly": SubscriptionTier.MAX,
+                },
+            ),
+            patch("backend.util.settings.Config") as config_cls,
+        ):
+            config_cls.return_value.stripe_tier_reconcile_interval_hours = 1
+            with caplog.at_level("WARNING", logger="backend.copilot.rate_limit"):
+                warning = await get_stripe_sweep_revert_warning(
+                    _USER, SubscriptionTier.MAX
+                )
+
+        assert warning is not None
+        assert "MAX grant to PRO" in warning
+        assert "NO_TIER" not in warning
+        assert "1 hour." in warning
+        assert any(
+            "will be reverted by the Stripe sweep" in r.getMessage()
+            and "is on PRO" in r.getMessage()
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_customer_is_safe(self):
+        from backend.copilot.rate_limit import get_stripe_sweep_revert_warning
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=self._user(None),
+            ),
+            patch(
+                "backend.data.credit._get_active_subscription",
+                new_callable=AsyncMock,
+            ) as active_sub,
+        ):
+            warning = await get_stripe_sweep_revert_warning(_USER, SubscriptionTier.PRO)
+
+        assert warning is None
+        active_sub.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_active_subscription_on_the_same_tier_is_safe(self):
+        from backend.copilot.rate_limit import get_stripe_sweep_revert_warning
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=self._user("cus_paying"),
+            ),
+            patch(
+                "backend.data.credit._get_active_subscription",
+                new_callable=AsyncMock,
+                return_value=self._sub("price_pro_yearly"),
+            ),
+            patch(
+                "backend.data.credit.build_price_to_tier_map",
+                new_callable=AsyncMock,
+                return_value={"price_pro_yearly": SubscriptionTier.PRO},
+            ),
+        ):
+            warning = await get_stripe_sweep_revert_warning(_USER, SubscriptionTier.PRO)
+
+        assert warning is None
+
+    @pytest.mark.asyncio
+    async def test_subscription_on_an_unknown_price_stays_quiet(self):
+        """A trial enrollment or unmapped price: the sweep's outcome depends on
+        state this check cannot see, so no warning rather than a wrong one."""
+        from backend.copilot.rate_limit import get_stripe_sweep_revert_warning
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=self._user("cus_trial"),
+            ),
+            patch(
+                "backend.data.credit._get_active_subscription",
+                new_callable=AsyncMock,
+                return_value=self._sub("price_trial"),
+            ),
+            patch(
+                "backend.data.credit.build_price_to_tier_map",
+                new_callable=AsyncMock,
+                return_value={"price_pro_monthly": SubscriptionTier.PRO},
+            ),
+        ):
+            warning = await get_stripe_sweep_revert_warning(_USER, SubscriptionTier.MAX)
+
+        assert warning is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "tier", [SubscriptionTier.ENTERPRISE, SubscriptionTier.NO_TIER]
+    )
+    async def test_tiers_the_sweep_never_revokes_skip_the_lookup(self, tier):
+        """ENTERPRISE is excluded from the sweep and NO_TIER is what the sweep
+        would set anyway, so neither needs a Stripe round-trip."""
+        from backend.copilot.rate_limit import get_stripe_sweep_revert_warning
+
+        with patch(
+            "backend.copilot.rate_limit.get_user_by_id",
+            new_callable=AsyncMock,
+        ) as get_user:
+            warning = await get_stripe_sweep_revert_warning(_USER, tier)
+
+        assert warning is None
+        get_user.assert_not_awaited()

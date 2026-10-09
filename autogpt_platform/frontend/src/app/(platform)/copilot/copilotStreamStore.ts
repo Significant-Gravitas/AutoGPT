@@ -1,4 +1,5 @@
-import type { FileUIPart, UIMessage } from "ai";
+import type { UIMessage } from "ai";
+import type { StoredAttachmentPart } from "./helpers/workspaceAttachments";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { ExpertKickoffMetadata } from "./expertKickoff";
@@ -57,11 +58,45 @@ export interface PendingFirstSend {
   metadata?: ExpertKickoffMetadata;
 }
 
+export interface PendingUploadAttachment {
+  name: string;
+  mediaType: string;
+  sizeBytes?: number;
+  /** Local files upload before the send; workspace references are already stored. */
+  isUploading: boolean;
+}
+
+/**
+ * The message the user just sent, shown as a placeholder bubble while its
+ * local attachments upload. The real user message only enters `messages`
+ * once `sendMessage` runs after the uploads, which can take seconds for
+ * large files — without this the transcript stays blank for that window.
+ *
+ * Kept per session in `pendingUploadSends` so an upload started in one chat
+ * neither hides nor clears the placeholder of another chat the user switches
+ * to mid-upload. The first send of a new chat has no session yet and sits
+ * under `UNBOUND_UPLOAD_KEY` until `bindPendingFirstSendToSession` moves it
+ * onto the created session. Lives here (not in React state) for the same
+ * remount reason as `PendingFirstSend`. Never persisted: a reload mid-upload
+ * loses the `File` objects, so there is nothing left to wait for.
+ */
+export interface PendingUploadSend {
+  text: string;
+  attachments: PendingUploadAttachment[];
+}
+
+/** Key for the first send of a chat whose session does not exist yet. */
+const UNBOUND_UPLOAD_KEY = "new";
+
+export function pendingUploadKey(sessionId: string | null): string {
+  return sessionId ?? UNBOUND_UPLOAD_KEY;
+}
+
 interface PersistedCopilotStreamState {
   sessions: Record<string, SessionCoord>;
   pendingFirstSend: Pick<PendingFirstSend, "text" | "metadata"> | null;
   pendingFirstSendSessionId: string | null;
-  pendingFileParts: FileUIPart[];
+  pendingFileParts: StoredAttachmentPart[];
 }
 
 interface CopilotStreamStore {
@@ -69,7 +104,8 @@ interface CopilotStreamStore {
   messageSnapshots: Record<string, UIMessage[]>;
   pendingFirstSend: PendingFirstSend | null;
   pendingFirstSendSessionId: string | null;
-  pendingFileParts: FileUIPart[];
+  pendingFileParts: StoredAttachmentPart[];
+  pendingUploadSends: Record<string, PendingUploadSend>;
 
   getCoord: (sessionId: string) => SessionCoord;
   updateCoord: (sessionId: string, patch: Partial<SessionCoord>) => void;
@@ -79,11 +115,21 @@ interface CopilotStreamStore {
 
   setPendingFirstSend: (send: PendingFirstSend | null) => void;
   bindPendingFirstSendToSession: (sessionId: string) => void;
-  setPendingFileParts: (parts: FileUIPart[]) => void;
+  setPendingFileParts: (parts: StoredAttachmentPart[]) => void;
+  setPendingUploadSend: (
+    sessionId: string | null,
+    send: PendingUploadSend,
+  ) => void;
+  /** Clears the session's placeholder; with `send`, only if it is still the
+   *  one shown, so a finished upload cannot clear a newer one. */
+  clearPendingUploadSend: (
+    sessionId: string | null,
+    send?: PendingUploadSend,
+  ) => void;
   /** Read-and-clear; used by the post-session-creation flush effect. */
   takePendingFirstSend: (sessionId: string) => {
     send: PendingFirstSend | null;
-    parts: FileUIPart[];
+    parts: StoredAttachmentPart[];
   };
 
   /** Test-only: wipe all per-session state. */
@@ -98,6 +144,7 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
       pendingFirstSend: null,
       pendingFirstSendSessionId: null,
       pendingFileParts: [],
+      pendingUploadSends: {},
 
       getCoord(sessionId) {
         return { ...defaultCoord, ...get().sessions[sessionId] };
@@ -143,10 +190,35 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
       },
       bindPendingFirstSendToSession(sessionId) {
         if (!get().pendingFirstSend) return;
-        set({ pendingFirstSendSessionId: sessionId });
+        set((state) => {
+          const unbound = state.pendingUploadSends[UNBOUND_UPLOAD_KEY];
+          if (!unbound) return { pendingFirstSendSessionId: sessionId };
+          const pendingUploadSends = { ...state.pendingUploadSends };
+          delete pendingUploadSends[UNBOUND_UPLOAD_KEY];
+          pendingUploadSends[sessionId] = unbound;
+          return { pendingFirstSendSessionId: sessionId, pendingUploadSends };
+        });
       },
       setPendingFileParts(parts) {
         set({ pendingFileParts: parts });
+      },
+      setPendingUploadSend(sessionId, send) {
+        set((state) => ({
+          pendingUploadSends: {
+            ...state.pendingUploadSends,
+            [pendingUploadKey(sessionId)]: send,
+          },
+        }));
+      },
+      clearPendingUploadSend(sessionId, send) {
+        set((state) => {
+          const key = pendingUploadKey(sessionId);
+          const current = state.pendingUploadSends[key];
+          if (!current || (send && current !== send)) return {};
+          const pendingUploadSends = { ...state.pendingUploadSends };
+          delete pendingUploadSends[key];
+          return { pendingUploadSends };
+        });
       },
       takePendingFirstSend(sessionId) {
         const {
@@ -172,6 +244,7 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
           pendingFirstSend: null,
           pendingFirstSendSessionId: null,
           pendingFileParts: [],
+          pendingUploadSends: {},
         });
       },
     }),

@@ -10,7 +10,7 @@ injection -- analogous to parameterized SQL queries.
 import base64
 import json
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -18,6 +18,8 @@ from backend.blocks.code_executor import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     ExecuteCodeBlock,
+    ExecuteCodeStepBlock,
+    InstantiateCodeSandboxBlock,
     ProgrammingLanguage,
 )
 from backend.blocks.code_executor_helpers import (
@@ -263,3 +265,113 @@ class TestExecuteCodeBlockRun:
 
         assert any(name == "error" for name, _ in outputs)
         mock.assert_not_called()
+
+
+class TestConnectToExistingSandbox:
+    """A sandbox id is caller input; under the platform key any id connects,
+    so the box's stamped user decides whether it may be used."""
+
+    def _sandbox(self, stamped: dict) -> AsyncMock:
+        sandbox = AsyncMock()
+        sandbox.get_info = AsyncMock(return_value=AsyncMock(metadata=stamped))
+        return sandbox
+
+    @staticmethod
+    def _sdk(cls: MagicMock, box: AsyncMock) -> None:
+        """The stamp is read through the static ``get_info`` before any connect."""
+        cls.get_info = AsyncMock(return_value=box.get_info.return_value)
+        cls.connect = AsyncMock(return_value=box)
+
+    async def test_another_users_sandbox_is_refused_and_left_alone(self):
+        block = ExecuteCodeBlock()
+        context = ExecutionContext(user_id="user-b", graph_exec_id="gexec-1")
+        theirs = self._sandbox(
+            {
+                "service": "autogpt-platform",
+                "autogpt_owner": "user:user-a",
+                "autogpt_kind": "code",
+                "autogpt_source": "block",
+                "autogpt_env": "dev",
+                "autogpt_user": "user-a",
+            }
+        )
+        with patch("backend.blocks.code_executor.AsyncSandbox") as cls:
+            self._sdk(cls, theirs)
+            with pytest.raises(PermissionError, match="does not belong"):
+                await block.execute_code(
+                    api_key="k",
+                    code="print(1)",
+                    language=ProgrammingLanguage.PYTHON,
+                    sandbox_id="sb-theirs",
+                    dispose_sandbox=True,
+                    execution_context=context,
+                )
+        cls.get_info.assert_awaited_once_with("sb-theirs", api_key="k")
+        # Connecting would resume the other user's box on their bill.
+        cls.connect.assert_not_awaited()
+        theirs.run_code.assert_not_awaited()
+        # Not ours to kill either, even with dispose_sandbox set.
+        theirs.kill.assert_not_awaited()
+
+    async def test_step_block_hands_the_caller_to_the_ownership_check(self):
+        """The step block always reconnects by id, so without the caller's
+        context every run would be refused as not the user's box."""
+        block = ExecuteCodeStepBlock()
+        context = ExecutionContext(user_id="user-a", graph_exec_id="gexec-1")
+        with patch.object(
+            block, "execute_code", AsyncMock(return_value=([], "", "", "", "sb", []))
+        ) as execute:
+            async for _ in block.run(
+                ExecuteCodeStepBlock.Input(
+                    credentials=TEST_CREDENTIALS_INPUT,
+                    sandbox_id="sb-mine",
+                    step_code="print(1)",
+                ),
+                credentials=TEST_CREDENTIALS,
+                execution_context=context,
+            ):
+                pass
+        assert execute.await_args.kwargs["execution_context"] is context
+        assert execute.await_args.kwargs["sandbox_id"] == "sb-mine"
+
+    async def test_instantiate_block_hands_the_caller_to_the_box_it_creates(self):
+        """The box is created for this user: without the context its egress
+        credential would name nobody, and the proxy could swap nothing in."""
+        block = InstantiateCodeSandboxBlock()
+        context = ExecutionContext(user_id="user-a", graph_exec_id="gexec-1")
+        with patch.object(
+            block, "execute_code", AsyncMock(return_value=([], "", "", "", "sb", []))
+        ) as execute:
+            async for _ in block.run(
+                InstantiateCodeSandboxBlock.Input(
+                    credentials=TEST_CREDENTIALS_INPUT, setup_code="print(1)"
+                ),
+                credentials=TEST_CREDENTIALS,
+                execution_context=context,
+            ):
+                pass
+        assert execute.await_args.kwargs["execution_context"] is context
+
+    async def test_without_a_user_no_existing_sandbox_can_be_used(self):
+        block = ExecuteCodeBlock()
+        box = self._sandbox(
+            {
+                "service": "autogpt-platform",
+                "autogpt_owner": "user:user-a",
+                "autogpt_kind": "code",
+                "autogpt_source": "block",
+                "autogpt_env": "dev",
+                "autogpt_user": "user-a",
+            }
+        )
+        with patch("backend.blocks.code_executor.AsyncSandbox") as cls:
+            self._sdk(cls, box)
+            with pytest.raises(PermissionError):
+                await block.execute_code(
+                    api_key="k",
+                    code="print(1)",
+                    language=ProgrammingLanguage.PYTHON,
+                    sandbox_id="sb-theirs",
+                    execution_context=None,
+                )
+        cls.connect.assert_not_awaited()
