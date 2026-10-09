@@ -49,6 +49,8 @@ async def test_resumed_cli_total_is_restored_cost_plus_this_call(tmp_path, monke
             restored = cli_session_cost_usd(session_file.read_text(), session_id)
             result = await _run_cli(cli, cwd, port, "--resume", session_id)
             resumed.append((restored, result["total_cost_usd"]))
+            for key, value in _CALL_USAGE.items():
+                assert result["usage"][key] == value
     finally:
         await runner.cleanup()
 
