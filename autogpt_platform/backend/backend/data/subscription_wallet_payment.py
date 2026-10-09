@@ -120,7 +120,7 @@ async def refund_wallet_debit_if_paid_by_card(invoice: dict) -> None:
 
 
 async def find_wallet_debit(user_id: str, invoice_id: str) -> CreditTransaction | None:
-    return await CreditTransaction.prisma().find_unique(
+    transaction = await CreditTransaction.prisma().find_unique(
         where={
             "creditTransactionIdentifier": {
                 "transactionKey": invoice_id,
@@ -128,6 +128,13 @@ async def find_wallet_debit(user_id: str, invoice_id: str) -> CreditTransaction 
             }
         }
     )
+    if (
+        transaction is None
+        or transaction.type != CreditTransactionType.SUBSCRIPTION
+        or transaction.amount >= 0
+    ):
+        return None
+    return transaction
 
 
 async def _refund_wallet_debit(

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import stripe
-from prisma.enums import SubscriptionTier
+from prisma.enums import CreditTransactionType, SubscriptionTier
 from prisma.errors import UniqueViolationError
 
 from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
@@ -148,7 +148,10 @@ class FakeLedger:
         key = where["creditTransactionIdentifier"]["transactionKey"]
         if key not in self.transactions:
             return None
-        return MagicMock(amount=self.transactions[key])
+        return MagicMock(
+            amount=self.transactions[key],
+            type=CreditTransactionType.SUBSCRIPTION,
+        )
 
 
 class World:
