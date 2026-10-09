@@ -1,7 +1,10 @@
 import { serializeCredentialMention } from "../CredentialMention/helpers";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
-import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import {
+  serviceName,
+  stripProviderPrefix,
+} from "@/components/contextual/IntegrationsPanel/helpers";
 
 // Browsers name clipboard screenshots "image.png"; rename so multiple
 // pasted images stay distinguishable in the composer and workspace.
@@ -76,16 +79,19 @@ export interface MentionRange {
 export function connectedIntegrationsFromCredentials<
   T extends Pick<
     CredentialsMetaResponse,
-    "id" | "provider" | "title" | "username"
+    "id" | "provider" | "title" | "username" | "service" | "service_name"
   >,
 >(credentials: T[]): IntegrationMention[] {
   const accounts = filterSystemCredentials(credentials)
     .filter((credential) => credential.provider)
     .map((credential) => {
       const provider = credential.provider;
-      const providerName = formatProviderName(provider);
-      const name =
-        credential.title?.trim() || credential.username?.trim() || providerName;
+      const providerName = serviceName(credential);
+      const title = stripProviderPrefix(
+        credential.title?.trim() ?? "",
+        provider,
+      ).trim();
+      const name = title || credential.username?.trim() || providerName;
       const account = {
         credentialId: credential.id,
         provider,
