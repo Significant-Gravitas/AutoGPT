@@ -25,6 +25,9 @@ def is_structured_logging_enabled() -> bool:
     )
 
 
+_LOGGING_KWARGS = ("exc_info", "stack_info", "stacklevel")
+
+
 class TruncatedLogger:
     def __init__(
         self,
@@ -39,24 +42,24 @@ class TruncatedLogger:
         self.prefix = prefix
 
     def info(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        self.logger.info(msg, extra=self._get_metadata(**extra))
+        self._log(self.logger.info, msg, extra)
 
     def warning(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        self.logger.warning(msg, extra=self._get_metadata(**extra))
+        self._log(self.logger.warning, msg, extra)
 
     def error(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        self.logger.error(msg, extra=self._get_metadata(**extra))
+        self._log(self.logger.error, msg, extra)
 
     def debug(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        self.logger.debug(msg, extra=self._get_metadata(**extra))
+        self._log(self.logger.debug, msg, extra)
 
     def exception(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        self.logger.exception(msg, extra=self._get_metadata(**extra))
+        self._log(self.logger.exception, msg, extra)
+
+    def _log(self, log, msg: str, extra: dict):
+        # logging's own arguments go to logging; as metadata they lose the traceback.
+        kwargs = {key: extra.pop(key) for key in _LOGGING_KWARGS if key in extra}
+        log(self._wrap(msg, **extra), extra=self._get_metadata(**extra), **kwargs)
 
     def _get_metadata(self, **extra):
         metadata = {**self.metadata, **extra}
