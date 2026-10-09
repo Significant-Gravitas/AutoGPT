@@ -11,6 +11,17 @@ import pytest_asyncio
 
 from backend.util import json
 
+
+def build_cli_cost_row(session_id: str, total: float) -> str:
+    """Build a native CLI cost snapshot shared by retry and restart tests."""
+    return (
+        json.dumps(
+            {"type": "cost-state", "sessionId": session_id, "totalCostUSD": total}
+        )
+        + "\n"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Env vars that ``ChatConfig`` validators read — must be cleared so explicit
 # constructor values are used.  Centralised here so adding a new env-backed

@@ -13,9 +13,8 @@ from backend.copilot.response_model import StreamError
 from backend.copilot.sdk.service import stream_chat_completion_sdk
 from backend.copilot.transcript import cli_session_path
 
-from .conftest import build_test_transcript
+from .conftest import build_cli_cost_row, build_test_transcript
 from .retry_scenarios_test import _make_sdk_patches
-from .turn_cost_restart_test import _cost_row
 from .turn_cost_test import _CALL_COST, _SDK_CWD, _SESSION_ID, _SVC, _result
 
 
@@ -31,7 +30,7 @@ async def test_retry_retains_failed_attempt_spend(
     session_file.parent.mkdir(parents=True)
     transcript = build_test_transcript(
         [("user", "prior question"), ("assistant", "prior answer")]
-    ) + _cost_row(_CALL_COST)
+    ) + build_cli_cost_row(_SESSION_ID, _CALL_COST)
     compacted = build_test_transcript(
         [("user", "summary"), ("assistant", "summarized answer")]
     )
@@ -57,7 +56,7 @@ async def test_retry_retains_failed_attempt_spend(
             if first_process:
                 if failure != "context-zero":
                     with session_file.open("a") as handle:
-                        handle.write(_cost_row(2 * _CALL_COST))
+                        handle.write(build_cli_cost_row(_SESSION_ID, 2 * _CALL_COST))
                 if failure == "transient":
                     raise ConnectionError("ECONNRESET: connection reset by peer")
                 if failure == "transient-assistant":
@@ -125,4 +124,8 @@ async def test_retry_retains_failed_attempt_spend(
     persist.assert_awaited_once()
     expected = (3 if failure == "context-result" else 2) * _CALL_COST
     assert persist.await_args.kwargs["cost_usd"] == pytest.approx(expected)
+    if failure.startswith("context"):
+        assert persist.await_args.kwargs["prompt_tokens"] == (
+            2000 if failure == "context-result" else 1000
+        )
     assert "Over-charge fallback" not in caplog.text

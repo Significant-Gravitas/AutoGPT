@@ -17,9 +17,9 @@ from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.moonshot import rate_card_usd
+from backend.copilot.sdk.cost_tracking import read_cli_session_usage
 from backend.copilot.sdk.service import (
     _record_result_usage,
-    _resumed_cli_session_cost_usd,
     _RetryState,
     _TokenUsage,
     stream_chat_completion_sdk,
@@ -189,10 +189,33 @@ def test_every_query_of_one_cli_process_is_charged():
     assert state.usage.cost_usd == pytest.approx(2 * _CALL_COST)
 
 
+@pytest.mark.parametrize(
+    "models", [(_KIMI, "claude-sonnet-4-6"), ("claude-sonnet-4-6", _KIMI)]
+)
+def test_model_switch_preserves_the_price_of_each_result(models):
+    state = _retry_state()
+    for index, model in enumerate(models, start=1):
+        state.observed_model = model
+        _record_result_usage(_result(index * _CALL_COST), state, "")
+
+    assert state.usage.cost_usd == pytest.approx(_CALL_COST + _kimi_rate_card_cost())
+
+
+def test_reset_cli_total_does_not_erase_already_billed_spend(caplog):
+    state = _retry_state()
+    state.usage.cli_session_total_usd = 2 * _CALL_COST
+    with caplog.at_level(logging.ERROR):
+        for running_total in (3 * _CALL_COST, _CALL_COST, 2 * _CALL_COST):
+            _record_result_usage(_result(running_total), state, "")
+
+    assert state.usage.cost_usd == pytest.approx(3 * _CALL_COST)
+    assert [r.levelno for r in caplog.records] == [logging.ERROR]
+
+
 def test_a_total_below_the_baseline_is_charged_in_full_and_alerts(caplog):
     state = _retry_state()
     state.usage.cli_session_total_usd = 2 * _CALL_COST
-    with caplog.at_level(logging.ERROR, logger=_SVC):
+    with caplog.at_level(logging.ERROR, logger="backend.copilot.sdk.cost_tracking"):
         _record_result_usage(_result(_CALL_COST), state, "")
 
     assert state.usage.cost_usd == pytest.approx(_CALL_COST)
@@ -204,10 +227,8 @@ def test_an_unreadable_session_file_is_charged_in_full_and_alerts(
 ):
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))  # holds no session file
     state = _retry_state()
-    with caplog.at_level(logging.ERROR, logger=_SVC):
-        state.usage.cli_session_total_usd = _resumed_cli_session_cost_usd(
-            _SDK_CWD, _SESSION_ID, ""
-        )
+    with caplog.at_level(logging.ERROR, logger="backend.copilot.sdk.cost_tracking"):
+        state.usage.start_cli_session(read_cli_session_usage(_SDK_CWD, _SESSION_ID, ""))
         _record_result_usage(_result(2 * _CALL_COST), state, "")
 
     assert state.usage.cost_usd == pytest.approx(2 * _CALL_COST)

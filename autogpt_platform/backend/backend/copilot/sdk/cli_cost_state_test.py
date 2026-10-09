@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from aiohttp import web
 
+from backend.copilot.sdk.cost_tracking import read_cli_session_usage
 from backend.copilot.transcript import cli_session_cost_usd, cli_session_path
 
 from .cli_openrouter_compat_test import _resolve_cli_path
@@ -60,6 +61,9 @@ async def test_resumed_cli_total_is_restored_cost_plus_this_call(tmp_path, monke
     for restored, total in resumed:
         assert restored > 0
         assert total - restored == pytest.approx(call_cost)
+    snapshot = read_cli_session_usage(str(cwd), session_id, "")
+    assert snapshot.cost_usd == pytest.approx(resumed[-1][1])
+    assert snapshot.tokens == {key: 3 * value for key, value in _CALL_USAGE.items()}
 
 
 async def _start_fake_provider() -> tuple[web.AppRunner, int]:
