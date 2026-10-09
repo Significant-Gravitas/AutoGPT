@@ -67,6 +67,14 @@ class TrialStatusResponse(BaseModel):
     rejection_reason: TrialRejectionReason | None = None
     ends_at: datetime | None = None
     cancel_at_period_end: bool = False
+    cancel_keeps_access: bool = Field(
+        default=False,
+        description=(
+            "True when canceling schedules the trial's end: access runs to"
+            " ends_at, the card is never charged, and the trial can be resumed"
+            " until then. False when canceling ends trial access immediately."
+        ),
+    )
     allowance_used_percent: float | None = None
     active: bool = False
     converted: bool = False
@@ -237,6 +245,17 @@ async def cancel_trial(user_id: CurrentUser) -> TrialStatusResponse:
         raise HTTPException(502, "Unable to cancel your trial. Please retry.") from exc
     await sync_subscription_from_stripe(dict(subscription))
     return await get_trial_status(user_id)
+
+
+@router.post(
+    "/resume",
+    responses={
+        409: {"description": "No cancel-pending trial to resume"},
+        502: {"description": "Stripe update temporarily unavailable"},
+    },
+)
+async def resume_trial(user_id: CurrentUser) -> TrialStatusResponse:
+    raise HTTPException(501, "Not implemented")  # contract stub, implemented next
 
 
 @router.post(
