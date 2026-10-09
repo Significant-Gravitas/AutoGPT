@@ -1,4 +1,4 @@
-"""Shared slash-command policy — /setup and /unlink, platform-neutral.
+"""Shared slash-command policy — /setup, /unlink and DM linking, platform-neutral.
 
 Each adapter owns its transport (Discord interactions, Slack form POSTs) and
 its rendering (View buttons vs block kit), but the *policy* — how a link token
@@ -81,6 +81,73 @@ async def setup_reply(
         ),
         button_label=f"Link {server_noun.capitalize()}",
         button_url=result.link_url,
+    )
+
+
+async def dm_link_reply(
+    api: BotBackend,
+    *,
+    platform: str,
+    platform_display: str,
+    platform_user_id: str,
+    platform_username: str,
+) -> CommandReply:
+    """Greet a user who opened a DM with the bot and link it if needed.
+
+    Answers a "start" in a DM (Telegram's /start), so a user who arrives from
+    the Bots settings page gets the Link Account button straight away instead
+    of having to send a first message.
+    """
+    try:
+        resolved = await api.resolve_user(
+            platform, platform_user_id, include_account=True
+        )
+        if resolved.linked:
+            return _dm_linked_reply(platform_display, resolved.account_hint)
+        result = await api.create_user_link_token(
+            platform=platform,
+            platform_user_id=platform_user_id,
+            platform_username=platform_username,
+        )
+    except LinkAlreadyExistsError:
+        # Linked between the check and the mint.
+        return _dm_linked_reply(platform_display, None)
+    except Exception:
+        logger.exception("%s DM link token creation failed", platform)
+        return CommandReply(
+            text="Something went wrong setting up the link. Try again later."
+        )
+    return CommandReply(
+        text=(
+            "**Welcome to AutoGPT**\n\n"
+            "Tap the button below to connect this chat to your AutoGPT "
+            "account. Once linked, just message me here to chat.\n\n"
+            "This link expires in 30 minutes."
+        ),
+        button_label="Link Account",
+        button_url=result.link_url,
+    )
+
+
+def _dm_linked_reply(platform_display: str, account_hint: str | None) -> CommandReply:
+    """Say which account the DMs run as, and how to switch if it's the wrong one.
+
+    The web Bots page lists only the signed-in account's links, so someone
+    signed in elsewhere has to manage the link as the account named here.
+    """
+    if account_hint:
+        account = f"the AutoGPT account {account_hint}"
+        switch = f"sign in as {account_hint} and unlink these DMs"
+    else:
+        account = "an AutoGPT account"
+        switch = "sign in as that account and unlink these DMs"
+    return CommandReply(
+        text=(
+            f"Your {platform_display} DMs are linked to {account}. Send me a "
+            "message to start chatting.\n\n"
+            "Using a different AutoGPT account? Send /unlink, "
+            f"{switch}, then message me again to link the right one."
+        )
     )
 
 

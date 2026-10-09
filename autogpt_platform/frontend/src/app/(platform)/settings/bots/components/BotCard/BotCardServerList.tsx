@@ -16,6 +16,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 type Props = {
   platformName: string;
   serverNoun: string;
+  addBotLabel: string;
   serverLinks: PlatformLinkInfo[];
   isPending: (linkId: string) => boolean;
   onUnlink: (linkId: string) => void;
@@ -24,6 +25,7 @@ type Props = {
 export function BotCardServerList({
   platformName,
   serverNoun,
+  addBotLabel,
   serverLinks,
   isPending,
   onUnlink,
@@ -32,9 +34,9 @@ export function BotCardServerList({
     return (
       <div className="rounded-large border border-dashed border-zinc-200 px-4 py-3">
         <Text variant="small" as="span" className="text-zinc-500">
-          No {serverNoun}s linked yet. Use &quot;Add bot to {platformName}&quot;{" "}
-          to invite the bot — already added it? Run <code>/setup</code> there to
-          finish connecting.
+          No {serverNoun}s linked yet. Use &quot;{addBotLabel}&quot; to invite
+          the bot — already added it? Run <code>/setup</code> there to finish
+          connecting.
         </Text>
       </div>
     );
