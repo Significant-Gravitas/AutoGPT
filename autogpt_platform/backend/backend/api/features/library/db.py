@@ -385,7 +385,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
             "userId": user_id,
             "isDeleted": False,
         },
-        include=library_agent_include(user_id, include_store_listing=True),
+        include=library_agent_include(user_id),
     )
 
     if not library_agent:
@@ -394,7 +394,8 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
     if not library_agent.AgentGraph:
         raise NotFoundError(f"Agent graph for library agent #{id} not found")
 
-    schedule_info, sub_graphs = await asyncio.gather(
+    store_listing, schedule_info, sub_graphs = await asyncio.gather(
+        _fetch_store_listing(library_agent.AgentGraph.id),
         _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id),
         graph_db.get_sub_graphs(library_agent.AgentGraph),
     )
@@ -403,6 +404,24 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         library_agent,
         sub_graphs=sub_graphs,
         schedule_info=schedule_info,
+        store_listing=store_listing,
+    )
+
+
+async def _fetch_store_listing(graph_id: str) -> prisma.models.StoreListing | None:
+    """The graph's live marketplace listing, whichever version it lists.
+
+    By graph id rather than through the library agent's exact graph version, so
+    an agent that is behind the listing still shows it (and the frontend can
+    offer the update).
+    """
+    return await prisma.models.StoreListing.prisma().find_first(
+        where={
+            "agentGraphId": graph_id,
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+        },
+        include={"ActiveVersion": True, "CreatorProfile": True},
     )
 
 

@@ -790,6 +790,39 @@ async def test_get_library_agent_rejects_missing_graph(mocker):
 
 
 @pytest.mark.asyncio
+async def test_get_library_agent_loads_the_graphs_store_listing(mocker):
+    """The listing is looked up by graph id with the relations `from_db`
+    reads, so the library page keeps its marketplace info."""
+    library_agent = MagicMock(id="library-id", AgentGraph=MagicMock(id="graph-1"))
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_first = mocker.AsyncMock(
+        return_value=library_agent
+    )
+    listing = MagicMock(name="store-listing")
+    mock_store_listing = mocker.patch("prisma.models.StoreListing.prisma")
+    mock_store_listing.return_value.find_first = mocker.AsyncMock(
+        return_value=listing
+    )
+    mocker.patch.object(db, "_fetch_schedule_info", mocker.AsyncMock(return_value={}))
+    mocker.patch.object(
+        db.graph_db, "get_sub_graphs", mocker.AsyncMock(return_value=[])
+    )
+    mock_from_db = mocker.patch.object(library_model.LibraryAgent, "from_db")
+
+    await db.get_library_agent("library-id", "test-user")
+
+    mock_store_listing.return_value.find_first.assert_awaited_once_with(
+        where={
+            "agentGraphId": "graph-1",
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+        },
+        include={"ActiveVersion": True, "CreatorProfile": True},
+    )
+    assert mock_from_db.call_args.kwargs["store_listing"] is listing
+
+
+@pytest.mark.asyncio
 async def test_list_library_agents_skips_failed_agent(mocker):
     """Agents that fail parsing should be skipped — covers the except branch."""
     mock_library_agents = [
