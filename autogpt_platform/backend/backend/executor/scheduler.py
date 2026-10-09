@@ -671,7 +671,7 @@ async def _execute_copilot_turn(**kwargs):
 
 
 async def _owner_may_spend(
-    args: "CopilotTurnJobArgs", llm_auth_provider: CopilotLlmAuthProvider
+    job_args: "CopilotTurnJobArgs", llm_auth_provider: CopilotLlmAuthProvider
 ) -> bool:
     """Gate a platform-billed fire on the owner's subscription and cost caps,
     as ``dispatch_next_for_user`` gates a queued turn.
@@ -681,34 +681,34 @@ async def _owner_may_spend(
     """
     if llm_auth_provider != "platform":
         return True
-    if await is_user_paywalled(args.user_id):
+    if await is_user_paywalled(job_args.user_id):
         logger.info(
-            f"Skipping scheduled copilot turn {args.schedule_id}: the owner has "
+            f"Skipping scheduled copilot turn {job_args.schedule_id}: the owner has "
             "no subscription; the schedule stays registered"
         )
         return False
     config = ChatConfig()
     try:
         daily_limit, weekly_limit, _ = await get_global_rate_limits(
-            args.user_id,
+            job_args.user_id,
             config.daily_cost_limit_microdollars,
             config.weekly_cost_limit_microdollars,
         )
         await check_rate_limit(
-            user_id=args.user_id,
+            user_id=job_args.user_id,
             daily_cost_limit=daily_limit,
             weekly_cost_limit=weekly_limit,
         )
     except RateLimitExceeded as exc:
         logger.info(
-            f"Skipping scheduled copilot turn {args.schedule_id}: the owner is "
+            f"Skipping scheduled copilot turn {job_args.schedule_id}: the owner is "
             f"over their {exc.window} usage limit; the schedule stays registered"
         )
         return False
     except RateLimitUnavailable:
         # A brown-out must not let an unwatched turn past a cap it may be over.
         logger.warning(
-            f"Skipping scheduled copilot turn {args.schedule_id}: usage limits "
+            f"Skipping scheduled copilot turn {job_args.schedule_id}: usage limits "
             "are unreadable"
         )
         return False
