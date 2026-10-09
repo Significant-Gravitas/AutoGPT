@@ -522,6 +522,31 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     });
   });
 
+  it("cuts a restored Other role to the 100 code points the profile accepts", async () => {
+    mockFlagValue = false;
+    mockUser = {
+      id: "u1",
+      email: "reinier@example.com",
+      user_metadata: { name: "Reinier Bot" },
+    };
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "3");
+    useOnboardingWizardStore.setState({
+      role: "Other",
+      otherRole: "🙂".repeat(150),
+      painPoints: ["slow builds"],
+    });
+    currentSearchParams = new URLSearchParams("step=3");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-preparing")).toBeDefined();
+    await waitFor(() => {
+      expect(submitOnboardingProfile).toHaveBeenCalledWith({
+        user_name: "Reinier",
+        user_role: "🙂".repeat(100),
+        pain_points: ["slow builds"],
+      });
+    });
+  });
+
   it("does not submit a profile when no role was chosen", async () => {
     mockFlagValue = false;
     mockUser = { id: "u1", email: "reinier@example.com", user_metadata: {} };

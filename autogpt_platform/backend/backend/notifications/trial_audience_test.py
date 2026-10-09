@@ -112,11 +112,16 @@ async def _notify(
     claim_welcome=None,
     opted_out_at=None,
     user=None,
+    timezone="America/Chicago",
 ):
     audience = audience or AsyncMock(return_value=NotificationResult(success=True))
     notice = AsyncMock(return_value=NotificationResult(success=True))
     user = user or SimpleNamespace(
-        id="user-1", name="Sam", email=email, marketing_opt_out_at=opted_out_at
+        id="user-1",
+        name="Sam",
+        email=email,
+        marketing_opt_out_at=opted_out_at,
+        timezone=timezone,
     )
     users = MagicMock(
         get_user_by_id=AsyncMock(return_value=user),
@@ -253,6 +258,16 @@ async def test_an_opted_out_trialist_gets_the_notice_but_no_group_change(trial, 
     got, notice, release = await _notify(
         trial, raw, kind, opted_out_at=datetime.now(UTC)
     )
+    assert got == []
+    notice.assert_awaited_once()
+    release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["started", "canceled", "converted"])
+async def test_a_trialist_in_tehran_gets_the_notice_but_no_group_change(trial, kind):
+    trial, raw = _state(trial, kind)
+    got, notice, release = await _notify(trial, raw, kind, timezone="Asia/Tehran")
     assert got == []
     notice.assert_awaited_once()
     release.assert_not_awaited()
