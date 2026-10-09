@@ -6,6 +6,7 @@ import pytest
 import pytest_mock
 from prisma.enums import APIKeyPermission
 
+from backend.blocks import _base
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.code_executor import ExecuteCodeBlock
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
@@ -213,9 +214,11 @@ async def test_a_page_of_versions_resolves_only_its_own_sub_graphs(
     ids=["update", "set-active-version"],
 )
 async def test_activating_a_version_moves_its_webhook_presets_onto_it(
-    server: SpinTestServer, activate_v2
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch, activate_v2
 ) -> None:
     """Left on v1, a preset's webhook URL keeps running the deactivated version."""
+    # Trigger blocks are disabled without a platform URL, and CI sets none.
+    monkeypatch.setattr(_base.app_config, "platform_base_url", "https://example.com")
     user_id = str(uuid4())
     await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
     auth = _AUTH.model_copy(update={"user_id": user_id})
