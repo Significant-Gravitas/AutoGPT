@@ -50,7 +50,7 @@ export function SidebarUserActions() {
   );
 
   return (
-    <SidebarFooter className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-zinc-100 bg-[#fafafa] px-4">
+    <SidebarFooter className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-zinc-100 bg-sidebar px-4">
       <div className="flex w-full items-center justify-between group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1">
         {isCollapsed ? (
           <SidebarTooltip>

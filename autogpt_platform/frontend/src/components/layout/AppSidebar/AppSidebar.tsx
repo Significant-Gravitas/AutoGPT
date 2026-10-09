@@ -241,11 +241,7 @@ export function AppSidebar(props: Props) {
   }, [router]);
 
   return (
-    <Sidebar
-      collapsible="icon"
-      {...props}
-      className="[&_[data-sidebar=sidebar]]:bg-[#fafafa]"
-    >
+    <Sidebar collapsible="icon" {...props}>
       <SidebarContent className="scroll-py-16 gap-0 overflow-y-auto overflow-x-hidden overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] group-data-[collapsible=icon]:scroll-pt-24 group-data-[collapsible=icon]:overflow-y-auto [&::-webkit-scrollbar]:hidden">
         <AppSidebarHeader />
 
