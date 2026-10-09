@@ -676,15 +676,21 @@ async def _owner_may_spend(
     """Gate a platform-billed fire on the owner's subscription and cost caps,
     as ``dispatch_next_for_user`` gates a queued turn.
 
-    A refusal skips this fire only: the schedule stays registered, so it
-    resumes once the owner subscribes or the window resets.
+    A refusal skips this fire only. A cron schedule stays registered and
+    resumes once the owner subscribes or the window resets; a one-shot
+    follow-up is dropped, as APScheduler drops every one-shot once it fires.
     """
     if llm_auth_provider != "platform":
         return True
+    outcome = (
+        "this one-shot is dropped"
+        if job_args.run_at is not None
+        else "the schedule stays registered"
+    )
     if await is_user_paywalled(job_args.user_id):
         logger.info(
             f"Skipping scheduled copilot turn {job_args.schedule_id}: the owner has "
-            "no subscription; the schedule stays registered"
+            f"no subscription; {outcome}"
         )
         return False
     config = ChatConfig()
@@ -702,7 +708,7 @@ async def _owner_may_spend(
     except RateLimitExceeded as exc:
         logger.info(
             f"Skipping scheduled copilot turn {job_args.schedule_id}: the owner is "
-            f"over their {exc.window} usage limit; the schedule stays registered"
+            f"over their {exc.window} usage limit; {outcome}"
         )
         return False
     except RateLimitUnavailable:
