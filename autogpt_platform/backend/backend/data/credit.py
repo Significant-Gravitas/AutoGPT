@@ -1606,7 +1606,6 @@ async def _cancel_customer_subscriptions(
     customer_id: str,
     exclude_sub_id: str | None = None,
     at_period_end: bool = False,
-    cancellation_comment: str | None = None,
 ) -> int:
     """Cancel all billable Stripe subscriptions for a customer, optionally excluding one.
 
@@ -1619,9 +1618,6 @@ async def _cancel_customer_subscriptions(
 
     Uses the async Stripe client. Raises stripe.StripeError on list/cancel failure so callers
     that need strict consistency can react; cleanup callers can catch and log instead.
-
-    ``cancellation_comment`` is set as ``cancellation_details.comment`` on an
-    immediate cancel, where the subscription's deletion webhook can read it.
 
     Returns the number of subscriptions cancelled/scheduled for cancellation.
     """
@@ -1666,7 +1662,7 @@ async def _cancel_customer_subscriptions(
                 canceled = await stripe_call(
                     stripe.Subscription.cancel_async,
                     sub_id,
-                    **_cancel_params(cancellation_comment, trial=True),
+                    **_cancel_params(None, trial=True),
                 )
                 if (sub.get("metadata") or {}).get("trial_enrollment_id"):
                     await sync_subscription_from_stripe(dict(canceled))
@@ -1674,7 +1670,7 @@ async def _cancel_customer_subscriptions(
                 await stripe_call(
                     stripe.Subscription.cancel_async,
                     sub_id,
-                    **_cancel_params(cancellation_comment, trial=False),
+                    **_cancel_params(None, trial=False),
                 )
     return len(seen_ids)
 
@@ -3145,129 +3141,6 @@ def _invoice_subscription_metadata(invoice: dict) -> dict:
 
     metadata = subscription_details.get("metadata") or {}
     return metadata if isinstance(metadata, dict) else {}
-
-
-async def handle_subscription_payment_failure(invoice: dict) -> None:
-    """Handle a failed Stripe subscription payment.
-
-    Tries to cover the invoice amount from the user's credit balance.
-
-    - Balance sufficient  → deduct from balance, then pay the Stripe invoice so
-      Stripe stops retrying it. The sub stays intact and the user keeps their tier.
-    - Balance insufficient → cancel Stripe sub immediately, downgrade to BASIC.
-      Cancelling here avoids further Stripe retries on an invoice we cannot cover.
-    """
-    customer_id = invoice.get("customer")
-    if not customer_id:
-        logger.warning(
-            "handle_subscription_payment_failure: missing customer in invoice; skipping"
-        )
-        return
-
-    user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
-    if not user:
-        logger.warning(
-            "handle_subscription_payment_failure: no user found for customer %s",
-            customer_id,
-        )
-        return
-
-    current_tier = user.subscriptionTier or SubscriptionTier.NO_TIER
-    if current_tier == SubscriptionTier.ENTERPRISE:
-        logger.warning(
-            "handle_subscription_payment_failure: skipping ENTERPRISE user %s"
-            " (customer %s) — tier is admin-managed",
-            user.id,
-            customer_id,
-        )
-        return
-
-    amount_due: int = invoice.get("amount_due", 0)
-    sub_id = _invoice_subscription_id(invoice)
-    invoice_id: str = invoice.get("id", "")
-
-    if amount_due <= 0:
-        logger.info(
-            "handle_subscription_payment_failure: amount_due=%d for user %s;"
-            " nothing to deduct",
-            amount_due,
-            user.id,
-        )
-        return
-
-    credit_model = UserCredit()
-    try:
-        await credit_model._add_transaction(
-            user_id=user.id,
-            amount=-amount_due,
-            transaction_type=CreditTransactionType.SUBSCRIPTION,
-            fail_insufficient_credits=True,
-            # Use invoice_id as the idempotency key so that Stripe webhook retries
-            # (e.g. on a transient stripe.Invoice.pay failure) do not double-charge.
-            transaction_key=invoice_id or None,
-            metadata=SafeJson(
-                {
-                    "stripe_customer_id": customer_id,
-                    "stripe_subscription_id": sub_id,
-                    "reason": "subscription_payment_failure_covered_by_balance",
-                }
-            ),
-        )
-        # Balance covered the invoice. Pay the Stripe invoice with
-        # ``paid_out_of_band=True`` so Stripe marks the invoice paid without
-        # retrying the card charge — the card already failed and the user is
-        # paying via their AutoGPT balance, so a card retry here would
-        # double-bill the user (card charge + balance debit). Stripe still
-        # fires ``invoice.payment_succeeded`` on the transition; the success
-        # handler reads ``paid_out_of_band`` and skips its grant path so the
-        # balance debit isn't reversed if the credit-grant flag is on.
-        if invoice_id:
-            try:
-                await stripe_call(
-                    stripe.Invoice.pay_async, invoice_id, paid_out_of_band=True
-                )
-            except stripe.StripeError:
-                logger.warning(
-                    "handle_subscription_payment_failure: balance deducted for user"
-                    " %s but failed to mark invoice %s as paid; Stripe may retry",
-                    user.id,
-                    invoice_id,
-                )
-        logger.info(
-            "handle_subscription_payment_failure: deducted %d cents from balance"
-            " for user %s; Stripe invoice %s paid, sub %s intact, tier preserved",
-            amount_due,
-            user.id,
-            invoice_id,
-            sub_id,
-        )
-    except InsufficientBalanceError:
-        # Balance insufficient — cancel Stripe subscription first, then downgrade DB.
-        # Order matters: if we downgrade the DB first and the Stripe cancel fails, the
-        # user is permanently stuck on BASIC while Stripe continues billing them.
-        # Cancelling Stripe first is safe: if the DB write then fails, the webhook
-        # customer.subscription.deleted will fire and correct the tier eventually.
-        logger.info(
-            "handle_subscription_payment_failure: insufficient balance for user %s;"
-            " cancelling Stripe sub %s then downgrading to BASIC",
-            user.id,
-            sub_id,
-        )
-        try:
-            await _cancel_customer_subscriptions(
-                customer_id, cancellation_comment=PAYMENT_FAILURE_CANCELLATION_COMMENT
-            )
-        except stripe.StripeError:
-            logger.warning(
-                "handle_subscription_payment_failure: failed to cancel Stripe sub %s"
-                " for user %s (customer %s); skipping tier downgrade to avoid"
-                " inconsistency — Stripe may continue retrying the invoice",
-                sub_id,
-                user.id,
-                customer_id,
-            )
-            return
-        await set_subscription_tier(user.id, SubscriptionTier.NO_TIER)
 
 
 async def handle_subscription_payment_success(invoice: dict) -> None:
