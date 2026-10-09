@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -5,6 +6,7 @@ import pytest
 import stripe
 
 from backend.data import subscription_trial_cancel as cancel
+from backend.data.subscription_checkout import SubscriptionCheckoutUnavailable
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
 
@@ -66,9 +68,20 @@ def _live(trial: TrialState, **changes) -> stripe.Subscription:
 
 @pytest.fixture
 def api():
-    """Stripe and the sync as this module calls them, recorded in call order."""
+    """Stripe, the sync and the checkout lock as this module calls them,
+    recorded in call order. ``api.lock.side_effect`` makes the lock busy."""
     calls = MagicMock()
+
+    @asynccontextmanager
+    async def lock(user_id: str):
+        calls.lock(user_id)
+        try:
+            yield
+        finally:
+            calls.unlock()
+
     with (
+        patch.object(cancel, "subscription_checkout_lock", lock),
         patch.object(stripe.Subscription, "retrieve_async", AsyncMock()) as retrieve,
         patch.object(stripe.Subscription, "modify_async", AsyncMock()) as modify,
         patch.object(stripe.Subscription, "cancel_async", AsyncMock()) as end_now,
@@ -136,6 +149,39 @@ async def test_resume_expires_other_open_checkouts_before_resuming(trial, api):
         call.expire("cus_1"),
         call.modify("sub_1", cancel_at_period_end=False),
     ]
+
+
+@pytest.mark.asyncio
+async def test_resume_holds_the_checkout_lock_from_read_to_sync(trial, api):
+    """No plan checkout can open between the expiry and the resume, where it
+    would escape the expiry and could complete beside the resumed trial."""
+    resumed = _live(trial)
+    api.retrieve.return_value = _live(trial, cancel_at_period_end=True)
+    api.modify.return_value = resumed
+    await cancel.resume_trial_subscription(trial)
+    assert api.mock_calls == [
+        call.lock("user-1"),
+        call.retrieve("sub_1"),
+        call.expire("cus_1"),
+        call.modify("sub_1", cancel_at_period_end=False),
+        call.sync(dict(resumed)),
+        call.unlock(),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_resume_while_a_checkout_is_starting_is_refused_untouched(trial, api):
+    api.lock.side_effect = SubscriptionCheckoutUnavailable(
+        "Another checkout is already starting. Please retry."
+    )
+    with pytest.raises(
+        cancel.TrialChangeRefused,
+        match="^Another checkout is already starting. Please retry.$",
+    ):
+        await cancel.resume_trial_subscription(trial)
+    api.retrieve.assert_not_awaited()
+    _assert_no_writes(api)
+    api.sync.assert_not_awaited()
 
 
 @pytest.mark.asyncio

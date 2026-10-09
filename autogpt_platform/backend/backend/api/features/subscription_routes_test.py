@@ -2320,6 +2320,12 @@ def cancel_pending_trial(trial: TrialState) -> TrialState:
     )
 
 
+def _subscription_list(*subscriptions: dict) -> stripe.ListObject:
+    return stripe.ListObject.construct_from(
+        {"data": list(subscriptions), "has_more": False}, "test-key"
+    )
+
+
 @pytest.fixture
 def trial_conversion(
     mocker: pytest_mock.MockFixture, cancel_pending_trial: TrialState
@@ -2379,6 +2385,11 @@ def trial_conversion(
         live=live,
         retrieve=retrieve,
         converted=converted,
+        others=mocker.patch.object(
+            stripe.Subscription,
+            "list_async",
+            recorded("others", _subscription_list(live)),
+        ),
         modify=mocker.patch.object(
             stripe.Subscription, "modify_async", recorded("modify", converted)
         ),
@@ -2462,6 +2473,7 @@ def test_update_subscription_tier_cancel_pending_trial_converts_its_own_plan(
         f"lock:{TEST_USER_ID}",
         "retrieve",
         "expire",
+        "others",
         "modify",
         "sync",
         "unlock",
@@ -2526,6 +2538,29 @@ def test_update_subscription_tier_cancel_pending_trial_changed_in_stripe_returns
     assert response.json()["detail"] == detail
     trial_conversion.expire.assert_not_awaited()
     trial_conversion.modify.assert_not_awaited()
+    trial_conversion.modify_for_tier.assert_not_awaited()
+    trial_conversion.checkout.assert_not_awaited()
+
+
+def test_update_subscription_tier_cancel_pending_trial_with_another_live_plan_returns_409(
+    client: fastapi.testclient.TestClient,
+    trial_conversion: MagicMock,
+) -> None:
+    """A Max Checkout completed before its webhook ended the trial: converting
+    the trial as well would bill the customer for two plans."""
+    trial_conversion.others.side_effect = None
+    trial_conversion.others.return_value = _subscription_list(
+        trial_conversion.live, {"id": "sub_max", "status": "active"}
+    )
+
+    response = _post_plan(client, "PRO")
+
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"] == "This trial has ended. Manage the plan in billing."
+    )
+    trial_conversion.modify.assert_not_awaited()
+    trial_conversion.sync.assert_not_awaited()
     trial_conversion.modify_for_tier.assert_not_awaited()
     trial_conversion.checkout.assert_not_awaited()
 

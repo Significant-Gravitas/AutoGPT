@@ -33,6 +33,12 @@ def live(subscription: dict) -> dict:
     return {**subscription, "cancel_at_period_end": True}
 
 
+def _subscriptions(*subscriptions: dict) -> stripe.ListObject:
+    return stripe.ListObject.construct_from(
+        {"data": list(subscriptions), "has_more": False}, "test-key"
+    )
+
+
 @pytest.fixture
 def boundaries(live: dict):
     calls: list[str] = []
@@ -58,9 +64,11 @@ def boundaries(live: dict):
     retrieve = recorded(
         "retrieve", stripe.Subscription.construct_from(live, "test-key")
     )
+    others = recorded("others", _subscriptions(live))
     with (
         patch.object(conversion, "subscription_checkout_lock", lock),
         patch.object(stripe.Subscription, "retrieve_async", retrieve),
+        patch.object(stripe.Subscription, "list_async", others),
         patch.object(
             stripe.Subscription, "modify_async", recorded("modify", converted)
         ) as modify,
@@ -74,6 +82,7 @@ def boundaries(live: dict):
         yield MagicMock(
             calls=calls,
             retrieve=retrieve,
+            others=others,
             modify=modify,
             expire=expire,
             sync=sync,
@@ -91,12 +100,16 @@ async def test_converts_cancel_pending_trial_in_place_under_checkout_lock(
         "lock:user-1",
         "retrieve",
         "expire",
+        "others",
         "modify",
         "sync",
         "unlock",
     ]
     boundaries.retrieve.assert_awaited_once_with("sub_1")
     boundaries.expire.assert_awaited_once_with("cus_1")
+    boundaries.others.assert_awaited_once_with(
+        customer="cus_1", status="all", limit=100
+    )
     boundaries.modify.assert_awaited_once_with(
         "sub_1",
         cancel_at_period_end=False,
@@ -197,6 +210,41 @@ async def test_resumed_trial_is_refused_like_any_running_trial(
     boundaries.expire.assert_not_awaited()
     boundaries.modify.assert_not_awaited()
     boundaries.sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["active", "trialing", "past_due", "incomplete"])
+async def test_refuses_while_another_plan_is_live(
+    pending_trial, live, boundaries, status
+):
+    """A plan bought through Checkout ends the trial when its webhook lands;
+    converting first would bill the customer for both plans."""
+    boundaries.others.side_effect = None
+    boundaries.others.return_value = _subscriptions(
+        live, {"id": "sub_max", "status": status}
+    )
+
+    with pytest.raises(conversion.TrialConversionRefused, match="has ended"):
+        await conversion.convert_cancel_pending_trial(pending_trial)
+
+    boundaries.expire.assert_awaited_once_with("cus_1")
+    boundaries.modify.assert_not_awaited()
+    boundaries.sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ended_plans_do_not_block_the_conversion(pending_trial, live, boundaries):
+    boundaries.others.side_effect = None
+    boundaries.others.return_value = _subscriptions(
+        live,
+        {"id": "sub_old", "status": "canceled"},
+        {"id": "sub_abandoned", "status": "incomplete_expired"},
+    )
+
+    await conversion.convert_cancel_pending_trial(pending_trial)
+
+    boundaries.modify.assert_awaited_once()
+    boundaries.sync.assert_awaited_once_with(dict(boundaries.converted))
 
 
 @pytest.mark.asyncio

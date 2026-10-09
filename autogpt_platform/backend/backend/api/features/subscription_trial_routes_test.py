@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +15,7 @@ from prisma.enums import SubscriptionTier
 
 from backend.api.features import subscription_trial_routes as routes
 from backend.data import subscription_trial_cancel as trial_cancel
+from backend.data.subscription_checkout import SubscriptionCheckoutUnavailable
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
 from backend.util.feature_flag import Flag
@@ -364,9 +366,17 @@ def _live(trial: TrialState, **changes):
 
 @pytest.fixture
 def live_stripe():
-    """Stripe, the syncs and the status lookups a cancel or resume reaches."""
+    """Stripe, the syncs, the checkout lock and the status lookups a cancel or
+    resume reaches. ``lock.side_effect`` makes the checkout lock busy."""
     calls = MagicMock()
+
+    @asynccontextmanager
+    async def lock(user_id: str):
+        calls.lock(user_id)
+        yield
+
     with (
+        patch.object(trial_cancel, "subscription_checkout_lock", lock),
         patch.object(routes.stripe.Subscription, "retrieve_async", AsyncMock()) as get,
         patch.object(routes.stripe.Subscription, "modify_async", AsyncMock()) as modify,
         patch.object(routes.stripe.Subscription, "cancel_async", AsyncMock()) as end,
@@ -561,6 +571,28 @@ async def test_resume_without_a_live_scheduled_cancellation_is_conflict(
     assert (error.value.status_code, error.value.detail) == (409, detail)
     live_stripe.modify.assert_not_awaited()
     live_stripe.expire.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resume_while_a_checkout_is_starting_is_a_retryable_conflict(
+    trial, live_stripe
+):
+    pending = _started(trial, cancel_at_period_end=True)
+    live_stripe.lock.side_effect = SubscriptionCheckoutUnavailable(
+        "Another checkout is already starting. Please retry."
+    )
+    with patch.object(
+        routes, "get_subscription_trial", AsyncMock(return_value=pending)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.resume_trial(pending.user_id)
+    assert (error.value.status_code, error.value.detail) == (
+        409,
+        "Another checkout is already starting. Please retry.",
+    )
+    live_stripe.retrieve.assert_not_awaited()
+    live_stripe.expire.assert_not_awaited()
+    live_stripe.modify.assert_not_awaited()
 
 
 @pytest.mark.asyncio
