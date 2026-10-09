@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from graphiti_core.llm_client import LLMConfig
 
-from backend.copilot.graphiti.reranker import CompatOpenAIRerankerClient
+from backend.copilot.graphiti.reranker import DEFAULT_MODEL, CompatOpenAIRerankerClient
 
 
 def _logprob_response(token: str, logprob: float) -> SimpleNamespace:
@@ -55,7 +55,7 @@ async def test_rank_requests_at_least_sixteen_max_tokens():
         [_logprob_response("True", -0.1), _logprob_response("False", -0.2)]
     )
     reranker = CompatOpenAIRerankerClient(
-        config=LLMConfig(api_key="k", model="gpt-4.1-nano"), client=client
+        config=LLMConfig(api_key="k", model="gpt-4.1-mini"), client=client
     )
 
     await reranker.rank("query", ["passage a", "passage b"])
@@ -77,7 +77,7 @@ async def test_rank_scores_true_above_false_and_sorts():
         [_logprob_response("False", -0.05), _logprob_response("True", -0.05)]
     )
     reranker = CompatOpenAIRerankerClient(
-        config=LLMConfig(api_key="k", model="gpt-4.1-nano"), client=client
+        config=LLMConfig(api_key="k", model="gpt-4.1-mini"), client=client
     )
 
     ranked = await reranker.rank("query", ["irrelevant", "relevant"])
@@ -96,13 +96,29 @@ async def test_rank_handles_empty_logprobs_without_desync():
         [_logprob_response("True", -0.05), _empty_logprob_response()]
     )
     reranker = CompatOpenAIRerankerClient(
-        config=LLMConfig(api_key="k", model="gpt-4.1-nano"), client=client
+        config=LLMConfig(api_key="k", model="gpt-4.1-mini"), client=client
     )
 
     ranked = await reranker.rank("query", ["relevant", "no_response"])
 
     assert [passage for passage, _ in ranked] == ["relevant", "no_response"]
     assert dict(ranked)["no_response"] == 0.0
+
+
+def test_default_model_is_gpt_4_1_mini():
+    assert DEFAULT_MODEL == "gpt-4.1-mini"
+
+
+@pytest.mark.asyncio
+async def test_rank_falls_back_to_default_model_when_config_omits_model():
+    client, captured = _client_with([_logprob_response("True", -0.1)])
+    reranker = CompatOpenAIRerankerClient(
+        config=LLMConfig(api_key="k", model=""), client=client
+    )
+
+    await reranker.rank("query", ["passage"])
+
+    assert captured[0]["model"] == "gpt-4.1-mini"
 
 
 def test_build_graphiti_uses_compat_reranker(mocker):

@@ -18,6 +18,9 @@ _ENV_VARS_TO_CLEAR = (
     "CHAT_USE_OPENROUTER",
     "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
     "CHAT_BASE_URL",
+    "GRAPHITI_LLM_MODEL",
+    "GRAPHITI_RERANKER_MODEL",
+    "GRAPHITI_EMBEDDER_MODEL",
 )
 
 
@@ -209,9 +212,11 @@ class TestApplyLocalGraphitiModels:
         rewrites *literal* cloud defaults."""
         _patch_chat_cfg(monkeypatch, _local_chat_cfg())
         monkeypatch.setenv("GRAPHITI_LLM_MODEL", "qwen3:8b")
+        monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", "custom-reranker:tag")
         monkeypatch.setenv("GRAPHITI_EMBEDDER_MODEL", "all-minilm")
         cfg = GraphitiConfig()
         assert cfg.llm_model == "qwen3:8b"
+        assert cfg.reranker_model == "custom-reranker:tag"
         assert cfg.embedder_model == "all-minilm"
 
     def test_cloud_defaults_preserved_under_cloud_transport(
@@ -230,8 +235,23 @@ class TestApplyLocalGraphitiModels:
         )
         cfg = GraphitiConfig()
         assert cfg.llm_model == "gpt-4.1-mini"
-        assert cfg.reranker_model == "gpt-4.1-nano"
+        assert cfg.reranker_model == "gpt-4.1-mini"
         assert cfg.embedder_model == "text-embedding-3-small"
+
+    def test_reranker_env_override_under_cloud_transport(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_chat_cfg(
+            monkeypatch,
+            ChatConfig(
+                use_openrouter=True,
+                api_key="or-key",
+                base_url="https://openrouter.ai/api/v1",
+            ),
+        )
+        monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", "gpt-5.6-luna")
+        cfg = GraphitiConfig()
+        assert cfg.reranker_model == "gpt-5.6-luna"
 
 
 class TestIsEnabledForUser:
