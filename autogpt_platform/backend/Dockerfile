@@ -39,7 +39,12 @@ ENV POETRY_VIRTUALENVS_CREATE=true
 ENV POETRY_VIRTUALENVS_IN_PROJECT=true
 ENV PATH=/opt/poetry/bin:$PATH
 
-RUN pip3 install poetry --break-system-packages
+# Poetry gets its own venv, laid out as its installer would: in the system
+# site-packages pip must replace Debian's packages and cannot uninstall them.
+RUN python3 -m venv $POETRY_HOME/venv \
+    && $POETRY_HOME/venv/bin/pip install --no-cache-dir poetry==2.5.1 \
+    && mkdir -p $POETRY_HOME/bin \
+    && ln -s ../venv/bin/poetry $POETRY_HOME/bin/poetry
 
 # Copy and install dependencies
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
@@ -68,7 +73,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # links libatomic.so.1 — without it `node` exits 127 and migrate crash-loops.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.13 \
-    python3-pip \
+    python3.13-venv \
     ca-certificates \
     libatomic1 \
     && rm -rf /var/lib/apt/lists/*
@@ -81,8 +86,11 @@ COPY --from=builder /usr/bin/npm /usr/bin/npm
 # Copy Prisma binaries
 COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
 
-# Install prisma-client-py directly (much smaller than copying full venv)
-RUN pip3 install prisma>=0.15.0 --break-system-packages
+# Install prisma-client-py directly (much smaller than copying full venv).
+# Pinned to poetry.lock's version, which the engine binaries above were fetched for.
+RUN python3.13 -m venv /opt/prisma \
+    && /opt/prisma/bin/pip install --no-cache-dir prisma==0.15.0
+ENV PATH=/opt/prisma/bin:$PATH
 
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
@@ -122,8 +130,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy poetry (build-time only, for `poetry install --only-root` to create entry points)
-COPY --from=builder /usr/local/lib/python3* /usr/local/lib/python3*
-COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
+COPY --from=builder /opt/poetry /opt/poetry
+ENV PATH=/opt/poetry/bin:$PATH
 # Copy Node.js installation for Prisma and agent-browser.
 # npm/npx are symlinks in the builder (-> ../lib/node_modules/npm/bin/*-cli.js);
 # COPY resolves them to regular files, breaking require() paths.  Recreate as
