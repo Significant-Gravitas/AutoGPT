@@ -800,9 +800,7 @@ async def test_get_library_agent_loads_the_graphs_store_listing(mocker):
     )
     listing = MagicMock(name="store-listing")
     mock_store_listing = mocker.patch("prisma.models.StoreListing.prisma")
-    mock_store_listing.return_value.find_first = mocker.AsyncMock(
-        return_value=listing
-    )
+    mock_store_listing.return_value.find_first = mocker.AsyncMock(return_value=listing)
     mocker.patch.object(db, "_fetch_schedule_info", mocker.AsyncMock(return_value={}))
     mocker.patch.object(
         db.graph_db, "get_sub_graphs", mocker.AsyncMock(return_value=[])

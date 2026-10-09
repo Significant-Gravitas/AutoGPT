@@ -5,21 +5,20 @@ Provides access to agent runs and human-in-the-loop reviews.
 """
 
 import logging
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission, ReviewStatus
 from starlette import status
 
+from backend.api.features.graph_executions import sharing
 from backend.api.features.graph_executions.review.model import ReviewItem
 from backend.api.features.graph_executions.review.service import process_reviews
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
-from backend.data.execution import ExecutionStatus
+from backend.data.execution import ExecutionStatus, GraphExecution
 from backend.executor import utils as execution_utils
-from backend.util.settings import Settings
 
 from .models import (
     AgentGraphRun,
@@ -35,7 +34,6 @@ from .pagination import Page, PageRequest, page_request
 from .tenancy import TenantContext, in_tenant, require_permission
 
 logger = logging.getLogger(__name__)
-settings = Settings()
 
 runs_router = APIRouter(tags=["runs"])
 
@@ -108,7 +106,7 @@ async def submit_reviews(
     Approving a review continues execution; rejecting terminates that branch.
     """
     # Reviews carry no organization of their own; the run they belong to does.
-    await _assert_run_in_tenant(run_id, auth)
+    await _own_run(run_id, auth)
 
     outcome = await process_reviews(
         auth.user_id,
@@ -217,42 +215,31 @@ async def stop_run(
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_RUN)),
 ) -> AgentGraphRun:
     """
-    Stop a running execution.
+    Stop a run that hasn't finished: one that is incomplete, queued, running,
+    or waiting for a review.
 
-    Only runs with status QUEUED or RUNNING can be stopped.
+    Waits up to 15 seconds for the run to stop, then returns it with its status
+    at that moment. A run that has already finished answers `409`.
     """
-    # Verify the run exists and belongs to the user
-    exec = await execution_db.get_graph_execution(
-        user_id=auth.user_id,
-        execution_id=run_id,
-        organization_id=auth.organization_id,
-    )
-    if not exec:
+    run = await _own_run(run_id, auth)
+    if run.status in _FINISHED:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Run #{run_id} not found",
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Run #{run_id} has already finished ({run.status.value})",
         )
 
-    # Stop the execution
-    await execution_utils.stop_graph_execution(
-        graph_exec_id=run_id,
-        user_id=auth.user_id,
-    )
-
-    # Fetch updated execution
-    updated_exec = await execution_db.get_graph_execution(
-        user_id=auth.user_id,
-        execution_id=run_id,
-        organization_id=auth.organization_id,
-    )
-
-    if not updated_exec:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Run #{run_id} not found",
+    try:
+        await execution_utils.stop_graph_execution(
+            graph_exec_id=run_id,
+            user_id=auth.user_id,
+            wait_timeout=_STOP_WAIT_SECONDS,
         )
+    except TimeoutError:
+        # The cancel is published; the executor is still winding the run
+        # down, which the returned status shows.
+        logger.warning(f"Run #{run_id} did not stop within {_STOP_WAIT_SECONDS}s")
 
-    return AgentGraphRun.from_internal(updated_exec)
+    return AgentGraphRun.from_internal(await _own_run(run_id, auth))
 
 
 @runs_router.delete(
@@ -265,13 +252,10 @@ async def delete_run(
     run_id: str = Path(description="Graph Execution ID"),
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_RUN)),
 ) -> None:
-    """Delete an agent run."""
-    await _assert_run_in_tenant(run_id, auth)
+    """Delete an agent run. A shared run stops being downloadable too."""
+    await _own_run(run_id, auth)
 
-    await execution_db.delete_graph_execution(
-        graph_exec_id=run_id,
-        user_id=auth.user_id,
-    )
+    await sharing.delete_execution(auth.user_id, run_id)
 
 
 # ============================================================================
@@ -291,32 +275,18 @@ async def enable_sharing(
         require_permission(APIKeyPermission.READ_RUN, APIKeyPermission.SHARE_RUN)
     ),
 ) -> AgentRunShareResponse:
-    """Enable public sharing for a run."""
-    execution = await execution_db.get_graph_execution(
-        user_id=auth.user_id,
-        execution_id=run_id,
-        organization_id=auth.organization_id,
+    """Enable public sharing for a run.
+
+    Sharing again issues a new token, and links from the earlier share stop
+    working.
+    """
+    await _own_run(run_id, auth)
+
+    share_token = await sharing.share_execution(auth.user_id, run_id)
+
+    return AgentRunShareResponse(
+        share_url=sharing.share_url(share_token), share_token=share_token
     )
-    if not execution:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Run #{run_id} not found",
-        )
-
-    share_token = str(uuid.uuid4())
-
-    await execution_db.update_graph_execution_share_status(
-        execution_id=run_id,
-        user_id=auth.user_id,
-        is_shared=True,
-        share_token=share_token,
-        shared_at=datetime.now(timezone.utc),
-    )
-
-    frontend_url = settings.config.frontend_base_url or "http://localhost:3000"
-    share_url = f"{frontend_url}/share/{share_token}"
-
-    return AgentRunShareResponse(share_url=share_url, share_token=share_token)
 
 
 @runs_router.delete(
@@ -331,34 +301,27 @@ async def disable_sharing(
         require_permission(APIKeyPermission.READ_RUN, APIKeyPermission.SHARE_RUN)
     ),
 ) -> None:
-    """Disable public sharing for a run."""
-    execution = await execution_db.get_graph_execution(
-        user_id=auth.user_id,
-        execution_id=run_id,
-        organization_id=auth.organization_id,
-    )
-    if not execution:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Run #{run_id} not found",
-        )
+    """Disable public sharing for a run, and the file downloads it allowed."""
+    await _own_run(run_id, auth)
 
-    await execution_db.update_graph_execution_share_status(
-        execution_id=run_id,
-        user_id=auth.user_id,
-        is_shared=False,
-        share_token=None,
-        shared_at=None,
-    )
+    await sharing.unshare_execution(auth.user_id, run_id)
 
 
-async def _assert_run_in_tenant(run_id: str, auth: TenantContext) -> None:
-    """404 before acting on a run the credentials cannot reach."""
-    in_tenant(
+_FINISHED = frozenset(
+    {ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.TERMINATED}
+)
+_STOP_WAIT_SECONDS = 15.0
+
+
+async def _own_run(run_id: str, auth: TenantContext) -> GraphExecution:
+    """The caller's own run in this tenant, or 404, before acting on it.
+
+    Reads may show a teammate's run in the same organization; stopping,
+    deleting, sharing or reviewing it is that teammate's to do.
+    """
+    return in_tenant(
         await execution_db.get_graph_execution(
-            user_id=auth.user_id,
-            execution_id=run_id,
-            organization_id=auth.organization_id,
+            user_id=auth.user_id, execution_id=run_id
         ),
         auth,
         f"Run #{run_id}",
