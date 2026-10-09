@@ -1404,7 +1404,7 @@ async def _write_skill(
         await _delete_paths(manager, written - existing_paths)
         raise
     await _delete_paths(
-        manager, {f.path for f in stale if f.path not in written}, stale
+        manager, {f.path for f in stale if f.path not in written}, stale, strict=True
     )
     return frozenset(checksums)
 
@@ -1437,10 +1437,10 @@ async def _delete_paths(
     manager: WorkspaceManager,
     paths: set[str],
     known: list[SkillFileInfo] | None = None,
+    *,
+    strict: bool = False,
 ) -> None:
-    """Delete workspace files by path, best-effort: a file that will not go
-    is logged, never raised, because every caller here has already done the
-    thing the user asked for."""
+    """Require stale-file removal for exact replacements; cleanup is best-effort."""
     ids = {f.path: f.file_id for f in known or []}
     for path in paths:
         try:
@@ -1452,6 +1452,8 @@ async def _delete_paths(
                 file_id = info.id
             await manager.delete_file(file_id)
         except Exception:
+            if strict:
+                raise
             logger.warning("[skills] failed to delete %s", path, exc_info=True)
 
 
