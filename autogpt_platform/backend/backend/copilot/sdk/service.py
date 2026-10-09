@@ -1309,14 +1309,15 @@ def _cli_spend_since_last_result(
     total_cost_usd: float, usage: "_TokenUsage", log_prefix: str
 ) -> float:
     """The part of the CLI's running session total that this result added."""
-    spend = total_cost_usd - usage.cli_session_total_usd
+    previous_total = usage.cli_session_total_usd or 0.0
+    spend = total_cost_usd - previous_total
     if spend < 0:
         # The CLI did not count on from the total we read, so all of it is new.
         # ERROR, not WARNING: only ERROR raises a Sentry event.
         logger.error(
             f"{log_prefix} Over-charge fallback: CLI total_cost_usd "
             f"${total_cost_usd:.6f} is below the session total read before it "
-            f"(${usage.cli_session_total_usd:.6f}); charging the full CLI total"
+            f"(${previous_total:.6f}); charging the full CLI total"
         )
         spend = total_cost_usd
     usage.cli_session_total_usd = total_cost_usd
@@ -1426,9 +1427,8 @@ class _TokenUsage:
     cost_usd: float | None = None
     # This turn's spend as the CLI prices it, summed over its processes.
     cli_cost_usd: float = 0.0
-    # The live CLI process's running ``total_cost_usd``, which starts at the
-    # session total it restored on ``--resume``.
-    cli_session_total_usd: float = 0.0
+    # Last accounted CLI total; building-mode relaunches resume this session.
+    cli_session_total_usd: float | None = None
 
     def reset(self) -> None:
         """Reset all accumulators for a new attempt."""
@@ -1438,7 +1438,7 @@ class _TokenUsage:
         self.cache_creation_tokens = 0
         self.cost_usd = None
         self.cli_cost_usd = 0.0
-        self.cli_session_total_usd = 0.0
+        self.cli_session_total_usd = None
 
 
 @dataclass
@@ -4256,9 +4256,12 @@ async def _run_stream_attempt(
     # CLI subprocess spawn + MCP init can take seconds on cold starts —
     # narrate it so the status doesn't sit on the context-prep message.
     yield StreamStatus(message="Starting the assistant…")
-    state.usage.cli_session_total_usd = _resumed_cli_session_cost_usd(
-        ctx.sdk_cwd, state.options.resume, ctx.log_prefix
-    )
+    # A building-mode interruption can precede ResultMessage. Keep its baseline
+    # across the relaunch so the next result includes that unreported spend.
+    if state.usage.cli_session_total_usd is None:
+        state.usage.cli_session_total_usd = _resumed_cli_session_cost_usd(
+            ctx.sdk_cwd, state.options.resume, ctx.log_prefix
+        )
     sdk_client = ClaudeSDKClient(options=state.options)
     client = await sdk_client.__aenter__()
     try:
