@@ -6,9 +6,13 @@ endpoints. Authenticated users get 200 req/min keyed by user ID; unauthenticated
 sessions get 5 req/min keyed by client IP.
 
 Identifies the user through the auth middleware's `resolve_request_auth`.
-Verifying an API key costs a Scrypt hash, so failed attempts are capped per
-client IP too, and once the cap is reached a credential isn't verified at all
-until the window rolls over.
+Verifying an API key costs a Scrypt hash, which the per-user cap can't bound:
+it can only count a request once the hash is done. So before any hashing,
+API keys are counted per client IP and key head (the part of the key the
+lookup matches on): a head presented too often, or failing too often, is
+refused unhashed until the window rolls over, as is an address failing too
+often across heads. A head is shared by few keys, so one client's bad key or
+flood doesn't lock out the other keys behind the same address.
 
 Every response carries the caller's `X-RateLimit-*` position, and a 429 adds
 `Retry-After`, so a client can back off on the numbers instead of guessing.
@@ -21,13 +25,16 @@ import contextlib
 import logging
 from typing import Optional
 
+from autogpt_libs.api_key.keysmith import APIKeySmith
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from starlette.datastructures import Headers
+from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from backend.api.external.middleware import resolve_request_auth
 from backend.api.utils.rate_limit import RateLimiter, RateLimitState
+from backend.data.auth.oauth import ACCESS_TOKEN_PREFIX
 from backend.util.settings import Settings
 
 from .errors import error_response
@@ -37,8 +44,16 @@ settings = Settings()
 
 _authenticated_limiter = RateLimiter("v2:global", max_requests=200, window_seconds=60)
 _anonymous_limiter = RateLimiter("v2:global:anon", max_requests=5, window_seconds=60)
+# Above the per-user cap, so a client within its own limit never meets it.
+_presented_key_limiter = RateLimiter(
+    "v2:global:key-presented", max_requests=300, window_seconds=60
+)
+_failed_key_limiter = RateLimiter(
+    "v2:global:key-failures", max_requests=30, window_seconds=60
+)
+# Failures spread over many heads, each of which may match a key to hash.
 _failed_auth_limiter = RateLimiter(
-    "v2:global:auth-failures", max_requests=30, window_seconds=60
+    "v2:global:auth-failures", max_requests=300, window_seconds=60
 )
 # The docs tell agents to read the spec before they have a key; on the 5/min
 # bucket those reads would use up what the first real calls need.
@@ -71,21 +86,21 @@ class GlobalRateLimitMiddleware:
             )
 
         ip = client_ip(scope, headers)
-        if (api_key or bearer) and await _failed_auth_limiter.exhausted(ip):
-            # Refused before the hash: the cap exists to bound that work.
-            response = error_response(
-                429,
-                "Too many failed authentication attempts. Try again shortly.",
-                headers={"Retry-After": str(_failed_auth_limiter.window_seconds)},
-            )
-            await response(scope, receive, send)
+        credential = api_key or (bearer.credentials if bearer else None)
+        key_bucket = _key_bucket(ip, credential)
+        if key_bucket is not None and (
+            refusal := await _refuse_before_hashing(ip, key_bucket)
+        ):
+            await refusal(scope, receive, send)
             return
 
         try:
             auth = await resolve_request_auth(scope, api_key=api_key, bearer=bearer)
         except HTTPException as rejection:
             auth = None
-            if rejection.status_code == 401:
+            if rejection.status_code == 401 and key_bucket is not None:
+                with contextlib.suppress(HTTPException):
+                    await _failed_key_limiter.check(key_bucket)
                 with contextlib.suppress(HTTPException):
                     await _failed_auth_limiter.check(ip)
         except Exception as exc:
@@ -111,6 +126,40 @@ class GlobalRateLimitMiddleware:
             return
 
         await self.app(scope, receive, _with_rate_limit_headers(send, state))
+
+
+def _key_bucket(ip: str, credential: Optional[str]) -> Optional[str]:
+    """The pre-verification bucket of a credential that costs a hash, or None.
+
+    API keys are matched on their head and then hashed; OAuth access tokens
+    (and anything without the key prefix) are looked up by a cheap digest.
+    """
+    if not credential or not credential.startswith(APIKeySmith.PREFIX):
+        return None
+    if credential.startswith(ACCESS_TOKEN_PREFIX):
+        return None
+    return f"{ip}:{credential[: APIKeySmith.HEAD_LENGTH]}"
+
+
+async def _refuse_before_hashing(ip: str, key_bucket: str) -> Optional[Response]:
+    """A 429 for a key that may not be hashed now, or None to go on.
+
+    Counts the presentation itself, so a valid key flooding the API is refused
+    unhashed past the cap, as is a head or an address that keeps failing.
+    """
+    if await _failed_key_limiter.exhausted(key_bucket) or (
+        await _failed_auth_limiter.exhausted(ip)
+    ):
+        return error_response(
+            429,
+            "Too many failed authentication attempts. Try again shortly.",
+            headers={"Retry-After": str(_failed_key_limiter.window_seconds)},
+        )
+    try:
+        await _presented_key_limiter.check(key_bucket)
+    except HTTPException as exc:
+        return error_response(exc.status_code, str(exc.detail), headers=exc.headers)
+    return None
 
 
 def _app_path(scope: Scope) -> str:

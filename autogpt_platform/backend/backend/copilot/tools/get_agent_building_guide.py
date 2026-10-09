@@ -8,6 +8,7 @@ from backend.copilot.model import ChatSession
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .base import BaseTool
+from .external_scope import error_detail
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -103,7 +104,7 @@ class GetAgentBuildingGuideTool(BaseTool):
             logger.error("Failed to load agent building guide: %s", e)
             return ErrorResponse(
                 message="Failed to load agent building guide.",
-                error=str(e),
+                error=error_detail(e, session),
                 session_id=session_id,
             )
 

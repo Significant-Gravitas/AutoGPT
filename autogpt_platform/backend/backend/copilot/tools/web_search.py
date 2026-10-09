@@ -39,6 +39,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.token_tracking import persist_and_record_usage
 
 from .base import BaseTool
+from .external_scope import error_detail
 from .models import ErrorResponse, ToolResponseBase, WebSearchResponse, WebSearchResult
 
 logger = logging.getLogger(__name__)
@@ -194,11 +195,12 @@ class WebSearchTool(BaseTool):
                 query,
                 exc,
             )
+            detail = error_detail(exc, session)
             return ErrorResponse(
-                message=f"Web search failed: {exc}",
+                message=f"Web search failed: {detail}",
                 error="web_search_failed",
                 session_id=session_id,
-            ).from_outside(str(exc))
+            ).from_outside(detail)
 
         answer = _extract_answer(resp)
         results = _extract_results(resp, limit=max_results)

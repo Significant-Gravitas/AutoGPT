@@ -14,6 +14,7 @@ import {
 import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
 import { CheckmarkBadge01Icon, Image01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 // Human-readable scope descriptions
 const SCOPE_DESCRIPTIONS: { [key in APIKeyPermission]: string } = {
@@ -69,15 +70,19 @@ export default function AuthorizePage() {
     isLoading,
     error,
     refetch,
-  } = useGetOauthGetOauthAppInfo(clientID || "", {
-    query: {
-      enabled: !!clientID,
-      staleTime: Infinity,
-      refetchOnMount: false,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+  } = useGetOauthGetOauthAppInfo(
+    clientID || "",
+    { redirect_uri: redirectURI },
+    {
+      query: {
+        enabled: !!clientID && !!redirectURI,
+        staleTime: Infinity,
+        refetchOnMount: false,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+      },
     },
-  });
+  );
 
   const appInfo = appInfoResponse?.status === 200 ? appInfoResponse.data : null;
 
@@ -125,7 +130,8 @@ export default function AuthorizePage() {
   }
 
   function handleDeny() {
-    // Redirect back to client with access_denied error
+    // appInfo loads only once the backend accepts redirectURI for this client
+    if (!appInfo) return;
     const params = new URLSearchParams({
       error: "access_denied",
       error_description: "User denied access",
@@ -168,11 +174,14 @@ export default function AuthorizePage() {
     );
   }
 
-  // Show error if app not found
+  // Unknown app or unregistered redirect_uri: never send the user to it
   if (error || !appInfo) {
+    const redirectRejected = error instanceof ApiError && error.status === 400;
     return (
       <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
-        <AuthCard title="Application Not Found">
+        <AuthCard
+          title={redirectRejected ? "Invalid Request" : "Application Not Found"}
+        >
           <ErrorCard
             context="application"
             responseError={
@@ -185,15 +194,6 @@ export default function AuthorizePage() {
             }
             onRetry={refetch}
           />
-          {redirectURI && (
-            <Button
-              variant="secondary"
-              onClick={handleDeny}
-              className="mt-4 w-full"
-            >
-              Return to Application
-            </Button>
-          )}
         </AuthCard>
       </div>
     );

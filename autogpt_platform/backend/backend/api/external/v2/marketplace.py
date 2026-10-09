@@ -172,6 +172,27 @@ async def add_agent_to_library(
     return LibraryAgent.from_internal(agent)
 
 
+_MEDIA_MAX_BYTES = 10 * 1024 * 1024  # 10MB limit for external API
+
+
+async def _read_media_within_limit(file: UploadFile) -> bytes:
+    """The upload's bytes, refused past the limit without holding all of it."""
+    too_large = HTTPException(
+        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        detail="File exceeds the 10MB limit",
+    )
+    if file.size is not None and file.size > _MEDIA_MAX_BYTES:
+        raise too_large
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(64 * 1024):
+        total += len(chunk)
+        if total > _MEDIA_MAX_BYTES:
+            raise too_large
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 # ============================================================================
 # Creators
 # ============================================================================
@@ -418,14 +439,7 @@ async def upload_submission_media(
     """
     await enforce(media_upload_limiter, auth.user_id, response)
 
-    max_size = 10 * 1024 * 1024  # 10MB limit for external API
-
-    content = await file.read()
-    if len(content) > max_size:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File size ({len(content)} bytes) exceeds the 10MB limit",
-        )
+    content = await _read_media_within_limit(file)
 
     # Virus scan
     await scan_content_safe(content, filename=file.filename or "upload")

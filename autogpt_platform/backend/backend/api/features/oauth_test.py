@@ -388,6 +388,36 @@ async def test_authorize_invalid_redirect_uri(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_app_info_rejects_an_unregistered_redirect_uri(
+    client: httpx.AsyncClient,
+    test_oauth_app: dict,
+):
+    """The consent page sends the user back only to an address the app registered."""
+    response = await client.get(
+        f"/api/oauth/app/{test_oauth_app['client_id']}",
+        params={"redirect_uri": "https://malicious.com/callback"},
+    )
+
+    assert response.status_code == 400
+    assert "redirect_uri" in response.json()["detail"]
+    assert "example.com" not in response.text
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_app_info_accepts_a_registered_redirect_uri(
+    client: httpx.AsyncClient,
+    test_oauth_app: dict,
+):
+    response = await client.get(
+        f"/api/oauth/app/{test_oauth_app['client_id']}",
+        params={"redirect_uri": test_oauth_app["redirect_uri"]},
+    )
+
+    assert response.status_code == 200
+    assert sorted(response.json()["scopes"]) == ["EXECUTE_GRAPH", "READ_GRAPH"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_authorize_invalid_scope(
     client: httpx.AsyncClient,
     test_user: str,

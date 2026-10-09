@@ -39,6 +39,7 @@ from backend.api.external.v2.pagination import (
 )
 from backend.api.external.v2.tenancy import TenantContext, require_auth
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
+from backend.api.utils.rate_limit import RateLimiter
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
@@ -452,8 +453,10 @@ async def test_bearer_api_key_gets_the_authenticated_rate_limit(
     anonymous = mocker.patch.object(
         global_rate_limit._anonymous_limiter, "check", return_value=None
     )
+    # The pre-verification counters, which this test isn't about.
+    mocker.patch.object(RateLimiter, "exhausted", return_value=False)
     mocker.patch.object(
-        global_rate_limit._failed_auth_limiter, "exhausted", return_value=False
+        global_rate_limit._presented_key_limiter, "check", return_value=None
     )
 
     await _call_rate_limit_middleware(headers=[(b"authorization", b"Bearer agpt_test")])

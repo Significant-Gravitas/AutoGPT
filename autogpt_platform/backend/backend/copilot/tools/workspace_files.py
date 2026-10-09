@@ -31,6 +31,7 @@ from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool, parameters_without
+from .external_scope import error_detail
 from .models import (
     ErrorResponse,
     ResponseType,
@@ -211,6 +212,9 @@ class WorkspaceFileContentResponse(ToolResponseBase):
 
 
 _MAX_LOCAL_TOOL_RESULT_BYTES = 10 * 1024 * 1024  # 10 MB
+
+# The most characters one ranged read of a workspace file returns.
+_MAX_RANGE_CHARS = 1_000_000
 
 
 def _read_local_tool_result(
@@ -510,8 +514,8 @@ class ListWorkspaceFilesTool(BaseTool):
         except Exception as e:
             logger.error(f"Error listing workspace files: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to list workspace files: {e}",
-                error=str(e),
+                message=f"Failed to list workspace files: {error_detail(e, session)}",
+                error=error_detail(e, session),
                 session_id=session_id,
             )
 
@@ -613,7 +617,10 @@ class ReadWorkspaceFileTool(BaseTool):
                 },
                 "length": {
                     "type": "integer",
-                    "description": "Max characters to return for paginated reads.",
+                    "description": (
+                        "Max characters to return for paginated reads "
+                        "(at most 1,000,000 per read)."
+                    ),
                 },
             },
             "required": [],  # At least one of file_id or path must be provided
@@ -704,16 +711,19 @@ class ReadWorkspaceFileTool(BaseTool):
                     return result
                 save_to_path = result
 
-            # Ranged read: return a character slice directly.
+            # Ranged read: return a character slice directly. A slice is at
+            # most _MAX_RANGE_CHARS long, and only the bytes it can reach are
+            # read (UTF-8 is at most four bytes a character), so a large file
+            # is neither loaded nor decoded whole.
             if char_offset > 0 or char_length is not None:
-                raw = cached_content or await manager.read_file_by_id(target_file_id)
-                text = raw.decode("utf-8", errors="replace")
-                total_chars = len(text)
-                end = (
-                    char_offset + char_length
-                    if char_length is not None
-                    else total_chars
+                end = char_offset + min(
+                    _MAX_RANGE_CHARS if char_length is None else max(0, char_length),
+                    _MAX_RANGE_CHARS,
                 )
+                raw = cached_content or await manager.read_file_head_by_id(
+                    target_file_id, 4 * end
+                )
+                text = raw[: 4 * end].decode("utf-8", errors="replace")
                 slice_text = text[char_offset:end]
                 return WorkspaceFileContentResponse(
                     file_id=file_info.id,
@@ -726,8 +736,8 @@ class ReadWorkspaceFileTool(BaseTool):
                     message=(
                         f"Read chars {char_offset}–"
                         f"{char_offset + len(slice_text)} "
-                        f"of {total_chars:,} total "
-                        f"from {file_info.name}"
+                        f"of {file_info.name} ({file_info.size_bytes:,} bytes); "
+                        f"at most {_MAX_RANGE_CHARS:,} chars per read"
                     ),
                     session_id=session_id,
                 )
@@ -761,8 +771,8 @@ class ReadWorkspaceFileTool(BaseTool):
             preview: str | None = None
             if is_text:
                 try:
-                    raw = cached_content or await manager.read_file_by_id(
-                        target_file_id
+                    raw = cached_content or await manager.read_file_head_by_id(
+                        target_file_id, self.PREVIEW_SIZE + 1
                     )
                     preview = raw[: self.PREVIEW_SIZE].decode("utf-8", errors="replace")
                     if len(raw) > self.PREVIEW_SIZE:
@@ -800,8 +810,8 @@ class ReadWorkspaceFileTool(BaseTool):
         except Exception as e:
             logger.error(f"Error reading workspace file: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to read workspace file: {e}",
-                error=str(e),
+                message=f"Failed to read workspace file: {error_detail(e, session)}",
+                error=error_detail(e, session),
                 session_id=session_id,
             )
 
@@ -1087,8 +1097,8 @@ class WriteWorkspaceFileTool(BaseTool):
         except Exception as e:
             logger.error(f"Error writing workspace file: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to write workspace file: {e}",
-                error=str(e),
+                message=f"Failed to write workspace file: {error_detail(e, session)}",
+                error=error_detail(e, session),
                 session_id=session_id,
             )
 
@@ -1206,7 +1216,7 @@ class DeleteWorkspaceFileTool(BaseTool):
         except Exception as e:
             logger.error(f"Error deleting workspace file: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to delete workspace file: {e}",
-                error=str(e),
+                message=f"Failed to delete workspace file: {error_detail(e, session)}",
+                error=error_detail(e, session),
                 session_id=session_id,
             )

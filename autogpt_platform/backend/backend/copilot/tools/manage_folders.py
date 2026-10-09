@@ -10,7 +10,7 @@ from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db
 
 from .base import BaseTool
-from .external_scope import external_tenancy, external_tenant
+from .external_scope import error_detail, external_tenancy, external_tenant
 from .models import (
     AgentsMovedToFolderResponse,
     ErrorResponse,
@@ -161,7 +161,7 @@ class CreateFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to create folder: {e}",
+                message=f"Failed to create folder: {error_detail(e, session)}",
                 error="create_folder_failed",
                 session_id=session_id,
             )
@@ -272,7 +272,7 @@ class ListFoldersTool(BaseTool):
                 )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to list folders: {e}",
+                message=f"Failed to list folders: {error_detail(e, session)}",
                 error="list_folders_failed",
                 session_id=session_id,
             )
@@ -354,7 +354,7 @@ class UpdateFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to update folder: {e}",
+                message=f"Failed to update folder: {error_detail(e, session)}",
                 error="update_folder_failed",
                 session_id=session_id,
             )
@@ -430,7 +430,7 @@ class MoveFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to move folder: {e}",
+                message=f"Failed to move folder: {error_detail(e, session)}",
                 error="move_folder_failed",
                 session_id=session_id,
             )
@@ -503,7 +503,7 @@ class DeleteFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to delete folder: {e}",
+                message=f"Failed to delete folder: {error_detail(e, session)}",
                 error="delete_folder_failed",
                 session_id=session_id,
             )
@@ -581,7 +581,7 @@ class MoveAgentsToFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to move agents: {e}",
+                message=f"Failed to move agents: {error_detail(e, session)}",
                 error="move_agents_failed",
                 session_id=session_id,
             )

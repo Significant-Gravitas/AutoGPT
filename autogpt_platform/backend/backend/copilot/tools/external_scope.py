@@ -26,6 +26,16 @@ def external_tenancy(session: ChatSession) -> tuple[str | None, str | None]:
     return session.organization_id, session.team_id
 
 
+def error_detail(error: BaseException, session: ChatSession) -> str:
+    """An unexpected exception's text, for a tool's error response.
+
+    AutoPilot's model reads it to recover; an External API client gets none,
+    as the v2 REST API's 500 bodies carry none: it can name internal services,
+    queries or a provider's response.
+    """
+    return "an internal error" if session.external_caller else str(error)
+
+
 def in_tenant(organization_id: str | None, tenant: str | None) -> bool:
     """Whether a row tagged with ``organization_id`` is visible to ``tenant``.
 

@@ -4,6 +4,7 @@ A cap the caller cannot see forces it to retry blind, and an anonymous bucket
 keyed on a header the caller writes is not a cap at all.
 """
 
+from datetime import UTC, datetime
 from unittest import mock
 
 import pytest
@@ -11,12 +12,13 @@ import pytest_mock
 from fastapi import HTTPException, Response
 
 from backend.api.external.middleware import resolve_request_auth
-from backend.api.external.v2 import credits
+from backend.api.external.v2 import credits, global_rate_limit
 from backend.api.external.v2.global_rate_limit import (
     GlobalRateLimitMiddleware,
     client_ip,
 )
 from backend.api.utils.rate_limit import RateLimiter
+from backend.data.auth.base import APIAuthorizationInfo
 
 PEER = "10.0.0.9"
 
@@ -148,53 +150,141 @@ async def _receive() -> dict:
     return {"type": "http.request"}
 
 
-async def test_failed_authentication_is_capped_per_ip_before_the_hash(
-    mocker: pytest_mock.MockFixture, redis: mock.AsyncMock
-) -> None:
-    """Each attempt with a key costs a Scrypt hash; past the cap, none run."""
-    redis.get.return_value = b"30"
-    verify = mocker.patch(
-        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
-        new=mock.AsyncMock(),
+class _Counters:
+    """A fake Redis window store: counts per key, readable as the limiter reads them."""
+
+    def __init__(self) -> None:
+        self.counts: dict[str, int] = {}
+
+    async def set(self, name: str, value: int, ex: int = 0, nx: bool = False) -> bool:
+        if nx and name in self.counts:
+            return False
+        self.counts[name] = int(value)
+        return True
+
+    async def incr(self, name: str) -> int:
+        self.counts[name] = self.counts.get(name, 0) + 1
+        return self.counts[name]
+
+    async def get(self, name: str) -> bytes | None:
+        return str(self.counts[name]).encode() if name in self.counts else None
+
+    def total(self, fragment: str) -> int:
+        return sum(n for key, n in self.counts.items() if fragment in key)
+
+
+@pytest.fixture
+def counters(mocker: pytest_mock.MockFixture) -> _Counters:
+    store = _Counters()
+    mocker.patch(
+        "backend.api.utils.rate_limit.get_redis_async",
+        new=mock.AsyncMock(return_value=store),
     )
-    sent: list[dict] = []
+    return store
+
+
+async def _send_with_key(key: bytes, verify: mock.AsyncMock) -> int:
+    """One request carrying `key`; the status the middleware answered with."""
+    statuses: list[int] = []
 
     async def app(scope, receive, send):
-        raise AssertionError("the request reached the app")
+        await send({"type": "http.response.start", "status": 200, "headers": []})
 
     async def send(message):
-        sent.append(message)
+        if message["type"] == "http.response.start":
+            statuses.append(message["status"])
 
     scope = _scope()
-    scope["headers"] = [(b"x-api-key", b"agpt_wrongkey")]
+    scope["headers"] = [(b"x-api-key", key)]
     await GlobalRateLimitMiddleware(app)(scope, _receive, send)
-
-    assert sent[0]["status"] == 429
-    verify.assert_not_awaited()
+    return statuses[0]
 
 
-async def test_a_rejected_credential_counts_against_the_failure_cap(
-    mocker: pytest_mock.MockFixture, redis: mock.AsyncMock
+async def test_a_valid_key_flooding_the_api_is_refused_before_the_hash(
+    mocker: pytest_mock.MockFixture, counters: _Counters
 ) -> None:
-    redis.get.return_value = None
-    redis.incr.return_value = 1
-    mocker.patch(
+    """The per-user cap answers only after the hash it exists to bound."""
+    verify = mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(return_value=mock.Mock(user_id="user-1")),
+    )
+    mocker.patch.object(
+        global_rate_limit._authenticated_limiter, "check", return_value=None
+    )
+
+    statuses = [await _send_with_key(b"agpt_validkey", verify) for _ in range(310)]
+
+    assert statuses.count(200) == 300
+    assert statuses[-1] == 429
+    assert verify.await_count == 300
+
+
+async def test_a_failing_key_is_refused_unhashed_without_locking_out_other_keys(
+    mocker: pytest_mock.MockFixture, counters: _Counters
+) -> None:
+    """A bad key behind a shared address throttles its own head, not the address."""
+    rejection = HTTPException(status_code=401, detail="Invalid API key")
+
+    async def resolve(scope, api_key, bearer):
+        if api_key.startswith("agpt_bad"):
+            raise rejection
+        return mock.Mock(user_id="user-1")
+
+    verify = mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(side_effect=resolve),
+    )
+    mocker.patch.object(
+        global_rate_limit._authenticated_limiter, "check", return_value=None
+    )
+
+    for _ in range(30):
+        await _send_with_key(b"agpt_badkey", verify)
+    hashed = verify.await_count
+
+    assert await _send_with_key(b"agpt_badkey", verify) == 429
+    assert verify.await_count == hashed
+    assert await _send_with_key(b"agpt_goodkey", verify) == 200
+
+
+async def test_an_address_failing_across_many_heads_is_refused_unhashed(
+    mocker: pytest_mock.MockFixture, counters: _Counters
+) -> None:
+    verify = mocker.patch(
         "backend.api.external.v2.global_rate_limit.resolve_request_auth",
         new=mock.AsyncMock(side_effect=HTTPException(status_code=401, detail="no")),
     )
+    counters.counts[
+        global_rate_limit._failed_auth_limiter._key(PEER, datetime.now(UTC))
+    ] = 300
+
+    assert await _send_with_key(b"agpt_fresh", verify) == 429
+    verify.assert_not_awaited()
+
+
+async def test_an_oauth_token_is_not_counted_as_a_key_presentation(
+    mocker: pytest_mock.MockFixture, counters: _Counters
+) -> None:
+    """Access tokens are looked up by digest, not hashed, so they skip the counter."""
+    mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(return_value=mock.Mock(user_id="user-1")),
+    )
+    mocker.patch.object(
+        global_rate_limit._authenticated_limiter, "check", return_value=None
+    )
 
     async def app(scope, receive, send):
-        await send({"type": "http.response.start", "status": 401, "headers": []})
+        await send({"type": "http.response.start", "status": 200, "headers": []})
 
     async def send(message):
         pass
 
     scope = _scope()
-    scope["headers"] = [(b"x-api-key", b"agpt_wrongkey")]
+    scope["headers"] = [(b"authorization", b"Bearer agpt_xt_token")]
     await GlobalRateLimitMiddleware(app)(scope, _receive, send)
 
-    counted = [call.args[0] for call in redis.incr.await_args_list]
-    assert any(":auth-failures:" in key and PEER in key for key in counted)
+    assert counters.total("key-presented") == 0
 
 
 async def test_a_request_verifies_its_credential_once_even_when_rejected(
@@ -213,6 +303,24 @@ async def test_a_request_verifies_its_credential_once_even_when_rejected(
         assert raised.value.status_code == 401
 
     validate.assert_awaited_once()
+
+
+async def test_a_cached_verification_is_reused_only_for_the_same_credential(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    validate = mocker.patch(
+        "backend.api.external.middleware.validate_api_key",
+        new=mock.AsyncMock(side_effect=[_principal("a"), _principal("b")]),
+    )
+    scope: dict = {"type": "http"}
+
+    first = await resolve_request_auth(scope, api_key="agpt_a", bearer=None)
+    again = await resolve_request_auth(scope, api_key="agpt_a", bearer=None)
+    other = await resolve_request_auth(scope, api_key="agpt_b", bearer=None)
+
+    assert first is again
+    assert other.user_id == "b"
+    assert validate.await_count == 2
 
 
 @pytest.mark.parametrize(
@@ -241,3 +349,9 @@ async def test_reading_the_docs_without_a_key_has_its_own_bucket(
     await GlobalRateLimitMiddleware(app)(scope, _receive, send)
 
     assert redis.incr.await_args.args[0].startswith(f"rl:v2:global:{bucket}")
+
+
+def _principal(user_id: str) -> APIAuthorizationInfo:
+    return APIAuthorizationInfo(
+        user_id=user_id, scopes=[], type="api_key", created_at=datetime.now(UTC)
+    )

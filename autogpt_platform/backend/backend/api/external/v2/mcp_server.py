@@ -14,7 +14,8 @@ required permissions are satisfied by the caller's API key / OAuth token.
 
 import logging
 from contextlib import AsyncExitStack, asynccontextmanager
-from typing import Any, AsyncIterator, Sequence
+from contextvars import ContextVar
+from typing import Any, AsyncIterator, Optional, Sequence
 
 import pydantic
 from mcp.server.auth.middleware.auth_context import get_access_token
@@ -33,6 +34,7 @@ from starlette import status
 from starlette.applications import Starlette
 from starlette.types import Receive, Scope, Send
 
+from backend.api.external.middleware import VerifiedCredential, verified_credential
 from backend.api.external.v2.errors import error_response
 from backend.api.external.v2.mcp_calls import (
     check_arguments,
@@ -284,7 +286,13 @@ class MCPMount:
             )
             await response(scope, receive, send)
             return
-        await self._app(scope, receive, send)
+        # The v2 rate limiter in front of this mount has verified the
+        # credential already; FastMCP verifies it again by token alone.
+        verified = _request_credential.set(verified_credential(scope))
+        try:
+            await self._app(scope, receive, send)
+        finally:
+            _request_credential.reset(verified)
 
 
 def _ambiguous_credentials(scope: Scope) -> bool:
@@ -300,6 +308,12 @@ def _ambiguous_credentials(scope: Scope) -> bool:
 
 
 mcp_mount = MCPMount()
+
+# What the v2 middleware verified this request's credential as, so the MCP
+# token verifier doesn't verify (and for an API key, hash) the same token again.
+_request_credential: ContextVar[Optional[VerifiedCredential]] = ContextVar(
+    "mcp_request_credential", default=None
+)
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +359,10 @@ class ExternalAPITokenVerifier(TokenVerifier):
     """Validates API keys and OAuth tokens via external API auth."""
 
     async def verify_token(self, token: str) -> AccessToken | None:
+        verified = _request_credential.get()
+        if verified is not None and verified.credential == token:
+            return await self._tenanted(token, verified.auth) if verified.auth else None
+
         # Try API key first
         api_key_info = await validate_api_key(token)
         if api_key_info:

@@ -3,6 +3,7 @@
 import base64
 import os
 import shutil
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -24,6 +25,7 @@ from backend.copilot.tools.workspace_files import (
     _read_local_tool_result,
     _resolve_write_content,
 )
+from backend.data.workspace import WorkspaceFile
 
 # Re-export so pytest discovers the session-scoped fixture
 setup_test_data = setup_test_data
@@ -950,3 +952,76 @@ class TestSkillsRegistryACL:
         from backend.copilot.tools.workspace_files import _path_under_skills_registry
 
         assert _path_under_skills_registry(path) is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "offset, length, reads",
+    [
+        # Only the bytes the slice can reach: four per character at most.
+        (100, 50, 4 * 150),
+        # "From here to the end" stops at the per-read cap.
+        (10, None, 4 * (10 + 1_000_000)),
+    ],
+)
+async def test_a_ranged_read_loads_only_the_bytes_it_can_return(
+    offset: int, length: int | None, reads: int
+):
+    """A large file was loaded and decoded whole for every slice of it."""
+    content = ("x" * 2_000_000).encode()
+    manager = AsyncMock()
+    manager.get_file_info = AsyncMock(return_value=_text_file(len(content)))
+    manager.read_file_head_by_id = AsyncMock(
+        side_effect=lambda _file_id, max_bytes: content[:max_bytes]
+    )
+    manager.read_file_by_id = AsyncMock(side_effect=AssertionError("read whole"))
+
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    ):
+        resp = await ReadWorkspaceFileTool()._execute(
+            user_id="user-1",
+            session=make_session("user-1"),
+            file_id="f-1",
+            offset=offset,
+            length=length,
+        )
+
+    assert isinstance(resp, WorkspaceFileContentResponse), resp.message
+    manager.read_file_head_by_id.assert_awaited_once_with("f-1", reads)
+    sliced = base64.b64decode(resp.content_base64).decode()
+    assert len(sliced) == (length if length is not None else 1_000_000)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_large_text_files_preview_reads_only_its_head():
+    manager = AsyncMock()
+    manager.get_file_info = AsyncMock(return_value=_text_file(50_000_000))
+    manager.read_file_head_by_id = AsyncMock(return_value=b"y" * 501)
+    manager.read_file_by_id = AsyncMock(side_effect=AssertionError("read whole"))
+
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    ):
+        await ReadWorkspaceFileTool()._execute(
+            user_id="user-1", session=make_session("user-1"), file_id="f-1"
+        )
+
+    manager.read_file_head_by_id.assert_awaited_once_with("f-1", 501)
+
+
+def _text_file(size_bytes: int) -> WorkspaceFile:
+    now = datetime.now(timezone.utc)
+    return WorkspaceFile(
+        id="f-1",
+        workspace_id="ws-1",
+        created_at=now,
+        updated_at=now,
+        name="big.txt",
+        path="/big.txt",
+        storage_path="local://big.txt",
+        mime_type="text/plain",
+        size_bytes=size_bytes,
+    )

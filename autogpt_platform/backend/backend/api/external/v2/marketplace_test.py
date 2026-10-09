@@ -1,11 +1,13 @@
 """Bad marketplace searches are the caller's error, not a 500."""
 
+import io
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+from fastapi import HTTPException, UploadFile
 from prisma.enums import APIKeyPermission
 
 from backend.api.features.library.exceptions import (
@@ -13,7 +15,11 @@ from backend.api.features.library.exceptions import (
 )
 
 from .errors import add_v2_exception_handlers
-from .marketplace import add_agent_to_library, marketplace_router
+from .marketplace import (
+    _read_media_within_limit,
+    add_agent_to_library,
+    marketplace_router,
+)
 from .tenancy import TenantContext, require_auth
 
 _AUTH = TenantContext(
@@ -97,3 +103,30 @@ def test_a_listing_already_in_another_organizations_library_is_a_conflict(
     response = client.post("/marketplace/agents/someone/agent/add-to-library")
 
     assert response.status_code == 409
+
+
+async def test_an_oversized_media_upload_is_refused_without_reading_it_all(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The whole body was read into memory before the 10 MB check."""
+    upload = UploadFile(file=io.BytesIO(b"x" * (10 * 1024 * 1024 + 1)), size=None)
+    read = mocker.patch.object(upload, "read", wraps=upload.read)
+
+    with pytest.raises(HTTPException) as raised:
+        await _read_media_within_limit(upload)
+
+    assert raised.value.status_code == 413
+    assert all(call.args == (64 * 1024,) for call in read.await_args_list)
+
+
+async def test_a_declared_oversized_media_upload_is_refused_before_reading(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    upload = UploadFile(file=io.BytesIO(b""), size=11 * 1024 * 1024)
+    read = mocker.patch.object(upload, "read", new_callable=AsyncMock)
+
+    with pytest.raises(HTTPException) as raised:
+        await _read_media_within_limit(upload)
+
+    assert raised.value.status_code == 413
+    read.assert_not_awaited()
