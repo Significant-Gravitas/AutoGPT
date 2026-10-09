@@ -21,6 +21,7 @@ from .transcript import (
     _rechain_tail,
     _sanitize_id,
     _transcript_to_messages,
+    cli_session_cost_usd,
     detect_gap,
     extract_context_messages,
     strip_for_upload,
@@ -1867,3 +1868,38 @@ class TestExtractContextMessages:
             "user",  # gap user-6
             "assistant",  # gap assistant-7
         ]
+
+
+# ---------------------------------------------------------------------------
+# cli_session_cost_usd
+# ---------------------------------------------------------------------------
+
+_SID = "5f0c2a4e-1b7d-4c9a-9e3f-2d8b6a1c4e70"
+
+
+@pytest.mark.parametrize(
+    "lines,expected",
+    [
+        pytest.param(
+            [
+                {"type": "cost-state", "sessionId": _SID, "totalCostUSD": 0.028},
+                "{not json cost-state",
+                {"type": "cost-state", "sessionId": _SID, "totalCostUSD": 0.056},
+                {"type": "cost-state", "sessionId": "another", "totalCostUSD": 5.0},
+                {"type": "user", "message": {"content": "what is cost-state?"}},
+            ],
+            0.056,
+            id="last-row-of-this-session",
+        ),
+        pytest.param(
+            [{"type": "user", "message": {"content": "hi"}}],
+            0.0,
+            id="no-cost-state",
+        ),
+    ],
+)
+def test_cli_session_cost_usd_reads_what_the_cli_resumes_from(lines, expected):
+    content = "\n".join(
+        line if isinstance(line, str) else json.dumps(line) for line in lines
+    )
+    assert cli_session_cost_usd(content, _SID) == expected
