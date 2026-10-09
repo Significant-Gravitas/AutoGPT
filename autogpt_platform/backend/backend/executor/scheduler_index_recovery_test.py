@@ -9,7 +9,36 @@ from backend.executor.schedule_index_test_helpers import (
     _mock_job,
     _scheduler_with_index,
 )
-from backend.executor.scheduler import GraphExecutionJobArgs, _index_entry
+from backend.executor.scheduler import (
+    _SCHEDULE_INDEX_SETTLE_S,
+    GraphExecutionJobArgs,
+    _index_entry,
+)
+
+
+def test_startup_backfill_waits_out_the_outgoing_pod_before_trusting_the_index():
+    """The pod being replaced keeps writing schedules until it exits, without
+    index rows if it predates the index or its index write failed. A reconcile
+    that snapshots the jobstore before then would leave those rows hidden."""
+    scheduler = _scheduler_with_index()
+    scheduler._schedule_index_ready = False
+    steps: list[object] = []
+    with (
+        patch(
+            "backend.executor.scheduler.threading.Thread",
+            side_effect=lambda target, **_: MagicMock(start=target),
+        ),
+        patch("backend.executor.scheduler.time.sleep", side_effect=steps.append),
+        patch.object(
+            scheduler,
+            "_reconcile_schedule_index",
+            side_effect=lambda: steps.append("reconcile"),
+        ),
+    ):
+        scheduler._start_schedule_index_backfill()
+
+    assert steps == [_SCHEDULE_INDEX_SETTLE_S, "reconcile"]
+    assert scheduler._schedule_index_ready is False
 
 
 def test_failed_upsert_keeps_persisted_schedule_visible_until_reconcile():

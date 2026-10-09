@@ -1669,6 +1669,11 @@ def ensure_embeddings_coverage():
 # bounded rather than left to grow with the backlog.
 _PARKED_SCAN_LIMIT = 1000
 
+# A rolling deploy runs the outgoing pod beside this one until it exits (prod:
+# ~10 s to ready, a 15 s preStop, a 300 s grace). The index is trusted only after
+# a reconcile that began later, so rows that pod wrote unindexed are in it.
+_SCHEDULE_INDEX_SETTLE_S = 600
+
 
 class Jobstores(Enum):
     EXECUTION = "execution"
@@ -2928,6 +2933,7 @@ class Scheduler(AppService):
             try:
                 if self._schedule_index is not None:
                     self._schedule_index.ensure_table()
+                time.sleep(_SCHEDULE_INDEX_SETTLE_S)
                 self._reconcile_schedule_index()
             except Exception:
                 logger.exception(
