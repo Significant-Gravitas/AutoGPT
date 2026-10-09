@@ -1,8 +1,10 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.data.notifications import NotificationResult
 from backend.notifications import trial as notices
 from backend.notifications import trial_test as fixtures
 
@@ -166,3 +168,73 @@ async def test_delivery_marks_changed_terms_obsolete_without_sending(trial):
         ),
     ):
         assert await notices.trial_notice_disposition(trial.user_id, data) == "obsolete"
+
+
+async def _notify_ended(trial, live: list[str]):
+    raw = subscription(trial)
+    page = SimpleNamespace(
+        data=[SimpleNamespace(id=sub_id) for sub_id in live], has_more=False
+    )
+
+    async def stripe_call(fn, *args, **kwargs):
+        return page if fn == notices.stripe.Subscription.list_async else raw
+
+    user = SimpleNamespace(id=trial.user_id, name="Sam", email="sam@example.com")
+    with (
+        patch.object(notices, "stripe_call", AsyncMock(side_effect=stripe_call)),
+        patch.object(
+            notices,
+            "credit_db",
+            return_value=MagicMock(
+                get_subscription_trial=AsyncMock(return_value=trial)
+            ),
+        ),
+        patch.object(
+            notices,
+            "user_db",
+            return_value=MagicMock(get_user_by_id=AsyncMock(return_value=user)),
+        ),
+        patch.object(notices, "claim_once", AsyncMock(return_value=True)) as claim,
+        patch.object(notices, "queue_trial_audience_change", AsyncMock()) as audience,
+        patch.object(
+            notices,
+            "queue_notification_async",
+            AsyncMock(return_value=NotificationResult(success=True)),
+        ) as queue,
+        patch.object(notices, "_track_billing_event") as track,
+    ):
+        handled = await notices.notify_trial(raw, "ended")
+    return handled, SimpleNamespace(
+        claim=claim, audience=audience, queue=queue, track=track
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_trial_ended_by_buying_another_plan_sends_nothing(trial):
+    """Buying another plan while cancel-pending ends the trial subscription.
+    No "trial ended" email, no trial_canceled overwrite of the new plan's
+    MailerLite status, no trial_ended event."""
+    trial.status = "canceled"
+    trial.cancel_at_period_end = True
+    handled, sent = await _notify_ended(trial, live=["sub_max"])
+    assert handled
+    sent.claim.assert_not_awaited()
+    sent.audience.assert_not_awaited()
+    sent.queue.assert_not_awaited()
+    sent.track.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("live", [[], ["sub_1"]], ids=["no-other-plan", "only-itself"])
+async def test_a_cancel_pending_trial_reaching_its_end_sends_the_ended_notice(
+    trial, live
+):
+    trial.status = "canceled"
+    trial.cancel_at_period_end = True
+    handled, sent = await _notify_ended(trial, live=live)
+    assert handled
+    sent.audience.assert_awaited_once()
+    assert sent.audience.await_args.args[0] == "ended"
+    sent.queue.assert_awaited_once()
+    assert sent.queue.await_args.args[0].data.kind == "ended"
+    assert sent.track.call_args.args[0] == "trial_ended"

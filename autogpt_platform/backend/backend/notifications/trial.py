@@ -19,7 +19,7 @@ from backend.data.notifications import (
     SubscriptionPlan,
     TrialUpdateData,
 )
-from backend.data.stripe_client import stripe_call
+from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_trial import TrialState
 from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import format_amount
@@ -80,6 +80,8 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     ):
         return False
     if not _notice_applies(trial, kind, current):
+        return True
+    if kind == "ended" and await _another_plan_is_live(trial, current):
         return True
     user = await user_db().get_user_by_id(user_id)
     data = trial_notice_data(trial, kind, user.name or "there")
@@ -197,8 +199,13 @@ async def on_trial_subscription_updated(subscription: dict, previous: dict) -> b
     if not user_id:
         raise ValueError("Trial update has no user identity")
     trial = await credit_db().get_subscription_trial(user_id)
-    if trial is None or trial.converted_at is not None:
+    if trial is None:
         return False
+    if trial.converted_at is not None:
+        # Subscribe now on a cancel-pending trial ends the trial and clears the
+        # cancellation in one update: the conversion notice covers it.
+        was_trialing = previous.get("status") == "trialing"
+        return was_trialing and "cancel_at_period_end" in previous
     if "cancel_at_period_end" in previous:
         kind = "canceled" if trial.cancel_at_period_end else "resumed"
         await notify_trial(subscription, kind)
@@ -266,3 +273,19 @@ def _notice_applies(trial: TrialState, kind: TrialNoticeKind, current: dict) -> 
             and trial.converted_at is None
         )
     return status in ("canceled", "unpaid", "paused") and trial.converted_at is None
+
+
+async def _another_plan_is_live(trial: TrialState, current: dict) -> bool:
+    """A trial ended by buying another plan is not news, and its trial_canceled
+    status must not overwrite the new plan's."""
+    for status in ("active", "trialing"):
+        page = await stripe_call(
+            stripe.Subscription.list_async,
+            customer=trial.customer_id,
+            status=status,
+            limit=100,
+        )
+        async for other in stripe_list_items(page):
+            if other.id != current.get("id"):
+                return True
+    return False
