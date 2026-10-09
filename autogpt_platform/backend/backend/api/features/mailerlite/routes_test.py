@@ -45,11 +45,10 @@ def secret(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def record(mocker: pytest_mock.MockFixture) -> AsyncMock:
-    return mocker.patch.object(
-        routes,
-        "record_marketing_opt_out_by_email",
-        new=AsyncMock(return_value="user-1"),
-    )
+    database = mocker.patch.object(routes, "user_db").return_value
+    record = AsyncMock(return_value="user-1")
+    database.record_marketing_opt_out_by_email = record
+    return record
 
 
 def _unsubscribed(email: str = EMAIL) -> dict:

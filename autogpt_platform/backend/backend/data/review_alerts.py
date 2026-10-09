@@ -1,4 +1,4 @@
-"""Keeping the "waiting on your review" alert in step with reality.
+"""Database-backed maintenance of the "waiting on your review" alert.
 
 This is one of the conditions the notification surface this replaces could not
 report at all: an agent holding outputs that nothing will send until a human

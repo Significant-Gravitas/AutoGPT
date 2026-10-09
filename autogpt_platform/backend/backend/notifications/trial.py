@@ -11,7 +11,6 @@ from backend.data.credit import (
     _invoice_subscription_id,
     _invoice_subscription_metadata,
     _track_billing_event,
-    sync_subscription_from_stripe,
 )
 from backend.data.db_accessors import credit_db, user_db
 from backend.data.notifications import (
@@ -124,7 +123,7 @@ async def on_trial_invoice(invoice: dict, *, paid: bool) -> bool:
     subscription = dict(await stripe_call(stripe.Subscription.retrieve_async, sub_id))
     if not (subscription.get("metadata") or {}).get("trial_enrollment_id"):
         return False
-    await sync_subscription_from_stripe(subscription)
+    await credit_db().sync_subscription_from_stripe(subscription)
     user_id = (subscription.get("metadata") or {}).get("user_id")
     if not user_id:
         raise ValueError("Trial invoice has no user identity")

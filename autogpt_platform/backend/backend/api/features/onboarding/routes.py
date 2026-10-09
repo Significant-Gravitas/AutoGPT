@@ -5,6 +5,7 @@ from autogpt_libs.auth import get_user_id, requires_user
 from fastapi import APIRouter, HTTPException, Security
 
 from backend.api.features.store.model import StoreAgentDetails
+from backend.data.db_accessors import onboarding_audience_db, onboarding_role_db
 from backend.data.model import UserOnboarding
 from backend.data.onboarding import (
     FrontendOnboardingStep,
@@ -17,8 +18,7 @@ from backend.data.onboarding import (
     reset_user_onboarding,
     update_user_onboarding,
 )
-from backend.data.onboarding_audience import queue_onboarding_role
-from backend.data.onboarding_role import OnboardingRole, save_onboarding_role
+from backend.data.onboarding_role import OnboardingRole
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -147,8 +147,8 @@ async def submit_onboarding_profile(
 
     # Kept apart from the understanding, whose copy AutoPilot rewrites.
     role = OnboardingRole.from_answer(data.user_role)
-    await save_onboarding_role(user_id, role)
-    await queue_onboarding_role(user_id, role)
+    await onboarding_role_db().save_onboarding_role(user_id, role)
+    await onboarding_audience_db().queue_onboarding_role(user_id, role)
     set_onboarding_role(user_id=user_id, role=role)
 
     return {"status": "ok"}

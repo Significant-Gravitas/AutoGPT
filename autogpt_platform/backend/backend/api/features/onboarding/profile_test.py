@@ -5,6 +5,7 @@ import fastapi.testclient
 import pytest
 
 from backend.api.features.onboarding.routes import router
+from backend.data import onboarding_audience, onboarding_role
 from backend.data.onboarding_role import OnboardingRole
 
 app = fastapi.FastAPI()
@@ -32,10 +33,16 @@ def profile(mocker):
         for name in (
             "extract_business_understanding",
             "upsert_business_understanding",
-            "save_onboarding_role",
-            "queue_onboarding_role",
         )
     }
+    mocks["save_onboarding_role"] = mocker.patch.object(
+        onboarding_role, "save_onboarding_role", new_callable=AsyncMock
+    )
+    mocks["queue_onboarding_role"] = mocker.patch.object(
+        onboarding_audience, "queue_onboarding_role", new_callable=AsyncMock
+    )
+    mocker.patch(f"{ROUTES}.onboarding_role_db", return_value=onboarding_role)
+    mocker.patch(f"{ROUTES}.onboarding_audience_db", return_value=onboarding_audience)
     mocks["set_onboarding_role"] = mocker.patch(
         f"{ROUTES}.set_onboarding_role", new_callable=MagicMock
     )

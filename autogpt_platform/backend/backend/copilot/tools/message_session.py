@@ -24,12 +24,12 @@ from typing import Any
 
 from backend.copilot.active_turns import get_inflight_turn_limit
 from backend.copilot.context import get_current_envelope, take_session_message_slot
-from backend.copilot.db import get_chat_session_metadata, get_chat_session_status
 from backend.copilot.expert_context import escape_prompt_xml_tags
 from backend.copilot.model import CHAT_STATUS_IDLE, ChatSession, ChatSessionInfo
 from backend.copilot.pending_message_helpers import queue_user_message
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.turn_queue import InflightCapExceeded, try_enqueue_turn
+from backend.data.db_accessors import chat_db
 
 from .base import BaseTool
 from .expert_delegation import sent_from_metadata
@@ -111,7 +111,7 @@ class MessageSessionTool(BaseTool):
 
         # Ownership before anything else, and not-found rather than forbidden:
         # a distinct refusal would let this tool probe for session ids.
-        target = await get_chat_session_metadata(target_id)
+        target = await chat_db().get_chat_session_metadata(target_id)
         if target is None or target.user_id != user_id:
             return self._error(
                 f"No session {target_id} of yours. Use tool:find_session.", session
@@ -150,7 +150,10 @@ class MessageSessionTool(BaseTool):
         # user row, and the dispatcher replays the queued turn from the LATEST
         # such row — so the user's own submit-time payload (their attachments,
         # page context and model choice) would be replaced by this message's.
-        if await get_chat_session_status(target.session_id) != CHAT_STATUS_IDLE:
+        if (
+            await chat_db().get_chat_session_status(target.session_id)
+            != CHAT_STATUS_IDLE
+        ):
             await queue_user_message(
                 session_id=target.session_id, message=payload, metadata=provenance
             )
