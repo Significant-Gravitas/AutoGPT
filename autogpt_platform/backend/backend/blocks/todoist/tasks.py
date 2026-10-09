@@ -1,7 +1,5 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from todoist_api_python.api import TodoistAPI
-from todoist_api_python.models import Task
 from typing_extensions import Optional
 
 from backend.blocks._base import (
@@ -11,6 +9,12 @@ from backend.blocks._base import (
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
+)
+from backend.blocks.todoist._api import (
+    flatten_pages,
+    get_api,
+    parse_duration_unit,
+    task_to_dict,
 )
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
@@ -127,14 +131,40 @@ class TodoistCreateTaskBlock(Block):
         )
 
     @staticmethod
-    def create_task(credentials: TodoistCredentials, content: str, **kwargs):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            task = api.add_task(content=content, **kwargs)
-            task_dict = Task.to_dict(task)
-            return task.id, task.url, task_dict
-        except Exception as e:
-            raise e
+    def create_task(
+        credentials: TodoistCredentials,
+        content: str,
+        *,
+        description: Optional[str] = None,
+        project_id: Optional[str] = None,
+        section_id: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        order: Optional[int] = None,
+        labels: Optional[list[str]] = None,
+        priority: Optional[int] = None,
+        due_date: Optional[date] = None,
+        deadline_date: Optional[date] = None,
+        assignee_id: Optional[str] = None,
+        duration: Optional[int] = None,
+        duration_unit: Optional[str] = None,
+    ):
+        with get_api(credentials) as api:
+            task = api.add_task(
+                content,
+                description=description,
+                project_id=project_id,
+                section_id=section_id,
+                parent_id=parent_id,
+                order=order,
+                labels=labels,
+                priority=priority,
+                due_date=due_date,
+                deadline_date=deadline_date,
+                assignee_id=assignee_id,
+                duration=duration,
+                duration_unit=parse_duration_unit(duration_unit),
+            )
+            return task.id, task.url, task_to_dict(task)
 
     async def run(
         self,
@@ -144,36 +174,25 @@ class TodoistCreateTaskBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            due_date = (
-                input_data.due_date.strftime("%Y-%m-%d")
-                if input_data.due_date
-                else None
-            )
-            deadline_date = (
-                input_data.deadline_date.strftime("%Y-%m-%d")
-                if input_data.deadline_date
-                else None
-            )
-
-            task_args = {
-                "description": input_data.description,
-                "project_id": input_data.project_id,
-                "section_id": input_data.section_id,
-                "parent_id": input_data.parent_id,
-                "order": input_data.order,
-                "labels": input_data.labels,
-                "priority": input_data.priority,
-                "due_date": due_date,
-                "deadline_date": deadline_date,
-                "assignee_id": input_data.assignee_id,
-                "duration": input_data.duration,
-                "duration_unit": input_data.duration_unit,
-            }
-
             id, url, complete_data = self.create_task(
                 credentials,
                 input_data.content,
-                **{k: v for k, v in task_args.items() if v is not None},
+                description=input_data.description,
+                project_id=input_data.project_id,
+                section_id=input_data.section_id,
+                parent_id=input_data.parent_id,
+                order=input_data.order,
+                labels=input_data.labels,
+                priority=input_data.priority,
+                due_date=input_data.due_date.date() if input_data.due_date else None,
+                deadline_date=(
+                    input_data.deadline_date.date()
+                    if input_data.deadline_date
+                    else None
+                ),
+                assignee_id=input_data.assignee_id,
+                duration=input_data.duration,
+                duration_unit=input_data.duration_unit,
             )
 
             yield "id", id
@@ -258,13 +277,29 @@ class TodoistGetTasksBlock(Block):
         )
 
     @staticmethod
-    def get_tasks(credentials: TodoistCredentials, **kwargs):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            tasks = api.get_tasks(**kwargs)
-            return [Task.to_dict(task) for task in tasks]
-        except Exception as e:
-            raise e
+    def get_tasks(
+        credentials: TodoistCredentials,
+        *,
+        project_id: Optional[str] = None,
+        section_id: Optional[str] = None,
+        label: Optional[str] = None,
+        filter: Optional[str] = None,
+        lang: Optional[str] = None,
+        ids: Optional[list[str]] = None,
+    ):
+        with get_api(credentials) as api:
+            # A filter query takes precedence over the other filters, as it did
+            # on the REST v2 endpoint; API v1 serves it from its own endpoint.
+            if filter is not None:
+                pages = api.filter_tasks(query=filter, lang=lang)
+            else:
+                pages = api.get_tasks(
+                    project_id=project_id,
+                    section_id=section_id,
+                    label=label,
+                    ids=ids,
+                )
+            return [task_to_dict(task) for task in flatten_pages(pages)]
 
     async def run(
         self,
@@ -274,17 +309,14 @@ class TodoistGetTasksBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            task_filters = {
-                "project_id": input_data.project_id,
-                "section_id": input_data.section_id,
-                "label": input_data.label,
-                "filter": input_data.filter,
-                "lang": input_data.lang,
-                "ids": input_data.ids,
-            }
-
             tasks = self.get_tasks(
-                credentials, **{k: v for k, v in task_filters.items() if v is not None}
+                credentials,
+                project_id=input_data.project_id,
+                section_id=input_data.section_id,
+                label=input_data.label,
+                filter=input_data.filter,
+                lang=input_data.lang,
+                ids=input_data.ids,
             )
 
             yield "ids", [task["id"] for task in tasks]
@@ -342,12 +374,8 @@ class TodoistGetTaskBlock(Block):
 
     @staticmethod
     def get_task(credentials: TodoistCredentials, task_id: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            task = api.get_task(task_id=task_id)
-            return Task.to_dict(task)
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return task_to_dict(api.get_task(task_id=task_id))
 
     async def run(
         self,
@@ -447,13 +475,42 @@ class TodoistUpdateTaskBlock(Block):
         )
 
     @staticmethod
-    def update_task(credentials: TodoistCredentials, task_id: str, **kwargs):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            is_success = api.update_task(task_id=task_id, **kwargs)
-            return is_success
-        except Exception as e:
-            raise e
+    def update_task(
+        credentials: TodoistCredentials,
+        task_id: str,
+        *,
+        content: Optional[str] = None,
+        description: Optional[str] = None,
+        project_id: Optional[str] = None,
+        section_id: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        order: Optional[int] = None,
+        labels: Optional[list[str]] = None,
+        priority: Optional[int] = None,
+        due_date: Optional[date] = None,
+        deadline_date: Optional[date] = None,
+        assignee_id: Optional[str] = None,
+        duration: Optional[int] = None,
+        duration_unit: Optional[str] = None,
+    ):
+        with get_api(credentials) as api:
+            api.update_task(
+                task_id,
+                content=content,
+                description=description,
+                order=order,
+                labels=labels,
+                priority=priority,
+                due_date=due_date,
+                deadline_date=deadline_date,
+                assignee_id=assignee_id,
+                duration=duration,
+                duration_unit=parse_duration_unit(duration_unit),
+            )
+            # project_id/section_id/parent_id are not sent: the update endpoint
+            # never moved tasks (REST v2 ignored them too), and moving is a
+            # separate move_task call this block has not made so far.
+            return True
 
     async def run(
         self,
@@ -463,41 +520,26 @@ class TodoistUpdateTaskBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            due_date = (
-                input_data.due_date.strftime("%Y-%m-%d")
-                if input_data.due_date
-                else None
-            )
-            deadline_date = (
-                input_data.deadline_date.strftime("%Y-%m-%d")
-                if input_data.deadline_date
-                else None
-            )
-
-            task_updates = {}
-            update_fields = {
-                "content": input_data.content,
-                "description": input_data.description,
-                "project_id": input_data.project_id,
-                "section_id": input_data.section_id,
-                "parent_id": input_data.parent_id,
-                "order": input_data.order,
-                "labels": input_data.labels,
-                "priority": input_data.priority,
-                "due_date": due_date,
-                "deadline_date": deadline_date,
-                "assignee_id": input_data.assignee_id,
-                "duration": input_data.duration,
-                "duration_unit": input_data.duration_unit,
-            }
-
-            # Filter out None values
-            task_updates = {k: v for k, v in update_fields.items() if v is not None}
-
             self.update_task(
                 credentials,
                 input_data.task_id,
-                **{k: v for k, v in task_updates.items() if v is not None},
+                content=input_data.content,
+                description=input_data.description,
+                project_id=input_data.project_id,
+                section_id=input_data.section_id,
+                parent_id=input_data.parent_id,
+                order=input_data.order,
+                labels=input_data.labels,
+                priority=input_data.priority,
+                due_date=input_data.due_date.date() if input_data.due_date else None,
+                deadline_date=(
+                    input_data.deadline_date.date()
+                    if input_data.deadline_date
+                    else None
+                ),
+                assignee_id=input_data.assignee_id,
+                duration=input_data.duration,
+                duration_unit=input_data.duration_unit,
             )
 
             yield "success", True
@@ -534,12 +576,8 @@ class TodoistCloseTaskBlock(Block):
 
     @staticmethod
     def close_task(credentials: TodoistCredentials, task_id: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            is_success = api.close_task(task_id=task_id)
-            return is_success
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return api.complete_task(task_id=task_id)
 
     async def run(
         self,
@@ -586,12 +624,8 @@ class TodoistReopenTaskBlock(Block):
 
     @staticmethod
     def reopen_task(credentials: TodoistCredentials, task_id: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            is_success = api.reopen_task(task_id=task_id)
-            return is_success
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return api.uncomplete_task(task_id=task_id)
 
     async def run(
         self,
@@ -640,12 +674,8 @@ class TodoistDeleteTaskBlock(Block):
 
     @staticmethod
     def delete_task(credentials: TodoistCredentials, task_id: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            is_success = api.delete_task(task_id=task_id)
-            return is_success
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return api.delete_task(task_id=task_id)
 
     async def run(
         self,

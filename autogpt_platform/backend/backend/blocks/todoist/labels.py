@@ -1,4 +1,3 @@
-from todoist_api_python.api import TodoistAPI
 from typing_extensions import Optional
 
 from backend.blocks._base import (
@@ -9,6 +8,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.todoist._api import flatten_pages, get_api
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -77,14 +77,19 @@ class TodoistCreateLabelBlock(Block):
         )
 
     @staticmethod
-    def create_label(credentials: TodoistCredentials, name: str, **kwargs):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            label = api.add_label(name=name, **kwargs)
-            return label.__dict__
-
-        except Exception as e:
-            raise e
+    def create_label(
+        credentials: TodoistCredentials,
+        name: str,
+        *,
+        order: Optional[int] = None,
+        color: Optional[str] = None,
+        is_favorite: Optional[bool] = None,
+    ):
+        with get_api(credentials) as api:
+            label = api.add_label(
+                name, color=color, item_order=order, is_favorite=is_favorite
+            )
+            return label.to_dict()
 
     async def run(
         self,
@@ -94,18 +99,12 @@ class TodoistCreateLabelBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            label_args = {
-                "order": input_data.order,
-                "color": (
-                    input_data.color.value if input_data.color is not None else None
-                ),
-                "is_favorite": input_data.is_favorite,
-            }
-
             label_data = self.create_label(
                 credentials,
                 input_data.name,
-                **{k: v for k, v in label_args.items() if v is not None},
+                order=input_data.order,
+                color=input_data.color.value if input_data.color is not None else None,
+                is_favorite=input_data.is_favorite,
             )
 
             if label_data:
@@ -171,13 +170,8 @@ class TodoistListLabelsBlock(Block):
 
     @staticmethod
     def get_labels(credentials: TodoistCredentials):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            labels = api.get_labels()
-            return [label.__dict__ for label in labels]
-
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return [label.to_dict() for label in flatten_pages(api.get_labels())]
 
     async def run(
         self,
@@ -243,13 +237,8 @@ class TodoistGetLabelBlock(Block):
 
     @staticmethod
     def get_label(credentials: TodoistCredentials, label_id: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            label = api.get_label(label_id=label_id)
-            return label.__dict__
-
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return api.get_label(label_id=label_id).to_dict()
 
     async def run(
         self,
@@ -314,14 +303,24 @@ class TodoistUpdateLabelBlock(Block):
         )
 
     @staticmethod
-    def update_label(credentials: TodoistCredentials, label_id: str, **kwargs):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            api.update_label(label_id=label_id, **kwargs)
+    def update_label(
+        credentials: TodoistCredentials,
+        label_id: str,
+        *,
+        name: Optional[str] = None,
+        order: Optional[int] = None,
+        color: Optional[str] = None,
+        is_favorite: Optional[bool] = None,
+    ):
+        with get_api(credentials) as api:
+            api.update_label(
+                label_id,
+                name=name,
+                color=color,
+                item_order=order,
+                is_favorite=is_favorite,
+            )
             return True
-
-        except Exception as e:
-            raise e
 
     async def run(
         self,
@@ -331,20 +330,13 @@ class TodoistUpdateLabelBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            label_args = {}
-            if input_data.name is not None:
-                label_args["name"] = input_data.name
-            if input_data.order is not None:
-                label_args["order"] = input_data.order
-            if input_data.color is not None:
-                label_args["color"] = input_data.color.value
-            if input_data.is_favorite is not None:
-                label_args["is_favorite"] = input_data.is_favorite
-
             success = self.update_label(
                 credentials,
                 input_data.label_id,
-                **{k: v for k, v in label_args.items() if v is not None},
+                name=input_data.name,
+                order=input_data.order,
+                color=input_data.color.value if input_data.color is not None else None,
+                is_favorite=input_data.is_favorite,
             )
 
             yield "success", success
@@ -384,13 +376,8 @@ class TodoistDeleteLabelBlock(Block):
 
     @staticmethod
     def delete_label(credentials: TodoistCredentials, label_id: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            success = api.delete_label(label_id=label_id)
-            return success
-
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return api.delete_label(label_id=label_id)
 
     async def run(
         self,
@@ -438,13 +425,8 @@ class TodoistGetSharedLabelsBlock(Block):
 
     @staticmethod
     def get_shared_labels(credentials: TodoistCredentials):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            labels = api.get_shared_labels()
-            return labels
-
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return flatten_pages(api.get_shared_labels())
 
     async def run(
         self,
@@ -492,13 +474,8 @@ class TodoistRenameSharedLabelsBlock(Block):
 
     @staticmethod
     def rename_shared_labels(credentials: TodoistCredentials, name: str, new_name: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            success = api.rename_shared_label(name=name, new_name=new_name)
-            return success
-
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return api.rename_shared_label(name=name, new_name=new_name)
 
     async def run(
         self,
@@ -545,13 +522,8 @@ class TodoistRemoveSharedLabelsBlock(Block):
 
     @staticmethod
     def remove_shared_label(credentials: TodoistCredentials, name: str):
-        try:
-            api = TodoistAPI(credentials.access_token.get_secret_value())
-            success = api.remove_shared_label(name=name)
-            return success
-
-        except Exception as e:
-            raise e
+        with get_api(credentials) as api:
+            return api.remove_shared_label(name=name)
 
     async def run(
         self,
