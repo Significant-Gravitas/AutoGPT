@@ -493,6 +493,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     trusted_proxy_count: int = Field(
+        # Prod is Cloudflare -> Google LB -> pod, so the client is 3rd from the
+        # right; 1 keys every anonymous caller on the LB's address, one bucket.
         default=3,
         ge=0,
         description="How many X-Forwarded-For entries our own proxies append. "

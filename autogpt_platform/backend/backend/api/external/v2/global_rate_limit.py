@@ -79,6 +79,7 @@ def client_ip(scope: Scope, headers: dict[bytes, bytes]) -> str:
     Our proxies append `trusted_proxy_count` entries, so the client is that
     many from the right; anything further left the caller wrote itself and
     could use to spread its requests over an unlimited number of buckets.
+    It counts entries, not proxies: Google's load balancer appends two.
     """
     peer = (scope.get("client") or ("unknown",))[0]
     hops = settings.config.trusted_proxy_count
