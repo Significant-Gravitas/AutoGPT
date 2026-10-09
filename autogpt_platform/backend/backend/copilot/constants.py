@@ -76,6 +76,10 @@ MAX_TOOL_WAIT_SECONDS = 5 * 60  # 5 minutes
 # "no tool blocks >= idle_timeout" holds by construction.
 STREAM_IDLE_TIMEOUT_SECONDS = MAX_TOOL_WAIT_SECONDS * 2  # 10 minutes
 
+# The SDK turn gives up on a tool that is still pending after this long, aborts
+# the stream and pauses the E2B box.
+HUNG_TOOL_CAP_SECONDS = 2 * 60 * 60
+
 # Redis key prefix for the SDK-stream-level lock that ensures only one
 # active SDK stream per session. Released by the SDK turn's finally block
 # and force-released by mark_session_completed on cancel/error.
@@ -85,6 +89,13 @@ STREAM_LOCK_PREFIX = "copilot:stream:lock:"
 def is_copilot_synthetic_id(id_value: str) -> bool:
     """Check if an ID is a CoPilot synthetic ID (not from a real graph execution)."""
     return id_value.startswith(COPILOT_SYNTHETIC_ID_PREFIX)
+
+
+def legacy_chat_session_id(graph_exec_id: str | None) -> str | None:
+    """The chat session behind an old ``copilot-session-<id>`` graph exec id."""
+    if graph_exec_id and graph_exec_id.startswith(COPILOT_SESSION_PREFIX):
+        return graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
+    return None
 
 
 def parse_node_id_from_exec_id(node_exec_id: str) -> str:

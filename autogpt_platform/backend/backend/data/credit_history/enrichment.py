@@ -32,7 +32,10 @@ async def enrich_credit_history(
     user_id: str,
     organization_id: str | None = None,
 ) -> list[CreditTransactionItem]:
-    if not any(item.usage_execution_id or item.usage_graph_id for item in items):
+    if not any(
+        item.usage_execution_id or item.usage_graph_id or item.usage_chat_session_id
+        for item in items
+    ):
         return items
     team_ids = (
         await get_user_team_ids(user_id, organization_id) if organization_id else []
@@ -126,8 +129,11 @@ async def _load_sessions(
         {
             session_id
             for item in items
-            if item.usage_execution_id
-            and (session_id := copilot_session_id(item.usage_execution_id)) is not None
+            for session_id in (
+                item.usage_chat_session_id,
+                copilot_session_id(item.usage_execution_id or ""),
+            )
+            if session_id
         }
     )
     if not ids:
@@ -160,6 +166,7 @@ async def _load_agent_refs(
             item.usage_graph_id
             for item in items
             if item.usage_graph_id
+            and not item.usage_chat_session_id
             and copilot_session_id(item.usage_execution_id or "") is None
         }
     )
@@ -276,13 +283,13 @@ def _enrich_item(
     child_counts: dict[str, int],
 ) -> CreditTransactionItem:
     item = original.model_copy(deep=True)
-    execution_id = item.usage_execution_id or ""
-    if (session_id := copilot_session_id(execution_id)) is not None:
+    session_id = item.usage_chat_session_id or copilot_session_id(item.usage_execution_id or "")
+    if session_id:
         session = sessions.get(session_id)
         item.conversation_id = session.id if session else None
         item.conversation_title = session.title if session else None
         return item
-    execution = executions.get(execution_id)
+    execution = executions.get(item.usage_execution_id or "")
     ref = (
         refs.get((execution.agentGraphId, execution.agentGraphVersion))
         if execution
