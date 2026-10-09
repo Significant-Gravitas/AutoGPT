@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
+from backend.api.features.schedule_visibility import visible_graph_schedules
 from backend.data import graph as graph_db
 from backend.data.tenancy import get_user_team_ids
 from backend.data.user import get_user_by_id
@@ -43,13 +44,11 @@ async def list_all_schedules(
     page: PageRequest = Depends(page_request),
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_SCHEDULE)),
 ) -> Page[AgentRunSchedule]:
-    """List schedules for the authenticated user."""
-    schedules = await get_scheduler_client().get_graph_execution_schedules(
-        user_id=auth.user_id,
-        graph_id=graph_id,
-        organization_id=auth.organization_id,
-        team_ids=await get_user_team_ids(auth.user_id, auth.organization_id),
-    )
+    """List schedules for the authenticated user.
+
+    A paused schedule is listed with no `next_run_time`.
+    """
+    schedules = await _visible_schedules(auth, graph_id=graph_id)
     # The scheduler keeps a schedule the caller owns even when it belongs to
     # another org, so the org filter is applied here rather than trusted there.
     return page.slice(
@@ -133,13 +132,25 @@ async def create_schedule(
     return AgentRunSchedule.from_internal(result)
 
 
-async def _assert_schedule_in_tenant(schedule_id: str, auth: TenantContext) -> None:
-    """404 for a schedule outside the organization the credentials act in."""
-    visible = await get_scheduler_client().get_graph_execution_schedules(
+async def _visible_schedules(
+    auth: TenantContext, graph_id: Optional[str] = None
+) -> list[GraphExecutionJobInfo]:
+    """The schedules the internal routes show: paused ones included, except
+    those an archived expert's removal paused, which only a re-hire may touch.
+    """
+    schedules = await get_scheduler_client().get_graph_execution_schedules(
         user_id=auth.user_id,
+        graph_id=graph_id,
         organization_id=auth.organization_id,
         team_ids=await get_user_team_ids(auth.user_id, auth.organization_id),
+        include_paused=True,
     )
+    return await visible_graph_schedules(schedules, auth.user_id)
+
+
+async def _assert_schedule_in_tenant(schedule_id: str, auth: TenantContext) -> None:
+    """404 for a schedule outside the organization the credentials act in."""
+    visible = await _visible_schedules(auth)
     if not any(
         schedule.id == schedule_id and _in_tenant(schedule, auth)
         for schedule in visible

@@ -98,6 +98,39 @@ def require_permission(*permissions: APIKeyPermission):
     return check_permissions
 
 
+def require_billing_permission(*permissions: APIKeyPermission):
+    """`require_permission`, for the organization's own wallet.
+
+    An organization's credits are pooled, so the web app shows their balance,
+    ledger and invoices only to its owner and billing managers; a credential
+    acting in the organization is held to the same roles. In a personal
+    organization the caller is always its owner.
+    """
+
+    async def check_billing_role(
+        tenant: TenantContext = Security(require_permission(*permissions)),
+    ) -> TenantContext:
+        member = await prisma.orgmember.find_unique(
+            where={
+                "orgId_userId": {
+                    "orgId": tenant.organization_id,
+                    "userId": tenant.user_id,
+                }
+            }
+        )
+        if member is None or not (member.isOwner or member.isBillingManager):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Only the organization's owner or a billing manager can read "
+                    "its credits"
+                ),
+            )
+        return tenant
+
+    return check_billing_role
+
+
 async def resolve_tenant(
     auth: APIAuthorizationInfo, requested_team: Optional[str] = None
 ) -> TenantContext:

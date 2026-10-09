@@ -39,7 +39,7 @@ from .models import (
 )
 from .pagination import Page, PageRequest, page_request, single_page_request
 from .rate_limit import enforce, subscription_limiter
-from .tenancy import TenantContext, require_permission
+from .tenancy import TenantContext, require_billing_permission, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,9 @@ credits_router = APIRouter(tags=["credits"])
     operation_id="getCreditBalance",
 )
 async def get_balance(
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_CREDITS)),
+    auth: TenantContext = Security(
+        require_billing_permission(APIKeyPermission.READ_CREDITS)
+    ),
 ) -> CreditBalance:
     """Get the current credit balance for the authenticated user."""
     user_credit_model = await get_credit_model(auth.user_id, auth.organization_id)
@@ -76,7 +78,9 @@ async def get_transactions(
         default=None, description="Filter by transaction type"
     ),
     page: PageRequest = Depends(page_request),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_CREDITS)),
+    auth: TenantContext = Security(
+        require_billing_permission(APIKeyPermission.READ_CREDITS)
+    ),
 ) -> Page[CreditTransaction]:
     """Get credit transaction history for the authenticated user.
 
@@ -86,21 +90,19 @@ async def get_transactions(
     """
     user_credit_model = await get_credit_model(auth.user_id, auth.organization_id)
 
-    token = page.token
+    # The history's own cursor, as the internal route pages: a time ceiling
+    # alone skipped the groups that tied on time at a page boundary.
     history = await user_credit_model.get_transaction_history(
         user_id=auth.user_id,
         transaction_count_limit=page.limit,
-        transaction_time_ceiling=datetime.fromisoformat(token) if token else None,
         transaction_type=transaction_type,
+        cursor=page.token,
+        viewer_organization_id=auth.organization_id,
     )
 
     return page.keyset(
         [CreditTransaction.from_internal(t) for t in history.transactions],
-        next_token=(
-            history.next_transaction_time.isoformat()
-            if history.next_transaction_time
-            else None
-        ),
+        next_token=history.next_cursor,
     )
 
 
@@ -223,7 +225,9 @@ async def get_subscription_status(
 )
 async def list_invoices(
     page: PageRequest = Depends(single_page_request),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_CREDITS)),
+    auth: TenantContext = Security(
+        require_billing_permission(APIKeyPermission.READ_CREDITS)
+    ),
 ) -> Page[InvoiceItem]:
     """Recent Stripe invoices for the current user.
 
@@ -260,6 +264,10 @@ async def get_cost_summary(
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_CREDITS)),
 ) -> AutomationCostSummary:
     """Aggregated cost breakdown for the user's graph executions."""
+    # A time without an offset is UTC, as documented; comparing it with one
+    # that has an offset would otherwise fail.
+    since = since.replace(tzinfo=timezone.utc) if since and not since.tzinfo else since
+    until = until.replace(tzinfo=timezone.utc) if until and not until.tzinfo else until
     if since is not None and until is not None and since > until:
         raise HTTPException(
             status_code=422,

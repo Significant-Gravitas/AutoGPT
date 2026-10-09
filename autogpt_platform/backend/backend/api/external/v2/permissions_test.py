@@ -24,9 +24,12 @@ from backend.api.external.v2.tenancy import TenantContext, require_auth
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.model import APIKeyCredentials, is_sdk_default
 from backend.integrations.credentials_store import SYSTEM_CREDENTIAL_IDS
+from backend.integrations.providers import ProviderName
+from backend.util.exceptions import NeedConfirmation
 
 USER_ID = "user-1"
 ORG_ID = "org-1"
+_REQUEST = mock.Mock(spec=fastapi.Request)
 
 
 # ============================================================================
@@ -157,7 +160,7 @@ async def test_deleting_a_system_credential_is_refused(
     deleter = _mock_creds_store(mocker, _credential(system_id))
 
     with pytest.raises(fastapi.HTTPException) as raised:
-        await delete_credential(credential_id=system_id, auth=_tenant())
+        await delete_credential(_REQUEST, credential_id=system_id, auth=_tenant())
 
     assert raised.value.status_code == 403
     deleter.assert_not_awaited()
@@ -171,7 +174,7 @@ async def test_deleting_a_managed_credential_is_refused(
     deleter = _mock_creds_store(mocker, _credential("managed-1", is_managed=True))
 
     with pytest.raises(fastapi.HTTPException) as raised:
-        await delete_credential(credential_id="managed-1", auth=_tenant())
+        await delete_credential(_REQUEST, credential_id="managed-1", auth=_tenant())
 
     assert raised.value.status_code == 403
     deleter.assert_not_awaited()
@@ -187,7 +190,7 @@ async def test_deleting_an_sdk_default_credential_is_not_found(
     deleter = _mock_creds_store(mocker, _credential(cred_id))
 
     with pytest.raises(fastapi.HTTPException) as raised:
-        await delete_credential(credential_id=cred_id, auth=_tenant())
+        await delete_credential(_REQUEST, credential_id=cred_id, auth=_tenant())
 
     assert raised.value.status_code == 404
     deleter.assert_not_awaited()
@@ -199,11 +202,30 @@ async def test_deleting_an_ordinary_credential_still_works(
     """The guards above must not have closed the endpoint's actual job."""
     from .integrations.credentials import delete_credential
 
+    credential = _credential("mine-1")
+    deleter = _mock_creds_store(mocker, credential)
+
+    await delete_credential(_REQUEST, credential_id="mine-1", auth=_tenant())
+
+    # The internal route's deletion: webhooks torn down first, OAuth revoked.
+    deleter.assert_awaited_once_with(
+        _REQUEST, USER_ID, credential, ProviderName(credential.provider), False
+    )
+
+
+async def test_a_credential_a_trigger_still_uses_needs_force(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    from .integrations.credentials import delete_credential
+
     deleter = _mock_creds_store(mocker, _credential("mine-1"))
+    deleter.side_effect = NeedConfirmation("A webhook is still in use")
 
-    await delete_credential(credential_id="mine-1", auth=_tenant())
+    with pytest.raises(fastapi.HTTPException) as raised:
+        await delete_credential(_REQUEST, credential_id="mine-1", auth=_tenant())
 
-    deleter.assert_awaited_once_with(USER_ID, "mine-1")
+    assert raised.value.status_code == 409
+    assert "force=true" in raised.value.detail
 
 
 def test_credential_listing_says_which_credentials_are_the_platform_s() -> None:
@@ -327,6 +349,7 @@ def _credential(cred_id: str, is_managed: bool = False) -> APIKeyCredentials:
 
 
 def _mock_creds_store(mocker: pytest_mock.MockFixture, credential: APIKeyCredentials):
+    """Returns the shared deletion the route hands an allowed delete to."""
     mocker.patch(
         "backend.api.external.v2.integrations.credentials.creds_manager.store"
         ".get_creds_by_id",
@@ -334,7 +357,8 @@ def _mock_creds_store(mocker: pytest_mock.MockFixture, credential: APIKeyCredent
         return_value=credential,
     )
     return mocker.patch(
-        "backend.api.external.v2.integrations.credentials.creds_manager.delete",
+        "backend.api.external.v2.integrations.credentials"
+        ".delete_credentials_and_dependents",
         new_callable=mock.AsyncMock,
     )
 

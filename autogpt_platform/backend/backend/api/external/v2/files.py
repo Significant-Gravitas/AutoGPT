@@ -18,8 +18,8 @@ from backend.data.workspace import (
     get_workspace,
     get_workspace_file,
     list_workspace_files,
-    soft_delete_workspace_file,
 )
+from backend.util.workspace import WorkspaceManager
 
 from .models import UploadWorkspaceFileResponse, WorkspaceFileInfo
 from .pagination import Page, PageRequest, page_request
@@ -119,7 +119,7 @@ async def delete_file(
     file_id: str,
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_FILES)),
 ) -> None:
-    """Soft-delete a file from the user's workspace."""
+    """Delete a file from the user's workspace, with its stored content."""
     workspace = await get_workspace(auth.user_id)
     if workspace is None:
         raise HTTPException(
@@ -127,8 +127,10 @@ async def delete_file(
             detail="Workspace not found",
         )
 
-    result = await soft_delete_workspace_file(file_id, workspace.id)
-    if result is None:
+    # The manager also removes the stored blob and its search entry, as the
+    # internal route does; soft-deleting the row alone freed no storage.
+    deleted = await WorkspaceManager(auth.user_id, workspace.id).delete_file(file_id)
+    if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"File #{file_id} not found",

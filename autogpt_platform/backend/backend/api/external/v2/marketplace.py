@@ -179,7 +179,9 @@ async def list_creators(
         default=False, description="Filter to featured creators only"
     ),
     search_query: Optional[str] = Query(
-        default=None, description="Literal + semantic search on names and descriptions"
+        default=None,
+        max_length=100,
+        description="Literal + semantic search on names and descriptions",
     ),
     sorted_by: Optional[Literal["agent_rating", "agent_runs", "num_agents"]] = Query(
         default=None, description="Sort field"
@@ -191,7 +193,8 @@ async def list_creators(
     """List or search marketplace creators."""
     result = await store_cache.get_cached_store_creators(
         featured=featured,
-        search_query=search_query,
+        # A blank search lists everyone, rather than failing in the query.
+        search_query=(search_query or "").strip() or None,
         sorted_by=StoreCreatorsSortOptions(sorted_by) if sorted_by else None,
         page=page.page,
         page_size=page.limit,

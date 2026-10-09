@@ -155,15 +155,17 @@ async def update_graph(
     """
     from backend.api.features.library import db as library_db
 
+    # The owner's versions only, as in the internal route: a teammate's graph
+    # is readable in the organization, but a new version of it isn't ours to add.
     existing_versions = await graph_db.get_graph_all_versions(
-        graph_id,
-        user_id=auth.user_id,
-        organization_id=auth.organization_id,
+        graph_id, user_id=auth.user_id
     )
     if not existing_versions:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
         )
+    for version in existing_versions:
+        in_tenant(version, auth, f"Graph #{graph_id}")
 
     latest_version_number = max(g.version for g in existing_versions)
 
@@ -197,6 +199,13 @@ async def update_graph(
         )
         if current_active_version:
             await on_graph_deactivate(current_active_version, user_id=auth.user_id)
+
+        # Keep webhook-triggered presets firing the live version, as the
+        # internal route does.
+        if new_graph_version.webhook_input_node:
+            await library_db.migrate_webhook_presets_to_new_version(
+                user_id=auth.user_id, new_graph=new_graph_version
+            )
 
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
@@ -285,26 +294,25 @@ async def set_active_version(
     from backend.api.features.library import db as library_db
 
     new_active_version = request_body.active_graph_version
+    # The owner's graph only: activating registers the version's webhooks
+    # with the caller's credentials, which a teammate's graph must not get.
     new_active_graph = await graph_db.get_graph(
-        graph_id,
-        new_active_version,
-        user_id=auth.user_id,
-        organization_id=auth.organization_id,
+        graph_id, new_active_version, user_id=auth.user_id
     )
-    if not new_active_graph:
+    if not new_active_graph or new_active_graph.user_id != auth.user_id:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
             f"Graph #{graph_id} v{new_active_version} not found",
         )
+    in_tenant(new_active_graph, auth, f"Graph #{graph_id} v{new_active_version}")
 
     current_active_graph = await graph_db.get_graph(
-        graph_id=graph_id,
-        version=None,
-        user_id=auth.user_id,
-        organization_id=auth.organization_id,
+        graph_id=graph_id, version=None, user_id=auth.user_id
     )
 
-    await before_graph_activate(new_active_graph, user_id=auth.user_id)
+    new_active_graph = await before_graph_activate(
+        new_active_graph, user_id=auth.user_id
+    )
     await graph_db.set_graph_active_version(
         graph_id=graph_id,
         version=new_active_version,
@@ -317,6 +325,13 @@ async def set_active_version(
 
     if current_active_graph and current_active_graph.version != new_active_version:
         await on_graph_deactivate(current_active_graph, user_id=auth.user_id)
+
+    # Keep webhook-triggered presets firing the live version, as the internal
+    # route does.
+    if new_active_graph.webhook_input_node:
+        await library_db.migrate_webhook_presets_to_new_version(
+            user_id=auth.user_id, new_graph=new_active_graph
+        )
 
 
 @graphs_router.patch(

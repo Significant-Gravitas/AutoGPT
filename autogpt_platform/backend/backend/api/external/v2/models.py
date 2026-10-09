@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, JsonValue, field_validator
 
 import backend.blocks._base as block_types
 from backend.data.model import CredentialsMetaInput
+from backend.util.timezone_utils import validate_timezone
 
 if TYPE_CHECKING:
     from backend.api.features.graph_executions.review.model import (
@@ -442,6 +443,16 @@ class AgentRunScheduleCreateRequest(BaseModel):
             "Defaults to user's timezone."
         ),
     )
+
+    @field_validator("timezone")
+    @classmethod
+    def _is_a_known_timezone(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not validate_timezone(value):
+            raise ValueError(
+                f"Unknown timezone '{value}'; use an IANA name such as "
+                "'America/New_York'"
+            )
+        return value
 
 
 # ============================================================================

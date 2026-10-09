@@ -20,6 +20,7 @@ from prisma.enums import APIKeyPermission
 from starlette.datastructures import Headers
 
 from backend.api.external.v2.files import (
+    delete_file,
     file_upload_limiter,
     file_workspace_router,
     get_file,
@@ -95,6 +96,38 @@ async def test_a_second_upload_of_the_same_name_conflicts_unless_overwritten(
         auth=_auth(),
     )
     assert list(workspace) == [replaced.id]
+
+
+async def test_deleting_a_file_removes_its_stored_content(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A soft-deleted row alone left the blob in storage and off the quota."""
+    mocker.patch(
+        "backend.api.external.v2.files.get_workspace",
+        new=mock.AsyncMock(return_value=mock.Mock(id=WORKSPACE_ID)),
+    )
+    manager_cls = mocker.patch("backend.api.external.v2.files.WorkspaceManager")
+    manager_cls.return_value.delete_file = mock.AsyncMock(return_value=True)
+
+    await delete_file(file_id="file-1", auth=_auth())
+
+    manager_cls.assert_called_once_with(USER_ID, WORKSPACE_ID)
+    manager_cls.return_value.delete_file.assert_awaited_once_with("file-1")
+
+
+async def test_deleting_a_missing_file_is_a_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.external.v2.files.get_workspace",
+        new=mock.AsyncMock(return_value=mock.Mock(id=WORKSPACE_ID)),
+    )
+    manager_cls = mocker.patch("backend.api.external.v2.files.WorkspaceManager")
+    manager_cls.return_value.delete_file = mock.AsyncMock(return_value=False)
+
+    with pytest.raises(HTTPException) as raised:
+        await delete_file(file_id="file-1", auth=_auth())
+    assert raised.value.status_code == 404
 
 
 async def test_an_upload_over_the_storage_quota_is_undone(

@@ -22,7 +22,7 @@ from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
-from . import tenancy
+from . import runs, tenancy
 from .pagination import PageRequest
 from .routes import v2_router
 from .tenancy import TenantContext, resolve_tenant
@@ -480,6 +480,11 @@ async def test_org_a_key_cannot_see_or_delete_an_org_b_schedule(
         return_value=[],
     )
     mocker.patch(
+        "backend.api.external.v2.schedules.visible_graph_schedules",
+        new_callable=AsyncMock,
+        side_effect=lambda schedules, _user_id: schedules,
+    )
+    mocker.patch(
         "backend.api.external.v2.models.AgentRunSchedule.from_internal",
         side_effect=lambda s: s,
     )
@@ -554,7 +559,20 @@ def test_every_item_handler_checks_the_tenant() -> None:
 
 
 def _checks_tenant(source: str) -> bool:
-    return "in_tenant" in source or "organization_id=auth.organization_id" in source
+    return (
+        "in_tenant" in source
+        or "organization_id=auth.organization_id" in source
+        or any(f"{helper.__name__}(" in source for helper in _TENANT_CHECKING_HELPERS)
+    )
+
+
+# Helpers that fetch a row by id and check its tenant before returning it.
+_TENANT_CHECKING_HELPERS = [runs._own_run]
+
+
+def test_the_tenant_checking_helpers_check_the_tenant() -> None:
+    for helper in _TENANT_CHECKING_HELPERS:
+        assert "in_tenant" in inspect.getsource(helper), helper.__name__
 
 
 # Item handlers that touch nothing an organization owns: workspace files and

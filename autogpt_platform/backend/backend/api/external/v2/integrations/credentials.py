@@ -8,11 +8,12 @@ import logging
 from typing import Annotated, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
 from prisma.enums import APIKeyPermission
 from pydantic import SecretStr
 from starlette import status
 
+from backend.api.features.integrations.router import delete_credentials_and_dependents
 from backend.data.model import (
     APIKeyCredentials,
     HostScopedCredentials,
@@ -20,6 +21,8 @@ from backend.data.model import (
     is_sdk_default,
 )
 from backend.integrations.credentials_store import is_system_credential
+from backend.integrations.providers import ProviderName
+from backend.util.exceptions import NeedConfirmation
 
 from ..models import CredentialCreateRequest, CredentialInfo
 from ..pagination import Page, PageRequest, page_request
@@ -110,13 +113,27 @@ async def create_credential(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_credential(
+    request: Request,
     credential_id: str,
+    force: Annotated[
+        bool,
+        Query(
+            description=(
+                "Delete even if a trigger registered with this credential is "
+                "still used by an agent; the trigger stops firing"
+            ),
+        ),
+    ] = False,
     auth: TenantContext = Security(
         require_permission(APIKeyPermission.DELETE_INTEGRATIONS)
     ),
 ) -> None:
     """
     Delete an integration credential.
+
+    Webhooks registered with it are removed, and OAuth tokens are revoked at
+    the provider. While an agent still uses one of those webhooks the request
+    is refused with 409 unless `force=true`.
 
     Platform-provided credentials cannot be deleted. Any agents using this
     credential will fail on their next run.
@@ -143,4 +160,16 @@ async def delete_credential(
             detail="Platform-managed credentials cannot be deleted",
         )
 
-    await creds_manager.delete(auth.user_id, credential_id)
+    try:
+        await delete_credentials_and_dependents(
+            request,
+            auth.user_id,
+            existing,
+            ProviderName(existing.provider),
+            force,
+        )
+    except NeedConfirmation as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{e}. Pass force=true to delete it anyway.",
+        )
