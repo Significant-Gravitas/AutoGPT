@@ -3,7 +3,9 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy import create_engine
 
+from backend.executor.schedule_index import ScheduleIndex
 from backend.executor.schedule_index_test_helpers import (
     _graph_job_kwargs,
     _mock_job,
@@ -39,6 +41,21 @@ def test_startup_backfill_waits_out_the_outgoing_pod_before_trusting_the_index()
 
     assert steps == [_SCHEDULE_INDEX_SETTLE_S, "reconcile"]
     assert scheduler._schedule_index_ready is False
+
+
+def test_reconcile_creates_an_index_table_that_failed_at_startup():
+    scheduler = _scheduler_with_index()
+    index = scheduler._schedule_index = ScheduleIndex(create_engine("sqlite://"))
+    args = GraphExecutionJobArgs(**_graph_job_kwargs("s1", "u1", "g1"))
+    scheduler.scheduler.get_jobs.return_value = [
+        _mock_job(args.model_dump(mode="json"))
+    ]
+    scheduler._schedule_index_ready = False
+
+    scheduler._reconcile_schedule_index()
+
+    assert index.all_job_ids() == {"s1"}
+    assert scheduler._schedule_index_ready is True
 
 
 def test_failed_upsert_keeps_persisted_schedule_visible_until_reconcile():

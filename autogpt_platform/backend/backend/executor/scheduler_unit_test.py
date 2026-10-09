@@ -2405,6 +2405,7 @@ class TestScheduleListCache:
         # Every list expires the moment it is cached, so each read after the
         # first is an expired one.
         monkeypatch.setattr(Scheduler, "_JOBS_CACHE_TTL_S", 0.0)
+        monkeypatch.setattr(Scheduler, "_jobs_cache_lock", _CountingLock())
         yield sched, read, fetch
         fetch.release_all()
 
@@ -2435,7 +2436,7 @@ class TestScheduleListCache:
         assert fetch.calls == 2
 
         fetch.release(2)
-        fetch.wait_for_returns(2)
+        _join_refreshes()
         assert _within(read) == ["list-2"]
 
     def test_a_failed_refresh_keeps_the_old_list_and_retries(self, cache):
@@ -2446,9 +2447,9 @@ class TestScheduleListCache:
 
         assert _within(read) is old
         fetch.release(2)
-        fetch.wait_for_returns(2)
-        assert _within(read) is old
-        fetch.wait_for_calls(3)  # the failure did not wedge the next refresh
+        _join_refreshes()
+        assert _within(read) is old  # and starts refresh #3: #2 did not wedge it
+        fetch.wait_for_calls(3)
 
     def test_an_invalidation_is_never_answered_from_the_old_list(self, cache):
         sched, read, fetch = cache
@@ -2465,9 +2466,25 @@ class TestScheduleListCache:
         fetch.release(3)
         assert after.result() == ["list-3"]
         fetch.release(2)
-        fetch.wait_for_returns(2)
+        _join_refreshes()
         # Refresh #2 read before the write, so it must not land in the cache.
         assert _within(read) == ["list-3"]
+
+    def test_a_failing_gauge_update_still_answers_the_waiters(self, monkeypatch):
+        sched = Scheduler(register_system_tasks=False)
+        sched._execution_jobstore = MagicMock()
+        fetch = sched._execution_jobstore._get_jobs = _GatedFetch()
+        monkeypatch.setattr(Scheduler, "_jobs_cache_lock", _CountingLock())
+        monkeypatch.setattr(
+            f"{_SCHEDULER_PATH}.SCHEDULER_JOBS.labels",
+            MagicMock(side_effect=RuntimeError("registry")),
+        )
+
+        results = _read_concurrently(sched._get_active_jobs_cached, fetch, callers=8)
+
+        assert fetch.calls == 1
+        assert sum(isinstance(r, RuntimeError) for r in results) == 1  # the fetcher
+        assert [r for r in results if isinstance(r, list)] == [["list-1"]] * 7
 
 
 class _GatedFetch:
@@ -2475,7 +2492,6 @@ class _GatedFetch:
 
     def __init__(self) -> None:
         self.calls = 0
-        self.returns = 0
         self.fail_with: Exception | None = None
         self._lock = threading.Lock()
         self._gates: dict[int, threading.Event] = {}
@@ -2485,14 +2501,10 @@ class _GatedFetch:
             self.calls += 1
             call = self.calls
             failure = self.fail_with
-        try:
-            self._gate(call).wait(timeout=10)
-            if failure is not None:
-                raise failure
-            return [f"list-{call}"]
-        finally:
-            with self._lock:
-                self.returns += 1
+        self._gate(call).wait(timeout=10)
+        if failure is not None:
+            raise failure
+        return [f"list-{call}"]
 
     def release(self, call: int) -> None:
         self._gate(call).set()
@@ -2504,13 +2516,23 @@ class _GatedFetch:
     def wait_for_calls(self, count: int) -> None:
         _wait_until(lambda: self.calls >= count)
 
-    def wait_for_returns(self, count: int) -> None:
-        _wait_until(lambda: self.returns >= count)
-        time.sleep(0.05)  # let the returning reader finish its write-back
-
     def _gate(self, call: int) -> threading.Event:
         with self._lock:
             return self._gates.setdefault(call, threading.Event())
+
+
+class _CountingLock:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.acquired = 0
+
+    def __enter__(self) -> "_CountingLock":
+        self._lock.acquire()
+        self.acquired += 1
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        self._lock.release()
 
 
 class _Call(threading.Thread):
@@ -2542,11 +2564,21 @@ def _within(fn, timeout: float = 2.0) -> object:
 
 
 def _read_concurrently(read, fetch: _GatedFetch, callers: int) -> list[object]:
+    lock = Scheduler._jobs_cache_lock
+    assert isinstance(lock, _CountingLock)
     calls = [_start(read) for _ in range(callers)]
-    fetch.wait_for_calls(1)
-    time.sleep(0.2)  # every caller has reached the cache by now
+    # Each caller takes the lock once to check the cache; the fetcher's
+    # write-back is held behind the gate, so this counts arrivals only.
+    _wait_until(lambda: lock.acquired >= callers)
     fetch.release_all()
     return [call.result() for call in calls]
+
+
+def _join_refreshes() -> None:
+    for thread in threading.enumerate():
+        if thread.name == "ScheduleListRefresh":
+            thread.join(timeout=5)
+            assert not thread.is_alive(), "a background refresh is still running"
 
 
 def _wait_until(condition, timeout: float = 5.0) -> None:

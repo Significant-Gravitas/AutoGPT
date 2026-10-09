@@ -2057,8 +2057,8 @@ class Scheduler(AppService):
             self._schedule_index.ensure_table()
         except Exception:
             # Two replicas racing create_all(), or a transient DB error. Keep
-            # the index so writes still go through once the table exists; the
-            # backfill thread retries the setup before it reconciles.
+            # the index so writes still go through once the table exists;
+            # every reconcile retries the setup.
             logger.exception(
                 "Schedule index setup failed; filtered schedule reads fall back "
                 "to the full jobstore scan until the backfill retries it"
@@ -2714,15 +2714,18 @@ class Scheduler(AppService):
                     entry.refresh = None
             pending.set_exception(e)
             return
-        with self._jobs_cache_lock:
-            if entry.refresh is pending:
-                entry.refresh = None
-            if self._jobs_cache_version == version:
-                entry.jobs = jobs
-                entry.expires_at = time.monotonic() + self._JOBS_CACHE_TTL_S
-                if on_accept is not None:
-                    on_accept(jobs)
-        pending.set_result(jobs)
+        try:
+            with self._jobs_cache_lock:
+                if entry.refresh is pending:
+                    entry.refresh = None
+                if self._jobs_cache_version == version:
+                    entry.jobs = jobs
+                    entry.expires_at = time.monotonic() + self._JOBS_CACHE_TTL_S
+                    if on_accept is not None:
+                        on_accept(jobs)
+        finally:
+            # Waiters block on this; nothing after the fetch may strand them.
+            pending.set_result(jobs)
 
     def _job_list(self, key: Literal["all", "active"]) -> "_JobList":
         """The caller holds ``_jobs_cache_lock``."""
@@ -2865,6 +2868,8 @@ class Scheduler(AppService):
             # index for every replica.
             logger.warning("Scheduler is not running; skipping index reconcile")
             return
+        # Idempotent; repairs a table whose creation failed at startup.
+        index.ensure_table()
         with self._jobs_cache_lock:
             failure_version = self._schedule_index_failure_version
         jobs = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
@@ -2931,8 +2936,6 @@ class Scheduler(AppService):
 
         def _run():
             try:
-                if self._schedule_index is not None:
-                    self._schedule_index.ensure_table()
                 time.sleep(_SCHEDULE_INDEX_SETTLE_S)
                 self._reconcile_schedule_index()
             except Exception:
