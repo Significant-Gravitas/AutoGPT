@@ -4700,6 +4700,37 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
 
+    # Sanitize BEFORE empty-guard and clear_pending so tags-only input
+    # cannot clear a Home card or proceed with an empty prompt. Only the
+    # server-injected prefix on the first message is trusted.
+    if message:
+        message = strip_user_context_tags(message)
+
+    # Reject tags-only / whitespace-only user turns before clearing pending
+    # or running identity (empty_prompt).
+    # Auto-continue calls (continued_pending) carry already-drained rows and
+    # must not bail out here, or those drained messages would be lost.
+    if (
+        is_user_message
+        and not continued_pending
+        and message is not None
+        and not message.strip()
+    ):
+        yield StreamError(
+            errorText="Message cannot be empty.",
+            code="empty_prompt",
+        )
+        return
+
+    # Clear Home "Needs You" *before* identity guards. Org/team mismatch and
+    # other ExpertSessionUnavailableError paths raise inside
+    # build_expert_identity_suffix; clearing after that left cards stuck
+    # forever (#14118). Unconditional on the append result: the HTTP path
+    # pre-saves the user message, so the append is a no-op dedup there.
+    # Uses the sanitized message so tags-only never clears.
+    if is_user_message and message and message.strip():
+        await clear_pending_question(session)
+
     expert_session_suffix = await build_expert_identity_suffix(
         session.user_id,
         session.expert_id,
@@ -4748,17 +4779,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # on the error-recovery turns whose routing we most want recorded.
     pre_turn_message_count = len(session.messages)
 
-    # Strip any user-injected <user_context> tags on every turn.
-    # Only the server-injected prefix on the first message is trusted.
-    if message:
-        message = strip_user_context_tags(message)
-
-    # A reply is the only thing that clears a Home "Needs You" question.
-    # Unconditional on the append result: the HTTP path pre-saves the user
-    # message, so the append is a no-op dedup there.
-    if is_user_message and message and message.strip():
-        await clear_pending_question(session)
-
+    # message was already sanitized at turn entry above.
     continued_entry: StreamPendingDrained | None = None
     if continued_pending:
         # An auto-continue call streams into the turn it continues: its user
@@ -5396,6 +5417,22 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             if last_user:
                 current_message = last_user[-1].content or ""
 
+        # Strip BEFORE empty_prompt so tags-only history/resume content is
+        # rejected. On --resume, current_message may come from session history
+        # which was already sanitized on the original turn; strip again as
+        # defence-in-depth. Validate here, BEFORE the destructive pending
+        # drain below: returning empty_prompt after the drain would drop the
+        # queued messages (they never reach persist_pending_as_user_rows and
+        # ``finally`` does not re-queue them).
+        current_message = strip_user_context_tags(current_message)
+
+        if not current_message.strip():
+            yield StreamError(
+                errorText="Message cannot be empty.",
+                code="empty_prompt",
+            )
+            return
+
         # Capture the message count *before* draining so _build_query_message
         # can compute the gap slice without including the newly-drained pending
         # messages.  Pending messages are both appended to session.messages AND
@@ -5444,18 +5481,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # ``inject_user_context`` below — see the comment near that
             # call.  At this point ``current_message`` is still the
             # original turn-starting send (no pending text yet).
-
-        if not current_message.strip():
-            yield StreamError(
-                errorText="Message cannot be empty.",
-                code="empty_prompt",
-            )
-            return
-
-        # Strip any user-injected <user_context> tags from current_message.
-        # On --resume, current_message may come from session history which was
-        # already sanitized on the original turn; strip again as defence-in-depth.
-        current_message = strip_user_context_tags(current_message)
 
         # On the first turn inject user context into the message before building
         # the query so that _build_query_message sees the full prefixed content.

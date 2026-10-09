@@ -258,3 +258,52 @@ class TestSdkComputerNoteWiring:
         supplement.assert_called_once_with(
             use_e2b=False, expert_session=bool(expert_id)
         )
+
+
+class TestSdkHistoryFallbackEmptyPrompt:
+    """``message=None`` falls back to the last stored user message. A
+    tags-only one strips to empty and must be rejected with empty_prompt
+    *before* the destructive pending drain, or the drained messages are lost
+    (they never reach ``persist_pending_as_user_rows``) (#14567)."""
+
+    @pytest.mark.asyncio
+    async def test_tags_only_history_fallback_rejects_before_pending_drain(
+        self,
+    ) -> None:
+        from backend.copilot.response_model import StreamError
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        session = _make_session()
+        session.messages = [
+            ChatMessage(role="user", content="<user_context>Name: Admin</user_context>")
+        ]
+        patches, _, _ = _make_patches(hire_experts_enabled=False)
+        drain = AsyncMock(return_value=[])
+        resolve = AsyncMock(return_value=[])
+        patches += [
+            (f"{_SVC}.drain_pending_safe", dict(new=drain)),
+            (f"{_SVC}.resolve_answered", dict(new=resolve)),
+            (
+                f"{_SVC}.build_expert_identity_suffix",
+                dict(new_callable=AsyncMock, return_value=""),
+            ),
+        ]
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for event in stream_chat_completion_sdk(
+                session_id=session.session_id,
+                message=None,
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        assert any(
+            isinstance(e, StreamError) and e.code == "empty_prompt" for e in events
+        ), events
+        drain.assert_not_awaited()
+        resolve.assert_not_awaited()
