@@ -54,6 +54,7 @@ from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.auth.oauth import (
     InvalidClientError,
     InvalidTokenError,
+    is_access_token,
     validate_access_token,
 )
 from backend.util.exceptions import NotAuthorizedError
@@ -363,9 +364,10 @@ class ExternalAPITokenVerifier(TokenVerifier):
         if verified is not None and verified.credential == token:
             return await self._tenanted(token, verified.auth) if verified.auth else None
 
-        # Try API key first
-        api_key_info = await validate_api_key(token)
-        if api_key_info:
+        # Try API key first, unless it is in the OAuth token format
+        if not is_access_token(token) and (
+            api_key_info := await validate_api_key(token)
+        ):
             return await self._tenanted(token, api_key_info)
 
         # Try OAuth bearer token

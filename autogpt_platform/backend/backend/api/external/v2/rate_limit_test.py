@@ -272,6 +272,23 @@ async def test_an_address_failing_across_many_heads_is_refused_unhashed(
     verify.assert_not_awaited()
 
 
+async def test_a_token_shaped_api_key_header_is_counted_as_a_key(
+    mocker: pytest_mock.MockFixture, counters: _Counters
+) -> None:
+    """Sent as X-API-Key it is tried as a key, so it can cost a hash."""
+    verify = mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(return_value=mock.Mock(user_id="user-1")),
+    )
+    mocker.patch.object(
+        global_rate_limit._authenticated_limiter, "check", return_value=None
+    )
+
+    await _send_with_key(b"agpt_xt_value", verify)
+
+    assert counters.total("key-presented") == 1
+
+
 async def test_an_oauth_token_is_not_counted_as_a_key_presentation(
     mocker: pytest_mock.MockFixture, counters: _Counters
 ) -> None:

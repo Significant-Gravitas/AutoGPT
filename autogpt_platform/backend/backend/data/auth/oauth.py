@@ -50,6 +50,16 @@ ACCESS_TOKEN_PREFIX = "agpt_xt_"
 REFRESH_TOKEN_PREFIX = "agpt_rt_"
 
 
+def is_access_token(credential: str) -> bool:
+    """Whether a credential is in the OAuth access-token format.
+
+    Such a value is only ever looked up as a token, never tried as an API key:
+    a key issued before `APIKeySmith` reserved the prefix can start the same
+    way, and trying every forged token as a key would cost a Scrypt hash each.
+    """
+    return credential.startswith(ACCESS_TOKEN_PREFIX)
+
+
 # ============================================================================
 # Exception Classes
 # ============================================================================

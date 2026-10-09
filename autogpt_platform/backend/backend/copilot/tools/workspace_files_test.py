@@ -995,6 +995,71 @@ async def test_a_ranged_read_loads_only_the_bytes_it_can_return(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "offset, length, reads, returned",
+    [
+        # A slice crossing the bound is cut at it.
+        (999_990, 100, 4 * 1_000_000, 10),
+        # "From here to the end" ends at the bound too.
+        (10, None, 4 * 1_000_000, 1_000_000 - 10),
+    ],
+)
+async def test_an_external_ranged_read_reads_no_further_than_its_bound(
+    offset: int, length: int | None, reads: int, returned: int
+):
+    content = ("x" * 2_000_000).encode()
+    manager = AsyncMock()
+    manager.get_file_info = AsyncMock(return_value=_text_file(len(content)))
+    manager.read_file_head_by_id = AsyncMock(
+        side_effect=lambda _file_id, max_bytes: content[:max_bytes]
+    )
+    session = make_session("user-1")
+    session.external_caller = True
+
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    ):
+        resp = await ReadWorkspaceFileTool()._execute(
+            user_id="user-1",
+            session=session,
+            file_id="f-1",
+            offset=offset,
+            length=length,
+        )
+
+    assert isinstance(resp, WorkspaceFileContentResponse), resp.message
+    manager.read_file_head_by_id.assert_awaited_once_with("f-1", reads)
+    assert len(base64.b64decode(resp.content_base64).decode()) == returned
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_external_caller_cannot_read_from_deep_in_a_file():
+    """A deep offset made the tool load the whole file for a tiny slice."""
+    manager = AsyncMock()
+    manager.get_file_info = AsyncMock(return_value=_text_file(100_000_000))
+    manager.read_file_head_by_id = AsyncMock(side_effect=AssertionError("read"))
+    manager.read_file_by_id = AsyncMock(side_effect=AssertionError("read whole"))
+    session = make_session("user-1")
+    session.external_caller = True
+
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    ):
+        resp = await ReadWorkspaceFileTool()._execute(
+            user_id="user-1",
+            session=session,
+            file_id="f-1",
+            offset=104_857_600,
+            length=1,
+        )
+
+    assert isinstance(resp, ErrorResponse)
+    assert "Download the file" in resp.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_large_text_files_preview_reads_only_its_head():
     manager = AsyncMock()
     manager.get_file_info = AsyncMock(return_value=_text_file(50_000_000))

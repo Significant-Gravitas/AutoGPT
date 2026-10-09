@@ -14,8 +14,13 @@ import pytest_mock
 from fastapi.testclient import TestClient
 
 from backend.api.external.middleware import VerifiedCredential
-from backend.api.external.v2.mcp_server import MCPMount, TenantedAccessToken
+from backend.api.external.v2.mcp_server import (
+    ExternalAPITokenVerifier,
+    MCPMount,
+    TenantedAccessToken,
+)
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.auth.oauth import InvalidTokenError
 
 INITIALIZE = {
     "jsonrpc": "2.0",
@@ -138,3 +143,20 @@ def test_a_credential_the_rate_limiter_verified_is_not_verified_again(
 
     assert response.status_code == 200, response.text
     validate.assert_not_awaited()
+
+
+async def test_a_token_shaped_bearer_is_never_tried_as_an_api_key_over_mcp(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """FastMCP's own check follows the middleware's rule when it runs alone."""
+    validate_key = mocker.patch(
+        "backend.api.external.v2.mcp_server.validate_api_key", new_callable=AsyncMock
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.validate_access_token",
+        new_callable=AsyncMock,
+        side_effect=InvalidTokenError("not found"),
+    )
+
+    assert await ExternalAPITokenVerifier().verify_token("agpt_xt_forged") is None
+    validate_key.assert_not_awaited()

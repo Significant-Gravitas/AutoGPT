@@ -216,6 +216,12 @@ _MAX_LOCAL_TOOL_RESULT_BYTES = 10 * 1024 * 1024  # 10 MB
 # The most characters one ranged read of a workspace file returns.
 _MAX_RANGE_CHARS = 1_000_000
 
+# How far into a file an External API caller's ranged reads reach. Reaching a
+# character means reading every byte before it, so without a bound a deep
+# offset loads a whole file for a one-character answer. The REST download
+# serves the whole file.
+_MAX_EXTERNAL_RANGE_END = 1_000_000
+
 
 def _read_local_tool_result(
     path: str,
@@ -617,10 +623,7 @@ class ReadWorkspaceFileTool(BaseTool):
                 },
                 "length": {
                     "type": "integer",
-                    "description": (
-                        "Max characters to return for paginated reads "
-                        "(at most 1,000,000 per read)."
-                    ),
+                    "description": "Max characters to return per read (at most 1,000,000).",
                 },
             },
             "required": [],  # At least one of file_id or path must be provided
@@ -720,6 +723,17 @@ class ReadWorkspaceFileTool(BaseTool):
                     _MAX_RANGE_CHARS if char_length is None else max(0, char_length),
                     _MAX_RANGE_CHARS,
                 )
+                if session.external_caller:
+                    if char_offset >= _MAX_EXTERNAL_RANGE_END:
+                        return ErrorResponse(
+                            message=(
+                                "Ranged reads reach the first "
+                                f"{_MAX_EXTERNAL_RANGE_END:,} characters of a "
+                                "file. Download the file for the rest."
+                            ),
+                            session_id=session_id,
+                        )
+                    end = min(end, _MAX_EXTERNAL_RANGE_END)
                 raw = cached_content or await manager.read_file_head_by_id(
                     target_file_id, 4 * end
                 )

@@ -34,7 +34,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from backend.api.external.middleware import resolve_request_auth
 from backend.api.utils.rate_limit import RateLimiter, RateLimitState
-from backend.data.auth.oauth import ACCESS_TOKEN_PREFIX
+from backend.data.auth.oauth import is_access_token
 from backend.util.settings import Settings
 
 from .errors import error_response
@@ -86,8 +86,7 @@ class GlobalRateLimitMiddleware:
             )
 
         ip = client_ip(scope, headers)
-        credential = api_key or (bearer.credentials if bearer else None)
-        key_bucket = _key_bucket(ip, credential)
+        key_bucket = _key_bucket(ip, api_key, bearer)
         if key_bucket is not None and (
             refusal := await _refuse_before_hashing(ip, key_bucket)
         ):
@@ -128,15 +127,23 @@ class GlobalRateLimitMiddleware:
         await self.app(scope, receive, _with_rate_limit_headers(send, state))
 
 
-def _key_bucket(ip: str, credential: Optional[str]) -> Optional[str]:
+def _key_bucket(
+    ip: str, api_key: Optional[str], bearer: Optional[HTTPAuthorizationCredentials]
+) -> Optional[str]:
     """The pre-verification bucket of a credential that costs a hash, or None.
 
-    API keys are matched on their head and then hashed; OAuth access tokens
-    (and anything without the key prefix) are looked up by a cheap digest.
+    API keys are matched on their head and then hashed. A bearer value in the
+    OAuth access-token format is only ever looked up by its digest (see
+    `resolve_auth_info`), so it costs no hash and gets no bucket; the same
+    value sent as `X-API-Key` is tried as a key, so it does.
     """
-    if not credential or not credential.startswith(APIKeySmith.PREFIX):
+    if api_key is not None:
+        credential = api_key
+    elif bearer is not None and not is_access_token(bearer.credentials):
+        credential = bearer.credentials
+    else:
         return None
-    if credential.startswith(ACCESS_TOKEN_PREFIX):
+    if not credential.startswith(APIKeySmith.PREFIX):
         return None
     return f"{ip}:{credential[: APIKeySmith.HEAD_LENGTH]}"
 
