@@ -597,6 +597,18 @@ def test_every_operation_documents_the_error_envelope():
     )
 
 
+@pytest.mark.parametrize("code", ["402", "409"])
+def test_run_start_documents_its_payment_and_idempotency_refusals(code: str):
+    """402: no balance or no plan. 409: the `Idempotency-Key`'s run is not recorded yet."""
+    from backend.api.external.v2.app import v2_app
+    from backend.api.external.v2.errors import ErrorResponse
+
+    run_start = v2_app.openapi()["paths"]["/library/agents/{agent_id}/runs"]["post"]
+
+    schema = run_start["responses"][code]["content"]["application/json"]["schema"]
+    assert schema["$ref"] == f"#/components/schemas/{ErrorResponse.__name__}"
+
+
 @pytest.mark.parametrize(
     "exception,expected_status,expected_code",
     [

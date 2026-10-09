@@ -11,6 +11,7 @@ from backend.api.features.library import db as library_db
 from backend.data import graph as graph_db
 from backend.executor import utils as execution_utils
 
+from ..errors import ErrorResponse
 from ..idempotency import idempotency_key, idempotent_run, replayed_run
 from ..integrations.helpers import get_credential_requirements
 from ..models import (
@@ -160,6 +161,16 @@ async def fork_library_agent(
     summary="Execute library agent",
     operation_id="executeLibraryAgent",
     status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        status.HTTP_402_PAYMENT_REQUIRED: {
+            "model": ErrorResponse,
+            "description": "No active plan, or a credit balance of zero",
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponse,
+            "description": "The `Idempotency-Key`'s run has not been recorded yet",
+        },
+    },
 )
 async def execute_agent(
     response: Response,
