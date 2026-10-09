@@ -1312,10 +1312,11 @@ def _cli_spend_since_last_result(
     spend = total_cost_usd - usage.cli_session_total_usd
     if spend < 0:
         # The CLI did not count on from the total we read, so all of it is new.
-        logger.warning(
-            f"{log_prefix} CLI total_cost_usd ${total_cost_usd:.6f} is below the "
-            f"session total it resumed from (${usage.cli_session_total_usd:.6f}); "
-            "charging the CLI total"
+        # ERROR, not WARNING: only ERROR raises a Sentry event.
+        logger.error(
+            f"{log_prefix} Over-charge fallback: CLI total_cost_usd "
+            f"${total_cost_usd:.6f} is below the session total read before it "
+            f"(${usage.cli_session_total_usd:.6f}); charging the full CLI total"
         )
         spend = total_cost_usd
     usage.cli_session_total_usd = total_cost_usd
@@ -4466,9 +4467,11 @@ def _resumed_cli_session_cost_usd(
     try:
         content = Path(cli_session_path(sdk_cwd, resume)).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as e:
-        logger.warning(
-            f"{log_prefix} Could not read the resumed CLI session's cost "
-            f"({type(e).__name__}); this turn may be charged the session total"
+        # ERROR, not WARNING: only ERROR raises a Sentry event.
+        logger.error(
+            f"{log_prefix} Over-charge fallback: could not read the cost of resumed "
+            f"CLI session {resume} ({type(e).__name__}); counting from $0, so this "
+            "turn may be charged the full CLI session total"
         )
         return 0.0
     return cli_session_cost_usd(content, resume)

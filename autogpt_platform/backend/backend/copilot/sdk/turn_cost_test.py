@@ -7,6 +7,7 @@ counts every earlier turn of the chat.
 
 import contextlib
 import json
+import logging
 import os
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -18,6 +19,7 @@ from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.moonshot import rate_card_usd
 from backend.copilot.sdk.service import (
     _record_result_usage,
+    _resumed_cli_session_cost_usd,
     _RetryState,
     _TokenUsage,
     stream_chat_completion_sdk,
@@ -180,7 +182,40 @@ async def test_resumed_turn_is_charged_its_own_cost(
 def test_every_query_of_one_cli_process_is_charged():
     # A re-prompt is a second query to the same CLI process, whose total
     # then counts both queries.
-    state = _RetryState(
+    state = _retry_state()
+    for running_total in (_CALL_COST, 2 * _CALL_COST):
+        _record_result_usage(_result(running_total), state, "")
+
+    assert state.usage.cost_usd == pytest.approx(2 * _CALL_COST)
+
+
+def test_a_total_below_the_baseline_is_charged_in_full_and_alerts(caplog):
+    state = _retry_state()
+    state.usage.cli_session_total_usd = 2 * _CALL_COST
+    with caplog.at_level(logging.ERROR, logger=_SVC):
+        _record_result_usage(_result(_CALL_COST), state, "")
+
+    assert state.usage.cost_usd == pytest.approx(_CALL_COST)
+    assert [r.levelno for r in caplog.records] == [logging.ERROR]
+
+
+def test_an_unreadable_session_file_is_charged_in_full_and_alerts(
+    tmp_path, monkeypatch, caplog
+):
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))  # holds no session file
+    state = _retry_state()
+    with caplog.at_level(logging.ERROR, logger=_SVC):
+        state.usage.cli_session_total_usd = _resumed_cli_session_cost_usd(
+            _SDK_CWD, _SESSION_ID, ""
+        )
+        _record_result_usage(_result(2 * _CALL_COST), state, "")
+
+    assert state.usage.cost_usd == pytest.approx(2 * _CALL_COST)
+    assert [r.levelno for r in caplog.records] == [logging.ERROR]
+
+
+def _retry_state() -> _RetryState:
+    return _RetryState(
         options=MagicMock(model="claude-sonnet-4-6"),
         query_message="",
         compaction_stats=None,
@@ -191,17 +226,16 @@ def test_every_query_of_one_cli_process_is_charged():
         transcript_builder=MagicMock(),
         usage=_TokenUsage(),
     )
-    for running_total in (_CALL_COST, 2 * _CALL_COST):
-        result = ResultMessage(
-            subtype="success",
-            duration_ms=100,
-            duration_api_ms=100,
-            is_error=False,
-            num_turns=1,
-            session_id=_SESSION_ID,
-            total_cost_usd=running_total,
-            usage=dict(_CALL_USAGE),
-        )
-        _record_result_usage(result, state, "")
 
-    assert state.usage.cost_usd == pytest.approx(2 * _CALL_COST)
+
+def _result(total_cost_usd: float) -> ResultMessage:
+    return ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=100,
+        is_error=False,
+        num_turns=1,
+        session_id=_SESSION_ID,
+        total_cost_usd=total_cost_usd,
+        usage=dict(_CALL_USAGE),
+    )
