@@ -51,8 +51,9 @@ export function fakeBackend(turn: RecordedTurn) {
   let running = false;
   let started = false;
   let stoppedWithoutFinish = false;
-  // "queued" until a running turn ends and the backend promotes it.
-  let queue: "none" | "queued" | "left" = "none";
+  // "queued" until a running turn ends; "claimed" between the backend marking
+  // it running and its stream existing.
+  let queue: "none" | "queued" | "claimed" | "left" = "none";
   const connections: FakeConnection[] = [];
   // Every request, refused ones included.
   const requests: { method: string; url: URL }[] = [];
@@ -195,13 +196,17 @@ export function fakeBackend(turn: RecordedTurn) {
     },
     /** The turn is already running when the page loads, or leaves the queue for a slot. */
     beginRunning() {
-      if (queue === "queued") queue = "left";
+      if (queue === "queued" || queue === "claimed") queue = "left";
       started = true;
       running = true;
     },
     /** The user is at the running cap: the next send is persisted and queued. */
     queueNextTurn() {
       queue = "queued";
+    },
+    /** The backend marks the queued turn running before its stream exists. */
+    claimQueued() {
+      queue = "claimed";
     },
     /** The user cancels the queued turn; its prompt row stays. */
     cancelQueued() {
@@ -237,7 +242,11 @@ export function fakeBackend(turn: RecordedTurn) {
           ? { turn_id: turnId, checkpoint: this.lastCheckpoint() }
           : null,
         chat_status:
-          queue === "queued" ? "queued" : running ? "running" : "idle",
+          queue === "queued"
+            ? "queued"
+            : running || queue === "claimed"
+              ? "running"
+              : "idle",
       };
     },
     open() {

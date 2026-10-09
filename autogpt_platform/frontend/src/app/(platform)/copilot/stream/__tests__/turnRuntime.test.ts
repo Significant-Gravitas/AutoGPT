@@ -325,12 +325,73 @@ describe("recovery", () => {
     // Another of the user's turns ends, and the backend starts this one.
     backend.beginRunning();
     backend.publish(FIRST_BLOCK_DONE);
-    await advance(10_000);
+    await advance(15_000);
     expect(backend.connections.at(-1)?.url.searchParams.get("turn")).toBe(
       backend.turnId,
     );
     expect(snapshot().phase).toBe("live");
     expect(textsOf(render())).toEqual([PROMPT, FIRST_TEXT]);
+  });
+
+  it("a queued turn marked running before its stream exists is still followed into it", async () => {
+    backend.queueNextTurn();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+    backend.claimQueued();
+    await advance(30_000);
+
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    await advance(15_000);
+    expect(snapshot().phase).toBe("live");
+    expect(textsOf(render())).toEqual([PROMPT, FIRST_TEXT]);
+  });
+
+  it("gives up on a claimed queued turn whose stream never appears, and reports it", async () => {
+    backend.queueNextTurn();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+    backend.claimQueued();
+    await advance(3 * 60_000);
+
+    expect(report).toHaveBeenCalledWith(
+      "queue_start_stalled",
+      expect.anything(),
+    );
+    const views = vi.spyOn(backend, "view");
+    await advance(60_000);
+    expect(views).not.toHaveBeenCalled();
+  });
+
+  it("does not follow a queued turn the user stopped", async () => {
+    backend.queueNextTurn();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+    runtime.stop();
+    // The page's own refetch still shows the session queued.
+    const queuedView = backend.view();
+    runtime.observe(queuedView);
+
+    const views = vi.spyOn(backend, "view");
+    await advance(60_000);
+    expect(views).not.toHaveBeenCalled();
+  });
+
+  it("reads a queued session one request at a time", async () => {
+    backend.queueNextTurn();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+    let inFlight = 0;
+    let most = 0;
+    runtime.bind({}, async () => {
+      most = Math.max(most, ++inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 25_000));
+      inFlight -= 1;
+      return backend.view();
+    });
+
+    await advance(120_000);
+    expect(most).toBe(1);
   });
 
   it("stops reading the session once its queued turn is cancelled", async () => {

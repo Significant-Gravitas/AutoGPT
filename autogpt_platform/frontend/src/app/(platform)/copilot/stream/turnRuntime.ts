@@ -53,7 +53,10 @@ const CATCHING_UP_AFTER_MS = 2_000;
 const TICK_MS = 5_000;
 const EMIT_THROTTLE_MS = 30;
 const FROZEN_POLL_MS = 10_000;
-const QUEUED_POLL_MS = 5_000;
+const QUEUED_POLL_MS = 10_000;
+// The backend marks a queued turn running a moment before its stream exists;
+// past this, the stream is not coming.
+const QUEUE_START_GRACE_MS = 2 * 60_000;
 const FINISH_PROBE_MS = 500;
 // A server-started continuation (engine switch, approval wake) is dispatched
 // after the turn ends; its meta can lag the finish by a few seconds.
@@ -144,6 +147,11 @@ type ConnectionEnd =
   | { kind: "refused"; status: number; body: unknown }
   | { kind: "failed"; error: unknown };
 
+interface QueueWatch {
+  timer: ReturnType<typeof setTimeout> | null;
+  claimedAt: number | null;
+}
+
 interface TurnBookkeeping {
   verified: number;
   reportedErrors: number;
@@ -180,7 +188,9 @@ export class TurnRuntime {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private frozenTimer: ReturnType<typeof setInterval> | null = null;
-  private queueTimer: ReturnType<typeof setInterval> | null = null;
+  private queueWatch: QueueWatch | null = null;
+  // Stopped while queued: its turn is not followed until the queue lets go.
+  private queueDeclined = false;
   private emitTimer: ReturnType<typeof setTimeout> | null = null;
   private reveal = new TextReveal(
     () => this.segments,
@@ -246,6 +256,7 @@ export class TurnRuntime {
     if (this.isPostPending()) return;
     this.stopped = false;
     this.suppressAttach = false;
+    this.queueDeclined = false;
     this.error = null;
     this.providerFailure = null;
     const message = userMessage(`local:${uuidv4({})}`, input);
@@ -267,6 +278,8 @@ export class TurnRuntime {
     this.clearRetry();
     this.stopped = true;
     this.suppressAttach = true;
+    this.queueDeclined = true;
+    this.endQueueWatch();
     this.notice = null;
     this.reveal.clear();
     if (running) {
@@ -360,7 +373,8 @@ export class TurnRuntime {
     this.abortConnections();
     this.clearRetry();
     this.reveal.dispose();
-    for (const timer of [this.tickTimer, this.frozenTimer, this.queueTimer]) {
+    this.endQueueWatch();
+    for (const timer of [this.tickTimer, this.frozenTimer]) {
       if (timer) clearInterval(timer);
     }
     if (this.emitTimer) clearTimeout(this.emitTimer);
@@ -707,16 +721,48 @@ export class TurnRuntime {
   // A turn queued behind the user's running cap starts when another of their
   // turns ends, which nothing tells this tab; watch the view until it runs.
   private followQueue(view: SessionView) {
-    if (view.chat_status !== "queued" || view.active_stream) {
-      if (this.queueTimer) clearInterval(this.queueTimer);
-      this.queueTimer = null;
+    const status = view.chat_status;
+    if (status !== "queued" && status !== "running") this.queueDeclined = false;
+    const queued = status === "queued" && !view.active_stream;
+    const claimed =
+      status === "running" && !view.active_stream && !!this.queueWatch;
+    if (this.queueDeclined || (!queued && !claimed)) {
+      this.endQueueWatch();
       return;
     }
-    if (this.queueTimer) return;
-    this.queueTimer = setInterval(async () => {
-      const next = await this.fetchView();
-      if (next && !this.disposed) this.observe(next);
+    const watch = this.queueWatch ?? this.startQueueWatch();
+    if (!claimed) {
+      watch.claimedAt = null;
+      return;
+    }
+    watch.claimedAt ??= Date.now();
+    const waited = Date.now() - watch.claimedAt;
+    if (waited < QUEUE_START_GRACE_MS) return;
+    this.deps.report("queue_start_stalled", { waitedMs: waited });
+    this.endQueueWatch();
+  }
+
+  private startQueueWatch() {
+    const watch: QueueWatch = { timer: null, claimedAt: null };
+    this.queueWatch = watch;
+    this.pollQueue(watch);
+    return watch;
+  }
+
+  // Scheduled after each read settles, so a slow read never overlaps the next.
+  private pollQueue(watch: QueueWatch) {
+    watch.timer = setTimeout(async () => {
+      watch.timer = null;
+      const view = await this.fetchView();
+      if (this.queueWatch !== watch || this.disposed) return;
+      if (view) this.observe(view);
+      if (this.queueWatch === watch) this.pollQueue(watch);
     }, QUEUED_POLL_MS);
+  }
+
+  private endQueueWatch() {
+    if (this.queueWatch?.timer) clearTimeout(this.queueWatch.timer);
+    this.queueWatch = null;
   }
 
   /**
