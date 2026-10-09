@@ -36,7 +36,7 @@ from .models import (
     MarketplaceAgentDetails,
 )
 from .pagination import Page, PageRequest, page_request
-from .tenancy import TenantContext, in_tenant, require_permission
+from .tenancy import TenantContext, in_tenant, owned_by_caller, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -169,10 +169,14 @@ async def update_graph(
             status.HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
         )
 
-    latest_version_number = max(g.version for g in existing_versions)
+    # Versions share the graph's id but not its owner: a colleague's append
+    # would land under their own user id.
+    latest_version = owned_by_caller(
+        max(existing_versions, key=lambda g: g.version), auth, f"Graph #{graph_id}"
+    )
 
     internal_graph = update_graph.to_internal(
-        id=graph_id, version=latest_version_number + 1
+        id=graph_id, version=latest_version.version + 1
     )
 
     current_active_version = next((v for v in existing_versions if v.is_active), None)
@@ -311,6 +315,7 @@ async def set_active_version(
             status.HTTP_404_NOT_FOUND,
             f"Graph #{graph_id} v{new_active_version} not found",
         )
+    owned_by_caller(new_active_graph, auth, f"Graph #{graph_id}")
 
     current_active_graph = await graph_db.get_graph(
         graph_id=graph_id,

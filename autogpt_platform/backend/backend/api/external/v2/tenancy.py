@@ -35,6 +35,7 @@ from backend.util.exceptions import NotAuthorizedError, NotFoundError
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound="TenantedRow")
+OwnedT = TypeVar("OwnedT", bound="OwnedRow")
 
 
 class TenantContext(BaseModel):
@@ -141,6 +142,25 @@ def in_tenant(resource: Optional[T], auth: TenantContext, what: str) -> T:
         and resource.organization_id != auth.organization_id
     ):
         raise NotFoundError(f"{what} not found")
+    return resource
+
+
+class OwnedRow(Protocol):
+    """Any resource row that records the user who owns it."""
+
+    user_id: str
+
+
+def owned_by_caller(resource: OwnedT, auth: TenantContext, what: str) -> OwnedT:
+    """Return the resource, or 403 if another member of the org owns it.
+
+    Org-visible reads show a colleague's rows; the writes beneath v2 match on
+    the owner's id, so refuse before any of them runs.
+    """
+    if resource.user_id != auth.user_id:
+        raise NotAuthorizedError(
+            f"{what} belongs to another member of this organization"
+        )
     return resource
 
 

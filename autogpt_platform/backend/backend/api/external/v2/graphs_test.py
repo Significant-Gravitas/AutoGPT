@@ -40,7 +40,7 @@ def writes(mocker: pytest_mock.MockFixture) -> dict[str, AsyncMock]:
     mocker.patch(
         "backend.data.graph.get_graph_all_versions",
         new_callable=AsyncMock,
-        return_value=[Mock(version=1, is_active=True)],
+        return_value=[Mock(version=1, is_active=True, user_id=_AUTH.user_id)],
     )
     return {
         name: mocker.patch(target, new_callable=AsyncMock)

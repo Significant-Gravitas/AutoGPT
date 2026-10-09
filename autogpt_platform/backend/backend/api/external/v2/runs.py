@@ -17,7 +17,7 @@ from backend.api.features.graph_executions.review.model import ReviewItem
 from backend.api.features.graph_executions.review.service import process_reviews
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
-from backend.data.execution import ExecutionStatus
+from backend.data.execution import ExecutionStatus, GraphExecution
 from backend.executor import utils as execution_utils
 from backend.util.settings import Settings
 
@@ -32,7 +32,7 @@ from .models import (
     RunStatus,
 )
 from .pagination import Page, PageRequest, page_request
-from .tenancy import TenantContext, in_tenant, require_permission
+from .tenancy import TenantContext, in_tenant, owned_by_caller, require_permission
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -221,19 +221,9 @@ async def stop_run(
 
     Only runs with status QUEUED or RUNNING can be stopped.
     """
-    # Verify the run exists and belongs to the user
-    exec = await execution_db.get_graph_execution(
-        user_id=auth.user_id,
-        execution_id=run_id,
-        organization_id=auth.organization_id,
-    )
-    if not exec:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Run #{run_id} not found",
-        )
+    # The cancel is published before stop_graph_execution checks the owner.
+    await _assert_own_run_in_tenant(run_id, auth)
 
-    # Stop the execution
     await execution_utils.stop_graph_execution(
         graph_exec_id=run_id,
         user_id=auth.user_id,
@@ -266,7 +256,7 @@ async def delete_run(
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_RUN)),
 ) -> None:
     """Delete an agent run."""
-    await _assert_run_in_tenant(run_id, auth)
+    await _assert_own_run_in_tenant(run_id, auth)
 
     await execution_db.delete_graph_execution(
         graph_exec_id=run_id,
@@ -352,9 +342,14 @@ async def disable_sharing(
     )
 
 
-async def _assert_run_in_tenant(run_id: str, auth: TenantContext) -> None:
+async def _assert_own_run_in_tenant(run_id: str, auth: TenantContext) -> None:
+    """Also 403 for an org-mate's run, which the owner-scoped writes cannot reach."""
+    owned_by_caller(await _assert_run_in_tenant(run_id, auth), auth, f"Run #{run_id}")
+
+
+async def _assert_run_in_tenant(run_id: str, auth: TenantContext) -> GraphExecution:
     """404 before acting on a run the credentials cannot reach."""
-    in_tenant(
+    return in_tenant(
         await execution_db.get_graph_execution(
             user_id=auth.user_id,
             execution_id=run_id,
