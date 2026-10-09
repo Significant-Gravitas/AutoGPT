@@ -20,11 +20,11 @@ describe("IntegrationsListEmpty", () => {
     expect(screen.getByText("No integration connected")).toBeDefined();
   });
 
-  test("renders no-results copy and echoes the trimmed query", () => {
+  test("renders a one-line miss that echoes the trimmed query", () => {
     render(<IntegrationsListEmpty query="  notion  " />);
-    expect(screen.getByText("No integrations found")).toBeDefined();
     expect(
-      screen.getByText(/No integrations match "notion"\. Try a different/i),
+      screen.getByText('None of your connected integrations match "notion".'),
     ).toBeDefined();
+    expect(screen.queryByText("No integration connected")).toBeNull();
   });
 });

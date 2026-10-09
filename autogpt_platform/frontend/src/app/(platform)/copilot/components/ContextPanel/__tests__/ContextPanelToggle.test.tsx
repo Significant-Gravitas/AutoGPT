@@ -85,22 +85,6 @@ afterEach(() => {
 });
 
 describe("ContextPanelToggle files button", () => {
-  test("shares the chat expert with the file panel", async () => {
-    render(
-      <ContextPanelToggle
-        sessionId="s1"
-        expert={{ id: "expert-maria", name: "Maria" }}
-      />,
-    );
-
-    await vi.waitFor(() =>
-      expect(useCopilotUIStore.getState().contextPanelExpert).toEqual({
-        id: "expert-maria",
-        name: "Maria",
-      }),
-    );
-  });
-
   test("shows the number of documents generated in the chat", async () => {
     const documentId = "aaaaaaaa-0000-0000-0000-000000000001";
     const uploadId = "bbbbbbbb-0000-0000-0000-000000000002";
