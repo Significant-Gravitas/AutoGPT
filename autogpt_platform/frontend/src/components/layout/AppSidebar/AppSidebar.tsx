@@ -19,7 +19,6 @@ import {
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { isEditableElement } from "@/lib/platform";
-import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
@@ -27,9 +26,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { ComponentProps, ReactNode, Suspense, useEffect } from "react";
 import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
+import { ChatsRailItem } from "./components/ChatsRailItem/ChatsRailItem";
 import { RecentChats } from "./components/RecentChats/RecentChats";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
+import { useJumpToRecentChats } from "./useJumpToRecentChats";
+import { useNavItemClassName } from "./useNavItemClassName";
 import {
   ArrowDown01Icon,
   FlowIcon,
@@ -95,17 +97,6 @@ function HomeIcon() {
       icon={Home10Icon}
       className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
     />
-  );
-}
-
-// The stronger active state ships with the brain-dump experience.
-function useNavItemClassName() {
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  return cn(
-    "h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-4 group-data-[collapsible=icon]:[&>svg]:size-4.5",
-    isBrainDumpEnabled
-      ? "data-[active=true]:!bg-zinc-200 data-[active=true]:hover:!bg-zinc-200"
-      : "data-[active=true]:!bg-zinc-100",
   );
 }
 
@@ -180,12 +171,21 @@ function NavMenu({
 function CollapsibleNavGroup({
   label,
   children,
+  open,
+  onOpenChange,
 }: {
   label: string;
   children: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   return (
-    <Collapsible defaultOpen className="group/collapsible">
+    <Collapsible
+      defaultOpen
+      open={open}
+      onOpenChange={onOpenChange}
+      className="group/collapsible"
+    >
       <SidebarGroup className="py-1">
         <SidebarGroupLabel
           asChild
@@ -224,6 +224,12 @@ export function AppSidebar(props: Props) {
       ? [{ name: "Team", href: "/team", icon: AddTeamIcon }, ...WORKSPACE_LINKS]
       : WORKSPACE_LINKS
   ).filter((link) => link.href !== "/artifacts" || filesEnabled);
+  const {
+    isRecentChatsOpen,
+    setIsRecentChatsOpen,
+    recentChatsRef,
+    jumpToRecentChats,
+  } = useJumpToRecentChats();
 
   useEffect(() => {
     function handleNewTaskShortcut(event: KeyboardEvent) {
@@ -270,9 +276,23 @@ export function AppSidebar(props: Props) {
           {isLoggedIn && (
             <motion.div
               variants={itemVariants}
+              className="hidden group-data-[collapsible=icon]:block"
+            >
+              <ChatsRailItem onClick={jumpToRecentChats} />
+            </motion.div>
+          )}
+
+          {isLoggedIn && (
+            <motion.div
+              ref={recentChatsRef}
+              variants={itemVariants}
               className="group-data-[collapsible=icon]:hidden"
             >
-              <CollapsibleNavGroup label="Recent chats">
+              <CollapsibleNavGroup
+                label="Recent chats"
+                open={isRecentChatsOpen}
+                onOpenChange={setIsRecentChatsOpen}
+              >
                 {/* Suspense boundary: RecentChats reads useSearchParams(), which
                   Next.js requires to be wrapped to avoid forcing the route to
                   client-side rendering. */}
