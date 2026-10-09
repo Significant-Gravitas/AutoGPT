@@ -7,6 +7,8 @@ backend test job (and counted by codecov), not just the integration suite.
 
 import asyncio
 import logging
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -2381,3 +2383,206 @@ class TestPostHogLifecycleSweepRegistration:
         assert not getattr(
             Scheduler._register_posthog_lifecycle_sweep, EXPOSED_FLAG, False
         )
+
+
+class TestScheduleListCache:
+    """One jobstore read per cache miss, and no caller waits a scan while an
+    expired list can answer it. Both cached reads share the logic, so every
+    test runs against each."""
+
+    @pytest.fixture(params=["all", "active"])
+    def cache(self, request, monkeypatch: pytest.MonkeyPatch):
+        sched = Scheduler(register_system_tasks=False)
+        sched.scheduler = MagicMock()
+        sched._execution_jobstore = MagicMock()
+        fetch = _GatedFetch()
+        if request.param == "all":
+            sched.scheduler.get_jobs = fetch
+            read = sched._get_jobs_cached
+        else:
+            sched._execution_jobstore._get_jobs = fetch
+            read = sched._get_active_jobs_cached
+        # Every list expires the moment it is cached, so each read after the
+        # first is an expired one.
+        monkeypatch.setattr(Scheduler, "_JOBS_CACHE_TTL_S", 0.0)
+        monkeypatch.setattr(Scheduler, "_jobs_cache_lock", _CountingLock())
+        yield sched, read, fetch
+        fetch.release_all()
+
+    def test_eight_misses_run_one_query(self, cache):
+        sched, read, fetch = cache
+        results = _read_concurrently(read, fetch, callers=8)
+
+        assert fetch.calls == 1
+        assert all(r is results[0] for r in results)
+
+    def test_a_failed_query_fails_every_waiter_once(self, cache):
+        sched, read, fetch = cache
+        fetch.fail_with = RuntimeError("QueuePool limit reached")
+
+        results = _read_concurrently(read, fetch, callers=8)
+
+        assert fetch.calls == 1
+        assert all(isinstance(r, RuntimeError) for r in results)
+
+    def test_an_expired_list_is_served_while_one_refresh_runs(self, cache):
+        sched, read, fetch = cache
+        fetch.release(1)
+        old = read()
+
+        assert _within(read) is old  # starts the refresh, does not wait for it
+        fetch.wait_for_calls(2)
+        assert _within(read) is old
+        assert fetch.calls == 2
+
+        fetch.release(2)
+        _join_refreshes()
+        assert _within(read) == ["list-2"]
+
+    def test_a_failed_refresh_keeps_the_old_list_and_retries(self, cache):
+        sched, read, fetch = cache
+        fetch.release(1)
+        old = read()
+        fetch.fail_with = RuntimeError("database timeout")
+
+        assert _within(read) is old
+        fetch.release(2)
+        _join_refreshes()
+        assert _within(read) is old  # and starts refresh #3: #2 did not wedge it
+        fetch.wait_for_calls(3)
+
+    def test_an_invalidation_is_never_answered_from_the_old_list(self, cache):
+        sched, read, fetch = cache
+        fetch.release(1)
+        old = read()
+        assert _within(read) is old
+        fetch.wait_for_calls(2)  # refresh #2 started before the write
+
+        sched._invalidate_jobs_cache()
+        after = _start(read)
+        fetch.wait_for_calls(3)  # a fresh read, not a wait on refresh #2
+        assert after.is_alive()
+
+        fetch.release(3)
+        assert after.result() == ["list-3"]
+        fetch.release(2)
+        _join_refreshes()
+        # Refresh #2 read before the write, so it must not land in the cache.
+        assert _within(read) == ["list-3"]
+
+    def test_a_failing_gauge_update_still_answers_the_waiters(self, monkeypatch):
+        sched = Scheduler(register_system_tasks=False)
+        sched._execution_jobstore = MagicMock()
+        fetch = sched._execution_jobstore._get_jobs = _GatedFetch()
+        monkeypatch.setattr(Scheduler, "_jobs_cache_lock", _CountingLock())
+        monkeypatch.setattr(
+            f"{_SCHEDULER_PATH}.SCHEDULER_JOBS.labels",
+            MagicMock(side_effect=RuntimeError("registry")),
+        )
+
+        results = _read_concurrently(sched._get_active_jobs_cached, fetch, callers=8)
+
+        assert fetch.calls == 1
+        assert sum(isinstance(r, RuntimeError) for r in results) == 1  # the fetcher
+        assert [r for r in results if isinstance(r, list)] == [["list-1"]] * 7
+
+
+class _GatedFetch:
+    """A jobstore read that counts its calls and holds each until released."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.fail_with: Exception | None = None
+        self._lock = threading.Lock()
+        self._gates: dict[int, threading.Event] = {}
+
+    def __call__(self, *_args, **_kwargs) -> list[str]:
+        with self._lock:
+            self.calls += 1
+            call = self.calls
+            failure = self.fail_with
+        self._gate(call).wait(timeout=10)
+        if failure is not None:
+            raise failure
+        return [f"list-{call}"]
+
+    def release(self, call: int) -> None:
+        self._gate(call).set()
+
+    def release_all(self) -> None:
+        for call in range(1, self.calls + 2):
+            self.release(call)
+
+    def wait_for_calls(self, count: int) -> None:
+        _wait_until(lambda: self.calls >= count)
+
+    def _gate(self, call: int) -> threading.Event:
+        with self._lock:
+            return self._gates.setdefault(call, threading.Event())
+
+
+class _CountingLock:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.acquired = 0
+
+    def __enter__(self) -> "_CountingLock":
+        self._lock.acquire()
+        self.acquired += 1
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        self._lock.release()
+
+
+class _Call(threading.Thread):
+    def __init__(self, fn) -> None:
+        super().__init__(daemon=True)
+        self._fn = fn
+        self._outcome: object = None
+
+    def run(self) -> None:
+        try:
+            self._outcome = self._fn()
+        except Exception as e:
+            self._outcome = e
+
+    def result(self, timeout: float = 5.0) -> object:
+        self.join(timeout)
+        assert not self.is_alive(), "the read is still waiting"
+        return self._outcome
+
+
+def _start(fn) -> _Call:
+    call = _Call(fn)
+    call.start()
+    return call
+
+
+def _within(fn, timeout: float = 2.0) -> object:
+    return _start(fn).result(timeout)
+
+
+def _read_concurrently(read, fetch: _GatedFetch, callers: int) -> list[object]:
+    lock = Scheduler._jobs_cache_lock
+    assert isinstance(lock, _CountingLock)
+    calls = [_start(read) for _ in range(callers)]
+    # Each caller takes the lock once to check the cache; the fetcher's
+    # write-back is held behind the gate, so this counts arrivals only.
+    _wait_until(lambda: lock.acquired >= callers)
+    fetch.release_all()
+    return [call.result() for call in calls]
+
+
+def _join_refreshes() -> None:
+    for thread in threading.enumerate():
+        if thread.name == "ScheduleListRefresh":
+            thread.join(timeout=5)
+            assert not thread.is_alive(), "a background refresh is still running"
+
+
+def _wait_until(condition, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < deadline, "timed out"
+        time.sleep(0.01)

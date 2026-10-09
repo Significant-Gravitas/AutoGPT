@@ -17,11 +17,14 @@ from backend.data.onboarding import (
     reset_user_onboarding,
     update_user_onboarding,
 )
+from backend.data.onboarding_audience import queue_onboarding_role
+from backend.data.onboarding_role import OnboardingRole, save_onboarding_role
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
     upsert_business_understanding,
 )
+from backend.util.product_analytics import set_onboarding_role
 
 # Tags stay per-route: /onboarding/completed publishes ["onboarding", "public"]
 # while the other six publish ["onboarding"].
@@ -141,5 +144,11 @@ async def submit_onboarding_profile(
         understanding_input.pain_points = data.pain_points
 
     await upsert_business_understanding(user_id, understanding_input)
+
+    # Kept apart from the understanding, whose copy AutoPilot rewrites.
+    role = OnboardingRole.from_answer(data.user_role)
+    await save_onboarding_role(user_id, role)
+    await queue_onboarding_role(user_id, role)
+    set_onboarding_role(user_id=user_id, role=role)
 
     return {"status": "ok"}

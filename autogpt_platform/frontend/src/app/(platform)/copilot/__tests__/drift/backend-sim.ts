@@ -7,6 +7,7 @@ import { http, HttpResponse } from "msw";
 import fs from "node:fs";
 import path from "node:path";
 import { expect } from "vitest";
+import { compareEntryIds } from "../../stream/turnConverter";
 import {
   renderHost,
   TEST_BACKEND_BASE_URL,
@@ -56,9 +57,10 @@ interface TurnPlan {
 }
 
 /**
- * The backend as the chat sees it: a turn's frames published one by one into
- * a stream every connection replays from its first held entry, and a session
- * GET whose rows and `active_stream` follow the turn.
+ * The backend as the chat sees it: each turn's frames published one by one
+ * under its own turn id, persisted at every checkpoint, served whole to a
+ * resume without a cursor and from the cursor to one with it, and a session
+ * GET whose rows, `active_stream` and checkpoint follow the turn.
  */
 export function createBackendSim(plans: TurnPlan[]) {
   const state = {
@@ -66,8 +68,10 @@ export function createBackendSim(plans: TurnPlan[]) {
     trimmedBefore: 0,
     running: false,
     startedAt: "",
-    rows: [] as Row[],
+    committed: [] as Row[],
+    current: [] as Row[],
   };
+  const turns = plans.map(simulatedTurn);
   const published = new Map<number, number>();
   const connections: { closed: boolean; cut: () => void }[] = [];
   const wakers = new Set<() => void>();
@@ -77,17 +81,25 @@ export function createBackendSim(plans: TurnPlan[]) {
     state.startedAt = new Date().toISOString();
     state.trimmedBefore = 0;
     state.running = true;
-    state.rows = [...state.rows, ...leadingUserRows(plans[index].turn.rows)];
+    state.current = leadingUserRows(plans[index].turn.rows);
     published.set(index, 0);
+  }
+
+  // A checkpoint names the rows a persist landed; the GET reads them from then on.
+  function persistThrough(index: number, end: number) {
+    const rows = plans[index].persistedRows ?? plans[index].turn.rows;
+    state.current = rows.filter((row) => Number(row.sequence ?? 0) < end);
   }
 
   // The backend persists, marks the turn completed and wakes any chained
   // turn before it publishes the finish.
   function endTurn(index: number) {
     const plan = plans[index];
-    const alreadyPersisted = leadingUserRows(plan.turn.rows).length;
-    const turnRows = plan.persistedRows ?? plan.turn.rows;
-    state.rows = [...state.rows, ...turnRows.slice(alreadyPersisted)];
+    state.committed = [
+      ...state.committed,
+      ...(plan.persistedRows ?? plan.turn.rows),
+    ];
+    state.current = [];
     state.running = false;
     if (plans[index + 1]?.chained) startTurn(index + 1);
   }
@@ -95,10 +107,13 @@ export function createBackendSim(plans: TurnPlan[]) {
   /** Publish the running turn's next `count` frames (default: all of them). */
   function publish(count = Infinity) {
     const index = state.turnIndex;
-    const frames = plans[index].turn.frames;
+    const frames = turns[index].frames;
     let next = published.get(index) ?? 0;
     const target = Math.min(frames.length, next + count);
     while (next < target) {
+      const checkpoint = turns[index].recordedCheckpoints.get(next);
+      if (checkpoint)
+        persistThrough(index, checkpoint.sequence + checkpoint.rows);
       if (isFinish(frames[next])) endTurn(index);
       next += 1;
       published.set(index, next);
@@ -106,9 +121,38 @@ export function createBackendSim(plans: TurnPlan[]) {
     wakers.forEach((wake) => wake());
   }
 
-  function open(turnIndex: number) {
-    const frames = plans[turnIndex].turn.frames;
-    let index = state.trimmedBefore;
+  function lastCheckpoint(index: number, before = Infinity) {
+    const end = Math.min(published.get(index) ?? 0, before);
+    for (let i = end - 1; i >= 0; i--) {
+      const checkpoint = turns[index].checkpoints.get(i);
+      if (checkpoint) return checkpoint;
+    }
+    return null;
+  }
+
+  function resume(turn: string, after: string) {
+    const index = turns.findIndex((t) => t.id === turn);
+    if (index === -1 || !published.has(index)) {
+      connections.push({ closed: true, cut() {} });
+      return HttpResponse.json({ reason: "expired" }, { status: 410 });
+    }
+    const frames = turns[index].frames;
+    let from = frames.findIndex((f) => compareEntryIds(f.id, after) > 0);
+    if (from === -1) from = frames.length;
+    const floor = index === state.turnIndex ? state.trimmedBefore : 0;
+    if (from < floor) {
+      connections.push({ closed: true, cut() {} });
+      return HttpResponse.json(
+        { reason: "trimmed", checkpoint: lastCheckpoint(index, floor) },
+        { status: 409 },
+      );
+    }
+    return open(index, from);
+  }
+
+  function open(turnIndex: number, from = state.trimmedBefore) {
+    const frames = turns[turnIndex].frames;
+    let index = from;
     let cutRequested = false;
     let wake: (() => void) | null = null;
     const connection = {
@@ -168,7 +212,10 @@ export function createBackendSim(plans: TurnPlan[]) {
         startTurn(state.turnIndex + 1);
         return open(state.turnIndex);
       }),
-      http.get(STREAM_URL, () => {
+      http.get(STREAM_URL, ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        const turn = params.get("turn");
+        if (turn !== null) return resume(turn, params.get("after") ?? "0-0");
         if (!state.running) return new HttpResponse(null, { status: 204 });
         return open(state.turnIndex);
       }),
@@ -196,12 +243,13 @@ export function createBackendSim(plans: TurnPlan[]) {
         oldest_sequence: null,
         metadata: { dry_run: false, builder_graph_id: null },
         expert_id: null,
-        messages: numbered(state.rows),
+        messages: numbered([...state.committed, ...state.current]),
         active_stream: state.running
           ? {
-              turn_id: `drift-turn-${state.turnIndex}`,
+              turn_id: turns[state.turnIndex].id,
               last_message_id: "0-0",
               started_at: state.startedAt,
+              checkpoint: lastCheckpoint(state.turnIndex),
             }
           : null,
         chat_status: state.running ? "running" : "idle",
@@ -258,6 +306,46 @@ export function streamedTextBlocks(turn: RecordedTurn) {
     }
   }
   return [...blocks.values()];
+}
+
+/**
+ * A recorded turn as the sim serves it: under its own turn id, so a chained
+ * turn's entries never sit at or before the cursor the previous one left,
+ * and with its checkpoints' sequences moved to where its rows land here.
+ */
+function simulatedTurn(plan: TurnPlan, index: number, plans: TurnPlan[]) {
+  const id = `drift-turn-${index}`;
+  const base = plans
+    .slice(0, index)
+    .reduce((n, p) => n + (p.persistedRows ?? p.turn.rows).length, 0);
+  const shift = base - Number(plan.turn.rows[0]?.sequence ?? 0);
+  const recordedCheckpoints = new Map<number, CheckpointData>();
+  const checkpoints = new Map<number, CheckpointData & { entry_id: string }>();
+  const frames = plan.turn.frames.map((frame, i) => {
+    let sse = frame.sse.replace(/^id: [^\n]*:/, `id: ${id}:`);
+    const data = frameData(frame);
+    const chunk = data
+      ? (JSON.parse(data) as { type: string; data?: CheckpointData })
+      : null;
+    if (chunk?.type === "data-checkpoint" && chunk.data) {
+      recordedCheckpoints.set(i, chunk.data);
+      const moved = { ...chunk.data, sequence: chunk.data.sequence + shift };
+      checkpoints.set(i, {
+        entry_id: frame.id,
+        rows: moved.rows,
+        sequence: moved.sequence,
+      });
+      sse = `id: ${id}:${frame.id}\ndata: ${JSON.stringify({ ...chunk, data: moved })}\n\n`;
+    }
+    return { id: frame.id, sse };
+  });
+  return { id, frames, checkpoints, recordedCheckpoints };
+}
+
+interface CheckpointData {
+  rows: number;
+  sequence: number;
+  digest?: string;
 }
 
 function isFinish(frame: { sse: string }) {
