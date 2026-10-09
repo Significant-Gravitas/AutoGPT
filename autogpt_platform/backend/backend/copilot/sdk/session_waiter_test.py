@@ -30,6 +30,7 @@ def mock_session_lookup():
     session = MagicMock()
     session.metadata.llm_auth_provider = "platform"
     session.metadata.llm_credential_id = None
+    session.metadata.delegated_by_session_id = None
     with patch(
         "backend.copilot.sdk.session_waiter.get_chat_session",
         new=AsyncMock(return_value=session),
@@ -229,6 +230,61 @@ async def test_idle_session_enqueues_normally():
     assert result.queued is False
     create_session.assert_awaited_once()
     enqueue.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "delegated_by, inflight, expected",
+    [
+        # A sub-session's turn with four running may not take the fifth slot.
+        ("parent-session", 4, "rejected_concurrent_turn_cap"),
+        # An AutoPilotBlock turn keeps the inflight cap...
+        (None, 4, "completed"),
+        # ...which still refuses at its number.
+        (None, 15, "rejected_concurrent_turn_cap"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_delegated_turn_leaves_the_users_last_slot_free(
+    mock_session_lookup, delegated_by: str | None, inflight: int, expected: str
+):
+    mock_session_lookup.return_value.metadata.delegated_by_session_id = delegated_by
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    # Counted after this admit's flip: four were already running.
+    db.count_chat_sessions_by_status = AsyncMock(return_value=5)
+    db.get_chat_session_status = AsyncMock(return_value="idle")
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.turn_queue.count_inflight_turns",
+            new=AsyncMock(return_value=inflight),
+        ),
+        patch.object(active_turns, "chat_db", return_value=db),
+        patch.object(active_turns, "get_running_turn_limit", return_value=5),
+        patch(
+            "backend.copilot.executor.utils.get_inflight_turn_limit", return_value=15
+        ),
+        patch("backend.copilot.sdk.session_waiter.stream_registry.create_session"),
+        patch("backend.copilot.executor.utils.enqueue_copilot_turn"),
+        patch(
+            "backend.copilot.sdk.session_waiter.wait_for_session_result",
+            new=AsyncMock(return_value=("completed", SessionResult())),
+        ),
+    ):
+        outcome, _ = await run_copilot_turn_via_queue(
+            session_id="sess-sub",
+            user_id="u1",
+            message="kick off",
+            timeout=0.1,
+            tool_call_id="sub:parent-session",
+            tool_name="run_sub_session",
+        )
+
+    assert outcome == expected
 
 
 @pytest.mark.asyncio

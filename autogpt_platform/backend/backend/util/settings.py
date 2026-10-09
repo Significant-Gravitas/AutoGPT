@@ -339,9 +339,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "``max_inflight_copilot_turns_per_user`` total in-flight. "
             "Must be <= the in-flight cap; default 5 keeps shared-infra "
             "concurrency predictable while letting users batch-submit. "
-            "Sessions another session opened (sub-sessions, delegations, "
-            "handoffs) don't count toward it; the in-flight cap, enforced on "
-            "running + queued where turns queue, bounds them."
+            "Turns another session started (sub-sessions, delegations, "
+            "handoffs) are admitted only below this cap minus one, so one "
+            "slot is always left for the user's own message."
         ),
     )
 

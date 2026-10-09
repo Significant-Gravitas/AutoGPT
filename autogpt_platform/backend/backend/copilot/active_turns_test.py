@@ -5,7 +5,6 @@ tests patch ``backend.copilot.active_turns.chat_db`` to return an
 :class:`unittest.mock.AsyncMock`.
 """
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -16,7 +15,6 @@ from backend.copilot.active_turns import (
     acquire_turn_slot,
     release_turn_slot,
 )
-from backend.copilot.model import ChatSessionMetadata
 
 
 def _mock_db(
@@ -166,50 +164,6 @@ async def test_anonymous_user_skips_gate() -> None:
             pass
     db.update_chat_session_status.assert_not_awaited()
     db.count_chat_sessions_by_status.assert_not_awaited()
-
-
-# ── which running sessions the running cap counts ─────────────────────
-
-
-@pytest.mark.parametrize(
-    "driven, delegated, admitted",
-    [
-        # This chat and another, whose turn left six sub-sessions running.
-        (2, 6, True),
-        # Six chats the user drives: over the running cap, so the route queues.
-        (6, 0, False),
-        # Sub-sessions still fill the inflight cap.
-        (1, 15, False),
-    ],
-)
-@pytest.mark.asyncio
-async def test_running_cap_counts_only_the_sessions_the_user_drives(
-    driven: int, delegated: int, admitted: bool
-) -> None:
-    rows = [_running(None)] * driven + [_running("parent")] * delegated
-    db = _mock_db(admit_cas_ok=True, running_count=len(rows))
-    db.list_chat_sessions_by_status = AsyncMock(return_value=rows)
-    with (
-        patch.object(active_turns, "chat_db", return_value=db),
-        patch.object(active_turns, "get_running_turn_limit", return_value=5),
-        patch.object(active_turns, "get_inflight_turn_limit", return_value=15),
-    ):
-        if admitted:
-            async with acquire_turn_slot("user-1", "session-a") as slot:
-                assert slot.admitted
-        else:
-            with pytest.raises(ConcurrentTurnLimitError):
-                async with acquire_turn_slot("user-1", "session-a"):
-                    pytest.fail("body must not run on rejection")  # pragma: no cover
-            # Two flips: the admit, then its rollback to idle.
-            assert db.update_chat_session_status.await_count == 2
-            assert db.update_chat_session_status.await_args.kwargs["status"] == "idle"
-
-
-def _running(delegated_by_session_id: str | None) -> SimpleNamespace:
-    return SimpleNamespace(
-        metadata=ChatSessionMetadata(delegated_by_session_id=delegated_by_session_id)
-    )
 
 
 # ── default cap pinning ───────────────────────────────────────────────

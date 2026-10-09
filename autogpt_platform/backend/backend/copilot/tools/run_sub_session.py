@@ -28,7 +28,7 @@ import logging
 import time
 from typing import Any
 
-from backend.copilot.active_turns import running_turn_limit_message
+from backend.copilot.active_turns import delegated_turn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
@@ -546,7 +546,7 @@ def response_from_outcome(
         # Render the actionable message instead of a "see transcript"
         # pointer to nothing.
         return SubSessionStatusResponse(
-            message=running_turn_limit_message(),
+            message=delegated_turn_limit_message(),
             session_id=parent_session_id,
             status="error",
             sub_session_id=inner_session_id,

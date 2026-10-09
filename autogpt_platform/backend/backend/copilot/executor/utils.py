@@ -16,6 +16,7 @@ from backend.copilot.active_turns import (
     ConcurrentTurnLimitError,
     TurnSlot,
     acquire_turn_slot,
+    get_delegated_turn_limit,
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
@@ -460,6 +461,7 @@ async def schedule_turn(
     unattended: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
+    delegated: bool = False,
 ) -> None:
     """End-to-end "start a copilot turn": reserve a per-user concurrency
     slot, register the session in the stream registry, then publish the
@@ -487,10 +489,12 @@ async def schedule_turn(
       ``mark_session_completed``, which releases it when the turn ends.
 
     Capacity is the *inflight* cap (default 15) rather than the running
-    cap (default 5): non-HTTP callers (``run_sub_session``,
-    ``AutoPilotBlock``) have no FIFO queue fallback, so applying the
-    soft running cap here would regress concurrency below the prior
-    SECRT-2335 hotfix behaviour.
+    cap (default 5): non-HTTP callers (``AutoPilotBlock``, scheduled
+    turns) have no FIFO queue fallback, so applying the soft running cap
+    here would regress concurrency below the prior SECRT-2335 hotfix
+    behaviour. A ``delegated`` turn (one another session started) is
+    admitted only below the running cap minus one instead, so it never
+    takes the slot the user's own next message needs.
 
     The user's queued turns from the chat HTTP route DO count against
     the inflight cap — pre-check ``running + queued`` here so a user
@@ -504,9 +508,8 @@ async def schedule_turn(
         if await count_inflight_turns(user_id) >= inflight_cap:
             raise ConcurrentTurnLimitError(inflight_turn_limit_message(inflight_cap))
 
-    async with acquire_turn_slot(
-        user_id, session_id, capacity=get_inflight_turn_limit()
-    ) as slot:
+    capacity = get_delegated_turn_limit() if delegated else get_inflight_turn_limit()
+    async with acquire_turn_slot(user_id, session_id, capacity=capacity) as slot:
         await dispatch_turn(
             slot,
             session_id=session_id,

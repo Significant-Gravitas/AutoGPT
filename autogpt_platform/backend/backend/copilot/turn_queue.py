@@ -267,7 +267,10 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     queued = await list_queued_sessions(user_id)
     if not queued:
         return False
-    head = queued[0]
+    # The user's own message goes before work another session started.
+    head = next(
+        (s for s in queued if s.metadata.delegated_by_session_id is None), queued[0]
+    )
 
     route_provider = head.metadata.llm_auth_provider
     if route_provider == "codex":
