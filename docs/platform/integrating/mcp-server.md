@@ -201,7 +201,7 @@ Any other client that supports Streamable HTTP works the same way: point it at t
 | `get_platform_info` | Your plan, credits and account details. | Read Credits |
 | `search_docs`, `get_doc_page` | Search and read the AutoGPT documentation the instance has indexed. | none |
 | `web_search`, `web_fetch` | Search the web and read a public page. These spend platform resources. | Use Tools |
-| `search_feature_requests`, `create_feature_request` | Find or file AutoGPT feature requests. | Use Tools |
+| `search_feature_requests` | Find existing AutoGPT feature requests. | Use Tools |
 
 The tools a key can't use don't appear in its tool list at all. If an assistant says a tool is missing, add the permission to a new key and reconnect.
 
@@ -215,7 +215,7 @@ Running an agent takes three calls:
 | --- | --- | --- |
 | `find_library_agent` | `query`: words from the agent's name or description | `{"type": "agents_found", "agents": [...]}`. Each agent's `id` is its library agent ID, and it comes with the agent's `input_schema` and `output_schema`. |
 | `run_agent` | `library_agent_id`, `inputs` | `{"type": "execution_started", "execution_id": "..."}`, without outputs. If an input without a default is missing, nothing runs: you get `{"type": "agent_details"}` with a `message` that names the inputs to send. |
-| `view_agent_output` | `library_agent_id`, `execution_id`, and `wait_if_running`: how many seconds, up to 300, to wait for the run to finish | `{"execution": {"status": "COMPLETED", "outputs": {...}}}`. As in the REST API, each output is a [list of values](running-agents.md#read-the-outputs). |
+| `view_agent_output` | `library_agent_id` and `execution_id` | `{"execution": {"status": "COMPLETED", "outputs": {...}}}`. As in the REST API, each output is a [list of values](running-agents.md#read-the-outputs). The call returns at once; while the run is still going, call it again after a few seconds. |
 
 This script runs the quickstart's sample agent by name and prints its outputs:
 
@@ -224,6 +224,7 @@ This script runs the quickstart's sample agent by name and prints its outputs:
 import asyncio
 import json
 import os
+import time
 
 import httpx2
 from mcp import ClientSession
@@ -256,22 +257,25 @@ async def run_agent(session: ClientSession, name: str, inputs: dict) -> dict:
     if started["type"] != "execution_started":
         raise RuntimeError(started["message"])
 
-    output = payload(
-        await session.call_tool(
-            "view_agent_output",
-            {
-                "library_agent_id": agent_id,
-                "execution_id": started["execution_id"],
-                "wait_if_running": 300,
-            },
+    deadline, delay = time.monotonic() + 600, 2.0
+    while True:
+        output = payload(
+            await session.call_tool(
+                "view_agent_output",
+                {"library_agent_id": agent_id, "execution_id": started["execution_id"]},
+            )
         )
-    )
-    return output["execution"]
+        execution = output["execution"]
+        if execution["status"] in ("COMPLETED", "FAILED", "TERMINATED", "REVIEW"):
+            return execution
+        if time.monotonic() > deadline:
+            raise TimeoutError(f"run {started['execution_id']} is still {execution['status']}")
+        await asyncio.sleep(delay)
+        delay = min(delay * 1.5, 15)
 
 
 async def main():
-    # view_agent_output can hold a request open for up to 300 seconds
-    async with httpx2.AsyncClient(headers=HEADERS, timeout=330) as http:
+    async with httpx2.AsyncClient(headers=HEADERS, timeout=60) as http:
         async with streamable_http_client(URL, http_client=http) as (read, write, *_):
             async with ClientSession(read, write) as session:
                 await session.initialize()
@@ -285,7 +289,7 @@ asyncio.run(main())
 
 It prints `COMPLETED {'greeting': ['Hello, Ada!']}`. Change the name and inputs to run one of your own agents.
 
-* `execution.status` is the status when the call returned. If the run is still going after `wait_if_running`, call `view_agent_output` again.
+* `execution.status` is the status when the call returned. While the run is still going, call `view_agent_output` again after a few seconds, backing off as it runs longer.
 * Without `execution_id`, `view_agent_output` reads the agent's latest run and also lists recent runs in `available_executions`. Their statuses can lag behind, so read the status from `execution`.
 * Check for failure in two places. The result's `is_error` flag is set when a call fails or is refused: an unknown tool, a missing permission, an error inside the tool. A tool that ran but couldn't do what you asked, for example because an ID doesn't exist, returns an ordinary result whose JSON is `{"type": "error", "message": "..."}`. The `payload` helper above handles both.
 * `find_library_agent` returns `{"type": "no_results"}` when nothing matches.
@@ -293,6 +297,12 @@ It prints `COMPLETED {'greeting': ['Hello, Ada!']}`. Change the name and inputs 
 ## Good to know
 
 * `run_agent` checks an agent's inputs before it starts a run, which the REST API doesn't do. Calling it without `inputs` is a quick way to see what an agent needs.
+* A call is held to the same rules as the REST API:
+  * An argument the tool doesn't list is refused, so a typo fails loudly instead of being ignored.
+  * Some arguments need a permission on top of the tool's own: scheduling with `run_agent` (`schedule_name` or `cron`) needs Write Schedule, running a marketplace agent by `username_agent_slug` needs Write Library, and reading or writing agent JSON through a workspace file (`agent_json_ref`, `write_to`, `write_graph_to`) needs Read Files or Write Files.
+  * The key only reaches its own organization's agents, folders, runs and schedules, as in the REST API; an ID from another organization is not found.
+  * Runs, uploads and searches count against the same [rate limits](api-conventions.md#rate-limits) as their REST endpoints, and `run_agent` refuses to start a run on a zero balance. `web_search` needs an active plan and counts against your AutoPilot usage allowance.
+* Send the key once, in the `Authorization` header. A request that also sends `X-API-Key`, or two `Authorization` headers, is refused.
 * Runs started over MCP are ordinary runs: they show up in the app and in `GET /runs`, and they cost the same.
 * On a self-hosted instance, `search_docs` returns results only after the instance has indexed its documentation, and `web_search` needs OpenRouter credentials configured on the instance.
 * The server doesn't support dynamic client registration, so a client's "sign in" or "authenticate" option won't work with it. Configure the API key header instead.

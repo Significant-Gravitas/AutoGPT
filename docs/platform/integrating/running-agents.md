@@ -467,7 +467,7 @@ curl -s -X POST "$AUTOGPT_API_URL/schedules" \
 | --- | --- | --- |
 | List runs, newest first | `GET /runs?graph_id=...&statuses=FAILED&started_after=2026-10-01T00:00:00Z` | Read Run |
 | Get one run with outputs | `GET /runs/{run_id}` | Read Run |
-| Stop a run | `POST /runs/{run_id}/stop` waits up to about 15 seconds for the run to stop, then returns it. If it still isn't `TERMINATED`, keep polling. Stopping a finished run changes nothing. | Write Run |
+| Stop a run | `POST /runs/{run_id}/stop` waits up to about 15 seconds for the run to stop, then returns it. If it still isn't `TERMINATED`, keep polling. A run that already finished (`COMPLETED`, `FAILED` or `TERMINATED`) answers `409 conflict`. | Write Run |
 | Delete a run | `DELETE /runs/{run_id}` | Write Run |
 | Share a run publicly | `POST /runs/{run_id}/share` returns a `share_url` anyone with the link can open | Read Run + Share Run |
 | Stop sharing | `DELETE /runs/{run_id}/share` | Read Run + Share Run |

@@ -38,14 +38,14 @@ Every response from the API that is not `2xx` has the same body:
 | 403 | `forbidden` | The credential lacks a permission, or isn't a member of the requested organization or team. | No. Grant the permission. |
 | 404 | `not_found` | No such resource in the organization and team this request acts in. | No. |
 | 405 | `method_not_allowed` | The path exists but not with this HTTP method. | No. |
-| 409 | `conflict` | The request clashes with the current state, e.g. a file or folder name already in use, or a run with the same `Idempotency-Key` still being created. | Only the idempotency case: retry the same run start, with the same key, after a second. |
+| 409 | `conflict` | The request clashes with the current state, e.g. a file or folder name already in use, stopping a run that already finished, or a run with the same `Idempotency-Key` still being created. | Only the idempotency case: retry the same run start, with the same key, after a second. |
 | 413 | `payload_too_large` | An upload is over the size limit. | No. |
-| 422 | `validation_error` | The body or query parameters failed validation. `details.errors` lists each failing field. | No. Fix the request. |
+| 422 | `validation_error` | The body or query parameters failed validation (`details.errors` lists each failing field), or an `Idempotency-Key` was reused for a different request. | No. Fix the request, or use a new key. |
 | 428 | `precondition_required` | Something must be set up first; the message says what. | After doing it. |
 | 429 | `rate_limit_exceeded` | A rate limit was hit. | Yes, after `Retry-After` seconds. |
 | 500 | `internal_error` | Something failed on the server. The message names the operation but not the cause. | Yes, with backoff. Only retry a run start if you sent an `Idempotency-Key`. |
 | 502 | `upstream_error` | A service AutoGPT depends on failed. | Yes, with backoff. |
-| 503 | `service_unavailable` | A dependency is down or not configured on this instance. | Yes, with backoff. |
+| 503 | `service_unavailable` | A dependency is down or not configured on this instance, e.g. the store that holds `Idempotency-Key`s. | Yes, with backoff. A run start is safe to retry with the same key: it didn't start. |
 
 ### Validation errors
 
@@ -75,7 +75,9 @@ A `422` lists every field that failed in `details.errors`. `loc` is the path to 
 | Limit | Applies to | Window |
 | --- | --- | --- |
 | 200 requests | Every authenticated request, per user | 1 minute |
-| 5 requests | Every unauthenticated request, per client IP | 1 minute |
+| 5 requests | Every unauthenticated request, per client IP, except reading the docs | 1 minute |
+| 60 requests | Unauthenticated reads of `/openapi.json`, `/docs` and `/redoc`, per client IP | 1 minute |
+| 30 failed sign-ins | Requests with an invalid key or token, per client IP. Past it, every request carrying a credential gets `429` until the window rolls over. | 1 minute |
 | 60 requests | `POST /library/agents/{agent_id}/runs`, per user | 1 minute |
 | 60 requests | `GET /credits/subscription`, per user | 1 minute |
 | 30 requests | `GET /search`, per user | 1 minute |
@@ -271,8 +273,9 @@ curl -s -X POST "$AUTOGPT_API_URL/library/agents/$AGENT_ID/runs" \
 
 * Use a value that identifies the job, such as an order ID or a UUID you store with it. Up to 255 characters. A key made up fresh for each call protects only that call's own retries, so a library should let its callers pass the key.
 * A key lasts 24 hours and is scoped to your user and organization.
-* The first request with a key starts the run. Every later request with that key returns `202` and the same run, **even if its body is different**. To start a different run, use a new key.
+* A key is bound to the request it first came with: the agent and the whole body. The first request with a key starts the run, and every later request with that key and the same agent and body returns `202` and the same run. The same key with another agent or a different body is `422 validation_error`. To start a different run, use a new key.
 * If the first request is still starting the run, a duplicate gets `409 conflict`. Wait a moment and retry with the same key.
+* If the key can't be checked (the store that holds keys is unreachable), the request is `503 service_unavailable` and no run starts. Retry with the same key.
 * If `409` persists, the first request probably started a run but couldn't record it under the key, and the key stays blocked until it expires. Don't start the job again under a new key until you've looked for that run with `GET /runs?graph_id=...&started_after=...`.
 * If the first request failed before a run started, the key is released and a retry starts the run.
 

@@ -142,7 +142,7 @@ The app shows each permission in title case (**Run Agent**); the API and OAuth u
 | `READ_STORE` | Read your marketplace profile and submissions. |
 | `WRITE_STORE` | Edit your marketplace profile; create, edit and delete submissions; upload their media. |
 | `READ_CREDITS` | Read the credit balance, transactions, invoices, subscription and cost summary. |
-| `USE_TOOLS` | MCP tools that spend platform resources: web search, web fetch and feature requests. |
+| `USE_TOOLS` | MCP tools that act from platform infrastructure: web search (which counts against your AutoPilot usage allowance), web fetch and searching feature requests. |
 
 Two endpoints need two permissions at once: `POST /schedules` needs `WRITE_SCHEDULE` and `RUN_AGENT`, and sharing a run needs `READ_RUN` and `SHARE_RUN`.
 
@@ -154,7 +154,16 @@ These need a valid credential but no particular permission: browsing the public 
 
 Every request acts inside exactly one organization, and the key decides which: it keeps the organization it was created in for its whole life. There is no per-request organization parameter. A key created before organizations existed acts in your personal organization.
 
-What a request creates belongs to that organization, its runs are billed to that organization's balance, and it can only see that organization's agents, runs, schedules and files. Anything in another organization answers `404`, as if it did not exist. To work in several organizations, create one key in each.
+What a request creates belongs to that organization, and its runs are billed to that organization's balance. It can only see and change that organization's agents, graphs, folders, runs and schedules: anything in another organization answers `404`, as if it did not exist, and search leaves it out. To work in several organizations, create one key in each.
+
+Two kinds of data belong to you rather than to an organization, so every key you create reaches them, whatever organization it acts in:
+
+* **Workspace files** (`/files`): one workspace per account.
+* **Integration credentials** (`/integrations/credentials`): stored per account.
+
+Rows created before organizations existed carry no organization, and stay visible to their owner from every organization.
+
+In an organization other than your personal one, reading the organization's balance, transactions and invoices (`GET /credits`, `/credits/transactions`, `/credits/invoices`) needs the owner or billing manager role, as it does in the app; other members get `403`.
 
 ### Act inside a team
 
@@ -169,6 +178,10 @@ curl -s "$AUTOGPT_API_URL/library/agents" \
 `GET /me` with the same header confirms the team. Sending `X-Team-Id` for a team you are not an active member of, or one that belongs to another organization, fails with `403`.
 
 Keys created on the API keys page act organization-wide until a request sends `X-Team-Id`. A key can also be restricted to a single team when it is created. A restricted key acts in its team on every request and rejects an `X-Team-Id` naming any other team with `403`; `GET /me` shows the team.
+
+A team decides where what a request creates lives and whose balance its runs are billed to. It doesn't narrow what the request can read: a key acting in a team still sees everything in the organization that you can see in the app.
+
+OAuth access tokens act in your personal organization. There is no way yet to choose another organization when you approve an app.
 
 ## Common authentication errors
 
