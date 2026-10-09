@@ -368,7 +368,11 @@ class GoogleSheetsReadBlock(Block):
         range_to_use = range or "A:Z"
         sheet_name, cell_range = parse_a1_notation(range_to_use)
         if sheet_name:
-            cleaned_sheet = sheet_name.strip().strip("'\"")
+            cleaned_sheet = sheet_name.strip()
+            if cleaned_sheet.startswith("'") and cleaned_sheet.endswith("'"):
+                cleaned_sheet = cleaned_sheet[1:-1].replace("''", "'")
+            elif cleaned_sheet.startswith('"') and cleaned_sheet.endswith('"'):
+                cleaned_sheet = cleaned_sheet[1:-1]
             formatted_sheet = format_sheet_name(cleaned_sheet)
             cell_part = cell_range.strip() if cell_range else ""
             if cell_part:
