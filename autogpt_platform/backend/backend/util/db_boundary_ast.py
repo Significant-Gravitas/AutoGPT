@@ -84,6 +84,7 @@ class _References(ast.NodeVisitor):
         self.bindings: dict[str, set[str]] = {}
         self.references: dict[str, list[tuple[str, int, str]]] = {module: []}
         self.calls: list[ast.Call] = []
+        self.call_identities: dict[ast.Call, str] = {}
         self.exports: dict[str, set[str]] = {}
         self.callables: set[str] = set()
         self.rpc_clients: set[str] = set()
@@ -166,6 +167,7 @@ class _References(ast.NodeVisitor):
         self.calls.append(node)
         self.generic_visit(node)
         self.calls.pop()
+        self.call_identities.pop(node, None)
 
     def visit_Name(self, node: ast.Name):
         if isinstance(node.ctx, ast.Load) and node.id in self.bindings:
@@ -267,9 +269,16 @@ class _References(ast.NodeVisitor):
         self.references[self.scope].append((target, lineno, "import"))
 
     def _record(self, target: str, node: ast.expr):
-        syntax = self.calls[-1] if self.calls else node
-        identity = reference_identity(syntax, self._target)
-        self.references[self.scope].append((target, node.lineno, identity))
+        self.references[self.scope].append((target, node.lineno, self._identity(node)))
+
+    def _identity(self, node: ast.expr) -> str:
+        if not self.calls:
+            return reference_identity(node, self._target)
+        # Bindings cannot change inside one call, so its references share an identity.
+        call = self.calls[-1]
+        if call not in self.call_identities:
+            self.call_identities[call] = reference_identity(call, self._target)
+        return self.call_identities[call]
 
     def _target(self, node: ast.expr) -> set[str]:
         if isinstance(node, ast.Name):

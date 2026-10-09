@@ -76,6 +76,33 @@ def test_import_alias_rename_does_not_replace_a_reference(tmp_path: Path):
     assert not check_database_boundary(tmp_path)
 
 
+def test_references_take_the_identity_of_their_innermost_call():
+    key = "notifications/example.py::query -> .prisma"
+    nested = find_database_references(
+        {
+            "backend.notifications.example": (
+                "from prisma.models import AgentGraph, User\n"
+                "async def query():\n"
+                "    return pair(User.prisma().find_many(), AgentGraph.prisma().find_many())\n"
+                "def pair(*items):\n    return items\n"
+            )
+        }
+    )
+    direct = find_database_references(
+        {
+            "backend.notifications.example": (
+                "from prisma.models import AgentGraph, User\n"
+                "async def query():\n"
+                "    await User.prisma().find_many()\n"
+                "    await AgentGraph.prisma().find_many()\n"
+            )
+        }
+    )
+    identities = [identity for _, identity in nested[key]]
+    assert len(set(identities)) == 2
+    assert identities == [identity for _, identity in direct[key]]
+
+
 def test_equal_count_replacement_checks_identity_multiplicity(tmp_path: Path):
     query = "User.prisma().find_unique(where={'id': user_id})"
     source = SOURCE.replace(

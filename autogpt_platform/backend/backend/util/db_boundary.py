@@ -7,6 +7,7 @@ connection-aware accessors and DatabaseManager clients stop that propagation.
 
 import json
 from collections import Counter
+from functools import cache, partial
 from pathlib import Path
 
 from backend.util.db_boundary_ast import collect_references, resolve_alias
@@ -18,16 +19,17 @@ from backend.util.db_boundary_policy import (
     is_gateway,
 )
 
+GUIDANCE = (
+    "Database access must use backend.data.db_accessors or DatabaseManager RPC.\n"
+    "Move queries into database implementations and shrink legacy exceptions when fixing them.\n"
+    "See 'Database access boundary' in autogpt_platform/backend/AGENTS.md."
+)
+
 
 def main() -> int:
     failures = check_database_boundary(Path(__file__).resolve().parents[1])
     if failures:
-        print(
-            "Database access must use backend.data.db_accessors or DatabaseManager RPC."
-        )
-        print(
-            "Move queries into database implementations and shrink legacy exceptions when fixing them."
-        )
+        print(GUIDANCE)
         print("\n".join(failures))
         return 1
     print("Database access boundary passed.")
@@ -101,11 +103,12 @@ def find_database_references(
     sources: dict[str, str],
 ) -> dict[str, list[tuple[int, str]]]:
     references, aliases, callables, rpc_clients = collect_references(sources)
+    resolve = cache(partial(resolve_alias, aliases=aliases))
     resolved = {
         scope: [
             (resolved_target, line, identity)
             for target, line, identity in targets
-            for resolved_target in resolve_alias(target, aliases)
+            for resolved_target in resolve(target)
         ]
         for scope, targets in references.items()
     }
@@ -144,10 +147,12 @@ def _module_violations(
     rpc_clients: set[str],
 ) -> dict[str, list[tuple[int, str]]]:
     violations: dict[str, list[tuple[int, str]]] = {}
-    modules = sorted(sources, key=len, reverse=True)
     for scope, targets in references.items():
+        parts = scope.split(".")
         module = next(
-            name for name in modules if scope == name or scope.startswith(name + ".")
+            name
+            for name in (".".join(parts[:end]) for end in range(len(parts), 0, -1))
+            if name in sources
         )
         if is_database_implementation(module) or module in CONNECTION_OWNERS:
             continue

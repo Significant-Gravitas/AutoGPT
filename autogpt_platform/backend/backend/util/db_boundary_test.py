@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from backend.util.db_boundary import (
+    GUIDANCE,
     check_database_boundary,
     find_database_references,
     find_violations,
@@ -118,7 +119,9 @@ def test_syntax_errors_are_not_silently_skipped():
 
 def test_backend_database_boundary():
     root = Path(__file__).resolve().parents[1]
-    assert not (failures := check_database_boundary(root)), "\n".join(failures)
+    assert not (failures := check_database_boundary(root)), "\n".join(
+        [GUIDANCE, *failures]
+    )
 
 
 @pytest.mark.parametrize("module", sorted(DATABASE_IMPLEMENTATIONS))
