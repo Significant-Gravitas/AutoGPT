@@ -677,11 +677,20 @@ async def _owner_may_spend(
     as ``dispatch_next_for_user`` gates a queued turn.
 
     A refusal skips this fire only. A cron schedule stays registered and
-    resumes once the owner subscribes or the window resets; a one-shot
-    follow-up is dropped, as APScheduler drops every one-shot once it fires.
+    resumes once the owner subscribes or the window resets; a one-shot is
+    dropped, as APScheduler drops every one-shot once it fires, so its routine
+    is switched off rather than left pending for a time that has passed.
     """
     if llm_auth_provider != "platform":
         return True
+    if await _owner_can_pay(job_args):
+        return True
+    if job_args.run_at is not None:
+        await _drop_job_from_routine(job_args)
+    return False
+
+
+async def _owner_can_pay(job_args: "CopilotTurnJobArgs") -> bool:
     outcome = (
         "this one-shot is dropped"
         if job_args.run_at is not None
@@ -901,6 +910,10 @@ async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None
         args.user_id,
         reason="session unavailable or scope mismatch",
     )
+    await _drop_job_from_routine(args)
+
+
+async def _drop_job_from_routine(args: "CopilotTurnJobArgs") -> None:
     # A job with no schedule_id predates the field and cannot be matched
     # against the ids a routine row holds, so there is nothing to drop.
     if args.routine_id is None or args.schedule_id is None:
@@ -908,7 +921,8 @@ async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None
     # The row outlives the job it lost, and a routine still listed as switched
     # on with nothing scheduled behind it is the one state the owner cannot act
     # on: the UI offers to switch off something that is already not running.
-    # Most often this is a PINNED routine whose chat the owner deleted.
+    # Most often this is a PINNED routine whose chat the owner deleted, or a
+    # one-shot that fired while its owner could not pay.
     try:
         await experts_db().mark_routine_unscheduled(args.routine_id, args.schedule_id)
     except Exception:

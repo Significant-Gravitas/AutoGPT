@@ -989,6 +989,17 @@ async def test_self_delete_copilot_turn_swallows_errors():
         await _self_delete_copilot_turn_schedule(args)
 
 
+@pytest.mark.asyncio
+async def test_self_delete_switches_off_the_routine_that_lost_the_job():
+    store = MagicMock(mark_routine_unscheduled=AsyncMock())
+    with (
+        patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=AsyncMock()),
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store),
+    ):
+        await _self_delete_copilot_turn_schedule(_args(routine_id="routine-1"))
+    store.mark_routine_unscheduled.assert_awaited_once_with("routine-1", "sched-1")
+
+
 # ---------------------------------------------------------------------------
 # _best_effort_unschedule / _cleanup_old_schedules_without_id
 # ---------------------------------------------------------------------------
@@ -2429,6 +2440,43 @@ async def test_a_codex_billed_tick_is_not_held_to_the_platform_paywall(owner_gat
     mocks = await _fire_hourly("session-1", "codex")
 
     mocks["schedule_turn"].assert_awaited_once()
+
+
+_ONE_SHOT = {"run_at": datetime.now(tz=timezone.utc) + timedelta(minutes=5)}
+_HOURLY = {"run_at": None, "cron": "9 * * * *"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("timing", "dropped"),
+    [(_ONE_SHOT, [("routine-1", "sched-1")]), (_HOURLY, [])],
+    ids=["one-shot", "cron"],
+)
+async def test_a_refused_one_shot_routine_is_switched_off(owner_gate, timing, dropped):
+    """APScheduler drops a one-shot once it fires, so left on, a refused one
+    would read as pending for a time that has passed with nothing behind it."""
+    _paywalled(owner_gate)
+    routine = ExpertRoutine(
+        id="routine-1", title="CI", prompt="Check CI.", enabled=True
+    )
+    store = MagicMock(
+        get_routine=AsyncMock(return_value=routine),
+        mark_routine_unscheduled=AsyncMock(),
+    )
+    session = MagicMock(session_id="session-1", expert_id=None)
+    session.metadata.llm_auth_provider = "platform"
+    schedule_turn = AsyncMock()
+    args = _args(routine_id="routine-1", **timing)
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", schedule_turn),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    schedule_turn.assert_not_awaited()
+    calls = store.mark_routine_unscheduled.await_args_list
+    assert [c.args for c in calls] == dropped
 
 
 @pytest.mark.parametrize("name", ["", " ", "\t\n", "\u2003"])
