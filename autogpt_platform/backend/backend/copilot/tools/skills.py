@@ -3225,7 +3225,7 @@ class ReadSkillTool(BaseTool):
             package_files, loaded.files, f"{folder}/{name}/"
         ):
             return ErrorResponse(
-                message="The skill package changed while loading; retry read_skill.",
+                message="The skill package changed while loading; retry tool:read_skill.",
                 error="skill_changed",
                 session_id=session_id,
             )
