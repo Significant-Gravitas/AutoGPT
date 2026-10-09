@@ -23,11 +23,16 @@ from backend.data.credit import (
     sync_subscription_from_stripe,
 )
 from backend.data.stripe_client import stripe_call, stripe_list_items
+from backend.data.stripe_invoice_payments import payment_in_progress, stripe_id
 from backend.data.subscription_trial import get_subscription_trial
 from backend.data.subscription_wallet_payment import (
-    find_wallet_debit,
     pay_invoice_from_wallet,
     settle_wallet_payment,
+)
+from backend.data.wallet_payment_state import (
+    WalletPayment,
+    WalletPaymentState,
+    find_wallet_payment,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,7 +59,7 @@ class FailedInvoice(BaseModel):
 
     @property
     def is_latest(self) -> bool:
-        return _stripe_id(self.subscription.get("latest_invoice")) == self.invoice_id
+        return stripe_id(self.subscription.get("latest_invoice")) == self.invoice_id
 
     @property
     def is_unpaid(self) -> bool:
@@ -68,22 +73,24 @@ class FailedInvoice(BaseModel):
 async def handle_subscription_payment_failure(invoice: dict) -> None:
     """Pay the failed invoice from the wallet, or end that subscription.
 
+    - A payment still processing (e.g. a bank debit) is left to settle before
+      anything else: the wallet is not touched and the tier sync cuts access.
     - A wallet payment already started for this invoice is finished first.
     - Balance covers it → debit the wallet and mark the invoice paid.
     - Otherwise → cancel that subscription, void its unpaid invoices so
       nothing more is collected for a plan the customer no longer has, and
       recompute the tier, which keeps any other active plan.
-    - A first trial invoice stays open for card repair and a payment still
-      processing is left to settle; the tier sync still cuts access.
+    - A first trial invoice stays open for card repair; the tier sync still
+      cuts access.
     """
     failed = await _load_failed_invoice(invoice)
     if failed is None:
         return
-    debit = await find_wallet_debit(failed.user_id, failed.invoice_id)
-    if debit is not None:
-        await settle_wallet_payment(
-            failed.user_id, failed.invoice, debit, may_pay=failed.is_unpaid
-        )
+    payment = await find_wallet_payment(failed.user_id, failed.invoice_id)
+    if await _left_to_settle(failed, payment):
+        return
+    if payment is not None:
+        await settle_wallet_payment(payment, failed.invoice, may_pay=failed.is_unpaid)
         return
     if failed.is_latest and failed.subscription.get("status") == "canceled":
         # An earlier delivery cancelled it but did not finish voiding.
@@ -104,6 +111,28 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
     ):
         return
     await _end_unpaid_subscription(failed)
+
+
+async def _left_to_settle(failed: FailedInvoice, payment: WalletPayment | None) -> bool:
+    """Leave the invoice alone while a payment on it is still processing.
+
+    Stripe will not mark the invoice paid while it settles, so a wallet
+    payment would only fail and retry; that payment's own success or failure
+    event decides what happens next. Access is still cut by the tier sync.
+    """
+    wallet_unfinished = (
+        payment is not None and payment.state == WalletPaymentState.DEBITED
+    )
+    if not (failed.is_unpaid or wallet_unfinished):
+        return False
+    if not await payment_in_progress(failed.invoice):
+        return False
+    logger.info(
+        f"A payment on invoice {failed.invoice_id} is still processing;"
+        f" cutting access but leaving subscription {failed.sub_id} to settle"
+    )
+    await sync_subscription_from_stripe(failed.subscription)
+    return True
 
 
 async def _load_failed_invoice(invoice: dict) -> FailedInvoice | None:
@@ -139,13 +168,6 @@ async def _load_failed_invoice(invoice: dict) -> FailedInvoice | None:
 
 
 async def _end_unpaid_subscription(failed: FailedInvoice) -> None:
-    if await _payment_in_progress(failed.invoice):
-        logger.info(
-            f"A payment on invoice {failed.invoice_id} is still processing;"
-            f" cutting access but leaving subscription {failed.sub_id} to settle"
-        )
-        await sync_subscription_from_stripe(failed.subscription)
-        return
     if await _is_unconverted_trial(failed.user_id, failed.sub_id):
         await sync_subscription_from_stripe(failed.subscription)
         return
@@ -188,7 +210,7 @@ async def _void_open_invoices(sub_id: str) -> None:
     )
     async for invoice in stripe_list_items(invoices):
         invoice_id: str = invoice["id"]
-        if await _payment_in_progress(dict(invoice)):
+        if await payment_in_progress(dict(invoice)):
             logger.warning(f"Not voiding invoice {invoice_id}: payment processing")
             continue
         try:
@@ -204,29 +226,9 @@ async def _void_open_invoices(sub_id: str) -> None:
                 )
 
 
-async def _payment_in_progress(invoice: dict) -> bool:
-    """Whether a payment on the invoice is still settling, e.g. a bank debit."""
-    payment_intent_id = _stripe_id(invoice.get("payment_intent"))
-    if not payment_intent_id:
-        return False
-    payment_intent = await stripe_call(
-        stripe.PaymentIntent.retrieve_async, payment_intent_id
-    )
-    return payment_intent.get("status") == "processing"
-
-
 async def _is_unconverted_trial(user_id: str, sub_id: str) -> bool:
     """A trial's first invoice stays open so the customer can fix the card."""
     trial = await get_subscription_trial(user_id)
     return bool(
         trial and trial.converted_at is None and trial.subscription_id == sub_id
     )
-
-
-def _stripe_id(value: Any) -> str:
-    """The id of a Stripe reference, whether it arrived as an id or expanded."""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        return value.get("id") or ""
-    return ""

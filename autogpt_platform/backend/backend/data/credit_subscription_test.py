@@ -31,6 +31,16 @@ from backend.data.credit import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _no_wallet_payments():
+    """No invoice in these tests was paid from the wallet unless one says so."""
+    with patch(
+        "backend.data.credit.invoice_paid_from_wallet",
+        new=AsyncMock(return_value=False),
+    ) as wallet:
+        yield wallet
+
+
 class _CacheClearable(Protocol):
     """Type-only view of the cache_clear attribute attached to functions
     decorated with ``@cached`` in ``backend.util.cache``. Lets the test file
@@ -2155,6 +2165,39 @@ async def test_handle_subscription_payment_success_skips_paid_out_of_band():
     ):
         await handle_subscription_payment_success(invoice)
     add_tx_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_skips_wallet_paid_invoice(
+    _no_wallet_payments,
+):
+    """From Stripe API 2025-03-31.basil the invoice has no ``paid_out_of_band``;
+    the wallet's own record must still stop the grant (a free period)."""
+    _no_wallet_payments.return_value = True
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_wallet_123",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_paid": 5000,
+        "billing_reason": "subscription_cycle",
+    }
+
+    add_tx_mock = AsyncMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction",
+            new=add_tx_mock,
+        ),
+        _patch_credit_grant_config(True),
+    ):
+        await handle_subscription_payment_success(invoice)
+    add_tx_mock.assert_not_called()
+    _no_wallet_payments.assert_awaited_once_with("user-1", "in_wallet_123")
 
 
 @pytest.mark.asyncio

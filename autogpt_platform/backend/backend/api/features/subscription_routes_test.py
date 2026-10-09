@@ -1299,7 +1299,7 @@ def test_stripe_webhook_paid_invoice_refunds_an_unfinished_wallet_debit(
     )
     calls = Mock()
     mocker.patch(
-        "backend.api.features.billing.subscriptions.routes.refund_wallet_debit_if_paid_by_card",
+        "backend.api.features.billing.subscriptions.routes.reconcile_wallet_payment_on_paid_invoice",
         new=AsyncMock(side_effect=lambda inv: calls("refund", inv)),
     )
     mocker.patch(

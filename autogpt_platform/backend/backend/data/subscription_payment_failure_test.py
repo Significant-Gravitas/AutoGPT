@@ -2,6 +2,9 @@
 
 The fakes hold state, so a test can deliver the same event twice, fail a
 Stripe call part way, and check what a retry does with what was left behind.
+Fake Stripe shapes each invoice by API version like the real one: before
+2025-03-31.basil it carries ``paid_out_of_band`` and ``payment_intent``; from
+basil on it has neither, and ``payments`` only when expanded.
 """
 
 from contextlib import ExitStack
@@ -17,11 +20,19 @@ from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
 from backend.data.subscription_payment_failure import (
     handle_subscription_payment_failure,
 )
-from backend.data.subscription_wallet_payment import refund_wallet_debit_if_paid_by_card
+from backend.data.subscription_wallet_payment import (
+    reconcile_wallet_payment_on_paid_invoice,
+)
 from backend.util.exceptions import InsufficientBalanceError
 
 CUSTOMER = "cus_1"
 USER = "user-1"
+ACACIA = "2025-02-24.acacia"
+ENDIVE = "2026-09-30.endive"
+
+
+def _is_basil(api_version: str) -> bool:
+    return api_version >= "2025-03-31"
 
 
 class FakeStripe:
@@ -60,16 +71,40 @@ class FakeStripe:
             "amount_due": amount_due,
             "paid_out_of_band": False,
             "payment_intent": payment_intent,
+            "_payments": (
+                [_invoice_payment("open", payment_intent)] if payment_intent else []
+            ),
         }
-        return dict(self.invoices[invoice_id])
+        return self.view(invoice_id)
+
+    def view(self, invoice_id: str, api_version: str | None = None, expand=()) -> dict:
+        """The invoice as Stripe returns it at ``api_version`` (the SDK's by
+        default; pass the endpoint's for a webhook payload)."""
+        invoice = dict(self.invoices[invoice_id])
+        payments = invoice.pop("_payments")
+        if not _is_basil(api_version or stripe.api_version):
+            return invoice
+        del invoice["paid_out_of_band"], invoice["payment_intent"]
+        if "payments" in expand:
+            invoice["payments"] = {"data": [dict(p) for p in payments]}
+        return invoice
+
+    def card_pays(self, invoice_id: str, pi_id: str = "pi_card") -> None:
+        """Stripe's own retry of the customer's card succeeds."""
+        invoice = self.invoices[invoice_id]
+        invoice.update(status="paid", paid_out_of_band=False, payment_intent=pi_id)
+        invoice["_payments"].append(_invoice_payment("paid", pi_id))
+        sub = self.subscriptions[invoice["subscription"]]
+        if sub["latest_invoice"] == invoice_id:
+            sub["status"] = "active"
 
     def _maybe_fail(self, call: str) -> None:
         if self.fail_next.get(call, 0) > 0:
             self.fail_next[call] -= 1
             raise stripe.APIConnectionError(f"{call} failed")
 
-    async def retrieve_invoice(self, invoice_id: str):
-        return dict(self.invoices[invoice_id])
+    async def retrieve_invoice(self, invoice_id: str, expand=()):
+        return self.view(invoice_id, expand=expand)
 
     async def retrieve_subscription(self, sub_id: str):
         return dict(self.subscriptions[sub_id])
@@ -82,12 +117,17 @@ class FakeStripe:
         invoice = self.invoices[invoice_id]
         if invoice["status"] not in ("open", "uncollectible"):
             raise stripe.InvalidRequestError("Invoice is already paid", None)
+        pi = self.payment_intents.get(invoice["payment_intent"] or "")
+        if pi and pi["status"] == "processing":
+            raise stripe.InvalidRequestError("A payment is in progress", None)
         invoice.update(status="paid", paid_out_of_band=paid_out_of_band)
         self.paid_out_of_band.append(invoice_id)
         sub = self.subscriptions[invoice["subscription"]]
         if sub["latest_invoice"] == invoice_id:
             sub["status"] = "active"
-        return dict(invoice)
+        # The request reached Stripe, but its response was lost.
+        self._maybe_fail("pay_response")
+        return self.view(invoice_id)
 
     async def cancel(self, sub_id: str, **params):
         self._maybe_fail("cancel")
@@ -104,7 +144,7 @@ class FakeStripe:
     async def list_invoices(self, subscription: str, status: str, limit: int):
         page = MagicMock()
         page.data = [
-            stripe.Invoice.construct_from(dict(inv), "sk_test")
+            stripe.Invoice.construct_from(self.view(inv["id"]), "sk_test")
             for inv in self.invoices.values()
             if inv["subscription"] == subscription and inv["status"] == status
         ]
@@ -118,7 +158,15 @@ class FakeStripe:
             raise stripe.InvalidRequestError("not open", None)
         invoice["status"] = "void"
         self.voided.append(invoice_id)
-        return dict(invoice)
+        return self.view(invoice_id)
+
+
+def _invoice_payment(status: str, pi_id: str) -> dict:
+    return {
+        "object": "invoice_payment",
+        "status": status,
+        "payment": {"type": "payment_intent", "payment_intent": pi_id},
+    }
 
 
 class FakeLedger:
@@ -127,6 +175,8 @@ class FakeLedger:
     def __init__(self, balance: int) -> None:
         self.balance = balance
         self.transactions: dict[str, int] = {}
+        self.metadata: dict[str, dict] = {}
+        self.fail_next_update = 0
 
     async def add_transaction(self, *, user_id, amount, transaction_key, **kwargs):
         if transaction_key in self.transactions:
@@ -139,21 +189,36 @@ class FakeLedger:
                 amount=amount,
             )
         self.transactions[transaction_key] = amount
+        self.metadata[transaction_key] = dict(kwargs["metadata"].data)
         self.balance += amount
         return self.balance, transaction_key
 
-    async def find_unique(self, where):
+    async def find_many(self, where):
+        return [
+            MagicMock(
+                transactionKey=key,
+                amount=self.transactions[key],
+                type=CreditTransactionType.SUBSCRIPTION,
+                metadata=dict(self.metadata[key]),
+            )
+            for key in where["transactionKey"]["in"]
+            if key in self.transactions
+        ]
+
+    async def update(self, where, data):
+        if self.fail_next_update > 0:
+            self.fail_next_update -= 1
+            raise ConnectionError("database went away")
         key = where["creditTransactionIdentifier"]["transactionKey"]
-        if key not in self.transactions:
-            return None
-        return MagicMock(
-            amount=self.transactions[key],
-            type=CreditTransactionType.SUBSCRIPTION,
-        )
+        self.metadata[key] = dict(data["metadata"].data)
+
+    def settled(self, invoice_id: str) -> bool:
+        return self.metadata.get(invoice_id, {}).get("wallet_payment") == "settled"
 
 
 class World:
-    def __init__(self, balance: int = 0, trial=None) -> None:
+    def __init__(self, balance: int = 0, trial=None, api_version: str = ACACIA) -> None:
+        self.api_version = api_version
         self.stripe = FakeStripe()
         self.ledger = FakeLedger(balance)
         self.synced: list[dict] = []
@@ -177,9 +242,12 @@ class World:
                 return_value=users,
             ),
             patch(
-                "backend.data.subscription_wallet_payment.CreditTransaction.prisma",
-                return_value=MagicMock(find_unique=self.ledger.find_unique),
+                "backend.data.wallet_payment_state.CreditTransaction.prisma",
+                return_value=MagicMock(
+                    find_many=self.ledger.find_many, update=self.ledger.update
+                ),
             ),
+            patch.object(stripe, "api_version", self.api_version),
             patch(
                 "backend.data.subscription_wallet_payment.UserCredit._add_transaction",
                 side_effect=self.ledger.add_transaction,
@@ -398,6 +466,7 @@ async def test_wallet_covers_invoice_and_marks_it_paid_out_of_band():
     assert world.ledger.transactions == {"in_1": -2000}
     assert world.ledger.balance == 3000
     assert world.stripe.invoices["in_1"]["paid_out_of_band"] is True
+    assert world.ledger.settled("in_1")
     assert world.stripe.cancelled == []
 
 
@@ -441,10 +510,9 @@ async def test_card_paying_first_refunds_the_unfinished_wallet_debit():
         with pytest.raises(stripe.APIConnectionError):
             await handle_subscription_payment_failure(event)
         # Stripe's own card retry succeeds before the webhook retry arrives.
-        world.stripe.invoices["in_1"]["status"] = "paid"
-        world.stripe.subscriptions["sub_1"]["status"] = "active"
+        world.stripe.card_pays("in_1")
 
-        await refund_wallet_debit_if_paid_by_card(dict(world.stripe.invoices["in_1"]))
+        await reconcile_wallet_payment_on_paid_invoice(world.stripe.view("in_1"))
         await handle_subscription_payment_failure(event)
 
     assert world.ledger.balance == 5000
@@ -472,7 +540,7 @@ async def test_wallet_paid_invoice_is_not_refunded_on_its_success_event():
     with World(balance=5000) as world:
         event = _renewal_failed(world)
         await handle_subscription_payment_failure(event)
-        await refund_wallet_debit_if_paid_by_card(dict(world.stripe.invoices["in_1"]))
+        await reconcile_wallet_payment_on_paid_invoice(world.stripe.view("in_1"))
 
     assert world.ledger.balance == 3000
     assert "in_1:wallet-refund" not in world.ledger.transactions

@@ -55,7 +55,9 @@ from backend.data.subscription_trial_billing import (
     TRIAL_BILLING_EVENTS,
     sync_trials_for_billing_event,
 )
-from backend.data.subscription_wallet_payment import refund_wallet_debit_if_paid_by_card
+from backend.data.subscription_wallet_payment import (
+    reconcile_wallet_payment_on_paid_invoice,
+)
 from backend.data.user import get_user_by_id
 from backend.notifications import lifecycle
 from backend.notifications.queue import queue_pass_work
@@ -879,7 +881,7 @@ async def stripe_webhook(request: Request):
             await sync_subscription_schedule_from_stripe(data_object)
 
         if event_type == "invoice.payment_succeeded":
-            await refund_wallet_debit_if_paid_by_card(data_object)
+            await reconcile_wallet_payment_on_paid_invoice(data_object)
             await handle_subscription_payment_success(data_object)
             await on_trial_invoice(data_object, paid=True)
 
@@ -905,7 +907,7 @@ async def stripe_webhook(request: Request):
                 invoice = await stripe_call(stripe.Invoice.retrieve_async, invoice_id)
                 invoice_payload = cast(dict, invoice)
                 if event_type == "invoice_payment.paid":
-                    await refund_wallet_debit_if_paid_by_card(invoice_payload)
+                    await reconcile_wallet_payment_on_paid_invoice(invoice_payload)
                     await handle_subscription_payment_success(invoice_payload)
                     await on_trial_invoice(invoice_payload, paid=True)
                 else:

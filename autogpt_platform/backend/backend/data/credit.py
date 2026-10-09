@@ -44,6 +44,7 @@ from backend.data.subscription_checkout import (
 )
 from backend.data.subscription_trial_stripe import reconcile_trial_subscription
 from backend.data.user import get_user_by_id, get_user_email_by_id
+from backend.data.wallet_payment_state import invoice_paid_from_wallet
 from backend.notifications.queue import queue_notification_async
 from backend.util import posthog_client
 from backend.util.cache import cached
@@ -3166,7 +3167,7 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
     - Non-subscription invoices (no ``subscription`` field).
     - Zero-amount invoices (e.g. card-validation checks, $0 trials).
     - ENTERPRISE users (admin-managed; they don't pay via self-service).
-    - Invoices already covered from balance via ``paid_out_of_band``.
+    - Invoices covered from balance by the failure handler.
     """
     customer_id = invoice.get("customer")
     if not customer_id:
@@ -3205,12 +3206,14 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
     # invoice from the user's balance and marked it paid out of band — the
     # balance was debited there, granting matching credits here would reverse
     # the debit and give the user a free billing period.
-    if invoice.get("paid_out_of_band"):
+    # The wallet record decides; ``paid_out_of_band`` is gone from the
+    # Invoice since Stripe API 2025-03-31.basil.
+    if invoice.get("paid_out_of_band") or await invoice_paid_from_wallet(
+        user.id, invoice_id
+    ):
         logger.info(
-            "handle_subscription_payment_success: skipping invoice %s for user %s"
-            " (paid_out_of_band — covered by balance in failure handler)",
-            invoice_id,
-            user.id,
+            f"handle_subscription_payment_success: skipping invoice {invoice_id}"
+            f" for user {user.id} (covered by balance in failure handler)"
         )
         return
 
