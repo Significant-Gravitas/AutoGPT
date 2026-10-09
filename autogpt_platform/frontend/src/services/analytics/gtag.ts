@@ -13,6 +13,11 @@ export function gtag(...args: unknown[]): boolean {
   if (typeof window === "undefined") return false;
   const tag = window.gtag;
   if (typeof tag !== "function") return false;
-  tag(...args);
-  return true;
+  // Analytics must never break the caller, e.g. a checkout redirect.
+  try {
+    tag(...args);
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -142,8 +142,15 @@ what replaced them.
 | `tour_started` | browser | live | — | The public `/tour` page is opened (once per tab). |
 | `tour_scenario_started` | browser | live | `scenario` | A tour scenario starts playing. |
 | `tour_scenario_completed` | browser | live | `scenario` | A tour scenario reaches its end. |
-| `tour_cta_clicked` | browser | live | `label` (`pricing`, `another-scenario`, `self-host`, `share`), `placement` where the CTA has one | A tour call to action is clicked. |
+| `tour_cta_clicked` | browser | live | `label` (`free-trial`, `signup`, `pricing`, `another-scenario`, `self-host`, `share`), `placement` where the CTA has one, `surface` (`tour`, `marketplace`) on sidebar-card clicks | A tour or logged-out marketplace call to action is clicked. |
+| `marketing_opted_out` | browser | live | `surface` (`signup`) | Someone refuses marketing email in the app. `signup`: "opt out" is clicked in the legal line under the signup buttons (not "Undo"); nothing else is sent, since there is no user yet, so it only gives the opt-out rate. The refusal itself is stored on the user (`marketingOptOutAt`). |
 | `signup_completed` | backend | live | `signup_method` (the auth provider, e.g. `email`, `google`: from the user's first Better Auth account row, where `credential` is reported as `email`, else from a Supabase token's `app_metadata.provider`; omitted when neither has it) | The user row is created (`data/user.py`), whichever request creates it. |
+
+Sidebar CTA clicks retain the tour event names for compatibility. Filter
+`surface` to distinguish the marketplace from the tour; older sidebar events
+do not carry this property. For tour-only sidebar reports after deployment,
+require `surface = tour`. The signup CTA uses `free-trial` in cloud mode and
+`signup` on self-hosted installations, where creating an account starts no trial.
 
 The tour funnel also goes to DataFast (`tour_start`, `tour_scenario_start`,
 `tour_scenario_complete`, `tour_cta_click`); the PostHog events mirror it with
@@ -319,6 +326,23 @@ Dates are ISO-8601 UTC strings of the lifecycle moment, not of the sync. A
 date that doesn't apply to the current status is `$unset`, never sent as
 null.
 
+The role picked in the onboarding wizard is set with a `$set` of its own when
+the profile is submitted at the Preparing step (`POST /api/onboarding/profile`,
+`product_analytics.set_onboarding_role`), so funnels and retention can be split
+by role. Someone who left the wizard before Preparing has neither property.
+
+| Property | Value |
+| --- | --- |
+| `onboarding_role` | The pick, as labelled in the wizard: `Founder / CEO`, `Operations`, `Sales / BD`, `Marketing`, `Product / PM`, `Engineering`, `HR / People` or `Other`. |
+| `onboarding_role_other` | What was typed after picking `Other` (trimmed, at most 100 characters); null for any other pick. |
+
+The pick is kept on `UserOnboarding`, not read back from the AutoPilot
+business understanding, whose copy AutoPilot rewrites. `poetry run cli
+onboarding-role-backfill` sets both for earlier accounts with `$set_once`, from
+exact picks only: any other stored value may be `Other`'s text or a rewrite,
+so it is left unset. MailerLite gets the same values as `role` and
+`role_other`.
+
 ## Removed
 
 No longer sent (SECRT-2722, SECRT-2723). The names stay reserved: the pin tests fail if
@@ -410,9 +434,10 @@ line:
   families, ...) come with the plan's phases, not with this list.
 - **Events the plan has no name for keep their own**, e.g.
   `integration_connected`, `schedule_created`, `hire_started`,
-  `billing_portal_opened`, `tour_*`, `tab_intro_*`, `voice_*` and
-  `credential_*`. `briefing_opened` is the briefing shown on home, a
-  different action from the plan's `briefing_opened_in_chat`.
+  `billing_portal_opened`, `marketing_opted_out`, `tour_*`,
+  `tab_intro_*`, `voice_*` and `credential_*`. `briefing_opened` is the
+  briefing shown on home, a different action from the plan's
+  `briefing_opened_in_chat`.
 
 ## Events not in the constants modules
 

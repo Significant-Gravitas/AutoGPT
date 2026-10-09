@@ -8,6 +8,7 @@ import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/Autopilo
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { SelectableCard } from "../components/SelectableCard";
+import { OTHER_ROLE_MAX_LENGTH } from "../helpers";
 import { useOnboardingWizardStore } from "../store";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
@@ -123,6 +124,7 @@ export function RoleStep() {
                   placeholder="Describe your role..."
                   value={otherRole}
                   onChange={(e) => setOtherRole(e.target.value)}
+                  maxLength={OTHER_ROLE_MAX_LENGTH}
                   autoFocus
                 />
               </div>

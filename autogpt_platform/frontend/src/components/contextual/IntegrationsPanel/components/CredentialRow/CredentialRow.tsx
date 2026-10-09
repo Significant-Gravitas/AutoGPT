@@ -69,12 +69,14 @@ export function CredentialRow({
               {credential.title}
             </span>
             <span className="inline-flex items-center justify-center rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[12px] font-medium leading-[20px] text-[#505057]">
-              {typeBadgeLabel(credential.type)}
+              {credential.isSignIn
+                ? "For chats"
+                : typeBadgeLabel(credential.type)}
             </span>
           </div>
           <div className="flex items-center gap-3 leading-[20px]">
             <span className="text-[11px] font-medium uppercase tracking-[1.1px] text-[#505057]">
-              {formatMaskedValue(credential)}
+              {credential.blocksNote ?? formatMaskedValue(credential)}
             </span>
           </div>
         </div>
