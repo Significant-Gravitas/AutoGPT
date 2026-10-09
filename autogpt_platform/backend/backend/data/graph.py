@@ -1724,29 +1724,14 @@ async def get_graph_all_versions(
     team_id: str | None = None,
     organization_id: str | None = None,
     include_subgraphs: bool = False,
+    offset: int = 0,
 ) -> list[GraphModel]:
-    where_clause: AgentGraphWhereInput = {"id": graph_id}
-    if organization_id is not None:
-        # Same membership predicate as get_graph/list_graphs — NOT a raw
-        # org match, which would expose other teams' versions to every
-        # org member.
-        team_ids = await get_user_team_ids(user_id, organization_id)
-        where_clause["AND"] = [
-            cast(
-                AgentGraphWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
-            )
-        ]
-    elif team_id is not None:
-        where_clause["teamId"] = team_id
-    else:
-        where_clause["userId"] = user_id
-
     graph_versions = await AgentGraph.prisma().find_many(
-        where=where_clause,
+        where=await _graph_versions_where(graph_id, user_id, team_id, organization_id),
         order={"version": "desc"},
         include=AGENT_GRAPH_INCLUDE,
         take=limit,
+        skip=offset,
     )
 
     if not graph_versions:
@@ -1767,6 +1752,39 @@ async def get_graph_all_versions(
             # they picked and the credentials embedded in them.
             version.clear_auto_credentials()
     return versions
+
+
+async def count_graph_versions(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> int:
+    return await AgentGraph.prisma().count(
+        where=await _graph_versions_where(graph_id, user_id, None, organization_id)
+    )
+
+
+async def _graph_versions_where(
+    graph_id: str,
+    user_id: str,
+    team_id: str | None,
+    organization_id: str | None,
+) -> AgentGraphWhereInput:
+    where_clause: AgentGraphWhereInput = {"id": graph_id}
+    if organization_id is not None:
+        # Same membership predicate as get_graph/list_graphs — NOT a raw
+        # org match, which would expose other teams' versions to every
+        # org member.
+        team_ids = await get_user_team_ids(user_id, organization_id)
+        where_clause["AND"] = [
+            cast(
+                AgentGraphWhereInput,
+                visibility_filter(user_id, organization_id, team_ids),
+            )
+        ]
+    elif team_id is not None:
+        where_clause["teamId"] = team_id
+    else:
+        where_clause["userId"] = user_id
+    return where_clause
 
 
 async def delete_graph(

@@ -256,6 +256,7 @@ class LibraryAgent(pydantic.BaseModel):
     def from_db(
         agent: prisma.models.LibraryAgent,
         sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
+        store_listing: Optional[prisma.models.StoreListing] = None,
         execution_count_override: Optional[int] = None,
         schedule_info: Optional[dict[str, str]] = None,
     ) -> "LibraryAgent":
@@ -351,14 +352,6 @@ class LibraryAgent(pydantic.BaseModel):
         can_access_graph = agent.AgentGraph.userId == agent.userId
         is_latest_version = True
 
-        # NOTE: this access pattern is designed for use with
-        # `library_agent_include(..., include_store_listing=True)`
-        active_listing = (
-            agent.AgentGraph.StoreListingVersions[0]
-            if agent.AgentGraph.StoreListingVersions
-            else None
-        )
-        store_listing = active_listing.StoreListing if active_listing else None
         active_listing = store_listing.ActiveVersion if store_listing else None
         creator_profile = store_listing.CreatorProfile if store_listing else None
         marketplace_listing_info = (

@@ -10,12 +10,13 @@ import pytest
 import pytest_mock
 from fastapi import HTTPException, Response
 
-from backend.api.external.v2 import credits
+from backend.api.external.v2 import credits, global_rate_limit
 from backend.api.external.v2.global_rate_limit import (
     GlobalRateLimitMiddleware,
     client_ip,
 )
 from backend.api.utils.rate_limit import RateLimiter
+from backend.util.settings import Config
 
 PEER = "10.0.0.9"
 
@@ -58,8 +59,14 @@ async def test_an_unmeasurable_window_publishes_no_numbers(
 
 
 async def test_the_response_carries_the_callers_window_position(
-    redis: mock.AsyncMock,
+    redis: mock.AsyncMock, mocker: pytest_mock.MockFixture
 ) -> None:
+    """Behind the hosted platform's three hops: the client's bucket, and told so."""
+    mocker.patch.object(
+        global_rate_limit.settings.config,
+        "trusted_proxy_count",
+        Config.model_fields["trusted_proxy_count"].default,
+    )
     redis.incr.return_value = 1
     sent: list[dict] = []
 
@@ -69,8 +76,11 @@ async def test_the_response_carries_the_callers_window_position(
     async def send(message):
         sent.append(message)
 
-    await GlobalRateLimitMiddleware(app)(_scope(), _receive, send)
+    forwarded = b"203.0.113.7, 172.70.1.1, 34.1.1.1"
+    scope = _scope() | {"headers": [(b"x-forwarded-for", forwarded)]}
+    await GlobalRateLimitMiddleware(app)(scope, _receive, send)
 
+    assert redis.incr.await_args.args[0].startswith("rl:v2:global:anon:203.0.113.7:")
     headers = dict(sent[0]["headers"])
     assert headers[b"x-ratelimit-limit"] == b"5"
     assert headers[b"x-ratelimit-remaining"] == b"4"

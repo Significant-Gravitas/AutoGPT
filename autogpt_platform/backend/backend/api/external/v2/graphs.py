@@ -4,6 +4,7 @@ V2 External API - Graphs Endpoints
 Provides endpoints for managing agent graphs (CRUD operations).
 """
 
+import asyncio
 import logging
 from typing import Optional
 from uuid import uuid4
@@ -251,18 +252,26 @@ async def list_graph_versions(
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_GRAPH)),
 ) -> Page[Graph]:
     """Get all versions of a specific graph."""
-    graphs = await graph_db.get_graph_all_versions(
-        graph_id,
-        user_id=auth.user_id,
-        organization_id=auth.organization_id,
-        include_subgraphs=True,
+    # Paged in the query: each version's sub-graphs cost their own round trips.
+    total_count, graphs = await asyncio.gather(
+        graph_db.count_graph_versions(
+            graph_id, user_id=auth.user_id, organization_id=auth.organization_id
+        ),
+        graph_db.get_graph_all_versions(
+            graph_id,
+            user_id=auth.user_id,
+            organization_id=auth.organization_id,
+            include_subgraphs=True,
+            limit=page.limit,
+            offset=(page.page - 1) * page.limit,
+        ),
     )
-    if not graphs:
+    if not total_count:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Graph #{graph_id} not found.",
         )
-    return page.slice([Graph.from_internal(g) for g in graphs])
+    return page.paged([Graph.from_internal(g) for g in graphs], total_count)
 
 
 @graphs_router.put(
