@@ -3473,7 +3473,11 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
         sched.get_execution_schedules = AsyncMock(
             return_value=[
                 SimpleNamespace(
-                    kind="graph", id="sched-1", name="n", expert_id=expert_id
+                    kind="graph",
+                    id="sched-1",
+                    name="n",
+                    expert_id=expert_id,
+                    paused_by_expert_archive=True,
                 )
             ]
         )
@@ -3502,7 +3506,9 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
         where={"expertId": expert_id}
     )
     assert any(e.clearedAt is None for e in events)
-    sched.pause_schedule.assert_awaited_once_with("sched-1", user_id=test_user.id)
+    sched.pause_schedule.assert_awaited_once_with(
+        "sched-1", user_id=test_user.id, by_expert_archive=True
+    )
     # Paused, not deleted: the pointer survives so the same job is resumed
     # rather than a second one being created alongside it.
     wf_row = await prisma.models.ExpertWorkflow.prisma().find_first(
@@ -3604,16 +3610,24 @@ async def test_user_created_schedule_survives_fire_and_rehire(
         assert wf_row is not None and wf_row.scheduleCron is None
 
         # The user then creates their own schedule through the scheduling
-        # UI or chat; it carries expert attribution but nothing else.
+        # UI or chat; it carries expert attribution but nothing else. The
+        # archive flow parks it with the archive marker, which is exactly
+        # what re-hire looks for when deciding what to resume.
         user_schedule = SimpleNamespace(
-            kind="graph", id="user-sched", name="Weekly report", expert_id=expert_id
+            kind="graph",
+            id="user-sched",
+            name="Weekly report",
+            expert_id=expert_id,
+            paused_by_expert_archive=True,
         )
         sched.get_execution_schedules = AsyncMock(return_value=[user_schedule])
 
         await experts_db.archive_expert(test_user.id, expert_id)
         revived = await experts_db.hire_expert(test_user.id, template.id, None)
 
-    sched.pause_schedule.assert_awaited_once_with("user-sched", user_id=test_user.id)
+    sched.pause_schedule.assert_awaited_once_with(
+        "user-sched", user_id=test_user.id, by_expert_archive=True
+    )
     sched.resume_schedule.assert_awaited_once_with("user-sched", user_id=test_user.id)
     # Restored by resuming the original job, never by creating a new one.
     sched.add_execution_schedule.assert_not_awaited()
