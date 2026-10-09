@@ -11,7 +11,15 @@ import {
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from "vitest";
 
 import { AppSidebar } from "../AppSidebar";
 
@@ -157,6 +165,7 @@ beforeEach(() => {
 afterEach(() => {
   Element.prototype.scrollTo = originalScrollTo;
   Reflect.deleteProperty(Element.prototype, "getAnimations");
+  vi.unstubAllGlobals();
 });
 
 describe("Chats in the collapsed sidebar", () => {
@@ -274,6 +283,55 @@ describe("Chats in the collapsed sidebar", () => {
     for (const element of getAnimations.mock.contexts) {
       expect(element).toBe(getSidebarScrollArea());
     }
+  });
+
+  it("keeps scrolling while the Recent chats list grows, until the sidebar collapses", async () => {
+    const observers: {
+      callback: () => void;
+      observe: Mock;
+      disconnect: Mock;
+    }[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        callback: () => void;
+        observe = vi.fn();
+        unobserve = vi.fn();
+        disconnect = vi.fn();
+        constructor(callback: () => void) {
+          this.callback = callback;
+          observers.push(this);
+        }
+      },
+    );
+    const user = userEvent.setup();
+    renderSidebar();
+    expect(await screen.findByText("No conversations yet")).toBeDefined();
+    vi.spyOn(getRecentChatsHeading(), "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 420, 0, 0),
+    );
+
+    await user.click(getChatsButton());
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
+
+    const followers = observers.filter((observer) =>
+      observer.observe.mock.calls.some(([element]) =>
+        element.contains(getRecentChatsHeading()),
+      ),
+    );
+    expect(followers).toHaveLength(1);
+    const [watched] = followers[0].observe.mock.calls[0];
+    expect(watched).not.toBe(getSidebarScrollArea());
+    expect(watched.contains(screen.getByText("No conversations yet"))).toBe(
+      true,
+    );
+    followers[0].callback();
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+    expect(followers[0].disconnect).not.toHaveBeenCalled();
+
+    toggleSidebarWithShortcut();
+
+    expect(followers[0].disconnect).toHaveBeenCalled();
   });
 
   it("does not scroll if the sidebar collapses again before it finishes animating", async () => {

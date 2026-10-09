@@ -1,5 +1,6 @@
 const MAX_ANIMATION_ROUNDS = 5;
 const FOLLOW_GROWTH_MS = 5000;
+const USER_SCROLL_EVENTS = ["wheel", "touchstart", "pointerdown", "keydown"];
 
 export function scrollSidebarTo(target: HTMLElement, behavior: ScrollBehavior) {
   const container = target.closest<HTMLElement>('[data-sidebar="content"]');
@@ -20,15 +21,22 @@ export function scrollSidebarToWhenReachable(
   behavior: ScrollBehavior,
 ) {
   if (scrollSidebarTo(target, behavior)) return () => {};
+  const container = target.closest('[data-sidebar="content"]');
   const observer = new ResizeObserver(() => {
     if (scrollSidebarTo(target, behavior)) stop();
   });
   const timeout = setTimeout(stop, FOLLOW_GROWTH_MS);
   observer.observe(growing);
+  for (const type of USER_SCROLL_EVENTS) {
+    container?.addEventListener(type, stop, { passive: true });
+  }
 
   function stop() {
     clearTimeout(timeout);
     observer.disconnect();
+    for (const type of USER_SCROLL_EVENTS) {
+      container?.removeEventListener(type, stop);
+    }
   }
 
   return stop;

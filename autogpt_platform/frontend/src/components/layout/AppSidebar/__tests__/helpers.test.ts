@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import {
   afterAnimations,
@@ -55,7 +55,8 @@ function sidebarScrollArea({
   container.setAttribute("data-sidebar", "content");
   container.style.scrollPaddingTop = "64px";
   const target = document.createElement("div");
-  container.appendChild(target);
+  const list = document.createElement("div");
+  container.append(target, list);
   document.body.appendChild(container);
   Object.defineProperty(container, "scrollTop", { value: scrollTop });
   Object.defineProperty(container, "scrollHeight", {
@@ -67,7 +68,7 @@ function sidebarScrollArea({
   target.getBoundingClientRect = () => rectAt(350);
   const scrollTo = vi.fn();
   container.scrollTo = scrollTo;
-  return { container, target, scrollTo };
+  return { container, target, list, scrollTo };
 }
 
 afterEach(() => {
@@ -110,7 +111,11 @@ describe("scrollSidebarTo", () => {
 
 describe("scrollSidebarToWhenReachable", () => {
   function stubResizeObserver() {
-    const observers: { callback: () => void; disconnect: () => void }[] = [];
+    const observers: {
+      callback: () => void;
+      observe: Mock;
+      disconnect: Mock;
+    }[] = [];
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -128,9 +133,9 @@ describe("scrollSidebarToWhenReachable", () => {
 
   it("scrolls once and stops when the target is already reachable", () => {
     const observers = stubResizeObserver();
-    const { container, target, scrollTo } = sidebarScrollArea();
+    const { target, list, scrollTo } = sidebarScrollArea();
 
-    scrollSidebarToWhenReachable(target, container, "smooth");
+    scrollSidebarToWhenReachable(target, list, "smooth");
 
     expect(scrollTo).toHaveBeenCalledTimes(1);
     expect(observers).toHaveLength(0);
@@ -138,12 +143,13 @@ describe("scrollSidebarToWhenReachable", () => {
 
   it("scrolls again as the list grows until the target is reachable", () => {
     const observers = stubResizeObserver();
-    const { container, target, scrollTo } = sidebarScrollArea({
+    const { container, target, list, scrollTo } = sidebarScrollArea({
       scrollHeight: 900,
     });
 
-    scrollSidebarToWhenReachable(target, container, "smooth");
+    scrollSidebarToWhenReachable(target, list, "auto");
     expect(observers).toHaveLength(1);
+    expect(observers[0].observe.mock.lastCall?.[0]).toBe(list);
     observers[0].callback();
     expect(observers[0].disconnect).not.toHaveBeenCalled();
 
@@ -151,26 +157,37 @@ describe("scrollSidebarToWhenReachable", () => {
     observers[0].callback();
 
     expect(scrollTo).toHaveBeenCalledTimes(3);
-    expect(scrollTo).toHaveBeenLastCalledWith({ top: 236, behavior: "smooth" });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 236, behavior: "auto" });
     expect(observers[0].disconnect).toHaveBeenCalled();
+  });
+
+  it("stops following once the user scrolls or clicks in the sidebar", () => {
+    const observers = stubResizeObserver();
+    const wheel = sidebarScrollArea({ scrollHeight: 900 });
+    scrollSidebarToWhenReachable(wheel.target, wheel.list, "smooth");
+    const keys = sidebarScrollArea({ scrollHeight: 900 });
+    scrollSidebarToWhenReachable(keys.target, keys.list, "smooth");
+
+    wheel.container.dispatchEvent(new Event("wheel"));
+    keys.target.dispatchEvent(new Event("keydown", { bubbles: true }));
+
+    expect(observers[0].disconnect).toHaveBeenCalled();
+    expect(observers[1].disconnect).toHaveBeenCalled();
   });
 
   it("gives up after a few seconds, or when stopped", () => {
     vi.useFakeTimers();
     const observers = stubResizeObserver();
     const short = sidebarScrollArea({ scrollHeight: 900 });
-    scrollSidebarToWhenReachable(short.target, short.container, "auto");
+    scrollSidebarToWhenReachable(short.target, short.list, "auto");
     const other = sidebarScrollArea({ scrollHeight: 900 });
-    const stop = scrollSidebarToWhenReachable(
-      other.target,
-      other.container,
-      "auto",
-    );
+    const stop = scrollSidebarToWhenReachable(other.target, other.list, "auto");
 
     stop();
     expect(observers[1].disconnect).toHaveBeenCalled();
+    vi.advanceTimersByTime(4999);
     expect(observers[0].disconnect).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(5000);
+    vi.advanceTimersByTime(1);
     expect(observers[0].disconnect).toHaveBeenCalled();
   });
 });
