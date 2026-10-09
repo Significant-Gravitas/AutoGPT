@@ -25,7 +25,8 @@ from fastapi.dependencies.utils import get_flat_params
 from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials
 from prisma.enums import APIKeyPermission, ReviewStatus
-from starlette.routing import Match
+from starlette.requests import Request
+from starlette.routing import Match, Route
 
 from backend.api.external.middleware import resolve_auth_info
 from backend.api.external.v2.errors import add_v2_exception_handlers
@@ -71,6 +72,29 @@ def test_openapi_schema_builds():
 
     assert schema["paths"], "v2 OpenAPI schema has no paths"
     assert "/search" in schema["paths"]
+
+
+async def test_the_served_spec_lists_only_the_declared_servers(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """FastAPI otherwise serves the mount path as the first server, a relative URL
+    that is wrong behind a proxy prefix such as the single container's `/_agpt`."""
+    from backend.api.external.v2.app import v2_app
+
+    declared = [server["url"] for server in v2_app.servers]
+    monkeypatch.setattr(v2_app, "openapi_schema", None)
+    monkeypatch.setattr(v2_app, "servers", list(v2_app.servers))
+    (served,) = [
+        route
+        for route in v2_app.routes
+        if isinstance(route, Route) and route.path == v2_app.openapi_url
+    ]
+
+    response = await served.endpoint(
+        Request({"type": "http", "root_path": "/_agpt/external-api/v2"})
+    )
+
+    assert [s["url"] for s in json.loads(response.body)["servers"]] == declared
 
 
 def test_static_routes_are_not_shadowed_by_path_params():

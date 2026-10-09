@@ -67,6 +67,9 @@ v2_app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    # Otherwise the mount path is served as a relative first server, which is
+    # wrong behind a proxy prefix such as the single container's `/_agpt`.
+    root_path_in_servers=False,
     servers=[
         {
             "url": "https://backend.agpt.co/external-api/v2",
