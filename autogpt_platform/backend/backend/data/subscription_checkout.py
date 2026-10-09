@@ -59,8 +59,18 @@ async def ensure_no_unconverted_trial(user_id: str, customer_id: str) -> None:
     async for subscription in stripe_list_items(subscriptions):
         if (subscription.metadata or {}).get(
             "trial_enrollment_id"
-        ) == trial.id and subscription.status not in ("canceled", "incomplete_expired"):
+        ) == trial.id and not _ends_without_converting(subscription):
             raise SubscriptionCheckoutUnavailable(
                 "This account already has a trial subscription. "
                 "Manage it in billing before starting another plan."
             )
+
+
+def _ends_without_converting(subscription: stripe.Subscription) -> bool:
+    """A cancel-pending trial never bills, and the stale-subscription cleanup
+    ends it as soon as the new plan's subscription is active."""
+    if subscription.status in ("canceled", "incomplete_expired"):
+        return True
+    return subscription.status == "trialing" and bool(
+        subscription.get("cancel_at_period_end")
+    )

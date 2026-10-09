@@ -1,6 +1,8 @@
 """Tests for subscription tier API endpoints."""
 
-from unittest.mock import AsyncMock, Mock
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import fastapi
 import fastapi.testclient
@@ -10,8 +12,13 @@ import stripe
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import SubscriptionTier
 
+from backend.data import subscription_trial_conversion as conversion
+from backend.data.subscription_trial import TrialState
+
 from .billing.credits_rate_limit import enforce_subscription_status_rate_limit
 from .billing.subscriptions.routes import _validate_checkout_redirect_url, router
+
+pytest_plugins = ("backend.data.subscription_trial_fixtures",)
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 TEST_FRONTEND_ORIGIN = "https://app.example.com"
@@ -2289,3 +2296,281 @@ def test_update_subscription_tier_same_tier_no_stripe_sub_falls_through_to_check
     release_mock.assert_not_awaited()
     modify_mock.assert_awaited_once()
     checkout_mock.assert_awaited_once()
+
+
+TRIAL_RUNNING_DETAIL = (
+    "Your accepted plan starts after your trial. Manage the trial in billing."
+)
+
+
+@pytest.fixture
+def cancel_pending_trial(trial: TrialState) -> TrialState:
+    now = datetime.now(UTC)
+    return trial.model_copy(
+        update={
+            "user_id": TEST_USER_ID,
+            "subscription_id": "sub_1",
+            "status": "trialing",
+            "card_verified_at": now - timedelta(days=2),
+            "started_at": now - timedelta(days=2),
+            "ends_at": now + timedelta(days=5),
+            "consumed_at": now - timedelta(days=2),
+            "cancel_at_period_end": True,
+        }
+    )
+
+
+@pytest.fixture
+def trial_conversion(
+    mocker: pytest_mock.MockFixture, cancel_pending_trial: TrialState
+) -> MagicMock:
+    """A TRIAL-tier user whose trial is cancel-pending, with every Stripe and
+    database boundary of the in-place conversion recorded in call order."""
+    calls: list[str] = []
+    assert cancel_pending_trial.ends_at is not None
+    live = {
+        "id": "sub_1",
+        "customer": cancel_pending_trial.customer_id,
+        "status": "trialing",
+        "cancel_at_period_end": True,
+        "trial_end": int(cancel_pending_trial.ends_at.timestamp()),
+        "metadata": {
+            "user_id": TEST_USER_ID,
+            "trial_enrollment_id": cancel_pending_trial.id,
+        },
+    }
+    converted = stripe.Subscription.construct_from(
+        {**live, "status": "active", "cancel_at_period_end": False}, "test-key"
+    )
+
+    def recorded(name: str, result: object = None) -> AsyncMock:
+        async def effect(*args, **kwargs):
+            calls.append(name)
+            return result
+
+        return AsyncMock(side_effect=effect)
+
+    @asynccontextmanager
+    async def lock(user_id: str):
+        calls.append(f"lock:{user_id}")
+        try:
+            yield
+        finally:
+            calls.append("unlock")
+
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=Mock(subscription_tier=SubscriptionTier.TRIAL),
+    )
+    _patch_payment_flag(mocker)
+    mocker.patch.object(
+        conversion,
+        "get_subscription_trial",
+        AsyncMock(return_value=cancel_pending_trial),
+    )
+    mocker.patch.object(conversion, "subscription_checkout_lock", lock)
+    retrieve = recorded(
+        "retrieve", stripe.Subscription.construct_from(live, "test-key")
+    )
+    mocker.patch.object(stripe.Subscription, "retrieve_async", retrieve)
+    return MagicMock(
+        calls=calls,
+        live=live,
+        retrieve=retrieve,
+        converted=converted,
+        modify=mocker.patch.object(
+            stripe.Subscription, "modify_async", recorded("modify", converted)
+        ),
+        expire=mocker.patch.object(
+            conversion, "expire_other_subscription_checkouts", recorded("expire")
+        ),
+        sync=mocker.patch.object(
+            conversion, "sync_subscription_from_stripe", recorded("sync")
+        ),
+        modify_for_tier=mocker.patch(
+            "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
+            new_callable=AsyncMock,
+        ),
+        checkout=mocker.patch(
+            "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
+            new_callable=AsyncMock,
+            return_value="https://checkout.stripe.com/pay/cs_test_max",
+        ),
+    )
+
+
+def _post_plan(
+    client: fastapi.testclient.TestClient, tier: str, billing_cycle: str = "monthly"
+):
+    return client.post(
+        "/credits/subscription",
+        json={
+            "tier": tier,
+            "billing_cycle": billing_cycle,
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+            "surface": "billing",
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        None,
+        {"cancel_at_period_end": False},
+        {"converted_at": datetime.now(UTC)},
+        {"ends_at": datetime.now(UTC) - timedelta(minutes=1)},
+    ],
+)
+def test_update_subscription_tier_trial_still_waits_for_the_trial_to_end(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    trial_conversion: MagicMock,
+    cancel_pending_trial: TrialState,
+    change: dict | None,
+) -> None:
+    """A TRIAL-tier user whose trial is not cancel-pending keeps today's 409."""
+    mocker.patch.object(
+        conversion,
+        "get_subscription_trial",
+        AsyncMock(
+            return_value=change and cancel_pending_trial.model_copy(update=change)
+        ),
+    )
+
+    response = _post_plan(client, "PRO")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == TRIAL_RUNNING_DETAIL
+    assert trial_conversion.calls == []
+    trial_conversion.modify_for_tier.assert_not_awaited()
+    trial_conversion.checkout.assert_not_awaited()
+
+
+def test_update_subscription_tier_cancel_pending_trial_converts_its_own_plan(
+    client: fastapi.testclient.TestClient,
+    trial_conversion: MagicMock,
+    track_checkout_started: AsyncMock,
+) -> None:
+    response = _post_plan(client, "PRO")
+
+    assert response.status_code == 200
+    assert response.json()["url"] == ""
+    assert trial_conversion.calls == [
+        f"lock:{TEST_USER_ID}",
+        "retrieve",
+        "expire",
+        "modify",
+        "sync",
+        "unlock",
+    ]
+    trial_conversion.retrieve.assert_awaited_once_with("sub_1")
+    trial_conversion.expire.assert_awaited_once_with("cus_1")
+    trial_conversion.modify.assert_awaited_once_with(
+        "sub_1",
+        cancel_at_period_end=False,
+        trial_end="now",
+        proration_behavior="none",
+        payment_behavior="error_if_incomplete",
+    )
+    trial_conversion.sync.assert_awaited_once_with(dict(trial_conversion.converted))
+    trial_conversion.modify_for_tier.assert_not_awaited()
+    trial_conversion.checkout.assert_not_awaited()
+    track_checkout_started.assert_not_awaited()
+
+
+def test_update_subscription_tier_cancel_pending_trial_card_declined_returns_402(
+    client: fastapi.testclient.TestClient,
+    trial_conversion: MagicMock,
+) -> None:
+    trial_conversion.modify.side_effect = stripe.CardError(
+        "Your card was declined.", param="card", code="card_declined"
+    )
+
+    response = _post_plan(client, "PRO")
+
+    assert response.status_code == 402
+    assert "card was declined" in response.json()["detail"].lower()
+    trial_conversion.sync.assert_not_awaited()
+    trial_conversion.modify_for_tier.assert_not_awaited()
+    trial_conversion.checkout.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "change,detail",
+    [
+        ({"cancel_at_period_end": False}, TRIAL_RUNNING_DETAIL),
+        ({"status": "canceled"}, "This trial has ended. Manage the plan in billing."),
+        (
+            {"customer": "cus_other"},
+            "This trial has ended. Manage the plan in billing.",
+        ),
+    ],
+)
+def test_update_subscription_tier_cancel_pending_trial_changed_in_stripe_returns_409(
+    client: fastapi.testclient.TestClient,
+    trial_conversion: MagicMock,
+    change: dict,
+    detail: str,
+) -> None:
+    trial_conversion.retrieve.side_effect = None
+    trial_conversion.retrieve.return_value = stripe.Subscription.construct_from(
+        {**trial_conversion.live, **change}, "test-key"
+    )
+
+    response = _post_plan(client, "PRO")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == detail
+    trial_conversion.expire.assert_not_awaited()
+    trial_conversion.modify.assert_not_awaited()
+    trial_conversion.modify_for_tier.assert_not_awaited()
+    trial_conversion.checkout.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "tier,billing_cycle,pro_monthly_price",
+    [
+        ("MAX", "monthly", "price_pro"),
+        ("PRO", "yearly", "price_pro"),
+        ("PRO", "monthly", "price_pro_v2"),
+    ],
+)
+def test_update_subscription_tier_cancel_pending_trial_other_plan_uses_checkout(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    trial_conversion: MagicMock,
+    tier: str,
+    billing_cycle: str,
+    pro_monthly_price: str,
+) -> None:
+    """Another tier, another cycle or a re-priced plan is a new subscription;
+    the stale-subscription cleanup ends the trial once it is paid for."""
+
+    async def price_id(
+        requested: SubscriptionTier, cycle: str = "monthly"
+    ) -> str | None:
+        if requested == SubscriptionTier.PRO and cycle == "monthly":
+            return pro_monthly_price
+        prices = (
+            _DEFAULT_TIER_PRICES_YEARLY if cycle == "yearly" else _DEFAULT_TIER_PRICES
+        )
+        return prices.get(requested)
+
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
+        side_effect=price_id,
+    )
+
+    response = _post_plan(client, tier, billing_cycle)
+
+    assert response.status_code == 200
+    assert response.json()["url"] == "https://checkout.stripe.com/pay/cs_test_max"
+    assert trial_conversion.calls == []
+    trial_conversion.modify.assert_not_awaited()
+    trial_conversion.modify_for_tier.assert_not_awaited()
+    trial_conversion.checkout.assert_awaited_once()
+    assert trial_conversion.checkout.call_args.kwargs["tier"] == SubscriptionTier(tier)
+    assert trial_conversion.checkout.call_args.kwargs["billing_cycle"] == billing_cycle

@@ -49,9 +49,17 @@ from backend.data.credit import (
 from backend.data.notifications import PassWorkEvent, PassWorkKind
 from backend.data.redis_client import get_redis_async
 from backend.data.stripe_client import stripe_call
+from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_billing import (
     TRIAL_BILLING_EVENTS,
     sync_trials_for_billing_event,
+)
+from backend.data.subscription_trial_conversion import (
+    TRIAL_RUNNING,
+    TrialConversionRefused,
+    convert_cancel_pending_trial,
+    get_cancel_pending_trial,
+    is_trial_plan,
 )
 from backend.data.user import get_user_by_id
 from backend.notifications import lifecycle
@@ -381,11 +389,12 @@ async def update_subscription_tier(
     # admin-granted tiers (DB tier set, no Stripe sub) must fall through to the
     # Checkout flow so "start paying for my current tier" is not a no-op.
     current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+    pending_trial = None
     if current_tier == SubscriptionTier.TRIAL and tier != SubscriptionTier.NO_TIER:
-        raise HTTPException(
-            409,
-            "Your accepted plan starts after your trial. Manage the trial in billing.",
-        )
+        # Only a trial scheduled to end may start a paid plan before trial_end.
+        pending_trial = await get_cancel_pending_trial(user_id)
+        if pending_trial is None:
+            raise HTTPException(409, TRIAL_RUNNING)
     current_cycle = await get_user_billing_cycle(user_id) or "monthly"
     has_active_stripe_subscription = (
         await get_active_subscription_period_end(user_id) is not None
@@ -477,11 +486,13 @@ async def update_subscription_tier(
 
     # Modify in place if there's a sub; else fall through to Checkout below.
     try:
-        modified = await modify_stripe_subscription_for_tier(
-            user_id, tier, request.billing_cycle
+        modified = await _change_plan_in_place(
+            user_id, tier, request.billing_cycle, target_price_id, pending_trial
         )
         if modified:
             return await get_subscription_status(user_id)
+    except TrialConversionRefused as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except stripe.CardError as e:
@@ -660,6 +671,27 @@ async def update_subscription_tier(
     status = await get_subscription_status(user_id)
     status.url = url
     return status
+
+
+async def _change_plan_in_place(
+    user_id: str,
+    tier: SubscriptionTier,
+    billing_cycle: Literal["monthly", "yearly"],
+    target_price_id: str,
+    pending_trial: TrialState | None,
+) -> bool:
+    """Change the plan without Checkout; False means Checkout is needed.
+
+    A cancel-pending trial choosing the plan it accepted converts in place.
+    Any other plan is a new subscription through Checkout, and the
+    stale-subscription cleanup ends the trial once that plan is active.
+    """
+    if pending_trial is None:
+        return await modify_stripe_subscription_for_tier(user_id, tier, billing_cycle)
+    if not is_trial_plan(pending_trial, tier, billing_cycle, target_price_id):
+        return False
+    await convert_cancel_pending_trial(pending_trial)
+    return True
 
 
 def _stripe_event_dedup_key(event_id: str) -> str:

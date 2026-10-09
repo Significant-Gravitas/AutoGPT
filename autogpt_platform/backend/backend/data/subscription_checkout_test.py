@@ -119,3 +119,72 @@ async def test_checkout_history_pagination_has_a_bounded_timeout():
                 "user-1", "cus_test"
             )
     next_page.assert_awaited_once()
+
+
+def _trial_history(**subscription) -> stripe.ListObject:
+    return stripe.ListObject.construct_from(
+        {
+            "data": [
+                {
+                    "id": "sub_trial",
+                    "metadata": {"trial_enrollment_id": "trial-1"},
+                    **subscription,
+                }
+            ],
+            "has_more": False,
+        },
+        "test-key",
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancel_pending_trial_does_not_block_another_plan():
+    with (
+        patch.object(
+            subscription_checkout,
+            "get_subscription_trial",
+            AsyncMock(return_value=MagicMock(id="trial-1", converted_at=None)),
+        ),
+        patch.object(
+            stripe.Subscription,
+            "list_async",
+            AsyncMock(
+                return_value=_trial_history(
+                    status="trialing", cancel_at_period_end=True
+                )
+            ),
+        ),
+    ):
+        await subscription_checkout.ensure_no_unconverted_trial("user-1", "cus_test")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "subscription",
+    [
+        {"status": "trialing", "cancel_at_period_end": False},
+        {"status": "trialing"},
+        {"status": "active", "cancel_at_period_end": True},
+        {"status": "past_due", "cancel_at_period_end": True},
+    ],
+)
+async def test_running_or_unconverted_trial_still_blocks_another_plan(subscription):
+    with (
+        patch.object(
+            subscription_checkout,
+            "get_subscription_trial",
+            AsyncMock(return_value=MagicMock(id="trial-1", converted_at=None)),
+        ),
+        patch.object(
+            stripe.Subscription,
+            "list_async",
+            AsyncMock(return_value=_trial_history(**subscription)),
+        ),
+    ):
+        with pytest.raises(
+            subscription_checkout.SubscriptionCheckoutUnavailable,
+            match="already has a trial subscription",
+        ):
+            await subscription_checkout.ensure_no_unconverted_trial(
+                "user-1", "cus_test"
+            )

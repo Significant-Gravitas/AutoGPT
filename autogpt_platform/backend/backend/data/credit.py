@@ -2387,6 +2387,11 @@ async def get_pending_subscription_change(
     sub = await _get_active_subscription(user.stripe_customer_id)
     if sub is None:
         return None
+    if sub.get("status") == "trialing" and (sub.get("metadata") or {}).get(
+        "trial_enrollment_id"
+    ):
+        # A cancel-pending trial is not a paid plan with a downgrade queued.
+        return None
     period_end = sub.current_period_end
     if not isinstance(period_end, int):
         return None
