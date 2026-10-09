@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import stripe
-from fastapi import APIRouter, Depends, HTTPException, Query, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from prisma.enums import APIKeyPermission, SubscriptionTier
 from starlette.concurrency import run_in_threadpool
 
@@ -38,6 +38,7 @@ from .models import (
     TransactionType,
 )
 from .pagination import Page, PageRequest, page_request, single_page_request
+from .rate_limit import enforce, subscription_limiter
 from .tenancy import TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
@@ -109,9 +110,15 @@ async def get_transactions(
     operation_id="getSubscriptionStatus",
 )
 async def get_subscription_status(
+    response: Response,
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_CREDITS)),
 ) -> SubscriptionStatus:
-    """Get the current subscription tier, pricing, and pending changes."""
+    """Get the current subscription tier, pricing, and pending changes.
+
+    **Rate limit:** 60 requests per minute per user.
+    """
+    await enforce(subscription_limiter, auth.user_id, response)
+
     user = await get_user_by_id(auth.user_id)
     tier = user.subscription_tier or SubscriptionTier.NO_TIER
 
@@ -176,7 +183,7 @@ async def get_subscription_status(
         )
         pending = None
 
-    response = SubscriptionStatus(
+    result = SubscriptionStatus(
         tier=tier.value,
         monthly_cost_cents=current_monthly_cost,
         tier_costs_cents=tier_costs,
@@ -202,11 +209,11 @@ async def get_subscription_status(
             SubscriptionTier.MAX,
             SubscriptionTier.BUSINESS,
         ):
-            response.pending_tier = pending_tier_enum.value
-            response.pending_tier_effective_at = pending_effective_at
-            response.pending_billing_cycle = pending_cycle
+            result.pending_tier = pending_tier_enum.value
+            result.pending_tier_effective_at = pending_effective_at
+            result.pending_billing_cycle = pending_cycle
 
-    return response
+    return result
 
 
 @credits_router.get(

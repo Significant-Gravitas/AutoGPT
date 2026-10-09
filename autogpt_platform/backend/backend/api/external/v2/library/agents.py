@@ -3,7 +3,7 @@
 import logging
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
@@ -21,7 +21,7 @@ from ..models import (
     LibraryAgentUpdateRequest,
 )
 from ..pagination import Page, PageRequest, page_request
-from ..rate_limit import graph_exec_limiter
+from ..rate_limit import enforce, graph_exec_limiter
 from ..tenancy import TenantContext, in_tenant, require_permission
 from .helpers import assert_can_pay
 
@@ -162,6 +162,7 @@ async def fork_library_agent(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def execute_agent(
+    response: Response,
     request: AgentRunRequest,
     agent_id: str,
     idempotency: Annotated[Optional[str], Depends(idempotency_key)] = None,
@@ -175,7 +176,7 @@ async def execute_agent(
 
     **Rate limit:** 60 requests per minute per user.
     """
-    await graph_exec_limiter.check(auth.user_id)
+    await enforce(graph_exec_limiter, auth.user_id, response)
 
     async with idempotent_run(idempotency, auth) as claim:
         if claim.existing_run_id:

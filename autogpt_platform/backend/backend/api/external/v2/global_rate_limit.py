@@ -6,18 +6,23 @@ endpoints. Authenticated users get 200 req/min keyed by user ID; unauthenticated
 sessions get 5 req/min keyed by client IP.
 
 Identifies the user through the auth middleware's `resolve_request_auth`.
+
+Every response carries the caller's `X-RateLimit-*` position, and a 429 adds
+`Retry-After`, so a client can back off on the numbers instead of guessing.
+
 On auth-resolution failure or Redis errors the request passes through — the
 endpoint's own auth dependency handles 401, and the rate limiter fails open.
 """
 
 import logging
+from typing import Optional
 
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from backend.api.external.middleware import resolve_request_auth
-from backend.api.utils.rate_limit import RateLimiter
+from backend.api.utils.rate_limit import RateLimiter, RateLimitState
 from backend.util.settings import Settings
 
 from .errors import error_response
@@ -60,17 +65,19 @@ class GlobalRateLimitMiddleware:
 
         try:
             if auth:
-                await _authenticated_limiter.check(auth.user_id)
+                state = await _authenticated_limiter.check(auth.user_id)
             else:
-                await _anonymous_limiter.check(client_ip(scope, headers))
+                state = await _anonymous_limiter.check(client_ip(scope, headers))
         except HTTPException as exc:
             # The middleware sits outside the app, so the v2 exception handlers
             # never see this — build the same envelope by hand.
-            response = error_response(exc.status_code, str(exc.detail))
+            response = error_response(
+                exc.status_code, str(exc.detail), headers=exc.headers
+            )
             await response(scope, receive, send)
             return
 
-        await self.app(scope, receive, send)
+        await self.app(scope, receive, _with_rate_limit_headers(send, state))
 
 
 def client_ip(scope: Scope, headers: dict[bytes, bytes]) -> str:
@@ -92,3 +99,24 @@ def client_ip(scope: Scope, headers: dict[bytes, bytes]) -> str:
         if value.strip()
     ]
     return forwarded[-hops] if len(forwarded) >= hops else peer
+
+
+def _with_rate_limit_headers(send: Send, state: Optional[RateLimitState]) -> Send:
+    """Attach the caller's window position to the response headers."""
+    if state is None:
+        return send
+
+    encoded = [
+        (name.lower().encode(), value.encode())
+        for name, value in state.headers().items()
+    ]
+
+    async def send_with_headers(message: Message) -> None:
+        if message["type"] == "http.response.start":
+            headers = message.setdefault("headers", [])
+            # An endpoint with its own, narrower limiter has already set these.
+            present = {name.lower() for name, _ in headers}
+            headers.extend(h for h in encoded if h[0] not in present)
+        await send(message)
+
+    return send_with_headers

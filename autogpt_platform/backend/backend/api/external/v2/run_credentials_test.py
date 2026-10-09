@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 import pytest_mock
+from fastapi import Response
 from prisma.enums import APIKeyPermission
 from pydantic import ValidationError
 
@@ -61,6 +62,7 @@ async def test_a_run_hands_the_executor_credential_models(
     mocker.patch(
         "backend.api.external.v2.library.agents.graph_exec_limiter.check",
         new_callable=AsyncMock,
+        return_value=None,
     )
     mocker.patch(
         "backend.api.external.v2.library.helpers.get_credit_model",
@@ -95,6 +97,7 @@ async def test_a_run_hands_the_executor_credential_models(
     )
 
     await execute_agent(
+        response=Response(),
         request=AgentRunRequest.model_validate(
             {"credentials_inputs": {FIELD: CREDENTIAL}}
         ),

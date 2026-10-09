@@ -27,7 +27,9 @@ async def test_a_spoofed_hop_does_not_move_the_anonymous_bucket(
         "trusted_proxy_count",
         Config.model_fields["trusted_proxy_count"].default,
     )
-    anonymous = mocker.patch.object(global_rate_limit._anonymous_limiter, "check")
+    anonymous = mocker.patch.object(
+        global_rate_limit._anonymous_limiter, "check", return_value=None
+    )
 
     await _call_middleware(f"{spoofed}{CLIENT}, {OUR_PROXIES}")
 
