@@ -84,6 +84,8 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   >(new Map());
   const register = useCallback((entry: ChainActionEntry) => {
     setActionEntries((prev) => {
+      // Re-registering the same entry must not re-render the chain.
+      if (prev.get(entry.id) === entry) return prev;
       const next = new Map(prev);
       next.set(entry.id, entry);
       return next;
