@@ -10,6 +10,7 @@ from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db
 
 from .base import BaseTool
+from .external_scope import external_tenant
 from .models import (
     AgentsMovedToFolderResponse,
     ErrorResponse,
@@ -220,15 +221,16 @@ class ListFoldersTool(BaseTool):
         """List folders as a flat list (by parent) or full tree."""
         assert user_id is not None  # guaranteed by requires_auth
         session_id = session.session_id if session else None
+        tenant = external_tenant(session)
 
         try:
             if parent_id:
                 folders = await library_db().list_folders(
-                    user_id=user_id, parent_id=parent_id
+                    user_id=user_id, parent_id=parent_id, organization_id=tenant
                 )
                 raw_map = (
                     await library_db().get_folder_agents_map(
-                        user_id, [f.id for f in folders]
+                        user_id, [f.id for f in folders], tenant
                     )
                     if include_agents
                     else None
@@ -244,15 +246,19 @@ class ListFoldersTool(BaseTool):
                     session_id=session_id,
                 )
             else:
-                tree = await library_db().get_folder_tree(user_id=user_id)
+                tree = await library_db().get_folder_tree(
+                    user_id=user_id, organization_id=tenant
+                )
                 all_ids = collect_tree_ids(tree)
                 agents_map = None
                 root_agents = None
                 if include_agents:
-                    raw_map = await library_db().get_folder_agents_map(user_id, all_ids)
+                    raw_map = await library_db().get_folder_agents_map(
+                        user_id, all_ids, tenant
+                    )
                     agents_map = _to_agent_summaries_map(raw_map)
                     root_agents = _to_agent_summaries(
-                        await library_db().get_root_agent_summaries(user_id)
+                        await library_db().get_root_agent_summaries(user_id, tenant)
                     )
                 return FolderListResponse(
                     message=f"Found {len(all_ids)} folder(s) in your library.",

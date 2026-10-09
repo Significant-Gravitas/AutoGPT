@@ -315,6 +315,21 @@ async def _record_activity(
 GATE_APPROVED = "_gate_approved"
 
 
+def parameters_without(parameters: dict[str, Any], *names: str) -> dict[str, Any]:
+    """A copy of a tool's parameter schema without the named arguments."""
+    return {
+        **parameters,
+        "properties": {
+            name: spec
+            for name, spec in parameters.get("properties", {}).items()
+            if name not in names
+        },
+        "required": [
+            name for name in parameters.get("required", []) if name not in names
+        ],
+    }
+
+
 class BaseTool:
     """Base class for all chat tools."""
 
@@ -368,6 +383,34 @@ class BaseTool:
         mcp_server_test.py fails otherwise.
         """
         return False, None
+
+    @property
+    def external_parameters(self) -> dict[str, Any]:
+        """The parameters an external caller may pass; a subset of ``parameters``.
+
+        The MCP server advertises this schema and refuses a call that passes
+        anything outside it. Override to keep an argument off the external
+        surface when it reaches something the v2 API has no permission for.
+        """
+        return self.parameters
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        """Permissions an external call needs on top of ``allow_external_use``'s.
+
+        For a tool whose arguments decide what it does: a branch that writes
+        what the tool's own permissions don't cover names that permission
+        here, so choosing an argument can't reach past the caller's scopes.
+        """
+        return []
+
+    @property
+    def spends_platform_money(self) -> bool:
+        """Whether a call bills the platform's own account, such as a paid model.
+
+        The MCP server checks the caller's paywall and usage allowance before
+        running one, as a chat turn does before it spends the same budget.
+        """
+        return False
 
     def activity_event(
         self,

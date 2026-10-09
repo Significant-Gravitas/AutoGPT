@@ -5,12 +5,15 @@ import json
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 
 from .agent_generator.validation import AgentFixer, AgentValidator, get_blocks_as_dicts
 from .agent_json_input import (
     AGENT_JSON_REF_SCHEMA,
     AGENT_JSON_SCHEMA,
+    reads_workspace_file,
     resolve_agent_json_or_error,
     write_agent_json_to_workspace,
 )
@@ -31,6 +34,14 @@ class FixAgentGraphTool(BaseTool):
     @property
     def allow_external_use(self):
         return True, []
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # Reading the graph from, or writing the fix to, a workspace file
+        # touches the caller's files.
+        needed = [APIKeyPermission.READ_FILES] if reads_workspace_file(args) else []
+        if isinstance(args.get("write_to"), str) and args["write_to"].strip():
+            needed.append(APIKeyPermission.WRITE_FILES)
+        return needed
 
     @property
     def description(self) -> str:

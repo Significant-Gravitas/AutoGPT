@@ -235,11 +235,6 @@ class CreateFeatureRequestTool(BaseTool):
         return "create_feature_request"
 
     @property
-    def allow_external_use(self):
-        # Reaches the platform's own Linear workspace, on the platform's key.
-        return True, [APIKeyPermission.USE_TOOLS]
-
-    @property
     def description(self) -> str:
         return (
             "Create a feature request or add need to existing one. "

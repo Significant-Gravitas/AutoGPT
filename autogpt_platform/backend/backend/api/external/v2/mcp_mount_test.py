@@ -75,6 +75,22 @@ def test_the_host_lifespan_can_run_more_than_once(
             pass
 
 
+def test_a_server_that_fails_to_start_leaves_the_host_up_answering_503(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The REST API must not go down with its MCP endpoint."""
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.create_mcp_app",
+        side_effect=RuntimeError("no tools today"),
+    )
+
+    with TestClient(_host(MCPMount())) as client:
+        response = client.post("/mcp/", headers=HEADERS, json=INITIALIZE)
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "service_unavailable"
+
+
 def test_before_the_lifespan_runs_the_mount_answers_in_the_v2_envelope() -> None:
     host = fastapi.FastAPI()
     host.mount("/mcp", MCPMount())

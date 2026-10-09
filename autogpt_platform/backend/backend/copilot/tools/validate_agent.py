@@ -3,12 +3,15 @@
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 
 from .agent_generator.validation import AgentValidator, get_blocks_as_dicts
 from .agent_json_input import (
     AGENT_JSON_REF_SCHEMA,
     AGENT_JSON_SCHEMA,
+    reads_workspace_file,
     resolve_agent_json_or_error,
 )
 from .base import BaseTool
@@ -28,6 +31,10 @@ class ValidateAgentGraphTool(BaseTool):
     @property
     def allow_external_use(self):
         return True, []
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # Reading the graph from a workspace file is a read of the caller's files.
+        return [APIKeyPermission.READ_FILES] if reads_workspace_file(args) else []
 
     @property
     def description(self) -> str:

@@ -607,6 +607,8 @@ async def save_agent_to_library(
     is_update: bool = False,
     folder_id: str | None = None,
     is_hidden: bool = False,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> tuple[Graph, "LibraryAgent"]:
     """Save agent to database and user's library.
 
@@ -616,6 +618,8 @@ async def save_agent_to_library(
         is_update: Whether this is an update to an existing agent
         folder_id: Optional folder ID to place the agent in
         is_hidden: Whether the agent should be hidden from library listing
+        organization_id, team_id: Tenancy for the new graph or version; None
+            keeps the defaults
 
     Returns:
         Tuple of (created Graph, LibraryAgent)
@@ -623,9 +627,16 @@ async def save_agent_to_library(
     graph = json_to_graph(agent_json)
     db = library_db()
     if is_update:
-        return await db.update_graph_in_library(graph, user_id)
+        return await db.update_graph_in_library(
+            graph, user_id, organization_id=organization_id, team_id=team_id
+        )
     return await db.create_graph_in_library(
-        graph, user_id, folder_id=folder_id, is_hidden=is_hidden
+        graph,
+        user_id,
+        folder_id=folder_id,
+        is_hidden=is_hidden,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
 

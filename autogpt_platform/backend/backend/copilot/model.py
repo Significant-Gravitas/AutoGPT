@@ -502,6 +502,14 @@ class ChatSession(ChatSessionInfo):
     persisted — the durable mode signal is the tool call in message
     history."""
 
+    external_caller: bool = Field(default=False, exclude=True)
+    """Runtime flag: True when an External API client calls one tool directly
+    (the v2 MCP server). Each such call gets a fresh session with no history,
+    so the checks that look for an earlier call in this session (the
+    agent-building guide, the library search before creating an agent) could
+    never pass; the client is offered those same tools and decides itself
+    when to call them. Never persisted."""
+
     @classmethod
     def new(
         cls,

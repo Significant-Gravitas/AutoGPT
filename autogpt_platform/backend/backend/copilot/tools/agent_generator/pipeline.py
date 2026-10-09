@@ -55,6 +55,8 @@ async def fix_validate_and_save(
     library_agents: list[dict[str, Any]] | None = None,
     folder_id: str | None = None,
     is_hidden: bool = False,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> ToolResponseBase:
     """Shared pipeline: auto-fix → validate → preview or save.
 
@@ -68,6 +70,8 @@ async def fix_validate_and_save(
         preview_message: Custom preview message (optional).
         save_message: Custom save success message (optional).
         library_agents: Library agents for AgentExecutorBlock validation/fixing.
+        organization_id, team_id: Tenancy for a new graph or version; None
+            keeps the defaults.
 
     Returns:
         An appropriate ToolResponseBase subclass.
@@ -178,6 +182,8 @@ async def fix_validate_and_save(
             is_update=is_update,
             folder_id=folder_id,
             is_hidden=is_hidden,
+            organization_id=organization_id,
+            team_id=team_id,
         )
         return AgentSavedResponse(
             message=(

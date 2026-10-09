@@ -13,7 +13,7 @@ required permissions are satisfied by the caller's API key / OAuth token.
 """
 
 import logging
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any, AsyncIterator, Sequence
 
 import pydantic
@@ -34,9 +34,16 @@ from starlette.applications import Starlette
 from starlette.types import Receive, Scope, Send
 
 from backend.api.external.v2.errors import error_response
+from backend.api.external.v2.mcp_calls import (
+    check_arguments,
+    check_spend_allowance,
+    input_schema,
+    missing_scopes,
+)
+from backend.api.external.v2.mcp_tenancy import check_ids_in_tenant
 from backend.api.external.v2.tenancy import resolve_credential_tenancy
 from backend.copilot.model import ChatSession
-from backend.copilot.sdk.tool_adapter import _build_input_schema, _execute_tool_sync
+from backend.copilot.sdk.tool_adapter import _execute_tool_sync
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.data.auth.api_key import validate_api_key
@@ -115,6 +122,8 @@ EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
     "post_to_chat_platform": "posts as the platform bot; no permission model yet",
     "edit_chat_platform_message": "posts as the platform bot; no permission model yet",
     "list_chat_platform_channels": "posts as the platform bot; no permission model yet",
+    "create_feature_request": "writes to the platform's own Linear workspace, on "
+    "the platform's key",
     # Security
     "bash_exec": "sandboxed shell on platform infrastructure",
     "start_desktop": "sandboxed desktop on platform infrastructure",
@@ -241,8 +250,19 @@ class MCPMount:
 
     @asynccontextmanager
     async def running(self) -> AsyncIterator[None]:
-        app = create_mcp_app()
-        async with app.router.lifespan_context(app):
+        """Serve the MCP app while the host runs; a failed start serves 503.
+
+        The REST API must not go down with its MCP endpoint, so a server that
+        fails to build or start is logged and the mount keeps answering 503.
+        """
+        async with AsyncExitStack() as stack:
+            try:
+                app = create_mcp_app()
+                await stack.enter_async_context(app.router.lifespan_context(app))
+            except Exception:
+                logger.exception("The MCP server failed to start; /mcp answers 503")
+                yield
+                return
             self._app = app
             try:
                 yield
@@ -345,34 +365,43 @@ def _create_tool_handler(
 ):
     """Create an async MCP tool handler that wraps a BaseTool subclass.
 
-    The handler checks that the caller's API key / OAuth token
-    has all ``required_scopes`` before executing the tool.
+    Before the tool runs, the call is held to the caller's credential: its
+    arguments to the advertised schema, its scopes to ``required_scopes`` plus
+    whatever the arguments add, the ids it names to the credential's
+    organization, and a tool that spends platform money to the caller's
+    allowance.
     """
 
     async def handler(ctx: Context, **kwargs: Any) -> str:
         # Raised, not returned: a rejection returned as content is reported to
         # the client as a successful call whose text happens to say "denied".
         access_token = get_access_token()
-        if not access_token:
+        if not isinstance(access_token, TenantedAccessToken):
             raise ToolError("Authentication required")
 
-        if required_scopes:
-            missing = [s for s in required_scopes if s not in access_token.scopes]
-            if missing:
-                raise ToolError(f"Missing required permission(s): {', '.join(missing)}")
+        check_arguments(tool, kwargs)
+        if missing := missing_scopes(
+            tool, required_scopes, kwargs, access_token.scopes
+        ):
+            raise ToolError(f"Missing required permission(s): {', '.join(missing)}")
 
         user_id = access_token.client_id
-        organization_id, team_id = (
-            (access_token.organization_id, access_token.team_id)
-            if isinstance(access_token, TenantedAccessToken)
-            else (None, None)
+        await check_ids_in_tenant(
+            tool.name, kwargs, user_id, access_token.organization_id
         )
+        if tool.spends_platform_money:
+            await check_spend_allowance(user_id)
+
+        # An automation session: nobody is watching to answer an approval
+        # card, so the credential's scopes are the authorization, as in REST.
         session = ChatSession.new(
             user_id,
             dry_run=False,
-            organization_id=organization_id,
-            team_id=team_id,
+            origin="automation",
+            organization_id=access_token.organization_id,
+            team_id=access_token.team_id,
         )
+        session.external_caller = True
 
         result = await _execute_tool_sync(tool, user_id, session, kwargs)
 
@@ -402,7 +431,7 @@ def _mcp_tool(tool: BaseTool, required_perms: Sequence[APIKeyPermission]) -> MCP
         name=tool.name,
         title=None,
         description=tool.description,
-        parameters=_build_input_schema(tool),
+        parameters=input_schema(tool),
         fn_metadata=_PASSTHROUGH_META,
         is_async=True,
         context_kwarg="ctx",

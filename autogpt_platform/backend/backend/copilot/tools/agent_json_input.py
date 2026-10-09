@@ -101,6 +101,24 @@ async def resolve_agent_json_input(
     return None, None
 
 
+def reads_workspace_file(args: dict[str, Any]) -> bool:
+    """Whether these arguments make the tool read the graph from a workspace file.
+
+    True for an ``agent_json_ref``, and for a string ``agent_json`` that isn't
+    inline JSON, which :func:`resolve_agent_json_input` also resolves as a
+    file reference. External callers need READ_FILES for that.
+    """
+    ref = args.get("agent_json_ref")
+    if isinstance(ref, str) and ref.strip():
+        return True
+    agent_json = args.get("agent_json")
+    return (
+        isinstance(agent_json, str)
+        and bool(agent_json.strip())
+        and _coerce_to_graph(agent_json) is None
+    )
+
+
 async def resolve_agent_json_or_error(
     *,
     agent_json: Any,

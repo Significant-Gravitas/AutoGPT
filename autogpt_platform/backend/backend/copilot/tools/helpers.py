@@ -1530,6 +1530,10 @@ def require_guide_read(session: ChatSession, tool_name: str):
     # requiring one would waste a round-trip every turn.
     if session.metadata.builder_graph_id:
         return None
+    # An External API call has no earlier calls to find; its client reads the
+    # guide through `get_agent_building_guide` when it wants it.
+    if session.external_caller:
+        return None
     # Building sessions get the guide in the (cached) system prompt — see
     # ``build_builder_system_prompt_suffix``.
     if session.guide_in_system_prompt:
@@ -1594,6 +1598,10 @@ def require_library_check(session: ChatSession, tool_name: str):
     from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
 
     if session.metadata.builder_graph_id:
+        return None
+    # As in `require_guide_read`: an External API call has no history; its
+    # client searches the library with `find_library_agent` itself.
+    if session.external_caller:
         return None
     if _was_called_for_creation(session):
         return None

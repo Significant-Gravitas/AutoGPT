@@ -81,6 +81,10 @@ class WebSearchTool(BaseTool):
         return True, [APIKeyPermission.USE_TOOLS]
 
     @property
+    def spends_platform_money(self) -> bool:
+        return True
+
+    @property
     def description(self) -> str:
         return (
             "Search the web for live info (news, recent docs). Returns a "

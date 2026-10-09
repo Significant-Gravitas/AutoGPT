@@ -15,6 +15,7 @@ from .agent_search import (
 )
 from .base import BaseTool
 from .expert_scope import require_installed_workflow, session_workflow_scope
+from .external_scope import external_tenant
 from .models import AgentInfo, AgentsFoundResponse, ErrorResponse, ToolResponseBase
 
 
@@ -28,6 +29,15 @@ class FindLibraryAgentTool(BaseTool):
     @property
     def allow_external_use(self):
         return True, [APIKeyPermission.READ_LIBRARY]
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # Writing the graph out puts a file in the caller's workspace.
+        if (
+            isinstance(args.get("write_graph_to"), str)
+            and args["write_graph_to"].strip()
+        ):
+            return [APIKeyPermission.WRITE_FILES]
+        return []
 
     @property
     def description(self) -> str:
@@ -181,6 +191,7 @@ class FindLibraryAgentTool(BaseTool):
         for_creation: bool,
         goal_summary: str,
     ) -> ToolResponseBase:
+        tenant = external_tenant(session)
         if for_creation:
             # No ``or query`` fallback: the gate only accepts non-empty
             # goal_summary, so falling back to ``query`` would loop the LLM.
@@ -188,6 +199,7 @@ class FindLibraryAgentTool(BaseTool):
                 goal_summary=goal_summary,
                 session_id=session.session_id,
                 user_id=user_id,
+                tenant=tenant,
             )
         write_graph_to = write_graph_to.strip()
         if write_graph_to and not agent_id.strip():
@@ -205,6 +217,7 @@ class FindLibraryAgentTool(BaseTool):
                 session_id=session.session_id,
                 user_id=user_id,
                 include_graph=include_graph and not write_graph_to,
+                tenant=tenant,
             )
             if write_graph_to and isinstance(result, AgentsFoundResponse):
                 note = await _write_graph_note(
@@ -218,6 +231,7 @@ class FindLibraryAgentTool(BaseTool):
             session_id=session.session_id,
             user_id=user_id,
             include_graph=include_graph,
+            tenant=tenant,
         )
 
 

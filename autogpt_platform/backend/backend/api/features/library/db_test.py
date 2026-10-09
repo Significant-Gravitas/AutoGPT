@@ -626,6 +626,42 @@ async def test_update_graph_in_library_allows_archived_library_agent(mocker):
 
 
 @pytest.mark.asyncio
+async def test_create_graph_in_library_tags_the_graph_and_entry_with_the_tenant(
+    mocker,
+):
+    """An External API call creates the agent in its credential's organization."""
+    graph_model = mocker.Mock(is_active=False)
+    created_graph = mocker.Mock(id="graph-id", version=1)
+    library_agent = mocker.Mock()
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.make_graph_model",
+        return_value=graph_model,
+    )
+    mocker.patch(
+        "backend.api.features.library.db.clear_unowned_auto_credentials",
+        new=mocker.AsyncMock(),
+    )
+    create_graph = mocker.patch(
+        "backend.api.features.library.db.graph_db.create_graph",
+        new=mocker.AsyncMock(return_value=created_graph),
+    )
+    create_entry = mocker.patch(
+        "backend.api.features.library.db.create_library_agent",
+        new=mocker.AsyncMock(return_value=[library_agent]),
+    )
+
+    await db.create_graph_in_library(
+        mocker.Mock(), "test-user", organization_id="org-1", team_id="team-1"
+    )
+
+    create_graph.assert_awaited_once_with(
+        graph_model, "test-user", organization_id="org-1", team_id="team-1"
+    )
+    assert create_entry.await_args.kwargs["organization_id"] == "org-1"
+    assert create_entry.await_args.kwargs["team_id"] == "team-1"
+
+
+@pytest.mark.asyncio
 async def test_create_library_agent_uses_upsert():
     """create_library_agent should use upsert (not create) to handle duplicates."""
     mock_graph = MagicMock()

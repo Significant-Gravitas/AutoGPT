@@ -30,7 +30,7 @@ from backend.data.workspace_scope import WorkspaceAccessDeniedError
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
-from .base import BaseTool
+from .base import BaseTool, parameters_without
 from .models import (
     ErrorResponse,
     ResponseType,
@@ -570,6 +570,11 @@ class ReadWorkspaceFileTool(BaseTool):
         return True, [APIKeyPermission.READ_FILES]
 
     @property
+    def external_parameters(self) -> dict[str, Any]:
+        # The working directory is the chat's sandbox; an external caller has none.
+        return parameters_without(self.parameters, "save_to_path")
+
+    @property
     def description(self) -> str:
         return (
             "Read a file from persistent workspace. Specify file_id or path. "
@@ -849,6 +854,11 @@ class WriteWorkspaceFileTool(BaseTool):
     @property
     def allow_external_use(self):
         return True, [APIKeyPermission.WRITE_FILES]
+
+    @property
+    def external_parameters(self) -> dict[str, Any]:
+        # The working directory is the chat's sandbox; an external caller has none.
+        return parameters_without(self.parameters, "source_path")
 
     @property
     def description(self) -> str:

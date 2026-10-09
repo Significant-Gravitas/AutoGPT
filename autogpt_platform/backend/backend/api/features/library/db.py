@@ -818,8 +818,14 @@ async def create_graph_in_library(
     user_id: str,
     folder_id: str | None = None,
     is_hidden: bool = False,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
-    """Create a new graph and add it to the user's library."""
+    """Create a new graph and add it to the user's library.
+
+    Without ``organization_id`` the graph is untagged and the library entry
+    goes to the user's default team.
+    """
     graph.version = 1
     graph_model = graph_db.make_graph_model(graph, user_id)
     graph_model.reassign_ids(user_id=user_id, reassign_graph_id=True)
@@ -833,7 +839,9 @@ async def create_graph_in_library(
     else:
         await clear_unowned_auto_credentials(graph_model, user_id)
 
-    created_graph = await graph_db.create_graph(graph_model, user_id)
+    created_graph = await graph_db.create_graph(
+        graph_model, user_id, organization_id=organization_id, team_id=team_id
+    )
 
     library_agents = await create_library_agent(
         graph=created_graph,
@@ -842,6 +850,8 @@ async def create_graph_in_library(
         create_library_agents_for_sub_graphs=False,
         folder_id=folder_id,
         is_hidden=is_hidden,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
     return created_graph, library_agents[0]
@@ -850,8 +860,13 @@ async def create_graph_in_library(
 async def update_graph_in_library(
     graph: graph_db.Graph,
     user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
-    """Create a new version of an existing graph and update the library entry."""
+    """Create a new version of an existing graph and update the library entry.
+
+    ``organization_id``/``team_id`` tag the new version; None leaves it untagged.
+    """
     existing_versions = await graph_db.get_graph_all_versions(graph.id, user_id)
     current_active_version = (
         next((v for v in existing_versions if v.is_active), None)
@@ -872,7 +887,9 @@ async def update_graph_in_library(
     else:
         await clear_unowned_auto_credentials(graph_model, user_id)
 
-    created_graph = await graph_db.create_graph(graph_model, user_id)
+    created_graph = await graph_db.create_graph(
+        graph_model, user_id, organization_id=organization_id, team_id=team_id
+    )
 
     library_agent = await get_library_agent_by_graph_id(
         user_id, created_graph.id, include_archived=True
@@ -1939,13 +1956,16 @@ def collect_tree_ids(
 
 
 async def get_folder_agent_summaries(
-    user_id: str, folder_id: str
+    user_id: str, folder_id: str, organization_id: Optional[str] = None
 ) -> list[dict[str, str | None]]:
     """Get a lightweight list of agents in a folder (id, name, description)."""
     all_agents: list[library_model.LibraryAgent] = []
     for page in itertools.count(1):
         resp = await list_library_agents(
-            user_id=user_id, folder_id=folder_id, page=page
+            user_id=user_id,
+            folder_id=folder_id,
+            page=page,
+            organization_id=organization_id,
         )
         all_agents.extend(resp.agents)
         if page >= resp.pagination.total_pages:
@@ -1957,12 +1977,16 @@ async def get_folder_agent_summaries(
 
 async def get_root_agent_summaries(
     user_id: str,
+    organization_id: Optional[str] = None,
 ) -> list[dict[str, str | None]]:
     """Get a lightweight list of root-level agents (folderId IS NULL)."""
     all_agents: list[library_model.LibraryAgent] = []
     for page in itertools.count(1):
         resp = await list_library_agents(
-            user_id=user_id, include_root_only=True, page=page
+            user_id=user_id,
+            include_root_only=True,
+            page=page,
+            organization_id=organization_id,
         )
         all_agents.extend(resp.agents)
         if page >= resp.pagination.total_pages:
@@ -1973,11 +1997,14 @@ async def get_root_agent_summaries(
 
 
 async def get_folder_agents_map(
-    user_id: str, folder_ids: list[str]
+    user_id: str, folder_ids: list[str], organization_id: Optional[str] = None
 ) -> dict[str, list[dict[str, str | None]]]:
     """Get agent summaries for multiple folders concurrently."""
     results = await asyncio.gather(
-        *(get_folder_agent_summaries(user_id, fid) for fid in folder_ids)
+        *(
+            get_folder_agent_summaries(user_id, fid, organization_id)
+            for fid in folder_ids
+        )
     )
     return dict(zip(folder_ids, results))
 

@@ -55,7 +55,7 @@ from backend.util.timezone_utils import (
     validate_timezone,
 )
 
-from .base import GATE_APPROVED, BaseTool
+from .base import GATE_APPROVED, BaseTool, parameters_without
 from .execution_utils import (
     NodeFailureSummary,
     build_run_health_warning,
@@ -69,6 +69,7 @@ from .expert_scope import (
     require_installed_workflow,
     ungranted_credential_hint,
 )
+from .external_scope import external_tenancy
 from .helpers import (
     get_inputs_from_schema,
     get_picker_inputs_from_schema,
@@ -238,6 +239,22 @@ class RunAgentTool(BaseTool):
     @property
     def allow_external_use(self):
         return True, [APIKeyPermission.RUN_AGENT]
+
+    @property
+    def external_parameters(self) -> dict[str, Any]:
+        # Presets aren't part of the v2 surface and have no API-key permission.
+        return parameters_without(self.parameters, "preset_id")
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        needed = []
+        # Either one switches to scheduling (`_execute`), which the REST
+        # schedule endpoint guards with WRITE_SCHEDULE on top of RUN_AGENT.
+        if args.get("schedule_name") or args.get("cron"):
+            needed.append(APIKeyPermission.WRITE_SCHEDULE)
+        # A marketplace agent not yet in the library is added to it to run.
+        if args.get("username_agent_slug"):
+            needed.append(APIKeyPermission.WRITE_LIBRARY)
+        return needed
 
     @property
     def description(self) -> str:
@@ -1006,7 +1023,9 @@ class RunAgentTool(BaseTool):
             ).from_outside()
 
         # Get or create library agent
-        library_agent = await get_or_create_library_agent(graph, user_id)
+        library_agent = await get_or_create_library_agent(
+            graph, user_id, *external_tenancy(session)
+        )
         emit_tool_display_name(library_agent.name)
 
         # Execute — ``add_graph_execution`` ultimately calls
@@ -1330,7 +1349,9 @@ class RunAgentTool(BaseTool):
             user_timezone = get_user_timezone_or_utc(user.timezone)
 
         # Get or create library agent
-        library_agent = await get_or_create_library_agent(graph, user_id)
+        library_agent = await get_or_create_library_agent(
+            graph, user_id, *external_tenancy(session)
+        )
         emit_tool_display_name(library_agent.name)
 
         # Create schedule — the scheduler re-validates credentials via
