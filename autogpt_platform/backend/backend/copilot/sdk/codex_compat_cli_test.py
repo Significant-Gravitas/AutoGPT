@@ -84,7 +84,9 @@ class _ClaudeHarnessTransport:
 @pytest.mark.asyncio
 async def test_bundled_claude_cli_executes_mcp_tool_through_codex_gateway(
     tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
     tool_called = asyncio.Event()
     stderr_lines: list[str] = []
 

@@ -61,6 +61,10 @@ from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
+from backend.copilot.sdk.cost_tracking import (
+    TokenUsage as _TokenUsage,
+    read_cli_session_usage,
+)
 from backend.copilot.tool_display import tool_calls_for_provider
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
@@ -104,7 +108,6 @@ from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 
 from ..moonshot import (
     is_moonshot_model as _is_moonshot_model,
-    override_cost_usd as _override_cost_for_moonshot,
 )
 from ..model import (
     ChatMessage,
@@ -693,6 +696,10 @@ async def _consume_sdk_until_done(
             # complete normally, the synthetic error text is stored
             # in the transcript, and the session grows without bound.
             if _is_prompt_too_long(RuntimeError(sdk_msg.result or "")):
+                # A later API call can fail after earlier calls incurred spend.
+                # Preflight rejections report zero even on a resumed session.
+                if sdk_msg.total_cost_usd:
+                    _record_result_usage(sdk_msg, state, ctx.log_prefix)
                 raise RuntimeError("Prompt is too long")
 
             _record_result_usage(sdk_msg, state, ctx.log_prefix)
@@ -1241,26 +1248,14 @@ def _friendly_error_text(raw: str) -> str:
 def _record_result_usage(
     sdk_msg: ResultMessage, state: "_RetryState", log_prefix: str
 ) -> None:
-    """Add the turn's token usage and cost from the CLI's ``ResultMessage``."""
-    # Capture token usage from ResultMessage.
-    # Anthropic reports cached tokens separately:
-    #   input_tokens = uncached only
-    #   cache_read_input_tokens = served from cache
-    #   cache_creation_input_tokens = written to cache
+    """Record this query using the model it actually ran on."""
+    state.usage.record_result(
+        sdk_msg.usage,
+        sdk_msg.total_cost_usd,
+        state.observed_model or getattr(state.options, "model", None),
+        log_prefix,
+    )
     if sdk_msg.usage:
-        # Use `or 0` instead of a default in .get() because
-        # OpenRouter may include the key with a null value (e.g.
-        # {"cache_read_input_tokens": null}) for models that don't
-        # yet report cache tokens, making .get("key", 0) return
-        # None rather than the fallback 0.
-        state.usage.prompt_tokens += sdk_msg.usage.get("input_tokens") or 0
-        state.usage.cache_read_tokens += (
-            sdk_msg.usage.get("cache_read_input_tokens") or 0
-        )
-        state.usage.cache_creation_tokens += (
-            sdk_msg.usage.get("cache_creation_input_tokens") or 0
-        )
-        state.usage.completion_tokens += sdk_msg.usage.get("output_tokens") or 0
         logger.info(
             "%s Token usage: uncached=%d, cache_read=%d, cache_create=%d, output=%d",
             log_prefix,
@@ -1269,36 +1264,6 @@ def _record_result_usage(
             state.usage.cache_creation_tokens,
             state.usage.completion_tokens,
         )
-    if sdk_msg.total_cost_usd is not None:
-        # Default: trust the CLI-reported value.  Accurate for
-        # Anthropic models (the CLI's bundled pricing table is
-        # Anthropic-authored), and becomes the sync-path cost
-        # when the reconcile is disabled or fails.
-        # Prefer the ACTUALLY executed model
-        # (``state.observed_model`` from ``AssistantMessage.model``)
-        # over the requested primary (``state.options.model``)
-        # so a fallback activation doesn't mis-route pricing.
-        active_model = state.observed_model or getattr(state.options, "model", None)
-        if _is_moonshot_model(active_model):
-            # Moonshot slug — the CLI doesn't know Moonshot's
-            # rate card and silently bills at Sonnet rates
-            # (~5x over-charge).  Replace with the rate-card
-            # estimate so the in-stream ``cost_usd`` and the
-            # reconcile's lookup-fail fallback reflect
-            # reality.  Reconcile
-            # (``record_turn_cost_from_openrouter``) still
-            # overrides this value when every gen-ID lookup
-            # succeeds.
-            state.usage.cost_usd = _override_cost_for_moonshot(
-                model=active_model,
-                sdk_reported_usd=sdk_msg.total_cost_usd,
-                prompt_tokens=state.usage.prompt_tokens,
-                completion_tokens=state.usage.completion_tokens,
-                cache_read_tokens=state.usage.cache_read_tokens,
-                cache_creation_tokens=state.usage.cache_creation_tokens,
-            )
-        else:
-            state.usage.cost_usd = sdk_msg.total_cost_usd
 
 
 def _platform_out_of_credits_refusal(
@@ -1385,31 +1350,6 @@ class ReducedContext(NamedTuple):
     # compress_context applies progressively more aggressive reduction
     # (LLM summarize → content truncate → middle-out delete → first/last trim).
     target_tokens: int | None = None
-
-
-@dataclass
-class _TokenUsage:
-    """Token usage accumulators for a single turn.
-
-    Separated from `_RetryState` because usage is reset between retry
-    attempts independently of the retry-control fields, and is read by
-    the outer `stream_chat_completion_sdk` scope after the retry loop
-    completes.
-    """
-
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    cache_read_tokens: int = 0
-    cache_creation_tokens: int = 0
-    cost_usd: float | None = None
-
-    def reset(self) -> None:
-        """Reset all accumulators for a new attempt."""
-        self.prompt_tokens = 0
-        self.completion_tokens = 0
-        self.cache_read_tokens = 0
-        self.cache_creation_tokens = 0
-        self.cost_usd = None
 
 
 @dataclass
@@ -2498,8 +2438,8 @@ async def _do_transient_backoff(
     """Emit a retry notification, sleep, and reset the SDK adapter.
 
     Yields a single :class:`StreamStatus` so the caller can forward it to
-    the client, then sleeps for *backoff* seconds and resets ``state.adapter``
-    and ``state.usage`` so the next attempt starts clean.
+    the client, then sleeps for *backoff* seconds and resets ``state.adapter``.
+    Usage and the CLI cost baseline survive because the retry resumes the session.
 
     Extracted from both exception handlers in the retry loop to remove
     near-identical code duplication.
@@ -2510,7 +2450,6 @@ async def _do_transient_backoff(
         message_id=message_id,
         session_id=session_id,
     )
-    state.usage.reset()
 
 
 def _is_fallback_stderr(line: str) -> bool:
@@ -4227,6 +4166,13 @@ async def _run_stream_attempt(
     # CLI subprocess spawn + MCP init can take seconds on cold starts —
     # narrate it so the status doesn't sit on the context-prep message.
     yield StreamStatus(message="Starting the assistant…")
+    # An interruption can precede ResultMessage. Keep the baseline across
+    # resumed retries so the next result includes that unreported spend.
+    if state.usage.cli_session_total_usd is None:
+        baseline = await asyncio.to_thread(
+            read_cli_session_usage, ctx.sdk_cwd, state.options.resume, ctx.log_prefix
+        )
+        state.usage.start_cli_session(baseline)
     sdk_client = ClaudeSDKClient(options=state.options)
     client = await sdk_client.__aenter__()
     try:
@@ -4373,6 +4319,17 @@ async def _run_stream_attempt(
             yield response
 
     if not acc.stream_completed and not loop_state.ended_with_stream_error:
+        snapshot = await asyncio.to_thread(
+            read_cli_session_usage,
+            ctx.sdk_cwd,
+            state.options.resume or state.options.session_id or ctx.session_id,
+            ctx.log_prefix,
+        )
+        state.usage.record_unreported(
+            snapshot,
+            state.observed_model or getattr(state.options, "model", None),
+            ctx.log_prefix,
+        )
         # User cancels raise ``asyncio.CancelledError`` upstream; reaching this
         # branch means the CLI hung up — per-query budget exhausted, max_turns,
         # OOM, or crash — without ever emitting a ResultMessage.
@@ -5819,6 +5776,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         delete_stale_cli_session_file(sdk_cwd, session_id, log_prefix)
                     sdk_options_retry.resume = None
                     sdk_options_retry.session_id = session_id
+                    # The new CLI total starts at zero; retain the turn's spend.
+                    state.usage.cli_session_total_usd = None
                 # Recompute system_prompt for retry. When enabled, the preset
                 # is safe on every turn (requires CLI ≥ 2.1.98, bundled in
                 # claude-agent-sdk >= 0.1.64).
@@ -5888,9 +5847,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # silent failure on the retry.
                 if prior_adapter.emitted_real_content_to_wire:
                     state.adapter.prior_attempt_emitted_visible_content = True
-                # Reset token accumulators so a failed attempt's partial
-                # usage is not double-counted in the successful attempt.
-                state.usage.reset()
 
             pre_attempt_msg_count = len(session.messages)
             # Snapshot transcript builder state — it maintains an
