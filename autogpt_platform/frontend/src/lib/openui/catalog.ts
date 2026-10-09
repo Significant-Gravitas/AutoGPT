@@ -63,10 +63,18 @@ export const Insight = defineComponent({
 export const Checklist = defineComponent({
   name: "Checklist",
   description:
-    "An interactive checklist with at most 12 items that the user can tick off locally. Split longer lists into multiple checklists without dropping tasks. This does not execute tasks.",
+    "An interactive checklist with at most 12 items that the user can tick off locally. Set an item's optional done flag to true for completion the user has reported. Split longer lists into multiple checklists without dropping tasks. This does not execute tasks.",
   props: z.object({
     title: z.string(),
-    items: z.array(z.object({ title: z.string(), detail: z.string() })).max(12),
+    items: z
+      .array(
+        z.object({
+          title: z.string(),
+          detail: z.string(),
+          done: z.boolean().optional(),
+        }),
+      )
+      .max(12),
   }),
   component: null,
 });

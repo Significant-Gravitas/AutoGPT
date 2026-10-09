@@ -1,36 +1,18 @@
-import {
-  useStateField,
-  type ComponentRenderProps,
-} from "@openuidev/react-lang";
+import type { ComponentRenderProps } from "@openuidev/react-lang";
 import type { z } from "zod/v4";
 import type { Checklist } from "@/lib/openui/catalog";
 import { cn } from "@/lib/utils";
-import { useOpenUIDisabled } from "../interactionContext";
+import { useChecklistView } from "./useChecklistView";
 
 export function ChecklistView({
   props,
   statementId,
 }: ComponentRenderProps<z.infer<typeof Checklist.props>>) {
-  const field = useStateField<number[]>(
-    `checklist:${statementId ?? props.title}`,
-    [],
-  );
-  const completed = new Set<number>(
-    Array.isArray(field.value)
-      ? field.value.filter(
-          (value): value is number => typeof value === "number",
-        )
-      : [],
-  );
-  const disabled = useOpenUIDisabled();
   const items = props.items?.slice(0, 12) ?? [];
-  function toggle(index: number) {
-    if (disabled) return;
-    const next = new Set(completed);
-    if (next.has(index)) next.delete(index);
-    else next.add(index);
-    field.setValue([...next]);
-  }
+  const { completed, disabled, toggle } = useChecklistView(
+    items,
+    `checklist:${statementId ?? props.title}`,
+  );
   return (
     <section>
       <div className="mb-4 flex items-center justify-between gap-2">

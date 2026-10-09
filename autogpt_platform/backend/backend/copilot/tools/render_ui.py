@@ -9,6 +9,7 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ErrorResponse, ResponseType, ToolResponseBase
+from backend.copilot.tools.openui_source import validate_complete_delimiters
 
 
 class RenderUIInput(BaseModel):
@@ -22,6 +23,7 @@ class RenderUIInput(BaseModel):
     def workspace_program(cls, value: str) -> str:
         if not re.match(r"root\s*=\s*Workspace\s*\(", value):
             raise ValueError("Start source with root = Workspace(...), without fences")
+        validate_complete_delimiters(value)
         return value
 
 
@@ -91,9 +93,11 @@ class RenderUITool(BaseTool):
             )
         try:
             request = RenderUIInput.model_validate(kwargs)
-        except ValidationError:
+        except ValidationError as error:
+            issue = error.errors(include_input=False, include_url=False)[0]
             return ErrorResponse(
                 message=(
+                    f"{issue['msg']}. "
                     "Provide a complete OpenUI program beginning with root = "
                     "Workspace(...), at most 60,000 characters, and a nonempty "
                     "plain-text summary of at most 10,000 characters."
