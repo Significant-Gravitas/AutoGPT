@@ -142,3 +142,13 @@ def boundaries(subscription, session):
         ),
     ):
         yield tx
+
+
+@pytest.fixture
+def trial_cancel_flag():
+    """The trial-cancel flag as reconcile reads it: authoritatively off unless a
+    test sets ``return_value``. Opt-in, so it never leaks into other modules."""
+    with patch.object(
+        fulfillment, "evaluate_feature_flag", AsyncMock(return_value=(False, True))
+    ) as flag:
+        yield flag

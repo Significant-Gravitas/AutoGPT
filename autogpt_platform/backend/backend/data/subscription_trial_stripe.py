@@ -16,6 +16,11 @@ from backend.data.subscription_trial_payment import (
 )
 from backend.data.subscription_trial_payment import get_customer_default_payment_method
 from backend.data.subscription_trial_rejection import TrialRejectionReason
+from backend.util.feature_flag import Flag, evaluate_feature_flag
+
+# Our clock may trail Stripe's: a trial Stripe ended "now" can read as ending
+# a moment from now here.
+STRIPE_CLOCK_SKEW_SECONDS = 300
 
 
 async def reconcile_trial_subscription(
@@ -84,7 +89,7 @@ async def _reconcile_locked(
                 rejection_reason = TrialRejectionReason.CARD_VERIFICATION_FAILED
             elif not await claim_trial_identities(trial, fingerprint, tx):
                 rejection_reason = TrialRejectionReason.INTRO_OFFER_ALREADY_USED
-        if snapshot.cancel_at_period_end or rejection_reason:
+        if rejection_reason or await _ends_scheduled_cancellation_now(trial, snapshot):
             cancel_params: stripe.Subscription.CancelParams = {
                 "invoice_now": False,
                 "prorate": False,
@@ -139,6 +144,22 @@ async def _reconcile_locked(
         data={"subscriptionTier": tier},
     )
     return dict(raw), tier
+
+
+async def _ends_scheduled_cancellation_now(
+    trial: TrialState, snapshot: SubscriptionSnapshot
+) -> bool:
+    """A cancel-pending trial keeps its access until Stripe ends it at trial_end.
+
+    Only an authoritative "off" ends it now, as before the flag, and never one
+    already recorded as cancel-pending: turning the flag off must not take back
+    access that was promised.
+    """
+    if not snapshot.cancel_at_period_end or trial.cancel_at_period_end:
+        return False
+    return await evaluate_feature_flag(
+        Flag.TRIAL_CANCEL_AT_PERIOD_END, trial.user_id, default=False
+    ) == (False, True)
 
 
 async def _completed_card_checkout(
@@ -201,7 +222,7 @@ def trial_subscription_tier(
     invoice = subscription.latest_invoice
     if (
         subscription.status == "active"
-        and end <= now.timestamp()
+        and end <= now.timestamp() + STRIPE_CLOCK_SKEW_SECONDS
         and invoice is not None
         and invoice.status == "paid"
         and invoice.created >= end

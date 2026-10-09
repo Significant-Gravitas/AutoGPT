@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Awaitable, Literal
 
 import stripe
 from autogpt_libs.auth import get_user_id
@@ -22,6 +22,11 @@ from backend.data.subscription_trial import (
     get_subscription_trial,
     has_received_onboarding_credit,
 )
+from backend.data.subscription_trial_cancel import (
+    TrialChangeRefused,
+    resume_trial_subscription,
+    schedule_trial_cancellation,
+)
 from backend.data.subscription_trial_capacity import trial_seat_available
 from backend.data.subscription_trial_checkout import (
     TrialUnavailable,
@@ -32,6 +37,7 @@ from backend.data.subscription_trial_checkout import (
 from backend.data.subscription_trial_config import AcceptedTrialOffer, get_trial_offer
 from backend.data.subscription_trial_rejection import TrialRejectionReason
 from backend.data.user import get_user_by_id
+from backend.util.feature_flag import Flag, evaluate_feature_flag, is_feature_enabled
 from backend.util.product_analytics import track_checkout_started
 from backend.util.settings import Settings
 
@@ -43,6 +49,7 @@ router = APIRouter(
     dependencies=[Depends(enforce_subscription_status_rate_limit)],
 )
 CurrentUser = Annotated[str, Security(get_user_id)]
+CANCEL_RETRY = "Unable to cancel your trial. Please retry."
 
 
 class TrialOfferResponse(BaseModel):
@@ -109,6 +116,9 @@ async def get_trial_status(
             rejection_reason=trial.rejection_reason,
             ends_at=trial.ends_at,
             cancel_at_period_end=trial.cancel_at_period_end,
+            cancel_keeps_access=await is_feature_enabled(
+                Flag.TRIAL_CANCEL_AT_PERIOD_END, user_id, default=False
+            ),
             active=trial.active,
             converted=trial.converted_at is not None,
             onboarding_credits_previously_received=await has_received_onboarding_credit(
@@ -144,6 +154,9 @@ async def get_trial_status(
     return TrialStatusResponse(
         eligible=True,
         offer=TrialOfferResponse.from_offer(accepted),
+        cancel_keeps_access=await is_feature_enabled(
+            Flag.TRIAL_CANCEL_AT_PERIOD_END, user_id, default=False
+        ),
         onboarding_credits_previously_received=await has_received_onboarding_credit(
             user_id
         ),
@@ -223,6 +236,9 @@ async def cancel_trial(user_id: CurrentUser) -> TrialStatusResponse:
         or trial.converted_at is not None
     ):
         raise HTTPException(409, "No trial subscription is available to cancel")
+    if await _cancel_keeps_access(user_id):
+        await _apply_trial_change(schedule_trial_cancellation(trial), CANCEL_RETRY)
+        return await get_trial_status(user_id)
     try:
         subscription = await stripe_call(
             stripe.Subscription.retrieve_async, trial.subscription_id
@@ -255,7 +271,30 @@ async def cancel_trial(user_id: CurrentUser) -> TrialStatusResponse:
     },
 )
 async def resume_trial(user_id: CurrentUser) -> TrialStatusResponse:
-    raise HTTPException(501, "Not implemented")  # contract stub, implemented next
+    trial = await get_subscription_trial(user_id)
+    await _apply_trial_change(
+        resume_trial_subscription(trial), "Unable to resume your trial. Please retry."
+    )
+    return await get_trial_status(user_id)
+
+
+async def _cancel_keeps_access(user_id: str) -> bool:
+    """Refuse on an unreadable flag: guessing "off" would end the trial for good."""
+    keeps_access, authoritative = await evaluate_feature_flag(
+        Flag.TRIAL_CANCEL_AT_PERIOD_END, user_id, default=False
+    )
+    if not authoritative:
+        raise HTTPException(502, CANCEL_RETRY)
+    return keeps_access
+
+
+async def _apply_trial_change(change: Awaitable[None], retry: str) -> None:
+    try:
+        await change
+    except TrialChangeRefused as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except stripe.StripeError as exc:
+        raise HTTPException(502, retry) from exc
 
 
 @router.post(

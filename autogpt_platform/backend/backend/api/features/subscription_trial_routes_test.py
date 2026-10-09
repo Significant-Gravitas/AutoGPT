@@ -10,10 +10,15 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from jwt.algorithms import ECAlgorithm
+from prisma.enums import SubscriptionTier
 
 from backend.api.features import subscription_trial_routes as routes
+from backend.data import subscription_trial_cancel as trial_cancel
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
+from backend.util.feature_flag import Flag
+
+ENDED = "This trial has ended. Manage the plan in billing."
 
 
 @pytest.fixture(autouse=True)
@@ -29,6 +34,22 @@ def track_checkout_started(monkeypatch) -> AsyncMock:
     track = AsyncMock()
     monkeypatch.setattr(routes, "track_checkout_started", track)
     return track
+
+
+@pytest.fixture(autouse=True)
+def cancel_flag(monkeypatch) -> AsyncMock:
+    """The trial-cancel flag as cancel reads it: authoritatively off by default."""
+    flag = AsyncMock(return_value=(False, True))
+    monkeypatch.setattr(routes, "evaluate_feature_flag", flag)
+    return flag
+
+
+@pytest.fixture(autouse=True)
+def keeps_access_copy(monkeypatch) -> AsyncMock:
+    """The same flag as the status copy reads it: off by default."""
+    flag = AsyncMock(return_value=False)
+    monkeypatch.setattr(routes, "is_feature_enabled", flag)
+    return flag
 
 
 @pytest.fixture
@@ -309,6 +330,301 @@ async def test_cancellation_cannot_cancel_another_customer_or_paid_plan(
             await routes.cancel_trial(trial.user_id)
     assert error.value.status_code == 409
     cancel.assert_not_awaited()
+
+
+def _started(trial: TrialState, **changes) -> TrialState:
+    now = datetime.now(UTC)
+    return trial.model_copy(
+        update={
+            "subscription_id": "sub_1",
+            "status": "trialing",
+            "consumed_at": now,
+            "card_verified_at": now,
+            "started_at": now,
+            "ends_at": now + timedelta(days=5),
+            **changes,
+        }
+    )
+
+
+def _live(trial: TrialState, **changes):
+    return routes.stripe.Subscription.construct_from(
+        {
+            "id": "sub_1",
+            "customer": trial.customer_id,
+            "status": "trialing",
+            "cancel_at_period_end": False,
+            "trial_end": int((datetime.now(UTC) + timedelta(days=5)).timestamp()),
+            "metadata": {"trial_enrollment_id": trial.id, "user_id": trial.user_id},
+            **changes,
+        },
+        "test-key",
+    )
+
+
+@pytest.fixture
+def live_stripe():
+    """Stripe, the syncs and the status lookups a cancel or resume reaches."""
+    calls = MagicMock()
+    with (
+        patch.object(routes.stripe.Subscription, "retrieve_async", AsyncMock()) as get,
+        patch.object(routes.stripe.Subscription, "modify_async", AsyncMock()) as modify,
+        patch.object(routes.stripe.Subscription, "cancel_async", AsyncMock()) as end,
+        patch.object(
+            trial_cancel, "expire_other_subscription_checkouts", AsyncMock()
+        ) as expire,
+        patch.object(
+            trial_cancel, "sync_subscription_from_stripe", AsyncMock()
+        ) as sync,
+        patch.object(routes, "sync_subscription_from_stripe", AsyncMock()) as old_sync,
+        patch.object(
+            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
+        ),
+    ):
+        for name, mock in (
+            ("retrieve", get),
+            ("modify", modify),
+            ("end_now", end),
+            ("expire", expire),
+            ("sync", sync),
+            ("old_sync", old_sync),
+        ):
+            calls.attach_mock(mock, name)
+        yield calls
+
+
+@pytest.mark.asyncio
+async def test_cancel_with_the_flag_on_keeps_access_until_trial_end(
+    trial, cancel_flag, keeps_access_copy, live_stripe
+):
+    cancel_flag.return_value = (True, True)
+    keeps_access_copy.return_value = True
+    started = _started(trial)
+    pending = _live(started, cancel_at_period_end=True)
+    live_stripe.retrieve.return_value = _live(started)
+    live_stripe.modify.return_value = pending
+    after = started.model_copy(update={"cancel_at_period_end": True})
+    with patch.object(
+        routes, "get_subscription_trial", AsyncMock(side_effect=[started, after])
+    ):
+        status = await routes.cancel_trial(started.user_id)
+    live_stripe.modify.assert_awaited_once_with("sub_1", cancel_at_period_end=True)
+    live_stripe.end_now.assert_not_awaited()
+    live_stripe.sync.assert_awaited_once_with(dict(pending))
+    cancel_flag.assert_awaited_once_with(
+        Flag.TRIAL_CANCEL_AT_PERIOD_END, started.user_id, default=False
+    )
+    assert status.active and status.status == "trialing"
+    assert status.cancel_at_period_end and status.cancel_keeps_access
+
+
+@pytest.mark.asyncio
+async def test_flag_on_cancel_after_the_trial_ended_reconciles_then_conflicts(
+    trial, cancel_flag, live_stripe
+):
+    cancel_flag.return_value = (True, True)
+    started = _started(trial)
+    ended = _live(started, status="canceled")
+    live_stripe.retrieve.return_value = ended
+    with patch.object(
+        routes, "get_subscription_trial", AsyncMock(return_value=started)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.cancel_trial(started.user_id)
+    assert (error.value.status_code, error.value.detail) == (409, ENDED)
+    live_stripe.sync.assert_awaited_once_with(dict(ended))
+    live_stripe.modify.assert_not_awaited()
+    live_stripe.end_now.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"customer": "cus_other"},
+        {"metadata": {"trial_enrollment_id": "trial-x", "user_id": "user-1"}},
+    ],
+    ids=["other-customer", "other-enrollment"],
+)
+async def test_flag_on_cancel_refuses_a_subscription_the_trial_does_not_own(
+    trial, cancel_flag, live_stripe, change
+):
+    cancel_flag.return_value = (True, True)
+    started = _started(trial)
+    live_stripe.retrieve.return_value = _live(started, **change)
+    with patch.object(
+        routes, "get_subscription_trial", AsyncMock(return_value=started)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.cancel_trial(started.user_id)
+    assert (error.value.status_code, error.value.detail) == (409, ENDED)
+    live_stripe.modify.assert_not_awaited()
+    live_stripe.end_now.assert_not_awaited()
+    live_stripe.sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_flag_on_cancel_stripe_failure_is_retryable_without_a_sync(
+    trial, cancel_flag, live_stripe
+):
+    cancel_flag.return_value = (True, True)
+    started = _started(trial)
+    live_stripe.retrieve.return_value = _live(started)
+    live_stripe.modify.side_effect = routes.stripe.APIConnectionError("unreachable")
+    with patch.object(
+        routes, "get_subscription_trial", AsyncMock(return_value=started)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.cancel_trial(started.user_id)
+    assert error.value.status_code == 502
+    assert error.value.detail == "Unable to cancel your trial. Please retry."
+    live_stripe.sync.assert_not_awaited()
+    live_stripe.old_sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_flag_on_cancel_of_a_converted_trial_is_conflict(
+    trial, cancel_flag, live_stripe
+):
+    cancel_flag.return_value = (True, True)
+    converted = _started(trial, converted_at=datetime.now(UTC))
+    with patch.object(
+        routes, "get_subscription_trial", AsyncMock(return_value=converted)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.cancel_trial(converted.user_id)
+    assert error.value.status_code == 409
+    live_stripe.retrieve.assert_not_awaited()
+    cancel_flag.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [(False, False), (True, False)])
+async def test_an_unreadable_flag_refuses_to_cancel_before_touching_stripe(
+    trial, cancel_flag, live_stripe, value
+):
+    """Guessing "off" would end, for good, a trial the person was promised."""
+    cancel_flag.return_value = value
+    started = _started(trial)
+    with patch.object(
+        routes, "get_subscription_trial", AsyncMock(return_value=started)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.cancel_trial(started.user_id)
+    assert error.value.status_code == 502
+    assert error.value.detail == "Unable to cancel your trial. Please retry."
+    assert live_stripe.mock_calls == []
+
+
+@pytest.mark.asyncio
+async def test_resume_takes_back_a_scheduled_cancellation(
+    trial, cancel_flag, live_stripe
+):
+    """Resume follows the trial's own state, never the flag: a trial canceled
+    while the flag was on stays resumable after it is turned off."""
+    pending = _started(trial, cancel_at_period_end=True)
+    resumed = _live(pending)
+    live_stripe.retrieve.return_value = _live(pending, cancel_at_period_end=True)
+    live_stripe.modify.return_value = resumed
+    after = pending.model_copy(update={"cancel_at_period_end": False})
+    with patch.object(
+        routes, "get_subscription_trial", AsyncMock(side_effect=[pending, after])
+    ):
+        status = await routes.resume_trial(pending.user_id)
+    live_stripe.expire.assert_awaited_once_with("cus_1")
+    live_stripe.modify.assert_awaited_once_with("sub_1", cancel_at_period_end=False)
+    live_stripe.sync.assert_awaited_once_with(dict(resumed))
+    cancel_flag.assert_not_awaited()
+    assert status.active and not status.cancel_at_period_end
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "changes,live,detail",
+    [
+        ({}, {}, "Nothing to resume."),
+        ({"converted_at": datetime.now(UTC)}, None, "Nothing to resume."),
+        ({}, {"status": "canceled", "cancel_at_period_end": True}, ENDED),
+    ],
+    ids=["not-pending", "converted", "ended"],
+)
+async def test_resume_without_a_live_scheduled_cancellation_is_conflict(
+    trial, live_stripe, changes, live, detail
+):
+    current = _started(trial, cancel_at_period_end=True, **changes)
+    live_stripe.retrieve.return_value = None if live is None else _live(current, **live)
+    with patch.object(
+        routes, "get_subscription_trial", AsyncMock(return_value=current)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.resume_trial(current.user_id)
+    assert (error.value.status_code, error.value.detail) == (409, detail)
+    live_stripe.modify.assert_not_awaited()
+    live_stripe.expire.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resume_stripe_failure_is_retryable_without_a_sync(trial, live_stripe):
+    pending = _started(trial, cancel_at_period_end=True)
+    live_stripe.retrieve.return_value = _live(pending, cancel_at_period_end=True)
+    live_stripe.modify.side_effect = routes.stripe.APIConnectionError("unreachable")
+    with patch.object(
+        routes, "get_subscription_trial", AsyncMock(return_value=pending)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.resume_trial(pending.user_id)
+    assert error.value.status_code == 502
+    assert error.value.detail == "Unable to resume your trial. Please retry."
+    live_stripe.sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_trial_status_says_whether_canceling_keeps_access(
+    trial, keeps_access_copy, enabled
+):
+    keeps_access_copy.return_value = enabled
+    with (
+        patch.object(
+            routes, "get_subscription_trial", AsyncMock(return_value=_started(trial))
+        ),
+        patch.object(
+            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
+        ),
+    ):
+        status = await routes.get_trial_status(trial.user_id)
+    assert status.cancel_keeps_access is enabled
+    keeps_access_copy.assert_awaited_once_with(
+        Flag.TRIAL_CANCEL_AT_PERIOD_END, trial.user_id, default=False
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_trial_offer_says_whether_canceling_keeps_access(
+    trial, keeps_access_copy, enabled
+):
+    keeps_access_copy.return_value = enabled
+    user = MagicMock(
+        stripe_customer_id=None,
+        created_at=datetime.now(UTC),
+        subscription_tier=SubscriptionTier.NO_TIER,
+    )
+    with (
+        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=None)),
+        patch.object(routes, "get_trial_offer", AsyncMock(return_value=trial.offer)),
+        patch.object(routes, "trial_seat_available", AsyncMock(return_value=True)),
+        patch.object(routes, "get_user_by_id", AsyncMock(return_value=user)),
+        patch.object(
+            routes, "resolve_trial_price", AsyncMock(return_value=trial.offer)
+        ),
+        patch.object(
+            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
+        ),
+    ):
+        status = await routes.get_trial_status(trial.user_id)
+    assert status.eligible
+    assert status.cancel_keeps_access is enabled
 
 
 @pytest.mark.asyncio
