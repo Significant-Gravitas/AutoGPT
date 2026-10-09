@@ -4,10 +4,10 @@ import { screen, waitFor } from "@testing-library/react";
 import type { UIMessageChunk } from "ai";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetCopilotChatRegistry } from "../copilotChatRegistry";
 import { useCopilotStreamStore } from "../copilotStreamStore";
 import {
   renderHost,
+  resetChatRuntimes,
   TEST_BACKEND_BASE_URL,
   TEST_SESSION_ID,
 } from "./sse-helpers";
@@ -35,12 +35,18 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
 }));
 
+const streamPath = vi.hoisted(() => ({ runtime: false }));
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
     await importActual<
       typeof import("@/services/feature-flags/use-get-flag")
     >();
-  return { ...actual, useGetFlag: () => false };
+  return {
+    ...actual,
+    useGetFlag: (flag: string) =>
+      flag === "copilot-stream-runtime" ? streamPath.runtime : false,
+  };
 });
 
 const EARLIER_PROMPT = "What is on my calendar";
@@ -279,7 +285,7 @@ function renderResumedSession(
 }
 
 beforeEach(() => {
-  resetCopilotChatRegistry();
+  resetChatRuntimes();
   // Message snapshots are keyed by session id in a module-level store, so
   // without this each case starts by rendering the previous case's
   // transcript and its assertions pass against stale DOM.
@@ -288,10 +294,14 @@ beforeEach(() => {
 
 afterEach(() => {
   releaseParkedStreams();
-  resetCopilotChatRegistry();
+  resetChatRuntimes();
 });
 
 describe("useCopilotStream — resume replays a db-hydrated turn", () => {
+  beforeEach(() => {
+    streamPath.runtime = false;
+  });
+
   it(
     "drops the hydrated partial so the replayed turn renders one bubble, not two",
     { timeout: 20000 },
@@ -520,3 +530,257 @@ describe("useCopilotStream — resume replays a db-hydrated turn", () => {
     },
   );
 });
+
+/**
+ * The same reloads on the stream runtime, against the backend that names a
+ * checkpoint: the persisted rows seed the turn and the stream is read from
+ * the checkpoint on, so nothing is replayed and nothing is trimmed.
+ */
+describe("stream runtime — a reload into a running turn", () => {
+  beforeEach(() => {
+    streamPath.runtime = true;
+  });
+
+  afterEach(() => {
+    streamPath.runtime = false;
+  });
+
+  it(
+    "seeds the persisted half and tails the rest into the same bubble",
+    { timeout: 20000 },
+    async () => {
+      const { resumeCursors } = renderRuntimeReload(PERSISTED_TOOL_ROUND, {
+        rows: 2,
+        sequence: 4,
+      });
+
+      expect(
+        await screen.findByText(REPLAYED_HALF, undefined, { timeout: 10000 }),
+      ).toBeDefined();
+      expect(resumeCursors()).toEqual([`${CHECKPOINT_ENTRY}-0`]);
+      expect(screen.getAllByText(PERSISTED_HALF)).toHaveLength(1);
+      expect(screen.getAllByText(RESUMED_PROMPT)).toHaveLength(1);
+      expect(screen.getAllByText(EARLIER_PROMPT)).toHaveLength(1);
+      expect(screen.getAllByText(EARLIER_ANSWER)).toHaveLength(1);
+      expect(transcriptRoles()).toEqual([
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+      ]);
+    },
+  );
+
+  it(
+    "draws a drained follow-up once, between the halves it split",
+    { timeout: 20000 },
+    async () => {
+      renderRuntimeReload(
+        [...PERSISTED_TOOL_ROUND, sessionMessage(6, "user", MIDTURN_FOLLOWUP)],
+        { rows: 3, sequence: 4 },
+      );
+
+      expect(
+        await screen.findByText(REPLAYED_HALF, undefined, { timeout: 10000 }),
+      ).toBeDefined();
+      expect(screen.getAllByText(MIDTURN_FOLLOWUP)).toHaveLength(1);
+      expect(screen.getAllByText(PERSISTED_HALF)).toHaveLength(1);
+      expect(transcriptRoles()).toEqual([
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+      ]);
+    },
+  );
+
+  it.each([
+    ["a plain mount", false],
+    ["a Strict Mode mount", true],
+  ])(
+    "keeps a follow-up the backend still holds as a queued bubble under the live turn on %s",
+    { timeout: 20000 },
+    async (_label, strictMode) => {
+      renderRuntimeReload(
+        PERSISTED_TOOL_ROUND,
+        { rows: 2, sequence: 4 },
+        [QUEUED_FOLLOWUP],
+        strictMode,
+      );
+
+      expect(
+        await screen.findByText(REPLAYED_HALF, undefined, { timeout: 10000 }),
+      ).toBeDefined();
+      await waitFor(() => expect(screen.getByText("Queued")).toBeDefined());
+      expect(screen.getAllByText(QUEUED_FOLLOWUP)).toHaveLength(1);
+      const assistant = screen.getByText(REPLAYED_HALF);
+      expect(
+        assistant.compareDocumentPosition(screen.getByText(QUEUED_FOLLOWUP)) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    },
+  );
+
+  it(
+    "keeps the completed answer when the running turn started without a user row",
+    { timeout: 20000 },
+    async () => {
+      renderRuntimeReload(
+        [
+          sessionMessage(1, "user", EARLIER_PROMPT),
+          sessionMessage(2, "assistant", EARLIER_ANSWER),
+          { ...sessionMessage(3, "assistant", PERSISTED_HALF), ...CALL },
+          { ...sessionMessage(4, "assistant", "{}"), ...RESULT },
+        ],
+        { rows: 2, sequence: 3 },
+      );
+
+      expect(
+        await screen.findByText(REPLAYED_HALF, undefined, { timeout: 10000 }),
+      ).toBeDefined();
+      expect(screen.getAllByText(EARLIER_ANSWER)).toHaveLength(1);
+      expect(screen.getAllByText(PERSISTED_HALF)).toHaveLength(1);
+    },
+  );
+
+  it(
+    "replays a turn with nothing persisted yet from its first entry, once",
+    { timeout: 20000 },
+    async () => {
+      const { resumeCursors } = renderRuntimeReload(
+        HYDRATED_SESSION_MESSAGES.slice(0, 3),
+        null,
+      );
+
+      expect(
+        await screen.findByText(REPLAYED_HALF, undefined, { timeout: 10000 }),
+      ).toBeDefined();
+      expect(resumeCursors()).toEqual(["0-0"]);
+      expect(screen.getAllByText(PERSISTED_HALF)).toHaveLength(1);
+      expect(screen.getAllByText(RESUMED_PROMPT)).toHaveLength(1);
+    },
+  );
+});
+
+const CALL = {
+  tool_calls: [
+    {
+      id: "call-1",
+      type: "function",
+      function: { name: "list_calendar", arguments: "{}" },
+    },
+  ],
+};
+const RESULT = { role: "tool", tool_call_id: "call-1" } as const;
+
+/** The resumed prompt's turn, persisted up to its first tool round. */
+const PERSISTED_TOOL_ROUND: SessionDetailResponseMessagesItem[] = [
+  ...HYDRATED_SESSION_MESSAGES.slice(0, 3),
+  { ...sessionMessage(4, "assistant", PERSISTED_HALF), ...CALL },
+  { ...sessionMessage(5, "assistant", "{}"), ...RESULT },
+];
+
+/** The whole turn on its stream: the round the rows hold, a checkpoint, then the rest. */
+const RUNTIME_TURN: UIMessageChunk[] = [
+  { type: "start", messageId: "resumed-turn" },
+  { type: "start-step" },
+  { type: "text-start", id: "half-1" },
+  { type: "text-delta", id: "half-1", delta: PERSISTED_HALF },
+  { type: "text-end", id: "half-1" },
+  { type: "tool-input-start", toolCallId: "call-1", toolName: "list_calendar" },
+  {
+    type: "tool-input-available",
+    toolCallId: "call-1",
+    toolName: "list_calendar",
+    input: {},
+  },
+  { type: "tool-output-available", toolCallId: "call-1", output: {} },
+  { type: "finish-step" },
+  { type: "start-step" },
+  { type: "text-start", id: "half-2" },
+  { type: "text-delta", id: "half-2", delta: REPLAYED_HALF },
+  { type: "text-end", id: "half-2" },
+];
+
+// The rows' checkpoint names the entry that closes the tool round's step.
+const CHECKPOINT_ENTRY = 9;
+
+function renderRuntimeReload(
+  messages: SessionDetailResponseMessagesItem[],
+  checkpoint: { rows: number; sequence: number } | null,
+  pendingMessages: string[] = [],
+  strictMode = false,
+) {
+  const cursors: string[] = [];
+  server.use(
+    http.get(
+      `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+      ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        const after = params.get("after") ?? "0-0";
+        cursors.push(after);
+        return parkedRuntimeResponse(params.get("turn") ?? "", after);
+      },
+    ),
+  );
+  renderHost({
+    sessionOverride: {
+      messages,
+      active_stream: {
+        turn_id: "turn-1",
+        last_message_id: "0-0",
+        started_at: "2026-05-13T00:04:00Z",
+        checkpoint: checkpoint && {
+          entry_id: `${CHECKPOINT_ENTRY}-0`,
+          ...checkpoint,
+        },
+      },
+    },
+    pendingMessages,
+    strictMode,
+  });
+  // Under Strict Mode the effects run twice; the runtime's one slot opens once.
+  return { resumeCursors: () => [...new Set(cursors)] };
+}
+
+/** The turn's entries after `after`, each with its id; then the stream parks. */
+function parkedRuntimeResponse(turn: string, after: string) {
+  const encoder = new TextEncoder();
+  const from = Number(after.split("-")[0]);
+  const entries = RUNTIME_TURN.map((chunk, i) => ({ n: i + 1, chunk })).filter(
+    ({ n }) => n > from,
+  );
+  let index = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (index < entries.length) {
+        const { n, chunk } = entries[index++];
+        controller.enqueue(
+          encoder.encode(
+            `id: ${turn}:${n}-0\ndata: ${JSON.stringify(chunk)}\n\n`,
+          ),
+        );
+        return;
+      }
+      return new Promise<void>((resolve) => {
+        parkedStreamReleases.push(() => {
+          try {
+            controller.close();
+          } catch {
+            // already closed
+          }
+          resolve();
+        });
+      });
+    },
+  });
+  return new HttpResponse(stream, { status: 200, headers: SSE_HEADERS });
+}
+
+function transcriptRoles() {
+  return Array.from(document.querySelectorAll("[data-message-id]")).map((el) =>
+    el.classList.contains("is-user") ? "user" : "assistant",
+  );
+}

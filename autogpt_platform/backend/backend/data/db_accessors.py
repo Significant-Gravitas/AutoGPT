@@ -144,6 +144,26 @@ def user_db():
     return user_db
 
 
+def onboarding_role_db():
+    if db.is_connected():
+        from backend.data import onboarding_role
+
+        return onboarding_role
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
+def onboarding_audience_db():
+    if db.is_connected():
+        from backend.data import onboarding_audience
+
+        return onboarding_audience
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
 def understanding_db():
     if db.is_connected():
         from backend.data import understanding as _understanding_db

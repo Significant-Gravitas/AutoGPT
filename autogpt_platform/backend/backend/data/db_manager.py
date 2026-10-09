@@ -155,6 +155,8 @@ from backend.data.human_review import (
     update_review_processed_status,
 )
 from backend.data.onboarding import increment_onboarding_runs
+from backend.data.onboarding_audience import queue_onboarding_role
+from backend.data.onboarding_role import save_onboarding_role
 from backend.data.org_credit import get_org_credits as _get_org_credits_raw
 from backend.data.org_credit import get_personal_org_owner
 from backend.data.org_credit import spend_org_credits as _spend_org_credits_raw
@@ -719,6 +721,9 @@ class DatabaseManager(AppService):
     release_welcome_email = _(release_welcome_email)
     update_briefing_content = _(update_briefing_content)
 
+    save_onboarding_role = _(save_onboarding_role)
+    queue_onboarding_role = _(queue_onboarding_role)
+
 
 class DatabaseManagerClient(AppServiceClient):
     d = DatabaseManager
@@ -898,6 +903,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     claim_welcome_email = d.claim_welcome_email
     is_marketing_opted_out = d.is_marketing_opted_out
     release_welcome_email = d.release_welcome_email
+
+    save_onboarding_role = d.save_onboarding_role
+    queue_onboarding_role = d.queue_onboarding_role
 
     # ============ Morning Briefing ============ #
     append_plain_session_message = d.append_plain_session_message

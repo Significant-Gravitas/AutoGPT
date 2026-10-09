@@ -81,6 +81,8 @@ async def test_message_session_ownership_check_routes_through_database_manager(
         "record_signup_consent",
         "record_marketing_opt_out_by_email",
         "users_share_active_org",
+        "save_onboarding_role",
+        "queue_onboarding_role",
     ],
 )
 def test_routed_rpc_request_schemas_are_constructible(method: str):

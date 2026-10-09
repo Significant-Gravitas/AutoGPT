@@ -5,6 +5,7 @@ from autogpt_libs.auth import get_user_id, requires_user
 from fastapi import APIRouter, HTTPException, Security
 
 from backend.api.features.store.model import StoreAgentDetails
+from backend.data.db_accessors import onboarding_audience_db, onboarding_role_db
 from backend.data.model import UserOnboarding
 from backend.data.onboarding import (
     FrontendOnboardingStep,
@@ -17,11 +18,13 @@ from backend.data.onboarding import (
     reset_user_onboarding,
     update_user_onboarding,
 )
+from backend.data.onboarding_role import OnboardingRole
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
     upsert_business_understanding,
 )
+from backend.util.product_analytics import set_onboarding_role
 
 # Tags stay per-route: /onboarding/completed publishes ["onboarding", "public"]
 # while the other six publish ["onboarding"].
@@ -141,5 +144,11 @@ async def submit_onboarding_profile(
         understanding_input.pain_points = data.pain_points
 
     await upsert_business_understanding(user_id, understanding_input)
+
+    # Kept apart from the understanding, whose copy AutoPilot rewrites.
+    role = OnboardingRole.from_answer(data.user_role)
+    await onboarding_role_db().save_onboarding_role(user_id, role)
+    await onboarding_audience_db().queue_onboarding_role(user_id, role)
+    set_onboarding_role(user_id=user_id, role=role)
 
     return {"status": "ok"}

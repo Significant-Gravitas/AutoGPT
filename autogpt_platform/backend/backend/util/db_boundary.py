@@ -10,7 +10,9 @@ from pathlib import Path
 
 from backend.util.db_boundary_ast import collect_references, resolve_alias
 from backend.util.db_boundary_policy import (
+    CONNECTION_OWNERS,
     RAW_DATABASE_ACCESS,
+    is_connection_owner_dispatch,
     is_database_implementation,
     is_gateway,
 )
@@ -81,7 +83,7 @@ def find_violations(sources: dict[str, str]) -> dict[str, list[int]]:
         for scope, targets in references.items()
     }
     unsafe = _query_callables(resolved, callables, rpc_clients)
-    return _module_violations(resolved, sources, unsafe, rpc_clients)
+    return _module_violations(resolved, sources, unsafe, callables, rpc_clients)
 
 
 def _query_callables(
@@ -97,7 +99,7 @@ def _query_callables(
             if not is_gateway(scope)
             and scope not in rpc_clients
             and any(
-                _unsafe_target(target, unsafe, rpc_clients)
+                _unsafe_target(target, unsafe, callables, rpc_clients)
                 for target, _ in references[scope]
             )
         }
@@ -111,6 +113,7 @@ def _module_violations(
     references: dict[str, list[tuple[str, int]]],
     sources: dict[str, str],
     unsafe: set[str],
+    callables: set[str],
     rpc_clients: set[str],
 ) -> dict[str, list[int]]:
     violations: dict[str, list[int]] = {}
@@ -119,30 +122,36 @@ def _module_violations(
         module = next(
             name for name in modules if scope == name or scope.startswith(name + ".")
         )
-        if is_database_implementation(module):
+        if is_database_implementation(module) or module in CONNECTION_OWNERS:
             continue
         path = module.removeprefix("backend.").replace(".", "/") + ".py"
         owner = scope.removeprefix(module + ".") if scope != module else "<module>"
         for target, line in targets:
+            if is_connection_owner_dispatch(module, target):
+                continue
             if scope in rpc_clients and not _unsafe_target(
-                target, set(RAW_DATABASE_ACCESS), set()
+                target, set(RAW_DATABASE_ACCESS), callables, set()
             ):
                 continue
-            query = _unsafe_target(target, unsafe, rpc_clients)
+            query = _unsafe_target(target, unsafe, callables, rpc_clients)
             if query:
                 key = f"{path}::{owner} -> {query}"
                 violations.setdefault(key, []).append(line)
     return violations
 
 
-def _unsafe_target(target: str, unsafe: set[str], rpc_clients: set[str]) -> str | None:
+def _unsafe_target(
+    target: str, unsafe: set[str], callables: set[str], rpc_clients: set[str]
+) -> str | None:
     if (
         is_gateway(target)
         or target
         in {
             "backend.data.db.is_connected",
             "prisma.Prisma.is_connected",
+            "prisma.Client.is_connected",
             "prisma.client.Prisma.is_connected",
+            "prisma.client.Client.is_connected",
             ".prisma.is_connected",
         }
         or any(
@@ -153,6 +162,8 @@ def _unsafe_target(target: str, unsafe: set[str], rpc_clients: set[str]) -> str 
         return None
     if target in unsafe:
         return target
+    if target in callables:
+        return None
     if target.rsplit(".", 1)[-1] in {"cache_delete", "cache_clear"}:
         return None
     parts = target.split(".")

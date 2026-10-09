@@ -40,6 +40,7 @@ from backend.data.notifications import (
 from backend.data.org_migration import ensure_personal_org
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.subscription_trial import get_subscription_trial
+from backend.notifications.audience_enrichment import points_at_excluded_country
 from backend.notifications.queue import queue_audience_change
 from backend.notifications.subscriber_fields import audience_event
 from backend.util.cache import cached
@@ -1132,17 +1133,37 @@ async def record_marketing_opt_out_by_email(email: str, source: str) -> str | No
 
 
 async def is_marketing_opted_out(user_id: str) -> bool:
-    """Whether the account refused marketing, read from the database rather
-    than the user cache, for the last check before a MailerLite write. An
-    account that no longer exists counts as opted out: nothing about it should
-    reach MailerLite either."""
+    """Whether nothing about the account may reach MailerLite, read from the
+    database rather than the user cache, for the last check before a
+    MailerLite write: it refused marketing, or a signal places it in Iran or
+    Russia, the country a checkout recorded included (`consent.py`). An
+    account that no longer exists counts too.
+
+    It is named for the opt-out it was first written for. The audience
+    consumer calls it over the RPC, so a new name would fail every call made
+    while a rolling deploy runs one side ahead of the other."""
     try:
         row = await PrismaUser.prisma().find_unique(where={"id": user_id})
     except Exception as e:
         raise DatabaseError(
             f"Failed to read the marketing opt-out for user {user_id}: {e}"
         ) from e
-    return row is None or row.marketingOptOutAt is not None
+    if row is None or row.marketingOptOutAt is not None:
+        return True
+    return points_at_excluded_country(
+        email=row.email,
+        timezone=row.timezone,
+        countries=(row.marketingExcludedCountry,),
+    )
+
+
+async def record_excluded_country(user_id: str, country: str) -> None:
+    """Keep the account out of MailerLite for good: a checkout saw it in a
+    country MailerLite must never hold. The first country seen is kept."""
+    await PrismaUser.prisma().update_many(
+        where={"id": user_id, "marketingExcludedCountry": None},
+        data={"marketingExcludedCountry": country},
+    )
 
 
 def _invalidate_user_caches(user_id: str, email: str | None) -> None:
@@ -1252,6 +1273,8 @@ class BillingEmailRecipient(BaseModel):
     # Set when the customer refused marketing: billing emails still go out,
     # MailerLite never hears of them (notifications/consent.py).
     marketing_opt_out_at: datetime | None = None
+    # The browser's IANA timezone, one of the signals consent.py reads.
+    timezone: str | None = None
 
 
 async def get_billing_email_recipient(
@@ -1271,6 +1294,7 @@ async def get_billing_email_recipient(
             name=row.name,
             welcome_email_sent_at=row.welcomeEmailSentAt,
             marketing_opt_out_at=row.marketingOptOutAt,
+            timezone=row.timezone,
         )
     except Exception as e:
         raise DatabaseError(

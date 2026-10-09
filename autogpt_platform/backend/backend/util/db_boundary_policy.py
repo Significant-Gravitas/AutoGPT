@@ -26,7 +26,11 @@ RAW_DATABASE_ACCESS = frozenset(
     {
         ".prisma",
         "prisma.Prisma",
+        "prisma.Client",
         "prisma.client.Prisma",
+        "prisma.client.Client",
+        "prisma.client.get_client",
+        "prisma.client.register",
         "prisma.get_client",
         "prisma.register",
         "backend.data.db.prisma",
@@ -39,6 +43,17 @@ RAW_DATABASE_ACCESS = frozenset(
         "backend.data.credit.get_credit_model",
     }
 )
+
+CONNECTION_OWNERS = {
+    "backend.cli.mailerlite_backfill": frozenset(
+        {"mailerlite_backfill_command", "mailerlite_checkout_backfill_command"}
+    ),
+    "backend.cli.onboarding_role_backfill": frozenset(
+        {"onboarding_role_backfill_command"}
+    ),
+}
+
+CLI_DISPATCHER = "backend.cli.main"
 
 DATABASE_GATEWAYS = (
     "backend.data.db_accessors.",
@@ -66,4 +81,12 @@ def is_gateway(target: str) -> bool:
             else target == gateway or target.startswith(gateway + ".")
         )
         for gateway in DATABASE_GATEWAYS
+    )
+
+
+def is_connection_owner_dispatch(module: str, target: str) -> bool:
+    return module == CLI_DISPATCHER and any(
+        target == f"{owner}.{command}"
+        for owner, commands in CONNECTION_OWNERS.items()
+        for command in commands
     )
