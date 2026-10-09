@@ -61,6 +61,10 @@ from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
+from backend.copilot.sdk.cost_tracking import (
+    TokenUsage as _TokenUsage,
+    read_cli_session_usage,
+)
 from backend.copilot.tool_display import tool_calls_for_provider
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
@@ -104,7 +108,6 @@ from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 
 from ..moonshot import (
     is_moonshot_model as _is_moonshot_model,
-    override_cost_usd as _override_cost_for_moonshot,
 )
 from ..model import (
     ChatMessage,
@@ -204,7 +207,6 @@ from ..transcript import (
     _run_compression,
     TranscriptDownload,
     cleanup_stale_project_dirs,
-    cli_session_cost_usd,
     cli_session_path,
     compact_transcript,
     download_transcript,
@@ -1246,26 +1248,14 @@ def _friendly_error_text(raw: str) -> str:
 def _record_result_usage(
     sdk_msg: ResultMessage, state: "_RetryState", log_prefix: str
 ) -> None:
-    """Add the turn's token usage and cost from the CLI's ``ResultMessage``."""
-    # Capture token usage from ResultMessage.
-    # Anthropic reports cached tokens separately:
-    #   input_tokens = uncached only
-    #   cache_read_input_tokens = served from cache
-    #   cache_creation_input_tokens = written to cache
+    """Record this query using the model it actually ran on."""
+    state.usage.record_result(
+        sdk_msg.usage,
+        sdk_msg.total_cost_usd,
+        state.observed_model or getattr(state.options, "model", None),
+        log_prefix,
+    )
     if sdk_msg.usage:
-        # Use `or 0` instead of a default in .get() because
-        # OpenRouter may include the key with a null value (e.g.
-        # {"cache_read_input_tokens": null}) for models that don't
-        # yet report cache tokens, making .get("key", 0) return
-        # None rather than the fallback 0.
-        state.usage.prompt_tokens += sdk_msg.usage.get("input_tokens") or 0
-        state.usage.cache_read_tokens += (
-            sdk_msg.usage.get("cache_read_input_tokens") or 0
-        )
-        state.usage.cache_creation_tokens += (
-            sdk_msg.usage.get("cache_creation_input_tokens") or 0
-        )
-        state.usage.completion_tokens += sdk_msg.usage.get("output_tokens") or 0
         logger.info(
             "%s Token usage: uncached=%d, cache_read=%d, cache_create=%d, output=%d",
             log_prefix,
@@ -1274,58 +1264,6 @@ def _record_result_usage(
             state.usage.cache_creation_tokens,
             state.usage.completion_tokens,
         )
-    if sdk_msg.total_cost_usd is not None:
-        state.usage.cli_cost_usd += _cli_spend_since_last_result(
-            sdk_msg.total_cost_usd, state.usage, log_prefix
-        )
-        # Default: trust the CLI-priced spend.  Accurate for
-        # Anthropic models (the CLI's bundled pricing table is
-        # Anthropic-authored), and becomes the sync-path cost
-        # when the reconcile is disabled or fails.
-        # Prefer the ACTUALLY executed model
-        # (``state.observed_model`` from ``AssistantMessage.model``)
-        # over the requested primary (``state.options.model``)
-        # so a fallback activation doesn't mis-route pricing.
-        active_model = state.observed_model or getattr(state.options, "model", None)
-        if _is_moonshot_model(active_model):
-            # Moonshot slug — the CLI doesn't know Moonshot's
-            # rate card and silently bills at Sonnet rates
-            # (~5x over-charge).  Replace with the rate-card
-            # estimate so the in-stream ``cost_usd`` and the
-            # reconcile's lookup-fail fallback reflect
-            # reality.  Reconcile
-            # (``record_turn_cost_from_openrouter``) still
-            # overrides this value when every gen-ID lookup
-            # succeeds.
-            state.usage.cost_usd = _override_cost_for_moonshot(
-                model=active_model,
-                sdk_reported_usd=state.usage.cli_cost_usd,
-                prompt_tokens=state.usage.prompt_tokens,
-                completion_tokens=state.usage.completion_tokens,
-                cache_read_tokens=state.usage.cache_read_tokens,
-                cache_creation_tokens=state.usage.cache_creation_tokens,
-            )
-        else:
-            state.usage.cost_usd = state.usage.cli_cost_usd
-
-
-def _cli_spend_since_last_result(
-    total_cost_usd: float, usage: "_TokenUsage", log_prefix: str
-) -> float:
-    """The part of the CLI's running session total that this result added."""
-    previous_total = usage.cli_session_total_usd or 0.0
-    spend = total_cost_usd - previous_total
-    if spend < 0:
-        # The CLI did not count on from the total we read, so all of it is new.
-        # ERROR, not WARNING: only ERROR raises a Sentry event.
-        logger.error(
-            f"{log_prefix} Over-charge fallback: CLI total_cost_usd "
-            f"${total_cost_usd:.6f} is below the session total read before it "
-            f"(${previous_total:.6f}); charging the full CLI total"
-        )
-        spend = total_cost_usd
-    usage.cli_session_total_usd = total_cost_usd
-    return spend
 
 
 def _platform_out_of_credits_refusal(
@@ -1412,21 +1350,6 @@ class ReducedContext(NamedTuple):
     # compress_context applies progressively more aggressive reduction
     # (LLM summarize → content truncate → middle-out delete → first/last trim).
     target_tokens: int | None = None
-
-
-@dataclass
-class _TokenUsage:
-    """Usage accumulated over every CLI query and retry in one platform turn."""
-
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    cache_read_tokens: int = 0
-    cache_creation_tokens: int = 0
-    cost_usd: float | None = None
-    # This turn's spend as the CLI prices it, summed over its processes.
-    cli_cost_usd: float = 0.0
-    # Last accounted CLI total; preserved while retries resume the same session.
-    cli_session_total_usd: float | None = None
 
 
 @dataclass
@@ -4246,12 +4169,10 @@ async def _run_stream_attempt(
     # An interruption can precede ResultMessage. Keep the baseline across
     # resumed retries so the next result includes that unreported spend.
     if state.usage.cli_session_total_usd is None:
-        state.usage.cli_session_total_usd = await asyncio.to_thread(
-            _resumed_cli_session_cost_usd,
-            ctx.sdk_cwd,
-            state.options.resume,
-            ctx.log_prefix,
+        baseline = await asyncio.to_thread(
+            read_cli_session_usage, ctx.sdk_cwd, state.options.resume, ctx.log_prefix
         )
+        state.usage.start_cli_session(baseline)
     sdk_client = ClaudeSDKClient(options=state.options)
     client = await sdk_client.__aenter__()
     try:
@@ -4398,6 +4319,17 @@ async def _run_stream_attempt(
             yield response
 
     if not acc.stream_completed and not loop_state.ended_with_stream_error:
+        snapshot = await asyncio.to_thread(
+            read_cli_session_usage,
+            ctx.sdk_cwd,
+            state.options.resume or state.options.session_id or ctx.session_id,
+            ctx.log_prefix,
+        )
+        state.usage.record_unreported(
+            snapshot,
+            state.observed_model or getattr(state.options, "model", None),
+            ctx.log_prefix,
+        )
         # User cancels raise ``asyncio.CancelledError`` upstream; reaching this
         # branch means the CLI hung up — per-query budget exhausted, max_turns,
         # OOM, or crash — without ever emitting a ResultMessage.
@@ -4449,25 +4381,6 @@ async def _run_stream_attempt(
                 loop_state.stream_error_code not in _OUTER_LOOP_YIELDS_ERROR_CODES
             ),
         )
-
-
-def _resumed_cli_session_cost_usd(
-    sdk_cwd: str, resume: str | None, log_prefix: str
-) -> float:
-    """The session total a CLI launched with ``resume`` counts its cost on from."""
-    if not resume or not sdk_cwd:
-        return 0.0
-    try:
-        content = Path(cli_session_path(sdk_cwd, resume)).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as e:
-        # ERROR, not WARNING: only ERROR raises a Sentry event.
-        logger.error(
-            f"{log_prefix} Over-charge fallback: could not read the cost of resumed "
-            f"CLI session {resume} ({type(e).__name__}); counting from $0, so this "
-            "turn may be charged the full CLI session total"
-        )
-        return 0.0
-    return cli_session_cost_usd(content, resume)
 
 
 async def _seed_transcript(

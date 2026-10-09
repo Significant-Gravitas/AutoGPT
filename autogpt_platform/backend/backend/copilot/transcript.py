@@ -20,7 +20,7 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 from backend.data.db_accessors import chat_db
@@ -662,6 +662,12 @@ def cli_session_cost_usd(content: str, session_id: str) -> float:
     The CLI resumes from the last ``cost-state`` row whose ``sessionId`` matches,
     so its ``total_cost_usd`` counts on from this figure (0 with no such row).
     """
+    entry = cli_session_cost_state(content, session_id)
+    return float(entry["totalCostUSD"]) if entry else 0.0
+
+
+def cli_session_cost_state(content: str, session_id: str) -> dict[str, Any] | None:
+    """Return the last matching native CLI cost snapshot, including model usage."""
     for line in reversed(content.splitlines()):
         if "cost-state" not in line:
             continue
@@ -672,8 +678,8 @@ def cli_session_cost_usd(content: str, session_id: str) -> float:
             and entry.get("sessionId") == session_id
             and isinstance(entry.get("totalCostUSD"), (int, float))
         ):
-            return float(entry["totalCostUSD"])
-    return 0.0
+            return entry
+    return None
 
 
 def _cli_session_storage_path_parts(
