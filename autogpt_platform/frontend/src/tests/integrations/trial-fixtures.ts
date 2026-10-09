@@ -22,6 +22,7 @@ export function trialResponse(overrides: Partial<TrialStatusResponse> = {}) {
     rejection_reason: null,
     ends_at: new Date("2030-09-17T15:00:00Z"),
     cancel_at_period_end: false,
+    cancel_keeps_access: false,
     allowance_used_percent: 42.4,
     active: true,
     converted: false,

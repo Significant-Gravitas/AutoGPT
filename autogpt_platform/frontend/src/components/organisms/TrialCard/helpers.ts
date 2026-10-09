@@ -34,3 +34,47 @@ export function formatTrialEnd(value: Date | string | null | undefined) {
     timeStyle: "short",
   });
 }
+
+export function formatTrialEndDate(value: Date | string) {
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export function formatTrialEndTime(value: Date | string) {
+  return new Date(value).toLocaleTimeString(undefined, { timeStyle: "short" });
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function getTrialDaysLeft(
+  endsAt: Date | string | null | undefined,
+  now = Date.now(),
+) {
+  if (!endsAt) return 0;
+  return Math.max(0, Math.ceil((new Date(endsAt).getTime() - now) / DAY_MS));
+}
+
+export function formatTrialDays(days: number) {
+  return `${days} ${days === 1 ? "day" : "days"}`;
+}
+
+// Under a day the count would always read "1 day", so name the clock time.
+export function describeTrialTimeLeft(endsAt: Date | string, now = new Date()) {
+  const end = new Date(endsAt);
+  if (end.getTime() - now.getTime() >= DAY_MS)
+    return {
+      kind: "days" as const,
+      days: getTrialDaysLeft(end, now.getTime()),
+    };
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  return {
+    kind:
+      end.toDateString() === tomorrow.toDateString()
+        ? ("tomorrow" as const)
+        : ("today" as const),
+    time: formatTrialEndTime(end),
+  };
+}

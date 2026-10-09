@@ -14,6 +14,7 @@ export interface SubscriptionPlansProps {
   billing: "monthly" | "yearly";
   onBillingChange: (billing: "monthly" | "yearly") => void;
   trialOffer: TrialOfferResponse | null;
+  trialCancelKeepsAccess?: boolean;
   onStartTrial: () => void;
   onSelectPlan: (key: PlanKey) => void;
   isUpdatingTier: boolean;

@@ -44,6 +44,7 @@ export function SubscriptionPlans({
         kind={dialog}
         setOpen={setDialogOpen}
         trialOffer={props.trialOffer}
+        trialCancelKeepsAccess={props.trialCancelKeepsAccess}
         plans={props.plans}
       />
     </div>
