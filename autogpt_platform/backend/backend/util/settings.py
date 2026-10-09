@@ -338,7 +338,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "are queued in ``CopilotTaskQueue`` (FIFO) up to "
             "``max_inflight_copilot_turns_per_user`` total in-flight. "
             "Must be <= the in-flight cap; default 5 keeps shared-infra "
-            "concurrency predictable while letting users batch-submit."
+            "concurrency predictable while letting users batch-submit. "
+            "Sessions another session opened (sub-sessions, delegations, "
+            "handoffs) don't count toward it; the in-flight cap bounds them."
         ),
     )
 

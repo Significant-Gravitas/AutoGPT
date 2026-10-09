@@ -167,6 +167,10 @@ async def acquire_turn_slot(
       caller does NOT own the release.
     * **Rejected** — at the cap; raises :class:`ConcurrentTurnLimitError`.
 
+    The default running cap counts only the sessions the user drives, under
+    the inflight cap over all of them. A ``capacity`` bounds every running
+    session instead: ``schedule_turn`` passes the inflight cap.
+
     Anonymous sessions (``user_id`` falsy) bypass the cap entirely.
     """
     handle = TurnSlot(user_id or "", session_id)
@@ -188,7 +192,7 @@ async def acquire_turn_slot(
         # Reading after-write is OK because over-admit just briefly
         # exceeds the cap — the user gets one extra slot at most under
         # burst, same trade-off as the prior count-then-update path.
-        if await count_running_turns(user_id) > resolved_capacity:
+        if await _over_cap(user_id, capacity):
             # Roll back our flip; the caller falls through to the queue.
             await release_turn_slot(user_id, session_id)
             raise ConcurrentTurnLimitError(
@@ -216,3 +220,16 @@ async def acquire_turn_slot(
     finally:
         if handle.admitted and not handle._kept:
             await release_turn_slot(user_id, session_id)
+
+
+async def _over_cap(user_id: str, capacity: int | None) -> bool:
+    """Whether the user's running turns, this admit's included, exceed the cap."""
+    if capacity is not None:
+        return await count_running_turns(user_id) > capacity
+    rows = await chat_db().list_chat_sessions_by_status(
+        user_id=user_id, status=CHAT_STATUS_RUNNING
+    )
+    # A session another session opened is that turn's sub-work, so it must not
+    # queue the user's own next message; the inflight cap still bounds it.
+    driven = sum(1 for r in rows if r.metadata.delegated_by_session_id is None)
+    return driven > get_running_turn_limit() or len(rows) > get_inflight_turn_limit()
