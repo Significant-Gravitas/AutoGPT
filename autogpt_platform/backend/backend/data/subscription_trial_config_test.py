@@ -4,6 +4,9 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from ldclient import Context, LDClient
+from ldclient.config import Config
+from ldclient.integrations.test_data import TestData
 from pydantic import ValidationError
 
 from backend.data import subscription_trial_config as trials
@@ -68,6 +71,9 @@ def test_offer_has_no_implicit_existing_user_eligibility():
         {"allow_existing_beta_users": "true"},
         {"version": ""},
         {"unknown_setting": 1},
+        {"max_active_trials": -1},
+        {"max_active_trials": "5"},
+        {"max_active_trials": True},
     ],
 )
 def test_rejects_invalid_or_ambiguous_offer(overrides):
@@ -184,6 +190,98 @@ async def test_payment_enabled_and_valid_offer_is_available():
     )
 
 
+def test_offer_without_a_cap_keeps_its_old_meaning():
+    """Offers written before the cap existed validate and stay uncapped."""
+    assert trials.TrialOffer.model_validate(offer_data()).max_active_trials is None
+
+
+def test_zero_cap_is_expressible_and_distinct_from_absent():
+    """0 pauses enrolment; absent means uncapped. They must not collapse."""
+    paused = trials.TrialOffer.model_validate({**offer_data(), "max_active_trials": 0})
+    assert paused.max_active_trials == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "country,attributes",
+    [
+        ("IN", {"country": "IN"}),
+        (" in ", {"country": "IN"}),
+        (None, None),
+        # a blank header is an unknown country, not a known non-excluded one
+        ("", None),
+        ("   ", None),
+    ],
+)
+async def test_country_is_handed_to_the_flag_not_decided_here(country, attributes):
+    """Who sees a trial is the flag's targeting; the code only supplies the fact."""
+    with patch.object(
+        trials, "is_feature_enabled", AsyncMock(return_value=True)
+    ), patch.object(
+        trials, "get_feature_flag_value", AsyncMock(return_value=offer_data())
+    ) as flag:
+        await trials.get_trial_offer("user-1", country=country)
+    assert flag.await_args.kwargs["attributes"] == attributes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "country",
+    # a duplicated header comma-joined, unassigned and reserved codes, a name
+    ["IN, US", "US,IN", "XX", "ZZ", "EU", "T1", "INDIA", "U S", "us\u200b"],
+)
+async def test_a_country_that_is_not_an_iso_code_never_reaches_the_flag(country):
+    with patch.object(
+        trials, "is_feature_enabled", AsyncMock(return_value=True)
+    ), patch.object(
+        trials, "get_feature_flag_value", AsyncMock(return_value=offer_data())
+    ) as flag:
+        assert await trials.get_trial_offer("user-1", country=country) is None
+    flag.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "country,offered",
+    [
+        ("US", True),
+        (" gb ", True),
+        ("IN", False),
+        (None, False),
+        # junk must not satisfy "country is not one of IN"
+        ("IN, US", False),
+        ("XX", False),
+        ("India", False),
+    ],
+)
+async def test_the_recommended_rule_fails_closed_through_the_real_evaluator(
+    country, offered
+):
+    """The production rule shape, evaluated by LaunchDarkly's own SDK."""
+    td = TestData.data_source()
+    td.update(
+        td.flag(trials.Flag.CARD_REQUIRED_TRIAL_OFFER.value)
+        .variations({"enabled": False}, offer_data())
+        .fallthrough_variation(0)
+        .if_not_match("country", "IN")
+        .then_return(1)
+    )
+    client = LDClient(Config("sdk-test", update_processor_class=td, send_events=False))
+    try:
+        with patch.object(
+            trials, "is_feature_enabled", AsyncMock(return_value=True)
+        ), patch("backend.util.feature_flag.ldclient.get", return_value=client), patch(
+            "backend.util.feature_flag._fetch_user_context_status",
+            AsyncMock(
+                return_value=(Context.builder("user-1").kind("user").build(), True)
+            ),
+        ):
+            offer = await trials.get_trial_offer("user-1", country=country)
+    finally:
+        client.close()
+    assert (offer is not None) is offered
+
+
 @pytest.mark.parametrize(
     "flag_value",
     [{"enabled": False}, {"enabled": True}, {}, None, False],
@@ -196,7 +294,7 @@ async def test_flag_value_that_is_not_an_offer_is_silent(flag_value):
     ), patch.object(
         trials, "get_feature_flag_value", AsyncMock(return_value=flag_value)
     ), captured_logs() as records:
-        assert await trials.get_trial_offer("user-1") is None
+        assert await trials.get_trial_offer("user-1", country="IN") is None
 
     assert [r for r in records if r.levelno >= logging.WARNING] == []
     assert [r.getMessage() for r in records] == [
@@ -218,3 +316,38 @@ async def test_offer_that_fails_validation_is_still_an_error():
     errors = [r for r in records if r.levelno >= logging.ERROR]
     assert len(errors) == 1
     assert "Invalid card-required-trial-offer" in errors[0].getMessage()
+
+
+# The live production offer variation, verbatim from LaunchDarkly, and the
+# token dev computes for it before the cap existed.
+LIVE_OFFER = {
+    "allow_existing_beta_users": False,
+    "billing_cycle": "monthly",
+    "daily_cost_limit": 3125000,
+    "duration_days": 7,
+    "new_users_from": "2026-09-06T00:00:00Z",
+    "onboarding_credit_amount": 300,
+    "tier": "PRO",
+    "total_cost_limit": 31250000,
+    "version": "pro-equivalent-v1",
+    "weekly_cost_limit": 15625000,
+    "price_id": "price_live",
+    "unit_amount": 5000,
+    "currency": "usd",
+}
+DEV_TOKEN = "8e7acb63affd0d9ecc34e906a6c4f0fee8c139a1e57431881f83de455aa6a49f"
+
+
+@pytest.mark.parametrize("cap", [None, 0, 500])
+def test_the_cap_never_moves_the_offer_token(cap):
+    """Deploying the cap, or changing it, must not invalidate a shown offer.
+
+    The token gates checkout: a mismatch refuses it with "the offer changed".
+    """
+    offer = {**LIVE_OFFER, **({} if cap is None else {"max_active_trials": cap})}
+    assert trials.AcceptedTrialOffer.model_validate(offer).token == DEV_TOKEN
+
+
+def test_a_real_term_still_moves_the_offer_token():
+    changed = {**LIVE_OFFER, "duration_days": 14}
+    assert trials.AcceptedTrialOffer.model_validate(changed).token != DEV_TOKEN

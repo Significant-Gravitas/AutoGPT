@@ -36,6 +36,7 @@ import backend.api.features.blocks.routes as blocks_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
+import backend.api.features.chat.feedback as chat_feedback
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.chat.speech as chat_speech
@@ -49,6 +50,7 @@ import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
+import backend.api.features.mailerlite.routes as mailerlite_routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.memory.routes as memory_routes
 import backend.api.features.oauth
@@ -104,7 +106,7 @@ from backend.util.exceptions import (
     NotFoundError,
     PreconditionFailed,
 )
-from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
+from backend.util.feature_flag import initialize_feature_flags, shutdown_feature_flags
 from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
 
@@ -127,13 +129,13 @@ _webhook_bot_backend = BotBackend()
 
 
 @contextlib.contextmanager
-def launch_darkly_context():
+def feature_flag_context():
     if settings.config.app_env != backend.util.settings.AppEnvironment.LOCAL:
-        initialize_launchdarkly()
+        initialize_feature_flags()
         try:
             yield
         finally:
-            shutdown_launchdarkly()
+            shutdown_feature_flags()
     else:
         yield
 
@@ -213,7 +215,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
 
-    with launch_darkly_context():
+    with feature_flag_context():
         yield
 
     try:
@@ -581,7 +583,17 @@ app.include_router(
     prefix="/api/email",
 )
 app.include_router(
+    mailerlite_routes.router,
+    tags=["v1", "email"],
+    prefix="/api/email",
+)
+app.include_router(
     chat_routes.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_feedback.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
 )

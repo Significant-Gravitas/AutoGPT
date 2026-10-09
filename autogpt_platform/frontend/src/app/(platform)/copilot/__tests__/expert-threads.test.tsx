@@ -26,6 +26,7 @@ import { useRecipientPicker } from "../components/EmptySession/useRecipientPicke
 import { ChatMessagesContainer } from "../components/ChatMessagesContainer/ChatMessagesContainer";
 import { ChatSidebar } from "../components/ChatSidebar/ChatSidebar";
 import { useChatSession } from "../useChatSession";
+import { getNewChatHref } from "@/components/layout/AppSidebar/components/RecentChats/helpers";
 import { useCopilotUIStore } from "../store";
 import { groupSessionsByExpert } from "../useSessionList";
 
@@ -150,10 +151,10 @@ vi.mock(
   }),
 );
 vi.mock("../components/ChatMessagesContainer/helpers", () => ({
+  extractReviewTarget: () => null,
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
-  parseSpecialMarkers: () => ({ markerType: null }),
 }));
 vi.mock("../components/JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,
@@ -240,6 +241,24 @@ function AutopilotSessionHarness() {
 function KeyedSessionHost() {
   const [sessionId] = useQueryState("sessionId", parseAsString);
   return <ExpertSessionHarness key={`chat-host-${sessionId ?? "new"}`} />;
+}
+
+/** Stands in for the sidebar's "New chat with Maria" link: following it
+ *  lands on the href `getNewChatHref` builds, which replaces the whole query
+ *  string, so whatever session was open is dropped along the way. Each key
+ *  goes through its own setter, like the real New Chat handler. */
+function SidebarNewChatLink() {
+  const [, setExpertId] = useQueryState("expertId", parseAsString);
+  const [, setSessionId] = useQueryState("sessionId", parseAsString);
+  const [, setNewThread] = useQueryState("new", parseAsString);
+  function follow() {
+    const href = getNewChatHref("expert-maria", new Set(["expert-maria"]));
+    const target = new URL(href ?? "/home", "http://localhost");
+    void setSessionId(target.searchParams.get("sessionId"));
+    void setExpertId(target.searchParams.get("expertId"));
+    void setNewThread(target.searchParams.get("new"));
+  }
+  return <button onClick={follow}>New chat with Maria</button>;
 }
 
 const NuqsWrapper = withNuqsTestingAdapter({
@@ -442,6 +461,136 @@ describe("useChatSession — expert sessions", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.getByTestId("session-id").textContent).toBe("none");
     expect(listedSessions).toBe(0);
+  });
+
+  it("opens a fresh expert page from the sidebar + while that expert's chat is running, and again after", async () => {
+    const runningSession = makeSession({
+      id: "s-maria-running",
+      title: "Maria thread",
+      expert_id: "expert-maria",
+      is_processing: true,
+    });
+    let adoptionLookups = 0;
+    const writesToRunningSession: string[] = [];
+    server.use(
+      http.get("*/api/chat/sessions", ({ request }) => {
+        if (new URL(request.url).searchParams.get("expert_id")) {
+          adoptionLookups += 1;
+        }
+        return HttpResponse.json({ sessions: [runningSession], total: 1 });
+      }),
+      http.get("*/api/chat/sessions/s-maria-running", () =>
+        HttpResponse.json({
+          ...runningSession,
+          user_id: "user-1",
+          messages: [],
+          active_stream: { started_at: "2026-01-01T00:00:00Z" },
+        }),
+      ),
+      http.all("*/api/chat/sessions/s-maria-running/*", ({ request }) => {
+        writesToRunningSession.push(`${request.method} ${request.url}`);
+        return HttpResponse.json({});
+      }),
+      http.post("*/api/chat/sessions", () =>
+        HttpResponse.json({
+          id: "s-maria-fresh",
+          created_at: "2026-01-03T00:00:00Z",
+          user_id: "user-1",
+          expert_id: "expert-maria",
+        }),
+      ),
+      http.get("*/api/chat/sessions/s-maria-fresh", () =>
+        HttpResponse.json({
+          id: "s-maria-fresh",
+          created_at: "2026-01-03T00:00:00Z",
+          updated_at: "2026-01-03T00:00:00Z",
+          user_id: "user-1",
+          expert_id: "expert-maria",
+          messages: [],
+        }),
+      ),
+      http.get("*/api/chat/transports", () =>
+        HttpResponse.json({
+          transports: [
+            {
+              auth_provider: "platform",
+              credential_id: null,
+              label: "AutoGPT Platform",
+              available: true,
+              default: true,
+            },
+          ],
+        }),
+      ),
+    );
+    // The adapter only commits the URL after nuqs's throttle, so the test
+    // reads it back here rather than trusting the optimistic hook state.
+    let committedUrl = new URLSearchParams(
+      "?expertId=expert-maria&sessionId=s-maria-running",
+    );
+    const RunningWrapper = withNuqsTestingAdapter({
+      searchParams: committedUrl.toString(),
+      hasMemory: true,
+      onUrlUpdate: (event) => {
+        committedUrl = event.searchParams;
+      },
+    });
+
+    render(
+      <CredentialsProvidersContext.Provider value={{}}>
+        <RunningWrapper>
+          <SidebarNewChatLink />
+          <KeyedSessionHost />
+        </RunningWrapper>
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(screen.getByTestId("session-id").textContent).toBe(
+      "s-maria-running",
+    );
+
+    // Clicks happen inside waitFor, as in the New Chat test below: the
+    // testing adapter resets nuqs's update queue whenever it re-renders, so
+    // a click that lands while a previous URL commit is still rendering can
+    // be dropped. Re-clicking is idempotent (sets the same values).
+    async function followSidebarLink() {
+      await waitFor(() => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "New chat with Maria" }),
+        );
+        expect(screen.getByTestId("session-id").textContent).toBe("none");
+      });
+      await waitFor(() => expect(committedUrl.get("sessionId")).toBeNull());
+    }
+
+    // First click: the running thread is dropped for the fresh page, and the
+    // remount must not go looking for Maria's latest thread to re-adopt.
+    await followSidebarLink();
+    expect(screen.getByTestId("expert-id").textContent).toBe("expert-maria");
+    expect(committedUrl.get("expertId")).toBe("expert-maria");
+    expect(committedUrl.get("new")).toBe("1");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+    expect(adoptionLookups).toBe(0);
+
+    // Start a task on the fresh page, then hit + again: the second fresh page
+    // must not bounce into either Maria thread.
+    fireEvent.click(screen.getByRole("button", { name: "create" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("session-id").textContent).toBe(
+        "s-maria-fresh",
+      );
+    });
+    await waitFor(() =>
+      expect(committedUrl.get("sessionId")).toBe("s-maria-fresh"),
+    );
+    await followSidebarLink();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+    expect(screen.getByTestId("expert-id").textContent).toBe("expert-maria");
+    expect(committedUrl.get("new")).toBe("1");
+    expect(adoptionLookups).toBe(0);
+    // Leaving the running chat is navigation only: nothing was sent to it.
+    expect(writesToRunningSession).toEqual([]);
   });
 
   it("stays on a fresh session after New Chat instead of re-adopting the expert's thread", async () => {
@@ -781,37 +930,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
 
-  it("opens the session activity card when the chip is clicked", async () => {
-    flagState.values["artifacts"] = true;
-    server.use(
-      getGetExpertMockHandler(mariaExpert),
-      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
-    );
-    useCopilotUIStore.setState((s) => ({
-      artifactPanel: { ...s.artifactPanel, isOpen: false, activeTab: "files" },
-    }));
-    render(
-      <ChatMessagesContainer
-        messages={[assistantMessage]}
-        status="ready"
-        error={undefined}
-        isLoading={false}
-        expertIdentity={mariaIdentity}
-        sessionID="session-1"
-        canOpenActivity
-      />,
-    );
-
-    await userEvent.click(
-      screen.getByRole("button", { name: /Open session activity/ }),
-    );
-
-    const panel = useCopilotUIStore.getState().artifactPanel;
-    expect(panel.isOpen).toBe(true);
-    expect(panel.activeTab).toBe("files");
-  });
-
-  it("stays a passive label in hosts that never mount the activity card", async () => {
+  it("keeps the chip a passive label with no file counter", async () => {
     flagState.values["artifacts"] = true;
     let workspaceFileRequests = 0;
     server.use(
@@ -821,8 +940,6 @@ describe("ChatMessagesContainer — expert identity", () => {
         return HttpResponse.json({ files: [], offset: 0, has_more: false });
       }),
     );
-    // Same live sessionId the builder and memory panels pass — only the host's
-    // canOpenActivity separates them from the copilot chat.
     render(
       <ChatMessagesContainer
         messages={[assistantMessage]}
@@ -835,9 +952,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     );
 
     const header = await screen.findByTestId("expert-thread-header");
-    expect(
-      within(header).queryByRole("button", { name: /Open session activity/ }),
-    ).toBeNull();
+    expect(within(header).queryByRole("button")).toBeNull();
     expect(workspaceFileRequests).toBe(0);
   });
 

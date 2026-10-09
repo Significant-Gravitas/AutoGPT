@@ -14,7 +14,13 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { isKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import type { SelectionModifiers } from "./helpers";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -28,6 +34,9 @@ interface Props {
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
+  emptyMessage: string;
+  /** Offered under the empty message, e.g. widening an expert-only listing. */
+  emptyAction?: ReactNode;
 }
 
 export function WorkspaceFileList({
@@ -40,6 +49,8 @@ export function WorkspaceFileList({
   hasMore,
   isLoadingMore,
   onLoadMore,
+  emptyMessage,
+  emptyAction,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Show the top/bottom scroll-fade only when there's content hidden in that
@@ -82,9 +93,10 @@ export function WorkspaceFileList({
 
   if (files.length === 0) {
     return (
-      <p className="py-8 text-center text-sm text-zinc-500">
-        No files in your workspace yet.
-      </p>
+      <div className="flex flex-col items-center gap-2 py-8">
+        <p className="text-center text-sm text-zinc-500">{emptyMessage}</p>
+        {emptyAction}
+      </div>
     );
   }
 

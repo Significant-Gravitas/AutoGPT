@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
 import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
+import { ancestorsOf } from "./components/WorkspaceFolders/folderTree";
 
 export type OriginFilter = "all" | "uploaded" | "generated";
 export type ArtifactsView = "list" | "grid";
@@ -47,11 +48,25 @@ export function useArtifactsPage({
     !folders.some((folder) => folder.id === folderParam);
   const selectedFolderId = isStaleFolder ? null : folderParam;
 
+  // Remembered while the folder is live, so deleting it (or an ancestor) can
+  // land the user one level up instead of back at the root.
+  const ancestorIdsRef = useRef<string[]>([]);
+  if (selectedFolderId !== null) {
+    ancestorIdsRef.current = ancestorsOf(folders, selectedFolderId)
+      .slice(0, -1)
+      .map((folder) => folder.id);
+  }
+
   const currentSearch = searchParams.toString();
   useEffect(() => {
     if (!isStaleFolder) return;
-    router.replace(folderHref(pathname, currentSearch, null));
-  }, [isStaleFolder, pathname, currentSearch, router]);
+    const survivingAncestor = [...ancestorIdsRef.current]
+      .reverse()
+      .find((id) => folders.some((folder) => folder.id === id));
+    router.replace(
+      folderHref(pathname, currentSearch, survivingAncestor ?? null),
+    );
+  }, [isStaleFolder, pathname, currentSearch, router, folders]);
 
   const debouncedSearch = useDebouncedValue(
     searchTerm.trim(),
@@ -60,15 +75,16 @@ export function useArtifactsPage({
 
   const q = debouncedSearch || undefined;
   const origin = originFilter === "all" ? undefined : originFilter;
-  // An expert filter spans every file from that expert's conversations, so
-  // the folder axes are dropped: the API rejects combining them.
+  // "From: <expert>" narrows the files shown where you are, the way "Type"
+  // does. `include_user_files` is left unsent, so the tab keeps meaning "made
+  // in this expert's chats".
   const expertId = expertFilter ?? undefined;
   // No folder selected → show only root-level files; a folder is selected →
   // scope the listing to that folder.
-  const folderId = expertId ? undefined : (selectedFolderId ?? undefined);
+  const folderId = selectedFolderId ?? undefined;
   // While searching, span the whole workspace (including files inside folders)
   // so global search isn't limited to root-level files.
-  const rootOnly = !expertId && selectedFolderId === null && !q;
+  const rootOnly = selectedFolderId === null && !q;
 
   const query = useInfiniteQuery({
     queryKey: [

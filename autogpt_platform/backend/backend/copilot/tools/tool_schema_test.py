@@ -457,14 +457,18 @@ def test_total_schema_char_budget() -> None:
 #     merged tree                                 69,183
 #     + headroom                       +300       69,483
 #
-# Raised 69_483 -> 69_700 for #11220's same two arguments; both tools ride the
-# largest session, so the whole delta lands here too. Measured on that branch
-# merged with dev 5d28ec680a (2026-09-23):
-#     dev 5d28ec680a                              69,183
-#     + #11220's two arguments        +164        69,347
-#     + headroom (~0.5%)              +353        69,700
+# Re-measured on #15149 merged with dev f2c683cf2b, which itself measured
+# 69,461, 22 under the line above; find_capability's expert kind adds 27.
+#     merged tree                                 69,488
+#     + headroom                       +300       69,788
+#
+# #11220's `constant_inputs` and `trigger_config`, the same two arguments as
+# ``_CHAR_BUDGET`` above, ride the largest session and fit under that
+# headroom. Measured on #11220 merged with dev fab04d6ac9 (2026-10-09):
+#     dev fab04d6ac9                              69,488
+#     + #11220's two arguments        +164        69,652
 # On conflict keep the higher value.
-_SESSION_WIRE_BUDGET = 69_700
+_SESSION_WIRE_BUDGET = 69_788
 
 
 def test_largest_declared_session_wire_budget() -> None:

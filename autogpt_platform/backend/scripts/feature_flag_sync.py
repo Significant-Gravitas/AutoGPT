@@ -21,7 +21,12 @@ from pydantic import BaseModel
 
 # What `_person_properties` in `backend.util.feature_flag` sends for a user;
 # the SDK adds `distinct_id` (the user id, LaunchDarkly's context key) itself.
-PERSON_PROPERTIES = frozenset({"email", "email_domain", "role", "created_at"})
+# `country` is not stored on the person: it is the visitor's ISO country code,
+# passed per evaluation by callers that know it (the trial offer, from the
+# country token the proxy signs), so it is absent whenever a caller does not.
+PERSON_PROPERTIES = frozenset(
+    {"email", "email_domain", "role", "created_at", "country"}
+)
 ATTRIBUTE_ALIASES = {
     "/custom/role": "role",
     "custom.role": "role",
@@ -109,7 +114,7 @@ def map_segment(segment: dict[str, Any], env: str) -> MappedCohort:
         payload={
             "name": cohort_name(key),
             "description": (
-                f"{segment.get('name') or key}: synced from LaunchDarkly segment "
+                f"{_text(segment.get('name'), key)}: synced from LaunchDarkly segment "
                 f"`{key}` ({env})."
             ),
             "is_static": False,
@@ -170,7 +175,7 @@ def map_flag(
 
     mapped.payload = {
         "key": key,
-        "name": flag.get("name") or key,
+        "name": _text(flag.get("name"), key),
         "active": active,
         "filters": filters,
         "ensure_experience_continuity": False,
@@ -305,8 +310,14 @@ def describe_property(prop: dict[str, Any]) -> str:
     elif prop.get("key") == "distinct_id":
         shown = "<user-id pattern>"
     else:
-        shown = _redact(json.dumps(value))
+        shown = redact(json.dumps(value))
     return f"{prop.get('key')} {prop.get('operator') or 'exact'} {shown}"
+
+
+def redact(text: str) -> str:
+    """Payloads and patterns can carry addresses and user ids; the output never does."""
+    text = _LOCAL_PART.sub("<email>@", _EMAIL.sub("<email>", text))
+    return _UUID.sub("<user-id>", text)
 
 
 class Unmappable(Exception):
@@ -336,7 +347,7 @@ def _segment_groups(
         if any(c.get("op") == "segmentMatch" for c in clauses):
             raise Unmappable("segment rule references another segment")
         if _reachable(clauses, notes):
-            groups.append([_clause_property(c) for c in clauses])
+            groups.append([p for c in clauses for p in _clause_properties(c)])
     if excluded:
         groups = [g + [_person("distinct_id", "is_not", excluded)] for g in groups]
     return groups
@@ -425,10 +436,10 @@ def _rule_groups(
     clauses: list[dict[str, Any]], cohorts: dict[str, MappedCohort]
 ) -> list[list[dict[str, Any]]]:
     """A rule's clauses as condition groups: AND within, a segment list fans out into OR."""
-    alternatives: list[list[dict[str, Any]]] = []
+    alternatives: list[list[list[dict[str, Any]]]] = []
     for clause in clauses:
         if clause.get("op") != "segmentMatch":
-            alternatives.append([_clause_property(clause)])
+            alternatives.append([_clause_properties(clause)])
             continue
         if clause.get("negate"):
             raise Unmappable("negated segment match")
@@ -441,13 +452,31 @@ def _rule_groups(
                 raise Unmappable(f"references segment `{seg}`, which needs a decision")
             if cohort.payload is not None:
                 options.append(
-                    {"key": "id", "type": "cohort", "value": cohort_name(seg)}
+                    [{"key": "id", "type": "cohort", "value": cohort_name(seg)}]
                 )
         # A rule naming only empty segments matches nobody.
         if not options:
             return []
         alternatives.append(options)
-    return [list(combo) for combo in itertools.product(*alternatives)]
+    return [
+        [prop for option in combo for prop in option]
+        for combo in itertools.product(*alternatives)
+    ]
+
+
+def _clause_properties(clause: dict[str, Any]) -> list[dict[str, Any]]:
+    """One LaunchDarkly clause as PostHog properties, all of which must hold.
+
+    A negated LaunchDarkly clause never matches a context that lacks the
+    attribute: "country is not one of IN" serves nothing to a visitor with no
+    country. PostHog's negated operators promise nothing about a missing
+    property, so the property is required to be set as well -- otherwise the
+    port would widen who is served exactly where the attribute is unknown.
+    """
+    prop = _clause_property(clause)
+    if clause.get("negate"):
+        return [_person(prop["key"], "is_set", "is_set"), prop]
+    return [prop]
 
 
 def _clause_property(clause: dict[str, Any]) -> dict[str, Any]:
@@ -497,6 +526,11 @@ def _iso_date(value: Any) -> datetime:
     return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 
 
+def _text(value: str | None, fallback: str) -> str:
+    """LaunchDarkly free text as PostHog stores it: trimmed, or a re-plan never matches."""
+    return (value or "").strip() or fallback
+
+
 def _boolean_filters(
     flag: dict[str, Any], paths: list[_Path]
 ) -> tuple[dict[str, Any], bool]:
@@ -525,8 +559,12 @@ def _boolean_filters(
         if not path.is_target:
             raise Unmappable("a rule serves false ahead of a rule serving true")
         exclusions += path.groups[0][0]["value"]
+    serves_anyone = bool(groups)
+    # PostHog refuses a flag with no condition group; one at 0% serves nobody.
+    if not groups:
+        groups = [{"properties": [], "rollout_percentage": 0, "variant": None}]
     filters = {"groups": groups, "multivariate": None, "payloads": {}}
-    return filters, bool(groups)
+    return filters, serves_anyone
 
 
 def _multivariate_filters(
@@ -677,11 +715,5 @@ def _canonical_payload(payload: Any) -> Any:
 
 
 def _short(value: Any, limit: int = 80) -> str:
-    text = _redact(json.dumps(value, sort_keys=True))
+    text = redact(json.dumps(value, sort_keys=True))
     return text if len(text) <= limit else text[: limit - 1] + "…"
-
-
-def _redact(text: str) -> str:
-    """Payloads and patterns can carry addresses and user ids; the output never does."""
-    text = _LOCAL_PART.sub("<email>@", _EMAIL.sub("<email>", text))
-    return _UUID.sub("<user-id>", text)

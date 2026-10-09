@@ -434,3 +434,73 @@ describe("getEmptyMessage", () => {
     ).toBe("No files yet");
   });
 });
+
+describe("getEmptyMessage - nested folders and the expert filter", () => {
+  test("a folder with subfolders but no direct files says so", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: true,
+      }),
+    ).toBe("No files directly in this folder");
+  });
+
+  test("a folder with neither is simply empty", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+      }),
+    ).toBe("This folder is empty");
+  });
+
+  test("an expert filter inside a folder names the expert and says 'here'", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+        hasExpertFilter: true,
+        expertName: "Maria",
+      }),
+    ).toBe("No files from Maria here");
+  });
+
+  test("an expert filter at a root with folders says 'here' too", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: false,
+        hasFolders: true,
+        hasExpertFilter: true,
+        expertName: "Maria",
+      }),
+    ).toBe("No files from Maria here");
+  });
+
+  test("an expert filter with nowhere else to look keeps 'yet'", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: false,
+        hasFolders: false,
+        hasExpertFilter: true,
+        expertName: "Maria",
+      }),
+    ).toBe("No files from this expert yet");
+  });
+
+  test("falls back to 'this expert' when the name is unknown", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+        hasExpertFilter: true,
+        expertName: null,
+      }),
+    ).toBe("No files from this expert here");
+  });
+});

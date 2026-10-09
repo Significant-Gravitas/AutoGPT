@@ -8,6 +8,7 @@ import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/Autopilo
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { SelectableCard } from "../components/SelectableCard";
+import { OTHER_ROLE_MAX_LENGTH } from "../helpers";
 import { useOnboardingWizardStore } from "../store";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
@@ -85,7 +86,7 @@ export function RoleStep() {
     <FadeIn>
       <div className="flex w-full flex-col items-center gap-8 px-4">
         <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-4 px-4 text-center">
-          <AutopilotAvatar size={120} />
+          <AutopilotAvatar size={120} transparent />
           <Text variant="h4">What best describes you?</Text>
         </div>
 
@@ -123,6 +124,7 @@ export function RoleStep() {
                   placeholder="Describe your role..."
                   value={otherRole}
                   onChange={(e) => setOtherRole(e.target.value)}
+                  maxLength={OTHER_ROLE_MAX_LENGTH}
                   autoFocus
                 />
               </div>

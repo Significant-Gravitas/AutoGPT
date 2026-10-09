@@ -1,5 +1,7 @@
 const LOCAL_STORE_IMAGE_PATH =
-  /\/api\/store\/media\/(?!\.{1,2}\/)[A-Za-z0-9_.-]+\/images\/(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
+  /\/api\/store\/(?:submissions\/)?media\/(?!\.{1,2}\/)[A-Za-z0-9_.-]+\/images\/(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
+
+const STORE_MEDIA_PATH_MARKERS = ["/store/submissions/media/", "/store/media/"];
 
 export function isLocalStoreMediaUrl(src: string | null | undefined): boolean {
   if (!src || src.startsWith("//")) return false;
@@ -19,10 +21,12 @@ export function isLocalStoreMediaUrl(src: string | null | undefined): boolean {
       return false;
     }
 
-    const apiPath = url.pathname.slice(
-      0,
-      url.pathname.lastIndexOf("/store/media/"),
+    const marker = STORE_MEDIA_PATH_MARKERS.find((candidate) =>
+      url.pathname.includes(candidate),
     );
+    if (!marker) return false;
+
+    const apiPath = url.pathname.slice(0, url.pathname.lastIndexOf(marker));
     if (
       url.origin === frontendURL.origin &&
       (apiPath === "/api" || apiPath === "/api/proxy/api")

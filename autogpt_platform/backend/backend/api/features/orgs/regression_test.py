@@ -1275,6 +1275,7 @@ class TestRegressionStore:
                     graph_version=GRAPH_VERSION,
                     slug=SLUG,
                     name="Test Agent",
+                    sub_heading="Find test agents fast",
                 )
 
         # The initial graph lookup must include userId
@@ -1304,6 +1305,7 @@ class TestRegressionStore:
                 user_id=USER_ID,
                 store_listing_version_id=STORE_LISTING_VERSION_ID,
                 name="Updated",
+                sub_heading="Find test agents fast",
             )
 
     @pytest.mark.asyncio
@@ -1585,6 +1587,10 @@ class TestRegressionUserSettings:
         mock_user.subscriptionTier = "NO_TIER"
         mock_user.defaultChatAuthProvider = None
         mock_user.defaultChatCredentialId = None
+        mock_user.termsAcceptedAt = None
+        mock_user.termsVersion = None
+        mock_user.marketingOptOutAt = None
+        mock_user.marketingOptOutSource = None
         self.mock_user_actions.update = AsyncMock(return_value=mock_user)
 
         from backend.data.user import update_user_timezone
@@ -1644,7 +1650,6 @@ class TestPR10WebhookTenancy:
             "backend.copilot.tools.run_agent._safe_link_to_chat_share",
             AsyncMock(),
         )
-        mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
 
     @pytest.mark.asyncio
     async def test_copilot_agent_run_passes_org_team_to_execution(self, mocker):
@@ -1675,7 +1680,6 @@ class TestPR10WebhookTenancy:
             new_callable=AsyncMock,
             return_value=mock_lib_agent,
         )
-        mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
 
         await tool._run_agent(
             user_id=USER_ID,
@@ -2191,6 +2195,7 @@ class TestPR15MarketplaceOrg:
                     graph_version=GRAPH_VERSION,
                     slug=SLUG,
                     name="Test Agent",
+                    sub_heading="Find test agents fast",
                     organization_id="org-1",
                 )
 

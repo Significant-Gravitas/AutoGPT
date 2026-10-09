@@ -24,7 +24,7 @@ from backend.util.json import SafeJson
 
 
 @pytest.fixture
-async def setup_test_user():
+async def setup_test_user(server):
     """Setup test user and cleanup after test."""
     user_id = DEFAULT_USER_ID
 

@@ -2785,74 +2785,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/analytics/log_raw_analytics": {
-      "post": {
-        "tags": ["analytics"],
-        "summary": "Log Raw Analytics",
-        "operationId": "postAnalyticsLogRawAnalytics",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_postAnalyticsLogRawAnalytics"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/analytics/log_raw_metric": {
-      "post": {
-        "tags": ["analytics"],
-        "summary": "Log Raw Metric",
-        "operationId": "postAnalyticsLogRawMetric",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/LogRawMetricRequest" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
     "/api/api-keys": {
       "get": {
         "tags": ["v1", "api-keys"],
@@ -3134,6 +3066,46 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/auth/user/consent": {
+      "post": {
+        "tags": ["v1", "auth"],
+        "summary": "Record user consent",
+        "description": "Record the terms version accepted at signup and, if the user refused\nmarketing email, the opt-out. Idempotent; never clears an opt-out.",
+        "operationId": "postV1Record user consent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordUserConsentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserConsentResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -4452,6 +4424,59 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/feedback": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Submit message feedback",
+        "description": "Rate a reply in one of the caller's chats.\n\nSaves the rating, one per reply and score name so rating again\noverwrites it, and scores it in Langfuse on the trace of the turn that\nwrote the reply, or on the chat's Langfuse session when that trace is\nnot known. Langfuse being down does not fail the request; the response\nsays where the score went.",
+        "operationId": "postV2Submit message feedback",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageFeedbackResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": {
+            "description": "Session or reply not found, or not the caller's"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/messages/pending": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -4750,7 +4775,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Resume Session Stream",
-        "description": "Resume an active stream for a session.\n\nCalled by the AI SDK's ``useChat(resume: true)`` on page load.\nChecks for an active (in-progress) task on the session and either replays\nthe full SSE stream or returns 204 No Content if nothing is running.\n\nAlways replays the active turn from ``0-0``. The AI SDK UI-message parser\nkeeps text/reasoning part state inside a single parser instance; resuming\nfrom a Redis cursor can skip the ``*-start`` events required by later\n``*-delta`` chunks.",
+        "description": "Resume a session's stream.\n\nWith ``turn``, serves exactly that turn's stored entries after ``after``\n(``0-0`` for all of them) and then its live ones: 409 when entries after\nthe cursor were trimmed, 410 when the stream is gone. Every entry frame\ncarries ``id: <turn>:<entry>``.\n\nWithout ``turn``, replays the active turn from ``0-0``, or returns 204\nwhen nothing is running: the AI SDK's parser cannot continue a block it\ndid not see start.",
         "operationId": "getV2ResumeSessionStream",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4759,6 +4784,30 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "turn",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Turn to read; with it, only its stored entries",
+              "title": "Turn"
+            },
+            "description": "Turn to read; with it, only its stored entries"
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+-\\d+$",
+              "description": "Stream entry id the client last applied",
+              "default": "0-0",
+              "title": "After"
+            },
+            "description": "Stream entry id the client last applied"
           }
         ],
         "responses": {
@@ -4768,6 +4817,22 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "Cursor was trimmed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamResumeRefusal" }
+              }
+            }
+          },
+          "410": {
+            "description": "Stream expired",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamResumeRefusal" }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -5746,6 +5811,7 @@
       "get": {
         "tags": ["v1", "credits"],
         "summary": "Manage payment methods",
+        "description": "Return a Stripe billing-portal URL for the caller.\n\n``url`` is ``None`` when the user has no Stripe customer yet: this route is\nrequested on every Settings > Billing load, so it must never provision a\ncustomer as a side effect (see ``create_billing_portal_session``).",
         "operationId": "getV1Manage payment methods",
         "responses": {
           "200": {
@@ -5753,7 +5819,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": { "type": "string" },
+                  "additionalProperties": {
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
                   "type": "object",
                   "title": "Response Getv1Manage Payment Methods"
                 }
@@ -5956,6 +6024,14 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       },
@@ -6209,6 +6285,19 @@
           }
         },
         "security": [{ "APIKeyAuthenticator-X-Postmark-Webhook-Token": [] }]
+      }
+    },
+    "/api/email/mailerlite/webhook": {
+      "post": {
+        "tags": ["v1", "email"],
+        "summary": "Handle MailerLite webhooks",
+        "operationId": "postV1Handle mailerlite webhooks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
       }
     },
     "/api/email/unsubscribe": {
@@ -6642,6 +6731,80 @@
           "503": { "description": "Expert workspace unavailable" }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/avatars/generations": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private", "experts"],
+        "summary": "Generate Expert Avatar",
+        "operationId": "generate_expert_avatar",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertAvatarRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertAvatarJob" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/avatars/generations/{job_id}": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private", "experts"],
+        "summary": "Get Expert Avatar Generation",
+        "operationId": "get_expert_avatar_generation",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid", "title": "Job Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertAvatarJob" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/experts/identities": {
@@ -7316,6 +7479,49 @@
         }
       }
     },
+    "/api/experts/{expert_id}/onboarding": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Get Expert Onboarding",
+        "operationId": "get_expert_onboarding",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ExpertOnboardingResponse" },
+                    { "type": "null" }
+                  ],
+                  "title": "Response Get Expert Onboarding"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/pod": {
       "patch": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -7474,6 +7680,9 @@
                 "schema": { "$ref": "#/components/schemas/Expert" }
               }
             }
+          },
+          "400": {
+            "description": "A marketplace skill is both attached and removed"
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -11867,7 +12076,8 @@
                 "CAPABILITY_CARDS",
                 "AGENTS_TAB_INTRO",
                 "MARKETPLACE_TAB_INTRO",
-                "BUILD_TAB_INTRO"
+                "BUILD_TAB_INTRO",
+                "WORKFLOWS_MOVED"
               ],
               "type": "string",
               "title": "Step"
@@ -13813,6 +14023,54 @@
         }
       }
     },
+    "/api/review/session/{chat_session_id}": {
+      "get": {
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
+        "summary": "Get Pending Reviews for Chat Session",
+        "description": "Get the reviews an AutoPilot chat is waiting on, oldest first.\n\nOnly the caller's own reviews are returned, so another user's chat session\nid yields an empty list.",
+        "operationId": "getV2Get pending reviews for chat session",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "chat_session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Chat Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of pending reviews for the chat session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingHumanReviewModel"
+                  },
+                  "title": "Response Getv2Get Pending Reviews For Chat Session"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": { "application/json": {} }
+          }
+        }
+      }
+    },
     "/api/schedules": {
       "get": {
         "tags": ["v1", "schedules"],
@@ -15079,6 +15337,7 @@
         "summary": "Download agent file",
         "description": "Download agent graph file for a specific marketplace listing version",
         "operationId": "getV2Download agent file",
+        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -15920,17 +16179,31 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Upload submission media",
-        "description": "Upload media for a marketplace listing submission",
+        "description": "Upload media for a marketplace listing submission or Expert appearance.",
         "operationId": "postV2Upload submission media",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["submission", "expert-avatar"],
+              "type": "string",
+              "default": "submission",
+              "title": "Purpose"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "multipart/form-data": {
               "schema": {
                 "$ref": "#/components/schemas/Body_postV2Upload_submission_media"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -15955,8 +16228,99 @@
               }
             }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
+      }
+    },
+    "/api/store/submissions/media/{owner_user_id}/{media_type}/{filename}": {
+      "get": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Read private submission media",
+        "description": "Serve a user's private media to them, to members of an organization they\nshare, and to admins. Anyone else gets a 404, as if it did not exist.",
+        "operationId": "getV2Read private submission media",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "owner_user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Owner User Id" }
+          },
+          {
+            "name": "media_type",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Media Type" }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Filename" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/gif": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/mp4": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/webm": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "206": {
+            "description": "Requested byte range",
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/gif": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/mp4": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/webm": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "307": { "description": "Short-lived signed download URL" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Media not found" },
+          "416": { "description": "Requested range is not satisfiable" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": { "description": "Private media is temporarily unavailable" }
+        }
       }
     },
     "/api/store/submissions/{store_listing_version_id}": {
@@ -17135,6 +17499,12 @@
           "started_at": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Started At"
+          },
+          "checkpoint": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TurnCheckpoint" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -17572,7 +17942,12 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["reset_password", "verify_email", "change_email"],
+            "enum": [
+              "reset_password",
+              "verify_email",
+              "change_email",
+              "set_password"
+            ],
             "title": "Type"
           },
           "to": { "type": "string", "format": "email", "title": "To" },
@@ -18154,25 +18529,6 @@
         "required": ["is_active"],
         "title": "Body_patchOauthUpdateAppStatus"
       },
-      "Body_postAnalyticsLogRawAnalytics": {
-        "properties": {
-          "type": { "type": "string", "title": "Type" },
-          "data": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Data",
-            "description": "The data to log"
-          },
-          "data_index": {
-            "type": "string",
-            "title": "Data Index",
-            "description": "Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc."
-          }
-        },
-        "type": "object",
-        "required": ["type", "data", "data_index"],
-        "title": "Body_postAnalyticsLogRawAnalytics"
-      },
       "Body_postOauthIntrospect": {
         "properties": {
           "token": {
@@ -18619,7 +18975,10 @@
       "BriefingDecisionItem": {
         "properties": {
           "node_exec_id": { "type": "string", "title": "Node Exec Id" },
-          "graph_exec_id": { "type": "string", "title": "Graph Exec Id" },
+          "graph_exec_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Exec Id"
+          },
           "title": { "type": "string", "title": "Title" },
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -18896,6 +19255,16 @@
               { "type": "null" }
             ],
             "title": "Origin"
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
           },
           "kind": { "type": "string", "title": "Kind", "default": "normal" },
           "dream_pass_id": {
@@ -19492,6 +19861,14 @@
             "type": "array",
             "title": "Triggers",
             "default": []
+          },
+          "origin": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Origin"
+          },
+          "update": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Update"
           }
         },
         "type": "object",
@@ -19557,6 +19934,13 @@
           "routine_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Routine Id"
+          },
+          "credential_pins": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialPin"
+            },
+            "type": "object",
+            "title": "Credential Pins"
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
@@ -19655,6 +20039,10 @@
           "graph_exec_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Exec Id"
+          },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
           },
           "node_exec_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -20079,6 +20467,16 @@
         "required": ["creators", "pagination"],
         "title": "CreatorsResponse"
       },
+      "CredentialPin": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title", "default": "" }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "CredentialPin",
+        "description": "The account a schedule runs one provider on, chosen when it was made.\n\nThe title is kept so a run can still name the account after it was\ndeleted, which is when the name matters most."
+      },
       "CredentialRejection": {
         "properties": {
           "provider": { "type": "string", "title": "Provider" },
@@ -20235,6 +20633,15 @@
             "type": "boolean",
             "title": "Is Managed",
             "default": false
+          },
+          "service": { "type": "string", "title": "Service", "default": "" },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
           }
         },
         "type": "object",
@@ -20323,6 +20730,11 @@
           "usage_execution_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Usage Execution Id"
+          },
+          "usage_chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Chat Session Id",
+            "description": "The AutoPilot chat the usage came from"
           },
           "usage_node_count": {
             "type": "integer",
@@ -21614,6 +22026,18 @@
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
+          },
+          "setup_status": {
+            "type": "string",
+            "enum": ["installing", "ready", "failed"],
+            "title": "Setup Status",
+            "default": "ready"
+          },
+          "setup_failures": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Setup Failures",
+            "default": []
           }
         },
         "type": "object",
@@ -21661,6 +22085,102 @@
         "title": "ExpertActivityDay",
         "description": "One calendar day, in the owner's timezone, of expert activity."
       },
+      "ExpertAvatarJob": {
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "title": "Id" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "complete", "failed"],
+            "title": "Status",
+            "default": "pending"
+          },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "created_at": { "type": "number", "title": "Created At" }
+        },
+        "type": "object",
+        "title": "ExpertAvatarJob"
+      },
+      "ExpertAvatarRequest": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "marketing",
+              "sales",
+              "finance",
+              "support",
+              "operations",
+              "research",
+              "content",
+              "development",
+              "general"
+            ],
+            "title": "Category",
+            "default": "general"
+          },
+          "shape": {
+            "type": "string",
+            "enum": [
+              "pebble",
+              "slab",
+              "wedge",
+              "dome",
+              "capsule",
+              "bean",
+              "saddle",
+              "kite",
+              "fan",
+              "arch",
+              "shield",
+              "crescent"
+            ],
+            "title": "Shape",
+            "default": "pebble"
+          },
+          "base": {
+            "type": "string",
+            "enum": ["compact", "wide", "tall"],
+            "title": "Base",
+            "default": "compact"
+          },
+          "tilt": {
+            "type": "string",
+            "enum": ["level", "left", "right"],
+            "title": "Tilt",
+            "default": "level"
+          },
+          "inlay": {
+            "type": "string",
+            "enum": [
+              "sweep",
+              "field",
+              "cloud",
+              "bank",
+              "pool",
+              "inlet",
+              "wrap"
+            ],
+            "title": "Inlay",
+            "default": "sweep"
+          },
+          "expression": {
+            "type": "string",
+            "enum": ["friendly", "curious", "focused", "pleased"],
+            "title": "Expression",
+            "default": "friendly"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExpertAvatarRequest"
+      },
       "ExpertAvatarUpdate": {
         "properties": {
           "avatar_url": {
@@ -21706,7 +22226,16 @@
           "credential_id": { "type": "string", "title": "Credential Id" },
           "provider": { "type": "string", "title": "Provider" },
           "title": { "type": "string", "title": "Title" },
-          "type": { "type": "string", "title": "Type" }
+          "type": { "type": "string", "title": "Type" },
+          "service": { "type": "string", "title": "Service", "default": "" },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
+          }
         },
         "type": "object",
         "required": ["credential_id", "provider", "title", "type"],
@@ -21997,6 +22526,12 @@
             "maxItems": 150,
             "title": "Skills"
           },
+          "remove": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 150,
+            "title": "Remove"
+          },
           "marketplace_listing_ids": {
             "items": { "type": "string" },
             "type": "array",
@@ -22005,9 +22540,8 @@
           }
         },
         "type": "object",
-        "required": ["skills"],
         "title": "ExpertSkillsUpdate",
-        "description": "The full list of skill names an expert should carry. Names new to the\nexpert must be library skills (default or uploaded); names already on\nthe expert are kept as-is so marketplace skills survive a round-trip."
+        "description": "Skills to attach to an expert and skills to remove from it. Names new\nto the expert must be library skills (default or uploaded); names already\non the expert are kept as-is so marketplace skills survive a round-trip.\n\nOnly names listed in ``remove`` are removed. A skill the expert carries\nthat appears in neither list is left alone, so a client holding a stale\nlist can never delete a skill it has not seen (the expert can distil new\nones at any time).\n\nA normalized name must not appear in both ``skills`` and ``remove``;\nsuch a request is rejected with a validation error. A marketplace listing\nwhose name matches a ``remove`` entry is rejected with a 400."
       },
       "ExpertSoulUpdate": {
         "properties": {
@@ -22178,6 +22712,18 @@
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
+          },
+          "setup_status": {
+            "type": "string",
+            "enum": ["installing", "ready", "failed"],
+            "title": "Setup Status",
+            "default": "ready"
+          },
+          "setup_failures": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Setup Failures",
+            "default": []
           },
           "bundled_skills": {
             "items": { "$ref": "#/components/schemas/ExpertBundledSkill" },
@@ -23547,6 +24093,16 @@
               { "type": "null" }
             ],
             "title": "Name"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["onboarding", "expert_page", "copilot"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Surface"
           }
         },
         "type": "object",
@@ -23554,16 +24110,9 @@
         "title": "HireRequest"
       },
       "HireResult": {
-        "properties": {
-          "expert": { "$ref": "#/components/schemas/Expert" },
-          "failed_preloads": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Failed Preloads"
-          }
-        },
+        "properties": { "expert": { "$ref": "#/components/schemas/Expert" } },
         "type": "object",
-        "required": ["expert", "failed_preloads"],
+        "required": ["expert"],
         "title": "HireResult"
       },
       "HomeAction": {
@@ -23650,6 +24199,12 @@
             "title": "Priority"
           },
           "title": { "type": "string", "title": "Title" },
+          "headline": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeHeadline" },
+              { "type": "null" }
+            ]
+          },
           "description": { "type": "string", "title": "Description" },
           "why_it_matters": { "type": "string", "title": "Why It Matters" },
           "expert": {
@@ -23874,6 +24429,18 @@
         "type": "object",
         "required": ["id", "name", "role", "avatar_url"],
         "title": "HomeExpert"
+      },
+      "HomeHeadline": {
+        "properties": {
+          "ask": { "type": "string", "title": "Ask" },
+          "object": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Object"
+          }
+        },
+        "type": "object",
+        "required": ["ask"],
+        "title": "HomeHeadline"
       },
       "HomeRecentWork": {
         "properties": {
@@ -25020,24 +25587,6 @@
         "title": "ListSessionsResponse",
         "description": "Response model for listing chat sessions."
       },
-      "LogRawMetricRequest": {
-        "properties": {
-          "metric_name": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Metric Name"
-          },
-          "metric_value": { "type": "number", "title": "Metric Value" },
-          "data_string": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Data String"
-          }
-        },
-        "type": "object",
-        "required": ["metric_name", "metric_value", "data_string"],
-        "title": "LogRawMetricRequest"
-      },
       "LoginResponse": {
         "properties": {
           "login_url": { "type": "string", "title": "Login Url" },
@@ -25137,6 +25686,12 @@
             "items": { "$ref": "#/components/schemas/MCPServerURLPreset" },
             "type": "array",
             "title": "Server Url Options"
+          },
+          "allow_custom_url": {
+            "type": "boolean",
+            "title": "Allow Custom Url",
+            "description": "Hosted entries only: server_url stays the default, and users may replace it with their own endpoint, such as a self-hosted instance of the service.",
+            "default": false
           },
           "oauth_server_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -25670,6 +26225,62 @@
         "type": "object",
         "required": ["query", "response"],
         "title": "Message"
+      },
+      "MessageFeedbackRequest": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Message Id",
+            "description": "The reply as the chat UI knows it: ``<session id>-seq-<N>`` for a reply loaded from the chat history, or the message's own id."
+          },
+          "score_name": {
+            "type": "string",
+            "enum": ["user-feedback", "copy"],
+            "title": "Score Name",
+            "description": "\"user-feedback\" for thumbs up/down, \"copy\" when the user copied the reply."
+          },
+          "score_value": {
+            "type": "integer",
+            "enum": [0, 1],
+            "title": "Score Value",
+            "description": "1 for thumbs up or a copy, 0 for thumbs down."
+          },
+          "comment": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Comment",
+            "description": "What the user said was wrong, from the thumbs-down form."
+          }
+        },
+        "type": "object",
+        "required": ["message_id", "score_name", "score_value"],
+        "title": "MessageFeedbackRequest",
+        "description": "One rating of one reply."
+      },
+      "MessageFeedbackResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The rating's id, which its Langfuse score shares."
+          },
+          "langfuse_target": {
+            "anyOf": [
+              { "type": "string", "enum": ["trace", "session"] },
+              { "type": "null" }
+            ],
+            "title": "Langfuse Target",
+            "description": "Where the Langfuse score went: the trace of the turn that wrote the reply, or the chat's Langfuse session when that trace is not known. Null when Langfuse is not configured or did not take the score; the rating is saved either way."
+          }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "MessageFeedbackResponse",
+        "description": "A saved rating of an AutoPilot reply."
       },
       "ModelInfo": {
         "properties": {
@@ -26317,7 +26928,8 @@
           "CAPABILITY_CARDS",
           "AGENTS_TAB_INTRO",
           "MARKETPLACE_TAB_INTRO",
-          "BUILD_TAB_INTRO"
+          "BUILD_TAB_INTRO",
+          "WORKFLOWS_MOVED"
         ],
         "title": "OnboardingStep",
         "description": "Application-level onboarding step identifiers."
@@ -26511,19 +27123,24 @@
             "description": "User ID associated with the review"
           },
           "graph_exec_id": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Exec Id",
-            "description": "Graph execution ID"
+            "description": "Graph execution ID; None for a chat review"
           },
           "graph_id": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Id",
             "description": "Graph ID"
           },
           "graph_version": {
-            "type": "integer",
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version",
             "description": "Graph version"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id",
+            "description": "Chat session ID; None for a graph review"
           },
           "payload": {
             "anyOf": [
@@ -26575,15 +27192,20 @@
             "title": "Agent Name",
             "description": "Display name of the agent that requested the review"
           },
+          "block_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Block Id",
+            "description": "The block awaiting approval, when a block asked"
+          },
+          "action": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Action",
+            "description": "What that block does, e.g. 'Send Discord Message'"
+          },
           "library_agent_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Library Agent Id",
             "description": "For run deep links"
-          },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id",
-            "description": "Chat session id for copilot run_capability reviews"
           },
           "was_edited": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
@@ -26623,9 +27245,6 @@
         "required": [
           "node_exec_id",
           "user_id",
-          "graph_exec_id",
-          "graph_id",
-          "graph_version",
           "payload",
           "editable",
           "status",
@@ -27494,6 +28113,20 @@
             "type": "array",
             "title": "Supported Auth Types",
             "description": "Credential types this provider accepts. Drives which connection tabs the settings UI renders for the provider. Empty list means no auth types declared."
+          },
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "description": "Grouping key shared by a block provider and its MCP server.",
+            "default": ""
+          },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
           }
         },
         "type": "object",
@@ -27980,6 +28613,24 @@
         "required": ["experiment_key", "variant"],
         "title": "RecordAssignmentRequest"
       },
+      "RecordUserConsentRequest": {
+        "properties": {
+          "terms_version": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$",
+            "title": "Terms Version"
+          },
+          "marketing_opt_out": {
+            "type": "boolean",
+            "title": "Marketing Opt Out"
+          }
+        },
+        "type": "object",
+        "required": ["terms_version", "marketing_opt_out"],
+        "title": "RecordUserConsentRequest"
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -28031,7 +28682,15 @@
       },
       "RequestTopUp": {
         "properties": {
-          "credit_amount": { "type": "integer", "title": "Credit Amount" }
+          "credit_amount": { "type": "integer", "title": "Credit Amount" },
+          "surface": {
+            "anyOf": [
+              { "type": "string", "const": "billing" },
+              { "type": "null" }
+            ],
+            "title": "Surface",
+            "description": "Where the top-up was started; analytics only."
+          }
         },
         "type": "object",
         "required": ["credit_amount"],
@@ -28077,6 +28736,7 @@
           "block_details",
           "block_output",
           "review_required",
+          "approval_required",
           "capability_list",
           "capability_details",
           "schedule_list",
@@ -28185,6 +28845,21 @@
             "title": "Auto Approve Future",
             "description": "If true and this review is approved, future executions of this same block (node) will be automatically approved. This only affects approved reviews.",
             "default": false
+          },
+          "chat_rule": {
+            "anyOf": [
+              { "type": "string", "enum": ["allow", "judge"] },
+              { "type": "null" }
+            ],
+            "title": "Chat Rule",
+            "description": "AutoPilot cards naming a subject only: once approved, the subject runs ('allow') or goes to the supervisor ('judge') for the rest of the chat instead of asking."
+          },
+          "chat_rule_scope": {
+            "type": "string",
+            "enum": ["chat", "expert", "team"],
+            "title": "Chat Rule Scope",
+            "description": "Where chat_rule holds: this chat, every chat with this chat's Expert (or Otto), or every Expert on the user's team.",
+            "default": "chat"
           }
         },
         "type": "object",
@@ -29855,7 +30530,13 @@
       "StoreSubmissionEditRequest": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
-          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "sub_heading": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Sub Heading",
+            "description": "Short call-to-action line describing what the agent does for the user, e.g. 'Find decision-makers at any company in seconds'. Required; max 100 characters."
+          },
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
@@ -29913,7 +30594,13 @@
           },
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
-          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "sub_heading": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Sub Heading",
+            "description": "Short call-to-action line describing what the agent does for the user, e.g. 'Find decision-makers at any company in seconds'. Required; max 100 characters."
+          },
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
@@ -30044,12 +30731,42 @@
             "title": "Expert Kickoff",
             "description": "Marks the hidden, once-per-expert day-one kickoff. The server derives its owner-scoped message ID and persistence metadata.",
             "default": false
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode",
+            "description": "The chat's approval mode from this turn on; None keeps the mode it already has."
           }
         },
         "type": "object",
         "required": ["message"],
         "title": "StreamChatRequest",
         "description": "Request model for streaming chat with optional context."
+      },
+      "StreamResumeRefusal": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": ["trimmed", "expired"],
+            "title": "Reason"
+          },
+          "checkpoint": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TurnCheckpoint" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["reason"],
+        "title": "StreamResumeRefusal",
+        "description": "Why a resume at a cursor cannot be served from the stream."
       },
       "SubmissionStats": {
         "properties": {
@@ -30210,6 +30927,17 @@
             "enum": ["monthly", "yearly"],
             "title": "Billing Cycle",
             "default": "monthly"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["onboarding", "paywall_gate", "billing"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Surface",
+            "description": "Where the plan was picked; analytics only."
           }
         },
         "type": "object",
@@ -31492,6 +32220,17 @@
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
       },
+      "TurnCheckpoint": {
+        "properties": {
+          "entry_id": { "type": "string", "title": "Entry Id" },
+          "rows": { "type": "integer", "title": "Rows" },
+          "sequence": { "type": "integer", "title": "Sequence" }
+        },
+        "type": "object",
+        "required": ["entry_id", "rows", "sequence"],
+        "title": "TurnCheckpoint",
+        "description": "Where a turn's last ``data-checkpoint`` sits in its stream."
+      },
       "UnderstandingUpdatedResponse": {
         "properties": {
           "type": {
@@ -32518,6 +33257,34 @@
         "type": "object",
         "title": "UserAttributionInput"
       },
+      "UserConsentResponse": {
+        "properties": {
+          "terms_accepted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Terms Accepted At"
+          },
+          "terms_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Terms Version"
+          },
+          "marketing_opt_out_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Marketing Opt Out At"
+          },
+          "marketing_opt_out_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Marketing Opt Out Source"
+          }
+        },
+        "type": "object",
+        "title": "UserConsentResponse"
+      },
       "UserCostSummary": {
         "properties": {
           "user_id": {
@@ -32936,7 +33703,11 @@
       "UserTierResponse": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
-          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" },
+          "warning": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Warning"
+          }
         },
         "type": "object",
         "required": ["user_id", "tier"],

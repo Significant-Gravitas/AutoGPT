@@ -1,3 +1,5 @@
+import { parseSpecialMarkers } from "../../helpers/messageMarkers";
+import { CredentialMentionText } from "../CredentialMention/CredentialMentionText";
 import { cn } from "@/lib/utils";
 import { useMemo, useState } from "react";
 import {
@@ -21,11 +23,13 @@ import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
+import { Text } from "@/components/atoms/Text/Text";
+import { countHeldCalls, getHeldCallRowKind } from "./heldCallRows";
 import {
+  extractReviewTarget,
   getLastCompactionCallId,
   getLatestCompactionPhase,
   getLatestCompactionStats,
-  parseSpecialMarkers,
 } from "./helpers";
 import {
   isMidTurnSegmentRow,
@@ -65,6 +69,10 @@ import {
   type SentFrom,
 } from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
+import {
+  WORKSPACE_FOLDER_PART_TYPE,
+  type WorkspaceFolderPartData,
+} from "../../helpers/workspaceAttachments";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -128,64 +136,12 @@ interface Props {
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports (see ThreadHeader). */
   hasFloatingControls?: boolean;
-  /** Set by the host that mounts the session activity card, so the thread
-   *  chip only becomes clickable where that card exists. */
-  canOpenActivity?: boolean;
-  /** The host's floating workspace-files card is open, so the column
-   *  slides aside for it. Only the copilot chat mounts that card;
-   *  every other host (share viewer, memory and builder panels) leaves this
-   *  off, whatever the persisted panel state says. */
-  areFilesOpen?: boolean;
   /** Compact thread for side panels: smaller text, tighter bubbles and
    *  spacing. */
   variant?: "default" | "compact";
   /** Hosts that already name the thread (e.g. the expert chat drawer)
    *  turn the floating identity chip off. */
   showThreadHeader?: boolean;
-}
-
-/**
- * Extract graph_exec_id from tool outputs that need review.
- * Handles both:
- * - run_block ReviewRequiredResponse (has graph_exec_id directly)
- * - run_agent ExecutionStartedResponse with status "REVIEW" (has execution_id)
- */
-function extractGraphExecId(
-  messages: UIMessage<unknown, UIDataTypes, UITools>[],
-): string | null {
-  // Scan backwards — the most recent review output has the ID
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    for (const part of msg.parts) {
-      if ("output" in part && part.output) {
-        const out =
-          typeof part.output === "string"
-            ? (() => {
-                try {
-                  return JSON.parse(part.output);
-                } catch {
-                  return null;
-                }
-              })()
-            : part.output;
-        if (out && typeof out === "object") {
-          // run_block: ReviewRequiredResponse has graph_exec_id
-          if ("graph_exec_id" in out) {
-            return (out as { graph_exec_id: string }).graph_exec_id;
-          }
-          // run_agent: ExecutionStartedResponse with status "REVIEW"
-          if (
-            "execution_id" in out &&
-            "status" in out &&
-            (out as { status: string }).status === "REVIEW"
-          ) {
-            return (out as { execution_id: string }).execution_id;
-          }
-        }
-      }
-    }
-  }
-  return null;
 }
 
 // Max consecutive auto-triggered loads where the container remains
@@ -344,8 +300,6 @@ export function ChatMessagesContainer({
   isResolvingExpertIdentity = false,
   sessionSentFrom = null,
   hasFloatingControls = false,
-  canOpenActivity = false,
-  areFilesOpen = false,
   variant = "default",
   showThreadHeader = true,
 }: Props) {
@@ -383,7 +337,7 @@ export function ChatMessagesContainer({
   const lastUserMessageID = showPendingSend
     ? PENDING_UPLOAD_MESSAGE_ID
     : (renderRows.findLast((row) => row.role === "user")?.id ?? null);
-  const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
+  const reviewTarget = useMemo(() => extractReviewTarget(messages), [messages]);
 
   // The backend appends a persisted error marker to ``session.messages`` AND
   // yields a ``StreamError`` SSE event on final-failure paths. Both surface
@@ -525,10 +479,7 @@ export function ChatMessagesContainer({
         <ThreadHeader
           expertIdentity={expertIdentity}
           isResolvingExpertIdentity={isResolvingExpertIdentity}
-          readOnly={readOnly}
-          sessionId={sessionID}
           hasFloatingControls={hasFloatingControls}
-          canOpenActivity={canOpenActivity}
         />
       )}
       {!isCompact && <ChatMinimap messages={messages} />}
@@ -544,10 +495,9 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "ease-[cubic-bezier(0.32,0.72,0,1)] mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
+            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
             isCompact && "gap-4 px-4 pt-4",
             !showThreadHeader && "pt-4",
-            areFilesOpen && "xl:-translate-x-40",
           )}
           style={
             bottomContentPadding
@@ -597,6 +547,20 @@ export function ChatMessagesContainer({
                     <WorkCard metadata={runMetadata} preview={preview} />
                   </MessageContent>
                 </Message>
+              );
+            }
+
+            const heldCallRow = getHeldCallRowKind(message.metadata);
+            if (heldCallRow === "result") return null;
+            if (heldCallRow === "answered") {
+              return (
+                <Text
+                  key={message.id}
+                  variant="small"
+                  className="py-1 text-center text-zinc-500"
+                >
+                  Approval answered
+                </Text>
               );
             }
 
@@ -667,6 +631,11 @@ export function ChatMessagesContainer({
 
             const fileParts = renderableParts.filter(
               (p): p is FileUIPart => p.type === "file",
+            );
+            const folderParts = renderableParts.flatMap((p) =>
+              p.type === WORKSPACE_FOLDER_PART_TYPE
+                ? [(p as { data: WorkspaceFolderPartData }).data]
+                : [],
             );
 
             const sentFrom = readOnly
@@ -778,9 +747,10 @@ export function ChatMessagesContainer({
                     />
                   </MessageActions>
                 )}
-                {fileParts.length > 0 && (
+                {(fileParts.length > 0 || folderParts.length > 0) && (
                   <MessageAttachments
                     files={fileParts}
+                    folders={folderParts}
                     isUser={message.role === "user"}
                     filePattern={filePattern}
                     readOnly={readOnly}
@@ -853,8 +823,19 @@ export function ChatMessagesContainer({
               </MessageContent>
             </Message>
           )}
-          {!readOnly && graphExecId && (
-            <CopilotPendingReviews graphExecId={graphExecId} />
+          {!readOnly && reviewTarget?.kind === "graph" && (
+            <CopilotPendingReviews
+              graphExecId={reviewTarget.graphExecId}
+              graphId={reviewTarget.graphId}
+            />
+          )}
+          {!readOnly && sessionID && (
+            <CopilotPendingReviews
+              chatSessionId={sessionID}
+              pollWhileEmpty={reviewTarget?.kind === "chat"}
+              refetchKey={countHeldCalls(messages)}
+              expertName={expertIdentity?.name ?? null}
+            />
           )}
           {!readOnly &&
             queuedMessages?.map((msg, idx) => (
@@ -867,7 +848,9 @@ export function ChatMessagesContainer({
                       : "rounded-3xl text-[1rem] leading-relaxed",
                   )}
                 >
-                  <span>{msg}</span>
+                  <span>
+                    <CredentialMentionText text={msg} />
+                  </span>
                   <span className="flex items-center gap-1 text-xs text-slate-500">
                     <Icon icon={Clock01Icon} className="size-3" />
                     Queued

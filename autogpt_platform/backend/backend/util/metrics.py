@@ -1,4 +1,3 @@
-import logging
 import os
 import re
 import sys
@@ -9,28 +8,20 @@ from pydantic import SecretStr
 from sentry_sdk._init_implementation import init as _sentry_init
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 from sentry_sdk.api import flush as _sentry_flush
-from sentry_sdk.integrations import DidNotEnable
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
-from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
+from sentry_sdk.scrubber import DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST
 
 try:
     from sentry_sdk.integrations.anthropic import AnthropicIntegration
 except ImportError:
     AnthropicIntegration = None  # type: ignore[assignment,misc]
 
-try:
-    from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
-except ImportError:
-    LaunchDarklyIntegration = None  # type: ignore[assignment,misc]
-
-from backend.util import feature_flag
 from backend.util.exceptions import get_execution_failure_reason
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.settings import BehaveAs, Settings
 
 settings = Settings()
-logger = logging.getLogger(__name__)
 
 
 class DiscordChannel(str, Enum):
@@ -96,9 +87,10 @@ _SENTRY_SENSITIVE_FIELDS = sorted(
         "verification_url",
     }
 )
-_SENTRY_EVENT_SCRUBBER = EventScrubber(
-    denylist=_SENTRY_SENSITIVE_FIELDS,
-    recursive=True,
+# Matched case-insensitively against every key in the event, as sentry's
+# EventScrubber does (with its PII list, since send_default_pii is off).
+_SENTRY_SENSITIVE_KEYS = frozenset(
+    field.lower() for field in (*_SENTRY_SENSITIVE_FIELDS, *DEFAULT_PII_DENYLIST)
 )
 _EMBEDDED_SECRET_ASSIGNMENT = re.compile(
     r"(?i)(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|"
@@ -115,14 +107,17 @@ _TOKEN_SHAPED_VALUE = re.compile(
 _FILTERED_VALUE = "[Filtered]"
 
 
-def _scrub_embedded_secret_values(value: object) -> object:
+def _scrub_secrets(value: object) -> object:
     if isinstance(value, dict):
         for key, nested in value.items():
-            value[key] = _scrub_embedded_secret_values(nested)
+            if isinstance(key, str) and key.lower() in _SENTRY_SENSITIVE_KEYS:
+                value[key] = _FILTERED_VALUE
+            else:
+                value[key] = _scrub_secrets(nested)
         return value
     if isinstance(value, list):
         for index, nested in enumerate(value):
-            value[index] = _scrub_embedded_secret_values(nested)
+            value[index] = _scrub_secrets(nested)
         return value
     if isinstance(value, str) and (
         _EMBEDDED_SECRET_ASSIGNMENT.search(value) or _TOKEN_SHAPED_VALUE.search(value)
@@ -132,8 +127,17 @@ def _scrub_embedded_secret_values(value: object) -> object:
 
 
 def _scrub_sentry_event(event: dict) -> None:
-    _SENTRY_EVENT_SCRUBBER.scrub_dict(event)
-    _scrub_embedded_secret_values(event)
+    """Scrub sensitive keys and secret-shaped values from an outgoing event.
+
+    ``before_send`` sees the event after the SDK has serialized it, and the
+    transport then ``json.dumps`` it as is. So every replacement must be plain
+    JSON: sentry's EventScrubber writes ``AnnotatedValue`` objects, and one of
+    those here made the SDK drop the whole event as an internal error. ``_meta``
+    is the SDK's own annotation tree and is left alone.
+    """
+    for key, value in event.items():
+        if key != "_meta":
+            event[key] = _scrub_secrets(value)
 
 
 # FalkorDB (Graphiti CoPilot memory) connection-teardown noise. graphiti-core's
@@ -266,12 +270,6 @@ def sentry_init():
         return
 
     sentry_dsn = settings.secrets.sentry_dsn
-    integrations = []
-    if feature_flag.is_configured() and LaunchDarklyIntegration is not None:
-        try:
-            integrations.append(LaunchDarklyIntegration(feature_flag.get_client()))
-        except DidNotEnable as e:
-            logger.error(f"Error enabling LaunchDarklyIntegration for Sentry: {e}")
     optional_integrations = (
         [AnthropicIntegration(include_prompts=False)]
         if AnthropicIntegration is not None
@@ -287,8 +285,7 @@ def sentry_init():
             AsyncioIntegration(),
             LoggingIntegration(),
         ]
-        + optional_integrations
-        + integrations,
+        + optional_integrations,
     )
 
 

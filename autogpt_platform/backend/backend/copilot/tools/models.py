@@ -2,9 +2,9 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 from backend.copilot.tools.execution_utils import NodeFailureSummary
 from backend.data.graph import BaseGraph, GraphTriggerInfo
@@ -45,6 +45,7 @@ class ResponseType(str, Enum):
     BLOCK_DETAILS = "block_details"
     BLOCK_OUTPUT = "block_output"
     REVIEW_REQUIRED = "review_required"
+    APPROVAL_REQUIRED = "approval_required"
 
     # Capability registry (find/describe/run_capability)
     CAPABILITY_LIST = "capability_list"
@@ -158,6 +159,21 @@ class ToolResponseBase(BaseModel):
     type: ResponseType
     message: str
     session_id: str | None = None
+    # None until the producer declares it, and the content judge then reads the
+    # whole response.
+    _outside: tuple[Any, ...] | None = PrivateAttr(default=None)
+
+    def from_outside(self, *parts: Any) -> Self:
+        """Declare the values in this response that came from outside AutoGPT,
+        exactly as placed in it; with none, the response is wholly ours. The
+        content judge reads only these, and every image. An agent's name,
+        description and schema count as ours: discovery returns them unjudged."""
+        self._outside = (*(self._outside or ()), *parts)
+        return self
+
+    @property
+    def outside(self) -> tuple[Any, ...] | None:
+        return self._outside
 
 
 # Agent discovery models
@@ -1018,12 +1034,22 @@ class ReviewRequiredResponse(ToolResponseBase):
     block_id: str
     block_name: str
     review_id: str = Field(description="The review ID for tracking approval status")
-    graph_exec_id: str = Field(
-        description="The graph execution ID for fetching review status"
-    )
     input_data: dict[str, Any] = Field(
         description="The input data that requires review"
     )
+
+
+class ApprovalRequiredResponse(ToolResponseBase):
+    """An action the auto-mode gate parked for the user to approve; with a
+    ``review_id`` it mounts the chat's approval card."""
+
+    type: ResponseType = ResponseType.APPROVAL_REQUIRED
+    tool_name: str
+    reason: str
+    review_id: str | None = None
+    # The chain row's label, from the same table as the card's headline.
+    ask: str | None = None
+    object: str | None = None
 
 
 class WebFetchResponse(ToolResponseBase):
@@ -1043,12 +1069,12 @@ class WebFetchResponse(ToolResponseBase):
 
 
 class WebSearchResult(BaseModel):
-    """One entry in a web_search tool response."""
+    """One source in a web_search tool response.  ``n`` is the number the
+    answer cites it by, as ``[n]``."""
 
+    n: int
     title: str
     url: str
-    snippet: str = ""
-    page_age: str | None = None
 
 
 class WebSearchResponse(ToolResponseBase):

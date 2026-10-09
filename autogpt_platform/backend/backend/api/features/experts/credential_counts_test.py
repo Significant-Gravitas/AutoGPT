@@ -62,6 +62,54 @@ async def test_lists_live_credential_providers_in_one_owner_scoped_batch():
 
 
 @pytest.mark.asyncio
+async def test_an_mcp_grant_is_listed_under_its_service_icon():
+    from pydantic import SecretStr
+
+    from backend.data.model import OAuth2Credentials
+    from backend.integrations.mcp_catalog import get_mcp_catalog
+
+    linear = next(e for e in get_mcp_catalog() if e.name == "mcp_linear")
+    mcp = OAuth2Credentials(
+        id="mcp-1",
+        provider="mcp",
+        title="MCP: mcp.linear.app",
+        access_token=SecretStr("t"),
+        scopes=[],
+        metadata={"mcp_server_url": linear.mcp_server.server_url},
+    )
+    experts = [
+        prisma.models.Expert.model_construct(id="expert-1", ownerUserId="owner-1")
+    ]
+    with (
+        patch.object(credential_counts, "_seed_if_needed", new=AsyncMock()),
+        patch.object(
+            credential_counts,
+            "_user_credentials",
+            new=AsyncMock(
+                return_value=[mcp, SimpleNamespace(id="live-2", provider="notion")]
+            ),
+        ),
+        patch.object(
+            prisma.models.ExpertCredential,
+            "prisma",
+            return_value=SimpleNamespace(
+                find_many=AsyncMock(
+                    return_value=[
+                        SimpleNamespace(expertId="expert-1", credentialId="mcp-1"),
+                        SimpleNamespace(expertId="expert-1", credentialId="live-2"),
+                    ]
+                )
+            ),
+        ),
+    ):
+        providers = await credential_counts.expert_credential_providers(
+            "owner-1", experts
+        )
+
+    assert providers == {"expert-1": [linear.mcp_server.icon_id, "notion"]}
+
+
+@pytest.mark.asyncio
 async def test_empty_roster_skips_credential_reads():
     with patch.object(
         credential_counts, "_user_credentials", new=AsyncMock()

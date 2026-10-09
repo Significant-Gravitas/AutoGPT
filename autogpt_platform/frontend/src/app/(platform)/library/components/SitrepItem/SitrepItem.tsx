@@ -21,6 +21,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useImageFallback } from "@/hooks/useImageFallback";
 
 interface Props {
   item: SitrepItemData;
@@ -74,12 +75,13 @@ const PRIORITY_CONFIG: Record<
 
 export function SitrepItem({ item }: Props) {
   const config = PRIORITY_CONFIG[item.priority];
+  const { showImage, handleImageError } = useImageFallback(item.agentImageUrl);
   const router = useRouter();
 
   function handleAskAutoPilot() {
     const prompt = buildAutoPilotPrompt(item);
     const encoded = encodeURIComponent(prompt);
-    router.push(`/copilot?autosubmit=true#prompt=${encoded}`);
+    router.push(`/home?autosubmit=true#prompt=${encoded}`);
   }
 
   return (
@@ -89,11 +91,12 @@ export function SitrepItem({ item }: Props) {
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        {item.agentImageUrl ? (
+        {showImage && item.agentImageUrl ? (
           <img
             src={item.agentImageUrl}
             alt={item.agentName}
             className="h-6 w-6 flex-shrink-0 rounded-full object-cover"
+            onError={handleImageError}
           />
         ) : (
           <div

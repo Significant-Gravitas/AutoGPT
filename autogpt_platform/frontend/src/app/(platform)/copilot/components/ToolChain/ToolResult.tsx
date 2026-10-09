@@ -1,6 +1,7 @@
 "use client";
 
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import { HeldCallDetail } from "./HeldCallRowParts";
 import { useContext } from "react";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
@@ -53,6 +54,7 @@ import {
   asObject,
   dictToOutputItems,
   humanizeKey,
+  isWebhookIngressUrl,
   str,
   stripBaseFields,
 } from "./resultHelpers";
@@ -138,6 +140,10 @@ function linkCard(
       url={url}
       title={str(output, "title", "issue_title") ?? undefined}
       meta={meta}
+      secret={
+        isWebhookIngressUrl(url) ||
+        url === str(output, "webhook_url", "ingress_url")
+      }
     />
   );
 }
@@ -500,6 +506,10 @@ export function ToolResult({ row, readOnly = false }: Props) {
         diff={row.output}
       />
     );
+  }
+
+  if (row.held && row.held.state !== "approved") {
+    return <HeldCallDetail held={row.held} />;
   }
 
   const target = capabilityTargetRow(row);

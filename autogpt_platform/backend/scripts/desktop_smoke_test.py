@@ -18,8 +18,10 @@ import httpx
 from dotenv import load_dotenv
 
 from backend.blocks.desktop._api import WORKSPACE_PATH, DesktopSession
+from backend.util.e2b_network import EgressOwner
 
 VOLUME_NAME = "autogpt-smoke-test"
+OWNER = EgressOwner(kind="block", id="smoke-test")
 TEST_FILE = f"{WORKSPACE_PATH}/persist-test.txt"
 
 
@@ -41,6 +43,7 @@ async def main() -> None:
         width=1280,
         height=720,
         volume_mounts={WORKSPACE_PATH: VOLUME_NAME},
+        owner=OWNER,
     )
     timed("cold_start_ready", t, timings)
     print(f"  sandbox_id={session.sandbox_id}")
@@ -73,7 +76,7 @@ async def main() -> None:
 
         print("6) resume via connect")
         t = time.monotonic()
-        resumed = await DesktopSession.connect(session.sandbox_id, api_key)
+        resumed = await DesktopSession.connect(session.sandbox_id, api_key, owner=OWNER)
         timed("resume", t, timings)
         content = await resumed.sandbox.files.read(TEST_FILE)
         assert (
@@ -90,6 +93,7 @@ async def main() -> None:
                 width=1024,
                 height=768,
                 volume_mounts={WORKSPACE_PATH: VOLUME_NAME},
+                owner=OWNER,
             )
             try:
                 cross = await other.sandbox.files.read(TEST_FILE)

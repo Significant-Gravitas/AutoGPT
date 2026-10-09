@@ -27,8 +27,10 @@ from backend.blocks.desktop._common import (
     user_volume_name,
     workspace_volume_mounts,
 )
+from backend.util.e2b_template import DESKTOP_IMAGE
 from backend.util.sandbox_metadata import deployment_env
 
+from . import e2b_sandbox
 from .e2b_sandbox import (
     _CREATING_SENTINEL,
     _SANDBOX_CREATE_MAX_RETRIES,
@@ -144,6 +146,14 @@ def _patch_redis(redis: AsyncMock):
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _no_proxy_credentials():
+    """Pause and kill revoke the box's proxy credential (``e2b_network``),
+    which has its own Redis handle; ``TestProxyCredentialIsRevoked`` covers it."""
+    with patch("backend.copilot.tools.e2b_sandbox.forget_sandbox", AsyncMock()):
+        yield
+
+
 class TestTryReconnect:
     def test_reconnect_refuses_a_box_stamped_for_someone_else(self):
         """A cached id that resolves to another owner's box is dropped, not used."""
@@ -255,6 +265,8 @@ class TestGetOrCreateSandbox:
         # A box whose screen was never on pays no command on the way back.
         sb.commands.run.assert_not_awaited()
         mock_cls.create.assert_not_called()
+        # One made before login baselines existed gets its baseline here.
+        e2b_sandbox.take_baseline.assert_awaited_once_with(sb, only_if_missing=True)
         # redis.set called once to refresh TTL, not to claim a creation slot
         redis.set.assert_awaited_once()
 
@@ -273,6 +285,8 @@ class TestGetOrCreateSandbox:
 
         assert result is new_sb
         mock_cls.create.assert_awaited_once()
+        # Taken before the box is handed to anything the agent does.
+        e2b_sandbox.take_baseline.assert_awaited_once_with(new_sb)
         # Verify lifecycle: pause + auto_resume enabled
         _, kwargs = mock_cls.create.call_args
         assert kwargs.get("lifecycle") == {
@@ -313,13 +327,20 @@ class TestGetOrCreateSandbox:
             mock_cls.create = AsyncMock(side_effect=fake_create)
             asyncio.run(
                 get_or_create_sandbox(
-                    _SESSION_ID, _API_KEY, timeout=_TIMEOUT, template="agpt-desktop-1x2"
+                    _SESSION_ID,
+                    _API_KEY,
+                    timeout=_TIMEOUT,
+                    template="agpt-desktop-1x2-004d6e73",
                 )
             )
 
         # The build can take longer than the creation slot's TTL, so it must
         # finish before the slot is claimed.
-        assert order == [f"ensure:agpt-desktop-1x2:{_API_KEY}", "claim", "create"]
+        assert order == [
+            f"ensure:agpt-desktop-1x2-004d6e73:{_API_KEY}",
+            "claim",
+            "create",
+        ]
 
     def test_create_with_on_timeout_kill(self):
         """on_timeout='kill' disables auto_resume automatically."""
@@ -1200,6 +1221,33 @@ class TestConnectOwned:
         )
 
     @pytest.mark.parametrize(
+        "reconnecting, pinned_for",
+        [("user-a", "user-a"), ("user-b", None), (None, None)],
+        ids=["its own user", "another user", "nobody"],
+    )
+    def test_a_box_is_pinned_only_for_the_user_it_was_created_for(
+        self, reconnecting, pinned_for
+    ):
+        """Its creator's processes may still be running in it: re-pinned for
+        whoever reconnects, they would get to act with that user's accounts.
+        A mismatch keeps the box's egress and swaps nothing in."""
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        stamp = owner.creation_metadata(user_id="user-a")
+        sb = MagicMock()
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.connect_sandbox",
+                AsyncMock(return_value=sb),
+            ) as connect,
+        ):
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            asyncio.run(connect_owned("sb-1", owner, _API_KEY, user_id=reconnecting))
+        egress_owner = connect.await_args.args[2]
+        assert egress_owner.user_id == pinned_for
+        assert egress_owner.label == f"expert:{_EXPERT_ID}"
+
+    @pytest.mark.parametrize(
         "stamp",
         [
             {"autogpt_owner": "expert:someone-else", "autogpt_kind": "shell"},
@@ -1514,6 +1562,76 @@ class TestExpertShellBox:
         assert kwargs["volume_mounts"] is None
         mock_cls.list.assert_not_called()
         assert _turn_acquires(redis) == []
+
+
+class TestSupersededImage:
+    """A box built from a superseded image is swapped for one on the current one."""
+
+    _OLD = "sb-old"
+    _STAMP = {"autogpt_template": "agpt-desktop-1x2", "autogpt_mounts": "attached"}
+
+    def _run(
+        self,
+        stamp: dict[str, str],
+        redis_values: dict[str, str | None],
+        template: str = DESKTOP_IMAGE.alias,
+    ):
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        old = _mock_sandbox(self._OLD, owner=owner)
+        _STAMPS[self._OLD].metadata = {**owner.metadata(), **stamp}
+        new = _mock_sandbox("sb-new", owner=owner)
+        values = {_EXPERT_SHELL_KEY: self._OLD, **redis_values}
+        redis = _keyed_redis(values)
+        redis.delete = AsyncMock(
+            side_effect=lambda *keys: [values.pop(k, 0) for k in keys]
+        )
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+            patch("backend.copilot.tools.e2b_sandbox.ensure_template", AsyncMock()),
+        ):
+            mock_cls.connect = AsyncMock(return_value=old)
+            mock_cls.create = AsyncMock(return_value=new)
+            result = asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID,
+                    _API_KEY,
+                    timeout=_TIMEOUT,
+                    template=template,
+                    expert_id=_EXPERT_ID,
+                )
+            )
+        return result, old, new, mock_cls
+
+    def test_an_idle_box_on_a_superseded_image_is_replaced(self):
+        result, _, new, mock_cls = self._run(self._STAMP, {})
+
+        assert result is new
+        # Killed by id without connecting: a paused box is not resumed to die.
+        mock_cls.connect.assert_not_awaited()
+        mock_cls.kill.assert_awaited_once_with(self._OLD, api_key=_API_KEY)
+        assert mock_cls.create.await_args.kwargs["template"] == DESKTOP_IMAGE.alias
+
+    @pytest.mark.parametrize(
+        "stamp, redis_values, template",
+        [
+            # Its ~/workspace is not a volume: replacing it would lose the files.
+            ({**_STAMP, "autogpt_mounts": "none"}, {}, DESKTOP_IMAGE.alias),
+            # Another turn is running commands on it.
+            (_STAMP, {_EXPERT_ACTIVE_KEY: "1"}, DESKTOP_IMAGE.alias),
+            # Still the configured image, e.g. pinned by an env override.
+            (_STAMP, {}, "agpt-desktop-1x2"),
+        ],
+        ids=["no-volumes", "turn-in-flight", "configured-image"],
+    )
+    def test_a_box_that_cannot_be_replaced_safely_is_kept(
+        self, stamp, redis_values, template
+    ):
+        result, old, _, mock_cls = self._run(stamp, redis_values, template)
+
+        assert result is old
+        mock_cls.kill.assert_not_awaited()
+        mock_cls.create.assert_not_awaited()
 
 
 class TestExpertPause:
@@ -1855,3 +1973,54 @@ class TestExpertBoxRecovery:
             )
         assert ok is False
         sb.pause.assert_not_awaited()
+
+
+class TestProxyCredentialIsRevoked:
+    """A box that is paused or killed will not present its proxy credential
+    again; left alone, the record would keep naming its owner to the proxy."""
+
+    _FORGET = "backend.copilot.tools.e2b_sandbox.forget_sandbox"
+
+    def test_on_kill(self):
+        sb = _mock_sandbox()
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(_mock_redis(stored_sandbox_id=_SANDBOX_ID)),
+            patch(self._FORGET, AsyncMock()) as forget,
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            assert asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY)) is True
+        forget.assert_awaited_once_with(_SANDBOX_ID)
+
+    def test_on_pause(self):
+        sb = _mock_sandbox()
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(_mock_redis(stored_sandbox_id=_SANDBOX_ID)),
+            patch(self._FORGET, AsyncMock()) as forget,
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            assert asyncio.run(pause_sandbox(_SESSION_ID, _API_KEY)) is True
+        forget.assert_awaited_once_with(_SANDBOX_ID)
+
+    def test_on_the_turn_end_pause(self):
+        sb = _mock_sandbox()
+        with (
+            _patch_redis(_mock_redis()),
+            patch(self._FORGET, AsyncMock()) as forget,
+        ):
+            assert asyncio.run(pause_sandbox_direct(sb, _SESSION_ID)) is True
+        forget.assert_awaited_once_with(sb.sandbox_id)
+
+    def test_not_when_the_kill_failed(self):
+        """The box is still there and may yet egress: keep its credential."""
+        sb = _mock_sandbox()
+        sb.kill = AsyncMock(side_effect=RuntimeError("e2b error"))
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(_mock_redis(stored_sandbox_id=_SANDBOX_ID)),
+            patch(self._FORGET, AsyncMock()) as forget,
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            assert asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY)) is False
+        forget.assert_not_awaited()

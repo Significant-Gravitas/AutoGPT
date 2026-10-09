@@ -138,7 +138,7 @@ export function RecentChatItem({
         tooltip={title}
         className="font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal hover:!bg-zinc-100"
       >
-        <Link href={`/copilot?sessionId=${session.id}`}>
+        <Link href={`/home?sessionId=${session.id}`}>
           {session.is_processing ? (
             <LoadingSpinner
               size="small"

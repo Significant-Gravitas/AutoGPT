@@ -164,13 +164,21 @@ def _make_patches(*, hire_experts_enabled: bool):
     return patches, mcp_server_mock, is_feature_enabled_mock
 
 
-async def _run_sdk_turn(*, user_id: str | None, hire_experts_enabled: bool):
+async def _run_sdk_turn(
+    *,
+    user_id: str | None,
+    hire_experts_enabled: bool,
+    expert_id: str | None = None,
+    extra_patches: list[tuple[str, dict]] | None = None,
+):
     from backend.copilot.sdk.service import stream_chat_completion_sdk
 
     session = _make_session()
+    session.expert_id = expert_id
     patches, mcp_server_mock, is_feature_enabled_mock = _make_patches(
         hire_experts_enabled=hire_experts_enabled
     )
+    patches += extra_patches or []
 
     events = []
     with contextlib.ExitStack() as stack:
@@ -221,3 +229,32 @@ class TestSdkExpertsFlagGuard:
         assert "update_expert_soul" in hidden
         assert "hire_expert" not in hidden
         assert "delegate_to_expert" not in hidden
+
+
+class TestSdkComputerNoteWiring:
+    """The plain chat's computer note rides ``get_sdk_supplement``; an expert
+    session must ask for the variant without it, because its own
+    ``<expert_computer>`` block arrives in the first user message."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("expert_id", [None, "expert-1"])
+    async def test_main_turn_tells_the_supplement_whether_it_is_an_expert_session(
+        self, expert_id: str | None
+    ) -> None:
+        supplement = MagicMock(return_value="")
+        await _run_sdk_turn(
+            user_id=None,
+            hire_experts_enabled=False,
+            expert_id=expert_id,
+            extra_patches=[
+                (f"{_SVC}.get_sdk_supplement", dict(new=supplement)),
+                (
+                    f"{_SVC}.build_expert_identity_suffix",
+                    dict(new_callable=AsyncMock, return_value=""),
+                ),
+            ],
+        )
+
+        supplement.assert_called_once_with(
+            use_e2b=False, expert_session=bool(expert_id)
+        )

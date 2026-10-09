@@ -15,7 +15,6 @@ from backend.copilot.capabilities.mcp_review import COPILOT_MCP_NODE_PREFIX
 from backend.copilot.capabilities.ranking import ConnectionState
 from backend.copilot.capabilities.registry import get_registry
 from backend.copilot.capabilities.sources import EAGER_CORE
-from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.copilot.context import set_execution_context
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.prompting import SHARED_TOOL_NOTES
@@ -60,6 +59,17 @@ def _clean_context():
     set_execution_context(USER, session)
     yield
     set_execution_context(None, None)
+
+
+@pytest.fixture(autouse=True)
+def _no_experts():
+    """Expert entries are per user and read from the database; with
+    hire-experts off the layer is empty (``expert_capabilities_test`` covers it)."""
+    with patch(
+        "backend.copilot.tools.session_registry.is_feature_enabled",
+        AsyncMock(return_value=False),
+    ):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -737,7 +747,7 @@ def _review(
     review.node_exec_id = review_id
     review.status = status
     review.payload = payload
-    review.graph_exec_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
+    review.session_id = session_id
     return review
 
 

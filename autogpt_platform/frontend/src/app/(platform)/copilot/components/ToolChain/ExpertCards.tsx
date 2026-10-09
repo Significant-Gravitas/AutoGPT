@@ -80,7 +80,7 @@ function headerFor(
           ? "Expert hired"
           : kind === "update"
             ? "Expert updated"
-            : "Expert raised",
+            : "Expert created",
     };
   }
   return {
@@ -90,7 +90,7 @@ function headerFor(
         ? "Hire an expert"
         : kind === "update"
           ? "Update an expert"
-          : "Raise an expert",
+          : "Create an Expert",
   };
 }
 
@@ -321,7 +321,7 @@ export function ExpertChangeCardSkeleton() {
       <div className={HEADER}>
         <Icon icon={UserAdd01Icon} size={18} className="text-zinc-400" />
         <span className="text-sm font-medium text-zinc-900">
-          Raise an expert
+          Create an Expert
         </span>
       </div>
       <div className="px-4 py-3">

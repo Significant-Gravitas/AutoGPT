@@ -5,7 +5,11 @@ are evaluated with the PostHog SDK's own local evaluator, so a test asserts
 what a user would be served, not just the payload's shape.
 """
 
+import io
 import json
+import urllib.error
+import urllib.request
+from email.message import Message
 from typing import Any
 
 import pytest
@@ -232,6 +236,57 @@ def test_off_boolean_flag_serves_its_off_variation_to_everyone(off_variation, ac
     assert _served(payload)("user-x", ADMIN) is active
 
 
+@pytest.mark.parametrize(
+    "clause",
+    [
+        {"attribute": "country", "op": "in", "values": ["IN"], "negate": True},
+        {"attribute": "country", "op": "endsWith", "values": ["N"], "negate": True},
+    ],
+)
+def test_negated_clause_never_serves_a_user_without_the_attribute(clause):
+    """LaunchDarkly: a missing attribute matches no clause, negated or not.
+
+    The trial offer's production rule is "country is not one of IN". Without
+    the is_set guard, PostHog would be free to serve it to a visitor whose
+    country is unknown -- the one case LaunchDarkly withholds it.
+    """
+    flag = _flag("boolean", rules=[_rule([clause], 0)], fallthrough=1)
+
+    mapped = map_flag(flag, ENV, _cohorts())
+
+    assert mapped.decisions == []
+    served = _served(mapped.payload)
+    assert served("user-x", {"country": "US"}) is True
+    assert served("user-x", {"country": "IN"}) is False
+    # The local evaluator defers to PostHog's servers here, and the group it
+    # defers with can only match once country is set.
+    group = _payload(mapped)["filters"]["groups"][0]["properties"]
+    assert {
+        "key": "country",
+        "type": "person",
+        "operator": "is_set",
+        "value": "is_set",
+    } in group
+
+
+def test_country_rule_ports_instead_of_needing_a_decision():
+    """The trial offer's country targeting must survive the migration."""
+    flag = _flag(
+        "boolean",
+        rules=[
+            _rule([{"attribute": "country", "op": "in", "values": ["US", "GB"]}], 0)
+        ],
+        fallthrough=1,
+    )
+
+    mapped = map_flag(flag, ENV, _cohorts())
+
+    assert mapped.decisions == []
+    served = _served(mapped.payload)
+    assert served("user-x", {"country": "GB"}) is True
+    assert served("user-x", {"country": "IN"}) is False
+
+
 def test_multivariate_flag_serves_launchdarkly_values_as_payloads():
     flag = _flag(
         "multivariate",
@@ -290,6 +345,25 @@ def test_rule_on_only_empty_segments_matches_nobody():
     assert _payload(mapped)["active"] is False
 
 
+@pytest.mark.parametrize(
+    "config, rollout, active",
+    [
+        ({"fallthrough": 1}, 0, False),
+        ({"on": False, "off": 1}, 0, False),
+        ({"fallthrough": 0}, 100, True),
+    ],
+)
+def test_boolean_flag_always_sends_one_condition_group(config, rollout, active):
+    """PostHog answers HTTP 400 to a flag with no group, so one serving nobody stands in."""
+    payload = _payload(map_flag(_flag("boolean", **config), ENV, _cohorts()))
+
+    assert payload["active"] is active
+    assert payload["filters"]["groups"] == [
+        {"properties": [], "rollout_percentage": rollout, "variant": None}
+    ]
+    assert _served({**payload, "active": True})("user-x", ADMIN) is active
+
+
 def test_target_on_a_context_kind_no_client_sends_is_dropped_with_a_note():
     flag = _flag(
         "boolean",
@@ -319,7 +393,7 @@ def test_target_on_a_context_kind_no_client_sends_is_dropped_with_a_note():
                 "rules": [
                     {
                         "clauses": [
-                            {"attribute": "country", "op": "in", "values": ["NL"]}
+                            {"attribute": "plan", "op": "in", "values": ["pro"]}
                         ],
                         "variation": 0,
                     }
@@ -527,6 +601,21 @@ def test_plan_updates_a_cohort_whose_redacted_members_changed():
     assert change.action == "update"
 
 
+def test_replan_is_unchanged_after_posthog_trims_a_padded_launchdarkly_name():
+    cohort = map_segment({"key": "vip", "name": " VIP ", "included": [ADA]}, ENV)
+    flag = map_flag({**_flag("boolean", key="padded"), "name": " Padded "}, ENV, {})
+    stored_cohort = {**_payload(cohort), "id": 8}
+    stored_cohort["description"] = stored_cohort["description"].strip()
+    stored_flag = {**_payload(flag), "id": 9, "name": "Padded"}
+
+    changes = plan_sync([cohort], [flag], [stored_cohort], [stored_flag])
+
+    assert [(c.action, c.diff) for c in changes] == [
+        ("unchanged", []),
+        ("unchanged", []),
+    ]
+
+
 def test_described_filters_never_show_addresses_or_user_ids():
     uid = "123e4567-e89b-12d3-a456-426614174000"
     flag = _flag(
@@ -596,6 +685,33 @@ def test_apply_creates_cohorts_before_the_flags_that_reference_them(monkeypatch)
     assert flag_body["filters"]["groups"][0]["properties"] == [
         {"key": "id", "type": "cohort", "value": 99}
     ]
+
+
+def test_refused_request_reports_the_reason_and_what_was_sent(monkeypatch, capsys):
+    reason = "Feature flags must have at least one condition set (group)."
+
+    def refuse(request: urllib.request.Request, timeout: float):
+        body = json.dumps({"type": "validation_error", "detail": reason})
+        raise urllib.error.HTTPError(
+            request.full_url, 400, "Bad Request", Message(), io.BytesIO(body.encode())
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    client = cli._Client("https://posthog.test", {})
+    sent = {
+        "key": "staff-only",
+        "filters": {
+            "groups": [{"properties": [_prop("email", "exact", [STAFF["email"]])]}]
+        },
+    }
+
+    with pytest.raises(urllib.error.HTTPError):
+        client.send("POST", "/api/projects/42/feature_flags/", sent)
+
+    err = capsys.readouterr().err
+    assert "400" in err and "https://posthog.test/api/projects/42/feature_flags/" in err
+    assert reason in err
+    assert "staff-only" in err and STAFF["email"] not in err
 
 
 def _with_cohort_ids(payload: dict[str, Any], ids: dict[str, int]) -> dict[str, Any]:

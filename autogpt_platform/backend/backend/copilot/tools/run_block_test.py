@@ -30,7 +30,7 @@ def make_mock_block(
     mock.name = name
     mock.block_type = block_type
     mock.disabled = disabled
-    mock.is_sensitive_action = False
+    mock.is_irreversible_action = False
     mock.input_schema = MagicMock()
     mock.input_schema.jsonschema.return_value = {"properties": {}, "required": []}
     mock.input_schema.get_credentials_fields_info.return_value = {}
@@ -56,7 +56,7 @@ def make_mock_block_with_schema(
     mock.name = name
     mock.block_type = BlockType.STANDARD
     mock.disabled = False
-    mock.is_sensitive_action = False
+    mock.is_irreversible_action = False
     mock.description = f"Test block: {name}"
 
     input_schema = {
@@ -806,7 +806,7 @@ class TestRunBlockSensitiveAction:
             },
             required_fields=["repo_url", "branch"],
         )
-        mock_block.is_sensitive_action = True
+        mock_block.is_irreversible_action = True
         mock_block.is_block_exec_need_review = AsyncMock(
             return_value=(True, input_data)
         )
@@ -853,7 +853,7 @@ class TestRunBlockSensitiveAction:
             },
             required_fields=["repo_url", "branch"],
         )
-        mock_block.is_sensitive_action = True
+        mock_block.is_irreversible_action = True
         mock_block.is_block_exec_need_review = AsyncMock(
             return_value=(False, input_data)
         )
@@ -908,7 +908,7 @@ class TestRunBlockSensitiveAction:
             },
             required_fields=["url"],
         )
-        mock_block.is_sensitive_action = False
+        mock_block.is_irreversible_action = False
         mock_block.is_block_exec_need_review = AsyncMock(
             return_value=(False, input_data)
         )
@@ -1504,6 +1504,54 @@ class TestExecuteBlockCredentialRejection:
         assert "credentials" in response.setup_info.user_readiness.missing_credentials
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_scheduled_turn_gets_an_error_naming_the_rejected_credential(
+        self, caplog
+    ):
+        # Nobody answers a card on a scheduled turn (SECRT-2804): the reply has
+        # to say the step was skipped and which credential to reconnect.
+        from backend.util.exceptions import BlockUnknownError
+        from backend.util.request import HTTPClientError
+
+        try:
+            raise HTTPClientError("HTTP 401 Error: token=sk-live-abc", 401)
+        except HTTPClientError as inner:
+            wrapped = BlockUnknownError("failed", "AyrsharePostBlock", "block-id")
+            wrapped.__cause__ = inner
+
+        with patch(
+            "backend.copilot.tools.helpers.is_unattended_turn", return_value=True
+        ):
+            response = await self._run(wrapped)
+
+        assert isinstance(response, ErrorResponse)
+        assert response.error == "credential_rejected"
+        assert "'Work Ayrshare key' (HTTP 401)" in response.message
+        assert "did not run" in response.message
+        assert "did not switch" in response.message
+        assert "sk-live-abc" not in response.message
+        assert "sk-live-abc" not in caplog.text
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_scheduled_turn_gets_an_error_when_a_refresh_is_refused(
+        self, caplog
+    ):
+        from backend.util.request import HTTPClientError
+
+        with patch(
+            "backend.copilot.tools.helpers.is_unattended_turn", return_value=True
+        ):
+            response = await self._run(
+                RuntimeError("the block must not run"),
+                load_error=HTTPClientError("HTTP 400: refresh_token=rt-secret", 400),
+            )
+
+        assert isinstance(response, ErrorResponse)
+        assert response.error == "credential_rejected"
+        assert "'Work Ayrshare key' could not be refreshed" in response.message
+        assert "rt-secret" not in response.message
+        assert "rt-secret" not in caplog.text
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_non_auth_block_failure_still_returns_an_error(self):
         from backend.util.exceptions import BlockExecutionError
 
@@ -1676,7 +1724,7 @@ class TestSpendApproval:
 
         assert isinstance(response, ReviewRequiredResponse)
         assert response.review_id == "copilot-node-expert-spend:expert-1:abcd1234"
-        assert response.graph_exec_id.startswith("copilot-session-")
+        assert "graph_exec_id" not in response.model_dump()
         assert not block.executed
         gate.spend_approval_required.assert_awaited_once_with(_TEST_USER_ID, "expert-1")
         assert (

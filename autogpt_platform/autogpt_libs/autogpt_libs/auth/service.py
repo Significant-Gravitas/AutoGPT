@@ -10,6 +10,7 @@ exists to vouch for the request, without introducing any new shared secret.
 """
 
 import logging
+from typing import Any
 
 import fastapi
 import jwt
@@ -94,3 +95,24 @@ def requires_frontend_service(scope: str):
             )
 
     return _dependency
+
+
+async def frontend_service_claims(token: str, scope: str) -> dict[str, Any] | None:
+    """The claims of *token* if it is a valid frontend service token granting
+    *scope*, else None.
+
+    For facts the frontend vouches for alongside a user's own request -- where
+    the user's bearer token already occupies ``Authorization`` and a failed
+    check should mean "no such fact", not a 401.
+    """
+    if not get_settings().JWT_JWKS_URL:
+        return None
+    try:
+        payload = await parse_jwt_token_async(token, audience=SERVICE_TOKEN_AUDIENCE)
+    except ValueError:
+        return None
+    if payload.get("sub") != FRONTEND_SERVICE_SUBJECT:
+        return None
+    if scope not in str(payload.get("scope", "")).split():
+        return None
+    return payload

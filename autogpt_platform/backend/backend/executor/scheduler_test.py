@@ -840,23 +840,23 @@ def test_build_trigger_unix_dow_various_cases(
 
 
 # ---------------------------------------------------------------------------
-# LaunchDarkly lifecycle — the scheduler eagerly inits LD in run_service (so
-# @expose flag gates don't fail-closed right after a pod restart) and tears
-# it down in cleanup, both gated on the non-LOCAL app env. Test the gate at
-# the boundary where the LD symbols are used (the scheduler module).
+# Feature flag lifecycle — the scheduler eagerly inits the flag backend in
+# run_service (so @expose flag gates don't fail-closed right after a pod
+# restart) and tears it down in cleanup, both gated on the non-LOCAL app env.
+# Test the gate at the boundary where the symbols are used (the scheduler).
 # ---------------------------------------------------------------------------
 
 
-class TestLaunchDarklyLifecycle:
+class TestFeatureFlagLifecycle:
     def test_init_runs_when_app_env_not_local(self) -> None:
         from backend.executor import scheduler as sched
         from backend.util.settings import AppEnvironment
 
         with (
             patch.object(sched.config, "app_env", AppEnvironment.PRODUCTION),
-            patch.object(sched, "initialize_launchdarkly") as init,
+            patch.object(sched, "initialize_feature_flags") as init,
         ):
-            sched._init_launchdarkly_for_scheduler()
+            sched._init_feature_flags_for_scheduler()
         init.assert_called_once()
 
     def test_init_skipped_when_app_env_local(self) -> None:
@@ -865,9 +865,9 @@ class TestLaunchDarklyLifecycle:
 
         with (
             patch.object(sched.config, "app_env", AppEnvironment.LOCAL),
-            patch.object(sched, "initialize_launchdarkly") as init,
+            patch.object(sched, "initialize_feature_flags") as init,
         ):
-            sched._init_launchdarkly_for_scheduler()
+            sched._init_feature_flags_for_scheduler()
         init.assert_not_called()
 
     def test_shutdown_runs_when_app_env_not_local(self) -> None:
@@ -876,9 +876,9 @@ class TestLaunchDarklyLifecycle:
 
         with (
             patch.object(sched.config, "app_env", AppEnvironment.PRODUCTION),
-            patch.object(sched, "shutdown_launchdarkly") as shutdown,
+            patch.object(sched, "shutdown_feature_flags") as shutdown,
         ):
-            sched._shutdown_launchdarkly_for_scheduler()
+            sched._shutdown_feature_flags_for_scheduler()
         shutdown.assert_called_once()
 
     def test_shutdown_skipped_when_app_env_local(self) -> None:
@@ -887,9 +887,9 @@ class TestLaunchDarklyLifecycle:
 
         with (
             patch.object(sched.config, "app_env", AppEnvironment.LOCAL),
-            patch.object(sched, "shutdown_launchdarkly") as shutdown,
+            patch.object(sched, "shutdown_feature_flags") as shutdown,
         ):
-            sched._shutdown_launchdarkly_for_scheduler()
+            sched._shutdown_feature_flags_for_scheduler()
         shutdown.assert_not_called()
 
 
@@ -906,9 +906,6 @@ def test_get_active_jobs_cached_sets_the_scheduler_jobs_gauge():
     from backend.executor.scheduler import Scheduler
 
     s = Scheduler.__new__(Scheduler)
-    s._active_jobs_cache = None
-    s._active_jobs_cache_expires_at = 0.0
-    s._jobs_cache_version = 0
     s._execution_jobstore = MagicMock()
     s._execution_jobstore._get_jobs.return_value = [object(), object(), object()]
 
@@ -928,9 +925,6 @@ def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
     from backend.executor.scheduler import Scheduler
 
     s = Scheduler.__new__(Scheduler)
-    s._active_jobs_cache = None
-    s._active_jobs_cache_expires_at = 0.0
-    s._jobs_cache_version = 0
     s._execution_jobstore = MagicMock()
 
     # A fresh, accepted read publishes 5.
@@ -946,8 +940,7 @@ def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
 
     # Now a read whose query is interrupted by an invalidation: it returns a
     # different count, but the version moved, so the cache write is skipped.
-    s._active_jobs_cache = None
-    s._active_jobs_cache_expires_at = 0.0
+    s._invalidate_jobs_cache()
 
     def _slow_query_then_invalidated(*_args, **_kwargs):
         s._invalidate_jobs_cache()
@@ -955,5 +948,7 @@ def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
 
     s._execution_jobstore._get_jobs.side_effect = _slow_query_then_invalidated
     assert len(s._get_active_jobs_cached()) == 2  # caller still gets the list
-    assert s._active_jobs_cache is None  # write-back was rejected
-    assert gauge() == 5  # and so was the gauge update
+    assert gauge() == 5  # but the gauge update was rejected
+    s._execution_jobstore._get_jobs.side_effect = None
+    s._execution_jobstore._get_jobs.return_value = [object()] * 7
+    assert len(s._get_active_jobs_cached()) == 7  # and so was the cache write

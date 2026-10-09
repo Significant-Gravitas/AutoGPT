@@ -1,40 +1,26 @@
 "use client";
 
-import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { envFlagOverride, Flag } from "./use-get-flag";
+import { useEffect } from "react";
+import { Flag, useFlagStatus } from "./use-get-flag";
 
-export function withFeatureFlag<P extends object>(
+export function withFeatureFlag<P extends object, T extends Flag>(
   WrappedComponent: React.ComponentType<P>,
-  flagKey: string,
+  flag: T,
 ) {
   return function FeatureFlaggedComponent(props: P) {
-    const flags = useFlags();
+    const { enabled, answered } = useFlagStatus(flag);
     const router = useRouter();
 
-    // The local env override (per-flag NEXT_PUBLIC_FORCE_FLAG_*, or the
-    // NEXT_PUBLIC_FORCE_ALL_FLAGS master switch) wins over LaunchDarkly, so a
-    // page gated by this HOC respects force-all like the useGetFlag hook does.
-    const override = envFlagOverride(flagKey as Flag);
-    const isEnabled = override !== undefined ? override : flags[flagKey];
-
-    const [hasFlagLoaded, setHasFlagLoaded] = useState(override !== undefined);
-
+    // Navigating on the 5s timeout would send a user who has the flag to
+    // /404 whenever the vendor is slow or blocked, so only an answer moves.
     useEffect(() => {
-      if (override !== undefined || (flags && flagKey in flags)) {
-        setHasFlagLoaded(true);
-      }
-    }, [flags, override]);
-
-    useEffect(() => {
-      if (hasFlagLoaded && !isEnabled) {
+      if (answered && !enabled) {
         router.push("/404");
       }
-    }, [hasFlagLoaded, isEnabled, router]);
+    }, [answered, enabled, router]);
 
-    // Show loading state until flags loaded
-    if (!hasFlagLoaded) {
+    if (!answered) {
       return (
         <div className="flex min-h-screen items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -42,12 +28,10 @@ export function withFeatureFlag<P extends object>(
       );
     }
 
-    // If flag is loaded but false, return null (will redirect)
-    if (!isEnabled) {
+    if (!enabled) {
       return null;
     }
 
-    // Flag is loaded and true, show component
     return <WrappedComponent {...props} />;
   };
 }

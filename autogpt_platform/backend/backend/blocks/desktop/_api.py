@@ -17,6 +17,14 @@ from typing import Literal, Mapping, Optional
 from e2b import AsyncSandbox, AsyncVolume, SandboxLifecycle
 from pydantic import BaseModel
 
+from backend.util.e2b_network import (
+    EgressOwner,
+    connect_sandbox,
+    create_sandbox,
+    kill_sandbox,
+)
+from backend.util.sandbox_login import LoginChainChanged, run_internal, take_baseline
+
 DESKTOP_TEMPLATE = "desktop"
 HOME_PATH = "/home/user"
 WORKSPACE_PATH = "/home/user/workspace"
@@ -100,19 +108,22 @@ class DesktopSession:
         volume_mounts: Optional[Mapping[str, str]] = None,
         template: str = DESKTOP_TEMPLATE,
         metadata: Optional[Mapping[str, str]] = None,
+        *,
+        owner: EgressOwner,
     ) -> tuple["DesktopSession", PersistenceInfo]:
         """Create a desktop sandbox.
 
         *volume_mounts* maps mount paths to durable volume names (see
         ``workspace_volume_mounts``); *metadata* is stamped on the sandbox so
         its owner can find it again through the E2B API if the cached id is
-        lost.
+        lost; *owner* is who the egress proxy sees the box as.
         """
         sandbox, persistence = await _create_sandbox_with_volumes(
-            volume_mounts, api_key, timeout_seconds, template, metadata
+            volume_mounts, api_key, timeout_seconds, template, metadata, owner=owner
         )
         session = cls(sandbox)
         try:
+            await take_baseline(sandbox)
             await session.ensure_display(width, height)
             # WORKSPACE_PATH always exists (blocks default their cwd to it),
             # mounted or not; mounted paths get their mkdir as well.
@@ -127,20 +138,28 @@ class DesktopSession:
             # rather than leak a sandbox that would bill until timeout and
             # then sit paused forever.
             with contextlib.suppress(Exception):
-                await asyncio.wait_for(sandbox.kill(), timeout=_KILL_TIMEOUT_SECONDS)
+                await asyncio.wait_for(
+                    kill_sandbox(sandbox), timeout=_KILL_TIMEOUT_SECONDS
+                )
             raise
         return session, persistence
 
     @classmethod
     async def connect(
-        cls, sandbox_id: str, api_key: str, timeout_seconds: Optional[int] = None
+        cls,
+        sandbox_id: str,
+        api_key: str,
+        timeout_seconds: Optional[int] = None,
+        *,
+        owner: EgressOwner,
     ) -> "DesktopSession":
         """Reattach to a desktop; *timeout_seconds* re-arms its running-time
         limit, otherwise the SDK's 300 s default would pause a resumed desktop
         under the user long before a freshly created one."""
-        sandbox = await AsyncSandbox.connect(
-            sandbox_id, api_key=api_key, timeout=timeout_seconds
+        sandbox = await connect_sandbox(
+            AsyncSandbox, sandbox_id, owner, api_key=api_key, timeout=timeout_seconds
         )
+        await take_baseline(sandbox, only_if_missing=True)
         return cls(sandbox)
 
     async def start_stream(
@@ -189,7 +208,8 @@ class DesktopSession:
                     f"x11vnc did not start: {await self._tail(_X11VNC_ERROR_LOG)}"
                 ) from exc
             try:
-                await self.sandbox.commands.run(
+                await run_internal(
+                    self.sandbox,
                     f"cd /opt/noVNC/utils && ./novnc_proxy --vnc localhost:{VNC_PORT} "
                     f"--listen {STREAM_PORT} --web /opt/noVNC > {_NOVNC_LOG} 2>&1",
                     background=True,
@@ -246,8 +266,13 @@ class DesktopSession:
         timeout: int = 60,
         user: Optional[str] = None,
     ):
-        return await self.sandbox.commands.run(
-            command, cwd=cwd, timeout=timeout, envs={"DISPLAY": DISPLAY}, user=user
+        return await run_internal(
+            self.sandbox,
+            command,
+            cwd=cwd,
+            timeout=timeout,
+            envs={"DISPLAY": DISPLAY},
+            user=user,
         )
 
     async def is_workspace_mounted(self) -> bool:
@@ -281,7 +306,7 @@ class DesktopSession:
         await self.sandbox.pause()
 
     async def kill(self) -> None:
-        await self.sandbox.kill()
+        await kill_sandbox(self.sandbox)
 
     async def stop_stream(self) -> None:
         """Stop serving the screen; the display itself stays up.
@@ -300,14 +325,17 @@ class DesktopSession:
         # Xvfb logs afterwards (Chrome opening a second window is enough)
         # kills it with SIGPIPE and every X client with it.
         if not await self._check(f"xdpyinfo -display {DISPLAY}"):
-            await self.sandbox.commands.run(
+            await run_internal(
+                self.sandbox,
                 f"Xvfb {DISPLAY} -ac -screen 0 {width}x{height}x24 -retro -dpi 96 "
                 "-nolisten tcp -nolisten unix > /tmp/xvfb.log 2>&1",
                 background=True,
             )
             await self._wait_for(f"xdpyinfo -display {DISPLAY}")
-        await self.sandbox.commands.run(
+        await run_internal(
+            self.sandbox,
             "startxfce4 > /tmp/xfce.log 2>&1",
+            keep_home=True,
             background=True,
             envs={"DISPLAY": DISPLAY},
         )
@@ -317,8 +345,11 @@ class DesktopSession:
 
     async def _check(self, command: str) -> bool:
         try:
-            await self.sandbox.commands.run(command)
+            await run_internal(self.sandbox, command)
             return True
+        except LoginChainChanged:
+            # A refusal, not "not ready yet": waiting would only end in a timeout.
+            raise
         except Exception:
             return False
 
@@ -378,11 +409,14 @@ async def _create_sandbox_with_volumes(
     timeout_seconds: int,
     template: str = DESKTOP_TEMPLATE,
     metadata: Optional[Mapping[str, str]] = None,
+    *,
+    owner: EgressOwner,
 ) -> tuple[AsyncSandbox, PersistenceInfo]:
     kwargs = _sandbox_create_kwargs(api_key, timeout_seconds, template, metadata)
     if not volume_mounts:
         sandbox = await asyncio.wait_for(
-            AsyncSandbox.create(**kwargs), timeout=CREATE_TIMEOUT_SECONDS
+            create_sandbox(AsyncSandbox, owner, **kwargs),
+            timeout=CREATE_TIMEOUT_SECONDS,
         )
         return sandbox, PersistenceInfo()
 
@@ -395,7 +429,7 @@ async def _create_sandbox_with_volumes(
     for attempt in range(1, MOUNTED_CREATE_ATTEMPTS + 1):
         try:
             sandbox = await asyncio.wait_for(
-                AsyncSandbox.create(**kwargs, volume_mounts=mounts),
+                create_sandbox(AsyncSandbox, owner, **kwargs, volume_mounts=mounts),
                 timeout=CREATE_TIMEOUT_SECONDS,
             )
         except Exception as exc:
@@ -415,7 +449,7 @@ async def _create_sandbox_with_volumes(
     if kwargs.get("metadata"):
         kwargs["metadata"] = {**kwargs["metadata"], "autogpt_mounts": "none"}
     sandbox = await asyncio.wait_for(
-        AsyncSandbox.create(**kwargs), timeout=CREATE_TIMEOUT_SECONDS
+        create_sandbox(AsyncSandbox, owner, **kwargs), timeout=CREATE_TIMEOUT_SECONDS
     )
     return sandbox, PersistenceInfo(
         warning=(

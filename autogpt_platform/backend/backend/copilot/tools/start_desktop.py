@@ -19,7 +19,7 @@ the screen comes back exactly as it was on the next resume.
 import logging
 from typing import Any
 
-from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
+from backend.blocks.desktop._api import DISPLAY, SHARED_PATH, WORKSPACE_PATH
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
 
@@ -144,6 +144,9 @@ def _build_message(first_time: bool, shared: bool, *, expert: bool = False) -> s
     return (
         f"{state}. This is the same machine bash_exec runs in, so files, "
         "processes and installed tools are shared. The user can watch and "
-        "control it via the live stream. The machine suspends between turns "
-        f"and the screen comes back as you left it. {files}"
+        "control it via the live stream, which shows only what runs here on "
+        f"DISPLAY={DISPLAY}: start GUI apps or a browser with bash_exec in the "
+        "background; browser_* tools run elsewhere and never appear on it. "
+        "The machine suspends between turns and the screen comes back as you "
+        f"left it. {files}"
     )

@@ -3,11 +3,15 @@ import {
   usePostTrialsStartTrialCheckout,
 } from "@/app/api/__generated__/endpoints/trials/trials";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import { trackAdsConversionBeforeNavigation } from "@/services/analytics/google-ads";
+import { markTrialCheckoutStarted } from "@/services/analytics/monetization-analytics";
+import { TrialEvent } from "@/services/analytics/posthog-events";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 import { updateTrialStatusCache } from "@/services/trials/updateTrialStatusCache";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePostHog } from "@posthog/react";
 import { useEffect, useRef, useState } from "react";
+import { getTrialChargeAmount } from "./helpers";
 
 export function useTrialCard(returnTo: "onboarding" | "billing") {
   const userID = useAuthStore((state) => state.user?.id);
@@ -19,8 +23,12 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
     message: string;
   } | null>(null);
   const query = useTrialStatus();
-  const { mutateAsync: checkout, isPending: isStarting } =
+  const { mutateAsync: checkout, isPending: isCheckoutPending } =
     usePostTrialsStartTrialCheckout();
+  // The mutation settles before the redirect, while the conversion is still
+  // going out; the button must stay busy until the page actually leaves.
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const isStarting = isCheckoutPending || isCheckingOut;
   const { mutateAsync: cancel, isPending: isCanceling } =
     usePostTrialsCancelTrial();
   const offer = query.data?.eligible ? query.data.offer : null;
@@ -30,7 +38,7 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
     const identity = `${userID}:${offer.token}`;
     if (seenOffer.current === identity) return;
     seenOffer.current = identity;
-    posthog?.capture("subscription_trial_offer_viewed", {
+    posthog?.capture(TrialEvent.TRIAL_OFFER_VIEWED, {
       trial_offer_version: offer.version,
       subscription_tier: offer.tier,
       trial_duration_days: offer.duration_days,
@@ -41,6 +49,7 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
   async function startTrial() {
     if (!offer || !userID || isStarting) return;
     setFailure(null);
+    setIsCheckingOut(true);
     try {
       const response = await checkout({
         data: { offer_token: offer.token, return_to: returnTo },
@@ -48,9 +57,10 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
       if (useAuthStore.getState().user?.id !== userID) return;
       if (response.status !== 200)
         throw new Error("Unable to start trial checkout.");
-      posthog?.capture("subscription_trial_checkout_started", {
-        trial_offer_version: offer.version,
-        surface: returnTo,
+      markTrialCheckoutStarted(returnTo);
+      await trackAdsConversionBeforeNavigation("begin_checkout", {
+        value: getTrialChargeAmount(offer),
+        currency: offer.currency.toUpperCase(),
       });
       window.location.assign(response.data.url);
     } catch (error) {
@@ -62,6 +72,8 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
             : "Unable to start trial checkout.",
       });
       await query.refetch();
+    } finally {
+      setIsCheckingOut(false);
     }
   }
 
