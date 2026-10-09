@@ -23,6 +23,7 @@ interface Props {
   description?: string;
   onConnected?: (credential: CredentialsMetaResponse) => void;
   initialProviderId?: string | null;
+  preferMcp?: boolean;
 }
 
 const DEFAULT_TITLE = "Connect a service";
@@ -54,6 +55,7 @@ export function ConnectServiceDialog({
   description = DEFAULT_DESCRIPTION,
   onConnected,
   initialProviderId,
+  preferMcp,
 }: Props) {
   const {
     query,
@@ -142,6 +144,7 @@ export function ConnectServiceDialog({
                       provider={selectedProvider!}
                       onBack={handleBack}
                       onSuccess={handleSuccess}
+                      preferMcp={preferMcp}
                     />
                   </motion.div>
                 )}

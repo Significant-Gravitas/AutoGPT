@@ -68,6 +68,9 @@ export enum Flag {
   // The share of chat sessions whose stream the converter shadows and checks
   // against the server, 0 to 1 (a PostHog payload). 0 is off.
   COPILOT_STREAM_SHADOW = "copilot-stream-shadow",
+  // The chat's own stream runtime in place of the AI SDK's: resume at a
+  // cursor, render from the persisted rows. Frontend only; fail-closed.
+  COPILOT_STREAM_RUNTIME = "copilot-stream-runtime",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -104,6 +107,7 @@ const defaultFlags = {
   [Flag.COPILOT_VOICE_MODE]: false,
   [Flag.COPILOT_AUTO_MODE]: false,
   [Flag.COPILOT_STREAM_SHADOW]: 0,
+  [Flag.COPILOT_STREAM_RUNTIME]: false,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -173,6 +177,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_VOICE_MODE;
     case Flag.COPILOT_AUTO_MODE:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_AUTO_MODE;
+    case Flag.COPILOT_STREAM_RUNTIME:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_STREAM_RUNTIME;
     case Flag.COPILOT_BOT_PLATFORMS:
     case Flag.COPILOT_STREAM_SHADOW:
       return undefined;

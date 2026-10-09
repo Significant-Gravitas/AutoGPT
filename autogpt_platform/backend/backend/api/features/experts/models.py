@@ -195,6 +195,9 @@ class ExpertCredentialRef(BaseModel):
     provider: str
     title: str
     type: str
+    service: str = ""
+    service_name: str | None = None
+    service_icon: str | None = None
 
 
 EXPERT_DAY_ONE_MAX_ITEMS = 3

@@ -91,6 +91,7 @@ from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
     FRIENDLY_TRANSIENT_MSG,
+    HUNG_TOOL_CAP_SECONDS,
     STREAM_ERROR_MARKER,
     STREAM_INCOMPLETE_MARKER,
     STREAM_LOCK_PREFIX,
@@ -284,7 +285,7 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 # Two regimes: no tool pending → 30 min (SDK genuinely idle); tool pending →
 # 2 h hard cap (lets long sub-AutoPilots run, still backstops a hung tool).
 _IDLE_TIMEOUT_SECONDS = 30 * 60
-_HUNG_TOOL_CAP_SECONDS = 2 * 60 * 60
+_HUNG_TOOL_CAP_SECONDS = HUNG_TOOL_CAP_SECONDS
 
 # Floor on the per-query SDK budget — too small and the CLI refuses to
 # start a turn at all.  Caller (``_resolve_dynamic_max_budget_usd``) clamps
