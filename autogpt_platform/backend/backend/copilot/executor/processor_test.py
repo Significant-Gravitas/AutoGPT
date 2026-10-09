@@ -49,9 +49,13 @@ from backend.util.exceptions import (
 @pytest.fixture(autouse=True)
 def no_trial_attribution(mocker):
     store = MagicMock()
-    store.get_subscription_trial = AsyncMock(return_value=None)
+    store.get_usage_activation_state = AsyncMock(
+        side_effect=lambda user_id: SimpleNamespace(
+            user_id=user_id, generation=None, trial_id=None, ready=True
+        )
+    )
     mocker.patch(
-        "backend.copilot.trial_cost_context.db_accessors.credit_db", return_value=store
+        "backend.copilot.usage_activation.pro_activation_db", return_value=store
     )
 
 
