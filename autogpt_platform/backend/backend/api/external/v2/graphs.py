@@ -201,6 +201,9 @@ async def update_graph(
         )
         if current_active_version:
             await on_graph_deactivate(current_active_version, user_id=auth.user_id)
+        await library_db.migrate_webhook_presets_to_new_version(
+            user_id=auth.user_id, new_graph=new_graph_version
+        )
 
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
@@ -316,7 +319,9 @@ async def set_active_version(
         organization_id=auth.organization_id,
     )
 
-    await before_graph_activate(new_active_graph, user_id=auth.user_id)
+    new_active_graph = await before_graph_activate(
+        new_active_graph, user_id=auth.user_id
+    )
     await graph_db.set_graph_active_version(
         graph_id=graph_id,
         version=new_active_version,
@@ -329,6 +334,12 @@ async def set_active_version(
 
     if current_active_graph and current_active_graph.version != new_active_version:
         await on_graph_deactivate(current_active_graph, user_id=auth.user_id)
+
+    # Keeps webhook URLs firing the active version. A preset it skips is only
+    # logged: unlike the internal route's, this response has no field for it.
+    await library_db.migrate_webhook_presets_to_new_version(
+        user_id=auth.user_id, new_graph=new_active_graph
+    )
 
 
 @graphs_router.patch(

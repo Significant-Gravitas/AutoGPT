@@ -1,19 +1,27 @@
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
+import prisma.models
 import pytest
 import pytest_mock
 from prisma.enums import APIKeyPermission
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.code_executor import ExecuteCodeBlock
+from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.data import graph as graph_db
 from backend.data.user import get_or_create_user
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.test import SpinTestServer
 
-from .graphs import create_graph, get_graph, list_graph_versions, update_graph
-from .models import GraphCreateRequest
+from .graphs import (
+    create_graph,
+    get_graph,
+    list_graph_versions,
+    set_active_version,
+    update_graph,
+)
+from .models import GraphCreateRequest, GraphNode, GraphSetActiveVersionRequest
 from .pagination import PageRequest
 from .tenancy import TenantContext
 
@@ -191,3 +199,70 @@ async def test_a_page_of_versions_resolves_only_its_own_sub_graphs(
     assert [v.version for v in newest.items + older.items] == [3, 2]
     assert newest.total_count == 3
     assert resolve.await_count == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "activate_v2",
+    [
+        lambda graph_id, request, auth: update_graph(graph_id, request, auth=auth),
+        lambda graph_id, request, auth: _save_inactive_then_activate(
+            graph_id, request, auth
+        ),
+    ],
+    ids=["update", "set-active-version"],
+)
+async def test_activating_a_version_moves_its_webhook_presets_onto_it(
+    server: SpinTestServer, activate_v2
+) -> None:
+    """Left on v1, a preset's webhook URL keeps running the deactivated version."""
+    user_id = str(uuid4())
+    await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
+    auth = _AUTH.model_copy(update={"user_id": user_id})
+    triggered = GraphCreateRequest(
+        name="Triggered",
+        nodes=[GraphNode(id="trigger", block_id=GenericWebhookTriggerBlock().id)],
+        links=[],
+    )
+    v1 = await create_graph(triggered, auth=auth)
+    webhook = await prisma.models.IntegrationWebhook.prisma().create(
+        data={
+            "userId": user_id,
+            "provider": "generic_webhook",
+            "credentialsId": "",
+            "webhookType": "plain",
+            "resource": "",
+            "events": [],
+            "config": "{}",
+            "secret": "",
+            "providerWebhookId": "",
+        }
+    )
+    preset = await prisma.models.AgentPreset.prisma().create(
+        data={
+            "userId": user_id,
+            "name": "On webhook",
+            "description": "",
+            "agentGraphId": v1.id,
+            "agentGraphVersion": v1.version,
+            "webhookId": webhook.id,
+        }
+    )
+
+    await activate_v2(v1.id, triggered, auth)
+
+    moved = await prisma.models.AgentPreset.prisma().find_unique_or_raise(
+        where={"id": preset.id}
+    )
+    assert moved.agentGraphVersion == 2
+
+
+async def _save_inactive_then_activate(
+    graph_id: str, request: GraphCreateRequest, auth: TenantContext
+) -> None:
+    await update_graph(
+        graph_id, request.model_copy(update={"is_active": False}), auth=auth
+    )
+    await set_active_version(
+        graph_id, GraphSetActiveVersionRequest(active_graph_version=2), auth=auth
+    )
