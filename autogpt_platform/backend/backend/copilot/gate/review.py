@@ -38,9 +38,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Meant to equal the supervisor's ceiling (classifier._MAX_ARG_CHARS): a call too
-# long for it to judge is one the user approves alone, so the card must show it.
-_MAX_ARG_CHARS = 24_000
+# At least the largest call the supervisor judges whole (25,650 bytes beside a
+# short request, classifier._fit), so a card it opens shows the call entire.
+_MAX_ARG_CHARS = 26_000
 
 GATE_NODE_PREFIX = f"{COPILOT_NODE_PREFIX}gate-"
 

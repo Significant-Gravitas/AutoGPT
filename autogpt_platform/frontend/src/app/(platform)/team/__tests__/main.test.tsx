@@ -1216,7 +1216,7 @@ describe("TeamPage - setup needed card", () => {
     expect(within(card).queryByRole("button", { name: "Connect" })).toBeNull();
   });
 
-  test("excludes MCP presets from native setup actions while keeping the unmet item", async () => {
+  test("offers Connect for a service reached only through its own sign-in", async () => {
     server.use(
       getListExpertSetupItemsMockHandler([
         makeSetupItem({ providers: ["mcp_notion"] }),
@@ -1240,8 +1240,15 @@ describe("TeamPage - setup needed card", () => {
 
     const card = await screen.findByTestId("setup-needed");
     expect(within(card).getByText("Setup needed (1)")).toBeDefined();
-    expect(await within(card).findByText("Needs a platform key")).toBeDefined();
-    expect(within(card).queryByRole("button", { name: "Connect" })).toBeNull();
+    fireEvent.click(
+      await within(card).findByRole("button", { name: "Connect" }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText("Sign in to Notion.")).toBeDefined();
+    expect(
+      within(dialog).queryByRole("button", { name: "Continue" }),
+    ).toBeNull();
   });
 
   test("Allow grants the existing credential to that expert", async () => {

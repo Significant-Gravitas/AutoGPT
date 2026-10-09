@@ -17,7 +17,8 @@ export const AUTOPILOT_MODE_OPTIONS: ModeOption[] = [
   {
     value: "ask_first",
     label: "Ask first",
-    description: "Asks before every edit, command or outside action.",
+    description:
+      "Asks before every edit or outside action. Work that stays in its sandbox runs.",
     icon: UserCheck01Icon,
   },
   {

@@ -70,6 +70,26 @@ describe("FindCapabilitiesTool", () => {
     expect(screen.queryAllByText(/^(connected|sign in)$/)).toHaveLength(2);
   });
 
+  it("shows an expert's ungranted integration as needing a grant, not connected", () => {
+    const ungranted = {
+      ...OUTPUT,
+      count: 1,
+      capabilities: [
+        {
+          ...OUTPUT.capabilities[0],
+          connected: "needs_expert_grant" as const,
+        },
+      ],
+      fallback: [],
+    };
+    render(<FindCapabilitiesTool part={part({ output: ungranted })} />);
+    fireEvent.click(screen.getByText("Results"));
+
+    expect(screen.getByText("grant needed")).toBeDefined();
+    expect(screen.queryByText("connected")).toBeNull();
+    expect(screen.queryByText("sign in")).toBeNull();
+  });
+
   it("labels a skill as one, not as an action", () => {
     const withSkill = {
       ...OUTPUT,

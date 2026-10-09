@@ -8,6 +8,7 @@ import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/
 import { resolveResponse } from "@/app/api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackAdsConversion } from "@/services/analytics/google-ads";
+import { trackTrialCheckoutAbandoned } from "@/services/analytics/monetization-analytics";
 import { environment } from "@/services/environment";
 import { useTrialCheckoutReturn } from "@/services/trials/useTrialCheckoutReturn";
 import {
@@ -162,6 +163,10 @@ export function useOnboardingPage() {
   useEffect(() => {
     if (!isReady || hasInitialized.current) return;
     hasInitialized.current = true;
+    // Read before the URL sync below rewrites the query to `?step=N`.
+    if (searchParams.get("trial") === "cancelled") {
+      trackTrialCheckoutAbandoned("onboarding");
+    }
     const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
     // The paywall is the first step, so a successful Stripe checkout return
     // is a trusted intent to advance past it onto the step after it and start
@@ -212,7 +217,7 @@ export function useOnboardingPage() {
 
   // Report the step the wizard is actually showing. `isOnboardingStateLoading`
   // is the same gate the page renders on — it also covers the window holding
-  // the ONBOARDING_COMPLETE check that redirects finished users to /copilot —
+  // the ONBOARDING_COMPLETE check that redirects finished users to /home —
   // and `isStepSettled` means the step above has landed, so a user resuming
   // at Preparing never reports the store's default of Welcome on the way past.
   // Repeat visits to a step are dropped by `trackOnboardingStep` itself, so
@@ -246,11 +251,11 @@ export function useOnboardingPage() {
           clearHighestStep();
           // Clear the persisted form data without touching in-memory state.
           // `reset()` would set currentStep=1 and trip the URL-sync effect
-          // into racing with the /copilot redirect (the spurious
+          // into racing with the /home redirect (the spurious
           // /onboarding?step=1 replace wins, stranding the user on Welcome
           // until they refresh).
           useOnboardingWizardStore.persist.clearStorage();
-          router.replace("/copilot");
+          router.replace("/home");
           return;
         }
       } catch {
@@ -298,7 +303,7 @@ export function useOnboardingPage() {
         });
         clearHighestStep();
         useOnboardingWizardStore.persist.clearStorage();
-        router.replace("/copilot");
+        router.replace("/home");
         return;
       } catch {
         if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
@@ -306,7 +311,7 @@ export function useOnboardingPage() {
     }
     clearHighestStep();
     useOnboardingWizardStore.persist.clearStorage();
-    router.replace("/copilot");
+    router.replace("/home");
   }
 
   return {

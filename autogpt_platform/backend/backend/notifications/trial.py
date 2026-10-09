@@ -38,13 +38,13 @@ TrialNoticeKind = Literal[
 ]
 
 TRIAL_NOTICE_EVENTS: dict[TrialNoticeKind, PostHogEvent] = {
-    "started": PostHogEvent.SUBSCRIPTION_TRIAL_STARTED,
-    "ending": PostHogEvent.SUBSCRIPTION_TRIAL_ENDING,
-    "canceled": PostHogEvent.SUBSCRIPTION_TRIAL_CANCELED,
-    "resumed": PostHogEvent.SUBSCRIPTION_TRIAL_RESUMED,
-    "ended": PostHogEvent.SUBSCRIPTION_TRIAL_ENDED,
-    "converted": PostHogEvent.SUBSCRIPTION_TRIAL_CONVERTED,
-    "payment_failed": PostHogEvent.SUBSCRIPTION_TRIAL_PAYMENT_FAILED,
+    "started": PostHogEvent.TRIAL_STARTED,
+    "ending": PostHogEvent.TRIAL_ENDING,
+    "canceled": PostHogEvent.TRIAL_CANCELED,
+    "resumed": PostHogEvent.TRIAL_RESUMED,
+    "ended": PostHogEvent.TRIAL_ENDED,
+    "converted": PostHogEvent.TRIAL_CONVERTED,
+    "payment_failed": PostHogEvent.PAYMENT_FAILED,
 }
 
 
@@ -88,7 +88,7 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if not await claim_once(claim):
         return True
     try:
-        await queue_trial_audience_change(kind, user_id, user.email, current)
+        await queue_trial_audience_change(kind, user, current)
         result = await queue_notification_async(
             NotificationEventModel[TrialUpdateData](
                 user_id=user_id, type=NotificationType.TRIAL_UPDATE, data=data
@@ -100,7 +100,7 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
         await release_claim(claim)
         raise
     if kind == "converted":
-        await join_paying_audience(user_id, user.email)
+        await join_paying_audience(user)
     _track_billing_event(
         TRIAL_NOTICE_EVENTS[kind],
         user_id,

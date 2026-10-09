@@ -2785,74 +2785,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/analytics/log_raw_analytics": {
-      "post": {
-        "tags": ["analytics"],
-        "summary": "Log Raw Analytics",
-        "operationId": "postAnalyticsLogRawAnalytics",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_postAnalyticsLogRawAnalytics"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/analytics/log_raw_metric": {
-      "post": {
-        "tags": ["analytics"],
-        "summary": "Log Raw Metric",
-        "operationId": "postAnalyticsLogRawMetric",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/LogRawMetricRequest" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
     "/api/api-keys": {
       "get": {
         "tags": ["v1", "api-keys"],
@@ -3134,6 +3066,46 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/auth/user/consent": {
+      "post": {
+        "tags": ["v1", "auth"],
+        "summary": "Record user consent",
+        "description": "Record the terms version accepted at signup and, if the user refused\nmarketing email, the opt-out. Idempotent; never clears an opt-out.",
+        "operationId": "postV1Record user consent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordUserConsentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserConsentResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -4803,7 +4775,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Resume Session Stream",
-        "description": "Resume an active stream for a session.\n\nCalled by the AI SDK's ``useChat(resume: true)`` on page load.\nChecks for an active (in-progress) task on the session and either replays\nthe full SSE stream or returns 204 No Content if nothing is running.\n\nAlways replays the active turn from ``0-0``. The AI SDK UI-message parser\nkeeps text/reasoning part state inside a single parser instance; resuming\nfrom a Redis cursor can skip the ``*-start`` events required by later\n``*-delta`` chunks.",
+        "description": "Resume a session's stream.\n\nWith ``turn``, serves exactly that turn's stored entries after ``after``\n(``0-0`` for all of them) and then its live ones: 409 when entries after\nthe cursor were trimmed, 410 when the stream is gone. Every entry frame\ncarries ``id: <turn>:<entry>``.\n\nWithout ``turn``, replays the active turn from ``0-0``, or returns 204\nwhen nothing is running: the AI SDK's parser cannot continue a block it\ndid not see start.",
         "operationId": "getV2ResumeSessionStream",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4812,6 +4784,30 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "turn",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Turn to read; with it, only its stored entries",
+              "title": "Turn"
+            },
+            "description": "Turn to read; with it, only its stored entries"
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+-\\d+$",
+              "description": "Stream entry id the client last applied",
+              "default": "0-0",
+              "title": "After"
+            },
+            "description": "Stream entry id the client last applied"
           }
         ],
         "responses": {
@@ -4821,6 +4817,22 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "Cursor was trimmed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamResumeRefusal" }
+              }
+            }
+          },
+          "410": {
+            "description": "Stream expired",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamResumeRefusal" }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -5799,6 +5811,7 @@
       "get": {
         "tags": ["v1", "credits"],
         "summary": "Manage payment methods",
+        "description": "Return a Stripe billing-portal URL for the caller.\n\n``url`` is ``None`` when the user has no Stripe customer yet: this route is\nrequested on every Settings > Billing load, so it must never provision a\ncustomer as a side effect (see ``create_billing_portal_session``).",
         "operationId": "getV1Manage payment methods",
         "responses": {
           "200": {
@@ -5806,7 +5819,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": { "type": "string" },
+                  "additionalProperties": {
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
                   "type": "object",
                   "title": "Response Getv1Manage Payment Methods"
                 }
@@ -6270,6 +6285,19 @@
           }
         },
         "security": [{ "APIKeyAuthenticator-X-Postmark-Webhook-Token": [] }]
+      }
+    },
+    "/api/email/mailerlite/webhook": {
+      "post": {
+        "tags": ["v1", "email"],
+        "summary": "Handle MailerLite webhooks",
+        "operationId": "postV1Handle mailerlite webhooks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
       }
     },
     "/api/email/unsubscribe": {
@@ -15309,6 +15337,7 @@
         "summary": "Download agent file",
         "description": "Download agent graph file for a specific marketplace listing version",
         "operationId": "getV2Download agent file",
+        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -16199,6 +16228,98 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/store/submissions/media/{owner_user_id}/{media_type}/{filename}": {
+      "get": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Read private submission media",
+        "description": "Serve a user's private media to them, to members of an organization they\nshare, and to admins. Anyone else gets a 404, as if it did not exist.",
+        "operationId": "getV2Read private submission media",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "owner_user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Owner User Id" }
+          },
+          {
+            "name": "media_type",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Media Type" }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Filename" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/gif": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/mp4": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/webm": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "206": {
+            "description": "Requested byte range",
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/gif": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/mp4": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/webm": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "307": { "description": "Short-lived signed download URL" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Media not found" },
+          "416": { "description": "Requested range is not satisfiable" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": { "description": "Private media is temporarily unavailable" }
         }
       }
     },
@@ -17378,6 +17499,12 @@
           "started_at": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Started At"
+          },
+          "checkpoint": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TurnCheckpoint" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -17815,7 +17942,12 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["reset_password", "verify_email", "change_email"],
+            "enum": [
+              "reset_password",
+              "verify_email",
+              "change_email",
+              "set_password"
+            ],
             "title": "Type"
           },
           "to": { "type": "string", "format": "email", "title": "To" },
@@ -18396,25 +18528,6 @@
         "type": "object",
         "required": ["is_active"],
         "title": "Body_patchOauthUpdateAppStatus"
-      },
-      "Body_postAnalyticsLogRawAnalytics": {
-        "properties": {
-          "type": { "type": "string", "title": "Type" },
-          "data": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Data",
-            "description": "The data to log"
-          },
-          "data_index": {
-            "type": "string",
-            "title": "Data Index",
-            "description": "Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc."
-          }
-        },
-        "type": "object",
-        "required": ["type", "data", "data_index"],
-        "title": "Body_postAnalyticsLogRawAnalytics"
       },
       "Body_postOauthIntrospect": {
         "properties": {
@@ -19822,6 +19935,13 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Routine Id"
           },
+          "credential_pins": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialPin"
+            },
+            "type": "object",
+            "title": "Credential Pins"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
@@ -20347,6 +20467,16 @@
         "required": ["creators", "pagination"],
         "title": "CreatorsResponse"
       },
+      "CredentialPin": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title", "default": "" }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "CredentialPin",
+        "description": "The account a schedule runs one provider on, chosen when it was made.\n\nThe title is kept so a run can still name the account after it was\ndeleted, which is when the name matters most."
+      },
       "CredentialRejection": {
         "properties": {
           "provider": { "type": "string", "title": "Provider" },
@@ -20503,6 +20633,15 @@
             "type": "boolean",
             "title": "Is Managed",
             "default": false
+          },
+          "service": { "type": "string", "title": "Service", "default": "" },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
           }
         },
         "type": "object",
@@ -22087,7 +22226,16 @@
           "credential_id": { "type": "string", "title": "Credential Id" },
           "provider": { "type": "string", "title": "Provider" },
           "title": { "type": "string", "title": "Title" },
-          "type": { "type": "string", "title": "Type" }
+          "type": { "type": "string", "title": "Type" },
+          "service": { "type": "string", "title": "Service", "default": "" },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
+          }
         },
         "type": "object",
         "required": ["credential_id", "provider", "title", "type"],
@@ -23945,6 +24093,16 @@
               { "type": "null" }
             ],
             "title": "Name"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["onboarding", "expert_page", "copilot"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Surface"
           }
         },
         "type": "object",
@@ -25428,24 +25586,6 @@
         "required": ["sessions", "total"],
         "title": "ListSessionsResponse",
         "description": "Response model for listing chat sessions."
-      },
-      "LogRawMetricRequest": {
-        "properties": {
-          "metric_name": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Metric Name"
-          },
-          "metric_value": { "type": "number", "title": "Metric Value" },
-          "data_string": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Data String"
-          }
-        },
-        "type": "object",
-        "required": ["metric_name", "metric_value", "data_string"],
-        "title": "LogRawMetricRequest"
       },
       "LoginResponse": {
         "properties": {
@@ -27973,6 +28113,20 @@
             "type": "array",
             "title": "Supported Auth Types",
             "description": "Credential types this provider accepts. Drives which connection tabs the settings UI renders for the provider. Empty list means no auth types declared."
+          },
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "description": "Grouping key shared by a block provider and its MCP server.",
+            "default": ""
+          },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
           }
         },
         "type": "object",
@@ -28459,6 +28613,24 @@
         "required": ["experiment_key", "variant"],
         "title": "RecordAssignmentRequest"
       },
+      "RecordUserConsentRequest": {
+        "properties": {
+          "terms_version": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$",
+            "title": "Terms Version"
+          },
+          "marketing_opt_out": {
+            "type": "boolean",
+            "title": "Marketing Opt Out"
+          }
+        },
+        "type": "object",
+        "required": ["terms_version", "marketing_opt_out"],
+        "title": "RecordUserConsentRequest"
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -28510,7 +28682,15 @@
       },
       "RequestTopUp": {
         "properties": {
-          "credit_amount": { "type": "integer", "title": "Credit Amount" }
+          "credit_amount": { "type": "integer", "title": "Credit Amount" },
+          "surface": {
+            "anyOf": [
+              { "type": "string", "const": "billing" },
+              { "type": "null" }
+            ],
+            "title": "Surface",
+            "description": "Where the top-up was started; analytics only."
+          }
         },
         "type": "object",
         "required": ["credit_amount"],
@@ -30569,6 +30749,25 @@
         "title": "StreamChatRequest",
         "description": "Request model for streaming chat with optional context."
       },
+      "StreamResumeRefusal": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": ["trimmed", "expired"],
+            "title": "Reason"
+          },
+          "checkpoint": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TurnCheckpoint" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["reason"],
+        "title": "StreamResumeRefusal",
+        "description": "Why a resume at a cursor cannot be served from the stream."
+      },
       "SubmissionStats": {
         "properties": {
           "total": { "type": "integer", "title": "Total" },
@@ -30728,6 +30927,17 @@
             "enum": ["monthly", "yearly"],
             "title": "Billing Cycle",
             "default": "monthly"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["onboarding", "paywall_gate", "billing"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Surface",
+            "description": "Where the plan was picked; analytics only."
           }
         },
         "type": "object",
@@ -32004,6 +32214,17 @@
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
       },
+      "TurnCheckpoint": {
+        "properties": {
+          "entry_id": { "type": "string", "title": "Entry Id" },
+          "rows": { "type": "integer", "title": "Rows" },
+          "sequence": { "type": "integer", "title": "Sequence" }
+        },
+        "type": "object",
+        "required": ["entry_id", "rows", "sequence"],
+        "title": "TurnCheckpoint",
+        "description": "Where a turn's last ``data-checkpoint`` sits in its stream."
+      },
       "UnderstandingUpdatedResponse": {
         "properties": {
           "type": {
@@ -33030,6 +33251,34 @@
         "type": "object",
         "title": "UserAttributionInput"
       },
+      "UserConsentResponse": {
+        "properties": {
+          "terms_accepted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Terms Accepted At"
+          },
+          "terms_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Terms Version"
+          },
+          "marketing_opt_out_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Marketing Opt Out At"
+          },
+          "marketing_opt_out_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Marketing Opt Out Source"
+          }
+        },
+        "type": "object",
+        "title": "UserConsentResponse"
+      },
       "UserCostSummary": {
         "properties": {
           "user_id": {
@@ -33448,7 +33697,11 @@
       "UserTierResponse": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
-          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" },
+          "warning": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Warning"
+          }
         },
         "type": "object",
         "required": ["user_id", "tier"],
