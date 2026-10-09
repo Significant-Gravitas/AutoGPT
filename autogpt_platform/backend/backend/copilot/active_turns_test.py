@@ -201,6 +201,9 @@ async def test_running_cap_counts_only_the_sessions_the_user_drives(
             with pytest.raises(ConcurrentTurnLimitError):
                 async with acquire_turn_slot("user-1", "session-a"):
                     pytest.fail("body must not run on rejection")  # pragma: no cover
+            # Two flips: the admit, then its rollback to idle.
+            assert db.update_chat_session_status.await_count == 2
+            assert db.update_chat_session_status.await_args.kwargs["status"] == "idle"
 
 
 def _running(delegated_by_session_id: str | None) -> SimpleNamespace:

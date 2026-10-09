@@ -167,9 +167,10 @@ async def acquire_turn_slot(
       caller does NOT own the release.
     * **Rejected** — at the cap; raises :class:`ConcurrentTurnLimitError`.
 
-    The default running cap counts only the sessions the user drives, under
-    the inflight cap over all of them. A ``capacity`` bounds every running
-    session instead: ``schedule_turn`` passes the inflight cap.
+    The default running cap counts only the sessions the user drives, and
+    holds all running sessions under the inflight cap as a safety net; running
+    + queued is enforced where turns queue. A ``capacity`` bounds every
+    running session instead: ``schedule_turn`` passes the inflight cap.
 
     Anonymous sessions (``user_id`` falsy) bypass the cap entirely.
     """
@@ -229,7 +230,7 @@ async def _over_cap(user_id: str, capacity: int | None) -> bool:
     rows = await chat_db().list_chat_sessions_by_status(
         user_id=user_id, status=CHAT_STATUS_RUNNING
     )
-    # A session another session opened is that turn's sub-work, so it must not
-    # queue the user's own next message; the inflight cap still bounds it.
+    # Another session's sub-work must not queue the user's next message. The second
+    # arm bounds running sessions only; running + queued is checked where turns queue.
     driven = sum(1 for r in rows if r.metadata.delegated_by_session_id is None)
     return driven > get_running_turn_limit() or len(rows) > get_inflight_turn_limit()

@@ -340,7 +340,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "Must be <= the in-flight cap; default 5 keeps shared-infra "
             "concurrency predictable while letting users batch-submit. "
             "Sessions another session opened (sub-sessions, delegations, "
-            "handoffs) don't count toward it; the in-flight cap bounds them."
+            "handoffs) don't count toward it; the in-flight cap, enforced on "
+            "running + queued where turns queue, bounds them."
         ),
     )
 

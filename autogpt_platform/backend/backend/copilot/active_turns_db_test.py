@@ -46,7 +46,10 @@ async def test_another_chats_sub_sessions_leave_the_users_next_message_admitted(
             )
         chat = await create_chat_session(user_id, dry_run=False)
 
-        with patch.object(active_turns, "get_running_turn_limit", return_value=5):
+        with (
+            patch.object(active_turns, "get_running_turn_limit", return_value=5),
+            patch.object(active_turns, "get_inflight_turn_limit", return_value=15),
+        ):
             async with acquire_turn_slot(user_id, chat.session_id) as slot:
                 assert slot.admitted
     finally:
