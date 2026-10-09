@@ -84,11 +84,21 @@ async def test_a_created_graph_is_saved_with_its_activation_edits(
     assert writes["create_library_agent"].await_args.args[0] is activated
 
 
+@pytest.mark.parametrize(
+    "save",
+    [
+        lambda request: create_graph(request, auth=_AUTH),
+        lambda request: update_graph("graph-1", request, auth=_AUTH),
+    ],
+    ids=["create", "update"],
+)
 async def test_an_inactive_version_is_saved_without_another_users_credential_refs(
-    mocker: pytest_mock.MockFixture, writes: dict[str, AsyncMock]
+    mocker: pytest_mock.MockFixture, writes: dict[str, AsyncMock], save
 ) -> None:
     activate = mocker.patch(
-        "backend.api.external.v2.graphs.before_graph_activate", new_callable=AsyncMock
+        "backend.api.external.v2.graphs.before_graph_activate",
+        new_callable=AsyncMock,
+        side_effect=GraphActivationError("missing credential"),
     )
     clear = mocker.patch(
         "backend.api.external.v2.graphs.clear_unowned_auto_credentials",
@@ -99,7 +109,7 @@ async def test_an_inactive_version_is_saved_without_another_users_credential_ref
     writes["create_graph"].return_value = Mock(is_active=False)
     inactive = _REQUEST.model_copy(update={"is_active": False})
 
-    await update_graph("graph-1", inactive, auth=_AUTH)
+    await save(inactive)
 
     clear.assert_awaited_once()
     assert clear.await_args.args[0] is writes["create_graph"].await_args.args[0]

@@ -120,7 +120,10 @@ async def create_graph(
     graph.validate_graph(for_run=False)
     # Before the writes: a graph that fails activation must not be saved, and
     # the credential edits activation makes must be.
-    graph = await before_graph_activate(graph, user_id=auth.user_id)
+    if graph.is_active:
+        graph = await before_graph_activate(graph, user_id=auth.user_id)
+    else:
+        await clear_unowned_auto_credentials(graph, auth.user_id)
 
     await graph_db.create_graph(
         graph,
