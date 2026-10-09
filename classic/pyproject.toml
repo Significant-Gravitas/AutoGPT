@@ -76,7 +76,7 @@ prompt-toolkit = "^3.0.0"
 rich = "^13.0"
 
 # Document processing
-pypdf = "^3.1.0"
+pypdf = ">=3.1,<7.0"
 python-docx = "*"
 pylatexenc = "*"
 Pillow = "*"
