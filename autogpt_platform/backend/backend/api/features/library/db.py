@@ -385,7 +385,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
             "userId": user_id,
             "isDeleted": False,
         },
-        include=library_agent_include(user_id, include_store_listing=True),
+        include=library_agent_include(user_id),
     )
 
     if not library_agent:
@@ -394,7 +394,8 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
     if not library_agent.AgentGraph:
         raise NotFoundError(f"Agent graph for library agent #{id} not found")
 
-    schedule_info, sub_graphs = await asyncio.gather(
+    store_listing, schedule_info, sub_graphs = await asyncio.gather(
+        _fetch_store_listing(library_agent.AgentGraph.id),
         _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id),
         graph_db.get_sub_graphs(library_agent.AgentGraph),
     )
@@ -402,7 +403,21 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
     return library_model.LibraryAgent.from_db(
         library_agent,
         sub_graphs=sub_graphs,
+        store_listing=store_listing,
         schedule_info=schedule_info,
+    )
+
+
+async def _fetch_store_listing(graph_id: str) -> prisma.models.StoreListing | None:
+    # Keyed on the graph, not its version: the owner's library agent follows
+    # every save, and a later version is still the listed agent.
+    return await prisma.models.StoreListing.prisma().find_first(
+        where={
+            "agentGraphId": graph_id,
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+        },
+        include={"ActiveVersion": True, "CreatorProfile": True},
     )
 
 

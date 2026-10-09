@@ -18,10 +18,12 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from backend.api.external.middleware import resolve_request_auth
 from backend.api.utils.rate_limit import RateLimiter
+from backend.util.settings import Settings
 
 from .errors import error_response
 
 logger = logging.getLogger(__name__)
+settings = Settings()
 
 _authenticated_limiter = RateLimiter("v2:global", max_requests=200, window_seconds=60)
 _anonymous_limiter = RateLimiter("v2:global:anon", max_requests=5, window_seconds=60)
@@ -60,11 +62,7 @@ class GlobalRateLimitMiddleware:
             if auth:
                 await _authenticated_limiter.check(auth.user_id)
             else:
-                ip = (
-                    headers.get(b"x-forwarded-for", b"").decode().split(",")[0].strip()
-                    or (scope.get("client") or ("unknown",))[0]
-                )
-                await _anonymous_limiter.check(ip)
+                await _anonymous_limiter.check(client_ip(scope, headers))
         except HTTPException as exc:
             # The middleware sits outside the app, so the v2 exception handlers
             # never see this — build the same envelope by hand.
@@ -73,3 +71,23 @@ class GlobalRateLimitMiddleware:
             return
 
         await self.app(scope, receive, send)
+
+
+def client_ip(scope: Scope, headers: dict[bytes, bytes]) -> str:
+    """The caller's address, trusting only the proxies in front of us.
+
+    Our proxies append `trusted_proxy_count` entries, so the client is that
+    many from the right; anything further left the caller wrote itself and
+    could use to spread its requests over an unlimited number of buckets.
+    """
+    peer = (scope.get("client") or ("unknown",))[0]
+    hops = settings.config.trusted_proxy_count
+    if hops < 1:
+        return peer
+
+    forwarded = [
+        value.strip()
+        for value in headers.get(b"x-forwarded-for", b"").decode().split(",")
+        if value.strip()
+    ]
+    return forwarded[-hops] if len(forwarded) >= hops else peer
