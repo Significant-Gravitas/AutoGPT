@@ -326,6 +326,23 @@ Dates are ISO-8601 UTC strings of the lifecycle moment, not of the sync. A
 date that doesn't apply to the current status is `$unset`, never sent as
 null.
 
+The role picked in the onboarding wizard is set with a `$set` of its own when
+the profile is submitted at the Preparing step (`POST /api/onboarding/profile`,
+`product_analytics.set_onboarding_role`), so funnels and retention can be split
+by role. Someone who left the wizard before Preparing has neither property.
+
+| Property | Value |
+| --- | --- |
+| `onboarding_role` | The pick, as labelled in the wizard: `Founder / CEO`, `Operations`, `Sales / BD`, `Marketing`, `Product / PM`, `Engineering`, `HR / People` or `Other`. |
+| `onboarding_role_other` | What was typed after picking `Other` (trimmed, at most 100 characters); null for any other pick. |
+
+The pick is kept on `UserOnboarding`, not read back from the AutoPilot
+business understanding, whose copy AutoPilot rewrites. `poetry run cli
+onboarding-role-backfill` sets both for earlier accounts with `$set_once`, from
+exact picks only: any other stored value may be `Other`'s text or a rewrite,
+so it is left unset. MailerLite gets the same values as `role` and
+`role_other`.
+
 ## Removed
 
 No longer sent (SECRT-2722, SECRT-2723). The names stay reserved: the pin tests fail if
