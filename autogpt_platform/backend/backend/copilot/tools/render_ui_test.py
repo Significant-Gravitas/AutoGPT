@@ -1,4 +1,5 @@
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -20,9 +21,10 @@ from backend.copilot.sdk.tool_adapter import (
     reset_tool_failure_counters,
     set_execution_context,
 )
-from backend.copilot.tools import TOOL_REGISTRY, get_available_tools
+from backend.copilot.tools import TOOL_REGISTRY, get_available_tools, render_ui
 from backend.copilot.tools._test_data import make_session
 from backend.copilot.tools.models import ResponseType
+from backend.copilot.tools.openui_validator import ValidatorUnavailable
 from backend.util.tool_call_loop import LLMToolCall
 
 SOURCE = 'root = Workspace("Revenue", "From the uploaded report", [Metrics([Metric("Revenue", "$42,000", "Q3", "positive")])])'
@@ -206,3 +208,83 @@ async def test_render_ui_rejects_invalid_or_oversized_inputs(monkeypatch, source
         summary="Fallback.",
     )
     assert result.type == ResponseType.ERROR
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "section, issue",
+    [
+        (
+            'DataTable("Quotes", ["Name", "Price"], [["Kite", "$1550", "extra"]])',
+            "DataTable",
+        ),
+        ('DataTable("Quotes", ["a","b","c","d","e","f","g"], [])', "columns"),
+        ("unresolved_section", "unresolved_section"),
+        ('MadeUpComponent("hi")', "MadeUpComponent"),
+    ],
+)
+async def test_render_ui_rejects_schema_errors_before_publishing(
+    enabled, section, issue
+):
+    result = await enabled._execute(
+        "owner",
+        make_session("owner"),
+        source=f'root = Workspace("Test", "Supplied data", [{section}])',
+        summary="Fallback.",
+    )
+    assert result.type == ResponseType.ERROR
+    assert issue in result.message
+    assert "retry" in result.message.lower()
+    assert "source" not in result.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_validator_outage_returns_text_guidance_without_publishing(
+    enabled, monkeypatch
+):
+    monkeypatch.setattr(
+        render_ui,
+        "validate_openui_source",
+        AsyncMock(side_effect=ValidatorUnavailable("Unavailable")),
+    )
+    result = await enabled._execute(
+        "owner", make_session("owner"), source=SOURCE, summary="Revenue."
+    )
+    assert result.type == ResponseType.ERROR
+    assert "plain text" in result.message
+    assert "source" not in result.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_sdk_returns_repair_feedback_then_publishes_only_corrected_view(enabled):
+    async def dispatcher_should_not_run(args):
+        raise AssertionError("Expected render_ui dispatch")
+
+    reset_pending_tool_outputs()
+    reset_tool_failure_counters()
+    set_execution_context("owner", make_session("owner"))
+    try:
+        wrapper = _make_truncating_wrapper(
+            dispatcher_should_not_run, "run_capability", required_args=["id", "input"]
+        )
+        bad = 'root = Workspace("Quotes", "Data", [DataTable("Prices", ["Name", "Price"], [["Kite"]])])'
+        rejected = await wrapper(
+            {"id": "tool:render_ui", "input": {"source": bad, "summary": "Quotes."}}
+        )
+        error = json.loads(_text_from_mcp_result(rejected))
+        assert error["type"] == "error"
+        assert "DataTable.rows.0" in error["message"]
+        assert "source" not in error
+        corrected = bad.replace('[["Kite"]]', '[["Kite", "$1550"]]')
+        accepted = await wrapper(
+            {
+                "id": "tool:render_ui",
+                "input": {"source": corrected, "summary": "Kite costs $1550."},
+            }
+        )
+        output = json.loads(_text_from_mcp_result(accepted))
+        assert output["type"] == "ui_rendered"
+        assert output["source"] == corrected
+    finally:
+        set_execution_context(None, None)
+        reset_pending_tool_outputs()

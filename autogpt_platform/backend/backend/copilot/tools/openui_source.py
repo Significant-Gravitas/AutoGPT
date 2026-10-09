@@ -8,7 +8,7 @@ _DELIMITERS = {"(": ")", "[": "]", "{": "}"}
 
 
 def validate_complete_delimiters(source: str) -> None:
-    """Reject incomplete structure; the frontend still validates the full DSL."""
+    """Cheap structure check before the shared parser validates the full DSL."""
     stack: list[str] = []
     for match in _SOURCE_TOKENS.finditer(source):
         token = match.group()

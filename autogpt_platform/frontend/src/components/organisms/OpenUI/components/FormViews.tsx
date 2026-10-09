@@ -7,7 +7,7 @@ import {
 } from "@openuidev/react-lang";
 import { useId, type FormEvent } from "react";
 import type { z } from "zod/v4";
-import type { Field, Form } from "@/lib/openui/catalog";
+import type { Field, Form } from "@/lib/openui/catalog-fields";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Icon } from "@/components/atoms/Icon/Icon";

@@ -1,24 +1,34 @@
 import { createParser } from "@openuidev/lang-core";
 import { catalog, MAX_SOURCE_LENGTH } from "./catalog";
 import { validateWorkspace } from "./validate";
+import { validateSource } from "./source-validation";
 
 export function parseWorkspace(source: string) {
   if (source.length > MAX_SOURCE_LENGTH)
     throw new Error("This workspace is too large. Try a more focused request.");
+  validateSource(source);
   const result = createParser(catalog.toJSONSchema()).parse(source);
-  if (
-    !result.root ||
-    result.meta.incomplete ||
-    result.meta.unresolved.length ||
-    result.meta.errors.length ||
-    result.queryStatements.length ||
-    result.mutationStatements.length ||
-    result.root.typeName !== "Workspace"
-  ) {
+  if (result.meta.incomplete)
+    throw new Error("Incomplete source. Return a complete Workspace program.");
+  if (result.meta.unresolved.length)
     throw new Error(
-      "The response could not be rendered as a workspace. Try again with a more specific request.",
+      `Unresolved references: ${result.meta.unresolved.slice(0, 5).join(", ")}. Define each referenced section.`,
     );
-  }
+  if (result.meta.errors.length)
+    throw new Error(
+      result.meta.errors
+        .slice(0, 3)
+        .map((issue) => `${issue.component}${issue.path}: ${issue.message}`)
+        .join("; "),
+    );
+  if (result.queryStatements.length || result.mutationStatements.length)
+    throw new Error(
+      "Query and Mutation are not supported. Retrieve data through Copilot tools before rendering.",
+    );
+  if (!result.root || result.root.typeName !== "Workspace")
+    throw new Error(
+      "Start with root = Workspace(title, description, sections).",
+    );
   validateWorkspace(result.root);
   return result.root;
 }

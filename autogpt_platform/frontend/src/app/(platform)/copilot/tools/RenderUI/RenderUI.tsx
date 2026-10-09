@@ -6,8 +6,9 @@ import { SavedSummary } from "./components/SavedSummary";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { ResponseFrame } from "./components/ResponseFrame";
-import { getStreamingSource, readUIResult } from "./helpers";
+import { getStreamingSource, readUIError, readUIResult } from "./helpers";
 import { useRenderUI } from "./useRenderUI";
+import { RejectedUI } from "./components/RejectedUI";
 
 interface Props {
   part: RenderUIMessagePart;
@@ -20,6 +21,9 @@ export function RenderUI({
   readOnly = false,
   isCurrentlyStreaming = false,
 }: Props) {
+  const error = readUIError(part);
+  if (error)
+    return <RejectedUI part={part} message={error} readOnly={readOnly} />;
   const { result, valid, title, summary } = readUIResult(part);
   const pending =
     part.state === "input-streaming" || part.state === "input-available";

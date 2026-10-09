@@ -10,12 +10,33 @@ export function validateWorkspace(value: unknown): unknown {
     "props" in value
   ) {
     const component = catalog.components[value.typeName];
-    if (!component) throw new Error("Unsupported workspace component.");
+    if (!component)
+      throw new Error(`Unsupported workspace component: ${value.typeName}.`);
     const props = validateWorkspace(value.props);
-    z.parse(component.props, props);
+    const parsed = z.safeParse(component.props, props);
+    if (!parsed.success) {
+      const issues = parsed.error.issues
+        .slice(0, 3)
+        .map(
+          (issue) =>
+            `${value.typeName}.${issue.path.join(".")}: ${issue.message}`,
+        );
+      throw new Error(issues.join("; "));
+    }
+    if (value.typeName === "Form") validateFieldNames(props);
     return props;
   }
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => [key, validateWorkspace(item)]),
   );
+}
+
+function validateFieldNames(props: unknown) {
+  const { fields } = z.parse(
+    z.object({ fields: z.array(z.object({ name: z.string() })) }),
+    props,
+  );
+  if (new Set(fields.map((field) => field.name)).size !== fields.length) {
+    throw new Error("Form.fields: Field names must be unique within a form.");
+  }
 }

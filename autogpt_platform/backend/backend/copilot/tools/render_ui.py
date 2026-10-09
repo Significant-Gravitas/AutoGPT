@@ -1,3 +1,4 @@
+import logging
 import re
 from functools import cache
 from pathlib import Path
@@ -10,6 +11,12 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ErrorResponse, ResponseType, ToolResponseBase
 from backend.copilot.tools.openui_source import validate_complete_delimiters
+from backend.copilot.tools.openui_validator import (
+    ValidatorUnavailable,
+    validate_openui_source,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class RenderUIInput(BaseModel):
@@ -114,4 +121,24 @@ class RenderUITool(BaseTool):
                 message="This view is too large. Use fewer rows or shorter descriptions.",
                 session_id=session.session_id,
             )
-        return response
+        return await _validated_response(response)
+
+
+async def _validated_response(response: RenderUIResponse) -> ToolResponseBase:
+    try:
+        validation = await validate_openui_source(response.source)
+    except ValidatorUnavailable as error:
+        logger.warning(f"OpenUI validation unavailable: {error}")
+        return ErrorResponse(
+            message="Interactive validation is temporarily unavailable. "
+            "Provide the complete answer as plain text instead of retrying this view.",
+            session_id=response.session_id,
+        )
+    if not validation.valid:
+        return ErrorResponse(
+            message=f"View not published: {validation.error} "
+            "Correct these issues and retry render_ui with a complete source "
+            "and matching plain-text summary. Preserve the user's data and constraints.",
+            session_id=response.session_id,
+        )
+    return response

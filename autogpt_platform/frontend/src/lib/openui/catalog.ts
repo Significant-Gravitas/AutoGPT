@@ -1,7 +1,13 @@
 import { createLibrary, defineComponent } from "@openuidev/lang-core";
 import { z } from "zod/v4";
 import { Map, Timeline, TrendChart, DonutChart } from "./catalog-sections";
-import { SelectField, DateField, NumberField } from "./catalog-fields";
+import {
+  SelectField,
+  DateField,
+  NumberField,
+  Field,
+  Form,
+} from "./catalog-fields";
 
 const tone = z.enum(["neutral", "positive", "warning"]);
 
@@ -44,11 +50,22 @@ export const DataTable = defineComponent({
   name: "DataTable",
   description:
     "A searchable, sortable table with at most six columns and 30 rows. Each row must have one string per column. Split larger datasets across tables without dropping rows.",
-  props: z.object({
-    title: z.string(),
-    columns: z.array(z.string()).max(6),
-    rows: z.array(z.array(z.string())).max(30),
-  }),
+  props: z
+    .object({
+      title: z.string(),
+      columns: z.array(z.string()).min(1).max(6),
+      rows: z.array(z.array(z.string())).max(30),
+    })
+    .superRefine(({ columns, rows }, context) => {
+      rows.forEach((row, index) => {
+        if (row.length !== columns.length)
+          context.addIssue({
+            code: "custom",
+            path: ["rows", index],
+            message: `Expected ${columns.length} cells to match columns; received ${row.length}. Preserve every value and align each cell with its header.`,
+          });
+      });
+    }),
   component: null,
 });
 
@@ -75,37 +92,6 @@ export const Checklist = defineComponent({
         }),
       )
       .max(12),
-  }),
-  component: null,
-});
-
-export const Field = defineComponent({
-  name: "Field",
-  description:
-    "An editable, labeled text field inside a Form. Use a unique name.",
-  props: z.object({
-    name: z.string(),
-    label: z.string(),
-    value: z.string(),
-    placeholder: z.string(),
-  }),
-  component: null,
-});
-
-export const Form = defineComponent({
-  name: "Form",
-  description:
-    "Collect a brief with at most six fields. Submitting sends the edited values to the assistant; no external action is executed.",
-  props: z.object({
-    name: z.string(),
-    title: z.string(),
-    fields: z
-      .array(
-        z.union([Field.ref, SelectField.ref, DateField.ref, NumberField.ref]),
-      )
-      .max(6),
-    submitLabel: z.string(),
-    message: z.string(),
   }),
   component: null,
 });

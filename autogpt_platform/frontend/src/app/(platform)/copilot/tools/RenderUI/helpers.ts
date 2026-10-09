@@ -12,6 +12,17 @@ const resultSchema = z.object({
   session_id: z.string().nullable().optional(),
 });
 
+export function readUIError(part: RenderUIMessagePart) {
+  if (part.state === "output-error")
+    return part.errorText || "The interactive view could not be prepared.";
+  const output =
+    part.state === "output-available" ? asObject(part.output) : null;
+  if (output?.type !== "error") return null;
+  return typeof output.message === "string" && output.message
+    ? output.message
+    : "The interactive view could not be prepared.";
+}
+
 export function readUIResult(part: RenderUIMessagePart) {
   const output =
     part.state === "output-available" ? asObject(part.output) : null;

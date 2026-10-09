@@ -57,3 +57,34 @@ export const NumberField = defineComponent({
     }),
   component: null,
 });
+
+export const Field = defineComponent({
+  name: "Field",
+  description:
+    "An editable, labeled text field inside a Form. Use a unique name.",
+  props: z.object({
+    name: z.string(),
+    label: z.string(),
+    value: z.string(),
+    placeholder: z.string(),
+  }),
+  component: null,
+});
+
+export const Form = defineComponent({
+  name: "Form",
+  description:
+    "Collect a brief with at most six fields. Submitting sends the edited values to the assistant; no external action is executed.",
+  props: z.object({
+    name: z.string(),
+    title: z.string(),
+    fields: z
+      .array(
+        z.union([Field.ref, SelectField.ref, DateField.ref, NumberField.ref]),
+      )
+      .max(6),
+    submitLabel: z.string(),
+    message: z.string(),
+  }),
+  component: null,
+});

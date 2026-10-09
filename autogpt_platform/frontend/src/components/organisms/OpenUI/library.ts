@@ -18,6 +18,8 @@ import {
   DonutChart,
 } from "@/lib/openui/catalog-sections";
 import {
+  Field,
+  Form,
   SelectField,
   NumberField,
   DateField,
@@ -39,8 +41,8 @@ export const autoGPTLibrary = createLibrary({
     defineComponent({ ...catalog.DataTable, component: DataTableView }),
     defineComponent({ ...catalog.Insight, component: InsightView }),
     defineComponent({ ...catalog.Checklist, component: ChecklistView }),
-    defineComponent({ ...catalog.Field, component: FieldView }),
-    defineComponent({ ...catalog.Form, component: FormView }),
+    defineComponent({ ...Field, component: FieldView }),
+    defineComponent({ ...Form, component: FormView }),
     defineComponent({ ...catalog.FollowUp, component: ActionView }),
     defineComponent({ ...Map, component: MapView }),
     defineComponent({ ...Timeline, component: TimelineView }),

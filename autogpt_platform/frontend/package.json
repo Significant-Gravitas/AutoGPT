@@ -166,6 +166,7 @@
     "agentation": "3.0.2",
     "concurrently": "9.2.1",
     "cross-env": "10.1.0",
+    "esbuild": "0.27.7",
     "eslint": "8.57.1",
     "eslint-config-next": "15.5.7",
     "eslint-plugin-storybook": "9.1.5",
