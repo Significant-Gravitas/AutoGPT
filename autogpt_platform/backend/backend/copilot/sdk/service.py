@@ -694,6 +694,10 @@ async def _consume_sdk_until_done(
             # complete normally, the synthetic error text is stored
             # in the transcript, and the session grows without bound.
             if _is_prompt_too_long(RuntimeError(sdk_msg.result or "")):
+                # A later API call can fail after earlier calls incurred spend.
+                # Preflight rejections report zero even on a resumed session.
+                if sdk_msg.total_cost_usd:
+                    _record_result_usage(sdk_msg, state, ctx.log_prefix)
                 raise RuntimeError("Prompt is too long")
 
             _record_result_usage(sdk_msg, state, ctx.log_prefix)
@@ -1412,13 +1416,7 @@ class ReducedContext(NamedTuple):
 
 @dataclass
 class _TokenUsage:
-    """Token usage accumulators for a single turn.
-
-    Separated from `_RetryState` because usage is reset between retry
-    attempts independently of the retry-control fields, and is read by
-    the outer `stream_chat_completion_sdk` scope after the retry loop
-    completes.
-    """
+    """Usage accumulated over every CLI query and retry in one platform turn."""
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -1427,18 +1425,8 @@ class _TokenUsage:
     cost_usd: float | None = None
     # This turn's spend as the CLI prices it, summed over its processes.
     cli_cost_usd: float = 0.0
-    # Last accounted CLI total; building-mode relaunches resume this session.
+    # Last accounted CLI total; preserved while retries resume the same session.
     cli_session_total_usd: float | None = None
-
-    def reset(self) -> None:
-        """Reset all accumulators for a new attempt."""
-        self.prompt_tokens = 0
-        self.completion_tokens = 0
-        self.cache_read_tokens = 0
-        self.cache_creation_tokens = 0
-        self.cost_usd = None
-        self.cli_cost_usd = 0.0
-        self.cli_session_total_usd = None
 
 
 @dataclass
@@ -2527,8 +2515,8 @@ async def _do_transient_backoff(
     """Emit a retry notification, sleep, and reset the SDK adapter.
 
     Yields a single :class:`StreamStatus` so the caller can forward it to
-    the client, then sleeps for *backoff* seconds and resets ``state.adapter``
-    and ``state.usage`` so the next attempt starts clean.
+    the client, then sleeps for *backoff* seconds and resets ``state.adapter``.
+    Usage and the CLI cost baseline survive because the retry resumes the session.
 
     Extracted from both exception handlers in the retry loop to remove
     near-identical code duplication.
@@ -2539,7 +2527,6 @@ async def _do_transient_backoff(
         message_id=message_id,
         session_id=session_id,
     )
-    state.usage.reset()
 
 
 def _is_fallback_stderr(line: str) -> bool:
@@ -4256,11 +4243,14 @@ async def _run_stream_attempt(
     # CLI subprocess spawn + MCP init can take seconds on cold starts —
     # narrate it so the status doesn't sit on the context-prep message.
     yield StreamStatus(message="Starting the assistant…")
-    # A building-mode interruption can precede ResultMessage. Keep its baseline
-    # across the relaunch so the next result includes that unreported spend.
+    # An interruption can precede ResultMessage. Keep the baseline across
+    # resumed retries so the next result includes that unreported spend.
     if state.usage.cli_session_total_usd is None:
-        state.usage.cli_session_total_usd = _resumed_cli_session_cost_usd(
-            ctx.sdk_cwd, state.options.resume, ctx.log_prefix
+        state.usage.cli_session_total_usd = await asyncio.to_thread(
+            _resumed_cli_session_cost_usd,
+            ctx.sdk_cwd,
+            state.options.resume,
+            ctx.log_prefix,
         )
     sdk_client = ClaudeSDKClient(options=state.options)
     client = await sdk_client.__aenter__()
@@ -5873,6 +5863,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         delete_stale_cli_session_file(sdk_cwd, session_id, log_prefix)
                     sdk_options_retry.resume = None
                     sdk_options_retry.session_id = session_id
+                    # The new CLI total starts at zero; retain the turn's spend.
+                    state.usage.cli_session_total_usd = None
                 # Recompute system_prompt for retry. When enabled, the preset
                 # is safe on every turn (requires CLI ≥ 2.1.98, bundled in
                 # claude-agent-sdk >= 0.1.64).
@@ -5942,9 +5934,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # silent failure on the retry.
                 if prior_adapter.emitted_real_content_to_wire:
                     state.adapter.prior_attempt_emitted_visible_content = True
-                # Reset token accumulators so a failed attempt's partial
-                # usage is not double-counted in the successful attempt.
-                state.usage.reset()
 
             pre_attempt_msg_count = len(session.messages)
             # Snapshot transcript builder state — it maintains an
