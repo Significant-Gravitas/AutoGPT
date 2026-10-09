@@ -310,6 +310,7 @@ def _snapshot_of(dependency: dict[str, object]) -> dict[str, object]:
         "source_ref": str(dependency.get("source_ref", "")),
         "revision": str(dependency.get("revision", "")),
         "epoch": int(epoch) if isinstance(epoch, int) else None,
+        "approval": dependency.get("approval"),
     }
 
 

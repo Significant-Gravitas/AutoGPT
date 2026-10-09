@@ -42,6 +42,7 @@ class SourceSnapshot(BaseModel):
             "source_ref": self.source_ref,
             "revision": self.revision,
             "epoch": self.epoch,
+            **({"approval": self.approval.model_dump()} if self.approval else {}),
         }
 
 
