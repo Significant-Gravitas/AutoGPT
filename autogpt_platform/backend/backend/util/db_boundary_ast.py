@@ -195,18 +195,25 @@ class _References(ast.NodeVisitor):
         self.visit(node.value)
         target = self._target(node.value)
         for name in node.targets:
-            if isinstance(name, ast.Name):
-                if target:
-                    self._bind(name.id, target)
-                else:
-                    self.bindings.pop(name.id, None)
+            self._bind_assignment(name, target)
 
     def visit_AnnAssign(self, node: ast.AnnAssign):
-        if node.value:
-            self.visit(node.value)
-            target = self._target(node.value)
-            if target and isinstance(node.target, ast.Name):
-                self._bind(node.target.id, target)
+        if node.value is None:
+            return
+        self.visit(node.value)
+        self._bind_assignment(node.target, self._target(node.value))
+
+    def _bind_assignment(self, name: ast.expr, target: set[str]):
+        if isinstance(name, ast.Name):
+            self._bind(name.id, target)
+            return
+        if target:
+            return
+        if isinstance(name, ast.Starred):
+            self._bind_assignment(name.value, target)
+        elif isinstance(name, (ast.Tuple, ast.List)):
+            for element in name.elts:
+                self._bind_assignment(element, target)
 
     def visit_If(self, node: ast.If):
         target = self._target(node.test)
