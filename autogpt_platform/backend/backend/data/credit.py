@@ -765,7 +765,7 @@ class UserCredit(UserCreditBase):
         what the person on call triages by, and every timestamp is absolute —
         the email is read hours later."""
         now = datetime.now(tz=timezone.utc)
-        stamp = f"{now.day} {now.strftime('%B')} at {now.strftime('%H:%M')}"
+        stamp = f"{now.day} {now.strftime('%b %Y')} at {now.strftime('%H:%M')} UTC"
         await queue_notification_async(
             NotificationEventModel[OpsData](
                 user_id=user.id,

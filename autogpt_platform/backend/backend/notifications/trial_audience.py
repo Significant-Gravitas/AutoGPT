@@ -11,6 +11,10 @@ paying audience the way a first checkout does.
 The subscriber's status and dates (`subscriber_fields.py`) ride on the same
 event. The notification service writes only the fields while the trial group
 is not configured.
+
+Nothing is queued for a customer who opted out of marketing, or whom a signal
+places in Iran or Russia (`consent.py`); their trial notices and claims are
+unaffected.
 """
 
 import logging
@@ -19,6 +23,7 @@ from collections.abc import Callable, Mapping
 from backend.data.db_accessors import user_db
 from backend.data.notifications import AudienceAction
 from backend.notifications import subscriber_fields
+from backend.notifications.consent import MarketingContact, audience_change_allowed
 from backend.notifications.queue import queue_audience_change
 from backend.notifications.subscriber_fields import Fields, audience_event
 
@@ -46,7 +51,7 @@ _TRIAL_FIELDS: Mapping[str, Callable[[dict], Fields]] = {
 
 
 async def queue_trial_audience_change(
-    kind: str, user_id: str, email: str, subscription: dict
+    kind: str, user: MarketingContact, subscription: dict
 ) -> None:
     """Queue the trial group change and field update for this notice, if it
     has either.
@@ -57,9 +62,10 @@ async def queue_trial_audience_change(
     settings: only the notification service holds them.
     """
     action = _TRIAL_GROUP_CHANGES.get(kind)
-    if action is None:
+    if action is None or not audience_change_allowed(user, action):
         return
-    event = audience_event(action, email, user_id, _TRIAL_FIELDS[kind](subscription))
+    fields = _TRIAL_FIELDS[kind](subscription)
+    event = audience_event(action, user.email, user.id, fields)
     if event is None:
         return
     result = await queue_audience_change(event)
@@ -67,28 +73,32 @@ async def queue_trial_audience_change(
         raise RuntimeError(f"Could not queue {action.value}: {result.message}")
 
 
-async def join_paying_audience(user_id: str, email: str) -> None:
+async def join_paying_audience(user: MarketingContact) -> None:
     """The onboarding tour for a first subscription, else the changelog.
 
     The conversion notice stands in for the subscription welcome, so this takes
     the same welcome claim a first checkout does: a later resubscription is
-    then treated as the returning customer it is. Called once the notice is
+    then treated as the returning customer it is. A customer who opted out of
+    marketing takes the claim too, since it decides who gets the welcome
+    email, and only the audience change is skipped. Called once the notice is
     out, so, like the tour enrolment after a welcome, a failure is reported
     rather than raised: a Stripe retry would find the notice claimed and do
     nothing, so raising could only fail the webhook.
     """
     try:
-        first = await user_db().claim_welcome_email(user_id)
+        first = await user_db().claim_welcome_email(user.id)
         action = AudienceAction.ENROLL_TOUR if first else AudienceAction.ADD_CHANGELOG
-        event = audience_event(action, email, user_id)
+        if not audience_change_allowed(user, action):
+            return
+        event = audience_event(action, user.email, user.id)
         if event is None:
             return
         result = await queue_audience_change(event)
     except Exception:
-        logger.exception(f"Trial for user {user_id} converted but was not enrolled")
+        logger.exception(f"Trial for user {user.id} converted but was not enrolled")
         return
     if not result.success:
         logger.error(
-            f"Trial for user {user_id} converted but {action.value} could not be "
+            f"Trial for user {user.id} converted but {action.value} could not be "
             f"queued: {result.message}"
         )

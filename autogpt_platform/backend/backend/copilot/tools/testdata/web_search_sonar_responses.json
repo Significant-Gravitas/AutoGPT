@@ -1,0 +1,540 @@
+{
+  "_note": "Real perplexity/sonar responses recorded through OpenRouter on 2026-10-05 (ids replaced). Annotation i is the answer's [i+1]; start/end_index are always 0 and there is no content or search_results field.",
+  "jwst_news": {
+    "object": "chat.completion",
+    "created": 1791211110,
+    "model": "perplexity/sonar",
+    "provider": "Perplexity",
+    "system_fingerprint": null,
+    "service_tier": null,
+    "choices": [
+      {
+        "index": 0,
+        "logprobs": null,
+        "finish_reason": "stop",
+        "native_finish_reason": "stop",
+        "message": {
+          "role": "assistant",
+          "content": "Here are the **latest Webb discoveries highlighted in current NASA, ESA, and major space-news coverage**:\n\n- **Water and dust near the Milky Way’s central black hole:** Webb found that **oxygen-rich dust and water can survive surprisingly close to Sagittarius A\\***, our galaxy’s supermassive black hole.[2][21]\n- **A new moon at Uranus:** NASA reported that a Webb team identified a **previously unknown Uranian moon**, bringing the planet’s known satellite count to **29**.[7]\n- **Extremely early galaxies:** Webb has continued to push the timeline back, with reports of galaxies existing about **280 million years after the Big Bang** and other early-universe objects that challenge current galaxy-formation models.[12][11]\n- **Heavy elements in the young universe:** Webb observations indicate that by about **500 million years after the Big Bang**, galaxies were already enriching their surroundings with elements like **oxygen, carbon, and silicon**.[22][3]\n- **Star formation in IC 348:** NASA recently highlighted Webb observations of **IC 348**, a nearby star-forming region about **1,000 light-years** away.[1][4]\n- **New details in nearby star and galaxy systems:** ESA’s latest Webb releases include studies of **young stellar systems**, **brown dwarfs as light as twice Jupiter’s mass**, and **centaurus A’s crowded center**, all using Webb’s infrared sensitivity to reveal structures hidden in visible light.[2][6]\n- **Potential exoplanet breakthroughs:** Webb has also been used to study worlds such as **WD 1856 b**, where it measured the planet’s **mass, temperature, and atmosphere**, and to probe other candidate planets and atmospheres in recent coverage.[2][16]\n\nIf you want, I can turn this into a **“top 5 most important JWST discoveries of 2026”** list or a **breakdown by topic**: early universe, exoplanets, stars, or Solar System.",
+          "refusal": null,
+          "reasoning": null,
+          "annotations": [
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://science.nasa.gov/mission/webb/latestnews/",
+                "title": "News",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://esawebb.org/news/",
+                "title": "Press Releases - ESA/Webb",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.space.com/astronomy/james-webb-space-telescope",
+                "title": "James Webb Space Telescope",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://science.nasa.gov/mission/webb/",
+                "title": "James Webb Space Telescope - NASA Science",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.esa.int/Science_Exploration/Space_Science/Webb",
+                "title": "ESA - Webb",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://esawebb.org/news/archive/year/2026/",
+                "title": "Press Releases 2026 | ESA/Webb",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://science.nasa.gov/blogs/webb/",
+                "title": "James Webb Space Telescope Archives - NASA Science",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://science.nasa.gov/mission/webb/science-overview/",
+                "title": "Science Overview",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://science.nasa.gov/mission/webb/other-worlds/",
+                "title": "Other Worlds",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://news.abplive.com/topic/nasa-james-webb-space-telescope",
+                "title": "Nasa James Webb Space Telescope News: Latest News, Photos, Videos & Live Updates | ABP Live English",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.space.com/news/live/james-webb-space-telescope-updates",
+                "title": "NASA's James Webb Space Telescope mission — Live updates",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://science.nasa.gov/mission/webb/early-universe/",
+                "title": "Early Universe",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.sciencedaily.com/releases/2026/08/260822015141.htm",
+                "title": "www.sciencedaily.com › releases › 2026JWST finds early galaxies may be 4 times more massive than ...",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://esawebb.org/news/page/3/?search=galaxies",
+                "title": "Press Releases - ESA/Webb",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.newsbytesapp.com/news/science/james-webb-space-telescope",
+                "title": "James Webb Space Telescope: Latest News, News Articles, Photos, Videos - NewsBytes",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.cbsnews.com/tag/james-webb-space-telescope/",
+                "title": "James Webb Space Telescope news - Today's latest updates",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://news.abplive.com/topic/webb-space-telescope",
+                "title": "Webb Space Telescope News: Latest News, Photos, Videos & Live Updates | ABP Live English",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.skyatnightmagazine.com/space-missions/james-webb-space-telescope-images",
+                "title": "NASA James Webb Space Telescope latest images",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://science.nasa.gov/missions/webb/3-years-of-science-10-cosmic-surprises-from-nasas-webb-telescope/",
+                "title": "3 Years of Science: 10 Cosmic Surprises from NASA’s Webb Telescope",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.space.com/astronomy/james-webb-space-telescope/james-webb-space-telescope-and-hubble-discover-27-puzzling-new-objects-orbiting-the-sun-far-beyond-neptune",
+                "title": "James Webb Space Telescope and Hubble discover 27 ...",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.space.com/astronomy/james-webb-space-telescope-finds-water-near-our-nearest-supermassive-black-hole-space-photo-of-the-day-for-sept-23-2026",
+                "title": "James Webb Space Telescope finds water near our nearest ...",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.space.com/astronomy/james-webb-space-telescope/james-webb-space-telescope-looks-back-in-time-finds-our-ancient-universe-wasnt-as-pure-as-we-thought",
+                "title": "James Webb Space Telescope finds our ancient universe ...",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.sciencedaily.com/releases/2025/04/250424121701.htm",
+                "title": "Scientists use James Webb Space Telescope to better ...",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.space.com/astronomy",
+                "title": "Astronomy Coverage",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.sciencedaily.com/releases/2025/03/250310152925.htm",
+                "title": "James Webb Space Telescope reveals unexpected ...",
+                "start_index": 0,
+                "end_index": 0
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 9,
+      "completion_tokens": 429,
+      "total_tokens": 438,
+      "cost": 0.00544,
+      "is_byok": false,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost_details": {
+        "upstream_inference_cost": 0.00544,
+        "upstream_inference_prompt_cost": 0.000009,
+        "upstream_inference_completions_cost": 0.005431
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "image_tokens": 0,
+        "audio_tokens": 0
+      }
+    },
+    "id": "gen-recorded-jwst-news"
+  },
+  "central_bank_rates": {
+    "object": "chat.completion",
+    "created": 1791211110,
+    "model": "perplexity/sonar",
+    "provider": "Perplexity",
+    "system_fingerprint": null,
+    "service_tier": null,
+    "choices": [
+      {
+        "index": 0,
+        "logprobs": null,
+        "finish_reason": "stop",
+        "native_finish_reason": "stop",
+        "message": {
+          "role": "assistant",
+          "content": "The **Fed**’s current target range is **3.75%–4.00%**.[10][20] For the other major central banks, I don’t have reliable current-rate search results in the provided set for the **ECB**, **Bank of England**, or **Bank of Japan**, so I can’t state their latest policy rates with confidence from these sources alone.\n\n- **Federal Reserve (Fed):** **3.75%–4.00%**.[10][20]\n- **European Central Bank (ECB):** not verifiable from the provided results.\n- **Bank of England (BoE):** not verifiable from the provided results.\n- **Bank of Japan (BoJ):** not verifiable from the provided results.\n\nIf you want, I can help you compile the latest rates for the ECB, BoE, and BoJ from up-to-date sources as well.",
+          "refusal": null,
+          "reasoning": null,
+          "annotations": [
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.newyorkfed.org/markets/reference-rates/effr",
+                "title": "Effective Federal Funds Rate",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://tradingeconomics.com/united-states/interest-rate",
+                "title": "United States Fed Funds Interest Rate",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.federalreserve.gov/releases/h15/",
+                "title": "Federal Reserve Board - H.15 - Selected Interest Rates (Daily)",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://fred.stlouisfed.org/series/FF",
+                "title": "Federal Funds Effective Rate (FF) | FRED | St. Louis Fed",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.usbank.com/investing/financial-perspectives/market-news/federal-reserve-tapering-asset-purchases.html",
+                "title": "Federal Reserve Monetary Policy | U.S. Bank",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.tradingview.com/symbols/ECONOMICS-USINTR/",
+                "title": "Usintr",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.usbank.com/investing/financial-perspectives/market-news/federal-reserve-interest-rate.html",
+                "title": "Fed raises rates to 3.75%-4.00%, first hike since 2023",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.federalreserve.gov/economy-at-a-glance-policy-rate.htm",
+                "title": "The Fed - Economy at a Glance - Policy Rate - Federal Reserve",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.investing.com/central-banks/",
+                "title": "Central Banks Interest Rates",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://finance.yahoo.com/economy/policy/live/federal-reserve-meeting-live-updates-25-basis-point-interest-rate-hike-chairman-kevin-warsh-143452661.html",
+                "title": "Fed meeting live updates: Fed hikes interest rates by 25 ...",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.bankrate.com/banking/federal-reserve/",
+                "title": "The Federal Reserve And Your Money | Bankrate",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.investing.com/central-banks/fed-rate-monitor",
+                "title": "Fed Rate Monitor Tool",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://finance.yahoo.com/economy/policy/live/federal-reserve-meeting-live-updates-chairman-kevin-warsh-143452661.html",
+                "title": "Fed meeting live updates: Fed hikes interest rates by 25 basis points for ...",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://finance.yahoo.com/personal-finance/banking/article/do-we-want-high-or-low-interest-rates-223031516.html",
+                "title": "Understanding the Fed's rate decisions: Do we want high or low interest rates​?",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.cnbc.com/2026/07/29/fed-rate-decision-july-2026.html",
+                "title": "Divided Fed holds interest rates steady",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.cnn.com/2026/09/16/business/live-news/federal-reserve-interest-rate-september",
+                "title": "www.cnn.com · 2026/09/16 · businessFed raises interest rates for the first time since 2023",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.usatoday.com/story/money/economy/2026/09/16/fed-rate-decision-meeting-updates--live/91746863007/",
+                "title": "Fed raises rates for first time since 2023. What it means for you",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.nytimes.com/live/2026/09/16/business/fed-meeting-warsh-interest-rates/what-to-know-about-the-feds-decision?eafs_enabled=false",
+                "title": "Fed Raises Interest Rates in Push for 'Timelier' Retreat ...",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://finance.yahoo.com/economy/policy/articles/fed-hikes-key-interest-rate-174644822.html",
+                "title": "Fed Hikes Key Interest Rate for First Time Since 2023 - Yahoo Finance",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.cnbc.com/amp/2026/09/16/fed-meeting-today-live-updates.html",
+                "title": "Fed meeting today: Live updates",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://finance.yahoo.com/economy/policy/articles/us-federal-raises-key-interest-211933297.html",
+                "title": "US Federal Reserve raises key interest rate for first time ...",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://abc7.com/story/federal-reserve-expected-raise-interest-rates-first-time-2023/19838663/",
+                "title": "Federal Reserve expected to raise interest rates for the first ...",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.cnbc.com/2026/09/16/fed-meeting-today-live-updates.html?msockid=27a93fff2e8d65c32546281c2f83642f",
+                "title": "Fed meeting today: Live updates - CNBC",
+                "start_index": 0,
+                "end_index": 0
+              }
+            },
+            {
+              "type": "url_citation",
+              "url_citation": {
+                "url": "https://www.pbs.org/newshour/amp/economy/watch-live-warsh-holds-briefing-after-fed-meeting-as-interest-rates-expected-to-rise",
+                "title": "WATCH LIVE: Warsh holds briefing after Fed meeting as interest ...",
+                "start_index": 0,
+                "end_index": 0
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 191,
+      "total_tokens": 212,
+      "cost": 0.00521,
+      "is_byok": false,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost_details": {
+        "upstream_inference_cost": 0.00521,
+        "upstream_inference_prompt_cost": 0.000021,
+        "upstream_inference_completions_cost": 0.005189
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "image_tokens": 0,
+        "audio_tokens": 0
+      }
+    },
+    "id": "gen-recorded-central-bank-rates"
+  }
+}

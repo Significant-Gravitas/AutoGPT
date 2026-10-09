@@ -50,6 +50,7 @@ import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
+import backend.api.features.mailerlite.routes as mailerlite_routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.memory.routes as memory_routes
 import backend.api.features.oauth
@@ -565,6 +566,11 @@ app.include_router(
 )
 app.include_router(
     backend.api.features.postmark.postmark.router,
+    tags=["v1", "email"],
+    prefix="/api/email",
+)
+app.include_router(
+    mailerlite_routes.router,
     tags=["v1", "email"],
     prefix="/api/email",
 )

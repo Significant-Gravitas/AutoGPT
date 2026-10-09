@@ -203,6 +203,7 @@ markers = [
     "supplementary: tests kept for coverage but superseded by integration tests",
     "integration: end-to-end tests that require a live database (skipped in CI)",
     "slow: tests that take more than a few seconds (e.g. spin up an isolated docker stack)",
+    "real_login_chain: checks a sandbox's login files for real instead of reading them as unchanged",
 ]
 filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning:discord.player",
