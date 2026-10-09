@@ -96,11 +96,15 @@ const originalScrollTo = Element.prototype.scrollTo;
 function runningAnimation() {
   let finish!: () => void;
   const animation = {
+    playState: "running",
     effect: { getComputedTiming: () => ({ endTime: 260 }) },
   } as unknown as Animation;
   Object.defineProperty(animation, "finished", {
     value: new Promise<Animation>((resolve) => {
-      finish = () => resolve(animation);
+      finish = () => {
+        Object.assign(animation, { playState: "finished" });
+        resolve(animation);
+      };
     }),
   });
   return { animation, finish };
@@ -188,12 +192,14 @@ describe("Chats in the collapsed sidebar", () => {
     getRecentChatsHeading().addEventListener("focus", () =>
       statesAtFocus.push(getSidebarState()),
     );
+    const focusHeading = vi.spyOn(getRecentChatsHeading(), "focus");
 
     await user.click(getChatsButton());
 
     expect(getSidebarState()).toBe("expanded");
     await waitFor(() => expect(statesAtScroll).toEqual(["expanded"]));
     expect(statesAtFocus).toEqual(["expanded"]);
+    expect(focusHeading).toHaveBeenCalledWith({ preventScroll: true });
     expect(scrollTo.mock.contexts[0]).toBe(getSidebarScrollArea());
     expect(scrollTo).toHaveBeenCalledWith(
       expect.objectContaining({ behavior: "smooth" }),
@@ -240,6 +246,11 @@ describe("Chats in the collapsed sidebar", () => {
     expect(getSidebarState()).toBe("collapsed");
     const opening = runningAnimation();
     getAnimations.mockReturnValue([opening.animation]);
+    let headingTop = 400;
+    vi.spyOn(
+      getRecentChatsHeading(),
+      "getBoundingClientRect",
+    ).mockImplementation(() => new DOMRect(0, headingTop, 0, 0));
 
     await user.click(getChatsButton());
 
@@ -249,10 +260,20 @@ describe("Chats in the collapsed sidebar", () => {
     expect(document.activeElement).toBe(getRecentChatsHeading());
     expect(scrollTo).not.toHaveBeenCalled();
 
-    await act(async () => opening.finish());
+    await act(async () => {
+      headingTop = 420;
+      opening.finish();
+    });
 
     await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
     expect(scrollTo.mock.contexts[0]).toBe(getSidebarScrollArea());
+    expect(scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({ top: 420 }),
+    );
+    expect(getAnimations.mock.contexts).not.toHaveLength(0);
+    for (const element of getAnimations.mock.contexts) {
+      expect(element).toBe(getSidebarScrollArea());
+    }
   });
 
   it("does not scroll if the sidebar collapses again before it finishes animating", async () => {

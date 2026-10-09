@@ -19,18 +19,15 @@ export function ChatsNavSection({ itemVariants }: Props) {
     jumpToRecentChats,
   } = useJumpToRecentChats();
 
+  // One stagger slot: only one of the two is ever displayed.
   return (
-    <>
-      <motion.div
-        variants={itemVariants}
-        className="hidden group-data-[collapsible=icon]:block"
-      >
+    <motion.div variants={itemVariants}>
+      <div className="hidden group-data-[collapsible=icon]:block">
         <ChatsRailItem onClick={jumpToRecentChats} />
-      </motion.div>
+      </div>
 
-      <motion.div
+      <div
         ref={recentChatsRef}
-        variants={itemVariants}
         className="group-data-[collapsible=icon]:hidden"
       >
         <CollapsibleNavGroup
@@ -45,7 +42,7 @@ export function ChatsNavSection({ itemVariants }: Props) {
             <RecentChats />
           </Suspense>
         </CollapsibleNavGroup>
-      </motion.div>
-    </>
+      </div>
+    </motion.div>
   );
 }
