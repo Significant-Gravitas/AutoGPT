@@ -12,8 +12,9 @@ The subscriber's status and dates (`subscriber_fields.py`) ride on the same
 event. The notification service writes only the fields while the trial group
 is not configured.
 
-Nothing is queued for a customer who opted out of marketing (`consent.py`);
-their trial notices and claims are unaffected.
+Nothing is queued for a customer who opted out of marketing, or whom a signal
+places in Iran or Russia (`consent.py`); their trial notices and claims are
+unaffected.
 """
 
 import logging

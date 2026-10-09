@@ -1,6 +1,9 @@
 import inspect
 import logging
 import os
+from contextlib import asynccontextmanager
+from multiprocessing import get_all_start_methods, get_context, set_forkserver_preload
+from threading import Thread
 
 import pytest
 import pytest_asyncio
@@ -14,6 +17,7 @@ load_dotenv()
 # Set up logging
 configure_logging()
 logger = logging.getLogger(__name__)
+_preload_started = False
 
 # Reduce Prisma log spam unless PRISMA_DEBUG is set
 if not os.getenv("PRISMA_DEBUG"):
@@ -21,12 +25,34 @@ if not os.getenv("PRISMA_DEBUG"):
     prisma_logger.setLevel(logging.INFO)
 
 
+def pytest_itemcollected(item: pytest.Function) -> None:
+    global _preload_started
+    if (
+        _preload_started
+        or os.getenv("CI")
+        or item.config.getoption("collectonly")
+        or "server" not in item.fixturenames
+        or "forkserver" not in get_all_start_methods()
+    ):
+        return
+    set_forkserver_preload(["scripts.server_preload"])
+    Thread(target=_warm_test_forkserver, daemon=True).start()
+    _preload_started = True
+
+
+def _warm_test_forkserver() -> None:
+    process = get_context("forkserver").Process(target=os.getpid)
+    process.start()
+    process.join()
+
+
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def server():
     from backend.util.test import SpinTestServer
 
     async with SpinTestServer() as server:
-        yield server
+        async with _track_test_graphs(server):
+            yield server
 
 
 @pytest.fixture(autouse=True)
@@ -76,7 +102,7 @@ async def _create_user_with_loop_retry(user_data: dict) -> None:
 
 
 @pytest.fixture
-async def setup_test_user(test_user_id):
+async def setup_test_user(server, test_user_id):
     """Create test user in database before tests."""
     user_data = {
         "sub": test_user_id,
@@ -88,7 +114,7 @@ async def setup_test_user(test_user_id):
 
 
 @pytest.fixture
-async def setup_admin_user(admin_user_id):
+async def setup_admin_user(server, admin_user_id):
     """Create admin user in database before tests."""
     user_data = {
         "sub": admin_user_id,
@@ -99,8 +125,8 @@ async def setup_admin_user(admin_user_id):
     return admin_user_id
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def graph_cleanup(server):
+@asynccontextmanager
+async def _track_test_graphs(server):
     """Delete the graphs and store listings that tests created through the test
     server, at the end of the session, so they don't pile up in the test DB."""
     created_graphs: list[tuple[str, str]] = []

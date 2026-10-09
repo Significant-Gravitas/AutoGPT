@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import click
 import pytest
+import stripe
 from click.testing import CliRunner
 
 from backend.cli import mailerlite_backfill as cli
@@ -60,7 +61,9 @@ def test_the_command_exits_non_zero_when_anyone_failed(monkeypatch):
     assert "1 checkout openers were not written" in result.output
 
 
-def _account(user_id: str, opted_out_at: datetime | None) -> SimpleNamespace:
+def _account(
+    user_id: str, opted_out_at: datetime | None, excluded_country: str | None = None
+) -> SimpleNamespace:
     """A `User` row as `_people` reads it."""
     return SimpleNamespace(
         id=user_id,
@@ -69,14 +72,15 @@ def _account(user_id: str, opted_out_at: datetime | None) -> SimpleNamespace:
         stripeCustomerId=f"cus_{user_id}",
         timezone=None,
         marketingOptOutAt=opted_out_at,
+        marketingExcludedCountry=excluded_country,
     )
 
 
 @pytest.mark.asyncio
-async def test_each_account_carries_its_opt_out_into_the_backfills():
+async def test_each_account_carries_its_consent_and_countries_into_the_backfills():
     users = MagicMock(
         find_many=AsyncMock(
-            return_value=[_account("out", OPTED_OUT), _account("in", None)]
+            return_value=[_account("out", OPTED_OUT, "IR"), _account("in", None)]
         )
     )
     trials = MagicMock(find_many=AsyncMock(return_value=[]))
@@ -85,11 +89,16 @@ async def test_each_account_carries_its_opt_out_into_the_backfills():
         patch("prisma.models.SubscriptionTrial.prisma", return_value=trials),
     ):
         out, kept = await cli._people(
-            {"cus_out": [Subscription(status="active")], "cus_in": []}
+            {"cus_out": [Subscription(status="active")], "cus_in": []},
+            {"cus_out": "RU"},
         )
     assert out.marketing_opt_out_at == OPTED_OUT
     assert kept.marketing_opt_out_at is None
-    assert cli._customer(out).marketing_opt_out_at == OPTED_OUT
+    assert (out.billing_country, out.excluded_country) == ("RU", "IR")
+    assert (kept.billing_country, kept.excluded_country) == (None, None)
+    customer = cli._customer(out)
+    assert customer.marketing_opt_out_at == OPTED_OUT
+    assert (customer.billing_country, customer.excluded_country) == ("RU", "IR")
     assert cli._customer(kept).marketing_opt_out_at is None
 
 
@@ -124,3 +133,100 @@ def test_every_report_counts_the_opted_out(capsys):
     assert "skip_opted_out: 1" in out
     assert out.count("opted out of marketing (skipped): 1") == 2
     assert "out@example.com" not in out
+
+
+def test_every_report_counts_anyone_placed_in_iran_or_russia(capsys):
+    person = Person(
+        user_id="ru",
+        email="ru@example.com",
+        created_at=CREATED,
+        subscriptions=[Subscription(status="active")],
+        stripe_customer_id="cus_ru",
+        timezone="Europe/Moscow",
+    )
+    customer = cli._customer(person)
+    assert customer.timezone == "Europe/Moscow"
+    cli._report(
+        [
+            mailerlite_backfill.decide(
+                customer, Audience(tour={}, changelog={}, trial={}), trial_enabled=True
+            )
+        ],
+        unmatched=0,
+    )
+    cli._report_fields(field_backfill.plan([person], {}, create=False), 1)
+    cli._report_checkout(
+        checkout_backfill.plan(
+            [checkout_backfill.Opener(person=person, opened_at=1788305400)], {}, {}
+        ),
+        sessions_unlinked=0,
+        customers_without_session=0,
+    )
+    out = capsys.readouterr().out
+    assert "skip_excluded_country: 1" in out
+    assert out.count("placed in Iran or Russia (skipped): 1") == 2
+    assert "ru@example.com" not in out
+
+
+@pytest.mark.parametrize(
+    "seen, kept",
+    [
+        # The Customer's address first; a session only fills a gap.
+        ([("cus_1", "US"), ("cus_1", "GB")], "US"),
+        ([("cus_1", None), ("cus_1", "GB")], "GB"),
+        # An older checkout billed to Russia, while the Customer has a
+        # different address now: the exclusion must still see it.
+        ([("cus_1", "US"), ("cus_1", "RU")], "RU"),
+        ([("cus_1", "IR"), ("cus_1", "US")], "IR"),
+    ],
+)
+def test_a_billing_country_from_any_source_is_kept_when_it_excludes(seen, kept):
+    countries: dict[str, str] = {}
+    for customer_id, country in seen:
+        cli._keep_country(countries, customer_id, country)
+    assert countries == {"cus_1": kept}
+
+
+@pytest.mark.asyncio
+async def test_checkout_sessions_fill_in_customers_without_an_address(monkeypatch):
+    """Checkouts before `customer_update` never copied the billing address
+    onto the Customer, so the sessions are read too."""
+    customers = [
+        SimpleNamespace(id="cus_a", get=lambda k: {"country": "US"}),
+        SimpleNamespace(id="cus_b", get=lambda k: None),
+    ]
+    sessions = [
+        {"customer": "cus_b", "customer_details": {"address": {"country": "RU"}}},
+        {"customer": None, "customer_details": {"address": {"country": "IR"}}},
+    ]
+
+    async def listed(page):
+        for item in page:
+            yield item
+
+    async def call(fn, **_):
+        return customers if fn == stripe.Customer.list_async else sessions
+
+    monkeypatch.setattr("backend.data.stripe_client.stripe_call", call)
+    monkeypatch.setattr("backend.data.stripe_client.stripe_list_items", listed)
+    assert await cli.stripe_billing_countries() == {"cus_a": "US", "cus_b": "RU"}
+
+
+@pytest.mark.asyncio
+async def test_sessions_already_listed_are_not_listed_again(monkeypatch):
+    customers = [SimpleNamespace(id="cus_a", get=lambda k: None)]
+    sessions = [
+        {"customer": "cus_a", "customer_details": {"address": {"country": "IR"}}}
+    ]
+
+    async def listed(page):
+        for item in page:
+            yield item
+
+    async def call(fn, **_):
+        assert fn == stripe.Customer.list_async, "sessions were listed again"
+        return customers
+
+    monkeypatch.setattr("backend.data.stripe_client.stripe_call", call)
+    monkeypatch.setattr("backend.data.stripe_client.stripe_list_items", listed)
+    assert await cli.stripe_billing_countries(sessions) == {"cus_a": "IR"}
