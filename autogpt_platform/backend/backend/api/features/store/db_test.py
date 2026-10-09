@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import prisma.enums
 import prisma.errors
@@ -1844,3 +1844,63 @@ async def test_reject_completes_when_the_reactivated_version_fails_to_load(
 
     assert result.status == prisma.enums.SubmissionStatus.REJECTED
     publish.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_organizations_submissions_are_counted_on_their_own(mocker):
+    """The stats count the user's submissions in every organization; paging an
+    organization's listing by that total ran out early or late."""
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(return_value=[])
+    mock_store_sub.return_value.count = AsyncMock(return_value=2)
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=7, approved=3, pending=2, total_runs=99, average_rating=3.9
+                )
+            ]
+        ),
+    )
+
+    result = await db.get_store_submissions(
+        user_id="user-id", page=1, page_size=20, organization_id="org-a"
+    )
+
+    assert result.pagination.total_items == 2
+    count_where = mock_store_sub.return_value.count.call_args.kwargs["where"]
+    assert (
+        count_where == mock_store_sub.return_value.find_many.call_args.kwargs["where"]
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_submission_in_an_organization_needs_a_graph_from_it(mocker):
+    """The user owns graphs in each of their organizations; submitting for one
+    must not publish another's."""
+    mocker.patch(
+        "prisma.models.OrgMember.prisma",
+        return_value=MagicMock(find_first=AsyncMock(return_value=MagicMock())),
+    )
+    find_graph = AsyncMock(return_value=None)
+    mocker.patch(
+        "prisma.models.AgentGraph.prisma",
+        return_value=MagicMock(find_first=find_graph),
+    )
+
+    with pytest.raises(NotFoundError):
+        await db.create_store_submission(
+            user_id="user-id",
+            graph_id="graph-1",
+            graph_version=1,
+            slug="agent",
+            name="Agent",
+            sub_heading="An agent",
+            organization_id="org-a",
+        )
+
+    assert find_graph.call_args.kwargs["where"]["OR"] == [
+        {"organizationId": "org-a"},
+        {"organizationId": None},
+    ]

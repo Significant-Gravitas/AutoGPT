@@ -213,7 +213,8 @@ async def list_library_agents(
     ) = None
 
     if sort_by == library_model.LibraryAgentSort.CREATED_AT:
-        order_by = {"createdAt": "asc"}
+        # The id breaks ties, so paging by offset neither skips nor repeats.
+        order_by = [{"createdAt": "asc"}, {"id": "asc"}]
     elif sort_by == library_model.LibraryAgentSort.UPDATED_AT:
         order_by = {"updatedAt": "desc"}
     elif sort_by == library_model.LibraryAgentSort.LAST_RUN:

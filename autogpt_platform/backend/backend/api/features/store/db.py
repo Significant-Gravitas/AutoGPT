@@ -761,7 +761,10 @@ async def get_store_submissions(
             order=order,
         )
         stats_task = _get_submission_stats(user_id)
-        if normalized_query or statuses:
+        # The stats count every submission of the user's; a listing scoped to
+        # an organization, or filtered, has to be counted on its own terms or
+        # its pages run out early or late.
+        if normalized_query or statuses or organization_id is not None:
             count_task = prisma.models.StoreSubmission.prisma().count(where=where)
             submissions, stats, total = await asyncio.gather(
                 submissions_task, stats_task, count_task
@@ -918,9 +921,20 @@ async def create_store_submission(
             c if c.isalpha() or c == "-" or c.isnumeric() else "" for c in slug
         ).lower()
 
-        # First verify the agent graph belongs to this user
+        # First verify the agent graph belongs to this user, and to the
+        # organization the submission is made in (or to none).
+        graph_where: prisma.types.AgentGraphWhereInput = {
+            "id": graph_id,
+            "version": graph_version,
+            "userId": user_id,
+        }
+        if organization_id:
+            graph_where["OR"] = [
+                {"organizationId": organization_id},
+                {"organizationId": None},
+            ]
         graph = await prisma.models.AgentGraph.prisma().find_first(
-            where={"id": graph_id, "version": graph_version, "userId": user_id},
+            where=graph_where,
             include={"User": {"include": {"Profile": True}}},
         )
 

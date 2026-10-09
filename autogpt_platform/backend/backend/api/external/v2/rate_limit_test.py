@@ -213,3 +213,31 @@ async def test_a_request_verifies_its_credential_once_even_when_rejected(
         assert raised.value.status_code == 401
 
     validate.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "path, bucket",
+    [
+        ("/external-api/v2/openapi.json", "anon-docs:"),
+        ("/external-api/v2/docs", "anon-docs:"),
+        ("/external-api/v2/library/agents", "anon:"),
+    ],
+)
+async def test_reading_the_docs_without_a_key_has_its_own_bucket(
+    redis: mock.AsyncMock, path: str, bucket: str
+) -> None:
+    """The docs send agents to the spec before they have a key; reading it must
+    not use up the five calls a minute everything else anonymous gets."""
+    redis.incr.return_value = 1
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+
+    async def send(message):
+        pass
+
+    scope = _scope()
+    scope.update(path=path, root_path="/external-api/v2")
+    await GlobalRateLimitMiddleware(app)(scope, _receive, send)
+
+    assert redis.incr.await_args.args[0].startswith(f"rl:v2:global:{bucket}")

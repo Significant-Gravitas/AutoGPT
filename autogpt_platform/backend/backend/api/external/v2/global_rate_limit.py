@@ -40,6 +40,12 @@ _anonymous_limiter = RateLimiter("v2:global:anon", max_requests=5, window_second
 _failed_auth_limiter = RateLimiter(
     "v2:global:auth-failures", max_requests=30, window_seconds=60
 )
+# The docs tell agents to read the spec before they have a key; on the 5/min
+# bucket those reads would use up what the first real calls need.
+_anonymous_docs_limiter = RateLimiter(
+    "v2:global:anon-docs", max_requests=60, window_seconds=60
+)
+_DOCS_PATHS = frozenset({"/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json"})
 
 
 class GlobalRateLimitMiddleware:
@@ -91,6 +97,8 @@ class GlobalRateLimitMiddleware:
         try:
             if auth:
                 state = await _authenticated_limiter.check(auth.user_id)
+            elif _app_path(scope) in _DOCS_PATHS:
+                state = await _anonymous_docs_limiter.check(ip)
             else:
                 state = await _anonymous_limiter.check(ip)
         except HTTPException as exc:
@@ -103,6 +111,13 @@ class GlobalRateLimitMiddleware:
             return
 
         await self.app(scope, receive, _with_rate_limit_headers(send, state))
+
+
+def _app_path(scope: Scope) -> str:
+    """The request path inside this app, past the prefix it is mounted at."""
+    path: str = scope.get("path", "")
+    root: str = scope.get("root_path", "")
+    return path[len(root) :] if root and path.startswith(root) else path
 
 
 def client_ip(scope: Scope, headers: dict[bytes, bytes]) -> str:

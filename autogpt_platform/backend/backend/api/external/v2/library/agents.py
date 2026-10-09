@@ -8,10 +8,16 @@ from prisma.enums import APIKeyPermission
 from starlette import status
 
 from backend.api.features.library import db as library_db
+from backend.api.features.library.model import LibraryAgentSort
 from backend.data import graph as graph_db
 from backend.executor import utils as execution_utils
 
-from ..idempotency import idempotency_key, idempotent_run, replayed_run
+from ..idempotency import (
+    idempotency_key,
+    idempotent_run,
+    replayed_run,
+    request_fingerprint,
+)
 from ..integrations.helpers import get_credential_requirements
 from ..models import (
     AgentGraphRun,
@@ -52,9 +58,12 @@ async def list_library_agents(
     page: PageRequest = Depends(page_request),
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> Page[LibraryAgent]:
-    """List agents in the user's library."""
+    """List agents in the user's library, oldest first."""
+    # Creation order, not the default last-updated: every run bumps an agent's
+    # updatedAt, which reshuffled the pages while a client walked them.
     result = await library_db.list_library_agents(
         user_id=auth.user_id,
+        sort_by=LibraryAgentSort.CREATED_AT,
         page=page.page,
         page_size=page.limit,
         published=published,
@@ -188,7 +197,10 @@ async def execute_agent(
     """
     await enforce(graph_exec_limiter, auth.user_id, response)
 
-    async with idempotent_run(idempotency, auth) as claim:
+    fingerprint = request_fingerprint(
+        agent_id=agent_id, request=request.model_dump(mode="json")
+    )
+    async with idempotent_run(idempotency, auth, fingerprint) as claim:
         if claim.existing_run_id:
             return await replayed_run(claim, auth)
 

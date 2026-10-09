@@ -35,13 +35,22 @@ from backend.util.exceptions import (
 logger = logging.getLogger(__name__)
 
 
-def add_exception_handlers(app: fastapi.FastAPI) -> None:
+def add_exception_handlers(
+    app: fastapi.FastAPI, *, server_error_detail: bool = True
+) -> None:
     """
     Register standard exception handlers on the given FastAPI app.
 
     Mounted sub-apps do NOT inherit exception handlers from the parent app,
     so each app instance must register its own handlers.
+
+    ``server_error_detail=False`` keeps the exception text out of 5xx bodies,
+    for an app third parties call: it can name internal services and queries.
     """
+
+    def _handle_error(status_code: int = 500, log_error: bool = True):
+        return _error_handler(status_code, log_error, server_error_detail)
+
     for exception, handler in {
         # It's the client's problem: HTTP 4XX
         NotFoundError: _handle_error(status.HTTP_404_NOT_FOUND),
@@ -71,7 +80,7 @@ def add_exception_handlers(app: fastapi.FastAPI) -> None:
         app.add_exception_handler(exception, handler)
 
 
-def _handle_error(status_code: int = 500, log_error: bool = True):
+def _error_handler(status_code: int, log_error: bool, server_error_detail: bool):
     def handler(request: fastapi.Request, exc: Exception):
         if log_error:
             if status_code >= 500:
@@ -99,7 +108,11 @@ def _handle_error(status_code: int = 500, log_error: bool = True):
         return fastapi.responses.JSONResponse(
             content={
                 "message": f"Failed to process {request.method} {request.url.path}",
-                "detail": str(exc),
+                "detail": (
+                    str(exc)
+                    if status_code < 500 or server_error_detail
+                    else "Internal server error"
+                ),
                 "hint": hint,
             },
             status_code=status_code,
