@@ -3,6 +3,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { server } from "@/mocks/mock-server";
 import { Flag } from "@/services/feature-flags/use-get-flag";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -80,12 +81,34 @@ vi.mock("framer-motion", async (importOriginal) => {
   };
 });
 
+const viewport = vi.hoisted(() => ({ isMobile: false }));
+
+vi.mock("@/hooks/use-mobile", () => ({
+  useIsMobile: () => viewport.isMobile,
+}));
+
+// happy-dom applies no CSS and has no Web Animations, so the tests stub the
+// scroll and drive the "animations finished" signal themselves.
 const scrollTo = vi.fn();
+const getAnimations = vi.fn<() => Animation[]>(() => []);
 const originalScrollTo = Element.prototype.scrollTo;
 
-function renderCollapsedSidebar() {
+function runningAnimation() {
+  let finish!: () => void;
+  const animation = {
+    effect: { getComputedTiming: () => ({ endTime: 260 }) },
+  } as unknown as Animation;
+  Object.defineProperty(animation, "finished", {
+    value: new Promise<Animation>((resolve) => {
+      finish = () => resolve(animation);
+    }),
+  });
+  return { animation, finish };
+}
+
+function renderSidebar({ open = false } = {}) {
   return render(
-    <SidebarProvider defaultOpen={false}>
+    <SidebarProvider defaultOpen={open}>
       <AppSidebar />
     </SidebarProvider>,
   );
@@ -110,22 +133,31 @@ function getRecentChatsHeading() {
   return screen.getByRole("button", { name: "Recent chats" });
 }
 
+function toggleSidebarWithShortcut() {
+  fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+}
+
 beforeEach(() => {
   auth.isLoggedIn = true;
   motionPreference.reduced = false;
+  viewport.isMobile = false;
   useGetFlagMock.mockReturnValue(true);
   scrollTo.mockReset();
+  getAnimations.mockReset();
+  getAnimations.mockReturnValue([]);
   Element.prototype.scrollTo = scrollTo;
+  Element.prototype.getAnimations = getAnimations;
   server.use(getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }));
 });
 
 afterEach(() => {
   Element.prototype.scrollTo = originalScrollTo;
+  Reflect.deleteProperty(Element.prototype, "getAnimations");
 });
 
 describe("Chats in the collapsed sidebar", () => {
   it("shows a Chats button in the collapsed rail for a logged-in user", () => {
-    renderCollapsedSidebar();
+    renderSidebar();
 
     expect(getSidebarState()).toBe("collapsed");
     const chats = getChatsButton();
@@ -133,14 +165,35 @@ describe("Chats in the collapsed sidebar", () => {
     expect(chats.getAttribute("data-active")).toBe("false");
   });
 
-  it("expands the sidebar, scrolls only the sidebar to Recent chats and focuses its heading", async () => {
+  it("is only displayed inside the collapsed icon rail", () => {
+    renderSidebar({ open: true });
+
+    // `hidden` keeps it out of the expanded sidebar and the phone sheet; only
+    // the desktop sidebar's data-collapsible="icon" group displays it.
+    const wrapper = getChatsButton().closest(
+      '[data-sidebar="group"]',
+    )?.parentElement;
+    expect(wrapper?.classList.contains("hidden")).toBe(true);
+    expect(
+      wrapper?.classList.contains("group-data-[collapsible=icon]:block"),
+    ).toBe(true);
+  });
+
+  it("expands the sidebar, then scrolls only the sidebar to Recent chats and focuses its heading", async () => {
     const user = userEvent.setup();
-    renderCollapsedSidebar();
+    renderSidebar();
+    const statesAtScroll: unknown[] = [];
+    scrollTo.mockImplementation(() => statesAtScroll.push(getSidebarState()));
+    const statesAtFocus: unknown[] = [];
+    getRecentChatsHeading().addEventListener("focus", () =>
+      statesAtFocus.push(getSidebarState()),
+    );
 
     await user.click(getChatsButton());
 
     expect(getSidebarState()).toBe("expanded");
-    expect(scrollTo).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(statesAtScroll).toEqual(["expanded"]));
+    expect(statesAtFocus).toEqual(["expanded"]);
     expect(scrollTo.mock.contexts[0]).toBe(getSidebarScrollArea());
     expect(scrollTo).toHaveBeenCalledWith(
       expect.objectContaining({ behavior: "smooth" }),
@@ -150,32 +203,32 @@ describe("Chats in the collapsed sidebar", () => {
 
   it("jumps from the keyboard", async () => {
     const user = userEvent.setup();
-    renderCollapsedSidebar();
+    renderSidebar();
 
     getChatsButton().focus();
     await user.keyboard("{Enter}");
 
     expect(getSidebarState()).toBe("expanded");
-    expect(scrollTo).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
     expect(document.activeElement).toBe(getRecentChatsHeading());
   });
 
   it("scrolls without animation when the user prefers reduced motion", async () => {
     motionPreference.reduced = true;
     const user = userEvent.setup();
-    renderCollapsedSidebar();
+    renderSidebar();
 
     await user.click(getChatsButton());
 
-    expect(scrollTo).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
     expect(scrollTo).toHaveBeenCalledWith(
       expect.objectContaining({ behavior: "auto" }),
     );
   });
 
-  it("reopens Recent chats when the user had closed it, then scrolls once it has opened", async () => {
+  it("reopens Recent chats when the user had closed it, and scrolls once the sidebar has finished animating", async () => {
     const user = userEvent.setup();
-    renderCollapsedSidebar();
+    renderSidebar();
     expect(await screen.findByText("No conversations yet")).toBeDefined();
 
     await user.click(screen.getByRole("button", { name: "Expand sidebar" }));
@@ -185,35 +238,79 @@ describe("Chats in the collapsed sidebar", () => {
     );
     await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
     expect(getSidebarState()).toBe("collapsed");
+    const opening = runningAnimation();
+    getAnimations.mockReturnValue([opening.animation]);
 
-    fireEvent.click(getChatsButton());
+    await user.click(getChatsButton());
 
     expect(getSidebarState()).toBe("expanded");
-    expect(scrollTo).not.toHaveBeenCalled();
     expect(await screen.findByText("No conversations yet")).toBeDefined();
+    expect(getRecentChatsHeading().getAttribute("aria-expanded")).toBe("true");
     expect(document.activeElement).toBe(getRecentChatsHeading());
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    await act(async () => opening.finish());
+
     await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
     expect(scrollTo.mock.contexts[0]).toBe(getSidebarScrollArea());
   });
 
-  it("does not jump again when the sidebar is later expanded another way", async () => {
+  it("does not scroll if the sidebar collapses again before it finishes animating", async () => {
     const user = userEvent.setup();
-    renderCollapsedSidebar();
+    renderSidebar();
+    const expanding = runningAnimation();
+    getAnimations.mockReturnValue([expanding.animation]);
 
     await user.click(getChatsButton());
-    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(getSidebarState()).toBe("expanded");
+    toggleSidebarWithShortcut();
+    expect(getSidebarState()).toBe("collapsed");
+    await act(async () => expanding.finish());
+
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("does not jump again when the sidebar is later expanded another way", async () => {
+    const user = userEvent.setup();
+    renderSidebar();
+
+    await user.click(getChatsButton());
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
 
     await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
     await user.click(screen.getByRole("button", { name: "Expand sidebar" }));
 
     expect(getSidebarState()).toBe("expanded");
+    await new Promise((resolve) => setTimeout(resolve, 50));
     expect(scrollTo).toHaveBeenCalledTimes(1);
   });
 
   it("does not show Chats to a logged-out visitor", () => {
     auth.isLoggedIn = false;
-    renderCollapsedSidebar();
+    renderSidebar();
 
     expect(screen.queryByRole("button", { name: "Chats" })).toBeNull();
+  });
+
+  it("still reopens Recent chats each time the phone sheet opens", async () => {
+    viewport.isMobile = true;
+    const user = userEvent.setup();
+    renderSidebar();
+
+    toggleSidebarWithShortcut();
+    expect(await screen.findByText("No conversations yet")).toBeDefined();
+    await user.click(getRecentChatsHeading());
+    await waitFor(() =>
+      expect(screen.queryByText("No conversations yet")).toBeNull(),
+    );
+
+    toggleSidebarWithShortcut();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Recent chats" })).toBeNull(),
+    );
+    toggleSidebarWithShortcut();
+
+    expect(await screen.findByText("No conversations yet")).toBeDefined();
+    expect(getRecentChatsHeading().getAttribute("aria-expanded")).toBe("true");
   });
 });

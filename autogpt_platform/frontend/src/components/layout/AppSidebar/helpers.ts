@@ -10,19 +10,19 @@ export function scrollSidebarTo(target: HTMLElement, behavior: ScrollBehavior) {
   container.scrollTo({ top, behavior });
 }
 
-export function whenHeightSettles(element: HTMLElement, callback: () => void) {
-  let lastHeight = -1;
-  let frame = requestAnimationFrame(check);
-
-  function check() {
-    const height = element.getBoundingClientRect().height;
-    if (height === lastHeight) {
-      callback();
-      return;
-    }
-    lastHeight = height;
-    frame = requestAnimationFrame(check);
-  }
-
-  return () => cancelAnimationFrame(frame);
+export function afterAnimations(element: Element, callback: () => void) {
+  let isCancelled = false;
+  const finiteAnimations = element
+    .getAnimations({ subtree: true })
+    .filter(
+      (animation) => animation.effect?.getComputedTiming().endTime !== Infinity,
+    );
+  Promise.allSettled(
+    finiteAnimations.map((animation) => animation.finished),
+  ).then(() => {
+    if (!isCancelled) callback();
+  });
+  return () => {
+    isCancelled = true;
+  };
 }

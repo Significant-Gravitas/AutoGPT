@@ -1,16 +1,10 @@
 "use client";
 
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -23,17 +17,15 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ComponentProps, ReactNode, Suspense, useEffect } from "react";
+import { ComponentProps, ReactNode, useEffect } from "react";
 import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
-import { ChatsRailItem } from "./components/ChatsRailItem/ChatsRailItem";
-import { RecentChats } from "./components/RecentChats/RecentChats";
+import { ChatsNavSection } from "./components/ChatsNavSection/ChatsNavSection";
+import { CollapsibleNavGroup } from "./components/CollapsibleNavGroup/CollapsibleNavGroup";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
-import { useJumpToRecentChats } from "./useJumpToRecentChats";
 import { useNavItemClassName } from "./useNavItemClassName";
 import {
-  ArrowDown01Icon,
   FlowIcon,
   Folder01Icon,
   GridViewIcon,
@@ -168,45 +160,6 @@ function NavMenu({
   );
 }
 
-function CollapsibleNavGroup({
-  label,
-  children,
-  open,
-  onOpenChange,
-}: {
-  label: string;
-  children: ReactNode;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-}) {
-  return (
-    <Collapsible
-      defaultOpen
-      open={open}
-      onOpenChange={onOpenChange}
-      className="group/collapsible"
-    >
-      <SidebarGroup className="py-1">
-        <SidebarGroupLabel
-          asChild
-          className="text-[13px] font-medium text-zinc-500 group-data-[collapsible=icon]:hidden"
-        >
-          <CollapsibleTrigger>
-            {label}
-            <Icon
-              icon={ArrowDown01Icon}
-              className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
-            />
-          </CollapsibleTrigger>
-        </SidebarGroupLabel>
-        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
-          <SidebarGroupContent>{children}</SidebarGroupContent>
-        </CollapsibleContent>
-      </SidebarGroup>
-    </Collapsible>
-  );
-}
-
 type Props = ComponentProps<typeof Sidebar>;
 
 export function AppSidebar(props: Props) {
@@ -224,12 +177,6 @@ export function AppSidebar(props: Props) {
       ? [{ name: "Team", href: "/team", icon: AddTeamIcon }, ...WORKSPACE_LINKS]
       : WORKSPACE_LINKS
   ).filter((link) => link.href !== "/artifacts" || filesEnabled);
-  const {
-    isRecentChatsOpen,
-    setIsRecentChatsOpen,
-    recentChatsRef,
-    jumpToRecentChats,
-  } = useJumpToRecentChats();
 
   useEffect(() => {
     function handleNewTaskShortcut(event: KeyboardEvent) {
@@ -273,35 +220,7 @@ export function AppSidebar(props: Props) {
             </motion.div>
           ) : null}
 
-          {isLoggedIn && (
-            <motion.div
-              variants={itemVariants}
-              className="hidden group-data-[collapsible=icon]:block"
-            >
-              <ChatsRailItem onClick={jumpToRecentChats} />
-            </motion.div>
-          )}
-
-          {isLoggedIn && (
-            <motion.div
-              ref={recentChatsRef}
-              variants={itemVariants}
-              className="group-data-[collapsible=icon]:hidden"
-            >
-              <CollapsibleNavGroup
-                label="Recent chats"
-                open={isRecentChatsOpen}
-                onOpenChange={setIsRecentChatsOpen}
-              >
-                {/* Suspense boundary: RecentChats reads useSearchParams(), which
-                  Next.js requires to be wrapped to avoid forcing the route to
-                  client-side rendering. */}
-                <Suspense fallback={null}>
-                  <RecentChats />
-                </Suspense>
-              </CollapsibleNavGroup>
-            </motion.div>
-          )}
+          {isLoggedIn && <ChatsNavSection itemVariants={itemVariants} />}
         </motion.div>
 
         <SidebarUserActions />
