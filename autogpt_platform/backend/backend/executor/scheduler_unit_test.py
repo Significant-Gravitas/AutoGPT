@@ -7,6 +7,8 @@ backend test job (and counted by codecov), not just the integration suite.
 
 import asyncio
 import logging
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -2381,3 +2383,174 @@ class TestPostHogLifecycleSweepRegistration:
         assert not getattr(
             Scheduler._register_posthog_lifecycle_sweep, EXPOSED_FLAG, False
         )
+
+
+class TestScheduleListCache:
+    """One jobstore read per cache miss, and no caller waits a scan while an
+    expired list can answer it. Both cached reads share the logic, so every
+    test runs against each."""
+
+    @pytest.fixture(params=["all", "active"])
+    def cache(self, request, monkeypatch: pytest.MonkeyPatch):
+        sched = Scheduler(register_system_tasks=False)
+        sched.scheduler = MagicMock()
+        sched._execution_jobstore = MagicMock()
+        fetch = _GatedFetch()
+        if request.param == "all":
+            sched.scheduler.get_jobs = fetch
+            read = sched._get_jobs_cached
+        else:
+            sched._execution_jobstore._get_jobs = fetch
+            read = sched._get_active_jobs_cached
+        # Every list expires the moment it is cached, so each read after the
+        # first is an expired one.
+        monkeypatch.setattr(Scheduler, "_JOBS_CACHE_TTL_S", 0.0)
+        yield sched, read, fetch
+        fetch.release_all()
+
+    def test_eight_misses_run_one_query(self, cache):
+        sched, read, fetch = cache
+        results = _read_concurrently(read, fetch, callers=8)
+
+        assert fetch.calls == 1
+        assert all(r is results[0] for r in results)
+
+    def test_a_failed_query_fails_every_waiter_once(self, cache):
+        sched, read, fetch = cache
+        fetch.fail_with = RuntimeError("QueuePool limit reached")
+
+        results = _read_concurrently(read, fetch, callers=8)
+
+        assert fetch.calls == 1
+        assert all(isinstance(r, RuntimeError) for r in results)
+
+    def test_an_expired_list_is_served_while_one_refresh_runs(self, cache):
+        sched, read, fetch = cache
+        fetch.release(1)
+        old = read()
+
+        assert _within(read) is old  # starts the refresh, does not wait for it
+        fetch.wait_for_calls(2)
+        assert _within(read) is old
+        assert fetch.calls == 2
+
+        fetch.release(2)
+        fetch.wait_for_returns(2)
+        assert _within(read) == ["list-2"]
+
+    def test_a_failed_refresh_keeps_the_old_list_and_retries(self, cache):
+        sched, read, fetch = cache
+        fetch.release(1)
+        old = read()
+        fetch.fail_with = RuntimeError("database timeout")
+
+        assert _within(read) is old
+        fetch.release(2)
+        fetch.wait_for_returns(2)
+        assert _within(read) is old
+        fetch.wait_for_calls(3)  # the failure did not wedge the next refresh
+
+    def test_an_invalidation_is_never_answered_from_the_old_list(self, cache):
+        sched, read, fetch = cache
+        fetch.release(1)
+        old = read()
+        assert _within(read) is old
+        fetch.wait_for_calls(2)  # refresh #2 started before the write
+
+        sched._invalidate_jobs_cache()
+        after = _start(read)
+        fetch.wait_for_calls(3)  # a fresh read, not a wait on refresh #2
+        assert after.is_alive()
+
+        fetch.release(3)
+        assert after.result() == ["list-3"]
+        fetch.release(2)
+        fetch.wait_for_returns(2)
+        # Refresh #2 read before the write, so it must not land in the cache.
+        assert _within(read) == ["list-3"]
+
+
+class _GatedFetch:
+    """A jobstore read that counts its calls and holds each until released."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.returns = 0
+        self.fail_with: Exception | None = None
+        self._lock = threading.Lock()
+        self._gates: dict[int, threading.Event] = {}
+
+    def __call__(self, *_args, **_kwargs) -> list[str]:
+        with self._lock:
+            self.calls += 1
+            call = self.calls
+            failure = self.fail_with
+        try:
+            self._gate(call).wait(timeout=10)
+            if failure is not None:
+                raise failure
+            return [f"list-{call}"]
+        finally:
+            with self._lock:
+                self.returns += 1
+
+    def release(self, call: int) -> None:
+        self._gate(call).set()
+
+    def release_all(self) -> None:
+        for call in range(1, self.calls + 2):
+            self.release(call)
+
+    def wait_for_calls(self, count: int) -> None:
+        _wait_until(lambda: self.calls >= count)
+
+    def wait_for_returns(self, count: int) -> None:
+        _wait_until(lambda: self.returns >= count)
+        time.sleep(0.05)  # let the returning reader finish its write-back
+
+    def _gate(self, call: int) -> threading.Event:
+        with self._lock:
+            return self._gates.setdefault(call, threading.Event())
+
+
+class _Call(threading.Thread):
+    def __init__(self, fn) -> None:
+        super().__init__(daemon=True)
+        self._fn = fn
+        self._outcome: object = None
+
+    def run(self) -> None:
+        try:
+            self._outcome = self._fn()
+        except Exception as e:
+            self._outcome = e
+
+    def result(self, timeout: float = 5.0) -> object:
+        self.join(timeout)
+        assert not self.is_alive(), "the read is still waiting"
+        return self._outcome
+
+
+def _start(fn) -> _Call:
+    call = _Call(fn)
+    call.start()
+    return call
+
+
+def _within(fn, timeout: float = 2.0) -> object:
+    return _start(fn).result(timeout)
+
+
+def _read_concurrently(read, fetch: _GatedFetch, callers: int) -> list[object]:
+    calls = [_start(read) for _ in range(callers)]
+    fetch.wait_for_calls(1)
+    time.sleep(0.2)  # every caller has reached the cache by now
+    fetch.release_all()
+    return [call.result() for call in calls]
+
+
+def _wait_until(condition, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < deadline, "timed out"
+        time.sleep(0.01)
