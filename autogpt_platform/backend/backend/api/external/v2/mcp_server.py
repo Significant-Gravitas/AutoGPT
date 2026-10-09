@@ -37,6 +37,7 @@ from backend.api.external.v2.errors import error_response
 from backend.api.external.v2.mcp_calls import (
     check_arguments,
     check_spend_allowance,
+    check_tool_limits,
     input_schema,
     missing_scopes,
 )
@@ -276,7 +277,26 @@ class MCPMount:
             )
             await response(scope, receive, send)
             return
+        if _ambiguous_credentials(scope):
+            response = error_response(
+                status.HTTP_400_BAD_REQUEST,
+                "Send one credential, as a single `Authorization: Bearer` header",
+            )
+            await response(scope, receive, send)
+            return
         await self._app(scope, receive, send)
+
+
+def _ambiguous_credentials(scope: Scope) -> bool:
+    """Whether the request names more than one credential.
+
+    FastMCP authenticates the first Authorization header, while the v2 rate
+    limiter reads X-API-Key first; with both, or two Authorization headers,
+    the limit would be charged to one credential and the call made as another.
+    """
+    names = [name.lower() for name, _ in scope.get("headers", [])]
+    authorizations = names.count(b"authorization")
+    return authorizations > 1 or (authorizations == 1 and b"x-api-key" in names)
 
 
 mcp_mount = MCPMount()
@@ -389,6 +409,7 @@ def _create_tool_handler(
         await check_ids_in_tenant(
             tool.name, kwargs, user_id, access_token.organization_id
         )
+        await check_tool_limits(tool, kwargs, user_id, access_token.organization_id)
         if tool.spends_platform_money:
             await check_spend_allowance(user_id)
 

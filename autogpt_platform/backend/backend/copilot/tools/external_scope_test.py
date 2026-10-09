@@ -283,3 +283,15 @@ async def test_a_folder_created_over_the_external_api_lands_in_its_organization(
 
     kwargs = lib.create_folder.await_args.kwargs
     assert (kwargs["organization_id"], kwargs["team_id"]) == ("org-1", "team-1")
+
+
+async def test_an_external_caller_gets_no_internal_error_detail():
+    """AutoPilot's model reads the detail to recover; a client gets none."""
+    failing = AsyncMock(side_effect=RuntimeError("query engine is not connected"))
+
+    with patch.object(ListFoldersTool, "_execute", failing):
+        external = await ListFoldersTool().execute(USER, _external(), tool_call_id="t")
+        chat = await ListFoldersTool().execute(USER, _chat(), tool_call_id="t")
+
+    assert "query engine" not in str(external.output)
+    assert "query engine" in str(chat.output)

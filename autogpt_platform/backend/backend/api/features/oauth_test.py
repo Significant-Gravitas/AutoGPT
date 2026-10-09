@@ -278,7 +278,8 @@ async def test_authorize_invalid_client_returns_error(
     test_user: str,
     test_oauth_app: dict,
 ):
-    """Test that invalid client_id returns error in redirect."""
+    """An unknown client_id is refused outright: redirecting to a URI no
+    registered client vouches for would make the platform an open redirect."""
     _, challenge = generate_pkce()
 
     response = await client.post(
@@ -295,11 +296,8 @@ async def test_authorize_invalid_client_returns_error(
         follow_redirects=False,
     )
 
-    assert response.status_code == 200
-    from urllib.parse import parse_qs, urlparse
-
-    query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
-    assert query_params["error"][0] == "invalid_client"
+    assert response.status_code == 400
+    assert "redirect_url" not in response.json()
 
 
 @pytest_asyncio.fixture
@@ -340,7 +338,7 @@ async def test_authorize_inactive_app(
     test_user: str,
     inactive_oauth_app: dict,
 ):
-    """Test that authorization with inactive app returns error."""
+    """An inactive app is refused outright, as an unknown one is."""
     _, challenge = generate_pkce()
 
     response = await client.post(
@@ -357,11 +355,8 @@ async def test_authorize_inactive_app(
         follow_redirects=False,
     )
 
-    assert response.status_code == 200
-    from urllib.parse import parse_qs, urlparse
-
-    query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
-    assert query_params["error"][0] == "invalid_client"
+    assert response.status_code == 400
+    assert "redirect_url" not in response.json()
 
 
 @pytest.mark.asyncio(loop_scope="session")

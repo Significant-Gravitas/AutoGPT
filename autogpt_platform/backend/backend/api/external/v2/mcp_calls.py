@@ -9,8 +9,10 @@ the way each REST route is.
 import logging
 from typing import Any, Sequence
 
+from fastapi import HTTPException
 from mcp.server.fastmcp.exceptions import ToolError
 
+from backend.api.utils.rate_limit import RateLimiter
 from backend.copilot.config import ChatConfig
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
@@ -20,6 +22,9 @@ from backend.copilot.rate_limit import (
     is_user_paywalled,
 )
 from backend.copilot.tools.base import BaseTool
+from backend.data.credit import get_credit_model
+
+from .rate_limit import file_upload_limiter, graph_exec_limiter, search_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +72,45 @@ def missing_scopes(
     """
     needed = [*required_scopes, *(p.value for p in tool.external_permissions(args))]
     return [scope for scope in dict.fromkeys(needed) if scope not in granted]
+
+
+# The REST routes these tools mirror cap callers tighter than the global limit
+# (`rate_limit.py`); a call over MCP is held to the same caps, in the same
+# windows, so neither surface is a way around the other's.
+TOOL_LIMITERS: dict[str, RateLimiter] = {
+    "run_agent": graph_exec_limiter,
+    "write_workspace_file": file_upload_limiter,
+    "find_agent": search_limiter,
+    "find_library_agent": search_limiter,
+    "search_docs": search_limiter,
+}
+
+
+async def check_tool_limits(
+    tool: BaseTool, args: dict[str, Any], user_id: str, organization_id: str
+) -> None:
+    """The per-endpoint cap, and for a real run, the zero-balance refusal."""
+    if limiter := TOOL_LIMITERS.get(tool.name):
+        try:
+            await limiter.check(user_id)
+        except HTTPException as exc:
+            raise ToolError(str(exc.detail)) from exc
+    if tool.name == "run_agent" and _starts_a_paid_run(args):
+        try:
+            credit_model = await get_credit_model(user_id, organization_id)
+            balance = await credit_model.get_credits(user_id)
+        except Exception as exc:
+            logger.warning(f"MCP balance check failed for {user_id}: {exc}")
+            raise ToolError("Couldn't check your balance; retry shortly") from exc
+        if balance <= 0:
+            raise ToolError(
+                "Insufficient balance to run the agent. Please top up your account."
+            )
+
+
+def _starts_a_paid_run(args: dict[str, Any]) -> bool:
+    """A run now, not a dry run and not a schedule, as REST's run route refuses."""
+    return not (args.get("dry_run") or args.get("schedule_name") or args.get("cron"))
 
 
 async def check_spend_allowance(user_id: str) -> None:

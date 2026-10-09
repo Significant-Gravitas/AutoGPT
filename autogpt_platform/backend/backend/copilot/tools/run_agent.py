@@ -551,18 +551,10 @@ class RunAgentTool(BaseTool):
             ).from_outside()
         except DatabaseError as e:
             logger.error("Database error: %s", e, exc_info=True)
-            return ErrorResponse(
-                message=f"Failed to process request: {e!s}",
-                error=str(e),
-                session_id=session_id,
-            ).from_outside(str(e))
+            return _unexpected_error(e, session)
         except Exception as e:
             logger.error("Error processing agent request: %s", e, exc_info=True)
-            return ErrorResponse(
-                message=f"Failed to process request: {e!s}",
-                error=str(e),
-                session_id=session_id,
-            ).from_outside(str(e))
+            return _unexpected_error(e, session)
 
     def _get_execution_modes(self, graph: GraphModel) -> list[str]:
         """Get available execution modes for the graph."""
@@ -1436,6 +1428,23 @@ class RunAgentTool(BaseTool):
             library_agent_link=library_agent_link,
             status=SCHEDULED_STATUS,
         ).from_outside()
+
+
+def _unexpected_error(error: Exception, session: ChatSession) -> ErrorResponse:
+    """The answer to a failure nobody anticipated.
+
+    AutoPilot's model reads the detail to recover; an External API client gets
+    none, as the v2 REST API's 500s carry none.
+    """
+    if session.external_caller:
+        return ErrorResponse(
+            message="Failed to process request", session_id=session.session_id
+        ).from_outside()
+    return ErrorResponse(
+        message=f"Failed to process request: {error!s}",
+        error=str(error),
+        session_id=session.session_id,
+    ).from_outside(str(error))
 
 
 # One lookup for the run and for the gate: were they two, a drift between

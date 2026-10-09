@@ -23,6 +23,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from backend.api.external.middleware import resolve_request_auth
@@ -51,9 +52,12 @@ class GlobalRateLimitMiddleware:
             return
 
         headers = dict(scope.get("headers", []))
+        # The first of a repeated header, as the route's own dependency reads
+        # it, so both charge and authenticate the same credential.
+        request_headers = Headers(scope=scope)
 
-        api_key = headers.get(b"x-api-key", b"").decode() or None
-        auth_header = headers.get(b"authorization", b"").decode()
+        api_key = request_headers.get("x-api-key") or None
+        auth_header = request_headers.get("authorization", "")
         bearer = None
         if auth_header.lower().startswith("bearer "):
             bearer = HTTPAuthorizationCredentials(

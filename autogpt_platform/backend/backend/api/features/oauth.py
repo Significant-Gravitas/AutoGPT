@@ -185,47 +185,36 @@ async def authorize(
     Returns:
     - redirect_url: The URL to redirect the user to (includes authorization code)
 
-    Error cases return a redirect_url with error parameters, or raise HTTPException
-    for critical errors (like invalid redirect_uri).
+    Error cases return a redirect_url with error parameters once the client and
+    its redirect_uri check out; before that (unknown or inactive client, an
+    unregistered redirect_uri) they raise HTTPException, so the platform never
+    redirects to a URI no registered client vouches for (RFC 6749 4.1.2.1).
     """
+    redirect_uri_verified = False
     try:
-        # Validate response_type
-        if request.response_type != "code":
-            return _error_redirect_url(
-                request.redirect_uri,
-                request.state,
-                "unsupported_response_type",
-                "Only 'code' response type is supported",
-            )
-
-        # Get application
         app = await get_oauth_application(request.client_id)
-        if not app:
-            return _error_redirect_url(
-                request.redirect_uri,
-                request.state,
-                "invalid_client",
-                "Unknown client_id",
+        if not app or not app.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unknown or inactive client_id",
             )
 
-        if not app.is_active:
-            return _error_redirect_url(
-                request.redirect_uri,
-                request.state,
-                "invalid_client",
-                "Application is not active",
-            )
-
-        # Validate redirect URI
         if not validate_redirect_uri(app, request.redirect_uri):
-            # For invalid redirect_uri, we can't redirect safely
-            # Must return error instead
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
                     "Invalid redirect_uri. "
                     f"Must be one of: {', '.join(app.redirect_uris)}"
                 ),
+            )
+        redirect_uri_verified = True
+
+        if request.response_type != "code":
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
+                "unsupported_response_type",
+                "Only 'code' response type is supported",
             )
 
         # Parse and validate scopes
@@ -284,6 +273,11 @@ async def authorize(
         raise
     except Exception as e:
         logger.error(f"Error in authorization endpoint: {e}", exc_info=True)
+        if not redirect_uri_verified:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="An unexpected error occurred",
+            )
         return _error_redirect_url(
             request.redirect_uri,
             request.state,

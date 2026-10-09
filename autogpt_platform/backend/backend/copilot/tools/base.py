@@ -576,7 +576,9 @@ class BaseTool:
                 toolName=self.name,
                 output=ErrorResponse(
                     message=f"An error occurred while executing {self.name}",
-                    error=str(e),
+                    # AutoPilot's model reads the detail to recover; an
+                    # External API client gets no internal detail.
+                    error=None if session.external_caller else str(e),
                     session_id=session.session_id,
                 ).model_dump_json(),
                 success=False,

@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 import pytest
 import pytest_mock
+from fastapi import HTTPException
 from mcp.server.auth.provider import AccessToken
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -14,12 +15,14 @@ from mcp.types import CallToolRequest, CallToolRequestParams, ListToolsRequest
 from prisma.enums import APIKeyPermission
 from starlette.routing import Match
 
+from backend.api.external.v2.mcp_calls import TOOL_LIMITERS
 from backend.api.external.v2.mcp_server import (
     EXTERNAL_USE_EXCLUSIONS,
     META_KEY_REQUIRED_SCOPES,
     UNSCOPED_EXTERNAL_TOOLS,
     WELL_KNOWN_PROTECTED_RESOURCE_PATH,
     TenantedAccessToken,
+    _ambiguous_credentials,
     _create_tool_handler,
     create_mcp_server,
     protected_resource_metadata,
@@ -422,4 +425,68 @@ async def test_a_tool_called_over_mcp_runs_without_waiting_for_an_approval(
     assert (session.organization_id, session.team_id) == ("org-1", "team-1")
     no_tenancy_lookups.assert_awaited_once_with(
         "delete_folder", {"folder_id": "folder-1"}, "user-1", "org-1"
+    )
+
+
+async def test_a_tool_is_held_to_the_cap_of_the_rest_route_it_mirrors(
+    mocker: pytest_mock.MockerFixture, no_tenancy_lookups: mock.AsyncMock
+):
+    """REST caps runs at 60 a minute; MCP's global 200 must not be a way round."""
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=_token(*_tool_scopes("run_agent")),
+    )
+    mocker.patch.object(
+        TOOL_LIMITERS["run_agent"],
+        "check",
+        new_callable=mock.AsyncMock,
+        side_effect=HTTPException(status_code=429, detail="Rate limit exceeded"),
+    )
+    run = mocker.patch.object(type(TOOL_REGISTRY["run_agent"]), "_execute")
+
+    result = await _call("run_agent", {"library_agent_id": "agent-1"})
+
+    run.assert_not_called()
+    assert result.isError
+    assert "Rate limit exceeded" in result.content[0].text
+
+
+async def test_a_run_on_a_zero_balance_is_refused_as_rest_refuses_it(
+    mocker: pytest_mock.MockerFixture, no_tenancy_lookups: mock.AsyncMock
+):
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=_token(*_tool_scopes("run_agent")),
+    )
+    mocker.patch.object(
+        TOOL_LIMITERS["run_agent"], "check", new_callable=mock.AsyncMock
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_calls.get_credit_model",
+        new_callable=mock.AsyncMock,
+        return_value=mock.Mock(get_credits=mock.AsyncMock(return_value=0)),
+    )
+    run = mocker.patch.object(type(TOOL_REGISTRY["run_agent"]), "_execute")
+
+    result = await _call("run_agent", {"library_agent_id": "agent-1"})
+
+    run.assert_not_called()
+    assert "Insufficient balance" in result.content[0].text
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        [(b"authorization", b"Bearer agpt_a"), (b"x-api-key", b"agpt_b")],
+        [(b"authorization", b"Bearer agpt_a"), (b"authorization", b"Bearer agpt_b")],
+    ],
+)
+def test_a_request_naming_two_credentials_is_refused(headers: list) -> None:
+    """The limiter and FastMCP would each pick a different one."""
+    assert _ambiguous_credentials({"type": "http", "headers": headers})
+
+
+def test_a_single_bearer_credential_is_accepted() -> None:
+    assert not _ambiguous_credentials(
+        {"type": "http", "headers": [(b"authorization", b"Bearer agpt_a")]}
     )
