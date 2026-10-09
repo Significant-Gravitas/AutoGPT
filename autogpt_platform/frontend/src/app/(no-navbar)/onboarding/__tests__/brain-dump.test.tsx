@@ -13,10 +13,12 @@ import {
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OnboardingPage from "../page";
-import { NO_PAYWALL_STEPS, PAYWALL_FIRST_STEPS } from "../store";
+import { NO_PAYWALL_STEPS, PAYWALL_LAST_STEPS } from "../store";
 import { useOnboardingWizardStore } from "../store";
+import { makeProgress } from "./progress-fixture";
 
 // IndexedDB does not exist in happy-dom and `fake-indexeddb` is not a
 // devDependency here, so the recording store is replaced with an
@@ -102,6 +104,21 @@ vi.mock("posthog-js", () => ({
   default: { capture: vi.fn() },
 }));
 
+// AnimatePresence can retain the outgoing timer in happy-dom even after the
+// recovery controls render. These flow tests assert the current headline and
+// actions independently of the decorative exit animation.
+vi.mock("@/components/atoms/SwapFade/SwapFade", () => ({
+  SwapFade: function SwapFade({
+    children,
+    className,
+  }: {
+    children: ReactNode;
+    className?: string;
+  }) {
+    return <div className={className}>{children}</div>;
+  },
+}));
+
 vi.mock("../steps/RoleStep", () => ({
   RoleStep: () => <div data-testid="step-role" />,
 }));
@@ -129,22 +146,38 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({
     isLoggedIn: true,
     isUserLoading: false,
-    user: null,
+    user: { id: "brain-user", email: "brain@example.com", user_metadata: {} },
     refreshSession: mockRefreshSession,
   }),
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1OnboardingState: () =>
-    Promise.resolve({ status: 200, data: { completedSteps: [] } }),
+    Promise.resolve({
+      status: 200,
+      data: {
+        userId: "brain-user",
+        completedSteps: [],
+        wizardRevision: 0,
+        wizardProgress: makeProgress({
+          currentStep: "painPoints",
+          completedSteps: ["role"],
+        }),
+      },
+    }),
   getV1CheckIfOnboardingIsCompleted: () =>
     Promise.resolve({ status: 200, data: false }),
-  patchV1UpdateOnboardingState: () => Promise.resolve({ status: 200 }),
+  patchV1UpdateOnboardingState: () =>
+    Promise.resolve({
+      status: 200,
+      data: { userId: "brain-user", wizardRevision: 1 },
+    }),
   postV1CompleteOnboardingStep: () => Promise.resolve({ status: 200 }),
   postV1SubmitOnboardingProfile: () => Promise.resolve({ status: 200 }),
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
+  getGetSubscriptionStatusQueryKey: () => ["/api/credits/subscription"],
   useGetSubscriptionStatus: (opts: {
     query: { select: (res: { status: number; data: unknown }) => unknown };
   }) => ({
@@ -348,6 +381,7 @@ beforeEach(() => {
   recordingStoreState.parts = [];
   recordingStoreState.finalizedIds = [];
   useOnboardingWizardStore.getState().reset();
+  localStorage.clear();
   window.sessionStorage.removeItem(STEP_STORAGE_KEY);
   window.sessionStorage.removeItem(INTRO_PATH_KEY);
 });
@@ -842,10 +876,10 @@ describe("onboarding brain dump — insufficient content", () => {
 
 describe("onboarding step map integrity", () => {
   it("keeps the step constants identical regardless of the brain-dump flag", () => {
-    expect(PAYWALL_FIRST_STEPS).toEqual({
-      subscription: 1,
-      role: 2,
-      painPoints: 3,
+    expect(PAYWALL_LAST_STEPS).toEqual({
+      role: 1,
+      painPoints: 2,
+      subscription: 3,
       preparing: 4,
     });
     expect(NO_PAYWALL_STEPS).toEqual({

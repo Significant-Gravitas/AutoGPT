@@ -2,11 +2,6 @@
 
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/atoms/Tooltip/BaseTooltip";
 import { AccountMenu } from "@/components/layout/Navbar/components/AccountMenu/AccountMenu";
 import { Wallet } from "@/components/layout/Navbar/components/Wallet/Wallet";
 import { getAccountMenuItems } from "@/components/layout/Navbar/helpers";
@@ -68,14 +63,9 @@ export function SidebarUserActions() {
           accountMenu
         )}
         {profile && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="group-data-[collapsible=icon]:hidden">
-                <Wallet key={profile.username} compact />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="top">Credits</TooltipContent>
-          </Tooltip>
+          <div className="group-data-[collapsible=icon]:hidden">
+            <Wallet key={profile.username} compact />
+          </div>
         )}
       </div>
     </SidebarFooter>

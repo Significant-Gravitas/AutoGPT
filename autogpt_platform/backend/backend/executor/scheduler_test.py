@@ -906,9 +906,6 @@ def test_get_active_jobs_cached_sets_the_scheduler_jobs_gauge():
     from backend.executor.scheduler import Scheduler
 
     s = Scheduler.__new__(Scheduler)
-    s._active_jobs_cache = None
-    s._active_jobs_cache_expires_at = 0.0
-    s._jobs_cache_version = 0
     s._execution_jobstore = MagicMock()
     s._execution_jobstore._get_jobs.return_value = [object(), object(), object()]
 
@@ -928,9 +925,6 @@ def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
     from backend.executor.scheduler import Scheduler
 
     s = Scheduler.__new__(Scheduler)
-    s._active_jobs_cache = None
-    s._active_jobs_cache_expires_at = 0.0
-    s._jobs_cache_version = 0
     s._execution_jobstore = MagicMock()
 
     # A fresh, accepted read publishes 5.
@@ -946,8 +940,7 @@ def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
 
     # Now a read whose query is interrupted by an invalidation: it returns a
     # different count, but the version moved, so the cache write is skipped.
-    s._active_jobs_cache = None
-    s._active_jobs_cache_expires_at = 0.0
+    s._invalidate_jobs_cache()
 
     def _slow_query_then_invalidated(*_args, **_kwargs):
         s._invalidate_jobs_cache()
@@ -955,5 +948,7 @@ def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
 
     s._execution_jobstore._get_jobs.side_effect = _slow_query_then_invalidated
     assert len(s._get_active_jobs_cached()) == 2  # caller still gets the list
-    assert s._active_jobs_cache is None  # write-back was rejected
-    assert gauge() == 5  # and so was the gauge update
+    assert gauge() == 5  # but the gauge update was rejected
+    s._execution_jobstore._get_jobs.side_effect = None
+    s._execution_jobstore._get_jobs.return_value = [object()] * 7
+    assert len(s._get_active_jobs_cached()) == 7  # and so was the cache write

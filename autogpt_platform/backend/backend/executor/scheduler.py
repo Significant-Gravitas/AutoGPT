@@ -6,6 +6,8 @@ import re
 import threading
 import time
 import uuid
+from collections.abc import Callable
+from concurrent.futures import Future
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Literal, Optional, Union
@@ -48,6 +50,7 @@ from backend.data.schedule import normalize_schedule_name
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
+from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
 from backend.monitoring import (
     flush_matured_alerts,
     report_block_error_rates,
@@ -178,6 +181,23 @@ def job_max_instances_listener(event):
 
 _event_loop: asyncio.AbstractEventLoop | None = None
 _event_loop_thread: threading.Thread | None = None
+
+# The running Scheduler service instance, so module-level job functions
+# (which APScheduler pickles by reference) can reach instance state — the
+# same in-process shortcut the event-loop globals above provide.
+_scheduler_instance: "Scheduler | None" = None
+
+
+def reconcile_schedule_index():
+    """Daily system task: rebuild the schedule index from the jobstore.
+
+    Heals rows missed by best-effort writes and clears rows left behind by
+    fired one-shots that only APScheduler's auto-removal saw.
+    """
+    if _scheduler_instance is None:
+        logger.warning("Schedule index reconcile skipped: scheduler not running")
+        return
+    _scheduler_instance._reconcile_schedule_index()
 
 
 @func_retry
@@ -1649,6 +1669,11 @@ def ensure_embeddings_coverage():
 # bounded rather than left to grow with the backlog.
 _PARKED_SCAN_LIMIT = 1000
 
+# A rolling deploy runs the outgoing pod beside this one until it exits (prod:
+# ~10 s to ready, a 15 s preStop, a 300 s grace). The index is trusted only after
+# a reconcile that began later, so rows that pod wrote unindexed are in it.
+_SCHEDULE_INDEX_SETTLE_S = 600
+
 
 class Jobstores(Enum):
     EXECUTION = "execution"
@@ -1937,9 +1962,39 @@ def _job_to_info(
     return None
 
 
+def _index_entry(
+    job_id: str, args: GraphExecutionJobArgs | CopilotTurnJobArgs
+) -> ScheduleIndexEntry:
+    """Build the index row for a schedule.
+
+    *job_id* is passed separately because it must be the jobstore key
+    (``job.id``): legacy rows can carry ``schedule_id=None`` in their kwargs
+    even though the job itself is addressable.
+    """
+    return ScheduleIndexEntry(
+        job_id=job_id,
+        user_id=args.user_id,
+        kind=args.kind,
+        graph_id=args.graph_id if args.kind == "graph" else None,
+        session_id=args.session_id if args.kind == "copilot_turn" else None,
+        organization_id=args.organization_id or None,
+        team_id=args.team_id,
+        expert_id=args.expert_id,
+    )
+
+
 class Scheduler(AppService):
     scheduler: BackgroundScheduler
     _persistent_jobstores: dict[str, ResilientSQLAlchemyJobStore] = {}
+
+    # Sidecar index for filtered schedule reads. ``None`` (not set up or
+    # setup failed) or ``ready=False`` (backfill not yet complete) both
+    # fall back to the full jobstore scan, so the index is never
+    # load-bearing. Class-level defaults like the jobs cache below, so
+    # every construction path has them.
+    _schedule_index: ScheduleIndex | None = None
+    _schedule_index_ready: bool = False
+    _schedule_index_failure_version: int = 0
 
     def __init__(self, register_system_tasks: bool = True):
         self.register_system_tasks = register_system_tasks
@@ -1990,13 +2045,28 @@ class Scheduler(AppService):
         # Configure executors to limit concurrency without skipping jobs
         from apscheduler.executors.pool import ThreadPoolExecutor
 
+        # Shared between the EXECUTION jobstore and the schedule index so
+        # both live in the same pool/database.
+        execution_engine = create_engine(
+            url=db_url,
+            pool_size=self.db_pool_size(),
+            max_overflow=0,
+        )
+        self._schedule_index = ScheduleIndex(execution_engine, schema=db_schema)
+        try:
+            self._schedule_index.ensure_table()
+        except Exception:
+            # Two replicas racing create_all(), or a transient DB error. Keep
+            # the index so writes still go through once the table exists;
+            # every reconcile retries the setup.
+            logger.exception(
+                "Schedule index setup failed; filtered schedule reads fall back "
+                "to the full jobstore scan until the backfill retries it"
+            )
+
         self._persistent_jobstores = {
             Jobstores.EXECUTION.value: ResilientSQLAlchemyJobStore(
-                engine=create_engine(
-                    url=db_url,
-                    pool_size=self.db_pool_size(),
-                    max_overflow=0,
-                ),
+                engine=execution_engine,
                 metadata=MetaData(schema=db_schema),
                 # this one is pre-existing so it keeps the
                 # default table name.
@@ -2203,6 +2273,20 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # Schedule Index Reconcile - Every 24 hours
+            # Safety net for the best-effort index writes: re-adds rows a
+            # failed write missed and clears rows for jobs APScheduler
+            # auto-removed (fired one-shots) outside our delete path.
+            self.scheduler.add_job(
+                reconcile_schedule_index,
+                id="reconcile_schedule_index",
+                trigger="interval",
+                hours=24,
+                replace_existing=True,
+                max_instances=1,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
@@ -2212,6 +2296,10 @@ class Scheduler(AppService):
             # jobstore, so the "leave an unchanged job alone" check can't work.
             self._register_posthog_lifecycle_sweep()
         self._report_parked_jobs()
+
+        global _scheduler_instance
+        _scheduler_instance = self
+        self._start_schedule_index_backfill()
 
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
@@ -2263,7 +2351,7 @@ class Scheduler(AppService):
         self,
         *,
         dispatch_func,
-        job_args: Union[GraphExecutionJobArgs, CopilotTurnJobArgs],
+        job_args: GraphExecutionJobArgs | CopilotTurnJobArgs,
         trigger,
         name: str | None,
     ) -> JobObj:
@@ -2284,6 +2372,10 @@ class Scheduler(AppService):
             replace_existing=True,
             id=job_args.schedule_id,
         )
+        # Index AFTER add_job: a pre-add row would race the read path's
+        # dangling-row cleanup (row visible, job not yet persisted → row
+        # deleted → schedule invisible until reconcile).
+        self._upsert_schedule_index_row(job.id, job_args)
         # Invalidate the read cache so the new job shows up on the next
         # ``get_execution_schedules`` call instead of waiting up to
         # ``_JOBS_CACHE_TTL_S`` seconds for the cached list to expire.
@@ -2443,6 +2535,7 @@ class Scheduler(AppService):
         job, info = self._authorized_job(schedule_id, user_id, action="delete")
         logger.info(f"Deleting job {schedule_id} (kind={info.kind})")
         job.remove()
+        self._delete_schedule_index_row(schedule_id)
         # Invalidate the read cache so the deletion shows up immediately
         # on the next ``get_execution_schedules`` call.
         self._invalidate_jobs_cache()
@@ -2537,100 +2630,326 @@ class Scheduler(AppService):
             if isinstance(info, GraphExecutionJobInfo)
         ]
 
-    # Process-wide cache for ``scheduler.get_jobs(EXECUTION)`` — the fully
-    # unfiltered row set, including paused schedules and already-fired
-    # one-shot jobs. APScheduler has no SQL-level user_id / kind filter
-    # either way — it loads every row and unpickles each ``job.kwargs`` in
-    # Python — so this is now only worth paying for on the rare
-    # ``include_paused=True`` lifecycle lookups; see the sibling
-    # ``_get_active_jobs_cached`` below for the path everything else takes.
-    # Mutations (`add_*_schedule`, `delete_schedule`) clear both caches so
-    # user-visible latency on writes is unchanged.
+    # Two cached reads of the EXECUTION jobstore (``_read_job_list``):
+    # ``_get_jobs_cached`` unpickles every row, paused and fired-once included,
+    # for the ``include_paused=True`` lookups; ``_get_active_jobs_cached`` filters
+    # ``next_run_time IS NOT NULL`` in SQL, since the table keeps paused and
+    # fired rows forever. Mutations call ``_invalidate_jobs_cache``.
     _JOBS_CACHE_TTL_S = 5.0
-    _jobs_cache: list[JobObj] | None = None
-    _jobs_cache_expires_at: float = 0.0
-    # Serialises (a) concurrent cache misses so the slow ``get_jobs``
-    # unpickle runs only once per TTL, and (b) the read/invalidate race
-    # where an invalidation between a thread's slow read and its
-    # cache-write would otherwise leave a just-invalidated cache holding
-    # the pre-mutation list.  Threading rather than asyncio because the
-    # APScheduler ``BackgroundScheduler`` thread + the Pyro RPC workers
-    # both call into this method.
+    # Process-wide; guards both lists and the version. A threading lock because
+    # APScheduler's thread and the Pyro RPC workers both read.
     _jobs_cache_lock = threading.Lock()
-    # Monotonically increasing version stamp; bumped by every
-    # invalidation.  A reader captures the version BEFORE it runs the
-    # slow query and only writes back if the version is unchanged on
-    # completion — this kills the race where invalidate fires while a
-    # slow read is in flight.
+    # Bumped by every invalidation. A read that started before one must not
+    # write its result back: it may predate the mutation.
     _jobs_cache_version: int = 0
+    _job_lists: "dict[str, _JobList] | None" = None
 
     def _get_jobs_cached(self) -> list[JobObj]:
-        with self._jobs_cache_lock:
-            now = time.monotonic()
-            if self._jobs_cache is not None and now < self._jobs_cache_expires_at:
-                return self._jobs_cache
-            version_at_start = self._jobs_cache_version
-        # Drop the lock for the heavy I/O so unrelated writers (which
-        # only take the lock briefly inside ``_invalidate_jobs_cache``)
-        # don't queue behind a slow scheduler query.
-        jobs = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
-        with self._jobs_cache_lock:
-            # If an invalidation happened while we were querying, the
-            # list we just fetched might already be stale.  Skip the
-            # write-back; the next caller will re-query.
-            if self._jobs_cache_version == version_at_start:
-                self._jobs_cache = jobs
-                self._jobs_cache_expires_at = time.monotonic() + self._JOBS_CACHE_TTL_S
-        return jobs
-
-    # Second cache, keyed off the same lock/version, for the ``next_run_time
-    # IS NOT NULL`` (non-paused) rows only. This is what every caller except
-    # the pause/resume lifecycle lookups (``include_paused=True``) actually
-    # wants, and unlike ``_get_jobs_cached`` it pushes that filter down to
-    # SQL instead of unpickling every paused/already-fired row in Python
-    # only to throw it away — ``apscheduler_jobs`` accumulates those forever
-    # (nothing deletes a paused or fired-once job), so on a table with a
-    # meaningful history the unfiltered scan is what Sentry was flagging as
-    # a slow, unbounded query. ``next_run_time`` already carries a btree
-    # index from APScheduler's own table definition, so this needs no
-    # schema change.
-    _active_jobs_cache: list[JobObj] | None = None
-    _active_jobs_cache_expires_at: float = 0.0
+        return self._read_job_list(
+            "all", lambda: self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
+        )
 
     def _get_active_jobs_cached(self) -> list[JobObj]:
-        with self._jobs_cache_lock:
-            now = time.monotonic()
-            if (
-                self._active_jobs_cache is not None
-                and now < self._active_jobs_cache_expires_at
-            ):
-                return self._active_jobs_cache
-            version_at_start = self._jobs_cache_version
-        jobs = self._execution_jobstore._get_jobs(
-            self._execution_jobstore.jobs_t.c.next_run_time.isnot(None)
+        return self._read_job_list(
+            "active",
+            lambda: self._execution_jobstore._get_jobs(
+                self._execution_jobstore.jobs_t.c.next_run_time.isnot(None)
+            ),
+            # The one scheduler metric with an alert on it. Only an accepted
+            # read sets it, so an invalidated one cannot overwrite a newer count.
+            on_accept=lambda jobs: SCHEDULER_JOBS.labels(
+                job_type="execution", status="scheduled"
+            ).set(len(jobs)),
         )
+
+    def _read_job_list(
+        self,
+        key: Literal["all", "active"],
+        fetch: Callable[[], list[JobObj]],
+        on_accept: Callable[[list[JobObj]], None] | None = None,
+    ) -> list[JobObj]:
+        """The cached list for *key*, with at most one fetch in flight.
+
+        Callers of a cold or invalidated list wait for that one fetch. An
+        expired list is returned as it is while a background fetch replaces
+        it, so no caller waits a scan that an older list can answer.
+        """
         with self._jobs_cache_lock:
-            if self._jobs_cache_version == version_at_start:
-                self._active_jobs_cache = jobs
-                self._active_jobs_cache_expires_at = (
-                    time.monotonic() + self._JOBS_CACHE_TTL_S
-                )
-                # The one scheduler metric with an alert on it was never set.
-                # Only an accepted read may publish it: a read that was
-                # invalidated mid-query is stale by definition and must not
-                # overwrite a newer count another reader has already set.
-                SCHEDULER_JOBS.labels(job_type="execution", status="scheduled").set(
-                    len(jobs)
-                )
-        return jobs
+            entry = self._job_list(key)
+            if entry.jobs is not None and time.monotonic() < entry.expires_at:
+                return entry.jobs
+            stale = entry.jobs
+            version = self._jobs_cache_version
+            pending = entry.refresh
+            starts_refresh = pending is None
+            if pending is None:
+                pending = entry.refresh = Future()
+        if starts_refresh:
+            args = (entry, pending, version, fetch, on_accept)
+            if stale is None:
+                self._refresh_job_list(*args)
+            else:
+                pending.add_done_callback(_log_refresh_failure)
+                threading.Thread(
+                    target=self._refresh_job_list,
+                    args=args,
+                    daemon=True,
+                    name="ScheduleListRefresh",
+                ).start()
+        return stale if stale is not None else pending.result()
+
+    def _refresh_job_list(
+        self,
+        entry: "_JobList",
+        pending: "Future[list[JobObj]]",
+        version: int,
+        fetch: Callable[[], list[JobObj]],
+        on_accept: Callable[[list[JobObj]], None] | None,
+    ) -> None:
+        try:
+            jobs = fetch()
+        except BaseException as e:
+            with self._jobs_cache_lock:
+                if entry.refresh is pending:
+                    entry.refresh = None
+            pending.set_exception(e)
+            return
+        try:
+            with self._jobs_cache_lock:
+                if entry.refresh is pending:
+                    entry.refresh = None
+                if self._jobs_cache_version == version:
+                    entry.jobs = jobs
+                    entry.expires_at = time.monotonic() + self._JOBS_CACHE_TTL_S
+                    if on_accept is not None:
+                        on_accept(jobs)
+        finally:
+            # Waiters block on this; nothing after the fetch may strand them.
+            pending.set_result(jobs)
+
+    def _job_list(self, key: Literal["all", "active"]) -> "_JobList":
+        """The caller holds ``_jobs_cache_lock``."""
+        if self._job_lists is None:
+            self._job_lists = {"all": _JobList(), "active": _JobList()}
+        return self._job_lists[key]
 
     def _invalidate_jobs_cache(self) -> None:
         with self._jobs_cache_lock:
-            self._jobs_cache = None
-            self._jobs_cache_expires_at = 0.0
-            self._active_jobs_cache = None
-            self._active_jobs_cache_expires_at = 0.0
+            # Dropping the in-flight fetch too sends the next caller to a fresh
+            # read rather than to one that began before this write.
+            for entry in (self._job_lists or {}).values():
+                entry.jobs = None
+                entry.expires_at = 0.0
+                entry.refresh = None
             self._jobs_cache_version += 1
+
+    # --- schedule index (see backend/executor/schedule_index.py) ---
+    #
+    # The index narrows filtered reads to a handful of point lookups
+    # instead of unpickling the whole jobstore. It is candidates-only:
+    # every job it nominates still flows through the same predicate as
+    # the full-scan path, so index staleness can hide a schedule at
+    # worst (healed by backfill/reconcile), never leak or corrupt one.
+
+    def _get_schedule_jobs(
+        self,
+        *,
+        user_id: str | None,
+        graph_id: str | None,
+        session_id: str | None,
+        kind: str | None,
+        organization_id: str | None,
+        include_paused: bool = False,
+    ) -> list[JobObj]:
+        """Jobs to run the ``get_execution_schedules`` predicate over.
+
+        Index-narrowed when a usable index exists and an identity filter
+        was given; the full (cached) jobstore scan otherwise.
+        """
+        full_scan = (
+            self._get_jobs_cached if include_paused else self._get_active_jobs_cached
+        )
+        index = self._schedule_index
+        with self._jobs_cache_lock:
+            ready = self._schedule_index_ready
+            failure_version = self._schedule_index_failure_version
+        if index is None or not ready:
+            return full_scan()
+        try:
+            job_ids = index.candidate_job_ids(
+                user_id=user_id,
+                graph_id=graph_id,
+                session_id=session_id,
+                kind=kind,
+                organization_id=organization_id,
+            )
+        except Exception:
+            logger.warning(
+                "Schedule index query failed; falling back to full scan",
+                exc_info=True,
+            )
+            return full_scan()
+        if job_ids is None:  # no identity filter — trusted-global listing
+            return full_scan()
+
+        jobs: list[JobObj] = []
+        dangling: list[str] = []
+        for job_id in job_ids:
+            try:
+                job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+            except Exception:
+                logger.warning(
+                    "Schedule %s could not be loaded; falling back to full scan",
+                    job_id,
+                    exc_info=True,
+                )
+                return full_scan()
+            if job is None:
+                dangling.append(job_id)
+                continue
+            if job.next_run_time is None and not include_paused:
+                continue
+            jobs.append(job)
+        with self._jobs_cache_lock:
+            ready = (
+                self._schedule_index_ready
+                and self._schedule_index_failure_version == failure_version
+            )
+        if not ready:
+            return full_scan()
+        if self.scheduler.running:
+            self._delete_schedule_index_rows(dangling)
+        return jobs
+
+    def _upsert_schedule_index_row(
+        self,
+        job_id: str,
+        job_args: GraphExecutionJobArgs | CopilotTurnJobArgs,
+    ) -> None:
+        """Keep successful mutations visible through full scans after an index failure."""
+        if self._schedule_index is None:
+            return
+        try:
+            self._schedule_index.upsert(_index_entry(job_id, job_args))
+        except Exception:
+            with self._jobs_cache_lock:
+                self._schedule_index_ready = False
+                self._schedule_index_failure_version += 1
+            logger.exception(
+                f"Failed to index schedule {job_id}; filtered listings will "
+                "use the full jobstore scan until a successful reconcile"
+            )
+
+    def _delete_schedule_index_row(self, job_id: str) -> None:
+        self._delete_schedule_index_rows([job_id])
+
+    def _delete_schedule_index_rows(self, job_ids: list[str]) -> None:
+        if self._schedule_index is None or not job_ids:
+            return
+        try:
+            self._schedule_index.delete_many(job_ids)
+        except Exception:
+            logger.warning("Failed to remove stale schedule index rows", exc_info=True)
+
+    def _mark_schedule_index_ready(self, failure_version: int) -> None:
+        with self._jobs_cache_lock:
+            if self._schedule_index_failure_version == failure_version:
+                self._schedule_index_ready = True
+
+    def _reconcile_schedule_index(self) -> None:
+        """Rebuild the index from a full jobstore scan (startup + daily)."""
+        index = self._schedule_index
+        if index is None:
+            return
+        if not self.scheduler.running:
+            # BaseScheduler.shutdown() flips the state outside the jobstore
+            # lock, after which get_jobs()/get_job() answer "nothing" for
+            # everything. Reconciling on that view would wipe the shared
+            # index for every replica.
+            logger.warning("Scheduler is not running; skipping index reconcile")
+            return
+        # Idempotent; repairs a table whose creation failed at startup.
+        index.ensure_table()
+        with self._jobs_cache_lock:
+            failure_version = self._schedule_index_failure_version
+        jobs = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
+        if not jobs and failure_version:
+            return
+        entries = []
+        for job in jobs:
+            info = _job_to_info(job)
+            if info is None:
+                # System/maintenance jobs and corrupted rows aren't
+                # user-listable, so they don't get index rows either.
+                continue
+            entries.append(_index_entry(job.id, info))
+        index.upsert_many(entries)
+
+        # Clear rows whose job is gone — but verify each against the live
+        # jobstore first: a schedule added while this scan ran is in the
+        # index and not in our snapshot, and must survive.
+        stale = index.all_job_ids() - {e.job_id for e in entries}
+        if not self.scheduler.running or (not jobs and stale):
+            # A shutdown raced the scan, or the raw scan came back empty while
+            # the index still has rows: neither is evidence the rows are
+            # stale, so keep them for the next reconcile. (Test the raw scan,
+            # not `entries`: a jobstore holding only system jobs is a
+            # legitimate empty listing whose stale rows must still go.)
+            logger.warning(
+                "Skipping stale-row sweep: scan returned %d jobs against %d "
+                "index rows (running=%s)",
+                len(jobs),
+                len(stale),
+                self.scheduler.running,
+            )
+            self._mark_schedule_index_ready(failure_version)
+            return
+        confirmed_gone = []
+        for job_id in stale:
+            try:
+                if (
+                    self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+                    is None
+                ):
+                    confirmed_gone.append(job_id)
+            except Exception:
+                # A row that cannot be reconstituted is not proof the job is
+                # gone; leave it for the full scan's own cleanup.
+                logger.warning(
+                    "Could not load job %s while reconciling the index",
+                    job_id,
+                    exc_info=True,
+                )
+        if not self.scheduler.running:
+            return
+        index.delete_many(confirmed_gone)
+
+        self._mark_schedule_index_ready(failure_version)
+        logger.info(
+            f"Schedule index reconciled: {len(entries)} rows, "
+            f"{len(confirmed_gone)} stale rows removed"
+        )
+
+    def _start_schedule_index_backfill(self) -> None:
+        if self._schedule_index is None:
+            return
+
+        def _run():
+            try:
+                time.sleep(_SCHEDULE_INDEX_SETTLE_S)
+                self._reconcile_schedule_index()
+            except Exception:
+                logger.exception(
+                    "Schedule index backfill failed; filtered schedule reads "
+                    "will use the full jobstore scan until the next reconcile"
+                )
+
+        threading.Thread(target=_run, daemon=True, name="ScheduleIndexBackfill").start()
+
+    @expose
+    def execute_reconcile_schedule_index(self):
+        """Manually trigger a schedule index rebuild."""
+        return reconcile_schedule_index()
 
     @expose
     def get_execution_schedules(
@@ -2665,10 +2984,13 @@ class Scheduler(AppService):
         Fired one-shot jobs share the same null marker, so they resurface too
         — filter by kind/id if that matters to the caller.
         """
-        jobs: list[JobObj] = (
-            self._get_jobs_cached()
-            if include_paused
-            else self._get_active_jobs_cached()
+        jobs: list[JobObj] = self._get_schedule_jobs(
+            user_id=user_id,
+            graph_id=graph_id,
+            session_id=session_id,
+            kind=kind,
+            organization_id=organization_id,
+            include_paused=include_paused,
         )
         results: list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]] = []
         for job in jobs:
@@ -3167,6 +3489,23 @@ class Scheduler(AppService):
 
         result = run_async(run_ratification_pass(user_id))
         return result.model_dump(mode="json")
+
+
+class _JobList:
+    """One cached job list, when it expires, and the fetch replacing it."""
+
+    def __init__(self) -> None:
+        self.jobs: list[JobObj] | None = None
+        self.expires_at = 0.0
+        self.refresh: Future[list[JobObj]] | None = None
+
+
+def _log_refresh_failure(refresh: "Future[list[JobObj]]") -> None:
+    if (error := refresh.exception()) is not None:
+        logger.warning(
+            "Background schedule list refresh failed; serving the expired list",
+            exc_info=error,
+        )
 
 
 class SchedulerClient(AppServiceClient):

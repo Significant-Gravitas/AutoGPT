@@ -4,7 +4,9 @@ Signups were never synced and the lifecycle handlers only react to new
 events, so this works out each account's fields from scratch: the signup date
 from our database, the rest from Stripe, by the rules in `subscriber_fields.py`.
 Only accounts with a Stripe customer are given (see `cli/mailerlite_backfill`):
-MailerLite holds checkout openers, not every signup.
+MailerLite holds checkout openers, not every signup. An account that opted out
+of marketing, or that a signal places in Iran or Russia, is never written,
+since a field write creates the subscriber (`consent.py`).
 
 Resumable by construction: the fields MailerLite already holds are read first
 and only the difference is written, so an interrupted or repeated run picks up
@@ -20,6 +22,8 @@ from urllib.parse import urlencode
 from pydantic import BaseModel, EmailStr, TypeAdapter, ValidationError
 
 from backend.data.notifications import SubscriberField, SubscriptionStatus
+from backend.notifications.audience_enrichment import points_at_excluded_country
+from backend.notifications.consent import KeptOut, marketing_allowed
 from backend.notifications.mailerlite import (
     API_BASE,
     MailerLiteError,
@@ -33,6 +37,7 @@ from backend.notifications.mailerlite_backfill import (
     MEMBER_STATUSES,
     PAGE_SIZE,
     UPSERT_BATCH_INTERVAL_SECONDS,
+    BatchAnswer,
     Subscription,
     _refusal,
     _send_batch,
@@ -59,6 +64,21 @@ class Person(BaseModel):
     stripe_customer_id: str | None = None
     # The browser's IANA timezone, for the checkout opener's country.
     timezone: str | None = None
+    # Set when they refused marketing: they must never enter MailerLite.
+    marketing_opt_out_at: datetime | None = None
+    # The Stripe customer's billing address country, when it has one.
+    billing_country: str | None = None
+    # The Iranian or Russian country a checkout recorded (`consent.py`).
+    excluded_country: str | None = None
+
+    def placed_in_excluded_country(self, *countries: str | None) -> bool:
+        """Whether any signal, `countries` included, places them in Iran or
+        Russia, so they must never enter MailerLite (`consent.py`)."""
+        return points_at_excluded_country(
+            email=self.email,
+            timezone=self.timezone,
+            countries=(self.billing_country, self.excluded_country, *countries),
+        )
 
 
 class FieldChange(BaseModel):
@@ -75,6 +95,10 @@ class FieldPlan(BaseModel):
     changes: list[FieldChange]
     # Addresses MailerLite would refuse, such as a reserved domain.
     invalid: int
+    # People who refused marketing, left out of the plan and the statuses.
+    opted_out: int
+    # People a signal places in Iran or Russia, left out the same way.
+    excluded_country: int
 
 
 def standing(subscriptions: list[Subscription]) -> tuple[SubscriptionStatus, Fields]:
@@ -131,9 +155,19 @@ def plan(people: list[Person], current: Current, *, create: bool = True) -> Fiel
     backfill brings new people in, since a Stripe customer alone does not
     mean they opened checkout (the billing portal creates one too)."""
     result = FieldPlan(
-        statuses={s: 0 for s in SubscriptionStatus}, changes=[], invalid=0
+        statuses={s: 0 for s in SubscriptionStatus},
+        changes=[],
+        invalid=0,
+        opted_out=0,
+        excluded_country=0,
     )
     for person in people:
+        if not marketing_allowed(person):
+            result.opted_out += 1
+            continue
+        if person.placed_in_excluded_country():
+            result.excluded_country += 1
+            continue
         if not _valid(person.email):
             result.invalid += 1
             continue
@@ -184,16 +218,25 @@ async def read_current() -> Current:
 async def apply(
     changes: list[FieldChange],
     on_progress: Callable[[int, int], None] | None = None,
-) -> tuple[int, int]:
+    *,
+    kept_out: KeptOut | None = None,
+) -> tuple[int, int, int]:
     """Write each change as a subscriber upsert, fifty to a batch, paced for
-    MailerLite's import limit. Returns (succeeded, failed); a failure is left
-    for the next run."""
-    succeeded = failed = 0
+    MailerLite's import limit. With `kept_out`, each batch first drops anyone
+    who may no longer be written: they opted out or were seen in Iran or
+    Russia since the plan. Returns (succeeded, failed, skipped); a failure,
+    an account that can't be read then included, is left for the next run."""
+    succeeded = failed = skipped = 0
     for start in range(0, len(changes), BATCH_SIZE):
         if start:
             await asyncio.sleep(UPSERT_BATCH_INTERVAL_SECONDS)
         chunk = changes[start : start + BATCH_SIZE]
-        answers = await _send_batch([_upsert(c) for c in chunk])
+        done = start + len(chunk)
+        if kept_out:
+            chunk, dropped, unreadable = await _writable(chunk, kept_out)
+            skipped += dropped
+            failed += unreadable
+        answers = await _send_batch([_upsert(c) for c in chunk]) if chunk else []
         for change, answer in zip(chunk, answers):
             if answer.code in (200, 201, 202, 204):
                 succeeded += 1
@@ -204,8 +247,32 @@ async def apply(
                 "the next run retries it"
             )
         if on_progress:
-            on_progress(start + len(chunk), len(changes))
-    return succeeded, failed
+            on_progress(done, len(changes))
+    return succeeded, failed, skipped
+
+
+async def _writable(
+    chunk: list[FieldChange], kept_out: KeptOut
+) -> tuple[list[FieldChange], int, int]:
+    """The batch without anyone `kept_out` rejects or whose account it can't
+    read, and how many of each were dropped."""
+    allowed: list[FieldChange] = []
+    rejected = unreadable = 0
+    for change in chunk:
+        try:
+            if await kept_out(change.person.user_id):
+                rejected += 1
+                continue
+        except Exception:
+            unreadable += 1
+            logger.warning(
+                f"Re-reading the account of "
+                f"{_refusal(change.person.email, BatchAnswer(code=0))} failed; "
+                "the next run retries it"
+            )
+            continue
+        allowed.append(change)
+    return allowed, rejected, unreadable
 
 
 def _upsert(change: FieldChange) -> dict:

@@ -47,7 +47,6 @@ function submitSignupForm() {
     screen.getByLabelText("Confirm Password", { selector: "input" }),
     { target: { value: password } },
   );
-  fireEvent.click(screen.getByRole("checkbox"));
   fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
 }
 
@@ -60,7 +59,11 @@ function verificationRequired() {
 }
 
 async function waitOutCooldown() {
-  for (let second = 0; second < 60; second++) {
+  // Each second re-arms its timer after a render, and shouldAdvanceTime moves
+  // the fake clock in 20ms steps meanwhile, so the countdown can trail exactly
+  // 60s by a step: tick until the button frees up instead.
+  for (let second = 0; second < 65; second++) {
+    if (screen.queryByRole("button", { name: "Resend email" })) return;
     await act(async () => {
       vi.advanceTimersByTime(1000);
     });
@@ -119,6 +122,34 @@ describe("SignupPage with email verification required", () => {
     expect(
       await screen.findByRole("button", { name: "Resend email in 60s" }),
     ).toHaveProperty("disabled", true);
+  });
+
+  test("a resent link still carries the sign-up's marketing opt-out", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const resendBodies: unknown[] = [];
+    server.use(
+      http.post("*/api/auth/send-verification-email", async ({ request }) => {
+        resendBodies.push(await request.json());
+        return HttpResponse.json({ status: true });
+      }),
+    );
+    verificationRequired();
+    render(<SignupPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "opt out" }));
+    submitSignupForm();
+    await screen.findByRole("heading", { name: "Check your inbox" });
+    await waitOutCooldown();
+    fireEvent.click(screen.getByRole("button", { name: "Resend email" }));
+
+    await waitFor(() => {
+      expect(resendBodies).toEqual([
+        {
+          email,
+          callbackURL: "/auth/callback?method=email&marketing_opt_out=1",
+        },
+      ]);
+    });
   });
 
   test("keeps the button available when the resend fails", async () => {
