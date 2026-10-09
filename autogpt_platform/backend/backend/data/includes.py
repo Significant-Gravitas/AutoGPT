@@ -96,7 +96,6 @@ def library_agent_include(
     user_id: str,
     include_nodes: bool = True,
     include_executions: bool = True,
-    include_store_listing: bool = False,
     execution_limit: int = MAX_LIBRARY_AGENT_EXECUTIONS_FETCH,
 ) -> prisma.types.LibraryAgentInclude:
     """
@@ -106,7 +105,6 @@ def library_agent_include(
         user_id: User ID for filtering user-specific data
         include_nodes: Whether to include graph nodes (default: True, needed for get_sub_graphs)
         include_executions: Whether to include executions (default: True, safe with execution_limit)
-        include_store_listing: Whether to include marketplace listing info (default: False, adds extra joins)
         execution_limit: Limit on executions to fetch (default: MAX_LIBRARY_AGENT_EXECUTIONS_FETCH)
 
     Defaults maintain backward compatibility and safety - includes everything needed for all functionality.
@@ -143,22 +141,5 @@ def library_agent_include(
     else:
         # Default: Basic metadata only (fast - recommended for most use cases)
         result["AgentGraph"] = True  # Basic graph metadata (name, description, id)
-
-    if include_store_listing:
-        if result["AgentGraph"] is True:
-            result["AgentGraph"] = {"include": {}}
-
-        # We can't get StoreListing directly from AgentGraph, so we take the
-        # latest published listing version and get it from there:
-        result["AgentGraph"]["include"]["StoreListingVersions"] = {
-            "order_by": {"version": "desc"},
-            "take": 1,
-            "where": {
-                "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-                "isDeleted": False,
-                "isAvailable": True,
-            },
-            "include": {"StoreListing": {"include": {"CreatorProfile": True}}},
-        }
 
     return result
