@@ -16,13 +16,13 @@ def HubSpotCredentialsField() -> HubSpotCredentialsInput:
     """Creates a HubSpot credentials input on a block."""
     return CredentialsField(
         description=(
-            "A HubSpot service key or private app access token, sent as a Bearer "
-            "token. Create a service key in HubSpot under Development > Keys > "
-            "Service keys, or a private app under Development > Legacy apps, with "
-            "the scopes for the objects you use: crm.objects.companies.read and "
+            "A HubSpot service key, sent as a Bearer token. Create one in HubSpot "
+            "under Development > Keys > Service keys with the scopes for the "
+            "objects you use: crm.objects.companies.read and "
             "crm.objects.companies.write for companies, crm.objects.contacts.read "
             "and crm.objects.contacts.write for contacts and email engagements. "
-            "HubSpot no longer accepts legacy API keys."
+            "An existing private app access token works too. HubSpot no longer "
+            "accepts legacy API keys."
         ),
     )
 

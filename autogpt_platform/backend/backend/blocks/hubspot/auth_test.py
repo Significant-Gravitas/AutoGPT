@@ -34,6 +34,7 @@ def test_credential_field_asks_for_a_token_hubspot_still_issues(block_cls):
     assert "Bearer" in description
     assert "crm.objects.companies.write" in description
     assert "crm.objects.contacts.write" in description
+    assert "Legacy apps" not in description
     assert "requires an API Key" not in description
     field = block_cls.Input.get_credentials_fields_info()["credentials"]
     assert field.supported_types == frozenset({"api_key"})
