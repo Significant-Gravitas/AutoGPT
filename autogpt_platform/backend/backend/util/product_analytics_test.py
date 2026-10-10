@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from backend.data.experiments import ExperimentAssignment
+from backend.data.onboarding_role import OnboardingRole
 from backend.util import posthog_client, product_analytics
 from backend.util.posthog_events import PostHogEvent
 
@@ -571,3 +572,41 @@ def test_safe_error_detail_drops_a_word_cut_by_the_scan_limit() -> None:
         product_analytics.safe_error_detail(f"{url} {token}")
         == "https://example.com/token?[redacted]"
     )
+
+
+@pytest.mark.parametrize(
+    "role, person",
+    [
+        (
+            OnboardingRole(choice="Sales/BD"),
+            {"onboarding_role": "Sales / BD", "onboarding_role_other": None},
+        ),
+        (
+            OnboardingRole(choice="Other", other="Dentist"),
+            {"onboarding_role": "Other", "onboarding_role_other": "Dentist"},
+        ),
+    ],
+)
+def test_the_onboarding_role_is_set_on_the_person(
+    capture: Mock, role: OnboardingRole, person: dict
+) -> None:
+    product_analytics.set_onboarding_role(user_id="user-1", role=role)
+
+    event, properties = _only_call(capture)
+    assert capture.call_args.kwargs["distinct_id"] == "user-1"
+    assert event == "$set"
+    assert properties["$set"] == person
+    assert "$set_once" not in properties
+
+
+def test_the_backfilled_role_never_replaces_one_posthog_holds(capture: Mock) -> None:
+    product_analytics.set_onboarding_role(
+        user_id="user-1", role=OnboardingRole(choice="Marketing"), keep_existing=True
+    )
+
+    _, properties = _only_call(capture)
+    assert properties["$set_once"] == {
+        "onboarding_role": "Marketing",
+        "onboarding_role_other": None,
+    }
+    assert "$set" not in properties

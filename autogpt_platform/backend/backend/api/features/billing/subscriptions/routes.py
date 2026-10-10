@@ -841,10 +841,14 @@ async def stripe_webhook(request: Request):
             # `customer.subscription.created` fires at signup too; listening to
             # both would double-send.
             if event_type == "checkout.session.completed":
-                await _notify_checkout_completed(data_object)
                 # The billing address is the strongest country signal, and
-                # it only exists once checkout completes. Never raises.
+                # it only exists once checkout completes. First, so that an
+                # Iranian or Russian one is on record before the trial notice
+                # queues its MailerLite change. It raises only when such a
+                # country could not be recorded, so Stripe retries the event
+                # instead of the notice going out without it.
                 await checkout_audience.record_checkout_completed(data_object)
+                await _notify_checkout_completed(data_object)
 
         if event_type in (
             "customer.subscription.created",

@@ -47,7 +47,6 @@ export enum Flag {
   GRAPHITI_MEMORY = "graphiti-memory",
   GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled",
   DREAM_PASS_ENABLED = "dream-pass-enabled",
-  DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check",
   DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity",
   // JSON flag mapping copilot-bot platform key (lowercase) -> visible on the
   // Bots settings page. Lets ops hide a platform (e.g. Slack while its
@@ -64,6 +63,9 @@ export enum Flag {
   // The share of chat sessions whose stream the converter shadows and checks
   // against the server, 0 to 1 (a PostHog payload). 0 is off.
   COPILOT_STREAM_SHADOW = "copilot-stream-shadow",
+  // The chat's own stream runtime in place of the AI SDK's: resume at a
+  // cursor, render from the persisted rows. Frontend only; fail-closed.
+  COPILOT_STREAM_RUNTIME = "copilot-stream-runtime",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -93,12 +95,12 @@ const defaultFlags = {
   [Flag.GRAPHITI_MEMORY]: false,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
-  [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
   [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
   [Flag.COPILOT_VOICE_MODE]: false,
   [Flag.COPILOT_AUTO_MODE]: false,
   [Flag.COPILOT_STREAM_SHADOW]: 0,
+  [Flag.COPILOT_STREAM_RUNTIME]: false,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -158,14 +160,14 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_COMMUNITIES_ENABLED;
     case Flag.DREAM_PASS_ENABLED:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_ENABLED;
-    case Flag.DREAM_PASS_WEB_FACT_CHECK:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_WEB_FACT_CHECK;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
     case Flag.COPILOT_VOICE_MODE:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_VOICE_MODE;
     case Flag.COPILOT_AUTO_MODE:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_AUTO_MODE;
+    case Flag.COPILOT_STREAM_RUNTIME:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_STREAM_RUNTIME;
     case Flag.COPILOT_BOT_PLATFORMS:
     case Flag.COPILOT_STREAM_SHADOW:
       return undefined;

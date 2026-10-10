@@ -23,6 +23,7 @@ from backend.copilot.capabilities.registry import configured_tool, get_registry
 from backend.copilot.capabilities.resolve import resolve_entry
 from backend.copilot.capabilities.sources import skill_name
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
+from backend.copilot.context import get_current_permissions
 from backend.copilot.gate import METERED, gate_active
 from backend.copilot.gate.subject import NO_OP, Subject, block_subject, mcp_subject
 from backend.copilot.model import ChatSession
@@ -38,11 +39,16 @@ from .describe_capability import (
     describe_expert,
     describe_skill,
 )
-from .helpers import required_input_keys, resolve_block_credentials
+from .helpers import (
+    prepare_block_for_execution,
+    required_input_keys,
+    resolve_block_credentials,
+)
 from .models import (
     CapabilityDetailsResponse,
     ErrorResponse,
     ReviewRequiredResponse,
+    SetupRequirementsResponse,
     ToolResponseBase,
 )
 from .run_block import RunBlockTool
@@ -81,6 +87,7 @@ class RunCapabilityTool(BaseTool):
                 "id": {
                     "type": "string",
                     "description": "Capability id from find_capability, or an MCP server URL.",
+                    "entity": None,
                 },
                 "input": {
                     "type": "object",
@@ -116,7 +123,7 @@ class RunCapabilityTool(BaseTool):
             return NO_OP
         if entry.kind == "mcp_server":
             return _mcp_subject(entry.implementations[0].ref, payload or {})
-        if entry.kind != "block":
+        if entry.kind != "block" or (payload or {}).get("connect", False):
             return NO_OP
         block_id = next(
             (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
@@ -235,6 +242,43 @@ async def _run_block(
     block_id = next(
         (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
     )
+    if payload.pop("connect", False):
+        permissions = get_current_permissions()
+        if permissions is not None and not permissions.is_block_allowed(
+            block_id, entry.name
+        ):
+            return ErrorResponse(
+                message=(
+                    f"Block '{entry.name}' ({block_id}) is not permitted by the "
+                    "current execution permissions. Use find_capability to discover "
+                    "blocks that are allowed."
+                ),
+                session_id=session.session_id,
+            )
+        prep = await prepare_block_for_execution(
+            block_id=block_id,
+            input_data=payload,
+            user_id=user_id,
+            session=session,
+            session_id=session.session_id,
+            dry_run=False,
+            validate_only=False,
+        )
+        picker_only = (
+            isinstance(prep, SetupRequirementsResponse)
+            and prep.setup_info.user_readiness.has_all_credentials
+        )
+        if isinstance(prep, ToolResponseBase) and not picker_only:
+            return prep
+        return CapabilityDetailsResponse(
+            message=(
+                f"The user is already connected for {entry.name}. "
+                "Nothing was run. Call again without connect to act."
+            ),
+            capability=entry.listing(),
+            parameters={},
+            session_id=session.session_id,
+        )
     return await RunBlockTool()._execute(
         user_id,
         session,
@@ -274,7 +318,7 @@ async def _describe_tool(
     return CapabilityDetailsResponse(
         message=f"{tool.description} Call again without validate_only to run.",
         capability=entry.listing(),
-        parameters=tool.parameters,
+        parameters=tool.model_parameters,
         session_id=session.session_id,
     ).from_outside()
 
