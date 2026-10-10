@@ -52,6 +52,36 @@ def test_offer_has_no_implicit_existing_user_eligibility():
     assert offer.allow_existing_beta_users is False
 
 
+def test_daily_limit_can_exceed_the_entire_trial_budget():
+    data = {
+        **offer_data(),
+        "daily_cost_limit": 100_000_000,
+        "weekly_cost_limit": 20_000_000,
+        "total_cost_limit": 20_000_000,
+    }
+    assert trials.TrialOffer.model_validate(data).model_dump() == {
+        **trials.TrialOffer.model_validate(offer_data()).model_dump(),
+        **{key: data[key] for key in data if key.endswith("cost_limit")},
+    }
+
+
+@pytest.mark.asyncio
+async def test_new_trial_offer_uses_fixed_usage_limits_and_preserves_other_terms():
+    raw = {**offer_data(), "max_active_trials": 500}
+    with patch.object(
+        trials, "is_feature_enabled", AsyncMock(return_value=True)
+    ), patch.object(trials, "get_feature_flag_value", AsyncMock(return_value=raw)):
+        offer = await trials.get_trial_offer("user-1")
+    assert offer is not None
+    assert offer.model_dump() == {
+        **trials.TrialOffer.model_validate(raw).model_dump(),
+        "daily_cost_limit": 100_000_000,
+        "weekly_cost_limit": 20_000_000,
+        "total_cost_limit": 20_000_000,
+    }
+    assert raw["daily_cost_limit"] == 250_000
+
+
 @pytest.mark.parametrize(
     "overrides",
     [
@@ -62,8 +92,6 @@ def test_offer_has_no_implicit_existing_user_eligibility():
         {"weekly_cost_limit": 0},
         {"total_cost_limit": "1000000"},
         {"total_cost_limit": True},
-        {"daily_cost_limit": 2_000_000},
-        {"weekly_cost_limit": 2_000_000},
         {"new_users_from": "2026-09-10T00:00:00"},
         {"tier": "TRIAL"},
         {"tier": "ENTERPRISE"},
@@ -184,7 +212,9 @@ async def test_payment_enabled_and_valid_offer_is_available():
     ):
         assert await trials.get_trial_offer(
             "user-1"
-        ) == trials.TrialOffer.model_validate(offer_data())
+        ) == trials.TrialOffer.model_validate(
+            {**offer_data(), **trials.FREE_TRIAL_COST_LIMITS}
+        )
     enabled.assert_awaited_once_with(
         trials.Flag.ENABLE_PLATFORM_PAYMENT, "user-1", default=False
     )
