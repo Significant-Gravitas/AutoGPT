@@ -335,7 +335,12 @@ export const auth = betterAuth({
   },
   socialProviders: getSocialProviders(),
   plugins: [
-    admin(),
+    // Deleting an account bans it (backend data/account_deletion.py), so this
+    // is what a closed account sees when it tries to sign in again.
+    admin({
+      bannedUserMessage:
+        "This account is closed. If you think this is a mistake, contact contact@agpt.co.",
+    }),
     jwt({
       schema: {
         jwks: { modelName: "UserAuthJwks" },
