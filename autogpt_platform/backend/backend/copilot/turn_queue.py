@@ -337,39 +337,39 @@ async def _promote_head(user_id: str) -> bool | None:
         # Cancelled or claimed elsewhere since it was listed: try the next.
         return None
 
-    # Find the pending user message in this session (the most recent
-    # user-role row with no following assistant rows — i.e. the one
-    # that triggered the queue).  Its ``metadata`` carries the
-    # dispatcher payload.
-    pending = await chat_db().get_latest_user_message_in_session(head.session_id)
-    if pending is None or pending.content is None:
-        # Shouldn't happen — enqueue_turn always persists a row before
-        # flipping the session to queued.  If it does (corrupted
-        # state), roll back to idle so the next tick doesn't loop.
-        await chat_db().update_chat_session_status(
-            session_id=head.session_id,
-            expect_status=CHAT_STATUS_RUNNING,
-            status=CHAT_STATUS_IDLE,
-        )
-        # Drop the cache so the sidebar doesn't keep showing the
-        # stale ``running`` indicator after the rollback.
-        await invalidate_session_cache(head.session_id)
-        return False
-
-    metadata = pending.metadata or {}
-    queued_envelope = _stored_envelope(metadata)
-    if (
-        is_answer_row(pending)
-        and queued_envelope is None
-        and not is_users_own_chat(head)
-    ):
-        # Deriving one from the turn that just ended would run the approved
-        # action under that turn's limits; the answer reaches the next turn.
-        await _refuse_queued_turn(head, UNRECORDED_WAKE)
-        return None
-
-    turn_id = str(uuid.uuid4())
     try:
+        # Find the pending user message in this session (the most recent
+        # user-role row with no following assistant rows — i.e. the one
+        # that triggered the queue).  Its ``metadata`` carries the
+        # dispatcher payload.
+        pending = await chat_db().get_latest_user_message_in_session(head.session_id)
+        if pending is None or pending.content is None:
+            # Shouldn't happen — enqueue_turn always persists a row before
+            # flipping the session to queued.  If it does (corrupted
+            # state), roll back to idle so the next tick doesn't loop.
+            await chat_db().update_chat_session_status(
+                session_id=head.session_id,
+                expect_status=CHAT_STATUS_RUNNING,
+                status=CHAT_STATUS_IDLE,
+            )
+            # Drop the cache so the sidebar doesn't keep showing the
+            # stale ``running`` indicator after the rollback.
+            await invalidate_session_cache(head.session_id)
+            return False
+
+        metadata = pending.metadata or {}
+        queued_envelope = _stored_envelope(metadata)
+        if (
+            is_answer_row(pending)
+            and queued_envelope is None
+            and not is_users_own_chat(head)
+        ):
+            # Deriving one from the turn that just ended would run the approved
+            # action under that turn's limits; the answer reaches the next turn.
+            await _refuse_queued_turn(head, UNRECORDED_WAKE)
+            return None
+
+        turn_id = str(uuid.uuid4())
         # The user's message is already persisted AND the session is
         # already ``chatStatus='running'`` from claim_queued_session.
         # Build a TurnSlot directly (no acquire) so we don't re-check
@@ -411,7 +411,7 @@ async def _promote_head(user_id: str) -> bool | None:
     except BaseException:
         # Roll the claim back so a missed-dispatch tick or the next
         # slot-free event can retry.  ``BaseException`` (not just
-        # ``Exception``) so a task cancellation that lands mid-dispatch
+        # ``Exception``) so a task cancellation that lands after the claim
         # still leaves the session in a recoverable ``queued`` state
         # rather than a stuck ``running``.  Redis-side cleanup of the
         # meta that ``dispatch_turn``'s ``create_session`` wrote is
@@ -566,14 +566,22 @@ def is_users_own_chat(session: ChatSessionInfo) -> bool:
 
 async def _refuse_queued_turn(head: ChatSessionInfo, reason: str) -> None:
     """Close a promoted turn that may not start: say why in its thread and
-    free its slot."""
-    await post_refusal(head.session_id, reason)
-    await chat_db().update_chat_session_status(
-        session_id=head.session_id,
-        expect_status=CHAT_STATUS_RUNNING,
-        status=CHAT_STATUS_IDLE,
-    )
-    await invalidate_session_cache(head.session_id)
+    free its slot, which a failed post must not keep."""
+    try:
+        await post_refusal(head.session_id, reason)
+    except Exception:
+        # Not raised: the drain goes on, and the next queued turn takes the slot.
+        logger.exception(
+            f"dispatch_next_for_user: could not post why session={head.session_id} "
+            "was not started"
+        )
+    finally:
+        await chat_db().update_chat_session_status(
+            session_id=head.session_id,
+            expect_status=CHAT_STATUS_RUNNING,
+            status=CHAT_STATUS_IDLE,
+        )
+        await invalidate_session_cache(head.session_id)
 
 
 async def post_refusal(

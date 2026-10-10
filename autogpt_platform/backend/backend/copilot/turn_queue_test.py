@@ -7,6 +7,7 @@ RPC into ``DatabaseManager``. Patching the accessor avoids reaching
 for Prisma directly while still exercising the queue's branching.
 """
 
+import asyncio
 import sys
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -19,7 +20,7 @@ from backend.copilot.gate import held
 from backend.copilot.model import ChatMessage as PydanticChatMessage
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.permissions import CopilotPermissions
-from backend.copilot.tree import TurnEnvelope
+from backend.copilot.tree import TreeRefusal, TurnEnvelope
 
 
 class _NoopAsyncCM:
@@ -441,6 +442,87 @@ async def test_a_typed_message_behind_sub_work_that_does_not_fit_still_starts() 
         assert await turn_queue.dispatch_next_for_user("u1") is True
 
     assert dispatched.await_args.kwargs["session_id"] == "typed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stored_envelope",
+    [None, {"tree_id": "t1", "depth": 1}],
+    ids=["unrecorded-wake", "tree-refusal"],
+)
+async def test_a_refusal_that_cannot_be_posted_still_frees_the_slot(
+    stored_envelope: dict | None,
+) -> None:
+    """The session leaves ``running`` and the next queued one is tried."""
+    head = _queued_row()
+    head.metadata.delegated_by_session_id = "parent"
+    head.metadata.llm_auth_provider = "codex"
+    metadata: dict = {held._WAKE_KEY: True}
+    if stored_envelope:
+        metadata["envelope"] = stored_envelope
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata=metadata)
+    )
+
+    with (
+        patch.object(
+            turn_queue, "list_queued_sessions", new=AsyncMock(side_effect=[[head], []])
+        ),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "resolve_session_permissions", return_value=None),
+        patch.object(
+            turn_queue,
+            "append_and_save_message",
+            new=AsyncMock(side_effect=RuntimeError("db blip")),
+        ),
+        patch(
+            "backend.copilot.executor.utils.dispatch_turn",
+            new=AsyncMock(side_effect=TreeRefusal("This tree has closed.")),
+        ),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is False
+
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="s1", expect_status="running", status="idle"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure", [RuntimeError("db blip"), asyncio.CancelledError()], ids=type
+)
+async def test_a_failure_between_the_claim_and_the_dispatch_requeues_the_turn(
+    failure: BaseException,
+) -> None:
+    """Not left ``running`` with no turn to end it: the next tick retries."""
+    head = _queued_row()
+    head.metadata.llm_auth_provider = "codex"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(side_effect=failure)
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        with pytest.raises(type(failure)):
+            await turn_queue.dispatch_next_for_user("u1")
+
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="s1", expect_status="running", status="queued"
+    )
 
 
 @pytest.mark.asyncio
