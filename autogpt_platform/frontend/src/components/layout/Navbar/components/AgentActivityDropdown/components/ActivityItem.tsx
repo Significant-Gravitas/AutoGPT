@@ -6,6 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { formatTimeAgo } from "@/lib/utils/time";
 import { cn } from "@/lib/utils";
 import Link, { useLinkStatus } from "next/link";
+import { useNow } from "@/hooks/useNow";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";
 import {
@@ -47,6 +48,12 @@ interface Props {
 }
 
 export function ActivityItem({ execution, newLayout = false }: Props) {
+  const isActiveStatus =
+    execution.status === AgentExecutionStatus.RUNNING ||
+    execution.status === AgentExecutionStatus.QUEUED;
+  // Tick every second so live elapsed advances without waiting for stats (#9690).
+  const nowMs = useNow(1000, isActiveStatus);
+
   function getStatusIcon() {
     switch (execution.status) {
       case AgentExecutionStatus.QUEUED:
@@ -96,10 +103,6 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
 
   function getItemDisplay() {
     // Handle active statuses (running/queued)
-    const isActiveStatus =
-      execution.status === AgentExecutionStatus.RUNNING ||
-      execution.status === AgentExecutionStatus.QUEUED;
-
     if (isActiveStatus) {
       const timeAgo = execution.started_at
         ? formatTimeAgo(execution.started_at.toString())
@@ -107,7 +110,7 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
       const statusText =
         execution.status === AgentExecutionStatus.QUEUED ? "queued" : "running";
       return [
-        `Started ${timeAgo}, ${getExecutionDuration(execution)} ${statusText}`,
+        `Started ${timeAgo}, ${getExecutionDuration(execution, new Date(nowMs))} ${statusText}`,
       ];
     }
 
