@@ -604,13 +604,13 @@ class TestOAuthLogin:
                 json={"server_url": "http://mcp.slack.com/mcp"},
             )
 
-        assert response.status_code == 200
-        assert "1234.5678" not in response.json()["login_url"]
-        state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
-            "state_metadata"
-        ]
-        assert state_metadata["client_id"] == "autogpt-platform"
-        assert state_metadata["client_secret"] == ""
+        # Slack only takes secret-holding clients, so with its app ruled out
+        # the placeholder cannot sign in either: refused, nothing stored.
+        assert response.status_code == 400
+        assert response.json()["detail"]["code"] == NO_OAUTH_CODE
+        assert "1234.5678" not in response.text
+        assert "slack-secret" not in response.text
+        mock_cm.store.store_state_token.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_oauth_login_binds_issuer_and_iss_requirement(self, client):

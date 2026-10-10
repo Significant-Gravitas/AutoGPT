@@ -161,9 +161,7 @@ async def test_cleartext_hubspot_url_is_refused_without_the_secret(client, login
     manager.store.store_state_token.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    "methods", [["none"], ["client_secret_post", "none"], None]
-)
+@pytest.mark.parametrize("methods", [["none"], ["client_secret_post", "none"], None])
 @pytest.mark.asyncio(loop_scope="session")
 async def test_server_accepting_public_clients_keeps_the_placeholder(
     client, login, methods
