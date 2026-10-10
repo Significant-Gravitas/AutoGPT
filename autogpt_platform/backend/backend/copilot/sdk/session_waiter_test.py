@@ -235,8 +235,9 @@ async def test_idle_session_enqueues_normally():
 @pytest.mark.parametrize(
     "delegated_by, inflight, expected",
     [
-        # A sub-session's turn with four running may not take the fifth slot.
-        ("parent-session", 4, "rejected_concurrent_turn_cap"),
+        # A sub-session's turn with four running waits for a slot instead of
+        # taking the fifth.
+        ("parent-session", 4, "queued_for_slot"),
         # An AutoPilotBlock turn keeps the inflight cap...
         (None, 4, "completed"),
         # ...which still refuses at its number.
@@ -253,6 +254,8 @@ async def test_a_delegated_turn_leaves_the_users_last_slot_free(
     # Counted after this admit's flip: four were already running.
     db.count_chat_sessions_by_status = AsyncMock(return_value=5)
     db.get_chat_session_status = AsyncMock(return_value="idle")
+    queued = MagicMock()
+    queued.get_chat_session_status = AsyncMock(return_value="queued")
 
     with (
         patch(
@@ -274,6 +277,8 @@ async def test_a_delegated_turn_leaves_the_users_last_slot_free(
             "backend.copilot.sdk.session_waiter.wait_for_session_result",
             new=AsyncMock(return_value=("completed", SessionResult())),
         ),
+        patch("backend.copilot.sdk.session_waiter.queue_spawned_turn"),
+        patch("backend.copilot.sdk.session_waiter.chat_db", return_value=queued),
     ):
         outcome, _ = await run_copilot_turn_via_queue(
             session_id="sess-sub",

@@ -24,13 +24,15 @@ from typing import Any
 
 from backend.copilot import stream_registry
 from backend.copilot.executor.utils import enqueue_cancel_task
-from backend.copilot.model import ChatSession, get_chat_session
+from backend.copilot.model import CHAT_STATUS_QUEUED, ChatSession, get_chat_session
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
     SessionResult,
+    wait_for_queued_session,
     wait_for_session_result,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+from backend.copilot.turn_queue import cancel_queued_spawn, queued_turn_refusal
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
@@ -156,6 +158,7 @@ class GetSubSessionResultTool(BaseTool):
         delegate = await _delegated_expert_info(user_id, sub, session)
         actor = delegate.name if delegate is not None else "Subtask"
         borrowed = _is_borrowed_thread(sub, session)
+        queued = sub.chat_status == CHAT_STATUS_QUEUED
 
         if cancel:
             if borrowed:
@@ -172,8 +175,10 @@ class GetSubSessionResultTool(BaseTool):
             # sub will break out of its stream and finalise the session
             # as failed. Return "cancelled" immediately; the sub may
             # still emit a little more output before the worker notices,
-            # but the agent doesn't need to wait for that.
-            await enqueue_cancel_task(inner_session_id)
+            # but the agent doesn't need to wait for that. A queued one has
+            # nothing running yet, so it simply leaves the queue.
+            if not (queued and await cancel_queued_spawn(user_id, inner_session_id)):
+                await enqueue_cancel_task(inner_session_id)
             return apply_delegated_expert(
                 SubSessionStatusResponse(
                     message=f"{actor} cancellation requested.",
@@ -200,9 +205,16 @@ class GetSubSessionResultTool(BaseTool):
             getattr(registry_session, "status", "") == "running"
         )
         terminal_result = None if turn_in_flight else _already_terminal_result(sub)
+        refusal = queued_turn_refusal(sub)
         outcome: SessionOutcome
         result: SessionResult
-        if terminal_result is not None:
+        if queued:
+            outcome, result = await wait_for_queued_session(
+                session_id=inner_session_id, user_id=user_id, timeout=effective_wait
+            )
+        elif refusal is not None:
+            outcome, result = "refused", SessionResult(refusal=refusal)
+        elif terminal_result is not None:
             outcome, result = "completed", terminal_result
         elif effective_wait > 0:
             outcome, result = await wait_for_session_result(

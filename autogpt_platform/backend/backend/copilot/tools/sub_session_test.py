@@ -807,6 +807,7 @@ class TestGetSubSessionResult:
         sub = MagicMock(user_id="alice", expert_id=None)
         sub.metadata.delegated_by_session_id = None
         assistant = MagicMock()
+        assistant.metadata = None
         assistant.role = "assistant"
         assistant.content = "already done"
         assistant.tool_calls = None
@@ -848,6 +849,7 @@ class TestGetSubSessionResult:
         It subscribes to the stream like a normal running-session poll."""
         # DB state reflects the PREVIOUS turn's terminal assistant message.
         prior = MagicMock()
+        prior.metadata = None
         prior.role = "assistant"
         prior.content = "OLD stale result"
         prior.tool_calls = None
@@ -925,6 +927,7 @@ class TestGetSubSessionResult:
         sub = MagicMock(user_id="alice", expert_id=None)
         sub.metadata.delegated_by_session_id = None
         assistant = MagicMock()
+        assistant.metadata = None
         assistant.role = "assistant"
         assistant.content = "done — see the docs I wrote"
         assistant.tool_calls = None  # no write calls on the last message

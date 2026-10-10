@@ -19,6 +19,7 @@ from backend.copilot.model import (
     CHAT_STATUS_RUNNING,
     ChatSession,
     create_chat_session,
+    get_chat_session,
 )
 from backend.copilot.tree import TurnEnvelope, admit_turn, get_tree_ledger
 from backend.data.db import prisma as db_client
@@ -44,17 +45,33 @@ async def test_a_promoted_message_is_a_root_not_the_finished_turns_child(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_promoted_approval_wake_keeps_its_derivation():
-    finished = _envelope(1)
+async def test_a_queued_wake_starts_under_the_envelope_its_call_was_held_under():
+    held_under = _envelope(1)
+    await (await get_tree_ledger()).open(
+        held_under.tree_id, ceiling_microdollars=1_000_000, max_nodes=10
+    )
     promoted, _, _ = await _promote_after(
-        finished,
+        _envelope(2),
         message=held.WAKE_MESSAGE,
         message_metadata={held._WAKE_KEY: True},
+        envelope=held_under,
     )
 
     assert promoted is not None
-    assert promoted.depth == 2
-    assert promoted.tree_id == finished.tree_id
+    assert (promoted.tree_id, promoted.depth) == (held_under.tree_id, 1)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_queued_wake_with_no_recorded_envelope_is_not_started():
+    """Not derived from the turn that happens to free the slot."""
+    promoted, _, _ = await _promote_after(
+        _envelope(1),
+        message=held.WAKE_MESSAGE,
+        message_metadata={held._WAKE_KEY: True},
+        expect_refusal=turn_queue.UNRECORDED_WAKE,
+    )
+
+    assert promoted is None
 
 
 async def _promote_after(
@@ -62,6 +79,8 @@ async def _promote_after(
     *,
     message: str,
     message_metadata: dict[str, Any] | None,
+    envelope: TurnEnvelope | None = None,
+    expect_refusal: str | None = None,
 ) -> tuple[TurnEnvelope | None, int, int]:
     """Queue a turn behind a full cap, then end a turn carrying ``finished``.
 
@@ -91,6 +110,7 @@ async def _promote_after(
             session_id=waiting.session_id,
             message=message,
             message_metadata=message_metadata,
+            envelope=envelope,
         )
         assert (
             await chat_db().get_chat_session_status(waiting.session_id)
@@ -123,6 +143,13 @@ async def _promote_after(
             if call.kwargs["session_id"] == waiting.session_id
         ]
         nodes_after = (await ledger.snapshot(finished.tree_id))["nodes"]
+        if expect_refusal is not None:
+            assert (
+                await chat_db().get_chat_session_status(waiting.session_id)
+            ) == CHAT_STATUS_IDLE
+            closed = await get_chat_session(waiting.session_id, user_id)
+            assert closed is not None
+            assert turn_queue.queued_turn_refusal(closed) == expect_refusal
         return (promoted[0] if promoted else None), nodes_before, nodes_after
     finally:
         await User.prisma().delete(where={"id": user_id})

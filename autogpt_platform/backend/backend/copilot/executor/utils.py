@@ -30,6 +30,8 @@ from backend.copilot.tree import (
     TurnEnvelope,
     admit_turn,
     derive_child_envelope,
+    narrowed_by,
+    readmit_turn,
     release_turn,
     root_envelope,
 )
@@ -561,6 +563,7 @@ async def dispatch_turn(
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
     root: bool = False,
+    envelope: TurnEnvelope | None = None,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
@@ -583,15 +586,22 @@ async def dispatch_turn(
     ``slot`` releases it on exit — no leak.
 
     ``root`` mints a root whatever turn's context the caller runs in: the
-    queue's slot-free hook runs inside the turn that just ended.
+    queue's slot-free hook runs inside the turn that just ended. An
+    ``envelope`` was admitted before (a queued child, an approval wake): it is
+    re-checked instead, and its node is not released if dispatch fails.
     """
     # Local import: stream_registry imports executor.utils (the
     # COPILOT_CONSUMER_TIMEOUT_SECONDS constant) → top-level circular.
     from backend.copilot import stream_registry
 
-    envelope = await _admitted_turn_envelope(
-        turn_id, session_id, user_id, permissions, spawn, root=root
-    )
+    admitted_here = envelope is None
+    if envelope is None:
+        envelope = await _admitted_turn_envelope(
+            turn_id, session_id, user_id, permissions, spawn, root=root
+        )
+    else:
+        await readmit_turn(envelope, user_id=user_id)
+        envelope = narrowed_by(envelope, permissions)
 
     # Everything after the admit above runs inside the try: the tree's node
     # counter is already incremented, so an exception from ``create_session``
@@ -643,7 +653,8 @@ async def dispatch_turn(
         committed = True
     finally:
         if not committed:
-            await release_turn(envelope)
+            if admitted_here:
+                await release_turn(envelope)
             try:
                 await stream_registry.delete_session_meta(session_id)
             except BaseException:
@@ -653,6 +664,54 @@ async def dispatch_turn(
                     "dispatch_turn: redis meta cleanup failed for session=%s",
                     session_id,
                 )
+
+
+async def queue_spawned_turn(
+    *,
+    session_id: str,
+    user_id: str,
+    message: str,
+    tool_call_id: str,
+    tool_name: str,
+    llm_auth_provider: CopilotLlmAuthProvider,
+    llm_credential_id: str | None,
+    permissions: CopilotPermissions | None,
+    spawn: SpawnRequest | None,
+    message_metadata: dict[str, Any] | None,
+) -> None:
+    """Queue a turn another session started, to begin when a slot frees.
+
+    Its envelope is derived and admitted now, inside the spawning turn it comes
+    from; promotion re-checks it rather than deriving it from whichever turn
+    frees the slot. Raises :class:`ConcurrentTurnLimitError` at the inflight
+    cap and :class:`TreeRefusal` when the tree refuses it.
+    """
+    from backend.copilot.turn_queue import count_inflight_turns, enqueue_turn
+
+    inflight_cap = get_inflight_turn_limit()
+    if await count_inflight_turns(user_id) >= inflight_cap:
+        raise ConcurrentTurnLimitError(inflight_turn_limit_message(inflight_cap))
+    envelope = await _admitted_turn_envelope(
+        str(uuid4()), session_id, user_id, permissions, spawn
+    )
+    try:
+        await enqueue_turn(
+            user_id=user_id,
+            session_id=session_id,
+            message=message,
+            message_metadata=message_metadata,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
+            permissions=(
+                permissions.model_dump(exclude_none=True) if permissions else None
+            ),
+            envelope=envelope,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+        )
+    except BaseException:
+        await release_turn(envelope)
+        raise
 
 
 async def _admitted_turn_envelope(
