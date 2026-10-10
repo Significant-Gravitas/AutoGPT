@@ -11,7 +11,6 @@ basil on it has neither, and ``payments`` only when expanded.
 import asyncio
 from collections.abc import Awaitable, Callable
 from contextlib import ExitStack, asynccontextmanager
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -262,7 +261,10 @@ class World:
             patch("backend.data.credit._cleanup_stale_subscriptions", new=AsyncMock()),
             patch("backend.data.credit._track_billing_event"),
             patch("backend.data.credit.schedule_posthog_lifecycle_sync"),
-            patch("backend.data.credit.get_pending_subscription_change"),
+            patch(
+                "backend.data.credit.get_pending_subscription_change",
+                new=MagicMock(),
+            ),
             patch.object(stripe.Subscription, "list_async", fs.list_subscriptions),
             patch(
                 "backend.data.subscription_payment_failure.User.prisma",
