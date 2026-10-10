@@ -57,6 +57,7 @@ def test_get_vapid_public_key_empty(mocker):
     [
         "https://fcm.googleapis.com/fcm/send/abc123",
         "https://jmt17.google.com/fcm/send/abc123",
+        "https://wns2-par02p.notify.windows.com/w/?token=abc123",
     ],
 )
 def test_subscribe_push(mocker, test_user_id, endpoint):

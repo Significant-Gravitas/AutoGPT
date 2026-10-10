@@ -281,6 +281,7 @@ class TestValidatePushEndpoint:
             "https://jmt17.google.com/fcm/send/abc",
             "https://updates.push.services.mozilla.com/wpush/v2/xyz",
             "https://web.push.apple.com/some-token",
+            "https://wns2-par02p.notify.windows.com/w/?token=abc",
         ],
     )
     async def test_allows_known_push_services(self, endpoint):
@@ -315,6 +316,12 @@ class TestValidatePushEndpoint:
             "https://jmt17.google.com.evil.example/fcm/send/abc",
             "https://evil-jmt17.google.com/fcm/send/abc",
             "https://www.google.com/fcm/send/abc",
+            "https://notify.windows.com.evil.example/w/?token=abc",
+            "https://evilnotify.windows.com/w/?token=abc",
+            "https://windows.com/w/?token=abc",
+            "https://push.apple.com.evil.example/some-token",
+            "https://evilpush.apple.com/some-token",
+            "https://apple.com/some-token",
         ],
     )
     async def test_rejects_lookalike_hosts(self, mocker, endpoint):

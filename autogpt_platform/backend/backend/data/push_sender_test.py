@@ -201,6 +201,7 @@ class TestSendPushForUser:
         [
             "https://fcm.googleapis.com/fcm/send/sub/1",
             "https://jmt17.google.com/fcm/send/sub/1",
+            "https://wns2-par02p.notify.windows.com/w/?token=sub1",
         ],
     )
     async def test_webpush_called_with_correct_args(
