@@ -10,6 +10,7 @@ import {
 import { getGetTrialsGetTrialStatusQueryKey } from "@/app/api/__generated__/endpoints/trials/trials";
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { useTrialFailure } from "@/components/organisms/TrialCard/useTrialFailure";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import {
   centsToUSD,
@@ -23,22 +24,22 @@ export function useTrialPlanRequest(offer: TrialOfferResponse) {
   const userID = useAuthStore((state) => state.user?.id);
   const queryClient = useQueryClient();
   const { mutateAsync: updateTier } = useUpdateSubscriptionTier();
-  // Stays set through the Checkout redirect so neither plan can be sent twice.
+  const failure = useTrialFailure(userID);
   const [requestedTier, setRequestedTier] = useState<
     PlanChoiceDetails["tier"] | null
   >(null);
-  const [failure, setFailure] = useState<{
-    userID: string;
-    message: string;
-  } | null>(null);
 
   async function requestPlan(plan: PlanChoiceDetails) {
     if (!userID || requestedTier) return false;
-    setFailure(null);
+    failure.clearFailure();
     setRequestedTier(plan.tier);
-    const isLeaving = await submitPlan(plan, userID);
-    if (!isLeaving) setRequestedTier(null);
-    return isLeaving;
+    try {
+      return await submitPlan(plan, userID);
+    } finally {
+      // Cleared after a Checkout hand-off too: a page restored from the
+      // back-forward cache would otherwise keep both plans disabled.
+      setRequestedTier(null);
+    }
   }
 
   async function submitPlan(plan: PlanChoiceDetails, requestUserID: string) {
@@ -65,12 +66,10 @@ export function useTrialPlanRequest(offer: TrialOfferResponse) {
         }),
       ]);
     } catch (error) {
-      setFailure({
+      failure.reportFailure({
         userID: requestUserID,
-        message:
-          error instanceof Error
-            ? error.message
-            : `Unable to start ${plan.label}. Please try again.`,
+        error,
+        fallback: `Unable to start ${plan.label}. Please try again.`,
       });
     }
     return false;
@@ -87,7 +86,7 @@ export function useTrialPlanRequest(offer: TrialOfferResponse) {
 
   return {
     requestedTier,
-    error: failure && failure.userID === userID ? failure.message : null,
+    error: failure.error,
     requestPlan,
   };
 }

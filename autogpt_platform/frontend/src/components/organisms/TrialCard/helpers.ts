@@ -8,10 +8,11 @@ export const trialPlanLabels: Record<TrialOfferResponse["tier"], string> = {
 };
 
 export function formatTrialPrice(offer: TrialOfferResponse) {
-  const amount = currencyFormatter(offer.currency).format(
-    getTrialChargeAmount(offer),
-  );
-  return `${amount} / ${offer.billing_cycle === "yearly" ? "year" : "month"}`;
+  return `${formatTrialAmount(offer)} / ${offer.billing_cycle === "yearly" ? "year" : "month"}`;
+}
+
+export function formatTrialAmount(offer: TrialOfferResponse) {
+  return currencyFormatter(offer.currency).format(getTrialChargeAmount(offer));
 }
 
 // What Stripe charges per billing cycle once the trial ends, in major units.

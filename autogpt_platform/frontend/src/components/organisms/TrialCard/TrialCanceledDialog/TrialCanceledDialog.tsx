@@ -2,8 +2,8 @@ import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialSt
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { TrialTimeLeft } from "./TrialTimeLeft";
-import { WorthDoingPanel } from "./WorthDoingPanel";
+import { TrialTimeLeft } from "./components/TrialTimeLeft";
+import { WorthDoingPanel } from "./components/WorthDoingPanel";
 
 interface Props {
   trial: TrialStatusResponse;

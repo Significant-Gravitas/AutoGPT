@@ -3,7 +3,7 @@ import {
   describeTrialTimeLeft,
   formatTrialDays,
   formatTrialEnd,
-} from "../helpers";
+} from "../../helpers";
 
 interface Props {
   endsAt: TrialStatusResponse["ends_at"];

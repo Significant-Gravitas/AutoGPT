@@ -3,7 +3,7 @@ import type { SubscriptionTierRequest } from "@/app/api/__generated__/models/sub
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import {
-  getTrialChargeAmount,
+  formatTrialAmount,
   trialPlanLabels,
 } from "@/components/organisms/TrialCard/helpers";
 
@@ -34,7 +34,7 @@ export function getOwnPlanChoice(offer: TrialOfferResponse): PlanChoiceDetails {
   return {
     tier: offer.tier,
     label: trialPlanLabels[offer.tier],
-    amount: formatOfferAmount(offer),
+    amount: formatTrialAmount(offer),
     cadence: getCadence(offer),
     description: "Starts today. Your trial ends and the plan takes over.",
   };
@@ -100,13 +100,6 @@ function describeUpgrade(
     return `More usage than ${ownLabel} for people who run a lot.`;
   const multiple = String(Math.round(ratio * 10) / 10);
   return `${multiple}x the usage of ${ownLabel} for people who run a lot.`;
-}
-
-function formatOfferAmount(offer: TrialOfferResponse) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: offer.currency,
-  }).format(getTrialChargeAmount(offer));
 }
 
 function getCadence(offer: TrialOfferResponse) {

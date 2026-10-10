@@ -6,6 +6,7 @@ import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/cred
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
 import { formatTrialPrice } from "@/components/organisms/TrialCard/helpers";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import {
   trackPaywallViewed,
   trackPlanSelected,
@@ -19,6 +20,7 @@ import {
 import { useTrialPlanRequest } from "./useTrialPlanRequest";
 
 export function useTrialPlanChoices(offer: TrialOfferResponse) {
+  const userID = useAuthStore((state) => state.user?.id);
   const subscription = useGetSubscriptionStatus({
     query: {
       select: (res) =>
@@ -28,7 +30,7 @@ export function useTrialPlanChoices(offer: TrialOfferResponse) {
     },
   });
   const { requestedTier, error, requestPlan } = useTrialPlanRequest(offer);
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [confirmFor, setConfirmFor] = useState<string | null>(null);
 
   // A trial status that lags behind a plan change must not offer the choices
   // again, so they wait for the subscription itself to still be the trial.
@@ -52,7 +54,7 @@ export function useTrialPlanChoices(offer: TrialOfferResponse) {
 
   async function confirmOwnPlan() {
     const isLeaving = await requestPlan(ownPlan);
-    if (!isLeaving) setIsConfirmOpen(false);
+    if (!isLeaving) setConfirmFor(null);
   }
 
   return {
@@ -61,14 +63,14 @@ export function useTrialPlanChoices(offer: TrialOfferResponse) {
     upgradePlan,
     ownPrice: formatTrialPrice(offer),
     requestedTier,
-    isConfirmOpen,
+    isConfirmOpen: confirmFor !== null && confirmFor === userID,
     error,
     onSelectOwnPlan: () => {
       trackSelection(ownPlan);
-      setIsConfirmOpen(true);
+      setConfirmFor(userID ?? null);
     },
     onConfirmOwnPlan: () => void confirmOwnPlan(),
-    onCloseConfirm: () => setIsConfirmOpen(false),
+    onCloseConfirm: () => setConfirmFor(null),
     onSelectUpgradePlan: () => {
       if (!upgradePlan) return;
       trackSelection(upgradePlan);

@@ -10,7 +10,7 @@ import {
   formatTrialEndDate,
   formatTrialPrice,
   trialPlanLabels,
-} from "../helpers";
+} from "../../helpers";
 
 interface Props {
   offer: TrialOfferResponse;
