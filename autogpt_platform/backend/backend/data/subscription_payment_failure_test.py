@@ -50,14 +50,20 @@ class FakeStripe:
         # Runs after Stripe applied a pay, before the response returns.
         self.after_pay: Callable[[], Awaitable[None]] | None = None
 
-    def add_subscription(self, sub_id: str, status: str, latest_invoice: str = ""):
+    def add_subscription(
+        self,
+        sub_id: str,
+        status: str,
+        latest_invoice: str = "",
+        price: str = "price_pro",
+    ):
         self.subscriptions[sub_id] = {
             "id": sub_id,
             "customer": CUSTOMER,
             "status": status,
             "latest_invoice": latest_invoice or None,
             "metadata": {},
-            "items": {"data": [{"price": {"id": "price_pro"}}]},
+            "items": {"data": [{"price": {"id": price}}]},
         }
 
     def add_invoice(
@@ -143,8 +149,12 @@ class FakeStripe:
         return self.view(invoice_id)
 
     async def cancel(self, sub_id: str, **params):
+        sub = self.subscriptions[sub_id]
+        if sub["status"] == "canceled":
+            raise stripe.InvalidRequestError("already canceled", None)
+        sub["status"] = "canceled"
         self.cancelled.append(sub_id)
-        raise AssertionError("an unpaid subscription must not be cancelled")
+        return dict(sub)
 
     async def void(self, invoice_id: str, **params):
         self.voided.append(invoice_id)
@@ -256,9 +266,13 @@ class World:
             patch("backend.data.credit.set_subscription_tier", self._set_tier),
             patch(
                 "backend.data.credit.build_price_to_tier_map",
-                new=AsyncMock(return_value={"price_pro": SubscriptionTier.PRO}),
+                new=AsyncMock(
+                    return_value={
+                        "price_pro": SubscriptionTier.PRO,
+                        "price_max": SubscriptionTier.MAX,
+                    }
+                ),
             ),
-            patch("backend.data.credit._cleanup_stale_subscriptions", new=AsyncMock()),
             patch("backend.data.credit._track_billing_event"),
             patch("backend.data.credit.schedule_posthog_lifecycle_sync"),
             patch(
@@ -395,6 +409,52 @@ async def test_old_failure_never_cancels_a_newer_active_subscription():
     assert [s["id"] for s in world.synced] == ["sub_old"]
     assert world.tier == SubscriptionTier.PRO
     assert world.tier_writes == []
+
+
+def _superseded_by_a_newer_plan(world: World, balance: int) -> dict:
+    """An old PRO subscription went past due, and the customer then bought
+    MAX through Checkout, whose cleanup skips past-due subscriptions."""
+    world.ledger.balance = balance
+    world.tier = SubscriptionTier.MAX
+    world.stripe.add_subscription(
+        "sub_new", "active", latest_invoice="in_new", price="price_max"
+    )
+    world.stripe.add_invoice("in_new", "sub_new", status="paid")
+    return _renewal_failed(world, sub_id="sub_old", invoice_id="in_old")
+
+
+@pytest.mark.asyncio
+async def test_wallet_never_pays_a_subscription_a_newer_plan_replaced():
+    """Paying the old invoice would reactivate the old plan, and its update
+    event would cancel the newer one as a stale duplicate."""
+    with World() as world:
+        event = _superseded_by_a_newer_plan(world, balance=5000)
+        await handle_subscription_payment_failure(event)
+        await world.subscription_updated("sub_old")
+
+    assert world.ledger.transactions == {}
+    assert world.stripe.paid_out_of_band == []
+    assert world.stripe.subscriptions["sub_new"]["status"] == "active"
+    assert "sub_new" not in world.stripe.cancelled
+    assert world.tier == SubscriptionTier.MAX
+
+
+@pytest.mark.asyncio
+async def test_started_wallet_payment_is_refunded_once_a_newer_plan_replaced_it():
+    with World(balance=5000) as world:
+        event = _renewal_failed(world, sub_id="sub_old", invoice_id="in_old")
+        world.stripe.fail_next["pay"] = 1
+        with pytest.raises(stripe.APIConnectionError):
+            await handle_subscription_payment_failure(event)
+        world.stripe.add_subscription(
+            "sub_new", "active", latest_invoice="in_new", price="price_max"
+        )
+
+        await handle_subscription_payment_failure(event)
+
+    assert world.stripe.paid_out_of_band == []
+    assert world.ledger.balance == 5000
+    assert world.stripe.subscriptions["sub_new"]["status"] == "active"
 
 
 @pytest.mark.asyncio
