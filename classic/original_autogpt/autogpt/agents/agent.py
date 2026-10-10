@@ -252,7 +252,7 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
         """
         from autogpt.agent_factory.default_factory import DefaultAgentFactory
 
-        factory = DefaultAgentFactory(app_config)
+        factory = DefaultAgentFactory(app_config, self.permission_manager)
 
         return ExecutionContext(
             llm_provider=llm_provider,

@@ -35,6 +35,7 @@ from forge.llm.providers.schema import (
 from forge.models.action import ActionProposal
 from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.utils import ModelWithSummary
+from forge.utils.exceptions import AgentFinished
 
 if TYPE_CHECKING:
     pass
@@ -480,15 +481,12 @@ class BaseMultiStepPromptStrategy(ABC):
             # Propose next action
             proposal = await agent.propose_action()
 
-            # Check for finish command
-            if proposal.use_tool.name == "finish":
-                # Extract result from finish arguments
+            try:
+                result = await agent.execute(proposal)
+            except AgentFinished:
                 result = proposal.use_tool.arguments.get("reason", "")
                 handle.summary = result[:200] if result else "Task completed"
                 return result
-
-            # Execute the action
-            result = await agent.execute(proposal)
 
             # Log progress
             self.logger.debug(
