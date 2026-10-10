@@ -19,10 +19,7 @@ export class LoginPage {
   }
 
   async login(email: string, password: string) {
-    console.log(`ℹ️ Attempting login on ${this.page.url()} with`, {
-      email,
-      password,
-    });
+    console.log(`ℹ️ Attempting login on ${this.page.url()} as ${email}`);
 
     // Wait for the form to be ready
     await this.page.waitForSelector("form", { state: "visible" });
