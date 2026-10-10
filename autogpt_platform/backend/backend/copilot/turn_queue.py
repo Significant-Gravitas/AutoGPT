@@ -270,24 +270,16 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     head = queued[0]
 
     route_provider = head.metadata.llm_auth_provider
-    if route_provider == "codex":
-        if not await has_codex_access(user_id):
-            logger.info(
-                "dispatch_next_for_user: user=%s lacks Codex entitlement, "
-                "leaving session=%s queued",
-                user_id,
-                head.session_id,
-            )
-            return False
-    elif route_provider == "platform":
-        if await is_user_paywalled(user_id):
-            logger.info(
-                "dispatch_next_for_user: user=%s paywalled, leaving session=%s queued",
-                user_id,
-                head.session_id,
-            )
-            return False
-
+    refusal = await route_access_refusal(user_id, route_provider)
+    if refusal is not None:
+        logger.info(
+            "dispatch_next_for_user: user=%s %s, leaving session=%s queued",
+            user_id,
+            refusal,
+            head.session_id,
+        )
+        return False
+    if route_provider == "platform":
         cfg = ChatConfig()
         try:
             daily_limit, weekly_limit, _ = await get_global_rate_limits(
@@ -445,3 +437,20 @@ async def dispatch_next_for_user(user_id: str) -> bool:
 
     await invalidate_session_cache(head.session_id)
     return True
+
+
+async def route_access_refusal(
+    user_id: str, llm_auth_provider: CopilotLlmAuthProvider
+) -> str | None:
+    """Why the user has no access to the route a turn bills to, if they have none.
+
+    Access only, shared with scheduled turns, which never check usage: the
+    platform route's usage caps are ``dispatch_next_for_user``'s alone.
+    """
+    if llm_auth_provider == "codex":
+        if await has_codex_access(user_id):
+            return None
+        return "lacks Codex entitlement"
+    if llm_auth_provider == "platform" and await is_user_paywalled(user_id):
+        return "paywalled"
+    return None

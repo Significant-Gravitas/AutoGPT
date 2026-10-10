@@ -43,8 +43,8 @@ from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
-from backend.copilot.rate_limit import is_user_paywalled
 from backend.copilot.transports import resolve_default_chat_route
+from backend.copilot.turn_queue import route_access_refusal
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -53,7 +53,6 @@ from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
-from backend.integrations.codex.access import has_codex_access
 from backend.monitoring import (
     flush_matured_alerts,
     report_block_error_rates,
@@ -680,53 +679,30 @@ async def _refuse_if_owner_lacks_access(
     with its routine switched off rather than left pending for a time that has
     passed.
     """
+    transient = False
     try:
-        refusal = await _access_refusal(job_args.user_id, llm_auth_provider)
+        refusal = await route_access_refusal(job_args.user_id, llm_auth_provider)
     except Exception as exc:
         # Unknown access is no access: skip the fire, and retry a one-shot.
-        refusal = _AccessRefusal(
-            reason=f"the owner's plan could not be read ({type(exc).__name__}: {exc})",
-            transient=True,
-        )
+        refusal = f"plan could not be read ({type(exc).__name__}: {exc})"
+        transient = True
     if refusal is None:
         return False
     if job_args.run_at is None:
         outcome = "the schedule stays registered"
-    elif refusal.transient:
+    elif not transient:
+        await _drop_job_from_routine(job_args)
+        outcome = "the one-shot is dropped"
+    elif await _reschedule_one_shot_after_plan_unreadable(job_args):
         outcome = "the one-shot is retried"
     else:
         outcome = "the one-shot is dropped"
     logger.log(
-        logging.WARNING if refusal.transient else logging.INFO,
-        f"Skipping scheduled copilot turn {job_args.schedule_id}: "
-        f"{refusal.reason}; {outcome}",
+        logging.WARNING if transient else logging.INFO,
+        f"Skipping scheduled copilot turn {job_args.schedule_id}: owner {refusal}; "
+        f"{outcome}",
     )
-    if job_args.run_at is None:
-        return True
-    if refusal.transient:
-        await _reschedule_one_shot_after_plan_unreadable(job_args)
-    else:
-        await _drop_job_from_routine(job_args)
     return True
-
-
-class _AccessRefusal(BaseModel):
-    reason: str
-    # An outage rather than the owner's state, so a one-shot is worth retrying.
-    transient: bool = False
-
-
-async def _access_refusal(
-    user_id: str, llm_auth_provider: CopilotLlmAuthProvider
-) -> _AccessRefusal | None:
-    """Why the owner has no access to this route, if they have none."""
-    if llm_auth_provider == "codex":
-        if await has_codex_access(user_id):
-            return None
-        return _AccessRefusal(reason="the owner has no Codex access")
-    if llm_auth_provider == "platform" and await is_user_paywalled(user_id):
-        return _AccessRefusal(reason="the owner has no subscription")
-    return None
 
 
 def _credential_pins_for_turn(
@@ -775,8 +751,8 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
 
 async def _reschedule_one_shot_after_plan_unreadable(
     args: "CopilotTurnJobArgs",
-) -> None:
-    await _reschedule_one_shot(
+) -> bool:
+    return await _reschedule_one_shot(
         args,
         reason="unreadable owner plan",
         name_suffix="plan-retry",
@@ -801,8 +777,9 @@ async def _reschedule_one_shot(
     reason: str,
     name_suffix: str,
     retry_kind: Literal["cap", "expert_lookup", "plan_lookup"],
-) -> None:
-    """Re-create a one-shot copilot-turn schedule after a transient failure.
+) -> bool:
+    """Re-create a one-shot copilot-turn schedule after a transient failure,
+    and say whether it did.
 
     Best-effort: failures are logged. Schedules that have already been
     retried the limit for this failure kind are dropped to avoid loops. Retry
@@ -835,7 +812,7 @@ async def _reschedule_one_shot(
             f"retry/retries after {reason}"
         )
         await _drop_job_from_routine(args)
-        return
+        return False
     try:
         new_run_at = datetime.now(tz=timezone.utc) + timedelta(
             seconds=_CONCURRENCY_RETRY_DELAY_SECONDS
@@ -878,6 +855,7 @@ async def _reschedule_one_shot(
             f"{_session_id_label(args)} to {new_run_at.isoformat()} after "
             f"{reason} (retry {retry_count + 1}/{max_retries})"
         )
+        return True
     except Exception:
         logger.warning(
             f"Failed to reschedule one-shot copilot turn for session "
@@ -885,6 +863,7 @@ async def _reschedule_one_shot(
             exc_info=True,
         )
         await _drop_job_from_routine(args)
+        return False
 
 
 async def _best_effort_unschedule(

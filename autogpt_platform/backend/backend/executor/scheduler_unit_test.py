@@ -59,6 +59,7 @@ from backend.util.service import EXPOSED_FLAG
 from backend.util.settings import Config
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
+_TURN_QUEUE_PATH = "backend.copilot.turn_queue"
 
 
 @pytest.fixture(autouse=True)
@@ -80,10 +81,11 @@ class _OwnerGate(NamedTuple):
 @pytest.fixture(autouse=True)
 def owner_gate(monkeypatch: pytest.MonkeyPatch) -> _OwnerGate:
     """An owner with a subscription and Codex access; tests that need another
-    owner set these mocks rather than patch again."""
+    owner set these mocks rather than patch again. Patched where the shared
+    access check resolves them."""
     gate = _OwnerGate(AsyncMock(return_value=False), AsyncMock(return_value=True))
-    monkeypatch.setattr(f"{_SCHEDULER_PATH}.is_user_paywalled", gate.is_user_paywalled)
-    monkeypatch.setattr(f"{_SCHEDULER_PATH}.has_codex_access", gate.has_codex_access)
+    monkeypatch.setattr(f"{_TURN_QUEUE_PATH}.is_user_paywalled", gate.is_user_paywalled)
+    monkeypatch.setattr(f"{_TURN_QUEUE_PATH}.has_codex_access", gate.has_codex_access)
     return gate
 
 
@@ -2553,6 +2555,34 @@ async def test_a_refused_one_shot_routine_is_retried_or_switched_off(
     if retried:
         assert retry.call_args.kwargs["routine_id"] == "routine-1"
         assert retry.call_args.kwargs["routine_schedule_id"] == "sched-1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("budget_left", "happened", "did_not"),
+    [
+        (True, "the one-shot is retried", "the one-shot is dropped"),
+        (False, "the one-shot is dropped", "the one-shot is retried"),
+    ],
+    ids=["retried", "budget-spent"],
+)
+async def test_a_skipped_one_shot_logs_what_became_of_it(
+    owner_gate, budget_left, happened, did_not, caplog
+):
+    _lookup_fails(owner_gate)
+    args = _args(plan_lookup_retry_count=0 if budget_left else _MAX_PLAN_LOOKUP_RETRIES)
+    session = MagicMock(session_id="session-1", expert_id=None)
+    session.metadata.llm_auth_provider = "platform"
+    with (
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", AsyncMock()),
+        patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=AsyncMock()),
+        caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    assert happened in caplog.text
+    assert did_not not in caplog.text
 
 
 @pytest.mark.asyncio
