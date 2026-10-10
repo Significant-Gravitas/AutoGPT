@@ -1981,37 +1981,51 @@ def _unix_dow_to_apscheduler(n: int) -> int:
     return (n - 1) % 7
 
 
+def _expand_unix_dow(token: str) -> list[int] | None:
+    """Expand a numeric Unix DOW token to the set of days it covers.
+
+    Returns Unix day numbers (0=Sun..6=Sat; 7 is treated as Sun) or ``None``
+    for named tokens (``mon``, ``mon-fri``) that should pass through. Remapping
+    endpoints and then reattaching a step (the old approach) is wrong: ``0-7``
+    became ``6-6``, ``*/2`` stayed APS Mon/Wed/Fri/Sun, and wrap+step produced
+    invalid APS ranges like ``0-1/2``. Expanding the day set first and mapping
+    each day is unambiguous.
+    """
+    body, _, step_s = token.partition("/")
+    step = int(step_s) if step_s else 1
+    if step < 1:
+        step = 1
+
+    if body in ("*", "?"):
+        seq = list(range(7))
+    elif "-" in body:
+        start_s, end_s = body.split("-", 1)
+        if not (start_s.isdigit() and end_s.isdigit()):
+            return None
+        start, end = int(start_s), int(end_s)
+        if start <= end:
+            seq = list(range(start, end + 1))
+        else:
+            seq = list(range(start, 7)) + list(range(0, end + 1))
+    elif body.isdigit():
+        # ``1/2`` means "from 1 every 2 days to the end of the week".
+        start = int(body)
+        seq = list(range(start, max(start, 6) + 1)) if step_s else [start]
+    else:
+        return None
+
+    return sorted({d % 7 for d in seq[::step]})
+
+
 def _convert_dow_token(token: str) -> str:
     """Convert a single comma-separated token of a day-of-week field from
     Unix-cron numbering to APScheduler numbering. Handles ``*``, plain
     numbers, ranges (including wrap-around like ``5-2``), step modifiers,
     and lets named tokens (``mon-fri``) pass through unchanged."""
-    if "/" in token:
-        body, step = token.split("/", 1)
-    else:
-        body, step = token, None
-
-    if body in ("*", "?"):
-        result = body
-    elif "-" in body:
-        start, end = body.split("-", 1)
-        if start.isdigit() and end.isdigit():
-            start_aps = _unix_dow_to_apscheduler(int(start))
-            end_aps = _unix_dow_to_apscheduler(int(end))
-            if start_aps > end_aps:
-                # Unix wrap-around (e.g. Sat→Tue = 6-2) → split into two
-                # APS-valid ranges joined by a comma.
-                tail = f"/{step}" if step else ""
-                return f"{start_aps}-6{tail},0-{end_aps}{tail}"
-            result = f"{start_aps}-{end_aps}"
-        else:
-            result = f"{start}-{end}"
-    elif body.isdigit():
-        result = str(_unix_dow_to_apscheduler(int(body)))
-    else:
-        result = body
-
-    return f"{result}/{step}" if step else result
+    days = _expand_unix_dow(token)
+    if days is None:
+        return token
+    return ",".join(str(d) for d in sorted({_unix_dow_to_apscheduler(d) for d in days}))
 
 
 def _normalize_cron_day_of_week(cron: str) -> str:
