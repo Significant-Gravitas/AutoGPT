@@ -5,6 +5,7 @@ from pydantic import SecretStr
 
 from backend.api.features.integrations.models import get_supported_auth_types
 from backend.blocks.hubspot._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.hubspot._config import hubspot
 from backend.blocks.hubspot.company import HubSpotCompanyBlock
 from backend.blocks.hubspot.contact import HubSpotContactBlock
 from backend.blocks.hubspot.engagement import HubSpotEngagementBlock
@@ -19,6 +20,7 @@ BLOCKS = [
 
 def test_hubspot_offers_no_oauth_sign_in():
     # There is no HubSpot OAuth handler, so an OAuth option can only 404.
+    assert hubspot.supported_auth_types == {"api_key"}
     assert get_supported_auth_types("hubspot") == ["api_key"]
 
 
