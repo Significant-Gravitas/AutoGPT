@@ -948,9 +948,8 @@ async def _drop_job_from_routine(args: "CopilotTurnJobArgs") -> None:
         await experts_db().mark_routine_unscheduled(args.routine_id, schedule_id)
     except Exception:
         logger.warning(
-            "Could not switch off routine %s after removing its schedule %s",
-            args.routine_id[:12],
-            schedule_id,
+            f"Could not switch off routine {args.routine_id[:12]} after removing "
+            f"its schedule {schedule_id}",
             exc_info=True,
         )
 

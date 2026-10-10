@@ -275,10 +275,8 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     if refusal is not None:
         logger.log(
             logging.WARNING if refusal.transient else logging.INFO,
-            "dispatch_next_for_user: user=%s %s, leaving session=%s queued",
-            user_id,
-            refusal.reason,
-            head.session_id,
+            f"dispatch_next_for_user: user={user_id} {refusal.reason}, "
+            f"leaving session={head.session_id} queued",
         )
         return False
 
