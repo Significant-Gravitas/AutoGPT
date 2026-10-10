@@ -25,7 +25,10 @@ def test_make_session_path_traversal_prevention():
 
 
 def test_get_sandbox_backend_vetto():
-    with patch("shutil.which", side_effect=lambda bin: "/usr/bin/vetto" if bin == "vetto" else None):
+    with patch(
+        "shutil.which",
+        side_effect=lambda bin: "/usr/bin/vetto" if bin == "vetto" else None,
+    ):
         sandbox._SANDBOX_BACKEND = None
         backend = get_sandbox_backend()
         assert backend == "vetto"
@@ -38,8 +41,9 @@ def test_get_sandbox_backend_bwrap_fallback():
             return "/usr/bin/bwrap"
         return None
 
-    with patch("shutil.which", side_effect=mock_which), \
-         patch("platform.system", return_value="Linux"):
+    with patch("shutil.which", side_effect=mock_which), patch(
+        "platform.system", return_value="Linux"
+    ):
         sandbox._SANDBOX_BACKEND = None
         backend = get_sandbox_backend()
         assert backend == "bwrap"
