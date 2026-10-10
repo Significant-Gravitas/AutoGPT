@@ -10,6 +10,8 @@ from backend.data.db import query_raw_with_schema, transaction
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_trial import get_subscription_trial
 
+_ENDED_STATUSES = ("canceled", "incomplete_expired")
+
 
 class SubscriptionCheckoutUnavailable(ValueError):
     pass
@@ -49,6 +51,25 @@ async def expire_other_subscription_checkouts(
             await stripe_call(stripe.checkout.Session.expire_async, session.id)
 
 
+async def other_plan_is_live(customer_id: str, exclude_subscription_id: str) -> bool:
+    """Whether the customer has a plan besides this one that has not ended.
+
+    A plan bought through Checkout while a trial is cancel-pending ends the
+    trial only once its webhook is handled, and the stale-subscription cleanup
+    can fail; until then both are live, so keeping the trial would bill twice.
+    """
+    subscriptions = await stripe_call(
+        stripe.Subscription.list_async, customer=customer_id, status="all", limit=100
+    )
+    async for subscription in stripe_list_items(subscriptions):
+        if (
+            subscription.id != exclude_subscription_id
+            and subscription.status not in _ENDED_STATUSES
+        ):
+            return True
+    return False
+
+
 async def ensure_no_unconverted_trial(user_id: str, customer_id: str) -> None:
     trial = await get_subscription_trial(user_id)
     if trial is None or trial.converted_at:
@@ -69,7 +90,7 @@ async def ensure_no_unconverted_trial(user_id: str, customer_id: str) -> None:
 def _ends_without_converting(subscription: stripe.Subscription) -> bool:
     """A cancel-pending trial never bills, and the stale-subscription cleanup
     ends it as soon as the new plan's subscription is active."""
-    if subscription.status in ("canceled", "incomplete_expired"):
+    if subscription.status in _ENDED_STATUSES:
         return True
     return subscription.status == "trialing" and bool(
         subscription.get("cancel_at_period_end")

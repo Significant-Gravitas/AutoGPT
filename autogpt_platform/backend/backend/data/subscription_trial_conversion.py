@@ -6,9 +6,10 @@ import stripe
 from prisma.enums import SubscriptionTier
 
 from backend.data.credit import sync_subscription_from_stripe
-from backend.data.stripe_client import stripe_call, stripe_list_items
+from backend.data.stripe_client import stripe_call
 from backend.data.subscription_checkout import (
     expire_other_subscription_checkouts,
+    other_plan_is_live,
     subscription_checkout_lock,
 )
 from backend.data.subscription_trial import TrialState, get_subscription_trial
@@ -55,7 +56,10 @@ async def convert_cancel_pending_trial(trial: TrialState) -> None:
     async with subscription_checkout_lock(trial.user_id):
         subscription = await _live_cancel_pending_subscription(trial)
         await expire_other_subscription_checkouts(trial.customer_id)
-        await _ensure_no_other_plan(trial.customer_id, subscription.id)
+        # A plan bought through Checkout ends the trial only once its webhook
+        # is handled; converting before then would bill for both plans.
+        if await other_plan_is_live(trial.customer_id, subscription.id):
+            raise TrialConversionRefused(TRIAL_ENDED)
         converted = await stripe_call(
             stripe.Subscription.modify_async,
             subscription.id,
@@ -101,17 +105,3 @@ async def _live_cancel_pending_subscription(trial: TrialState) -> stripe.Subscri
     if not subscription.get("cancel_at_period_end"):
         raise TrialConversionRefused(TRIAL_RUNNING)
     return subscription
-
-
-async def _ensure_no_other_plan(customer_id: str, trial_subscription_id: str) -> None:
-    """A plan bought through Checkout ends the trial only once its webhook is
-    handled; converting before then would bill the customer for both plans."""
-    subscriptions = await stripe_call(
-        stripe.Subscription.list_async, customer=customer_id, status="all", limit=100
-    )
-    async for other in stripe_list_items(subscriptions):
-        if other.id != trial_subscription_id and other.status not in (
-            "canceled",
-            "incomplete_expired",
-        ):
-            raise TrialConversionRefused(TRIAL_ENDED)

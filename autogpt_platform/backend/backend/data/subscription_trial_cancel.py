@@ -14,12 +14,14 @@ from backend.data.stripe_client import stripe_call
 from backend.data.subscription_checkout import (
     SubscriptionCheckoutUnavailable,
     expire_other_subscription_checkouts,
+    other_plan_is_live,
     subscription_checkout_lock,
 )
 from backend.data.subscription_trial import TrialState
 
 TRIAL_ENDED = "This trial has ended. Manage the plan in billing."
 NOTHING_TO_RESUME = "Nothing to resume."
+ANOTHER_PLAN_LIVE = "Another plan is already active. Manage it in billing."
 
 
 class TrialChangeRefused(ValueError):
@@ -58,6 +60,11 @@ async def _resume_locked(trial: TrialState) -> None:
     # resumed trial: that would leave two live subscriptions. The checkout lock
     # keeps a new one from opening between this expiry and the resume.
     await expire_other_subscription_checkouts(trial.customer_id)
+    # A plan already bought that way ends the trial only once its webhook (or
+    # the stale-subscription cleanup) runs; resuming before then would let the
+    # trial convert next to it and bill twice.
+    if await other_plan_is_live(trial.customer_id, subscription.id):
+        raise TrialChangeRefused(ANOTHER_PLAN_LIVE)
     subscription = await _set_cancel_at_period_end(subscription, False)
     await sync_subscription_from_stripe(dict(subscription))
 

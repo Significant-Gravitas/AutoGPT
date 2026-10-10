@@ -6165,7 +6165,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "409": { "description": "No cancel-pending trial to resume" },
+          "409": {
+            "description": "No live cancel-pending trial to resume, or another plan is active"
+          },
           "502": { "description": "Stripe update temporarily unavailable" }
         },
         "security": [{ "HTTPBearerJWT": [] }]

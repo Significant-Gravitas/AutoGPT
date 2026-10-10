@@ -68,8 +68,10 @@ def _live(trial: TrialState, **changes) -> stripe.Subscription:
 
 @pytest.fixture
 def api():
-    """Stripe, the sync and the checkout lock as this module calls them,
-    recorded in call order. ``api.lock.side_effect`` makes the lock busy."""
+    """Stripe, the sync, the other-plan check and the checkout lock as this
+    module calls them, recorded in call order. ``api.lock.side_effect`` makes
+    the lock busy; ``api.other_plan.return_value = True`` makes another plan
+    live."""
     calls = MagicMock()
 
     @asynccontextmanager
@@ -88,6 +90,9 @@ def api():
         patch.object(
             cancel, "expire_other_subscription_checkouts", AsyncMock()
         ) as expire,
+        patch.object(
+            cancel, "other_plan_is_live", AsyncMock(return_value=False)
+        ) as other_plan,
         patch.object(cancel, "sync_subscription_from_stripe", AsyncMock()) as sync,
     ):
         for name, mock in (
@@ -95,6 +100,7 @@ def api():
             ("modify", modify),
             ("end_now", end_now),
             ("expire", expire),
+            ("other_plan", other_plan),
             ("sync", sync),
         ):
             calls.attach_mock(mock, name)
@@ -163,8 +169,30 @@ async def test_resume_holds_the_checkout_lock_from_read_to_sync(trial, api):
         call.lock("user-1"),
         call.retrieve("sub_1"),
         call.expire("cus_1"),
+        call.other_plan("cus_1", "sub_1"),
         call.modify("sub_1", cancel_at_period_end=False),
         call.sync(dict(resumed)),
+        call.unlock(),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_resume_is_refused_while_another_plan_is_live(trial, api):
+    """A plan bought through Checkout while cancel-pending ends the trial only
+    once its webhook or the stale-subscription cleanup runs; resuming before
+    then would let the trial convert next to it and bill twice."""
+    api.retrieve.return_value = _live(trial, cancel_at_period_end=True)
+    api.other_plan.return_value = True
+    with pytest.raises(
+        cancel.TrialChangeRefused,
+        match="^Another plan is already active. Manage it in billing.$",
+    ):
+        await cancel.resume_trial_subscription(trial)
+    assert api.mock_calls == [
+        call.lock("user-1"),
+        call.retrieve("sub_1"),
+        call.expire("cus_1"),
+        call.other_plan("cus_1", "sub_1"),
         call.unlock(),
     ]
 
@@ -283,6 +311,16 @@ async def test_a_stripe_failure_changes_nothing(trial, api, operation, pending):
 async def test_resume_stops_if_open_checkouts_cannot_be_expired(trial, api):
     api.retrieve.return_value = _live(trial, cancel_at_period_end=True)
     api.expire.side_effect = stripe.APIConnectionError("Stripe is unreachable")
+    with pytest.raises(stripe.StripeError):
+        await cancel.resume_trial_subscription(trial)
+    api.modify.assert_not_awaited()
+    api.sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resume_stops_if_other_plans_cannot_be_listed(trial, api):
+    api.retrieve.return_value = _live(trial, cancel_at_period_end=True)
+    api.other_plan.side_effect = stripe.APIConnectionError("Stripe is unreachable")
     with pytest.raises(stripe.StripeError):
         await cancel.resume_trial_subscription(trial)
     api.modify.assert_not_awaited()

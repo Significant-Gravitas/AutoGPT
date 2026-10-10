@@ -188,3 +188,58 @@ async def test_running_or_unconverted_trial_still_blocks_another_plan(subscripti
             await subscription_checkout.ensure_no_unconverted_trial(
                 "user-1", "cus_test"
             )
+
+
+def _subscriptions(*subscriptions: dict, has_more: bool = False) -> stripe.ListObject:
+    return stripe.ListObject.construct_from(
+        {"data": list(subscriptions), "has_more": has_more}, "test-key"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status", ["active", "trialing", "past_due", "incomplete", "unpaid", "paused"]
+)
+async def test_another_plan_that_has_not_ended_is_live(status):
+    listed = _subscriptions(
+        {"id": "sub_trial", "status": "trialing"}, {"id": "sub_max", "status": status}
+    )
+    with patch.object(
+        stripe.Subscription, "list_async", AsyncMock(return_value=listed)
+    ) as list_async:
+        assert await subscription_checkout.other_plan_is_live("cus_test", "sub_trial")
+    list_async.assert_awaited_once_with(customer="cus_test", status="all", limit=100)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "others",
+    [
+        [],
+        [{"id": "sub_old", "status": "canceled"}],
+        [{"id": "sub_abandoned", "status": "incomplete_expired"}],
+    ],
+    ids=["only-this-one", "canceled", "incomplete-expired"],
+)
+async def test_this_plan_and_ended_plans_are_not_another_live_plan(others):
+    listed = _subscriptions({"id": "sub_trial", "status": "trialing"}, *others)
+    with patch.object(
+        stripe.Subscription, "list_async", AsyncMock(return_value=listed)
+    ):
+        assert not await subscription_checkout.other_plan_is_live(
+            "cus_test", "sub_trial"
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_live_plan_on_a_later_page_is_found():
+    first = _subscriptions({"id": "sub_old", "status": "canceled"}, has_more=True)
+    second = _subscriptions({"id": "sub_max", "status": "active"})
+    with (
+        patch.object(stripe.Subscription, "list_async", AsyncMock(return_value=first)),
+        patch.object(
+            stripe.ListObject, "next_page_async", AsyncMock(return_value=second)
+        ) as next_page,
+    ):
+        assert await subscription_checkout.other_plan_is_live("cus_test", "sub_trial")
+    next_page.assert_awaited_once()
