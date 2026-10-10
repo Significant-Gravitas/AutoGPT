@@ -27,6 +27,7 @@ from backend.util.exceptions import ExpertNotFoundError
 from backend.util.json import SafeJson, dumps, sanitize_string
 
 from .model import (
+    CHAT_STATUS_RUNNING,
     ChatMessage,
     ChatSessionInfo,
     ChatSessionMetadata,
@@ -1455,8 +1456,8 @@ async def admit_chat_session_turn(
     than ``capacity`` running: ``"full"`` at the cap, ``"busy"`` when the
     session is not in ``expect_status``.
 
-    The count and the flip share one per-user lock. Counted after the flip
-    instead, concurrent admits each count the others' flips and all refuse.
+    The count precedes the flip inside one per-user lock, and relies on READ
+    COMMITTED (Postgres's default) to see every flip committed before the lock.
     """
     async with db.transaction() as tx:
         # execute_raw, not query_raw: pg_advisory_xact_lock returns void.
@@ -1473,7 +1474,7 @@ async def admit_chat_session_turn(
         ):
             return "busy"
         running = await sessions.count(
-            where={"userId": user_id, "chatStatus": "running"}
+            where={"userId": user_id, "chatStatus": CHAT_STATUS_RUNNING}
         )
         if running >= capacity:
             return "full"
@@ -1481,7 +1482,7 @@ async def admit_chat_session_turn(
         # moved the row since it was read.
         updated = await sessions.update_many(
             where={"id": session_id, "userId": user_id, "chatStatus": expect_status},
-            data={"chatStatus": "running"},
+            data={"chatStatus": CHAT_STATUS_RUNNING},
         )
     return "admitted" if updated else "busy"
 
