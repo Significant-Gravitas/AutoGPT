@@ -73,6 +73,9 @@ logger = logging.getLogger(__name__)
 
 # Pending-row metadata: the envelope a queued approval wake starts under.
 _ENVELOPE_KEY = "envelope"
+# The admitted child's tree, kept apart from the versioned envelope so its node
+# can still go back when a later deploy no longer parses that envelope.
+_ENVELOPE_TREE_ID_KEY = "envelope_tree_id"
 # The assistant row that closes a queued turn the promotion could not start.
 _REFUSED_KEY = "queued_turn_refused"
 WAKE_LATER = "Your answer is kept and reaches the assistant with your next message."
@@ -220,6 +223,7 @@ async def enqueue_turn(
     # child under the one admitted for it, whichever turn frees the slot.
     if envelope is not None:
         metadata[_ENVELOPE_KEY] = envelope.model_dump(mode="json")
+        metadata[_ENVELOPE_TREE_ID_KEY] = envelope.tree_id
     if tool_call_id is not None:
         metadata["tool_call_id"] = tool_call_id
     if tool_name is not None:
@@ -248,12 +252,7 @@ async def enqueue_turn(
             )
         except BaseException as exc:
             if only_if_idle:
-                await db.update_chat_session_status(
-                    session_id=session_id,
-                    expect_status=CHAT_STATUS_QUEUED,
-                    status=CHAT_STATUS_IDLE,
-                    user_id=user_id,
-                )
+                await _unclaim(db, session_id, user_id)
             if (
                 isinstance(exc, UniqueViolationError)
                 and message_id
@@ -275,6 +274,21 @@ async def enqueue_turn(
     # 'Queued' badge from ``session.chat_status``).
     await invalidate_session_cache(session_id)
     return row
+
+
+async def _unclaim(db: Any, session_id: str, user_id: str) -> None:
+    """Undo a child's claim whose row was never written, without masking why."""
+    try:
+        await db.update_chat_session_status(
+            session_id=session_id,
+            expect_status=CHAT_STATUS_QUEUED,
+            status=CHAT_STATUS_IDLE,
+            user_id=user_id,
+        )
+    except Exception:
+        logger.exception(
+            f"enqueue_turn: could not release the claim on session={session_id}"
+        )
 
 
 async def _flip(db: Any, session_id: str, user_id: str) -> bool:
@@ -315,7 +329,7 @@ async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
                 metadata={_REFUSED_KEY: True},
             )
         await invalidate_session_cache(session_id)
-    child = _stored_envelope(pending.metadata or {}) if spawned and pending else None
+    child = _child_node(pending.metadata or {}) if spawned and pending else None
     if child is not None:
         await release_turn(child)
     return True
@@ -428,7 +442,9 @@ async def _promote_head(user_id: str) -> bool | None:
         spawned = _is_spawned(pending)
         if spawned and queued_envelope is None:
             # Nothing but that envelope bounds a child its spawner admitted.
-            await _refuse_queued_turn(head, UNREADABLE_SPAWN)
+            await _refuse_queued_turn(
+                head, UNREADABLE_SPAWN, release=_child_node(metadata)
+            )
             return None
         child = queued_envelope if spawned else None
         if (
@@ -679,6 +695,17 @@ def _is_spawned(pending: ChatMessage) -> bool:
     from backend.copilot.gate.held import is_answer_row
 
     return _ENVELOPE_KEY in (pending.metadata or {}) and not is_answer_row(pending)
+
+
+def _child_node(metadata: Mapping[str, Any]) -> TurnEnvelope | None:
+    """The node a queued child holds on its tree, found by its stored tree id
+    when the envelope itself no longer parses."""
+    envelope = _stored_envelope(metadata)
+    if envelope is not None:
+        return envelope
+    tree_id = metadata.get(_ENVELOPE_TREE_ID_KEY)
+    # A child is never a root, so depth 1 is enough for release_turn to act.
+    return TurnEnvelope(tree_id=tree_id, depth=1) if isinstance(tree_id, str) else None
 
 
 def _stored_envelope(metadata: Mapping[str, Any]) -> TurnEnvelope | None:

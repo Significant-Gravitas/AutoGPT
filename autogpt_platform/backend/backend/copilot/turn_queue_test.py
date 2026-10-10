@@ -224,11 +224,12 @@ async def test_cancel_queued_turn_returns_false_when_not_owned_or_not_queued() -
     "metadata, released",
     [
         ({"envelope": _CHILD}, True),
+        ({"envelope": {"depth": "deep"}, "envelope_tree_id": "t1"}, True),
         # A wake carries the node of the turn that held its call, not its own.
         ({"envelope": _CHILD, held._WAKE_KEY: True}, False),
         (None, False),
     ],
-    ids=["child", "wake", "typed"],
+    ids=["child", "child-unreadable", "wake", "typed"],
 )
 async def test_cancelling_a_queued_turn_returns_only_a_childs_node(
     metadata: dict | None, released: bool
@@ -262,6 +263,29 @@ async def test_cancelling_a_queued_turn_returns_only_a_childs_node(
 
 
 @pytest.mark.asyncio
+async def test_a_queued_child_keeps_its_tree_apart_from_its_envelope() -> None:
+    """So a deploy that stops parsing the envelope can still give its node back."""
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_next_sequence = AsyncMock(return_value=1)
+    db.add_chat_message = AsyncMock()
+
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        await turn_queue.enqueue_turn(
+            user_id="u1",
+            session_id="s1",
+            message="task",
+            envelope=TurnEnvelope.model_validate(_CHILD),
+            only_if_idle=True,
+        )
+
+    assert db.add_chat_message.await_args.kwargs["metadata"]["envelope_tree_id"] == "t1"
+
+
+@pytest.mark.asyncio
 async def test_a_child_that_loses_the_claim_writes_no_row() -> None:
     """Claimed before it is written: when another turn took the session between
     a look and the flip, nothing is left for promotion to replay."""
@@ -285,6 +309,30 @@ async def test_a_child_that_loses_the_claim_writes_no_row() -> None:
         )
 
     db.add_chat_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_unclaim_does_not_hide_why_the_child_was_not_written() -> None:
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(
+        side_effect=[True, RuntimeError("rollback failed")]
+    )
+    db.get_next_sequence = AsyncMock(return_value=1)
+    db.add_chat_message = AsyncMock(side_effect=RuntimeError("write failed"))
+
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        pytest.raises(RuntimeError, match="write failed"),
+    ):
+        await turn_queue.enqueue_turn(
+            user_id="u1",
+            session_id="s1",
+            message="task",
+            envelope=TurnEnvelope.model_validate(_CHILD),
+            only_if_idle=True,
+        )
+
+    assert db.update_chat_session_status.await_count == 2
 
 
 # ── try_enqueue_turn ───────────────────────────────────────────────────
@@ -526,6 +574,13 @@ async def test_a_turn_the_access_gate_refuses_does_not_hold_up_the_next() -> Non
     [
         # Nothing but its envelope bounds a child its spawner admitted.
         ({"envelope": {"depth": "deep"}}, None, turn_queue.UNREADABLE_SPAWN, False),
+        # Its tree id is stored apart, so the node goes back.
+        (
+            {"envelope": {"depth": "deep"}, "envelope_tree_id": "t1"},
+            None,
+            turn_queue.UNREADABLE_SPAWN,
+            True,
+        ),
         # Its stored permissions are its spawner's, never re-derivable.
         (
             {"envelope": _CHILD, "permissions": {"tools": 5}},
@@ -536,7 +591,12 @@ async def test_a_turn_the_access_gate_refuses_does_not_hold_up_the_next() -> Non
         # A tree that closed while it waited: no "your answer is kept" note.
         ({"envelope": _CHILD}, "This tree has closed.", "This tree has closed.", True),
     ],
-    ids=["envelope-unreadable", "permissions-unreadable", "tree-refused"],
+    ids=[
+        "envelope-unreadable",
+        "envelope-unreadable-tree-known",
+        "permissions-unreadable",
+        "tree-refused",
+    ],
 )
 async def test_a_queued_child_that_may_not_start_is_closed_and_returns_its_node(
     stored: dict, refusal: str | None, reason: str, released: bool
