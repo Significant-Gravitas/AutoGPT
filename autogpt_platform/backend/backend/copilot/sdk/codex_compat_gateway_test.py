@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from typing import cast
 
 import pytest
-from aiohttp import ClientSession, web
+from aiohttp import ClientSession, ClientTimeout, web
 
 from backend.copilot.sdk import codex_compat_gateway
 from backend.copilot.sdk.codex_compat_gateway import (
@@ -1122,3 +1122,191 @@ def test_replay_cache_evicts_the_oldest_entry_first() -> None:
         _entry(b"x" * (codex_compat_gateway._MAX_REPLAY_BYTES + 1)),
     )
     assert "oversized" not in conversation.replays
+
+
+class _SlowAfterToolSession(_FakeAgentSession):
+    """Answers the tool result only once ``release`` is set, like a huge turn.
+
+    With ``early_delta``, that text is streamed before the wait, so the
+    response is already open when the client goes away.
+    """
+
+    def __init__(self, early_delta: str | None = None) -> None:
+        super().__init__(use_tool=True)
+        self.release = asyncio.Event()
+        self.early_delta = early_delta
+
+    async def invoke(
+        self,
+        request,
+        dynamic_tools,
+        tool_handler,
+        event_handler=None,
+    ) -> CodexInvocationResult:
+        self.requests.append(request)
+        try:
+            self.tool_result = await tool_handler(
+                CodexDynamicToolCall(
+                    thread_id="thread-1",
+                    turn_id="turn-1",
+                    call_id="call-1",
+                    tool=dynamic_tools[0].name,
+                    arguments={"query": "status"},
+                )
+            )
+            assert event_handler is not None
+            if self.early_delta is not None:
+                await event_handler(
+                    CodexStreamEvent(type="text_delta", delta=self.early_delta)
+                )
+            await self.release.wait()
+            await event_handler(CodexStreamEvent(type="text_delta", delta="done"))
+            return _result("done")
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            raise
+
+
+@pytest.mark.asyncio
+async def test_retry_after_the_client_timed_out_replays_the_streamed_answer() -> None:
+    """SECRT-2673 / AUTOGPT-SERVER-875, still live on prod after #14760.
+
+    The CLI gives up on a slow tool-result request and resends it verbatim.
+    The original's answer then lands on a closed socket; it must still be kept
+    for the resend, not dropped with the model call cancelled, which left the
+    resend a 409 "already accepted".
+    """
+    agent_session = _SlowAfterToolSession()
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run", stream=True),
+            )
+            gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
+        continuation = _tool_result_request(gateway_call_id, "one result", stream=True)
+
+        async with ClientSession() as impatient:
+            with pytest.raises(asyncio.TimeoutError):
+                await impatient.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers=_headers(gateway),
+                    json=continuation,
+                    timeout=ClientTimeout(total=0.2),
+                )
+
+        async with ClientSession() as client:
+            retry = asyncio.create_task(
+                client.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers=_headers(gateway),
+                    json=continuation,
+                )
+            )
+            await asyncio.sleep(0.1)
+            agent_session.release.set()
+            retried = await retry
+            retried_body = await retried.text()
+
+    assert retried.status == 200, retried_body
+    retried_events = _events(retried_body)
+    assert [event["type"] for event in retried_events][-1] == "message_stop"
+    assert any(
+        cast(dict[str, object], event.get("delta", {})).get("text") == "done"
+        for event in retried_events
+    )
+    assert not agent_session.cancelled.is_set()
+    assert len(agent_session.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_after_a_mid_stream_disconnect_replays_the_answer() -> None:
+    """The same resend, but the client leaves after the stream has begun.
+
+    The answer's later writes then land on a closed socket. They must not end
+    the handler: the model call has to finish and the whole answer has to be
+    kept for the resend.
+    """
+    agent_session = _SlowAfterToolSession(early_delta="partial ")
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run", stream=True),
+            )
+            gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
+        continuation = _tool_result_request(gateway_call_id, "one result", stream=True)
+
+        async with ClientSession() as leaving:
+            started = await leaving.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            assert started.status == 200
+            opening = await started.content.readuntil(b"\n\n")
+            assert b"message_start" in opening
+            started.close()
+        await asyncio.sleep(0.1)
+
+        async with ClientSession() as client:
+            retry = asyncio.create_task(
+                client.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers=_headers(gateway),
+                    json=continuation,
+                )
+            )
+            await asyncio.sleep(0.1)
+            agent_session.release.set()
+            retried = await retry
+            retried_body = await retried.text()
+
+    assert retried.status == 200, retried_body
+    retried_events = _events(retried_body)
+    assert [event["type"] for event in retried_events][-1] == "message_stop"
+    texts = [
+        cast(dict[str, object], event.get("delta", {})).get("text")
+        for event in retried_events
+    ]
+    assert "partial " in texts
+    assert "done" in texts
+    assert not agent_session.cancelled.is_set()
+    assert len(agent_session.requests) == 1
+
+
+class _ClosingResponse:
+    """A response whose client is gone by the time the stream ends."""
+
+    def __init__(self) -> None:
+        self.written: list[bytes] = []
+
+    async def write(self, data: bytes) -> None:
+        self.written.append(data)
+
+    async def write_eof(self) -> None:
+        raise ConnectionResetError("Cannot write to closing transport")
+
+
+@pytest.mark.asyncio
+async def test_recording_keeps_the_answer_when_the_client_leaves_before_eof() -> None:
+    response = _ClosingResponse()
+    sink = codex_compat_gateway._RecordingSink(cast(web.StreamResponse, response))
+
+    await sink.write(b"event: message_stop\n\n")
+    await sink.write_eof()
+
+    assert response.written == [b"event: message_stop\n\n"]
+    assert sink.body == b"event: message_stop\n\n"

@@ -245,7 +245,9 @@ class TestStreamChat:
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         queue: asyncio.Queue = asyncio.Queue()
-        await queue.put((None, StreamError(errorText="executor crashed")))
+        await queue.put(
+            (None, StreamError(errorText="executor crashed", code="sdk_error"))
+        )
 
         with (
             patch(
@@ -264,6 +266,7 @@ class TestStreamChat:
                 pass
 
         assert excinfo.value.error_kind == "backend_stream_error"
+        assert excinfo.value.code == "sdk_error"
         assert "executor crashed" in str(excinfo.value)
 
     @pytest.mark.asyncio
