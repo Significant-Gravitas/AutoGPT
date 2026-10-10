@@ -19922,6 +19922,11 @@
             "title": "Expert Lookup Retry Count",
             "default": 0
           },
+          "limits_retry_count": {
+            "type": "integer",
+            "title": "Limits Retry Count",
+            "default": 0
+          },
           "user_timezone": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Timezone"

@@ -28,6 +28,7 @@ from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
     _MAX_EXPERT_LOOKUP_RETRIES,
+    _MAX_LIMITS_RETRIES,
     CopilotTurnJobArgs,
     CopilotTurnJobInfo,
     GraphExecutionJobArgs,
@@ -1174,6 +1175,30 @@ async def test_expert_lookup_and_cap_retries_have_independent_budgets():
     expert_kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
     assert expert_kwargs["cap_retry_count"] == _MAX_CAP_RETRIES
     assert expert_kwargs["expert_lookup_retry_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_cap_and_limits_retries_have_independent_budgets():
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_limits_unreadable(
+            _args(cap_retry_count=_MAX_CAP_RETRIES)
+        )
+        limits_kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
+        mock_client.reset_mock()
+        await _reschedule_one_shot_after_cap(
+            _args(limits_retry_count=_MAX_LIMITS_RETRIES)
+        )
+        cap_kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
+
+    assert (limits_kwargs["cap_retry_count"], limits_kwargs["limits_retry_count"]) == (
+        _MAX_CAP_RETRIES,
+        1,
+    )
+    assert (cap_kwargs["cap_retry_count"], cap_kwargs["limits_retry_count"]) == (
+        1,
+        _MAX_LIMITS_RETRIES,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2535,7 +2560,7 @@ async def test_a_one_shot_retry_that_gives_up_switches_its_routine_off(give_up):
         schedule_id="sched-retry",
         routine_id="routine-1",
         routine_schedule_id="sched-0",
-        cap_retry_count=_MAX_CAP_RETRIES if give_up == "exhausted" else 0,
+        limits_retry_count=_MAX_LIMITS_RETRIES if give_up == "exhausted" else 0,
     )
     scheduler_client = AsyncMock()
     scheduler_client.add_copilot_turn_schedule.side_effect = RuntimeError("down")

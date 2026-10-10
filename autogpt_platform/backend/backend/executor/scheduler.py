@@ -786,6 +786,7 @@ def _session_id_label(args: "CopilotTurnJobArgs") -> str:
 _CONCURRENCY_RETRY_DELAY_SECONDS = 300
 _MAX_CAP_RETRIES = 1
 _MAX_EXPERT_LOOKUP_RETRIES = 1
+_MAX_LIMITS_RETRIES = 1
 
 
 async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
@@ -800,12 +801,11 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
 async def _reschedule_one_shot_after_limits_unreadable(
     args: "CopilotTurnJobArgs",
 ) -> None:
-    # Shares the cap's retry budget: both are transient refusals on our side.
     await _reschedule_one_shot(
         args,
         reason="unreadable usage limits",
         name_suffix="limits-retry",
-        retry_kind="cap",
+        retry_kind="limits",
     )
 
 
@@ -825,7 +825,7 @@ async def _reschedule_one_shot(
     *,
     reason: str,
     name_suffix: str,
-    retry_kind: Literal["cap", "expert_lookup"],
+    retry_kind: Literal["cap", "expert_lookup", "limits"],
 ) -> None:
     """Re-create a one-shot copilot-turn schedule after a transient failure.
 
@@ -839,11 +839,19 @@ async def _reschedule_one_shot(
         max_retries = _MAX_CAP_RETRIES
         next_cap_retry_count = retry_count + 1
         next_expert_lookup_retry_count = args.expert_lookup_retry_count
+        next_limits_retry_count = args.limits_retry_count
+    elif retry_kind == "limits":
+        retry_count = args.limits_retry_count
+        max_retries = _MAX_LIMITS_RETRIES
+        next_cap_retry_count = args.cap_retry_count
+        next_expert_lookup_retry_count = args.expert_lookup_retry_count
+        next_limits_retry_count = retry_count + 1
     else:
         retry_count = args.expert_lookup_retry_count
         max_retries = _MAX_EXPERT_LOOKUP_RETRIES
         next_cap_retry_count = args.cap_retry_count
         next_expert_lookup_retry_count = retry_count + 1
+        next_limits_retry_count = args.limits_retry_count
 
     if retry_count >= max_retries:
         logger.error(
@@ -865,6 +873,7 @@ async def _reschedule_one_shot(
             name=f"{args.schedule_id or 'copilot'}-{name_suffix}",
             cap_retry_count=next_cap_retry_count,
             expert_lookup_retry_count=next_expert_lookup_retry_count,
+            limits_retry_count=next_limits_retry_count,
             # Preserve the user's timezone across the reschedule so the new
             # one-shot job's trigger/timezone matches the original request.
             user_timezone=args.user_timezone,
@@ -1839,6 +1848,7 @@ class CopilotTurnJobArgs(BaseModel):
     # concurrency-cap retry (or vice versa).
     cap_retry_count: int = 0
     expert_lookup_retry_count: int = 0
+    limits_retry_count: int = 0
     # Persisted so ``_reschedule_one_shot_after_cap`` can preserve the user's
     # timezone when re-creating a one-shot job after a concurrency-cap miss —
     # otherwise the rescheduled job's trigger defaults to UTC and the timezone
@@ -2579,6 +2589,7 @@ class Scheduler(AppService):
         user_timezone: str | None = None,
         cap_retry_count: int = 0,
         expert_lookup_retry_count: int = 0,
+        limits_retry_count: int = 0,
         organization_id: str | None = None,
         team_id: str | None = None,
         expert_id: str | None = None,
@@ -2593,9 +2604,9 @@ class Scheduler(AppService):
         the turn into it. Otherwise the turn resumes the named (existing)
         session with its full history, after re-validating that scope.
 
-        *cap_retry_count* and *expert_lookup_retry_count* are set internally
-        to bound their respective transient retry paths; normal callers should
-        leave both at 0.
+        *cap_retry_count*, *expert_lookup_retry_count* and *limits_retry_count*
+        are set internally to bound their respective transient retry paths;
+        normal callers should leave them at 0.
         """
         # Mirror add_graph_execution_schedule: validate the expert scope at
         # creation (active, owned, PRIVATE) and pin the schedule to the
@@ -2617,6 +2628,7 @@ class Scheduler(AppService):
             run_at=run_at,
             cap_retry_count=cap_retry_count,
             expert_lookup_retry_count=expert_lookup_retry_count,
+            limits_retry_count=limits_retry_count,
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
