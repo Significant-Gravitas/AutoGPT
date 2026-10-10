@@ -273,11 +273,12 @@ async def _run_block(
         )
         if isinstance(prep, ToolResponseBase) and not picker_only:
             return prep
-        if not isinstance(prep, ToolResponseBase) and is_ayrshare(
-            get_block_provider(prep.block)
-        ):
+        # Holding the managed Ayrshare credential says nothing about which
+        # networks are linked, so connecting hands over the linking link.
+        block = get_block(block_id)
+        if block is not None and is_ayrshare(get_block_provider(block)):
             return await ayrshare_connect_for_block(
-                user_id, prep.block, block_id, session.session_id
+                user_id, block, block_id, session.session_id
             )
         return CapabilityDetailsResponse(
             message=(
