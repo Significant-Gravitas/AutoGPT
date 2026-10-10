@@ -73,7 +73,7 @@
     "@vercel/analytics": "2.0.1",
     "@vercel/speed-insights": "1.2.0",
     "@xyflow/react": "12.9.2",
-    "ai": "6.0.134",
+    "ai": "7.0.123",
     "bcryptjs": "3.0.3",
     "better-auth": "1.6.22",
     "boring-avatars": "2.0.4",
