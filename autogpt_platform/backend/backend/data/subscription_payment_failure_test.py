@@ -523,7 +523,7 @@ async def test_new_plans_declined_first_payment_leaves_a_cancel_pending_trial():
 
 @pytest.mark.asyncio
 async def test_declined_in_place_trial_conversion_leaves_the_trial_alone():
-    """"Subscribe now" ends the trial with error_if_incomplete; a decline
+    """The in-place "Subscribe now" uses error_if_incomplete; a decline
     leaves the subscription trialing, so its failed invoice is no renewal to
     pay from the wallet or cut access for."""
     with World(balance=50000) as world:
