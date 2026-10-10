@@ -46,15 +46,16 @@ def test_resumed_notice_copy_is_unchanged(trial, urls):
     assert "You keep full access" not in email.text
 
 
-def _trial_subscription(trial: TrialState) -> dict:
+def _trial_subscription(trial: TrialState, **over) -> dict:
     return {
         "id": trial.subscription_id,
         "customer": trial.customer_id,
         "metadata": {"trial_enrollment_id": trial.id, "user_id": trial.user_id},
+        **over,
     }
 
 
-async def _on_update(trial: TrialState, previous: dict):
+async def _on_update(trial: TrialState, previous: dict, **payload):
     with (
         patch.object(
             notices,
@@ -66,7 +67,7 @@ async def _on_update(trial: TrialState, previous: dict):
         patch.object(notices, "notify_trial", AsyncMock(return_value=True)) as notify,
     ):
         handled = await notices.on_trial_subscription_updated(
-            _trial_subscription(trial), previous
+            _trial_subscription(trial, **payload), previous
         )
     return handled, notify
 
@@ -96,6 +97,28 @@ async def test_converting_early_from_a_pending_cancellation_is_not_a_resume(tria
     converted = trial.model_copy(update={"converted_at": datetime.now(UTC)})
     handled, notify = await _on_update(
         converted, {"cancel_at_period_end": True, "status": "trialing"}
+    )
+    assert handled
+    notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pending, previous",
+    [
+        (True, {"cancel_at_period_end": False, "canceled_at": None}),
+        (False, {"cancel_at_period_end": True, "canceled_at": 1789100000}),
+    ],
+    ids=["cancel", "resume"],
+)
+async def test_a_trial_era_flip_handled_after_conversion_is_not_paid_news(
+    trial, pending, previous
+):
+    """A cancel or resume made during the trial, retried or delivered after
+    the conversion, still describes the trial: no paid email, no notice."""
+    converted = trial.model_copy(update={"converted_at": datetime.now(UTC)})
+    handled, notify = await _on_update(
+        converted, previous, status="trialing", cancel_at_period_end=pending
     )
     assert handled
     notify.assert_not_awaited()

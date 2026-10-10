@@ -207,6 +207,7 @@ async def _notify_ended(trial, others: dict[str, list[str]]):
         ),
         patch.object(notices, "claim_once", AsyncMock(return_value=True)) as claim,
         patch.object(notices, "queue_trial_audience_change", AsyncMock()) as audience,
+        patch.object(notices, "leave_trial_group", AsyncMock()) as leave,
         patch.object(
             notices,
             "queue_notification_async",
@@ -216,7 +217,7 @@ async def _notify_ended(trial, others: dict[str, list[str]]):
     ):
         handled = await notices.notify_trial(raw, "ended")
     return handled, SimpleNamespace(
-        claim=claim, audience=audience, queue=queue, track=track
+        claim=claim, audience=audience, leave=leave, queue=queue, track=track, user=user
     )
 
 
@@ -229,11 +230,13 @@ async def _notify_ended(trial, others: dict[str, list[str]]):
 async def test_a_trial_ended_by_buying_another_plan_sends_nothing(trial, others):
     """Buying another plan while cancel-pending ends the trial subscription.
     No "trial ended" email, no trial_canceled overwrite of the new plan's
-    MailerLite status, no trial_ended event."""
+    MailerLite status, no trial_ended event. The person still leaves the
+    MailerLite trial group."""
     trial.status = "canceled"
     trial.cancel_at_period_end = True
     handled, sent = await _notify_ended(trial, others)
     assert handled
+    sent.leave.assert_awaited_once_with(sent.user)
     sent.claim.assert_not_awaited()
     sent.audience.assert_not_awaited()
     sent.queue.assert_not_awaited()
@@ -257,6 +260,7 @@ async def test_a_cancel_pending_trial_reaching_its_end_sends_the_ended_notice(
     trial.cancel_at_period_end = True
     handled, sent = await _notify_ended(trial, others)
     assert handled
+    sent.leave.assert_not_awaited()
     sent.audience.assert_awaited_once()
     assert sent.audience.await_args.args[0] == "ended"
     sent.queue.assert_awaited_once()

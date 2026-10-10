@@ -26,6 +26,7 @@ from backend.notifications.lifecycle_plan import format_amount
 from backend.notifications.queue import queue_notification_async
 from backend.notifications.trial_audience import (
     join_paying_audience,
+    leave_trial_group,
     queue_trial_audience_change,
 )
 from backend.util.posthog_events import PostHogEvent
@@ -81,9 +82,10 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
         return False
     if not _notice_applies(trial, kind, current):
         return True
-    if kind == "ended" and await _another_plan_is_live(trial, current):
-        return True
     user = await user_db().get_user_by_id(user_id)
+    if kind == "ended" and await _another_plan_is_live(trial, current):
+        await leave_trial_group(user)
+        return True
     data = trial_notice_data(trial, kind, user.name or "there")
     claim = trial_notice_key(trial, kind)
     data.notice_key = claim
@@ -202,8 +204,12 @@ async def on_trial_subscription_updated(subscription: dict, previous: dict) -> b
     if trial is None:
         return False
     if trial.converted_at is not None:
-        # Subscribe now on a cancel-pending trial ends the trial and clears the
-        # cancellation in one update: the conversion notice covers it.
+        # A payload still trialing is a trial-era cancel or resume handled
+        # after the conversion. Subscribe now on a cancel-pending trial ends
+        # the trial and clears the cancellation in one update. The trial's own
+        # notices cover both; only later flips are paid news.
+        if subscription.get("status") == "trialing":
+            return True
         was_trialing = previous.get("status") == "trialing"
         return was_trialing and "cancel_at_period_end" in previous
     if "cancel_at_period_end" in previous:
@@ -277,7 +283,8 @@ def _notice_applies(trial: TrialState, kind: TrialNoticeKind, current: dict) -> 
 
 async def _another_plan_is_live(trial: TrialState, current: dict) -> bool:
     """A trial ended by buying another plan is not news, and its trial_canceled
-    status must not overwrite the new plan's."""
+    status must not overwrite the new plan's. The person still leaves the
+    trial group."""
     for status in ("active", "trialing"):
         page = await stripe_call(
             stripe.Subscription.list_async,
