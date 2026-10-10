@@ -52,7 +52,14 @@ def test_get_vapid_public_key_empty(mocker):
     assert data["public_key"] == ""
 
 
-def test_subscribe_push(mocker, test_user_id):
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://fcm.googleapis.com/fcm/send/abc123",
+        "https://jmt17.google.com/fcm/send/abc123",
+    ],
+)
+def test_subscribe_push(mocker, test_user_id, endpoint):
     mock_upsert = mocker.patch(
         "backend.api.features.push.routes.upsert_push_subscription",
         new_callable=AsyncMock,
@@ -61,7 +68,7 @@ def test_subscribe_push(mocker, test_user_id):
     response = client.post(
         "/subscribe",
         json={
-            "endpoint": "https://fcm.googleapis.com/fcm/send/abc123",
+            "endpoint": endpoint,
             "keys": {
                 "p256dh": "test-p256dh-key",
                 "auth": "test-auth-key",
@@ -73,7 +80,7 @@ def test_subscribe_push(mocker, test_user_id):
     assert response.status_code == 204
     mock_upsert.assert_awaited_once_with(
         user_id=test_user_id,
-        endpoint="https://fcm.googleapis.com/fcm/send/abc123",
+        endpoint=endpoint,
         p256dh="test-p256dh-key",
         auth="test-auth-key",
         user_agent="Mozilla/5.0 Test",

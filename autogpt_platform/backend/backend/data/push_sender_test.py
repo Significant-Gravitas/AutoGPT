@@ -196,11 +196,20 @@ class TestSendPushForUser:
         assert "https://fcm.googleapis.com/fcm/send/sub/2" in endpoints_called
 
     @pytest.mark.asyncio
-    async def test_webpush_called_with_correct_args(self, mocker, mock_db_client):
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "https://fcm.googleapis.com/fcm/send/sub/1",
+            "https://jmt17.google.com/fcm/send/sub/1",
+        ],
+    )
+    async def test_webpush_called_with_correct_args(
+        self, mocker, mock_db_client, endpoint
+    ):
         mocker.patch.object(push_sender, "_settings", _make_settings())
         sub = _make_subscription(
             user_id="user-1",
-            endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
+            endpoint=endpoint,
             p256dh="key-p256dh",
             auth="key-auth",
         )
@@ -212,12 +221,13 @@ class TestSendPushForUser:
         mock_webpush.assert_called_once()
         call_kwargs = mock_webpush.call_args.kwargs
         assert call_kwargs["subscription_info"] == {
-            "endpoint": "https://fcm.googleapis.com/fcm/send/sub/1",
+            "endpoint": endpoint,
             "keys": {"p256dh": "key-p256dh", "auth": "key-auth"},
         }
         assert call_kwargs["vapid_private_key"] == "vapid-private"
         assert call_kwargs["vapid_claims"] == {"sub": "mailto:push@agpt.co"}
         assert isinstance(call_kwargs["data"], str)
+        mock_db_client.delete_push_subscription.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_removes_subscription_on_410_gone(self, mocker, mock_db_client):

@@ -278,6 +278,7 @@ class TestValidatePushEndpoint:
         "endpoint",
         [
             "https://fcm.googleapis.com/fcm/send/abc",
+            "https://jmt17.google.com/fcm/send/abc",
             "https://updates.push.services.mozilla.com/wpush/v2/xyz",
             "https://web.push.apple.com/some-token",
         ],
@@ -305,6 +306,25 @@ class TestValidatePushEndpoint:
     )
     async def test_rejects_untrusted_hosts(self, endpoint):
         with pytest.raises(ValueError):
+            await push_subscription.validate_push_endpoint(endpoint)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "https://jmt17.google.com.evil.example/fcm/send/abc",
+            "https://evil-jmt17.google.com/fcm/send/abc",
+            "https://www.google.com/fcm/send/abc",
+        ],
+    )
+    async def test_rejects_lookalike_hosts(self, mocker, endpoint):
+        # Resolve publicly so the allowlist, not a DNS failure, does the refusing.
+        mocker.patch(
+            "backend.util.request._resolve_host",
+            new_callable=AsyncMock,
+            return_value=["8.8.8.8"],
+        )
+        with pytest.raises(ValueError, match="not a recognised Web Push service"):
             await push_subscription.validate_push_endpoint(endpoint)
 
     @pytest.mark.asyncio

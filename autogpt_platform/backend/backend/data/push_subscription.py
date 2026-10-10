@@ -15,9 +15,11 @@ logger = logging.getLogger(__name__)
 # clients must match one of these; everything else is rejected to prevent
 # the backend (which POSTs to the stored URL via pywebpush) from being
 # used as an SSRF primitive against internal infrastructure.  Covers Chrome/
-# Edge/Brave (FCM), Firefox (Autopush), and Safari/macOS (Apple Web Push).
+# Brave (FCM; Chrome also hands out jmt17.google.com endpoints), Firefox
+# (Autopush), and Safari/macOS (Apple Web Push).
 _PUSH_SERVICE_HOSTNAMES: list[str] = [
     "fcm.googleapis.com",
+    "jmt17.google.com",
     "updates.push.services.mozilla.com",
     "web.push.apple.com",
 ]
