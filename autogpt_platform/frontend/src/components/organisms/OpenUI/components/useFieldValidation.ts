@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 
-export function useFieldValidation(message: string) {
+export function useFieldValidation(message: string, validateOnInput = false) {
   const ref = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [touched, setTouched] = useState(false);
   const [composing, setComposing] = useState(false);
@@ -10,6 +10,9 @@ export function useFieldValidation(message: string) {
 
   function onBlur() {
     setTouched(true);
+  }
+  function onInput() {
+    if (validateOnInput) setTouched(true);
   }
   function onInvalid(event: SyntheticEvent) {
     event.preventDefault();
@@ -30,6 +33,7 @@ export function useFieldValidation(message: string) {
     ref: setRef,
     error: touched && !composing ? message : "",
     onBlur,
+    onInput,
     onInvalid,
     onCompositionStart,
     onCompositionEnd,

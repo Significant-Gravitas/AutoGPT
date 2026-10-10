@@ -131,7 +131,7 @@ function MainArea({
               "flex flex-col gap-3 px-4 pt-4 empty:hidden",
               // Clear the floating inset-header controls (sidebar toggle +
               // workspace-files trigger) that overlay the top-left corner.
-              showNewLayout && "max-lg:pt-16",
+              (showNewLayout || isMobile) && "max-lg:pt-16",
             )}
           >
             <LowCreditBanner />
@@ -141,7 +141,7 @@ function MainArea({
             key={`chat-host-${sessionId ?? "new"}`}
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={() => setDroppedFiles([])}
-            hasFloatingControls={showNewLayout}
+            hasFloatingControls={showNewLayout || isMobile}
           />
           {/* Owns the session-entry reset that forgets the previous chat's
               artifact. */}

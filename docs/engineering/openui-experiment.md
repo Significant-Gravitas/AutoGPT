@@ -139,3 +139,93 @@ The catalog adds six components: `Comparison`, `CostTable`, `CalculatedMetric`, 
 The richer controls submit multiline text, booleans and arrays as typed values. Fields, choices and cost-row drafts use the existing exact-source session storage, including Strict Mode restoration and failed-send retry behavior. Shared conversations disable edits and sends. NumberField's documented `null` bounds now survive the upstream parser's required-prop check.
 
 `backend/copilot/eval/openui/connected-journeys.jsonl` freezes sixteen additional scenarios: eight positive, six negative and two boundary cases, with four held out from development. The separate Desktop collection `OpenUI-connected-2026-10-10` contains raw live runs, outcomes, browser evidence and code checks. Read its final report for measured results and remaining limitations; component counts alone are not evidence of task quality.
+
+
+### October 10: recovery and constraint reliability
+
+Copilot now serializes replacement stream requests per session. A reconnect
+aborts both the SDK connection and the underlying fetch, waits for the previous
+request to finish cleaning up, then starts the replacement. Concurrent wake-up
+requests coalesce while draining; an explicit Stop cancels queued reconnects and
+suppresses later automatic resumes until the next user message. Automatic
+reconnects do not cancel the backend task. This addresses the reproduced SDK
+`activeResponse.state` race; it does not certify every existing replay/deduplication
+path. Regression tests use the actual chat runtime, abort-aware streams and a
+stalled POST followed by wake-up, rendered UI and a new user turn.
+
+Numeric fields and cost inputs now show their accessible local warning while the
+user types, with warnings withheld during IME composition. Invalid drafts stay in
+the browser and block submission. Mobile chat content also clears the floating
+session/file controls in both layout variants. These changes retain inline views
+and same-conversation submissions.
+
+Generation guidance now distinguishes independent cost rows from charges driven
+by one shared headcount or duration. It asks the model to test both choices and a
+changed quantity, preserve flat fees, retain the scope of supplied facts in each
+comparison cell, reconcile timeline metrics and prose, leave infeasible work
+unscheduled, and clarify conflicting inputs before generating a form. It preserves
+multiple requested destinations and verified alternatives across revisions.
+Research limits are prompt guidance, not enforced execution quotas.
+
+The additional frozen fixture `backend/copilot/eval/openui/reliability-journeys.jsonl`
+contains 32 scenarios and 50 turns: 16 positive, ten negative and six boundary
+cases. Twenty scenarios are used for development and twelve are reserved for the
+selected candidate. Known bike, SF, commute and work-hour failures are explicit
+development regressions, not presented as unseen tests. Shared-headcount costs,
+warranty scope, museum duration reductions, progress preservation and contradictory
+order inputs have outcome-based criteria as well as parser and UI-selection checks.
+The separate Desktop collection `OpenUI-reliability-2026-10-10` retains frozen
+criteria, candidate snapshots, every accepted response, explicit per-turn reviews,
+formula probes, browser evidence and unsuccessful check attempts.
+
+
+The development baseline passed 18/20 complete journeys. Three development
+candidates then ran twice per case: 34/40, 38/40 and 38/40 strict passes. Candidate
+three was frozen for the held-out check because it preserved generic warranty
+scope and multiple requested museums more consistently in those observations.
+This is a selection judgment, not proof of a general quality improvement. Its
+remaining frozen-rubric failures were calling a museum source verified after a
+404 lookup (the footer did contain the correct hours), and stating $356.25 in
+prose while the connected estimate correctly computed $356.00. Two additional
+observations outside the narrow rubric record rewritten historical work hours
+and a confused affordability-versus-relative-price threshold. They are displayed
+separately rather than silently changing the frozen grading criteria.
+
+All 48 published candidate-three views passed canonical validation, and all 64
+turns chose UI or text appropriately. One SF revision still took 724 seconds and
+exceeded the guided research budget. The median was 25.8 seconds; provider load
+and concurrent local checks were not controlled. These results do not establish
+reliable latency or semantic correctness. Scoring remains implementer-authored
+and reviewed, without independent or blinded assessment.
+
+A fresh live browser journey verified shared-headcount arithmetic: changing 12
+to 13 people recalculated Bento from $277 to $298 and Buffet from $325 to $350.
+Letters produced an immediate local warning while focused and withheld the total.
+Choice, number and notes survived reload. Submitting Buffet for 13 people sent
+a typed number and notes into the same chat; the real model replied with $350
+and retained the unverified access condition. Manual drag/undo and layout checks
+covered narrow Chromium viewports, not native iOS or Android devices.
+
+Focused backend verification passed 45 tests. Frontend lint, types and applicable
+pre-commit hooks passed. The full frontend run recorded 9,713 passes, one timeout in an unchanged
+ChatSidebar test and two expected failures across 893 files. That file and
+focused recovery/input/catalog cases passed 38/38 on a sequential rerun; the
+broad run remains failed. Whole-tree backend formatting's additional typecheck
+still reports missing Playwright imports in three unchanged vendored examples;
+the configured scoped pre-commit check passes. All failed attempts are retained.
+
+The selected candidate passed **21/24 held-out journeys**, with 33/36 task-turn
+passes, 36/36 appropriate UI choices and 27/27 structurally valid published views.
+All eight held-out negative episodes stayed text or clarification only. The
+three failed journeys involved unsupported prior-use-risk advice, incorrect
+initially published schedule metrics before a later repair, and an unknown
+monthly ink price defaulted to zero in a calculator. The last failure shows that
+valid schemas and arithmetic do not establish a valid input assumption. There
+was no tuning from held-out responses.
+
+The complete collection contains 164 live episodes and 260 user turns, not 164
+distinct scenarios. Three held-out turns also have additional observations about
+availability and rounded break-even claims outside the narrow frozen rubric.
+H03 does not specify the participants in a later joint review after one presenter
+leaves; its pass criteria establish rehearsal timing, not attendance at that
+review. These limitations are retained in the report and protocol disclosures.

@@ -19,7 +19,7 @@ export function NumberFieldView({
   const field = useFieldView<string | number>(props.name, props.value ?? "");
   const message = numberFieldError(String(field.value), props);
   useDerivedField(`${props.name}__valid`, !message);
-  const validation = useFieldValidation(message);
+  const validation = useFieldValidation(message, true);
   const { error, ...handlers } = validation;
   return (
     <FieldFeedback id={`${id}-error`} error={error}>

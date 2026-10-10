@@ -38,8 +38,8 @@ describe("local generated form validation", () => {
     const budget = await screen.findByLabelText("Budget");
     await user.clear(budget);
     await user.paste("not a number");
-    await user.tab();
     expect(screen.getByText(/Enter a number/)).toBeDefined();
+    expect(document.activeElement).toBe(budget);
     expect(budget.getAttribute("aria-invalid")).toBe("true");
     expect(
       document.getElementById(budget.getAttribute("aria-describedby")!)

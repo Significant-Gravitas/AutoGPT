@@ -15,6 +15,7 @@ export function CostInput({ label, kind, value, disabled, onChange }: Props) {
   const id = useId();
   const { error, ...handlers } = useFieldValidation(
     disabled ? "" : costInputError(value, kind),
+    true,
   );
   return (
     <div className="min-w-0">

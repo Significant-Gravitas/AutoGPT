@@ -63,8 +63,8 @@ describe("connected interactive plans in the conversation", () => {
       await screen.findByRole("button", { name: "Choose City hotel" }),
     );
     const price = screen.getByLabelText("Museum tickets unit price");
-    fireEvent.change(price, { target: { value: "abc" } });
-    fireEvent.blur(price);
+    fireEvent.focus(price);
+    fireEvent.input(price, { target: { value: "abc" } });
     expect(await screen.findByText(/Enter a number/)).toBeDefined();
     expect(screen.queryByText("$246.00")).toBeNull();
     expect(

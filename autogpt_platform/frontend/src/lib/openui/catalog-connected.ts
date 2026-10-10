@@ -53,7 +53,7 @@ export const costRowSchema = z.object({
 export const CostTable = defineComponent({
   name: "CostTable",
   description:
-    "Editable line items inside Form: quantities, unit prices, and include/exclude controls. Up to eight rows with unique ids. Recalculates included row totals locally; exposes the rows at name and a numeric name_total to CalculatedMetric. One ISO currency per table. Unknown prices must be clarified, never entered as 0. Use this for a budget or estimate, not arbitrary datasets. It does not purchase anything.",
+    "Editable line items inside Form: quantities, unit prices, and include/exclude controls. Up to eight rows with unique ids. Recalculates included row totals locally; exposes the rows at name and a numeric name_total to CalculatedMetric. Row quantities are independent: they do not follow a separate NumberField. For charges driven by a shared headcount or duration, use that NumberField directly in CalculatedMetric instead of copying its initial value into a row. One ISO currency per table. Unknown prices must be clarified, never entered as 0. Use this for a budget or estimate, not arbitrary datasets. It does not purchase anything.",
   props: z
     .object({
       name: shortText,
@@ -71,7 +71,7 @@ export const CostTable = defineComponent({
 export const CalculatedMetric = defineComponent({
   name: "CalculatedMetric",
   description:
-    "A summary that updates locally from fields in the named Form. formula uses exact numeric field names, constants, + - * / and parentheses; count(interests) counts a MultiSelectField. Example: stay_amount * nights + extras_total. Use NumberField names, Comparison's name_amount and CostTable's name_total. No JavaScript or metric-to-metric references. Incomplete/invalid inputs pause the result. format is number, currency (unit=ISO currency), or percent (ratio 0.5 => 50%). Never use static Metric for values that should recalculate.",
+    "A summary that updates locally from fields in the named Form. formula uses exact numeric field names, constants, + - * / and parentheses; count(interests) counts a MultiSelectField. Examples: stay_amount * nights + extras_total; (stay_amount + breakfast_rate) * nights + booking_fee. Reuse the same quantity field for every dependent charge, and keep flat fees outside that multiplication. Verify both choices and a changed quantity. Use NumberField names, Comparison's name_amount and CostTable's name_total. No JavaScript or metric-to-metric references. Incomplete/invalid inputs pause the result. format is number, currency (unit=ISO currency), or percent (ratio 0.5 => 50%). Never use static Metric for values that should recalculate.",
   props: z
     .object({
       form: shortText,
