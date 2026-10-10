@@ -263,7 +263,9 @@ from ._test_data import make_session
 # Measured 85,529; preserve the existing 300-char margin. Wire budget is unchanged.
 # Explicit component limits and splitting guidance add 426 deferred characters.
 # Measured 85,955; preserve the existing 300-char margin. Wire budget is unchanged.
-_CHAR_BUDGET = 86_255
+# Shared-quantity and formula guidance adds 434 deferred characters in #15362.
+# CI merge ref measures 86,359; preserve the 300-char margin. Wire is unchanged.
+_CHAR_BUDGET = 86_659
 
 
 @pytest.fixture(scope="module")
