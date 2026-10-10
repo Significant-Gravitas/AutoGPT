@@ -107,6 +107,7 @@ from backend.util.exceptions import (
     PreconditionFailed,
 )
 from backend.util.feature_flag import initialize_feature_flags, shutdown_feature_flags
+from backend.api.middleware.guard import attach_guard
 from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
 
@@ -290,6 +291,9 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 # Add GZip compression middleware for large responses (like /api/blocks)
 app.add_middleware(GZipMiddleware, minimum_size=50_000)  # 50KB threshold
+
+# Optional fastapi-guard security middleware (off unless AUTOGPT_GUARD_ENABLED)
+attach_guard(app)
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)

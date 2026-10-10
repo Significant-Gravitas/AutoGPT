@@ -22,6 +22,7 @@ from backend.monitoring.instrumentation import (
     instrument_fastapi,
     update_websocket_connections,
 )
+from backend.api.middleware.guard import attach_guard
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
 
@@ -53,6 +54,9 @@ async def lifespan(app: FastAPI):
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan, docs_url=docs_url)
+
+# Optional fastapi-guard security middleware (off unless AUTOGPT_GUARD_ENABLED)
+attach_guard(app)
 _connection_manager = None
 
 # Add Prometheus instrumentation
