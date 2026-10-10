@@ -345,6 +345,40 @@ async def test_a_long_run_of_wakes_that_may_not_start_drains_without_recursing()
 
 
 @pytest.mark.asyncio
+async def test_the_drain_stops_at_a_head_the_access_gate_refuses() -> None:
+    """A wake that may never start is closed and the next head tried; one the
+    shared access gate refuses stays queued, unclaimed, for a later tick."""
+    closed, refused = _mock_session("closed"), _mock_session("refused")
+    closed.metadata.llm_auth_provider = "microsoft_365_copilot"
+    refused.metadata.llm_auth_provider = "codex"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata={held._WAKE_KEY: True})
+    )
+    claim = AsyncMock(return_value=True)
+
+    with (
+        patch.object(
+            turn_queue,
+            "list_queued_sessions",
+            new=AsyncMock(side_effect=[[closed, refused], [refused]]),
+        ),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=False)),
+        patch.object(turn_queue, "claim_queued_session", new=claim),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "append_and_save_message", new=AsyncMock()),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is False
+
+    claim.assert_awaited_once_with("closed")
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="closed", expect_status="running", status="idle"
+    )
+
+
+@pytest.mark.asyncio
 async def test_unparseable_stored_permissions_read_the_sessions_current_ones() -> None:
     """Not left stuck at the head of the queue, and never read as none."""
     head = _mock_session()
