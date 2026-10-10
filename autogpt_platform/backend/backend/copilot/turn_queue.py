@@ -33,7 +33,7 @@ import uuid
 from typing import Any, Literal, Mapping
 
 from prisma.errors import UniqueViolationError
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from backend.copilot.active_turns import (
     TurnSlot,
@@ -321,9 +321,9 @@ async def _promote_head(user_id: str) -> bool | None:
             if await _may_start(gates, candidate):
                 head = candidate
                 break
-    except RateLimitUnavailable:
+    except _QueueOnHold as hold:
         logger.warning(
-            f"dispatch_next_for_user: rate-limit service degraded for user={user_id}; "
+            f"dispatch_next_for_user: user={user_id} {hold}; "
             "leaving queue intact for the next tick"
         )
         return False
@@ -464,15 +464,13 @@ async def _is_sub_work(session: ChatSessionInfo) -> bool:
 
 
 async def _may_start(gates: "_UserGates", head: ChatSessionInfo) -> bool:
-    """Whether ``head`` may start now: its route's entitlement and, on the
-    platform route, the paywall, the rate limits and an Advanced turn's tier."""
+    """Whether ``head`` may start now: :func:`turn_refusal` for its route and,
+    on the platform route, an Advanced turn's tier."""
     route_provider = head.metadata.llm_auth_provider
-    if route_provider == "codex":
-        return await gates.codex_access()
+    if not await gates.route_open(route_provider):
+        return False
     if route_provider != "platform":
         return True
-    if not await gates.platform_spend():
-        return False
     # A turn can sit in the queue long enough for the plan that bought it to
     # lapse. The tier was checked when the turn was accepted, but promoting it
     # is a second, later decision to spend, so it gets its own check --
@@ -492,30 +490,26 @@ async def _may_start(gates: "_UserGates", head: ChatSessionInfo) -> bool:
 
 
 class _UserGates:
-    """The per-user checks, made at most once per dispatch however many queued
-    sessions are tried."""
+    """The per-user checks, made once per pass over the queue however many
+    queued sessions are tried."""
 
     def __init__(self, user_id: str) -> None:
         self.user_id = user_id
-        self._codex: bool | None = None
-        self._platform: bool | None = None
+        self._refusals: dict[CopilotLlmAuthProvider, TurnRefusal | None] = {}
         self._advanced: bool | None = None
 
-    async def codex_access(self) -> bool:
-        if self._codex is None:
-            self._codex = await has_codex_access(self.user_id)
-            if not self._codex:
-                logger.info(
-                    f"dispatch_next_for_user: user={self.user_id} lacks Codex entitlement"
-                )
-        return self._codex
-
-    async def platform_spend(self) -> bool:
-        """The paywall and the rate limits. Raises :class:`RateLimitUnavailable`,
-        which leaves the whole queue for the next tick."""
-        if self._platform is None:
-            self._platform = await self._platform_spend()
-        return self._platform
+    async def route_open(self, route: CopilotLlmAuthProvider) -> bool:
+        """Raises :class:`_QueueOnHold` when the gate could not read the user's
+        state, which leaves the whole queue for the next tick."""
+        if route not in self._refusals:
+            self._refusals[route] = await turn_refusal(self.user_id, route)
+        refusal = self._refusals[route]
+        if refusal is None:
+            return True
+        if refusal.transient:
+            raise _QueueOnHold(refusal.reason)
+        logger.info(f"dispatch_next_for_user: user={self.user_id} {refusal.reason}")
+        return False
 
     async def advanced_tier(self) -> bool:
         if self._advanced is None:
@@ -530,28 +524,9 @@ class _UserGates:
                 self._advanced = False
         return self._advanced
 
-    async def _platform_spend(self) -> bool:
-        if await is_user_paywalled(self.user_id):
-            logger.info(f"dispatch_next_for_user: user={self.user_id} paywalled")
-            return False
-        cfg = ChatConfig()
-        daily_limit, weekly_limit, _ = await get_global_rate_limits(
-            self.user_id,
-            cfg.daily_cost_limit_microdollars,
-            cfg.weekly_cost_limit_microdollars,
-        )
-        try:
-            await check_rate_limit(
-                user_id=self.user_id,
-                daily_cost_limit=daily_limit,
-                weekly_cost_limit=weekly_limit,
-            )
-        except RateLimitExceeded as exc:
-            logger.info(
-                f"dispatch_next_for_user: user={self.user_id} rate-limited ({exc})"
-            )
-            return False
-        return True
+
+class _QueueOnHold(Exception):
+    """Nothing is promoted this tick: the user's state could not be read."""
 
 
 def is_users_own_chat(session: ChatSessionInfo) -> bool:
@@ -649,3 +624,45 @@ def _promotion_permissions(
         if current is None
         else queued.merged_with_parent(current, ALL_TOOL_NAMES)
     )
+
+
+class TurnRefusal(BaseModel):
+    reason: str
+    # The usage store was unreadable: an outage, not the user's state.
+    transient: bool = False
+
+
+async def turn_refusal(
+    user_id: str, llm_auth_provider: CopilotLlmAuthProvider
+) -> TurnRefusal | None:
+    """Why a turn billed to this route may not start for this user, if so.
+
+    Access first (Codex entitlement, the platform paywall), then the platform
+    route's usage: its daily and weekly windows and a trial's total budget.
+    Lookup errors propagate, so each caller decides what an unknown means.
+    """
+    if llm_auth_provider == "codex":
+        if await has_codex_access(user_id):
+            return None
+        return TurnRefusal(reason="lacks Codex entitlement")
+    if llm_auth_provider != "platform":
+        return None
+    if await is_user_paywalled(user_id):
+        return TurnRefusal(reason="paywalled")
+    cfg = ChatConfig()
+    try:
+        daily_limit, weekly_limit, _ = await get_global_rate_limits(
+            user_id,
+            cfg.daily_cost_limit_microdollars,
+            cfg.weekly_cost_limit_microdollars,
+        )
+        await check_rate_limit(
+            user_id=user_id,
+            daily_cost_limit=daily_limit,
+            weekly_cost_limit=weekly_limit,
+        )
+    except RateLimitExceeded as exc:
+        return TurnRefusal(reason=f"rate-limited ({exc})")
+    except RateLimitUnavailable:
+        return TurnRefusal(reason="has unreadable usage limits", transient=True)
+    return None

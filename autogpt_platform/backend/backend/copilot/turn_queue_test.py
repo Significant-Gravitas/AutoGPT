@@ -381,6 +381,58 @@ async def test_a_head_taken_since_it_was_listed_does_not_stop_promotion() -> Non
 
 
 @pytest.mark.asyncio
+async def test_a_turn_the_access_gate_refuses_does_not_hold_up_the_next() -> None:
+    """A wake that may never start is closed; a turn the shared access gate
+    refuses stays queued, unclaimed, and the next one that may start does."""
+    closed, refused, admissible = (
+        _queued_row("closed"),
+        _queued_row("refused"),
+        _queued_row("admissible"),
+    )
+    # An automation's session: not the user's own chat, and not sub-work.
+    closed.metadata.origin = "automation"
+    for row in (closed, admissible):
+        row.metadata.llm_auth_provider = "microsoft_365_copilot"
+    refused.metadata.llm_auth_provider = "codex"
+    waiting = {
+        "closed": _pyd_message(metadata={held._WAKE_KEY: True}),
+        "refused": _pyd_message(),
+        "admissible": _pyd_message(),
+    }
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(side_effect=waiting.get)
+    claim = AsyncMock(return_value="admitted")
+    dispatched = AsyncMock()
+
+    with (
+        patch.object(
+            turn_queue,
+            "list_queued_sessions",
+            new=AsyncMock(
+                side_effect=[[closed, refused, admissible], [refused, admissible]]
+            ),
+        ),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=False)),
+        patch.object(turn_queue, "claim_queued_session", new=claim),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "append_and_save_message", new=AsyncMock()),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatched),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is True
+
+    assert [c.args[0].session_id for c in claim.await_args_list] == [
+        "closed",
+        "admissible",
+    ]
+    assert dispatched.await_args.kwargs["session_id"] == "admissible"
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="closed", expect_status="running", status="idle"
+    )
+
+
+@pytest.mark.asyncio
 async def test_unparseable_stored_permissions_read_the_sessions_current_ones() -> None:
     """Not left stuck at the head of the queue, and never read as none."""
     head = _queued_row()
