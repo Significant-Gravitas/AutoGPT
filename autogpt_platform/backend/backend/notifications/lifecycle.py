@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 import stripe
 from prisma.enums import NotificationType
 
+from backend.data.credit import REPLACED_PLAN_CANCELLATION_COMMENT
 from backend.data.notifications import (
     AudienceAction,
     NotificationEventModel,
@@ -304,6 +305,10 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
 async def on_subscription_deleted(subscription: dict) -> None:
     """Two roads lead here — a cancellation reaching period end, and dunning
     exhaustion — so the copy branches on which one the customer took."""
+    details = subscription.get("cancellation_details") or {}
+    if details.get("comment") == REPLACED_PLAN_CANCELLATION_COMMENT:
+        # Ended because the customer has another plan; they did not leave.
+        return
     if await notify_trial(subscription, "ended"):
         return
     user = await _user_for(subscription.get("customer"))

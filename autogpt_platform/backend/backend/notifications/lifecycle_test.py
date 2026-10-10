@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from prisma.enums import NotificationType, SubscriptionTier
 
+from backend.data.credit import REPLACED_PLAN_CANCELLATION_COMMENT
 from backend.data.notifications import (
     AudienceAction,
     NotificationResult,
@@ -322,6 +323,24 @@ async def test_the_ended_email_branches_on_which_road_they_took():
         _User(),
     )
     assert calls["notify"].await_args.args[0].data.due_to_payment is False
+
+
+@pytest.mark.asyncio
+async def test_an_old_plan_ended_because_another_replaced_it_is_not_churn():
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(
+            _subscription(
+                cancellation_details={
+                    "reason": "cancellation_requested",
+                    "comment": REPLACED_PLAN_CANCELLATION_COMMENT,
+                }
+            )
+        ),
+        _User(),
+    )
+    calls["notify"].assert_not_awaited()
+    calls["ended"].assert_not_called()
+    calls["audience"].assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -18,7 +18,10 @@ import stripe
 from prisma.enums import CreditTransactionType, SubscriptionTier
 from prisma.errors import UniqueViolationError
 
-from backend.data.credit import sync_subscription_from_stripe
+from backend.data.credit import (
+    REPLACED_PLAN_CANCELLATION_COMMENT,
+    sync_subscription_from_stripe,
+)
 from backend.data.subscription_payment_failure import (
     handle_subscription_payment_failure,
 )
@@ -149,16 +152,34 @@ class FakeStripe:
         return self.view(invoice_id)
 
     async def cancel(self, sub_id: str, **params):
+        self._maybe_fail("cancel")
         sub = self.subscriptions[sub_id]
         if sub["status"] == "canceled":
             raise stripe.InvalidRequestError("already canceled", None)
-        sub["status"] = "canceled"
+        sub.update(status="canceled", cancellation_details=params.get(
+            "cancellation_details"
+        ))
         self.cancelled.append(sub_id)
         return dict(sub)
 
-    async def void(self, invoice_id: str, **params):
+    async def list_invoices(self, subscription: str, status: str, limit: int):
+        page = MagicMock()
+        page.data = [
+            stripe.Invoice.construct_from(self.view(inv["id"]), "sk_test")
+            for inv in self.invoices.values()
+            if inv["subscription"] == subscription and inv["status"] == status
+        ]
+        page.has_more = False
+        return page
+
+    async def void(self, invoice_id: str):
+        self._maybe_fail("void")
+        invoice = self.invoices[invoice_id]
+        if invoice["status"] not in ("open", "uncollectible"):
+            raise stripe.InvalidRequestError("not open", None)
+        invoice["status"] = "void"
         self.voided.append(invoice_id)
-        raise AssertionError("an unpaid invoice must stay payable")
+        return self.view(invoice_id)
 
     async def list_subscriptions(self, customer: str, status: str, limit: int):
         page = MagicMock()
@@ -309,6 +330,7 @@ class World:
             ),
             patch.object(stripe.Invoice, "retrieve_async", fs.retrieve_invoice),
             patch.object(stripe.Invoice, "pay_async", fs.pay),
+            patch.object(stripe.Invoice, "list_async", fs.list_invoices),
             patch.object(stripe.Invoice, "void_invoice_async", fs.void),
             patch.object(
                 stripe.Subscription, "retrieve_async", fs.retrieve_subscription
@@ -402,11 +424,14 @@ async def test_old_failure_never_cancels_a_newer_active_subscription():
         world.stripe.add_invoice("in_new", "sub_new", status="paid")
         await handle_subscription_payment_failure(event)
 
-    assert world.stripe.cancelled == []
+    # The replaced old plan is ended so Stripe cannot revive it, and the
+    # tier is recomputed from it, so the sync sees sub_new and keeps the
+    # paid tier, instead of a blanket NO_TIER write.
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.voided == ["in_old"]
     assert world.stripe.subscriptions["sub_new"]["status"] == "active"
-    # The tier is recomputed from the failed subscription, so the sync sees
-    # sub_new and keeps the paid tier, instead of a blanket NO_TIER write.
     assert [s["id"] for s in world.synced] == ["sub_old"]
+    assert world.synced[0]["status"] == "canceled"
     assert world.tier == SubscriptionTier.PRO
     assert world.tier_writes == []
 
@@ -424,19 +449,37 @@ def _superseded_by_a_newer_plan(world: World, balance: int) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_wallet_never_pays_a_subscription_a_newer_plan_replaced():
+async def test_replaced_subscription_is_cancelled_and_voided_never_paid():
     """Paying the old invoice would reactivate the old plan, and its update
     event would cancel the newer one as a stale duplicate."""
     with World() as world:
         event = _superseded_by_a_newer_plan(world, balance=5000)
         await handle_subscription_payment_failure(event)
+        # Stripe's events for the cancel.
         await world.subscription_updated("sub_old")
 
     assert world.ledger.transactions == {}
     assert world.stripe.paid_out_of_band == []
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.subscriptions["sub_old"]["cancellation_details"] == {
+        "comment": REPLACED_PLAN_CANCELLATION_COMMENT
+    }
+    assert world.stripe.voided == ["in_old"]
     assert world.stripe.subscriptions["sub_new"]["status"] == "active"
-    assert "sub_new" not in world.stripe.cancelled
     assert world.tier == SubscriptionTier.MAX
+    assert world.tier_writes == []
+
+
+@pytest.mark.asyncio
+async def test_a_trialing_plan_also_replaces_an_old_subscription():
+    with World() as world:
+        event = _renewal_failed(world, sub_id="sub_old", invoice_id="in_old")
+        world.stripe.add_subscription("sub_new", "trialing", price="price_max")
+        await handle_subscription_payment_failure(event)
+
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.voided == ["in_old"]
+    assert world.stripe.subscriptions["sub_new"]["status"] == "trialing"
 
 
 @pytest.mark.asyncio
@@ -451,10 +494,98 @@ async def test_started_wallet_payment_is_refunded_once_a_newer_plan_replaced_it(
         )
 
         await handle_subscription_payment_failure(event)
+        await handle_subscription_payment_failure(event)
 
     assert world.stripe.paid_out_of_band == []
     assert world.ledger.balance == 5000
+    assert world.ledger.transactions == {"in_old": -2000, "in_old:wallet-refund": 2000}
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.voided == ["in_old"]
     assert world.stripe.subscriptions["sub_new"]["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_replaced_subscription_void_failure_is_resumed_by_the_retry():
+    with World() as world:
+        event = _superseded_by_a_newer_plan(world, balance=0)
+        world.stripe.fail_next["void"] = 1
+        with pytest.raises(stripe.APIConnectionError):
+            await handle_subscription_payment_failure(event)
+        assert world.stripe.cancelled == ["sub_old"]
+        assert world.stripe.invoices["in_old"]["status"] == "open"
+
+        await handle_subscription_payment_failure(event)
+        await handle_subscription_payment_failure(event)
+
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.voided == ["in_old"]
+
+
+@pytest.mark.asyncio
+async def test_replaced_subscription_cancel_failure_raises_and_is_retried():
+    with World() as world:
+        event = _superseded_by_a_newer_plan(world, balance=0)
+        world.stripe.fail_next["cancel"] = 1
+        with pytest.raises(stripe.APIConnectionError):
+            await handle_subscription_payment_failure(event)
+        assert world.stripe.voided == []
+
+        await handle_subscription_payment_failure(event)
+
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.voided == ["in_old"]
+
+
+@pytest.mark.asyncio
+async def test_replaced_subscription_also_voids_its_uncollectible_invoices():
+    with World() as world:
+        event = _superseded_by_a_newer_plan(world, balance=0)
+        world.stripe.add_invoice("in_older", "sub_old", status="uncollectible")
+        await handle_subscription_payment_failure(event)
+
+    assert sorted(world.stripe.voided) == ["in_old", "in_older"]
+
+
+@pytest.mark.asyncio
+async def test_replaced_subscription_keeps_an_invoice_whose_payment_is_processing():
+    with World() as world:
+        event = _superseded_by_a_newer_plan(world, balance=0)
+        world.stripe.add_invoice("in_older", "sub_old", payment_intent="pi_2")
+        world.stripe.payment_intents["pi_2"] = {"id": "pi_2", "status": "processing"}
+        await handle_subscription_payment_failure(event)
+
+    assert world.stripe.voided == ["in_old"]
+    assert world.stripe.invoices["in_older"]["status"] == "open"
+
+
+@pytest.mark.asyncio
+async def test_replaced_subscription_whose_payment_is_processing_is_left_alone():
+    with World() as world:
+        world.ledger.balance = 0
+        world.stripe.add_subscription("sub_new", "active", price="price_max")
+        event = _renewal_failed(
+            world, sub_id="sub_old", invoice_id="in_old", payment_intent="pi_1"
+        )
+        world.stripe.payment_intents["pi_1"] = {"id": "pi_1", "status": "processing"}
+        await handle_subscription_payment_failure(event)
+
+    assert world.stripe.cancelled == []
+    assert world.stripe.voided == []
+
+
+@pytest.mark.asyncio
+async def test_failure_after_stripe_ended_an_only_plan_voids_nothing():
+    """Only our own replaced-plan cancel is resumed into voiding; an only
+    plan Stripe ended after its retries keeps its invoice for part 2."""
+    with World(balance=0) as world:
+        event = _renewal_failed(world)
+        world.stripe.subscriptions["sub_1"].update(
+            status="canceled", cancellation_details={"reason": "payment_failed"}
+        )
+        await handle_subscription_payment_failure(event)
+
+    assert world.stripe.voided == []
+    assert world.stripe.invoices["in_1"]["status"] == "open"
 
 
 @pytest.mark.asyncio

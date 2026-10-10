@@ -1596,6 +1596,12 @@ def invalidate_subscription_caches(user_id: str) -> None:
     get_pending_subscription_change.cache_delete(user_id)
 
 
+# Set as ``cancellation_details.comment`` when a failed renewal finds that the
+# customer replaced that subscription with another plan. The deletion webhook
+# reads it so that cancel is not reported as the customer leaving.
+REPLACED_PLAN_CANCELLATION_COMMENT = "autogpt:replaced_by_another_plan"
+
+
 async def _cancel_customer_subscriptions(
     customer_id: str,
     exclude_sub_id: str | None = None,

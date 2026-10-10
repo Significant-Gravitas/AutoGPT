@@ -7,9 +7,13 @@ only on that one subscription, and only while the invoice is still its
 latest and still unpaid. Every step is safe to repeat, and any Stripe error
 is raised so the webhook retries and resumes.
 
-An unpaid subscription is not cancelled: access ends at once, while Stripe
-keeps retrying the invoice and its payment link stays usable. Paying it
-later restores access through the subscription's own update event.
+An unpaid subscription that is the customer's only plan is not cancelled:
+access ends at once, while Stripe keeps retrying the invoice and its payment
+link stays usable. Paying it later restores access through the
+subscription's own update event. One the customer has replaced with another
+active or trialing plan is cancelled and its unpaid invoices voided instead:
+paying it would reactivate the old plan, whose update event would then
+cancel the newer one as a duplicate.
 """
 
 import logging
@@ -20,7 +24,11 @@ from prisma.enums import SubscriptionTier
 from prisma.models import User
 from pydantic import BaseModel
 
-from backend.data.credit import _invoice_subscription_id, sync_subscription_from_stripe
+from backend.data.credit import (
+    REPLACED_PLAN_CANCELLATION_COMMENT,
+    _invoice_subscription_id,
+    sync_subscription_from_stripe,
+)
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.stripe_invoice_payments import payment_in_progress, stripe_id
 from backend.data.subscription_wallet_payment import (
@@ -41,6 +49,8 @@ logger = logging.getLogger(__name__)
 _UNPAID_STATUSES = ("past_due", "unpaid")
 # Subscription states that give the customer a plan.
 _LIVE_STATUSES = ("active", "trialing")
+# Invoice states still payable through a payment link or the portal.
+_PAYABLE_INVOICE_STATUSES = ("open", "uncollectible")
 
 
 class FailedInvoice(BaseModel):
@@ -62,6 +72,15 @@ class FailedInvoice(BaseModel):
         return stripe_id(self.subscription.get("latest_invoice")) == self.invoice_id
 
     @property
+    def was_replaced(self) -> bool:
+        """Cancelled by us because another plan replaced it."""
+        details = self.subscription.get("cancellation_details") or {}
+        return (
+            self.subscription.get("status") == "canceled"
+            and details.get("comment") == REPLACED_PLAN_CANCELLATION_COMMENT
+        )
+
+    @property
     def is_unpaid(self) -> bool:
         return (
             self.is_latest
@@ -75,10 +94,12 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
 
     - A payment still processing (e.g. a bank debit) is left to settle before
       anything else: the wallet is not touched and the tier sync cuts access.
+    - A subscription another active or trialing plan replaced is cancelled
+      and its unpaid invoices voided, never paid: paying would reactivate
+      it, and its update event would then cancel the newer plan as a
+      duplicate. A wallet debit already started for it is refunded.
     - A wallet payment already started for this invoice is finished first.
-    - Balance covers it → debit the wallet and mark the invoice paid, unless
-      the customer has a newer plan: paying would reactivate the old one, and
-      its update event would then cancel the newer plan as a duplicate.
+    - Balance covers it → debit the wallet and mark the invoice paid.
     - Otherwise → recompute the tier from that subscription, which is
       ``past_due`` or ``unpaid`` and so gives no access unless another plan
       is active. Nothing changes in Stripe: its retries and the payment link
@@ -90,9 +111,19 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
     payment = await find_wallet_payment(failed.user_id, failed.invoice_id)
     if await _left_to_settle(failed, payment):
         return
+    replaced = failed.is_unpaid and await _replaced_by_another_plan(failed)
     if payment is not None:
-        may_pay = failed.is_unpaid and not await _replaced_by_another_plan(failed)
-        await settle_wallet_payment(failed.user_id, failed.invoice_id, may_pay=may_pay)
+        await settle_wallet_payment(
+            failed.user_id, failed.invoice_id, may_pay=failed.is_unpaid and not replaced
+        )
+    if replaced:
+        await _end_replaced_subscription(failed)
+        return
+    if failed.is_latest and failed.was_replaced:
+        # An earlier delivery cancelled it but did not finish voiding.
+        await _void_unpaid_invoices(failed.sub_id)
+        return
+    if payment is not None:
         return
     if not failed.is_unpaid:
         logger.info(
@@ -102,14 +133,6 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         )
         return
     if failed.invoice.get("amount_due", 0) <= 0:
-        return
-    if await _replaced_by_another_plan(failed):
-        logger.info(
-            f"Not paying invoice {failed.invoice_id} of user {failed.user_id}"
-            f" from the wallet: subscription {failed.sub_id} was replaced by"
-            " another plan"
-        )
-        await sync_subscription_from_stripe(failed.subscription)
         return
     if await pay_invoice_from_wallet(
         failed.user_id, failed.customer_id, failed.sub_id, failed.invoice
@@ -190,3 +213,65 @@ async def _load_failed_invoice(invoice: dict) -> FailedInvoice | None:
         invoice=fresh_invoice,
         subscription=subscription,
     )
+
+
+async def _end_replaced_subscription(failed: FailedInvoice) -> None:
+    logger.info(
+        f"Subscription {failed.sub_id} of user {failed.user_id} was replaced by"
+        f" another plan; cancelling it and voiding invoice {failed.invoice_id}"
+    )
+    # Cancel first: Stripe stops retrying invoices of a cancelled subscription.
+    # If voiding then fails, the retry finishes it from the cancelled state.
+    canceled = await _cancel_subscription(failed.sub_id)
+    await _void_unpaid_invoices(failed.sub_id)
+    await sync_subscription_from_stripe(canceled)
+
+
+async def _cancel_subscription(sub_id: str) -> dict:
+    try:
+        canceled = await stripe_call(
+            stripe.Subscription.cancel_async,
+            sub_id,
+            cancellation_details={"comment": REPLACED_PLAN_CANCELLATION_COMMENT},
+        )
+        return dict(canceled)
+    except stripe.StripeError:
+        current = dict(await stripe_call(stripe.Subscription.retrieve_async, sub_id))
+        if current.get("status") == "canceled":
+            return current
+        raise
+
+
+async def _void_unpaid_invoices(sub_id: str) -> None:
+    """Close a replaced subscription's unpaid invoices.
+
+    Cancelling only pauses automatic collection; an ``open`` or
+    ``uncollectible`` invoice stays payable through its payment link and the
+    portal, which would charge for a plan the customer has replaced. An
+    invoice with a payment still processing is left for that payment's own
+    success or failure event.
+    """
+    for status in _PAYABLE_INVOICE_STATUSES:
+        invoices = await stripe_call(
+            stripe.Invoice.list_async, subscription=sub_id, status=status, limit=100
+        )
+        async for invoice in stripe_list_items(invoices):
+            await _void_invoice(sub_id, dict(invoice))
+
+
+async def _void_invoice(sub_id: str, invoice: dict) -> None:
+    invoice_id: str = invoice["id"]
+    if await payment_in_progress(invoice):
+        logger.warning(f"Not voiding invoice {invoice_id}: payment processing")
+        return
+    try:
+        await stripe_call(stripe.Invoice.void_invoice_async, invoice_id)
+    except stripe.StripeError:
+        current = await stripe_call(stripe.Invoice.retrieve_async, invoice_id)
+        if current.get("status") in _PAYABLE_INVOICE_STATUSES:
+            raise
+        if current.get("status") == "paid":
+            logger.error(
+                f"Invoice {invoice_id} was paid after subscription {sub_id}"
+                " was cancelled as replaced; needs a manual fix"
+            )
