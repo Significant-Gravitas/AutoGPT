@@ -3,6 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from backend.blocks.ayrshare.post_to_linkedin import PostToLinkedInBlock
 from backend.copilot.capabilities.models import (
     CapabilityEntry,
@@ -192,3 +194,37 @@ async def test_connect_on_an_ayrshare_block_hands_over_the_link():
 
     assert result is link_card
     connect.assert_awaited_once()
+
+
+@pytest.mark.parametrize("validate_only, dry_run", [(True, False), (False, True)])
+async def test_connect_on_an_ayrshare_block_creates_nothing_when_simulating(
+    validate_only, dry_run
+):
+    # Connecting provisions a real Ayrshare profile, so neither mode may.
+    session = make_session(USER)
+    session.metadata.dry_run = dry_run
+    prepare = AsyncMock(return_value=object())
+    connect = AsyncMock()
+    with (
+        patch("backend.copilot.tools.run_capability.gate_denied", return_value=False),
+        patch(
+            "backend.copilot.tools.run_capability.prepare_block_for_execution",
+            prepare,
+        ),
+        patch(
+            "backend.copilot.tools.run_capability.get_block",
+            return_value=PostToLinkedInBlock(),
+        ),
+        patch(
+            "backend.copilot.tools.run_capability.ayrshare_connect_for_block",
+            connect,
+        ),
+    ):
+        result = await _run_block(
+            _entry(), USER, session, {"connect": True}, validate_only, False
+        )
+
+    assert isinstance(result, CapabilityDetailsResponse)
+    assert "nothing was created" in result.message.lower()
+    prepare.assert_not_awaited()
+    connect.assert_not_awaited()

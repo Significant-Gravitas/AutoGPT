@@ -258,6 +258,19 @@ async def _run_block(
                 ),
                 session_id=session.session_id,
             )
+        block = get_block(block_id)
+        # Connecting creates the user's real Ayrshare profile; neither mode may.
+        managed = block is not None and is_ayrshare(get_block_provider(block))
+        if managed and (validate_only or session.dry_run):
+            return CapabilityDetailsResponse(
+                message=(
+                    f"Connecting {entry.name} creates the user's Ayrshare profile, "
+                    "so validate_only and dry runs skip it. Nothing was created."
+                ),
+                capability=entry.listing(),
+                parameters={},
+                session_id=session.session_id,
+            )
         prep = await prepare_block_for_execution(
             block_id=block_id,
             input_data=payload,
@@ -275,8 +288,7 @@ async def _run_block(
             return prep
         # Holding the managed Ayrshare credential says nothing about which
         # networks are linked, so connecting hands over the linking link.
-        block = get_block(block_id)
-        if block is not None and is_ayrshare(get_block_provider(block)):
+        if managed and block is not None:
             return await ayrshare_connect_for_block(
                 user_id, block, block_id, session.session_id
             )
