@@ -255,6 +255,7 @@ async def run_copilot_turn_via_queue(
             permissions=permissions,
             spawn=spawn,
             message_metadata=message_metadata,
+            delegated=session.metadata.delegated_by_session_id is not None,
         )
     except TreeRefusal as refused:
         return "refused", SessionResult(refusal=refused.message)

@@ -89,6 +89,8 @@ async def test_a_queued_wake_with_no_recorded_envelope_in_a_sub_session_is_not_s
         message_metadata={held._WAKE_KEY: True},
         expect_refusal=turn_queue.UNRECORDED_WAKE,
         sub_work=True,
+        # Three left running: below the reserve, so the wake is claimed.
+        running=4,
     )
 
     assert promoted is None
@@ -103,9 +105,40 @@ async def test_a_queued_wake_whose_envelope_no_longer_parses_is_not_started():
         message_metadata={held._WAKE_KEY: True, "envelope": {"depth": "deep"}},
         expect_refusal=turn_queue.UNRECORDED_WAKE,
         sub_work=True,
+        # Three left running: below the reserve, so the wake is claimed.
+        running=4,
     )
 
     assert promoted is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_queued_sub_work_is_not_promoted_into_the_users_last_slot():
+    """Four still run after the turn ends: an approval wake in a session
+    another one opened is that session's sub-work, so the fifth slot stays."""
+    held_under = _envelope(1)
+    await (await get_tree_ledger()).open(
+        held_under.tree_id, ceiling_microdollars=1_000_000, max_nodes=10
+    )
+    promoted, _, _ = await _promote_after(
+        _envelope(1),
+        message=held.WAKE_MESSAGE,
+        message_metadata={held._WAKE_KEY: True},
+        envelope=held_under,
+        sub_work=True,
+    )
+
+    assert promoted is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_message_typed_into_a_delegated_session_takes_the_users_slot():
+    """It is the user's own turn wherever they typed it."""
+    promoted, _, _ = await _promote_after(
+        _envelope(1), message="typed by the user", message_metadata=None, sub_work=True
+    )
+
+    assert promoted is not None
 
 
 async def _promote_after(
@@ -116,6 +149,7 @@ async def _promote_after(
     envelope: TurnEnvelope | None = None,
     expect_refusal: str | None = None,
     sub_work: bool = False,
+    running: int = 5,
 ) -> tuple[TurnEnvelope | None, int, int]:
     """Queue a turn behind a full cap, then end a turn carrying ``finished``.
 
@@ -126,7 +160,9 @@ async def _promote_after(
         data={"id": user_id, "email": f"turn-queue-{user_id}@example.com"}
     )
     try:
-        sessions = [await create_chat_session(user_id, dry_run=False) for _ in range(5)]
+        sessions = [
+            await create_chat_session(user_id, dry_run=False) for _ in range(running)
+        ]
         for session in sessions:
             assert await chat_db().update_chat_session_status(
                 session_id=session.session_id,

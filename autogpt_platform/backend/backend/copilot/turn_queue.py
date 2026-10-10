@@ -30,12 +30,17 @@ cancels manually.
 
 import logging
 import uuid
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 from prisma.errors import UniqueViolationError
 from pydantic import BaseModel, ValidationError
 
-from backend.copilot.active_turns import TurnSlot, count_running_turns
+from backend.copilot.active_turns import (
+    TurnSlot,
+    count_running_turns,
+    get_delegated_turn_limit,
+    get_running_turn_limit,
+)
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
 from backend.copilot.db import is_duplicate_chat_message_id_error
 from backend.copilot.model import (
@@ -258,15 +263,17 @@ async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
     return True
 
 
-async def claim_queued_session(session_id: str) -> bool:
-    """Atomically claim a queued session by transitioning ``chatStatus``
-    ``"queued"`` → ``"running"``.  Returns True iff the CAS matched
-    (i.e. the session was still queued; not cancelled / claimed by a
-    concurrent dispatcher)."""
-    return await chat_db().update_chat_session_status(
-        session_id=session_id,
+async def claim_queued_session(
+    session: ChatSessionInfo, *, sub_work: bool
+) -> Literal["admitted", "full", "busy"]:
+    """Claim a queued session, ``"queued"`` → ``"running"``, if the user has a
+    slot for it: sub-work below the reserve, their own message below the cap.
+    ``"busy"`` when it was cancelled or claimed elsewhere since it was read."""
+    return await chat_db().admit_chat_session_turn(
+        session_id=session.session_id,
+        user_id=session.user_id,
         expect_status=CHAT_STATUS_QUEUED,
-        status=CHAT_STATUS_RUNNING,
+        capacity=get_delegated_turn_limit() if sub_work else get_running_turn_limit(),
     )
 
 
@@ -301,26 +308,34 @@ async def _promote_head(user_id: str) -> bool | None:
     # Local for the same reason: the gate imports this module back.
     from backend.copilot.gate.held import is_answer_row
 
+    # The user's own turns go before sub-work, oldest first in each, so sub-work
+    # that does not fit means nothing behind it does; one that may not start yet
+    # does not hold up the rest.
     queued = await list_queued_sessions(user_id)
-    if not queued:
-        return False
-    head = queued[0]
-
-    route_provider = head.metadata.llm_auth_provider
-    refusal = await turn_refusal(user_id, route_provider)
-    if refusal is not None:
-        logger.log(
-            logging.WARNING if refusal.transient else logging.INFO,
-            f"dispatch_next_for_user: user={user_id} {refusal.reason}, "
-            f"leaving session={head.session_id} queued",
+    sub_work = {s.session_id: await _is_sub_work(s) for s in queued}
+    candidates = sorted(queued, key=lambda s: sub_work[s.session_id])
+    gates = _UserGates(user_id)
+    head = None
+    try:
+        for candidate in candidates:
+            if await _may_start(gates, candidate):
+                head = candidate
+                break
+    except _QueueOnHold as hold:
+        logger.warning(
+            f"dispatch_next_for_user: user={user_id} {hold}; "
+            "leaving queue intact for the next tick"
         )
         return False
-
-    # Claim by transitioning the session ``queued`` → ``running``.  A
-    # parallel cancel between validation and claim rejects this
-    # dispatch via the CAS returning False.
-    if not await claim_queued_session(head.session_id):
+    if head is None:
         return False
+
+    claim = await claim_queued_session(head, sub_work=sub_work[head.session_id])
+    if claim == "full":
+        return False
+    if claim == "busy":
+        # Cancelled or claimed elsewhere since it was listed: try the next.
+        return None
 
     try:
         # Find the pending user message in this session (the most recent
@@ -353,34 +368,6 @@ async def _promote_head(user_id: str) -> bool | None:
             # action under that turn's limits; the answer reaches the next turn.
             await _refuse_queued_turn(head, UNRECORDED_WAKE)
             return None
-
-        # A turn can sit in the queue long enough for the plan that bought it to
-        # lapse. The tier was checked when the turn was accepted, but promoting it
-        # is a second, later decision to spend, so it gets its own check --
-        # otherwise a downgrade between the two buys a free Advanced run. The turn
-        # goes back to queued rather than quietly re-running on Standard: nothing
-        # in this feature changes what a turn runs on without being asked. It
-        # promotes itself once entitlement returns, and can be cancelled meanwhile.
-        if route_provider == "platform" and metadata.get("model") == "advanced":
-            try:
-                entitled = await advanced_tier_entitled(user_id)
-            except EntitlementUnavailable:
-                entitled = False
-                logger.warning(
-                    "dispatch_next_for_user: could not resolve the Advanced "
-                    "entitlement for user=%s; leaving session=%s queued",
-                    user_id,
-                    head.session_id,
-                    exc_info=True,
-                )
-            if not entitled:
-                await chat_db().update_chat_session_status(
-                    session_id=head.session_id,
-                    expect_status=CHAT_STATUS_RUNNING,
-                    status=CHAT_STATUS_QUEUED,
-                )
-                await invalidate_session_cache(head.session_id)
-                return False
 
         turn_id = str(uuid.uuid4())
         # The user's message is already persisted AND the session is
@@ -464,6 +451,84 @@ async def _promote_head(user_id: str) -> bool | None:
     return True
 
 
+async def _is_sub_work(session: ChatSessionInfo) -> bool:
+    """A message the user typed is theirs whatever session it is in; what an
+    approval wakes there is sub-work if :func:`wakes_sub_work` says so."""
+    if not wakes_sub_work(session):
+        return False
+    # Local: the gate imports this module back.
+    from backend.copilot.gate.held import is_answer_row
+
+    waiting = await chat_db().get_latest_user_message_in_session(session.session_id)
+    return waiting is not None and is_answer_row(waiting)
+
+
+async def _may_start(gates: "_UserGates", head: ChatSessionInfo) -> bool:
+    """Whether ``head`` may start now: :func:`turn_refusal` for its route and,
+    on the platform route, an Advanced turn's tier."""
+    route_provider = head.metadata.llm_auth_provider
+    if not await gates.route_open(route_provider):
+        return False
+    if route_provider != "platform":
+        return True
+    # A turn can sit in the queue long enough for the plan that bought it to
+    # lapse. The tier was checked when the turn was accepted, but promoting it
+    # is a second, later decision to spend, so it gets its own check --
+    # otherwise a downgrade between the two buys a free Advanced run. The turn
+    # stays queued rather than quietly re-running on Standard: nothing in this
+    # feature changes what a turn runs on without being asked. It promotes
+    # itself once entitlement returns, and can be cancelled meanwhile.
+    pending = await chat_db().get_latest_user_message_in_session(head.session_id)
+    model = (pending.metadata or {}).get("model") if pending else None
+    if model == "advanced" and not await gates.advanced_tier():
+        logger.info(
+            f"dispatch_next_for_user: user={gates.user_id} lacks the Advanced tier, "
+            f"leaving session={head.session_id} queued"
+        )
+        return False
+    return True
+
+
+class _UserGates:
+    """The per-user checks, made once per pass over the queue however many
+    queued sessions are tried."""
+
+    def __init__(self, user_id: str) -> None:
+        self.user_id = user_id
+        self._refusals: dict[CopilotLlmAuthProvider, TurnRefusal | None] = {}
+        self._advanced: bool | None = None
+
+    async def route_open(self, route: CopilotLlmAuthProvider) -> bool:
+        """Raises :class:`_QueueOnHold` when the gate could not read the user's
+        state, which leaves the whole queue for the next tick."""
+        if route not in self._refusals:
+            self._refusals[route] = await turn_refusal(self.user_id, route)
+        refusal = self._refusals[route]
+        if refusal is None:
+            return True
+        if refusal.transient:
+            raise _QueueOnHold(refusal.reason)
+        logger.info(f"dispatch_next_for_user: user={self.user_id} {refusal.reason}")
+        return False
+
+    async def advanced_tier(self) -> bool:
+        if self._advanced is None:
+            try:
+                self._advanced = await advanced_tier_entitled(self.user_id)
+            except EntitlementUnavailable:
+                logger.warning(
+                    "dispatch_next_for_user: could not resolve the Advanced "
+                    f"entitlement for user={self.user_id}",
+                    exc_info=True,
+                )
+                self._advanced = False
+        return self._advanced
+
+
+class _QueueOnHold(Exception):
+    """Nothing is promoted this tick: the user's state could not be read."""
+
+
 def is_users_own_chat(session: ChatSessionInfo) -> bool:
     """A chat the user opened themselves, not one another session or a graph
     started. Its turns are roots, so a wake there whose envelope was lost can
@@ -472,6 +537,12 @@ def is_users_own_chat(session: ChatSessionInfo) -> bool:
         session.metadata.origin == "interactive"
         and session.metadata.delegated_by_session_id is None
     )
+
+
+def wakes_sub_work(session: ChatSessionInfo) -> bool:
+    """An approval wake here is the sub-work of the session that opened this
+    one, so it is admitted within the user's reserve, direct or queued."""
+    return session.metadata.delegated_by_session_id is not None
 
 
 async def _refuse_queued_turn(head: ChatSessionInfo, reason: str) -> None:

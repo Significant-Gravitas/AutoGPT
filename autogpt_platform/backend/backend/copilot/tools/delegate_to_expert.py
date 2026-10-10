@@ -33,6 +33,7 @@ import time
 from typing import Any
 
 from backend.api.features.experts.models import Expert
+from backend.copilot.active_turns import delegated_turn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import (
@@ -211,7 +212,11 @@ class DelegateToExpertTool(BaseTool):
             # The thread is gone; handing back its id would send the model to
             # poll a delegation that no longer exists.
             return self._error(
-                result.refusal or f"{target.name} could not start this task.",
+                (
+                    delegated_turn_limit_message()
+                    if outcome == "rejected_concurrent_turn_cap"
+                    else result.refusal or f"{target.name} could not start this task."
+                ),
                 session,
             )
         workspace_files = (

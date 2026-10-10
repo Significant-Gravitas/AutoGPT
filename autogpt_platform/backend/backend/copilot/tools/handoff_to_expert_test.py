@@ -626,7 +626,7 @@ class TestFailedTransfer:
         self, roster, mock_turn, mock_sessions
     ):
         r = await self._handoff(mock_turn, "rejected_concurrent_turn_cap")
-        assert "already running" in r.message
+        assert "kept for the user's own messages" in r.message
 
     @pytest.mark.parametrize("outcome", ["rejected_concurrent_turn_cap", "failed"])
     @pytest.mark.asyncio
