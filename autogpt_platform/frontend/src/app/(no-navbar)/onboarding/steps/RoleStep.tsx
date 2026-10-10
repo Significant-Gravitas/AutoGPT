@@ -83,14 +83,18 @@ export function RoleStep() {
   }
 
   return (
-    <FadeIn>
-      <div className="flex w-full flex-col items-center gap-8 px-4">
+    <FadeIn className="w-full max-w-[50rem]">
+      <div className="flex w-full flex-col items-center gap-6 px-4 md:gap-8">
         <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-4 px-4 text-center">
-          <AutopilotAvatar size={120} transparent />
+          <AutopilotAvatar
+            size={120}
+            transparent
+            className="size-20 md:size-[120px]"
+          />
           <Text variant="h4">What best describes you?</Text>
         </div>
 
-        <div className="flex w-full max-w-[100vw] flex-nowrap gap-4 overflow-x-auto px-8 scrollbar-none md:grid md:grid-cols-4 md:overflow-hidden md:px-0">
+        <div className="grid w-full grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           {ROLES.map((r) => (
             <SelectableCard
               key={r.id}
@@ -98,7 +102,7 @@ export function RoleStep() {
               label={r.label}
               selected={role === r.id}
               onClick={() => setRole(r.id)}
-              className="h-28 w-[11.5rem]"
+              className="h-24 w-full min-w-0 md:h-28"
             />
           ))}
         </div>

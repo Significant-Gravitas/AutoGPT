@@ -1,3 +1,8 @@
+import {
+  isNativeAutoGPTApp,
+  NativeOAuthPopupError,
+} from "./oauth-popup-support";
+
 /**
  * Shared utility for OAuth popup flows with cross-origin support.
  *
@@ -69,6 +74,7 @@ type Cleanup = {
  * `window.open()` once the gesture context is lost across an async break.
  */
 export function preOpenOAuthPopup(): Window | null {
+  if (isNativeAutoGPTApp()) return null;
   const width = 500;
   const height = 700;
   const left = window.screenX + (window.outerWidth - width) / 2;
@@ -111,6 +117,16 @@ export function openOAuthPopup(
    */
   fallbackBlocked: boolean;
 } {
+  if (isNativeAutoGPTApp()) {
+    const controller = new AbortController();
+    controller.abort("native_browser_required");
+    return {
+      promise: Promise.reject(new NativeOAuthPopupError()),
+      cleanup: { abort() {}, signal: controller.signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    };
+  }
   const {
     stateToken,
     preOpenedWindow,

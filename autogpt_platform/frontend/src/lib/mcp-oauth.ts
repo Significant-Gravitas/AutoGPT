@@ -14,6 +14,7 @@ import {
   preOpenOAuthPopup,
 } from "@/lib/oauth-popup";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+import { assertOAuthPopupSupported } from "@/lib/oauth-popup-support";
 
 interface Args {
   serverURL: string;
@@ -39,6 +40,7 @@ export async function connectMCPOAuth({
   exchange,
 }: Args) {
   signal.throwIfAborted();
+  assertOAuthPopupSupported();
   const preOpenedWindow = preOpenOAuthPopup();
   let ownsBlankWindow = true;
   let abortPopup: (() => void) | undefined;

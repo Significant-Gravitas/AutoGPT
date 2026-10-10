@@ -9,6 +9,7 @@ import { normalizeMcpUrl } from "@/lib/mcp-url";
 import { OAUTH_ERROR_FLOW_CANCELED } from "@/lib/oauth-popup";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 import { connectMCPOAuth } from "@/lib/mcp-oauth";
+import { NativeOAuthPopupError } from "@/lib/oauth-popup-support";
 import { storeMCPToken } from "./storeMCPToken";
 import { useMCPManualAuth } from "./useMCPManualAuth";
 
@@ -99,6 +100,8 @@ export function useMCPConnectPanel({
       onSuccess(credential);
     } catch (error) {
       if (signal.aborted) return;
+      if (error instanceof NativeOAuthPopupError && manualSchemes.length)
+        setPhase("manual-token");
       const message = getErrorMessage(error);
       if (message === OAUTH_ERROR_FLOW_CANCELED) return;
       setError(

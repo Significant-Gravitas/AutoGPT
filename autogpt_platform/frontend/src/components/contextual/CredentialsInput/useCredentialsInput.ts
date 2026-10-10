@@ -1,4 +1,5 @@
 import useCredentials from "@/hooks/useCredentials";
+import { assertOAuthPopupSupported } from "@/lib/oauth-popup-support";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   BlockIOCredentialsSubSchema,
@@ -247,6 +248,7 @@ export function useCredentialsInput({
     const isMCP = provider === "mcp" && !!discriminatorValue;
 
     try {
+      assertOAuthPopupSupported();
       let login_url: string;
       let state_token: string;
       let cancel_url: string | null | undefined;

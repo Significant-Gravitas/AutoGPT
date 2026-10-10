@@ -5,7 +5,7 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   CredentialsProvidersContext,
@@ -93,6 +93,86 @@ async function connectPrivateServer() {
 describe("MCPToolDialog credential binding", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("shows the browser instruction when a native server discovery needs OAuth", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "AutoGPTMobile/iOS",
+    );
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2ExchangeOauthCodeForMcpTokens,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    const { openOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce(
+      apiResponse(401, { detail: "Authentication required" }),
+    );
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Server URL"), {
+      target: { value: PRIVATE_SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discover Tools" }));
+    expect(await screen.findByText(/Open in browser/)).toBeDefined();
+    expect(postV2InitiateOauthLoginForAnMcpServer).not.toHaveBeenCalled();
+    expect(postV2ExchangeOauthCodeForMcpTokens).not.toHaveBeenCalled();
+    expect(openOAuthPopup).not.toHaveBeenCalled();
+    expect(
+      (screen.getByRole("button", { name: /sign in/i }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
+  it("keeps the native explicit manual-credential action usable through saved tool selection", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "AutoGPTMobile/iOS",
+    );
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer)
+      .mockResolvedValueOnce(
+        apiResponse(401, { detail: "Authentication required" }),
+      )
+      .mockResolvedValueOnce(
+        apiResponse(200, {
+          tools: [PRIVATE_TOOL],
+          server_name: "Private Server",
+        }),
+      );
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce(
+      apiResponse(200, CREDENTIAL),
+    );
+    const onConfirm = vi.fn();
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={onConfirm} />);
+    fireEvent.change(screen.getByLabelText("Server URL"), {
+      target: { value: PRIVATE_SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discover Tools" }));
+    expect(await screen.findByText(/Open in browser/)).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: /enter an api credential manually/i }),
+    );
+    fireEvent.change(screen.getByLabelText("API token"), {
+      target: { value: "public-native-fixture" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Connect & Discover" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /private-tool/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add Block" }));
+    expect(onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ credentials: CREDENTIAL }),
+    );
+    expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
+      server_url: PRIVATE_SERVER_URL,
+      token: "Bearer public-native-fixture", // pragma: allowlist secret
+    }); // pragma: allowlist secret
+    expect(postV2InitiateOauthLoginForAnMcpServer).not.toHaveBeenCalled();
   });
 
   it("ignores an old initiation after closing and reopening the same dialog", async () => {

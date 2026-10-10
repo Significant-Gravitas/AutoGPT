@@ -5,11 +5,15 @@ import { Text } from "../atoms/Text/Text";
 import { SmartPhone01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-export function MobileWarningBanner() {
+interface Props {
+  nextUrl?: string | null;
+}
+
+export function MobileWarningBanner({ nextUrl }: Props) {
   const breakpoint = useBreakpoint();
   const isMobile = breakpoint === "base" || breakpoint === "sm";
 
-  if (!isMobile) {
+  if (!isMobile || /^\/auth\/mobile(?:[?#]|$)/.test(nextUrl ?? "")) {
     return null;
   }
 

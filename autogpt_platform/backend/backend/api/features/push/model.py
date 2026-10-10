@@ -18,3 +18,8 @@ class PushUnsubscribeRequest(pydantic.BaseModel):
 
 class VapidPublicKeyResponse(pydantic.BaseModel):
     public_key: str
+
+
+class NativePushConfig(pydantic.BaseModel):
+    apns: bool
+    fcm: bool

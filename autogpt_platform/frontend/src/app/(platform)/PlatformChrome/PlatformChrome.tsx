@@ -23,6 +23,7 @@ import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose/Bu
 import { InsetHeaderActions } from "./components/InsetHeaderActions/InsetHeaderActions";
 import { InsetHeaderTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
 import { usePlatformChrome } from "./usePlatformChrome";
+import { MobileAppShell } from "../mobile/components/MobileAppShell";
 
 interface Props {
   children: ReactNode;
@@ -35,6 +36,7 @@ const mobileTriggerClassName =
 
 export function PlatformChrome({ children }: Props) {
   const {
+    isNativeApp,
     showNewLayout,
     isNewLayoutActive,
     showTourSidebar,
@@ -53,6 +55,16 @@ export function PlatformChrome({ children }: Props) {
       <PaywallGate>{children}</PaywallGate>
     </TopUpPromptProvider>
   );
+
+  if (isNativeApp) {
+    return (
+      <MobileAppShell>
+        <AdminImpersonationBanner />
+        <GlobalSearchOverlay />
+        {content}
+      </MobileAppShell>
+    );
+  }
 
   // Logged-out marketplace visitors get public navigation and a trial CTA.
   if (showTourSidebar) {

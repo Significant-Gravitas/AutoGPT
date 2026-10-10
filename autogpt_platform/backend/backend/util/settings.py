@@ -821,6 +821,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=168,
         description="Hours between failed push subscription cleanup runs (1-168 hours)",
     )
+    apns_private_key_path: str = Field(
+        default="", description="Mounted Apple push .p8 key file"
+    )
+    apns_key_id: str = Field(default="", description="Apple push key ID")
+    apns_team_id: str = Field(default="", description="Apple Developer team ID")
+    fcm_service_account_path: str = Field(
+        default="", description="Mounted Firebase service account JSON file"
+    )
 
     platform_link_token_cleanup_interval_hours: int = Field(
         default=6,

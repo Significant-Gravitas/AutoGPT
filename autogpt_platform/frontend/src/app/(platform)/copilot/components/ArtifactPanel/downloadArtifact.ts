@@ -1,4 +1,5 @@
 import type { ArtifactRef } from "../../store";
+import { saveBlob } from "@/lib/utils/save-blob";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 500;
@@ -50,14 +51,7 @@ export function downloadArtifact(artifact: ArtifactRef): Promise<void> {
 
   return fetchWithRetry(artifact.sourceUrl, MAX_RETRIES)
     .then((res) => res.blob())
-    .then((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = safeName && hasVisibleName ? safeName : "download";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    });
+    .then((blob) =>
+      saveBlob(blob, safeName && hasVisibleName ? safeName : "download"),
+    );
 }

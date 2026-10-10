@@ -3,6 +3,12 @@ import path from "node:path";
 import webpack from "webpack";
 
 const config: StorybookConfig = {
+  env: (values) => ({
+    ...values,
+    ...(process.env.STORYBOOK_MOBILE_FIXTURE === "true"
+      ? { NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS: "true" }
+      : {}),
+  }),
   stories: [
     "../src/components/overview.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/components/tokens/**/*.stories.@(js|jsx|mjs|ts|tsx)",
@@ -12,6 +18,7 @@ const config: StorybookConfig = {
     "../src/components/ai-elements/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/components/renderers/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/app/[(]platform[)]/copilot/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/app/[(]platform[)]/mobile/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/app/[(]platform[)]/components/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/app/[(]platform[)]/marketplace/**/*.stories.@(js|jsx|mjs|ts|tsx)",
   ],

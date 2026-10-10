@@ -84,8 +84,113 @@ describe("McpConnectPanel", () => {
 
   afterEach(() => {
     vi.resetAllMocks();
+    vi.restoreAllMocks();
     mockSavedCredentials = [];
     cleanup();
+  });
+
+  it("guides native users to the browser before initiating MCP OAuth", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "AutoGPTMobile/iOS",
+    );
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2ExchangeOauthCodeForMcpTokens,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    const { openOAuthPopup } = await import("@/lib/oauth-popup");
+    render(<McpConnectPanel onSuccess={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: "https://mcp.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    expect(await screen.findByText(/Open in browser/)).toBeDefined();
+    expect(postV2InitiateOauthLoginForAnMcpServer).not.toHaveBeenCalled();
+    expect(postV2ExchangeOauthCodeForMcpTokens).not.toHaveBeenCalled();
+    expect(openOAuthPopup).not.toHaveBeenCalled();
+    expect(
+      (screen.getByLabelText(/server url/i) as HTMLInputElement).disabled,
+    ).toBe(false);
+  });
+
+  it("lets native users validate and save an API credential without initiating OAuth", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "AutoGPTMobile/iOS",
+    );
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    const stored = {
+      id: "native-manual",
+      provider: "mcp",
+      type: "oauth2",
+      title: "Native manual MCP",
+      scopes: [],
+    };
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: stored,
+      headers: new Headers(),
+    } as never);
+    const onSuccess = vi.fn();
+    render(<McpConnectPanel onSuccess={onSuccess} />);
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: "https://mcp.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^connect$/i }));
+    expect(await screen.findByText(/Open in browser/)).toBeDefined();
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
+      target: { value: "public-native-fixture" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save token/i }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith(stored));
+    expect(postV2DiscoverAvailableToolsOnAnMcpServer).toHaveBeenCalledWith(
+      {
+        server_url: "https://mcp.example.com",
+        auth_token: "Bearer public-native-fixture", // pragma: allowlist secret
+      },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith(
+      {
+        server_url: "https://mcp.example.com",
+        token: "Bearer public-native-fixture", // pragma: allowlist secret
+      },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(postV2InitiateOauthLoginForAnMcpServer).not.toHaveBeenCalled();
+  });
+
+  it("does not store a native manual credential rejected by the existing probe", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "AutoGPTMobile/Android",
+    );
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce({
+      status: 401,
+      data: { detail: "Invalid credential" },
+      headers: new Headers(),
+    } as never);
+    const onSuccess = vi.fn();
+    render(<McpConnectPanel onSuccess={onSuccess} />);
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: "https://mcp.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^connect$/i }));
+    expect(await screen.findByText(/Open in browser/)).toBeDefined();
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
+      target: { value: "rejected-public-fixture" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save token/i }));
+    expect(await screen.findByText("Invalid credential")).toBeDefined();
+    expect(postV2StoreABearerTokenForAnMcpServer).not.toHaveBeenCalled();
+    expect(postV2InitiateOauthLoginForAnMcpServer).not.toHaveBeenCalled();
+    expect(onSuccess).not.toHaveBeenCalled();
   });
 
   it("disables Connect until a valid http(s) URL is entered", () => {

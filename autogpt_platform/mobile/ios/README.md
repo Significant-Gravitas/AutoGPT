@@ -1,0 +1,89 @@
+# AutoGPT for iOS
+
+A UIKit/WKWebView host for the existing AutoGPT website. Chat, streaming, agents, history, settings, and onboarding stay on the website. The app provides workspace selection, safe navigation, browser sign-in, persistent website storage, keyboard/safe-area integration, native file selection, attachment export, and an origin-scoped push notification bridge.
+
+The app uses a single `UIWindowScene`; multiple windows are disabled. Browser app-account authentication remains owned by `ASWebAuthenticationSession`.
+
+## Build
+
+Requires Xcode, its iOS platform support, and [XcodeGen](https://github.com/yonaskolb/XcodeGen). The app supports iOS 16 and newer and targets the iPhone 17 Pro form factor; iPad and rotation remain enabled.
+
+From the repository root:
+
+```sh
+xcodegen generate --spec autogpt_platform/mobile/ios/project.yml
+xcodebuild \
+  -project autogpt_platform/mobile/ios/AutoGPT.xcodeproj \
+  -scheme AutoGPT \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /private/tmp/autogpt-mobile-derived \
+  CODE_SIGNING_ALLOWED=NO build
+swift test --package-path autogpt_platform/mobile/ios
+```
+
+Open the generated `AutoGPT.xcodeproj` in Xcode for device development. Choose your own development team for a physical device; no signing identity is committed. Store publication is not configured.
+
+If a newer Xcode has its simulator SDK but only an older simulator runtime, an SDK-only build can still be installed with `simctl` on a compatible older runtime. This does not enable Xcode's normal UI-test destination discovery:
+
+```sh
+xcodebuild \
+  -project autogpt_platform/mobile/ios/AutoGPT.xcodeproj \
+  -target AutoGPT -sdk iphonesimulator -arch arm64 -configuration Debug \
+  SYMROOT=/private/tmp/autogpt-mobile-compile \
+  CODE_SIGNING_ALLOWED=NO build
+xcrun simctl install booted /private/tmp/autogpt-mobile-compile/Debug-iphonesimulator/AutoGPT.app
+xcrun simctl launch booted com.agpt.mobile
+```
+
+Install the matching Xcode platform support before running the included XCUITest target normally. Use a specific simulator UDID instead of `booted` when more than one device is running. The UI suite includes a deterministic native status check at accessibility XXXL in landscape, using a DEBUG-only launch flag and public UIKit traits; it checks both actions can be reached by scrolling.
+
+## Connection and authentication
+
+First launch offers **Use AutoGPT Cloud** (`https://platform.agpt.co`) or **Connect to your own server**. The app remembers that choice and opens its `/mobile` workspace on subsequent launches. **App menu → Choose workspace** returns to the chooser, and **Server settings** accepts a deliberate HTTPS origin, including a self-hosted or preview deployment. Paths, embedded credentials, queries, and fragments are rejected. Changing servers clears this app's website data.
+
+The same deployment must include this PR's `/api/auth/mobile/start`, `/api/auth/mobile/authorize`, and `/api/auth/mobile/exchange` endpoints. Until those endpoints are deployed, **Open in browser** can use the existing website, but native browser-to-app sign-in cannot complete against that deployment.
+
+Sign-in uses `ASWebAuthenticationSession` and an S256 proof bound to a random pending state. The browser callback contains only a short-lived one-use code. The app exchanges the code with redirects disabled, clears previous website identity/cache data, and installs the returned HttpOnly cookies into WKWebView. It neither stores provider credentials nor moves cookies through a callback URL. Canceling the browser returns to the sign-in screen.
+
+External user links open in the system browser. Programmatic external navigation asks before opening. Unsupported schemes are blocked. Same-origin web navigation stays in the app. App and system browser sessions remain independent.
+
+Provider connections that use popup callbacks must be completed through **Open in browser**, followed by **Reload** in the app. Use the same AutoGPT account in both. See [provider connection limitations](../README.md#provider-connections); device-code polling flows remain available.
+
+The web view follows the native keyboard layout guide so the message box stays above the keyboard. The web app supplies persistent Chats, Experts, Needs you, and Settings navigation. Rotating or resizing the app dismisses the keyboard to avoid stale focus scrolling; the page remains loaded, and tapping the input resumes editing. Native sign-in and recovery screens scroll when landscape or larger text leaves less room.
+
+## Local checks
+
+Run the [native integration fixture](../testing/README.md). Debug builds permit loopback HTTP addresses. Release builds require HTTPS. Set the fixture through Server settings or use the debug-only launch override:
+
+```sh
+SIMCTL_CHILD_AUTOGPT_ORIGIN=http://127.0.0.1:8765 \
+  xcrun simctl launch booted com.agpt.mobile
+```
+
+Stop an already running copy of the test app before changing its launch environment. The override is ignored in Release builds. The fixture tests browser return, multiple cookie transfer, session persistence, navigation, keyboard, file selection, downloads, and recovery without a live account.
+
+Format and lint all iOS source directories with the Swift formatter bundled with Xcode:
+
+```sh
+swift-format format --in-place --recursive \
+  autogpt_platform/mobile/ios/App autogpt_platform/mobile/ios/Sources \
+  autogpt_platform/mobile/ios/Tests autogpt_platform/mobile/ios/UITests \
+  autogpt_platform/mobile/ios/Package.swift
+swift-format lint --strict --recursive \
+  autogpt_platform/mobile/ios/App autogpt_platform/mobile/ios/Sources \
+  autogpt_platform/mobile/ios/Tests autogpt_platform/mobile/ios/UITests \
+  autogpt_platform/mobile/ios/Package.swift
+```
+
+## Current verification
+
+- On iPhone 16 Pro / iOS 18.3, a separate local workspace completed real Better Auth browser sign-in, onboarding, a live model conversation, and an `ask_question` response through **Needs you**. The answer resumed the same conversation and cleared its persisted pending question. Hiring Alex opened the expert's own conversation, and both chats remained available after reinstalling the app. These checks used a local account and real database/model services, not the integration fixture.
+- Cloud/self-hosted selection and the hosted deployment's missing-mobile-route recovery were checked in the simulator. Hosted-account sign-in remains blocked until the mobile web/auth changes are deployed; this is separate from local-workspace verification.
+- Swift origin and PKCE contract tests pass on the host.
+- Simulator Debug and unsigned iPhone Release builds pass with the iOS 26.5 SDK.
+- It launches on the installed iPhone 16 Pro / iOS 18.3 simulator and intercepts the real hosted site's login redirect.
+- The local fixture's system-browser sign-in returns to the app with both token and cache cookies installed. Switching servers and returning to the fixture clears that prior session.
+- A generated Markdown file exports through the native share sheet into Files and can be selected again as an attachment; external navigation and HTTP-error recovery were also checked in the simulator.
+- Rotation dismisses the software keyboard, preserves the typed fixture draft, and allows visible landscape refocus on iOS 18.3.
+- At `dc4b0ddd93`, GitHub Actions ran both XCUITests on iPhone 16 Pro / iOS 18.5 with two passes and no skipped tests. The large-text landscape test performed a swipe and verified that both actions became reachable. Local CUA scrolling remains unverified because simulator automation produced no observed pan events; the CI result precedes the single-scene migration.
+- Exact iPhone 17 Pro / iOS 26 runtime testing, real-provider sign-in, and release signing remain separate checks.

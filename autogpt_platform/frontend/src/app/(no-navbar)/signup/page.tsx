@@ -165,7 +165,7 @@ export default function SignupPage() {
         />
       </Form>
 
-      <MobileWarningBanner />
+      <MobileWarningBanner nextUrl={safeNextUrl} />
       <EmailNotAllowedModal
         isOpen={showNotAllowedModal}
         onClose={handleCloseNotAllowedModal}

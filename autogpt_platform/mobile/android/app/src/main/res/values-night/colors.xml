@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="launcher_background">#000030</color>
+    <color name="shell_background">#FEFEFE</color>
+    <color name="shell_panel">#FEFEFE</color>
+    <color name="shell_primary">#141414</color>
+    <color name="shell_secondary">#68686F</color>
+    <color name="shell_muted">#83838C</color>
+    <color name="shell_accent">#3E3E43</color>
+    <color name="shell_on_accent">#FEFEFE</color>
+    <color name="shell_pressed">#2C2C30</color>
+    <color name="shell_secondary_button">#FEFEFE</color>
+    <color name="shell_disabled_border">#EFEFF0</color>
+    <color name="shell_border">#DADADC</color>
+    <color name="shell_logo">#000030</color>
+    <color name="shell_focus">#925CF7</color>
+    <color name="shell_error">#D93636</color>
+    <color name="shell_faint">#F9F9FA</color>
+    <color name="shell_subtle">#C5C5C9</color>
+</resources>

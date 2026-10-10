@@ -134,6 +134,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
 // These cover useCredentialsInput's direct OAuth flow (pre-opened popup,
@@ -141,6 +142,35 @@ afterEach(() => {
 // straight to that flow; the default variant routes through
 // ConnectCredentialDialog instead.
 describe("CredentialsInput – OAuth flow", () => {
+  it("explains the native browser fallback without starting an OAuth attempt", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "AutoGPTMobile/Android",
+    );
+    const api = makeBackendAPI();
+    mockUseBackendAPI.mockReturnValue(api);
+    mockUseCredentials.mockReturnValue(makeCredentialsReturn());
+    render(
+      <CredentialsInput
+        schema={baseSchema}
+        onSelectCredentials={vi.fn()}
+        showTitle={false}
+        variant="node"
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: /add account/i }),
+    );
+    expect(await screen.findByText(/Open in browser/)).toBeDefined();
+    expect(api.oAuthLogin).not.toHaveBeenCalled();
+    expect(mockOpenOAuthPopup).not.toHaveBeenCalled();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /add account/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
   it("clears a credential retained from a different transport provider", async () => {
     const onSelectCredentials = vi.fn();
     mockUseCredentials.mockReturnValue(

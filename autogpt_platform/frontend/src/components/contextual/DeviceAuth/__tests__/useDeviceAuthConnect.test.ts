@@ -72,9 +72,35 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("useDeviceAuthConnect", () => {
+  it.each(["iOS", "Android"])(
+    "retains device-code initiation and polling in the %s app",
+    async (platform) => {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+        `AutoGPTMobile/${platform}`,
+      );
+      initiate.mockResolvedValue(initiated());
+      poll.mockResolvedValue({
+        status: 200,
+        data: { status: "pending" },
+      } as never);
+      const { result } = render();
+      await act(async () => {
+        await result.current.connect();
+      });
+      expect(result.current.phase).toBe("polling");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      expect(poll).toHaveBeenCalledWith("stripe_link", {
+        state_token: "state_1",
+      });
+      act(() => result.current.cancel());
+    },
+  );
   it("surfaces the code phrase and the completed verification URL", async () => {
     initiate.mockResolvedValue(initiated());
     poll.mockResolvedValue({

@@ -1,0 +1,97 @@
+name: AutoGPT
+options:
+  bundleIdPrefix: com.agpt
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+packages:
+  AutoGPTMobileCore:
+    path: .
+targets:
+  AutoGPT:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - path: ../design-system/AutoGPTLogo.png
+        buildPhase: resources
+      - path: ../design-system/fonts
+        buildPhase: resources
+    dependencies:
+      - package: AutoGPTMobileCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.agpt.mobile
+        CODE_SIGN_ENTITLEMENTS: App/AutoGPT.entitlements
+        INFOPLIST_KEY_CFBundleDisplayName: AutoGPT
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Choose photos to attach to an AutoGPT conversation.
+        INFOPLIST_KEY_NSCameraUsageDescription: Take a photo to attach to an AutoGPT conversation.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Use voice input and attach audio in AutoGPT conversations.
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        GENERATE_INFOPLIST_FILE: YES
+      configs:
+        Debug:
+          AUTOGPT_APNS_ENVIRONMENT: development
+          AUTOGPT_PUSH_ENVIRONMENT: sandbox
+        Release:
+          AUTOGPT_APNS_ENVIRONMENT: production
+          AUTOGPT_PUSH_ENVIRONMENT: production
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        AutoGPTPushEnvironment: $(AUTOGPT_PUSH_ENVIRONMENT)
+        UIAppFonts:
+          - Geist-Regular.ttf
+          - Geist-Medium.ttf
+          - Poppins-Medium.ttf
+        CFBundleIcons:
+          CFBundlePrimaryIcon:
+            CFBundleIconFiles: [AppIcon60x60]
+        CFBundleURLTypes:
+          - CFBundleURLName: com.agpt.mobile.authentication
+            CFBundleURLSchemes: [autogpt]
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Default Configuration
+                UISceneClassName: UIWindowScene
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).SceneDelegate
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+  AutoGPTUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: AutoGPT
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  AutoGPT:
+    build:
+      targets:
+        AutoGPT: all
+    test:
+      targets: [AutoGPTUITests]

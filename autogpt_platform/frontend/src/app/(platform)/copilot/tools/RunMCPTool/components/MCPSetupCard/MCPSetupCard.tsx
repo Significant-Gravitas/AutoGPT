@@ -26,6 +26,7 @@ import {
 import { getErrorMessage } from "@/lib/mcp-errors";
 import { normalizeMcpUrl } from "@/lib/mcp-url";
 import { connectMCPOAuth } from "@/lib/mcp-oauth";
+import { NativeOAuthPopupError } from "@/lib/oauth-popup-support";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { grantToExpert } from "@/services/experts/grant-to-expert";
 import { useQueryClient } from "@tanstack/react-query";
@@ -269,6 +270,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       await finish(credential.id);
     } catch (error: unknown) {
       if (signal.aborted) return;
+      if (error instanceof NativeOAuthPopupError) setShowManualToken(true);
       setConnected(false);
       setForceDisconnected(true);
       const message = getErrorMessage(
