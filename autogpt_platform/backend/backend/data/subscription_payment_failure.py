@@ -170,7 +170,13 @@ async def _left_to_settle(failed: FailedInvoice, payment: WalletPayment | None) 
 
 
 async def _replaced_by_another_plan(failed: FailedInvoice) -> bool:
-    """Whether the customer has another active or trialing subscription."""
+    """Whether the customer has another active or trialing subscription.
+
+    A trial cancelled to end at ``trial_end`` does not count: it ends without
+    an invoice and never becomes a plan, so the failed one is not replaced.
+    Paying it later would end the trial through the stale-plan cleanup, as
+    buying any plan during a cancel-pending trial does.
+    """
     for status in _LIVE_STATUSES:
         subscriptions = await stripe_call(
             stripe.Subscription.list_async,
@@ -179,8 +185,11 @@ async def _replaced_by_another_plan(failed: FailedInvoice) -> bool:
             limit=10,
         )
         async for subscription in stripe_list_items(subscriptions):
-            if subscription["id"] != failed.sub_id:
-                return True
+            if subscription["id"] == failed.sub_id:
+                continue
+            if status == "trialing" and subscription.get("cancel_at_period_end"):
+                continue
+            return True
     return False
 
 

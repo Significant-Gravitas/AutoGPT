@@ -483,6 +483,65 @@ async def test_a_trialing_plan_also_replaces_an_old_subscription():
 
 
 @pytest.mark.asyncio
+async def test_a_cancel_pending_trial_does_not_replace_an_unpaid_plan():
+    """A cancelled trial ends at trial_end without an invoice, so it is not a
+    plan that replaces the failed one: Stripe keeps retrying the failed one."""
+    with World(balance=0) as world:
+        event = _renewal_failed(world, sub_id="sub_paid", invoice_id="in_paid")
+        world.stripe.add_subscription("sub_trial", "trialing")
+        world.stripe.subscriptions["sub_trial"]["cancel_at_period_end"] = True
+        await handle_subscription_payment_failure(event)
+
+    assert world.stripe.cancelled == []
+    assert world.stripe.voided == []
+    assert world.stripe.subscriptions["sub_paid"]["status"] == "past_due"
+    assert world.stripe.invoices["in_paid"]["status"] == "open"
+    assert world.stripe.subscriptions["sub_trial"]["status"] == "trialing"
+    assert [s["id"] for s in world.synced] == ["sub_paid"]
+
+
+@pytest.mark.asyncio
+async def test_new_plans_declined_first_payment_leaves_a_cancel_pending_trial():
+    """A card declined in Checkout leaves the new plan incomplete for the
+    customer to retry; no plan lapsed, so the trial and wallet are untouched."""
+    with World(balance=50000) as world:
+        world.tier = SubscriptionTier.TRIAL
+        world.stripe.add_subscription("sub_trial", "trialing")
+        world.stripe.subscriptions["sub_trial"]["cancel_at_period_end"] = True
+        world.stripe.add_subscription(
+            "sub_max", "incomplete", latest_invoice="in_first", price="price_max"
+        )
+        event = world.stripe.add_invoice("in_first", "sub_max", amount_due=32000)
+        event["billing_reason"] = "subscription_create"
+        await handle_subscription_payment_failure(event)
+
+    assert world.ledger.transactions == {}
+    assert world.stripe.cancelled == []
+    assert world.synced == []
+    assert world.tier == SubscriptionTier.TRIAL
+
+
+@pytest.mark.asyncio
+async def test_declined_in_place_trial_conversion_leaves_the_trial_alone():
+    """"Subscribe now" ends the trial with error_if_incomplete; a decline
+    leaves the subscription trialing, so its failed invoice is no renewal to
+    pay from the wallet or cut access for."""
+    with World(balance=50000) as world:
+        world.tier = SubscriptionTier.TRIAL
+        world.stripe.add_subscription("sub_trial", "trialing", latest_invoice="in_now")
+        world.stripe.subscriptions["sub_trial"]["cancel_at_period_end"] = True
+        event = world.stripe.add_invoice("in_now", "sub_trial", amount_due=5000)
+        event["billing_reason"] = "subscription_update"
+        await handle_subscription_payment_failure(event)
+
+    assert world.ledger.transactions == {}
+    assert world.stripe.paid_out_of_band == []
+    assert world.stripe.cancelled == []
+    assert world.synced == []
+    assert world.tier == SubscriptionTier.TRIAL
+
+
+@pytest.mark.asyncio
 async def test_started_wallet_payment_is_refunded_once_a_newer_plan_replaced_it():
     with World(balance=5000) as world:
         event = _renewal_failed(world, sub_id="sub_old", invoice_id="in_old")
