@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 
 from pydantic import model_validator
@@ -21,6 +22,8 @@ from ._auth import (
     NotionCredentialsField,
     NotionCredentialsInput,
 )
+
+_NUMBERED_LIST_ITEM = re.compile(r"^\s*\d+\.\s+(.*)$")
 
 
 class NotionCreatePageBlock(Block):
@@ -166,8 +169,9 @@ class NotionCreatePageBlock(Block):
                     }
                 )
             # Numbered list
-            elif line.strip() and line.strip()[0].isdigit() and ". " in line:
-                content_start = line.find(". ") + 2
+            # Only "<digits>. text" at the start of the line; a digit-led
+            # sentence like "2024 was strong. Revenue grew." is a paragraph.
+            elif numbered := _NUMBERED_LIST_ITEM.match(line):
                 blocks.append(
                     {
                         "type": "numbered_list_item",
@@ -175,7 +179,7 @@ class NotionCreatePageBlock(Block):
                             "rich_text": [
                                 {
                                     "type": "text",
-                                    "text": {"content": line[content_start:].strip()},
+                                    "text": {"content": numbered.group(1).strip()},
                                 }
                             ]
                         },
