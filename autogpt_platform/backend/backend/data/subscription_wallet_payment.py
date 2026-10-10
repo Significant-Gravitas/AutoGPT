@@ -146,12 +146,25 @@ async def reconcile_wallet_payment_on_paid_invoice(invoice: dict) -> None:
     user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
     if not user:
         return
+    # Almost every paid invoice has no wallet payment; checking first keeps
+    # a Redis outage from failing their webhooks on the lock.
+    if not await _unfinished_wallet_payment(user.id, invoice_id):
+        return
     async with _wallet_payment_lock(invoice_id):
-        payment = await find_wallet_payment(user.id, invoice_id)
-        if payment is None or payment.state != WalletPaymentState.DEBITED:
+        payment = await _unfinished_wallet_payment(user.id, invoice_id)
+        if payment is None:
             return
         fresh = dict(await stripe_call(stripe.Invoice.retrieve_async, invoice_id))
         await _settle_unpayable(payment, fresh)
+
+
+async def _unfinished_wallet_payment(
+    user_id: str, invoice_id: str
+) -> WalletPayment | None:
+    payment = await find_wallet_payment(user_id, invoice_id)
+    if payment is None or payment.state != WalletPaymentState.DEBITED:
+        return None
+    return payment
 
 
 @asynccontextmanager

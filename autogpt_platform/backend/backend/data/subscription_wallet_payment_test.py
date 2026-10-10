@@ -285,3 +285,44 @@ async def test_stale_open_copy_after_an_unrecorded_wallet_pay_never_refunds(
 
     assert world.ledger.transactions == {"in_1": -2000}
     assert world.ledger.settled("in_1")
+
+
+def _redis_down(invoice_id: str):
+    raise ConnectionError("redis is down")
+
+
+@pytest.mark.asyncio
+async def test_paid_invoice_without_a_wallet_payment_never_takes_the_lock():
+    """Sentry's finding: every paid-invoice webhook took the Redis lock, so a
+    Redis outage failed them all, though almost none has a wallet payment."""
+    with World(balance=0) as world:
+        world.stripe.add_subscription("sub_1", "active", latest_invoice="in_1")
+        paid = world.stripe.add_invoice("in_1", "sub_1", status="paid")
+        with patch(
+            "backend.data.subscription_wallet_payment._wallet_payment_lock",
+            _redis_down,
+        ):
+            await reconcile_wallet_payment_on_paid_invoice(paid)
+
+    assert world.ledger.transactions == {}
+
+
+@pytest.mark.asyncio
+async def test_unfinished_wallet_payment_is_settled_under_the_lock():
+    with World(balance=5000) as world:
+        event = _renewal_failed(world)
+        world.stripe.fail_next["pay"] = 1
+        with pytest.raises(stripe.APIConnectionError):
+            await handle_subscription_payment_failure(event)
+        world.stripe.card_pays("in_1")
+        with patch(
+            "backend.data.subscription_wallet_payment._wallet_payment_lock",
+            _redis_down,
+        ), pytest.raises(ConnectionError):
+            await reconcile_wallet_payment_on_paid_invoice(world.stripe.view("in_1"))
+        assert world.ledger.balance == 3000
+
+        await reconcile_wallet_payment_on_paid_invoice(world.stripe.view("in_1"))
+
+    assert world.ledger.transactions == {"in_1": -2000, "in_1:wallet-refund": 2000}
+    assert world.ledger.balance == 5000
