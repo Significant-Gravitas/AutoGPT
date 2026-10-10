@@ -202,6 +202,10 @@ async def sdk_service_turn(
             update={
                 "use_claude_code_subscription": False,
                 "use_e2b_sandbox": False,
+                "use_local": False,
+                "use_openrouter": True,
+                "base_url": "https://openrouter.ai/api/v1",
+                "api_key": "drift-test-key",
                 "claude_agent_fallback_model": None,
                 "claude_agent_max_transient_retries": 1,
             }

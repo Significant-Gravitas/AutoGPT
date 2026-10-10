@@ -45,7 +45,14 @@ def baseline_offline(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         baseline,
         "config",
         baseline.config.model_copy(
-            update={"use_e2b_sandbox": False, "use_local": False}
+            update={
+                "use_e2b_sandbox": False,
+                "use_local": False,
+                "use_claude_code_subscription": False,
+                "use_openrouter": True,
+                "base_url": "https://openrouter.ai/api/v1",
+                "api_key": "drift-test-key",
+            }
         ),
     )
     for name, value in {

@@ -4,10 +4,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import orjson
 import pytest
+from pydantic import SecretStr
 
 from backend.copilot.context import set_turn_unattended
 from backend.data.execution import ExecutionStatus
-from backend.data.model import USER_TIMEZONE_NOT_SET
+from backend.data.model import (
+    USER_TIMEZONE_NOT_SET,
+    APIKeyCredentials,
+    CredentialsFieldInfo,
+    OAuth2Credentials,
+)
 from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.executor.utils import is_credential_validation_error_message
 from backend.util.exceptions import (
@@ -546,6 +552,88 @@ async def test_run_agent_rejects_unknown_input_fields(setup_test_data):
 # errors back into the inline ``SetupRequirementsResponse`` so the user
 # still gets the credential setup card instead of a generic error.
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_missing_credentials_reuses_one_credential_scope_snapshot():
+    """One snapshot still honors session choices and filters the grant hint."""
+
+    field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["github"],
+            "credentials_types": ["api_key"],
+            "is_auto_credential": False,
+        },
+        by_alias=True,
+    )
+    graph = MagicMock()
+    graph.id = "test-graph"
+    graph.version = 1
+    graph.name = "Test Agent"
+    graph.input_schema = {}
+    graph.trigger_setup_info = None
+    graph.regular_credentials_inputs = {
+        "github_api_key": (field, {("node-1", "credentials")}, True)
+    }
+    store = MagicMock()
+    store.get_all_creds = AsyncMock(
+        return_value=[
+            APIKeyCredentials(
+                id="spare-credential",
+                provider="github",
+                api_key=SecretStr("secret"),
+                title="Spare GitHub",
+            ),
+            OAuth2Credentials(
+                id="wrong-type",
+                provider="github",
+                access_token=SecretStr("token"),
+                scopes=["repo"],
+            ),
+        ]
+    )
+    credentials_manager = MagicMock(store=store)
+    experts = MagicMock()
+    experts.expert_allowed_credential_ids = AsyncMock(return_value=[])
+
+    with (
+        patch(
+            "backend.copilot.tools.utils.IntegrationCredentialsManager",
+            return_value=credentials_manager,
+        ),
+        patch(
+            "backend.copilot.tools.expert_scope.IntegrationCredentialsManager",
+            return_value=credentials_manager,
+        ),
+        patch("backend.data.db_accessors.experts_db", return_value=experts),
+        patch("backend.copilot.tools.expert_scope.experts_db", return_value=experts),
+        patch(
+            "backend.copilot.tools.utils.selected_credentials",
+            AsyncMock(return_value={}),
+        ) as selections,
+    ):
+        _, response = await RunAgentTool()._check_prerequisites(
+            graph=graph,
+            user_id="test-user",
+            params=RunAgentInput(),
+            session_id="test-session",
+            expert_id="expert-a",
+        )
+
+    assert isinstance(response, SetupRequirementsResponse)
+    grant = response.setup_info.user_readiness.missing_credentials["github_api_key"][
+        "expert_grant"
+    ]
+    assert [credential["id"] for credential in grant["credentials"]] == [
+        "spare-credential"
+    ]
+    assert "spare-credential" in response.message
+    assert "wrong-type" not in response.message
+    selections.assert_awaited_once_with("test-session")
+    store.get_all_creds.assert_awaited_once_with("test-user")
+    experts.expert_allowed_credential_ids.assert_awaited_once_with(
+        "test-user", "expert-a"
+    )
 
 
 def test_is_credential_validation_error_message_recognises_credential_strings():
