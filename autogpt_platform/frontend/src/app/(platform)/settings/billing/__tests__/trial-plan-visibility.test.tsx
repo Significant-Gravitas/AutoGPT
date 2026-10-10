@@ -74,32 +74,18 @@ function mockBilling(trial: ReturnType<typeof trialResponse>, tier: string) {
   );
 }
 
-it.each([true, false])(
-  "offers plan choices while a trial cancellation is pending (cancel_keeps_access %s)",
-  async (keepsAccess) => {
-    mockBilling(
-      trialResponse({
-        cancel_at_period_end: true,
-        cancel_keeps_access: keepsAccess,
-      }),
-      "TRIAL",
-    );
-    render(<SettingsBillingPage />);
-    expect(
-      await screen.findByRole("button", { name: "Subscribe to Pro" }),
-    ).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "Upgrade to Max" }),
-    ).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Get Pro" })).toBeNull();
-  },
-);
+it("offers plan choices while a trial cancellation is pending", async () => {
+  mockBilling(trialResponse({ cancel_at_period_end: true }), "TRIAL");
+  render(<SettingsBillingPage />);
+  expect(
+    await screen.findByRole("button", { name: "Subscribe to Pro" }),
+  ).toBeDefined();
+  expect(screen.getByRole("button", { name: "Upgrade to Max" })).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Get Pro" })).toBeNull();
+});
 
 it("offers no plan choices during a trial that will convert", async () => {
-  mockBilling(
-    trialResponse({ cancel_at_period_end: false, cancel_keeps_access: true }),
-    "TRIAL",
-  );
+  mockBilling(trialResponse({ cancel_at_period_end: false }), "TRIAL");
   render(<SettingsBillingPage />);
   await screen.findByRole("button", { name: "Cancel trial" });
   expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
@@ -110,7 +96,6 @@ it("offers no plan choices once a cancel-pending trial has converted", async () 
   mockBilling(
     trialResponse({
       cancel_at_period_end: true,
-      cancel_keeps_access: true,
       converted: true,
     }),
     "PRO",
@@ -127,7 +112,6 @@ it("offers no plan choices once a cancel-pending trial has ended", async () => {
       active: false,
       status: "canceled",
       cancel_at_period_end: true,
-      cancel_keeps_access: true,
     }),
     "NO_TIER",
   );
@@ -145,7 +129,6 @@ it.each(["PRO", "MAX"])(
         active: false,
         status: "canceled",
         cancel_at_period_end: true,
-        cancel_keeps_access: true,
       }),
       tier,
     );

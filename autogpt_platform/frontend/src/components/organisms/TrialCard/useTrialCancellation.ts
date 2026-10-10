@@ -37,11 +37,8 @@ export function useTrialCancellation({ userID, query, failure }: Args) {
   async function cancelTrial() {
     if (!userID || isCanceling) return;
     failure.clearFailure();
-    // Tells the server which terms the confirmation showed, so it never ends
-    // access at once after promising it would continue.
-    const keepsAccess = Boolean(query.data?.cancel_keeps_access);
     try {
-      const response = await cancel({ data: { keeps_access: keepsAccess } });
+      const response = await cancel();
       if (useAuthStore.getState().user?.id !== userID) return;
       if (response.status !== 200) throw new Error(CANCEL_FAILED);
       const trial = response.data;

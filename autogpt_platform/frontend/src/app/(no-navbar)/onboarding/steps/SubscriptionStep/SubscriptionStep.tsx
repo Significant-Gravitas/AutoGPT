@@ -44,7 +44,6 @@ export function SubscriptionStep() {
         isUpdatingTier={subscription.isUpdatingTier}
         selectedPlan={subscription.selectedPlan}
         trialOffer={offer}
-        trialCancelKeepsAccess={trial.trial?.cancel_keeps_access}
         onStartTrial={startTrial}
         isStartingTrial={trial.isStarting || saving}
         trialError={saveError ?? trial.error}

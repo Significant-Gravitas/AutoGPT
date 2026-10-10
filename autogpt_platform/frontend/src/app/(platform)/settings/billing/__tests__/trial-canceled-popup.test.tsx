@@ -52,12 +52,11 @@ const DAY = 24 * HOUR;
 const endsAt = new Date("2030-09-17T15:00:00Z");
 
 function active(ends = endsAt) {
-  return trialResponse({ cancel_keeps_access: true, ends_at: ends });
+  return trialResponse({ ends_at: ends });
 }
 
 function cancelPending(ends = endsAt) {
   return trialResponse({
-    cancel_keeps_access: true,
     cancel_at_period_end: true,
     ends_at: ends,
   });
@@ -171,7 +170,7 @@ describe("post-cancel popup", () => {
     expect(screen.getByRole("button", { name: "Resume trial" })).toBeDefined();
   });
 
-  it("does not open when the cancel ends the trial at once", async () => {
+  it("does not open when the cancel finds the trial already over", async () => {
     server.use(
       getGetTrialsGetTrialStatusMockHandler200(trialResponse()),
       getPostTrialsCancelTrialMockHandler200(
@@ -183,7 +182,9 @@ describe("post-cancel popup", () => {
       await screen.findByRole("button", { name: "Cancel trial" }),
     );
     fireEvent.click(
-      await screen.findByRole("button", { name: "End trial now" }),
+      within(
+        await screen.findByRole("dialog", { name: "Cancel your trial?" }),
+      ).getByRole("button", { name: "Cancel trial" }),
     );
     await screen.findByText("Your trial has ended");
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -265,7 +266,6 @@ describe("popup prices", () => {
     server.use(
       getPostTrialsCancelTrialMockHandler200(
         trialResponse({
-          cancel_keeps_access: true,
           cancel_at_period_end: true,
           offer: { ...trialOffer, unit_amount: 1999 },
         }),

@@ -77,12 +77,6 @@ class Flag(str, Enum):
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     CARD_REQUIRED_TRIAL_OFFER = "card-required-trial-offer"
-    # Canceling a trial schedules its end instead of ending it: access runs to
-    # the trial end date, the card is never charged, and the trial can be
-    # resumed until then (SECRT-2876). Off by default; off is today's
-    # immediate end. A trial already recorded as cancel-pending keeps its
-    # access if this is later turned off.
-    TRIAL_CANCEL_AT_PERIOD_END = "trial-cancel-at-period-end"
     GRAPHITI_MEMORY = "graphiti-memory"
 
     # Gates Otto voice mode end-to-end. The speech endpoint 404s when

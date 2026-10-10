@@ -251,7 +251,7 @@ differently.
 | `trial_subscribe_now_clicked` | browser | live | `days_left` | Subscribe now is clicked in the cancellation popup. It opens Billing. There, the trial's own plan converts the trial at once on the saved card (`trial_converted`, no `checkout_started`); any other plan, or a card that asks for authentication, goes through Stripe Checkout (`checkout_started`), which ends the trial without a `trial_ended`. |
 | `trial_started` | backend | live | `trial_id`, `trial_offer_version`, `subscription_tier`, `billing_cycle`, `trial_duration_days` | The trial starts. Like every trial lifecycle event, it is sent only when its notification email is queued. |
 | `trial_ending` | backend | live | as above | The reminder window opens. |
-| `trial_canceled` | backend | live | as above | The trial is set to cancel at its end: the cancellation is scheduled, trial access continues until the end date, and the card is not charged. Where a cancel ends the trial at once instead (`trial-cancel-at-period-end` flag off), only `trial_ended` is sent. |
+| `trial_canceled` | backend | live | as above | The trial is set to cancel at its end: the cancellation is scheduled, trial access continues until the end date, and the card is not charged. |
 | `trial_resumed` | backend | live | as above | A trial set to cancel is resumed before its end date, so it converts to paid at its end as first agreed. |
 | `payment_failed` | backend | live | as above | The conversion charge fails. |
 | `trial_converted` | backend | live | as above | The trial converts to paid. |

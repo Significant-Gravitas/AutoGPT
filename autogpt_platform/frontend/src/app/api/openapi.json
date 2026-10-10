@@ -6101,19 +6101,6 @@
         "tags": ["trials"],
         "summary": "Cancel Trial",
         "operationId": "postTrialsCancelTrial",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "anyOf": [
-                  { "$ref": "#/components/schemas/TrialCancelRequest" },
-                  { "type": "null" }
-                ],
-                "title": "Body"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6127,14 +6114,6 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "409": { "description": "No cancelable trial subscription" },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          },
           "502": {
             "description": "Stripe cancellation temporarily unavailable"
           }
@@ -32232,18 +32211,6 @@
         ],
         "title": "TransferResponse"
       },
-      "TrialCancelRequest": {
-        "properties": {
-          "keeps_access": {
-            "type": "boolean",
-            "title": "Keeps Access",
-            "description": "True when the person was told canceling keeps access until the trial ends (the status said cancel_keeps_access). The trial is then never ended immediately, even if the flag changed since.",
-            "default": false
-          }
-        },
-        "type": "object",
-        "title": "TrialCancelRequest"
-      },
       "TrialCheckoutRequest": {
         "properties": {
           "offer_token": {
@@ -32341,12 +32308,6 @@
           "cancel_at_period_end": {
             "type": "boolean",
             "title": "Cancel At Period End",
-            "default": false
-          },
-          "cancel_keeps_access": {
-            "type": "boolean",
-            "title": "Cancel Keeps Access",
-            "description": "True when canceling schedules the trial's end: access runs to ends_at, the card is never charged, and the trial can be resumed until then. False when canceling ends trial access immediately.",
             "default": false
           },
           "allowance_used_percent": {

@@ -9,17 +9,10 @@ interface Props {
   kind: PlanDialog;
   setOpen: (open: boolean) => void;
   trialOffer: TrialOfferResponse | null;
-  trialCancelKeepsAccess?: boolean;
   plans: PlanDef[];
 }
 
-export function PlanDetailsDialog({
-  kind,
-  setOpen,
-  trialOffer,
-  trialCancelKeepsAccess = false,
-  plans,
-}: Props) {
+export function PlanDetailsDialog({ kind, setOpen, trialOffer, plans }: Props) {
   return (
     <Dialog
       title={kind === "compare" ? "Compare plans" : "Your trial. No surprises."}
@@ -31,12 +24,7 @@ export function PlanDetailsDialog({
         {kind === "compare" ? (
           <PlanComparison plans={plans} />
         ) : (
-          trialOffer && (
-            <TrialDetails
-              offer={trialOffer}
-              cancelKeepsAccess={trialCancelKeepsAccess}
-            />
-          )
+          trialOffer && <TrialDetails offer={trialOffer} />
         )}
       </Dialog.Content>
     </Dialog>

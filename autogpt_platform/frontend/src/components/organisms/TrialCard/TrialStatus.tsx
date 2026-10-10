@@ -48,11 +48,6 @@ export function TrialStatus({
               ? `Your trial ends ${end}. Your saved card will then be charged ${formatTrialPrice(trial.offer)}, plus applicable tax.`
               : "Paid access requires a successful payment. Review your payment method and plan below."}
       </Text>
-      {trial.active && !trial.cancel_keeps_access ? (
-        <Text variant="small" className="!text-zinc-500">
-          Canceling ends trial access immediately.
-        </Text>
-      ) : null}
       {trial.active && !trial.cancel_at_period_end ? (
         <div className="mt-1">
           <CancelTrialDialog

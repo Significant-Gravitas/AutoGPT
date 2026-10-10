@@ -125,6 +125,47 @@ async def test_cancel_schedules_the_end_instead_of_ending_the_trial(trial, api):
 
 
 @pytest.mark.asyncio
+async def test_a_second_cancel_writes_nothing_to_stripe(trial, api):
+    pending = _live(trial, cancel_at_period_end=True)
+    api.retrieve.return_value = pending
+    await cancel.schedule_trial_cancellation(trial)
+    _assert_no_writes(api)
+    api.sync.assert_awaited_once_with(dict(pending))
+
+
+@pytest.mark.asyncio
+async def test_cancel_holds_the_checkout_lock_from_read_to_sync(trial, api):
+    """Subscribe now converts the trial under this lock: a cancel landing in
+    between would schedule the new paid plan to end."""
+    pending = _live(trial, cancel_at_period_end=True)
+    api.retrieve.return_value = _live(trial)
+    api.modify.return_value = pending
+    await cancel.schedule_trial_cancellation(trial)
+    assert api.mock_calls == [
+        call.lock("user-1"),
+        call.retrieve("sub_1"),
+        call.modify("sub_1", cancel_at_period_end=True),
+        call.sync(dict(pending)),
+        call.unlock(),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cancel_while_the_trial_is_being_updated_is_refused_untouched(trial, api):
+    api.lock.side_effect = SubscriptionCheckoutUnavailable(
+        "Another checkout is already starting. Please retry."
+    )
+    with pytest.raises(
+        cancel.TrialChangeRefused,
+        match="^Your trial is already being updated. Please retry.$",
+    ):
+        await cancel.schedule_trial_cancellation(trial)
+    api.retrieve.assert_not_awaited()
+    _assert_no_writes(api)
+    api.sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_resume_takes_back_the_scheduled_end(trial, api):
     resumed = _live(trial)
     api.retrieve.return_value = _live(trial, cancel_at_period_end=True)

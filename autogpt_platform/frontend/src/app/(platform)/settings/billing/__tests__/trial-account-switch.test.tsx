@@ -111,7 +111,9 @@ describe("trial account isolation", () => {
       await screen.findByRole("button", { name: "Cancel trial" }),
     );
     fireEvent.click(
-      await screen.findByRole("button", { name: "End trial now" }),
+      within(
+        await screen.findByRole("dialog", { name: "Cancel your trial?" }),
+      ).getByRole("button", { name: "Cancel trial" }),
     );
     await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
     act(() => setTrialUser("user-b"));
@@ -131,16 +133,14 @@ describe("trial account isolation", () => {
   it("does not open user A's late cancellation popup for user B", async () => {
     const pending = deferredTrialResponse<ReturnType<typeof trialResponse>>();
     server.use(
-      getGetTrialsGetTrialStatusMockHandler200(keepsAccessForCurrentUser),
+      getGetTrialsGetTrialStatusMockHandler200(trialForCurrentUser),
       getPostTrialsCancelTrialMockHandler200(() => pending.promise),
     );
     render(<TrialCard />);
-    await confirmKeepAccessCancel();
+    await confirmCancel();
     act(() => setTrialUser("user-b"));
     await screen.findByText(/\$30\.00/);
-    pending.resolve(
-      trialResponse({ cancel_keeps_access: true, cancel_at_period_end: true }),
-    );
+    pending.resolve(trialResponse({ cancel_at_period_end: true }));
     await waitFor(() =>
       expect(
         screen
@@ -154,16 +154,15 @@ describe("trial account isolation", () => {
 
   it("hides user A's open cancellation popup from user B", async () => {
     server.use(
-      getGetTrialsGetTrialStatusMockHandler200(keepsAccessForCurrentUser),
+      getGetTrialsGetTrialStatusMockHandler200(trialForCurrentUser),
       getPostTrialsCancelTrialMockHandler200(
         trialResponse({
-          cancel_keeps_access: true,
           cancel_at_period_end: true,
         }),
       ),
     );
     render(<TrialCard />);
-    await confirmKeepAccessCancel();
+    await confirmCancel();
     await screen.findByRole("dialog", { name: "Cancellation confirmed" });
     act(() => setTrialUser("user-b"));
     await screen.findByText(/\$30\.00/);
@@ -176,7 +175,6 @@ describe("trial account isolation", () => {
     server.use(
       getGetTrialsGetTrialStatusMockHandler200(() =>
         trialResponse({
-          cancel_keeps_access: true,
           cancel_at_period_end: true,
           offer: {
             ...trialOffer,
@@ -194,7 +192,7 @@ describe("trial account isolation", () => {
     await waitFor(() => expect(resume).toHaveBeenCalledOnce());
     act(() => setTrialUser("user-b"));
     await screen.findByText(/\$30 \/ month/);
-    pending.resolve(trialResponse({ cancel_keeps_access: true }));
+    pending.resolve(trialResponse());
     await waitFor(() =>
       expect(
         screen
@@ -207,9 +205,8 @@ describe("trial account isolation", () => {
   });
 });
 
-function keepsAccessForCurrentUser() {
+function trialForCurrentUser() {
   return trialResponse({
-    cancel_keeps_access: true,
     offer: {
       ...trialOffer,
       unit_amount: useAuthStore.getState().user?.id === "user-a" ? 2000 : 3000,
@@ -217,7 +214,7 @@ function keepsAccessForCurrentUser() {
   });
 }
 
-async function confirmKeepAccessCancel() {
+async function confirmCancel() {
   fireEvent.click(await screen.findByRole("button", { name: "Cancel trial" }));
   const confirm = await screen.findByRole("dialog", {
     name: "Cancel your trial?",

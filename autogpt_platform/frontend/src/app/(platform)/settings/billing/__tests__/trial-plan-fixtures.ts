@@ -10,7 +10,6 @@ import { vi } from "vitest";
 
 export const cancelPending = {
   cancel_at_period_end: true,
-  cancel_keeps_access: true,
 };
 
 export const trialSubscription: SubscriptionStatusResponse = {

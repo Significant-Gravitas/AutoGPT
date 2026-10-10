@@ -5,10 +5,9 @@ import { formatPlanAmount } from "../../../helpers";
 
 interface Props {
   offer: TrialOfferResponse;
-  cancelKeepsAccess: boolean;
 }
 
-export function TrialDetails({ offer, cancelKeepsAccess }: Props) {
+export function TrialDetails({ offer }: Props) {
   return (
     <div className="space-y-5">
       <Text variant="body" tone="secondary">
@@ -38,11 +37,8 @@ export function TrialDetails({ offer, cancelKeepsAccess }: Props) {
         cancel before it ends.
       </Text>
       <Text variant="body" tone="secondary">
-        Trial usage is limited.{" "}
-        {cancelKeepsAccess
-          ? "If you cancel, you keep access until the trial ends."
-          : "Canceling ends trial access immediately."}{" "}
-        You can manage or cancel your plan in billing.
+        Trial usage is limited. If you cancel, you keep access until the trial
+        ends. You can manage or cancel your plan in billing.
       </Text>
     </div>
   );

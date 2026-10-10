@@ -188,7 +188,7 @@ describe("subscribing to the trial's plan", () => {
     async (status) => {
       const { state, hits } = mockBilling();
       mockPlanRequest(() => {
-        state.trial = trialResponse({ cancel_keeps_access: true });
+        state.trial = trialResponse();
         return HttpResponse.json(
           { detail: "Your accepted plan starts after your trial." },
           { status },

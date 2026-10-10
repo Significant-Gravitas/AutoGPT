@@ -1,11 +1,9 @@
-"""Resuming a scheduled trial cancellation, and the status copy that says
-whether canceling keeps access until the trial ends."""
+"""Resuming a scheduled trial cancellation."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
-from prisma.enums import SubscriptionTier
 
 from backend.api.features import subscription_trial_routes as routes
 from backend.api.features import subscription_trial_routes_cancel_test as cancel_test
@@ -16,21 +14,15 @@ from backend.api.features.subscription_trial_routes_cancel_test import (
     _started,
 )
 from backend.data.subscription_checkout import SubscriptionCheckoutUnavailable
-from backend.util.feature_flag import Flag
 
 billing_return_origin = routes_test.billing_return_origin
 track_checkout_started = routes_test.track_checkout_started
-cancel_flag = routes_test.cancel_flag
 trial = routes_test.trial
 live_stripe = cancel_test.live_stripe
 
 
 @pytest.mark.asyncio
-async def test_resume_takes_back_a_scheduled_cancellation(
-    trial, cancel_flag, live_stripe
-):
-    """Resume follows the trial's own state, never the flag: a trial canceled
-    while the flag was on stays resumable after it is turned off."""
+async def test_resume_takes_back_a_scheduled_cancellation(trial, live_stripe):
     pending = _started(trial, cancel_at_period_end=True)
     resumed = _live(pending)
     live_stripe.retrieve.return_value = _live(pending, cancel_at_period_end=True)
@@ -43,11 +35,7 @@ async def test_resume_takes_back_a_scheduled_cancellation(
     live_stripe.expire.assert_awaited_once_with("cus_1")
     live_stripe.modify.assert_awaited_once_with("sub_1", cancel_at_period_end=False)
     live_stripe.sync.assert_awaited_once_with(dict(resumed))
-    # The flag reads authoritatively off (the fixture default), yet the resume
-    # went through; the only read is the status copy built for the response.
-    assert cancel_flag.await_count == 1
     assert status.active and not status.cancel_at_period_end
-    assert not status.cancel_keeps_access
 
 
 @pytest.mark.asyncio
@@ -138,61 +126,3 @@ async def test_resume_stripe_failure_is_retryable_without_a_sync(trial, live_str
     assert error.value.status_code == 502
     assert error.value.detail == "Unable to resume your trial. Please retry."
     live_stripe.sync.assert_not_awaited()
-
-
-KEEPS_ACCESS_BY_FLAG_READ = pytest.mark.parametrize(
-    "flag_read,keeps_access",
-    [((True, True), True), ((False, True), False), ((False, False), True)],
-    ids=["on", "off", "unreadable"],
-)
-
-
-@pytest.mark.asyncio
-@KEEPS_ACCESS_BY_FLAG_READ
-async def test_trial_status_says_whether_canceling_keeps_access(
-    trial, cancel_flag, flag_read, keeps_access
-):
-    """The copy follows what cancel will do: only an authoritative "off" ends
-    the trial at once, so an unreadable flag promises access too."""
-    cancel_flag.return_value = flag_read
-    with (
-        patch.object(
-            routes, "get_subscription_trial", AsyncMock(return_value=_started(trial))
-        ),
-        patch.object(
-            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
-        ),
-    ):
-        status = await routes.get_trial_status(trial.user_id)
-    assert status.cancel_keeps_access is keeps_access
-    cancel_flag.assert_awaited_once_with(
-        Flag.TRIAL_CANCEL_AT_PERIOD_END, trial.user_id, default=False
-    )
-
-
-@pytest.mark.asyncio
-@KEEPS_ACCESS_BY_FLAG_READ
-async def test_trial_offer_says_whether_canceling_keeps_access(
-    trial, cancel_flag, flag_read, keeps_access
-):
-    cancel_flag.return_value = flag_read
-    user = MagicMock(
-        stripe_customer_id=None,
-        created_at=datetime.now(UTC),
-        subscription_tier=SubscriptionTier.NO_TIER,
-    )
-    with (
-        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=None)),
-        patch.object(routes, "get_trial_offer", AsyncMock(return_value=trial.offer)),
-        patch.object(routes, "trial_seat_available", AsyncMock(return_value=True)),
-        patch.object(routes, "get_user_by_id", AsyncMock(return_value=user)),
-        patch.object(
-            routes, "resolve_trial_price", AsyncMock(return_value=trial.offer)
-        ),
-        patch.object(
-            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
-        ),
-    ):
-        status = await routes.get_trial_status(trial.user_id)
-    assert status.eligible
-    assert status.cancel_keeps_access is keeps_access

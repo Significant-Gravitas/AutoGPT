@@ -9,11 +9,6 @@ from backend.data import subscription_trial_stripe as fulfillment
 pytest_plugins = ("backend.data.subscription_trial_fixtures",)
 
 
-@pytest.fixture(autouse=True)
-def cancel_flag(trial_cancel_flag):
-    return trial_cancel_flag
-
-
 @pytest.mark.asyncio
 async def test_open_checkout_never_grants_or_consumes_trial(trial, session, boundaries):
     session["status"] = "open"
@@ -197,25 +192,6 @@ async def test_reused_identity_cancels_trial_before_granting_access(
     saved = boundaries.subscriptiontrial.update.await_args.kwargs["data"]
     assert saved["status"] == "canceled"
     assert saved["consumedAt"] is not None
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("changed_items", [False, True])
-async def test_scheduled_cancellation_ends_trial_immediately_with_the_flag_off(
-    trial, subscription, boundaries, changed_items
-):
-    subscription["cancel_at_period_end"] = True
-    if changed_items:
-        subscription["items"] = None
-    canceled = {**subscription, "status": "canceled", "cancel_at_period_end": False}
-    with patch.object(
-        fulfillment.stripe.Subscription,
-        "cancel_async",
-        AsyncMock(return_value=canceled),
-    ) as cancel:
-        result = await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
-    assert result is not None and result[1] == SubscriptionTier.NO_TIER
-    cancel.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -28,9 +28,8 @@ vi.mock("@posthog/react", () => ({
 
 const DAY = 24 * 60 * 60 * 1000;
 const endsAt = new Date("2030-09-17T15:00:00Z");
-const active = trialResponse({ cancel_keeps_access: true });
+const active = trialResponse();
 const cancelPending = trialResponse({
-  cancel_keeps_access: true,
   cancel_at_period_end: true,
 });
 

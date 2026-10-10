@@ -12,7 +12,6 @@ const meta = {
       status: "trialing",
       ends_at: new Date(Date.now() + 5 * DAY_MS),
       cancel_at_period_end: true,
-      cancel_keeps_access: true,
       offer: {
         token: "a".repeat(64),
         version: "storybook-trial",

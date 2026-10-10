@@ -14,6 +14,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@/tests/integrations/test-utils";
 import {
   deferredTrialResponse,
@@ -31,7 +32,7 @@ afterEach(() => {
 });
 
 describe("trial billing actions", () => {
-  it("hides trial usage and ends access immediately on cancellation", async () => {
+  it("hides trial usage and blocks a second cancel while one runs", async () => {
     const pending = deferredTrialResponse<ReturnType<typeof trialResponse>>();
     const cancel = vi.fn(() => pending.promise);
     server.use(
@@ -43,19 +44,17 @@ describe("trial billing actions", () => {
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect(screen.queryByText(/trial allowance used/i)).toBeNull();
     expect(screen.getByText(/Your trial ends.*\$20\.00/)).toBeDefined();
-    expect(
-      screen.getByText(/Canceling ends trial access immediately/),
-    ).toBeDefined();
     fireEvent.click(button);
     fireEvent.click(
-      await screen.findByRole("button", { name: "End trial now" }),
+      within(
+        await screen.findByRole("dialog", { name: "Cancel your trial?" }),
+      ).getByRole("button", { name: "Cancel trial" }),
     );
     await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
     expect(button.hasAttribute("disabled")).toBe(true);
     fireEvent.click(button);
-    pending.resolve(trialResponse({ active: false, status: "canceled" }));
-    expect(await screen.findByText(/Cancellation confirmed/)).toBeDefined();
-    expect(screen.getByText("Your trial has ended")).toBeDefined();
+    pending.resolve(trialResponse({ cancel_at_period_end: true }));
+    expect(await screen.findByText("Cancellation pending")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Cancel trial" })).toBeNull();
     expect(cancel).toHaveBeenCalledOnce();
   });
@@ -72,7 +71,9 @@ describe("trial billing actions", () => {
       await screen.findByRole("button", { name: "Cancel trial" }),
     );
     fireEvent.click(
-      await screen.findByRole("button", { name: "End trial now" }),
+      within(
+        await screen.findByRole("dialog", { name: "Cancel your trial?" }),
+      ).getByRole("button", { name: "Cancel trial" }),
     );
     expect(await screen.findByRole("alert")).toBeDefined();
     expect(
@@ -83,14 +84,16 @@ describe("trial billing actions", () => {
     expect(screen.queryByText(/Cancellation confirmed/)).toBeNull();
     server.use(
       getPostTrialsCancelTrialMockHandler200(
-        trialResponse({ active: false, status: "canceled" }),
+        trialResponse({ cancel_at_period_end: true }),
       ),
     );
     fireEvent.click(screen.getByRole("button", { name: "Cancel trial" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "End trial now" }),
+      within(
+        await screen.findByRole("dialog", { name: "Cancel your trial?" }),
+      ).getByRole("button", { name: "Cancel trial" }),
     );
-    await screen.findByText(/Cancellation confirmed/);
+    await screen.findByText("Cancellation pending");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 

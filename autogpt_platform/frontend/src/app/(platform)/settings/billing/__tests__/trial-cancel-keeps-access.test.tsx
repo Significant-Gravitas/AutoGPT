@@ -31,20 +31,11 @@ const endsAt = new Date("2030-09-17T15:00:00Z");
 beforeEach(() => setTrialUser());
 afterEach(() => setTrialUser(null));
 
-describe("cancel confirmation when canceling keeps access", () => {
+describe("cancel confirmation", () => {
   it("promises access until the trial ends and no charge", async () => {
-    const sent = vi.fn();
-    const cancel = vi.fn(async ({ request }: { request: Request }) => {
-      sent(await request.json());
-      return trialResponse({
-        cancel_at_period_end: true,
-        cancel_keeps_access: true,
-      });
-    });
+    const cancel = vi.fn(() => trialResponse({ cancel_at_period_end: true }));
     server.use(
-      getGetTrialsGetTrialStatusMockHandler200(
-        trialResponse({ cancel_keeps_access: true }),
-      ),
+      getGetTrialsGetTrialStatusMockHandler200(trialResponse()),
       getPostTrialsCancelTrialMockHandler200(cancel),
     );
     render(<TrialCard />);
@@ -64,9 +55,6 @@ describe("cancel confirmation when canceling keeps access", () => {
       "STRONG",
     );
     expect(within(dialog).queryByText(/immediately|cannot restart/)).toBeNull();
-    expect(
-      within(dialog).queryByRole("button", { name: "End trial now" }),
-    ).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "Keep trial" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(cancel).not.toHaveBeenCalled();
@@ -80,7 +68,6 @@ describe("cancel confirmation when canceling keeps access", () => {
     );
     await screen.findByText("Cancellation pending");
     expect(cancel).toHaveBeenCalledOnce();
-    expect(sent).toHaveBeenCalledExactlyOnceWith({ keeps_access: true });
   });
 
   it("shows the ended trial when the cancel finds it already over", async () => {
@@ -88,12 +75,8 @@ describe("cancel confirmation when canceling keeps access", () => {
     server.use(
       getGetTrialsGetTrialStatusMockHandler200(() =>
         ended
-          ? trialResponse({
-              active: false,
-              status: "canceled",
-              cancel_keeps_access: true,
-            })
-          : trialResponse({ cancel_keeps_access: true }),
+          ? trialResponse({ active: false, status: "canceled" })
+          : trialResponse(),
       ),
       http.post("*/api/credits/trial/cancel", () => {
         ended = true;
@@ -122,11 +105,7 @@ describe("cancel confirmation when canceling keeps access", () => {
   });
 
   it("drops the ends-immediately warning from the active trial", async () => {
-    server.use(
-      getGetTrialsGetTrialStatusMockHandler200(
-        trialResponse({ cancel_keeps_access: true }),
-      ),
-    );
+    server.use(getGetTrialsGetTrialStatusMockHandler200(trialResponse()));
     render(<TrialCard />);
     await screen.findByRole("button", { name: "Cancel trial" });
     expect(screen.getByText(/Your trial ends.*\$20\.00/)).toBeDefined();
@@ -135,94 +114,67 @@ describe("cancel confirmation when canceling keeps access", () => {
 });
 
 describe("cancel-pending trial card", () => {
-  it.each([true, false])(
-    "shows the pending cancellation and a resume action (keeps access=%s)",
-    async (keepsAccess) => {
-      server.use(
-        getGetTrialsGetTrialStatusMockHandler200(
-          trialResponse({
-            cancel_at_period_end: true,
-            cancel_keeps_access: keepsAccess,
-          }),
-        ),
-      );
-      render(<TrialCard />);
-      expect(await screen.findByText("Cancellation pending")).toBeDefined();
-      expect(screen.getByRole("heading", { name: "Your trial" })).toBeDefined();
-      const card = screen.getByRole("region", { name: "AutoGPT trial" });
-      expect(card.textContent).toContain(
-        `Cancellation confirmed. Your trial will not convert to a paid plan and your card won't be charged. Trial access ends ${formatTrialEnd(endsAt)}.`,
-      );
-      expect(card.textContent).toContain(
-        `Resume to keep the trial and start Pro on ${formatTrialEndDate(endsAt)} at $20 / month, plus applicable tax.`,
-      );
-      expect(
-        screen.getByRole("button", { name: "Resume trial" }),
-      ).toBeDefined();
-      expect(screen.queryByRole("button", { name: "Cancel trial" })).toBeNull();
-      expect(screen.queryByText(/immediately/)).toBeNull();
-      expect(screen.queryByRole("dialog")).toBeNull();
-    },
-  );
+  it("shows the pending cancellation and a resume action", async () => {
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(
+        trialResponse({ cancel_at_period_end: true }),
+      ),
+    );
+    render(<TrialCard />);
+    expect(await screen.findByText("Cancellation pending")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Your trial" })).toBeDefined();
+    const card = screen.getByRole("region", { name: "AutoGPT trial" });
+    expect(card.textContent).toContain(
+      `Cancellation confirmed. Your trial will not convert to a paid plan and your card won't be charged. Trial access ends ${formatTrialEnd(endsAt)}.`,
+    );
+    expect(card.textContent).toContain(
+      `Resume to keep the trial and start Pro on ${formatTrialEndDate(endsAt)} at $20 / month, plus applicable tax.`,
+    );
+    expect(screen.getByRole("button", { name: "Resume trial" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Cancel trial" })).toBeNull();
+    expect(screen.queryByText(/immediately/)).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
 });
 
 describe("trial terms before the trial starts", () => {
-  it.each([
-    [true, "If you cancel, you keep access until the trial ends."],
-    [false, "Canceling ends trial access immediately."],
-  ])(
-    "states the cancel terms on the offer (keeps access=%s)",
-    async (keepsAccess, terms) => {
-      server.use(
-        getGetTrialsGetTrialStatusMockHandler200(
-          trialResponse({
-            eligible: true,
-            active: false,
-            status: null,
-            cancel_keeps_access: keepsAccess,
-          }),
-        ),
-      );
-      render(<TrialCard />);
-      await screen.findByRole("button", { name: /start 7-day trial/i });
-      expect(
-        screen.getByText(
-          `Trial usage is limited. ${terms} You can manage your plan in billing.`,
-        ),
-      ).toBeDefined();
-    },
-  );
+  it("states the cancel terms on the offer", async () => {
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(
+        trialResponse({ eligible: true, active: false, status: null }),
+      ),
+    );
+    render(<TrialCard />);
+    await screen.findByRole("button", { name: /start 7-day trial/i });
+    expect(
+      screen.getByText(
+        "Trial usage is limited. If you cancel, you keep access until the trial ends. You can manage your plan in billing.",
+      ),
+    ).toBeDefined();
+  });
 
-  it.each([
-    [true, "If you cancel, you keep access until the trial ends."],
-    [false, "Canceling ends trial access immediately."],
-    [undefined, "Canceling ends trial access immediately."],
-  ])(
-    "states the cancel terms in trial details (keeps access=%s)",
-    async (keepsAccess, terms) => {
-      render(
-        <SubscriptionPlans
-          plans={PLANS}
-          country={COUNTRIES[0]}
-          billing="monthly"
-          onBillingChange={vi.fn()}
-          trialOffer={trialOffer}
-          trialCancelKeepsAccess={keepsAccess}
-          onStartTrial={vi.fn()}
-          onSelectPlan={vi.fn()}
-          isUpdatingTier={false}
-          isStartingTrial={false}
-          trialError={null}
-        />,
-      );
-      const pro = within(screen.getByRole("region", { name: "Pro plan" }));
-      fireEvent.click(pro.getByRole("button", { name: "Trial details" }));
-      const details = await screen.findByRole("dialog");
-      expect(
-        within(details).getByText(
-          `Trial usage is limited. ${terms} You can manage or cancel your plan in billing.`,
-        ),
-      ).toBeDefined();
-    },
-  );
+  it("states the cancel terms in trial details", async () => {
+    render(
+      <SubscriptionPlans
+        plans={PLANS}
+        country={COUNTRIES[0]}
+        billing="monthly"
+        onBillingChange={vi.fn()}
+        trialOffer={trialOffer}
+        onStartTrial={vi.fn()}
+        onSelectPlan={vi.fn()}
+        isUpdatingTier={false}
+        isStartingTrial={false}
+        trialError={null}
+      />,
+    );
+    const pro = within(screen.getByRole("region", { name: "Pro plan" }));
+    fireEvent.click(pro.getByRole("button", { name: "Trial details" }));
+    const details = await screen.findByRole("dialog");
+    expect(
+      within(details).getByText(
+        "Trial usage is limited. If you cancel, you keep access until the trial ends. You can manage or cancel your plan in billing.",
+      ),
+    ).toBeDefined();
+  });
 });

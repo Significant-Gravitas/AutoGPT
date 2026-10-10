@@ -33,18 +33,11 @@ type Story = StoryObj<typeof meta>;
 
 export const Active: Story = {};
 
-export const ActiveCancelKeepsAccess: Story = {
-  args: {
-    trial: { ...meta.args.trial, cancel_keeps_access: true },
-  },
-};
-
 export const CancelPending: Story = {
   args: {
     trial: {
       ...meta.args.trial,
       cancel_at_period_end: true,
-      cancel_keeps_access: true,
     },
   },
 };

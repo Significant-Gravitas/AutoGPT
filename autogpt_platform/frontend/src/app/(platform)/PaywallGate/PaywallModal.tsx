@@ -93,7 +93,6 @@ export function PaywallModal() {
                 isUpdatingTier={isPending}
                 selectedPlan={selectedTier}
                 trialOffer={trialOffer}
-                trialCancelKeepsAccess={trial.trial?.cancel_keeps_access}
                 onStartTrial={trial.startTrial}
                 isStartingTrial={trial.isStarting}
                 trialError={trial.error}
