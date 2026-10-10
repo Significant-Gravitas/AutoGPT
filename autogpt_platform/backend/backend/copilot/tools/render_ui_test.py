@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.copilot import prompting
 from backend.copilot.baseline.service import (
     _baseline_tool_executor,
     _BaselineStreamState,
@@ -11,7 +12,6 @@ from backend.copilot.capabilities import registry
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.capabilities.index import CapabilityIndex
 from backend.copilot.capabilities.sources.static_tools import tool_entries
-from backend.copilot.prompting import get_openui_supplement, get_sdk_supplement
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.sdk.tool_adapter import (
     _make_truncating_wrapper,
@@ -54,19 +54,16 @@ def test_render_ui_is_discoverable_but_does_not_expand_every_turn(enabled):
     assert call.name == "render_ui" and call.args["source"] == SOURCE
 
 
-def test_prompt_guidance_is_opt_in_for_both_engines(monkeypatch):
-    get_sdk_supplement.cache_clear()
-    try:
-        monkeypatch.setenv("CHAT_OPENUI_ENABLED", "false")
-        assert get_openui_supplement() == ""
-        assert "tool:render_ui" not in get_sdk_supplement(False)
-        get_sdk_supplement.cache_clear()
-        monkeypatch.setenv("CHAT_OPENUI_ENABLED", "true")
-        assert "tool:render_ui" in get_openui_supplement()
-        assert "tool:render_ui" in get_sdk_supplement(False)
-        assert "tool:render_ui" in get_sdk_supplement(True)
-    finally:
-        get_sdk_supplement.cache_clear()
+@pytest.mark.parametrize("use_e2b", [False, True])
+@pytest.mark.parametrize("expert_session", [False, True])
+def test_prompt_guidance_is_opt_in_for_both_engines(
+    monkeypatch, use_e2b, expert_session
+):
+    for enabled in (False, True, False):
+        monkeypatch.setenv("CHAT_OPENUI_ENABLED", str(enabled).lower())
+        assert ("tool:render_ui" in prompting.get_openui_supplement()) == enabled
+        supplement = prompting.get_sdk_supplement(use_e2b, expert_session)
+        assert ("tool:render_ui" in supplement) == enabled
 
 
 @pytest.mark.asyncio

@@ -137,7 +137,8 @@ async def _validated_response(response: RenderUIResponse) -> ToolResponseBase:
     if not validation.valid:
         return ErrorResponse(
             message=f"View not published: {validation.error} "
-            "Correct these issues and retry render_ui with a complete source "
+            'Correct these issues and retry run_capability(id="tool:render_ui", '
+            "input={...}) with a complete source "
             "and matching plain-text summary. Preserve the user's data and constraints.",
             session_id=response.session_id,
         )

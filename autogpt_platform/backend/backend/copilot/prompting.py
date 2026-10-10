@@ -607,7 +607,7 @@ When a tool output contains `<tool-output-truncated workspace_path="...">`, the
 full output is in workspace storage (NOT on the local filesystem). To access it:
 - Use `read_workspace_file(path="...", offset=..., length=50000)` for reading sections.
 - To process in the sandbox, use `read_workspace_file(path="...", save_to_path="{working_dir}/file.json")` first, then use `bash_exec` on the local copy.
-{SHARED_TOOL_NOTES}{get_openui_supplement()}{extra_notes}"""
+{SHARED_TOOL_NOTES}{extra_notes}"""
 
 
 # Pre-built supplements for common environments
@@ -710,7 +710,6 @@ browser the user should watch or take over.
 """
 
 
-@cache
 def get_sdk_supplement(use_e2b: bool, expert_session: bool = False) -> str:
     """Get the supplement for SDK mode (Claude Agent SDK).
 
@@ -734,13 +733,26 @@ def get_sdk_supplement(use_e2b: bool, expert_session: bool = False) -> str:
     Returns:
         The supplement string to append to the system prompt
     """
+    return _get_sdk_supplement(use_e2b, expert_session, get_openui_supplement())
+
+
+@cache
+def _get_sdk_supplement(
+    use_e2b: bool, expert_session: bool, openui_supplement: str
+) -> str:
     if not use_e2b:
         return (
             _get_local_storage_supplement("/tmp/copilot-<session-id>")
+            + openui_supplement
             + _USER_FOLLOW_UP_NOTE
         )
     computer = "" if expert_session else _COMPUTER_NOTE
-    return _get_cloud_sandbox_supplement() + computer + _USER_FOLLOW_UP_NOTE
+    return (
+        _get_cloud_sandbox_supplement()
+        + openui_supplement
+        + computer
+        + _USER_FOLLOW_UP_NOTE
+    )
 
 
 # The one reply a chat-platform bot does not deliver. A message on Discord,
