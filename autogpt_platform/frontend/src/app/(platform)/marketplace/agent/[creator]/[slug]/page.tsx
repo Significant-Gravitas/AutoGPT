@@ -29,7 +29,7 @@ export async function generateMetadata({
 
   return buildPageMetadata({
     title: `${agent.agent_name} - AutoGPT Marketplace`,
-    description: agent.description,
+    description: agent.sub_heading || agent.agent_name,
     path: `/marketplace/agent/${params.creator}/${params.slug}`,
     images: agent.agent_image?.slice(0, 1),
     type: "article",
