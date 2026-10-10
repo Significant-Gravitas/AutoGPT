@@ -123,6 +123,75 @@ async def test_current_notice_survives_authoritative_refresh(trial, kind, change
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "plan_changes,data_changes,expected",
+    [
+        ({}, {}, "current"),
+        ({"label": "Pro · monthly"}, {}, "current"),
+        ({"price_display": "$20.00 / month"}, {}, "current"),
+        ({"price_display": "$30.00 USD / month"}, {}, "obsolete"),
+        (
+            {"cycle": "yearly", "cycle_noun": "year", "label": "Pro — yearly"},
+            {},
+            "obsolete",
+        ),
+        ({"name": "Max", "label": "Max — monthly"}, {}, "obsolete"),
+        ({}, {"ends_label": "Obsolete end date"}, "obsolete"),
+    ],
+)
+async def test_predeploy_trial_format_preserves_freshness_checks(
+    trial, plan_changes, data_changes, expected
+):
+    data = notices.trial_notice_data(trial, "started", "Sam")
+    data.notice_key = notices.trial_notice_key(trial, "started")
+    data.plan = data.plan.model_copy(
+        update={
+            "label": "Pro — monthly",
+            "price_display": "$20.00 USD / month",
+            **plan_changes,
+        }
+    )
+    data = data.model_copy(update=data_changes)
+    original = data.model_copy(deep=True)
+    database = MagicMock(
+        get_subscription_trial=AsyncMock(return_value=trial),
+        sync_subscription_from_stripe=AsyncMock(),
+    )
+    with (
+        patch.object(notices, "credit_db", return_value=database),
+        patch.object(
+            notices, "stripe_call", AsyncMock(return_value=subscription(trial))
+        ),
+    ):
+        assert await notices.trial_notice_disposition(trial.user_id, data) == expected
+    assert data == original
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "currency,price", [("cad", "20.00 CAD / month"), ("jpy", "2,000 JPY / month")]
+)
+async def test_predeploy_trial_currency_code_remains_current(trial, currency, price):
+    trial.offer = trial.offer.model_copy(update={"currency": currency})
+    data = notices.trial_notice_data(trial, "started", "Sam")
+    data.notice_key = notices.trial_notice_key(trial, "started")
+    data.plan = data.plan.model_copy(
+        update={"label": "Pro — monthly", "price_display": price}
+    )
+    database = MagicMock(
+        get_subscription_trial=AsyncMock(return_value=trial),
+        sync_subscription_from_stripe=AsyncMock(),
+    )
+    with (
+        patch.object(notices, "credit_db", return_value=database),
+        patch.object(
+            notices, "stripe_call", AsyncMock(return_value=subscription(trial))
+        ),
+    ):
+        assert await notices.trial_notice_disposition(trial.user_id, data) == "current"
+
+
+@pytest.mark.asyncio
 async def test_unidentified_legacy_payload_cannot_bypass_freshness_check(trial):
     data = notices.trial_notice_data(trial, "started", "Sam")
     with patch.object(notices, "credit_db") as database:

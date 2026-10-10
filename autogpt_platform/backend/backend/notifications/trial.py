@@ -172,13 +172,31 @@ async def trial_notice_disposition(
     if data.notice_key != trial_notice_key(trial, data.kind):
         return "obsolete"
     expected = trial_notice_data(trial, data.kind, data.user_name)
-    if data.model_copy(update={"notice_key": None}) != expected:
+    if not _notice_matches_current_terms(data, expected, trial):
         return "obsolete"
     if trial.status != current.get("status") or trial.cancel_at_period_end != bool(
         current.get("cancel_at_period_end")
     ):
         return "suppressed"
     return "current" if _notice_applies(trial, data.kind, current) else "suppressed"
+
+
+def _notice_matches_current_terms(
+    data: TrialUpdateData, expected: TrialUpdateData, trial: TrialState
+) -> bool:
+    plan = data.plan.model_copy()
+    legacy_label = f"{expected.plan.name} — {expected.plan.cycle}"
+    legacy_amount = format_amount(trial.offer.unit_amount, trial.offer.currency)
+    legacy_price = (
+        f"{legacy_amount} {trial.offer.currency.upper()} / {expected.plan.cycle_noun}"
+    )
+    # Accept only the old presentation of these same terms, so a deploy does
+    # not discard queued notices or conceal a changed amount, plan or end date.
+    if plan.label == legacy_label:
+        plan.label = expected.plan.label
+    if plan.price_display == legacy_price:
+        plan.price_display = expected.plan.price_display
+    return data.model_copy(update={"plan": plan, "notice_key": None}) == expected
 
 
 def _owns_subscription(trial: TrialState, current: dict) -> bool:
@@ -227,6 +245,9 @@ def trial_notice_data(
         raise ValueError("Cannot send a trial notice without the accepted end date")
     offer = trial.offer
     cycle_noun = "month" if offer.billing_cycle == "monthly" else "year"
+    amount = format_amount(offer.unit_amount, offer.currency)
+    if offer.currency not in {"usd", "eur", "gbp"}:
+        amount = f"{amount} {offer.currency.upper()}"
     return TrialUpdateData(
         user_name=name,
         kind=kind,
@@ -234,8 +255,8 @@ def trial_notice_data(
             name=offer.tier.title(),
             cycle=offer.billing_cycle,
             cycle_noun=cycle_noun,
-            label=f"{offer.tier.title()} — {offer.billing_cycle}",
-            price_display=f"{format_amount(offer.unit_amount, offer.currency)} {offer.currency.upper()} / {cycle_noun}",
+            label=f"{offer.tier.title()} · {offer.billing_cycle}",
+            price_display=f"{amount} / {cycle_noun}",
         ),
         ends_label=trial.ends_at.astimezone(UTC).strftime("%d %b %Y at %H:%M UTC"),
         onboarding_credit_amount=offer.onboarding_credit_amount,
