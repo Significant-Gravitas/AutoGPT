@@ -80,15 +80,13 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
 
       await typeAndSend("hi");
 
-      expect(
-        await screen.findByRole("button", { name: /stop/i }),
-      ).toBeDefined();
+      expect(await screen.findByRole("button", { name: "Stop" })).toBeDefined();
 
       expect(
         await screen.findByText("Hi.", undefined, { timeout: 5000 }),
       ).toBeDefined();
       await waitFor(() => {
-        expect(screen.queryByRole("button", { name: /stop/i })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
       });
     });
 

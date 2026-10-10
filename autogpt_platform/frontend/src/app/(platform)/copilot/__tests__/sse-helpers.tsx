@@ -202,5 +202,5 @@ export async function typeAndSend(text: string) {
 
 export async function clickStop() {
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: /stop/i }));
+  await user.click(await screen.findByRole("button", { name: "Stop" }));
 }
