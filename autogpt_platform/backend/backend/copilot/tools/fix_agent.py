@@ -60,6 +60,7 @@ class FixAgentGraphTool(BaseTool):
                         "response then returns an @@agptfile ref to pass to "
                         "tool:create_agent / tool:edit_agent instead of the full JSON."
                     ),
+                    "title": "Saves the fix to",
                 },
             },
             "required": [],

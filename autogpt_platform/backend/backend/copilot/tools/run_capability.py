@@ -33,7 +33,12 @@ from backend.data.activity_event import ActivityEventDraft
 
 from .base import GATE_APPROVED, BaseTool
 from .capability_gates import gate_denied, gate_denied_error
-from .describe_capability import MCP_RUN_PARAMETERS, UNKNOWN_ID_HINT, describe_skill
+from .describe_capability import (
+    MCP_RUN_PARAMETERS,
+    UNKNOWN_ID_HINT,
+    describe_expert,
+    describe_skill,
+)
 from .helpers import (
     prepare_block_for_execution,
     required_input_keys,
@@ -82,6 +87,7 @@ class RunCapabilityTool(BaseTool):
                 "id": {
                     "type": "string",
                     "description": "Capability id from find_capability, or an MCP server URL.",
+                    "entity": None,
                 },
                 "input": {
                     "type": "object",
@@ -203,6 +209,10 @@ class RunCapabilityTool(BaseTool):
             return await _describe_tool(entry, session)
         if entry.kind == "skill":
             return await _run_skill(entry, user_id, session, validate_only)
+        if entry.kind == "expert":
+            # The engines run an expert id as the hire or delegate call it is
+            # (``capabilities/dispatch.py``), so this answers validate_only.
+            return describe_expert(entry, session_id)
         if entry.kind == "mcp_server":
             server_url = entry.implementations[0].ref
             if not server_url:
@@ -308,7 +318,7 @@ async def _describe_tool(
     return CapabilityDetailsResponse(
         message=f"{tool.description} Call again without validate_only to run.",
         capability=entry.listing(),
-        parameters=tool.parameters,
+        parameters=tool.model_parameters,
         session_id=session.session_id,
     ).from_outside()
 

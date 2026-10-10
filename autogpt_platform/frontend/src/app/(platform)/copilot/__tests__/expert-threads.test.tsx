@@ -931,7 +931,6 @@ describe("ChatMessagesContainer — expert identity", () => {
   });
 
   it("keeps the chip a passive label with no file counter", async () => {
-    flagState.values["artifacts"] = true;
     let workspaceFileRequests = 0;
     server.use(
       getGetExpertMockHandler(mariaExpert),

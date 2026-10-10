@@ -112,10 +112,13 @@ class CreateFolderTool(BaseTool):
                 "parent_id": {
                     "type": "string",
                     "description": "Parent folder ID (omit for root).",
+                    "title": "Inside folder",
+                    "entity": "library_folder",
                 },
                 "icon": {
                     "type": "string",
                     "description": "Icon identifier.",
+                    "entity": None,
                 },
                 "color": {
                     "type": "string",
@@ -296,6 +299,7 @@ class UpdateFolderTool(BaseTool):
                 "folder_id": {
                     "type": "string",
                     "description": "ID of the folder to update.",
+                    "entity": "library_folder",
                 },
                 "name": {
                     "type": "string",
@@ -304,6 +308,7 @@ class UpdateFolderTool(BaseTool):
                 "icon": {
                     "type": "string",
                     "description": "New icon identifier.",
+                    "entity": None,
                 },
                 "color": {
                     "type": "string",
@@ -384,10 +389,13 @@ class MoveFolderTool(BaseTool):
                 "folder_id": {
                     "type": "string",
                     "description": "Folder ID.",
+                    "entity": "library_folder",
                 },
                 "target_parent_id": {
                     "type": ["string", "null"],
                     "description": "New parent folder ID (null for root).",
+                    "title": "Into folder",
+                    "entity": "library_folder",
                 },
             },
             "required": ["folder_id"],
@@ -462,6 +470,7 @@ class DeleteFolderTool(BaseTool):
                 "folder_id": {
                     "type": "string",
                     "description": "ID of the folder to delete.",
+                    "entity": "library_folder",
                 },
             },
             "required": ["folder_id"],
@@ -534,10 +543,12 @@ class MoveAgentsToFolderTool(BaseTool):
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Library agent IDs to move.",
+                    "entity": "library_agent",
                 },
                 "folder_id": {
                     "type": ["string", "null"],
                     "description": "Target folder ID (null for root).",
+                    "entity": "library_folder",
                 },
             },
             "required": ["agent_ids"],

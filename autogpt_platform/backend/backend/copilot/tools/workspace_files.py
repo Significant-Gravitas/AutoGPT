@@ -1106,6 +1106,7 @@ class DeleteWorkspaceFileTool(BaseTool):
                 "file_id": {
                     "type": "string",
                     "description": "File ID from list_workspace_files.",
+                    "entity": "workspace_file",
                 },
                 "path": {
                     "type": "string",

@@ -54,6 +54,7 @@ class EditAgentTool(BaseTool):
                 "agent_id": {
                     "type": "string",
                     "description": "Graph ID or library agent ID to edit.",
+                    "entity": "agent_or_graph",
                 },
                 "agent_json": AGENT_JSON_SCHEMA,
                 "agent_json_ref": AGENT_JSON_REF_SCHEMA,
@@ -61,6 +62,8 @@ class EditAgentTool(BaseTool):
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Library agent IDs as building blocks.",
+                    "title": "Building blocks",
+                    "entity": "library_agent",
                 },
                 "save": {
                     "type": "boolean",

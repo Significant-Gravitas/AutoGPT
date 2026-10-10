@@ -341,6 +341,11 @@ class BaseTool:
         raise NotImplementedError
 
     @property
+    def model_parameters(self) -> dict[str, Any]:
+        """``parameters`` as the model is sent them: without the card's hints."""
+        return without_card_hints(self.parameters)
+
+    @property
     def is_available(self) -> bool:
         """Whether this tool is available in the current environment.
 
@@ -407,7 +412,7 @@ class BaseTool:
             function={
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.parameters,
+                "parameters": self.model_parameters,
             },
         )
 
@@ -713,3 +718,21 @@ class BaseTool:
 
         """
         raise NotImplementedError
+
+
+# Read by the approval card (gate/review.py, gate/references.py), never by the
+# model: a label, how to show the value, and what platform thing an id names.
+CARD_HINTS = frozenset({"title", "format", "entity"})
+
+
+def without_card_hints(schema: dict[str, Any]) -> dict[str, Any]:
+    properties = schema.get("properties")
+    if not properties:
+        return schema
+    return {
+        **schema,
+        "properties": {
+            key: {k: v for k, v in spec.items() if k not in CARD_HINTS}
+            for key, spec in properties.items()
+        },
+    }
