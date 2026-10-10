@@ -43,6 +43,7 @@ from backend.executor.scheduler import (
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
     _reschedule_one_shot_after_expert_unavailable,
+    _reschedule_one_shot_after_limits_unreadable,
     _routine_turn_permissions,
     _self_delete_copilot_turn_schedule,
     _self_delete_morning_briefing_schedule,
@@ -2379,6 +2380,10 @@ def _lost_codex(gate: _OwnerGate) -> None:
     gate.has_codex_access.return_value = False
 
 
+def _lookup_fails(gate: _OwnerGate) -> None:
+    gate.is_user_paywalled.side_effect = RuntimeError("tier lookup down")
+
+
 async def _fire_hourly(session_id: str | None, provider: str) -> dict[str, AsyncMock]:
     args = _args(session_id=session_id, run_at=None, cron="9 * * * *")
     mocks = {
@@ -2418,8 +2423,9 @@ async def _fire_hourly(session_id: str | None, provider: str) -> dict[str, Async
         (_over_a_cap, "platform"),
         (_limits_unreadable, "platform"),
         (_lost_codex, "codex"),
+        (_lookup_fails, "platform"),
     ],
-    ids=["paywalled", "over-a-cap", "limits-unreadable", "lost-codex"],
+    ids=["paywalled", "over-a-cap", "limits-unreadable", "lost-codex", "lookup-fails"],
 )
 async def test_a_tick_the_owner_cannot_pay_for_is_skipped_and_the_schedule_kept(
     owner_gate, refuse, provider, session_id, caplog
@@ -2471,12 +2477,14 @@ _HOURLY = {"run_at": None, "cron": "9 * * * *"}
     [
         (_paywalled, _ONE_SHOT, [("routine-1", "sched-1")], False),
         (_limits_unreadable, _ONE_SHOT, [], True),
+        (_lookup_fails, _ONE_SHOT, [], True),
         (_paywalled, _HOURLY, [], False),
         (_limits_unreadable, _HOURLY, [], False),
     ],
     ids=[
         "paywalled-one-shot",
         "brown-out-one-shot",
+        "lookup-fails-one-shot",
         "paywalled-cron",
         "brown-out-cron",
     ],
@@ -2515,6 +2523,30 @@ async def test_a_refused_one_shot_routine_is_retried_or_switched_off(
     assert retry.await_count == int(retried)
     if retried:
         assert retry.call_args.kwargs["routine_id"] == "routine-1"
+        assert retry.call_args.kwargs["routine_schedule_id"] == "sched-1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("give_up", ["exhausted", "scheduler-down"])
+async def test_a_one_shot_retry_that_gives_up_switches_its_routine_off(give_up):
+    """The retry's own schedule_id is new to the routine's row, so it has to
+    carry the one the row holds, or the routine stays on with nothing behind it."""
+    args = _args(
+        schedule_id="sched-retry",
+        routine_id="routine-1",
+        routine_schedule_id="sched-0",
+        cap_retry_count=_MAX_CAP_RETRIES if give_up == "exhausted" else 0,
+    )
+    scheduler_client = AsyncMock()
+    scheduler_client.add_copilot_turn_schedule.side_effect = RuntimeError("down")
+    store = MagicMock(mark_routine_unscheduled=AsyncMock())
+    with (
+        patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=scheduler_client),
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store),
+    ):
+        await _reschedule_one_shot_after_limits_unreadable(args)
+
+    store.mark_routine_unscheduled.assert_awaited_once_with("routine-1", "sched-0")
 
 
 @pytest.mark.parametrize("name", ["", " ", "\t\n", "\u2003"])

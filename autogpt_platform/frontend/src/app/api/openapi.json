@@ -19942,6 +19942,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Routine Id"
           },
+          "routine_schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Routine Schedule Id"
+          },
           "credential_pins": {
             "additionalProperties": {
               "$ref": "#/components/schemas/CredentialPin"

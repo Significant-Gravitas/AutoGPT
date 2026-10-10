@@ -680,11 +680,18 @@ async def _refuse_if_owner_cannot_pay(
     refuses a queued turn, and say whether it did.
 
     A cron schedule stays registered and resumes once the owner can pay again.
-    APScheduler drops a one-shot once it fires, so one refused by a brown-out is
+    APScheduler drops a one-shot once it fires, so one refused by an outage is
     retried, and any other is dropped with its routine switched off rather than
     left pending for a time that has passed.
     """
-    refusal = await _payment_refusal(job_args.user_id, llm_auth_provider)
+    try:
+        refusal = await _payment_refusal(job_args.user_id, llm_auth_provider)
+    except Exception as exc:
+        # Unknown is not paid for: skip the fire, as for unreadable limits.
+        refusal = _PaymentRefusal(
+            reason=f"the owner's plan could not be read ({type(exc).__name__}: {exc})",
+            transient=True,
+        )
     if refusal is None:
         return False
     if job_args.run_at is None:
@@ -709,7 +716,7 @@ async def _refuse_if_owner_cannot_pay(
 
 class _PaymentRefusal(BaseModel):
     reason: str
-    # A brown-out rather than the owner's state, so a one-shot is worth retrying.
+    # An outage rather than the owner's state, so a one-shot is worth retrying.
     transient: bool = False
 
 
@@ -844,6 +851,7 @@ async def _reschedule_one_shot(
             f"{_session_id_label(args)} — exhausted {max_retries} "
             f"retry/retries after {reason}"
         )
+        await _drop_job_from_routine(args)
         return
     try:
         new_run_at = datetime.now(tz=timezone.utc) + timedelta(
@@ -874,6 +882,9 @@ async def _reschedule_one_shot(
             # an ungranted routine that merely lost a race to the concurrency
             # cap would come back with everything the mute exists to withhold.
             routine_id=args.routine_id,
+            # The retry gets a new schedule_id; this is the one the routine's
+            # row holds, so the retry can still switch the routine off.
+            routine_schedule_id=args.routine_schedule_id or args.schedule_id,
             # And the accounts it was set up to run on, or the retry would
             # take the first saved one instead.
             credential_pins=args.credential_pins,
@@ -889,6 +900,7 @@ async def _reschedule_one_shot(
             f"{_session_id_label(args)} after {reason}",
             exc_info=True,
         )
+        await _drop_job_from_routine(args)
 
 
 async def _best_effort_unschedule(
@@ -945,7 +957,8 @@ async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None
 async def _drop_job_from_routine(args: "CopilotTurnJobArgs") -> None:
     # A job with no schedule_id predates the field and cannot be matched
     # against the ids a routine row holds, so there is nothing to drop.
-    if args.routine_id is None or args.schedule_id is None:
+    schedule_id = args.routine_schedule_id or args.schedule_id
+    if args.routine_id is None or schedule_id is None:
         return
     # The row outlives the job it lost, and a routine still listed as switched
     # on with nothing scheduled behind it is the one state the owner cannot act
@@ -953,12 +966,12 @@ async def _drop_job_from_routine(args: "CopilotTurnJobArgs") -> None:
     # Most often this is a PINNED routine whose chat the owner deleted, or a
     # one-shot that fired while its owner could not pay.
     try:
-        await experts_db().mark_routine_unscheduled(args.routine_id, args.schedule_id)
+        await experts_db().mark_routine_unscheduled(args.routine_id, schedule_id)
     except Exception:
         logger.warning(
             "Could not switch off routine %s after removing its schedule %s",
             args.routine_id[:12],
-            args.schedule_id,
+            schedule_id,
             exc_info=True,
         )
 
@@ -1851,6 +1864,9 @@ class CopilotTurnJobArgs(BaseModel):
     # decides whether the turn may touch a connected service at all. None keeps
     # ordinary ``schedule_followup`` jobs on their existing path.
     routine_id: str | None = None
+    # The routine row's id for this job when it is a one-shot's retry, which
+    # gets a schedule_id of its own that the row does not hold.
+    routine_schedule_id: str | None = None
     # ``{provider: pin}``: the account the user chose for each provider when
     # the follow-up was made, which every fire runs on (SECRT-2804). A routine
     # keeps its pins on its row instead. Empty on rows persisted before pins.
@@ -2568,6 +2584,7 @@ class Scheduler(AppService):
         expert_id: str | None = None,
         routine_id: str | None = None,
         credential_pins: CredentialPins | None = None,
+        routine_schedule_id: str | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -2606,6 +2623,7 @@ class Scheduler(AppService):
             expert_id=expert_id,
             routine_id=routine_id,
             credential_pins=credential_pins or {},
+            routine_schedule_id=routine_schedule_id,
         )
         default_name = (
             f"copilot turn (session {session_id[:8]})"
