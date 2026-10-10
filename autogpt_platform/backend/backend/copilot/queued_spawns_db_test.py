@@ -17,8 +17,10 @@ from backend.api.features.chat.routes import cancel_session_task
 from backend.copilot import active_turns, stream_registry, turn_queue
 from backend.copilot.active_turns import acquire_turn_slot
 from backend.copilot.context import set_execution_context
+from backend.copilot.executor.utils import queue_spawned_turn
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
+    CHAT_STATUS_QUEUED,
     CHAT_STATUS_RUNNING,
     ChatSession,
     create_chat_session,
@@ -26,6 +28,7 @@ from backend.copilot.model import (
 )
 from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
 from backend.copilot.sdk.session_waiter import (
+    QUEUED_TURN_CANCELLED,
     SessionResult,
     run_copilot_turn_via_queue,
     wait_for_queued_session,
@@ -125,6 +128,11 @@ async def test_cancelling_a_queued_sub_session_takes_it_out_and_returns_its_node
 
     assert cancelled.status == "cancelled"
     assert await chat_db().get_chat_session_status(queued) == CHAT_STATUS_IDLE
+    # Never started, so a later poll reports the cancel, not a turn running.
+    polled = await tool._execute(
+        user.id, spawner.session, sub_session_id=queued, wait_if_running=0
+    )
+    assert (polled.status, polled.message) == ("error", QUEUED_TURN_CANCELLED)
     assert await user.nodes(spawner.tree_id) == nodes - 1
     assert queued not in user.dispatched_sessions()
 
@@ -146,6 +154,72 @@ async def test_cancelling_a_queued_sub_session_over_http_returns_its_node(
     assert await chat_db().get_chat_session_status(queued) == CHAT_STATUS_IDLE
     assert await user.nodes(spawner.tree_id) == nodes - 1
     assert queued not in user.dispatched_sessions()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_queued_sub_session_cancelled_while_awaited_reports_the_cancel(
+    user: "_User",
+):
+    """Taken out of the queue while its spawner waits on it: it never started,
+    so the wait ends with the cancel rather than reading a turn as running."""
+    spawner = await user.running_chat()
+    subs = await user.spawn(spawner, 4)
+    (queued,) = [s for o, s in subs if o == "queued_for_slot"]
+
+    waiting = asyncio.create_task(
+        wait_for_queued_session(session_id=queued, user_id=user.id, timeout=10)
+    )
+    await asyncio.sleep(0.2)
+    assert await turn_queue.cancel_queued_turn(user_id=user.id, session_id=queued)
+    outcome, result = await asyncio.wait_for(waiting, timeout=5)
+    await user.end(spawner.session_id)
+
+    assert (outcome, result.refusal) == ("refused", QUEUED_TURN_CANCELLED)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_two_children_queued_into_one_session_admit_one_node(user: "_User"):
+    """The second finds the session already queued: it is refused and its node
+    goes back, rather than waiting on a turn that replays the other's row."""
+    spawner = await user.running_chat()
+    await user.spawn(spawner, 1)  # opens the spawner's tree ledger
+    sub = await create_chat_session(
+        user.id,
+        dry_run=False,
+        origin="automation",
+        delegated_by_session_id=spawner.session_id,
+    )
+    nodes = await user.nodes(spawner.tree_id)
+
+    async def in_the_spawners_turn() -> list[Any]:
+        set_execution_context(user.id, spawner.session, envelope=spawner.envelope)
+        return await asyncio.gather(
+            *(
+                queue_spawned_turn(
+                    session_id=sub.session_id,
+                    user_id=user.id,
+                    message=f"task {i}",
+                    tool_call_id=f"sub:{spawner.session_id}",
+                    tool_name="run_sub_session",
+                    llm_auth_provider="platform",
+                    llm_credential_id=None,
+                    permissions=None,
+                    spawn=SpawnRequest(may_spawn=True),
+                    message_metadata=None,
+                )
+                for i in range(2)
+            ),
+            return_exceptions=True,
+        )
+
+    results = await asyncio.create_task(in_the_spawners_turn())
+
+    assert sorted(type(r).__name__ for r in results) == ["NoneType", "SessionNotIdle"]
+    assert await user.nodes(spawner.tree_id) == nodes + 1
+    assert await chat_db().get_chat_session_status(sub.session_id) == CHAT_STATUS_QUEUED
+    assert await turn_queue.cancel_queued_turn(
+        user_id=user.id, session_id=sub.session_id
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")

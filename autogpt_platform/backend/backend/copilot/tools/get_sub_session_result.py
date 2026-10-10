@@ -26,8 +26,10 @@ from backend.copilot import stream_registry
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.model import CHAT_STATUS_QUEUED, ChatSession, get_chat_session
 from backend.copilot.sdk.session_waiter import (
+    QUEUED_TURN_CANCELLED,
     SessionOutcome,
     SessionResult,
+    cancelled_before_start,
     wait_for_queued_session,
     wait_for_session_result,
 )
@@ -219,6 +221,9 @@ class GetSubSessionResultTool(BaseTool):
             )
         elif refusal is not None:
             outcome, result = "refused", SessionResult(refusal=refusal)
+        elif registry_session is None and cancelled_before_start(sub):
+            # Taken out of the queue before it started: no turn ever ran.
+            outcome, result = "refused", SessionResult(refusal=QUEUED_TURN_CANCELLED)
         elif terminal_result is not None:
             outcome, result = "completed", terminal_result
         elif effective_wait > 0:

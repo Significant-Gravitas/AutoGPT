@@ -685,7 +685,8 @@ async def queue_spawned_turn(
     Its envelope is derived and admitted now, inside the spawning turn it comes
     from; promotion re-checks it rather than deriving it from whichever turn
     frees the slot. Raises :class:`ConcurrentTurnLimitError` at the inflight
-    cap and :class:`TreeRefusal` when the tree refuses it.
+    cap, :class:`TreeRefusal` when the tree refuses it and
+    :class:`SessionNotIdle` when the session already has a turn.
     """
     from backend.copilot.turn_queue import count_inflight_turns, enqueue_turn
 
@@ -709,6 +710,7 @@ async def queue_spawned_turn(
             envelope=envelope,
             tool_call_id=tool_call_id,
             tool_name=tool_name,
+            only_if_idle=True,
         )
     except BaseException:
         await release_turn(envelope)

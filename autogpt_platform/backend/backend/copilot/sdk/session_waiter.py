@@ -28,14 +28,19 @@ from backend.copilot import stream_registry
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.executor.utils import queue_spawned_turn, schedule_turn
-from backend.copilot.model import CHAT_STATUS_QUEUED, get_chat_session
+from backend.copilot.model import (
+    CHAT_STATUS_IDLE,
+    CHAT_STATUS_QUEUED,
+    ChatSession,
+    get_chat_session,
+)
 from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_user_message,
 )
 from backend.copilot.response_model import StreamError, StreamFinish
 from backend.copilot.tree import SpawnRequest, TreeRefusal
-from backend.copilot.turn_queue import queued_turn_refusal
+from backend.copilot.turn_queue import SessionNotIdle, queued_turn_refusal
 from backend.data.db_accessors import chat_db
 
 from .stream_accumulator import EventAccumulator, ToolCallEntry, process_event
@@ -59,6 +64,11 @@ SessionOutcome = Literal[
 
 # How often a waiter checks whether a queued turn has started.
 _QUEUE_POLL_SECONDS = 1.0
+QUEUED_TURN_CANCELLED = "This task was cancelled before it started."
+_ALREADY_WAITING = (
+    "That session already has a task waiting to start, so this task cannot be "
+    "handed to it right now. Wait for it, or start a fresh one."
+)
 
 
 @dataclass
@@ -209,12 +219,7 @@ async def run_copilot_turn_via_queue(
     if not allow_queue and (
         await chat_db().get_chat_session_status(session_id) == CHAT_STATUS_QUEUED
     ):
-        return "refused", SessionResult(
-            refusal=(
-                "That session already has a task waiting to start, so this task "
-                "cannot be handed to it right now. Wait for it, or start a fresh one."
-            )
-        )
+        return "refused", SessionResult(refusal=_ALREADY_WAITING)
     if await is_turn_in_flight(session_id):
         if not allow_queue:
             return "refused", SessionResult(
@@ -317,7 +322,8 @@ async def wait_for_queued_session(
     *, session_id: str, user_id: str, timeout: float
 ) -> tuple[SessionOutcome, SessionResult]:
     """Wait for a queued turn to start, then for its result, all within
-    ``timeout``. A turn closed at promotion comes back ``refused``."""
+    ``timeout``. A turn closed at promotion, or taken out of the queue before
+    it started, comes back ``refused``."""
     deadline = time.monotonic() + timeout
     while await chat_db().get_chat_session_status(session_id) == CHAT_STATUS_QUEUED:
         remaining = deadline - time.monotonic()
@@ -328,10 +334,22 @@ async def wait_for_queued_session(
     refusal = queued_turn_refusal(session) if session else None
     if refusal is not None:
         return "refused", SessionResult(refusal=refusal)
+    if session is None or cancelled_before_start(session):
+        return "refused", SessionResult(refusal=QUEUED_TURN_CANCELLED)
     return await wait_for_session_result(
         session_id=session_id,
         user_id=user_id,
         timeout=max(deadline - time.monotonic(), 0),
+    )
+
+
+def cancelled_before_start(session: ChatSession) -> bool:
+    """Idle with its queued message still the last row: cancelled, not run."""
+    last = session.messages[-1] if session.messages else None
+    return (
+        session.chat_status == CHAT_STATUS_IDLE
+        and last is not None
+        and last.role == "user"
     )
 
 
@@ -366,6 +384,8 @@ async def _queue_for_slot(
         )
     except TreeRefusal as refused:
         return "refused", SessionResult(refusal=refused.message)
+    except SessionNotIdle:
+        return "refused", SessionResult(refusal=_ALREADY_WAITING)
     except ConcurrentTurnLimitError:
         logger.warning(
             f"[queue] session={session_id[:12]} user={user_id[:8]} rejected at the "

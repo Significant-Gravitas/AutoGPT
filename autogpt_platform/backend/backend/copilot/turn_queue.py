@@ -114,6 +114,11 @@ async def list_queued_sessions(user_id: str):
     )
 
 
+class SessionNotIdle(Exception):
+    """The session already has a turn queued or running, so a spawned child
+    cannot be queued into it."""
+
+
 class InflightCapExceeded(Exception):
     """User's running + queued total has reached the configured hard cap.
 
@@ -185,6 +190,7 @@ async def enqueue_turn(
     envelope: TurnEnvelope | None = None,
     tool_call_id: str | None = None,
     tool_name: str | None = None,
+    only_if_idle: bool = False,
 ) -> ChatMessage | None:
     """Persist the user's pending message and flip the session to
     ``"queued"``.  Caller is responsible for the in-flight cap check
@@ -223,6 +229,12 @@ async def enqueue_turn(
     # ``sequence`` and PK-collide on ``(sessionId, sequence)``.
     db = chat_db()
     async with _get_session_lock(session_id):
+        # A spawned child's row is the one promotion replays, so it is written
+        # only into an idle session: never behind another queued row.
+        if only_if_idle and (
+            await db.get_chat_session_status(session_id) != CHAT_STATUS_IDLE
+        ):
+            raise SessionNotIdle(session_id)
         live_sequence = await db.get_next_sequence(session_id)
         try:
             row = await db.add_chat_message(
@@ -237,23 +249,26 @@ async def enqueue_turn(
             if message_id and is_duplicate_chat_message_id_error(exc):
                 return None
             raise
-    # Flip the session to ``"queued"``.  CAS-gated on ``"idle"`` so a
-    # double-submit (session already queued/running) leaves the state
-    # alone; the second pending message persists as a normal ChatMessage
-    # row.  When the session eventually promotes, the dispatcher reads
-    # the most-recent user row via ``get_latest_user_message_in_session``;
-    # earlier pending rows aren't independently scheduled, they sit in
-    # the chat history and the model sees them as context.
-    await db.update_chat_session_status(
-        session_id=session_id,
-        expect_status=CHAT_STATUS_IDLE,
-        status=CHAT_STATUS_QUEUED,
-        user_id=user_id,
-    )
+        # Flip the session to ``"queued"``.  CAS-gated on ``"idle"`` so a
+        # double-submit (session already queued/running) leaves the state
+        # alone; the second pending message persists as a normal ChatMessage
+        # row.  When the session eventually promotes, the dispatcher reads
+        # the most-recent user row via ``get_latest_user_message_in_session``;
+        # earlier pending rows aren't independently scheduled, they sit in
+        # the chat history and the model sees them as context.
+        flipped = await db.update_chat_session_status(
+            session_id=session_id,
+            expect_status=CHAT_STATUS_IDLE,
+            status=CHAT_STATUS_QUEUED,
+            user_id=user_id,
+        )
     # Invalidate the session cache so the next /chat read picks up the
     # queued row + the session's new status (frontend renders the
     # 'Queued' badge from ``session.chat_status``).
     await invalidate_session_cache(session_id)
+    if only_if_idle and not flipped:
+        # Started some other way since the check; nothing will replay this row.
+        raise SessionNotIdle(session_id)
     return row
 
 
