@@ -22,7 +22,16 @@ DEFAULT_TRUSTED_PROXIES = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 
 
 def _env_bool(name: str) -> bool:
-    return os.environ.get(name, "False").strip().lower() in ("1", "true", "yes")
+    raw = os.environ.get(name)
+    if raw is None:
+        return False
+    normalized = raw.strip().lower()
+    if normalized in ("1", "true", "yes", "on"):
+        return True
+    if normalized in ("", "0", "false", "no", "off"):
+        return False
+    msg = f"{name} must be a boolean (1/true/yes/on or 0/false/no/off), " f"got {raw!r}"
+    raise ValueError(msg)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -54,6 +63,7 @@ def build_guard_config() -> "SecurityConfig":
         "enable_ip_banning": True,
         "auto_ban_threshold": _env_int("AUTOGPT_GUARD_AUTO_BAN_THRESHOLD", 10),
         "auto_ban_duration": _env_int("AUTOGPT_GUARD_AUTO_BAN_DURATION", 300),
+        "enable_rate_limit_auto_ban": _env_bool("AUTOGPT_GUARD_RATE_LIMIT_AUTO_BAN"),
         "enable_penetration_detection": True,
         # In-memory state unless a Redis URL is configured: never implicitly
         # depend on a Redis server being reachable at localhost.
@@ -84,6 +94,16 @@ def build_guard_config() -> "SecurityConfig":
         ),
         "enforce_https": _env_bool("AUTOGPT_GUARD_ENFORCE_HTTPS"),
     }
+
+    # Behind a TLS-terminating proxy, enforce_https must read the forwarded
+    # scheme or every request looks like plain HTTP.
+    explicit_xfp = _env_str("AUTOGPT_GUARD_TRUST_X_FORWARDED_PROTO")
+    if explicit_xfp is not None:
+        kwargs["trust_x_forwarded_proto"] = _env_bool(
+            "AUTOGPT_GUARD_TRUST_X_FORWARDED_PROTO"
+        )
+    else:
+        kwargs["trust_x_forwarded_proto"] = _env_bool("AUTOGPT_GUARD_ENFORCE_HTTPS")
 
     if allowed_ips := _env_csv("AUTOGPT_GUARD_ALLOWED_IPS"):
         kwargs["whitelist"] = allowed_ips
