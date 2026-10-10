@@ -50,3 +50,14 @@ class TrialCheckoutRequest(BaseModel):
 
 class TrialCheckoutResponse(BaseModel):
     url: str
+
+
+class TrialCancelRequest(BaseModel):
+    keeps_access: bool = Field(
+        default=False,
+        description=(
+            "True when the person was told canceling keeps access until the"
+            " trial ends (the status said cancel_keeps_access). The trial is"
+            " then never ended immediately, even if the flag changed since."
+        ),
+    )

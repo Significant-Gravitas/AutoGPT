@@ -14,6 +14,7 @@ from backend.api.features.billing.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
 from backend.api.features.subscription_trial_models import (
+    TrialCancelRequest,
     TrialCheckoutRequest,
     TrialCheckoutResponse,
     TrialOfferResponse,
@@ -185,7 +186,9 @@ async def _track_trial_checkout_started(user_id: str, *, surface: str) -> None:
         502: {"description": "Stripe cancellation temporarily unavailable"},
     },
 )
-async def cancel_trial(user_id: CurrentUser) -> TrialStatusResponse:
+async def cancel_trial(
+    user_id: CurrentUser, body: TrialCancelRequest | None = None
+) -> TrialStatusResponse:
     trial = await get_subscription_trial(user_id)
     if (
         trial is None

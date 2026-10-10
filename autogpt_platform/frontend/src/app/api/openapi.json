@@ -6101,6 +6101,19 @@
         "tags": ["trials"],
         "summary": "Cancel Trial",
         "operationId": "postTrialsCancelTrial",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/TrialCancelRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6114,6 +6127,14 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "409": { "description": "No cancelable trial subscription" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
           "502": {
             "description": "Stripe cancellation temporarily unavailable"
           }
@@ -32210,6 +32231,18 @@
           "created_at"
         ],
         "title": "TransferResponse"
+      },
+      "TrialCancelRequest": {
+        "properties": {
+          "keeps_access": {
+            "type": "boolean",
+            "title": "Keeps Access",
+            "description": "True when the person was told canceling keeps access until the trial ends (the status said cancel_keeps_access). The trial is then never ended immediately, even if the flag changed since.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "TrialCancelRequest"
       },
       "TrialCheckoutRequest": {
         "properties": {
