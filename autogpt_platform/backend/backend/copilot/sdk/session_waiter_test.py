@@ -189,8 +189,8 @@ async def test_idle_session_enqueues_normally():
     idle_db = MagicMock()
     # Session is idle → CAS idle → running succeeds; running count is 1
     # after the flip (this caller is the only running session).
+    idle_db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     idle_db.update_chat_session_status = AsyncMock(return_value=True)
-    idle_db.count_chat_sessions_by_status = AsyncMock(return_value=1)
     idle_db.list_chat_sessions_by_status = AsyncMock(return_value=[])
     idle_db.get_chat_session_status = AsyncMock(return_value="idle")
 
@@ -249,9 +249,10 @@ async def test_a_delegated_turn_leaves_the_users_last_slot_free(
 ):
     mock_session_lookup.return_value.metadata.delegated_by_session_id = delegated_by
     db = MagicMock()
-    db.update_chat_session_status = AsyncMock(return_value=True)
-    # Counted after this admit's flip: four were already running.
-    db.count_chat_sessions_by_status = AsyncMock(return_value=5)
+    # Four already running: the admit decides by the capacity it is given.
+    db.admit_chat_session_turn = AsyncMock(
+        side_effect=lambda **kw: "full" if 4 >= kw["capacity"] else "admitted"
+    )
     db.get_chat_session_status = AsyncMock(return_value="idle")
 
     with (

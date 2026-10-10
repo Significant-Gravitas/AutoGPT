@@ -20,11 +20,9 @@ Public API
   used by the queue layer (in-flight = running + queued) and the
   dispatcher's busy-session check.
 
-Cap admission is a *non-locked* count-then-update. Two concurrent
-submits from the same user can both pass the count and both update,
-leaving the user briefly one or two over the cap. This is the same
-trade-off the graph-execution credit rate-limit accepts on its
-``INCRBY`` path: the cap is a safeguard, not a budget.
+Cap admission counts and flips under one per-user database lock
+(``admit_chat_session_turn``), so concurrent submits fill exactly the free
+slots: none over the cap, and none refused while a slot is free.
 
 DB access goes through :func:`backend.data.db_accessors.chat_db` so
 the dispatcher works from both the HTTP server (Prisma directly) and
@@ -193,23 +191,15 @@ async def acquire_turn_slot(
     resolved_capacity = capacity if capacity is not None else get_running_turn_limit()
     db = chat_db()
 
-    # Try fresh admit: promote idle → running in one CAS-gated update.
-    if await db.update_chat_session_status(
+    admit = await db.admit_chat_session_turn(
         session_id=session_id,
-        expect_status=CHAT_STATUS_IDLE,
-        status=CHAT_STATUS_RUNNING,
         user_id=user_id,
-    ):
-        # Fresh admit: enforce the cap by counting AFTER the flip.
-        # Reading after-write is OK because over-admit just briefly
-        # exceeds the cap — the user gets one extra slot at most under
-        # burst, same trade-off as the prior count-then-update path.
-        if await count_running_turns(user_id) > resolved_capacity:
-            # Roll back our flip; the caller falls through to the queue.
-            await release_turn_slot(user_id, session_id)
-            raise ConcurrentTurnLimitError(
-                running_turn_limit_message(resolved_capacity)
-            )
+        expect_status=CHAT_STATUS_IDLE,
+        capacity=resolved_capacity,
+    )
+    if admit == "full":
+        raise ConcurrentTurnLimitError(running_turn_limit_message(resolved_capacity))
+    if admit == "admitted":
         handle.admitted = True
     else:
         # CAS failed: session was not idle.  Disambiguate by reading

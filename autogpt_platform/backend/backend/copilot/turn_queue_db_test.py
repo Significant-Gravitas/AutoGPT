@@ -94,6 +94,16 @@ async def test_a_queued_wake_whose_envelope_no_longer_parses_is_not_started():
     assert promoted is None
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_queued_sub_work_is_not_promoted_into_the_users_last_slot():
+    """Four still run after the turn ends: the fifth slot stays the user's."""
+    promoted, _, _ = await _promote_after(
+        _envelope(1), message="sub-work", message_metadata=None, sub_work=True
+    )
+
+    assert promoted is None
+
+
 async def _promote_after(
     finished: TurnEnvelope,
     *,
@@ -101,6 +111,7 @@ async def _promote_after(
     message_metadata: dict[str, Any] | None,
     envelope: TurnEnvelope | None = None,
     expect_refusal: str | None = None,
+    sub_work: bool = False,
 ) -> tuple[TurnEnvelope | None, int, int]:
     """Queue a turn behind a full cap, then end a turn carrying ``finished``.
 
@@ -123,7 +134,11 @@ async def _promote_after(
         await stream_registry.create_session(
             ending.session_id, user_id, "chat_stream", "chat", ending_turn
         )
-        waiting = await create_chat_session(user_id, dry_run=False)
+        waiting = await create_chat_session(
+            user_id,
+            dry_run=False,
+            delegated_by_session_id=sessions[1].session_id if sub_work else None,
+        )
         await turn_queue.try_enqueue_turn(
             user_id=user_id,
             inflight_cap=15,

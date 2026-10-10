@@ -17,26 +17,18 @@ from backend.copilot.active_turns import (
 )
 
 
-def _mock_db(
-    *,
-    admit_cas_ok: bool = True,
-    running_count: int = 0,
-    current_status: str = "idle",
-) -> MagicMock:
+def _mock_db(*, admit: str = "admitted", current_status: str = "idle") -> MagicMock:
     """Mock ``chat_db()`` return value.
 
-    * ``admit_cas_ok`` — return value of ``update_chat_session_status``
-      for the idle→running CAS in ``acquire_turn_slot``.  True simulates
-      a successful fresh admit; False simulates the CAS failing (session
-      was not idle), in which case ``current_status`` is consulted.
-    * ``running_count`` — return value of
-      ``count_chat_sessions_by_status(status='running')`` after the flip.
-    * ``current_status`` — return value of ``get_chat_session_status``
-      after a CAS failure (the disambiguation read).
+    * ``admit`` — what ``admit_chat_session_turn`` decides under its lock:
+      ``"admitted"``, ``"full"`` (at the cap) or ``"busy"`` (not idle), in
+      which case ``current_status`` is consulted.
+    * ``current_status`` — return value of ``get_chat_session_status``.
     """
     db = MagicMock()
-    db.update_chat_session_status = AsyncMock(return_value=admit_cas_ok)
-    db.count_chat_sessions_by_status = AsyncMock(return_value=running_count)
+    db.admit_chat_session_turn = AsyncMock(return_value=admit)
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.count_chat_sessions_by_status = AsyncMock(return_value=0)
     db.list_chat_sessions_by_status = AsyncMock(return_value=[])
     db.get_chat_session_status = AsyncMock(return_value=current_status)
     return db
@@ -75,48 +67,47 @@ async def test_release_anonymous_user_is_noop() -> None:
 @pytest.mark.asyncio
 async def test_admitted_slot_releases_on_exit_without_keep() -> None:
     """Forgetting ``keep()`` on a clean exit releases the slot."""
-    db = _mock_db(admit_cas_ok=True, running_count=1)
+    db = _mock_db()
     with patch.object(active_turns, "chat_db", return_value=db):
         async with acquire_turn_slot("user-1", "session-a"):
             pass
-    # First flip: admit (idle → running). Second flip: release (running → idle).
-    assert db.update_chat_session_status.await_count == 2
+    # The admit flipped under its lock; the exit releases (running → idle).
+    assert db.update_chat_session_status.await_count == 1
 
 
 @pytest.mark.asyncio
 async def test_admitted_slot_releases_on_exception() -> None:
     """An exception inside the with-block also releases the slot."""
-    db = _mock_db(admit_cas_ok=True, running_count=1)
+    db = _mock_db()
     with patch.object(active_turns, "chat_db", return_value=db):
         with pytest.raises(RuntimeError, match="downstream blew up"):
             async with acquire_turn_slot("user-1", "session-a"):
                 raise RuntimeError("downstream blew up")
-    assert db.update_chat_session_status.await_count == 2
+    assert db.update_chat_session_status.await_count == 1
 
 
 @pytest.mark.asyncio
 async def test_kept_slot_is_not_released_on_exit() -> None:
     """``keep()`` transfers ownership; the context manager leaves the
     slot held for ``mark_session_completed`` to clean up."""
-    db = _mock_db(admit_cas_ok=True, running_count=1)
+    db = _mock_db()
     with patch.object(active_turns, "chat_db", return_value=db):
         async with acquire_turn_slot("user-1", "session-a") as slot:
             slot.keep()
-    # Only the admit fires; release is the caller's responsibility now.
-    assert db.update_chat_session_status.await_count == 1
+    # Nothing released; that is the caller's responsibility now.
+    db.update_chat_session_status.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_rejection_rolls_back_admit_when_over_cap() -> None:
-    """Admit count-after-flip exceeds the cap → roll back to idle and
-    raise ConcurrentTurnLimitError."""
-    db = _mock_db(admit_cas_ok=True, running_count=6)  # 6 > capacity=5
+async def test_a_full_cap_raises_without_flipping() -> None:
+    """The cap is checked before the flip, under the same lock."""
+    db = _mock_db(admit="full")
     with patch.object(active_turns, "chat_db", return_value=db):
         with pytest.raises(ConcurrentTurnLimitError):
             async with acquire_turn_slot("user-1", "session-a", capacity=5):
                 pytest.fail("body must not run on rejection")  # pragma: no cover
-    # Two flips: admit then rollback.
-    assert db.update_chat_session_status.await_count == 2
+    assert db.admit_chat_session_turn.await_args.kwargs["capacity"] == 5
+    db.update_chat_session_status.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -125,7 +116,7 @@ async def test_queued_session_raises_so_caller_falls_through_to_queue() -> None:
     has a pending task for this session.  Raise ConcurrentTurnLimitError
     so the route falls through to ``try_enqueue_turn`` instead of
     double-dispatching."""
-    db = _mock_db(admit_cas_ok=False, current_status="queued")
+    db = _mock_db(admit="busy", current_status="queued")
     with patch.object(active_turns, "chat_db", return_value=db):
         with pytest.raises(ConcurrentTurnLimitError):
             async with acquire_turn_slot("user-1", "session-a"):
@@ -136,23 +127,22 @@ async def test_queued_session_raises_so_caller_falls_through_to_queue() -> None:
 async def test_refreshed_slot_is_not_released_on_clean_exit() -> None:
     """CAS failure + current status == 'running' is the SSE-retry
     refresh path: no admit, no release ownership, no error."""
-    db = _mock_db(admit_cas_ok=False, current_status="running")
+    db = _mock_db(admit="busy", current_status="running")
     with patch.object(active_turns, "chat_db", return_value=db):
         async with acquire_turn_slot("user-1", "session-a"):
             pass
-    # Only the CAS attempt fires; nothing else.
-    assert db.update_chat_session_status.await_count == 1
+    db.update_chat_session_status.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_refreshed_slot_is_not_released_on_exception() -> None:
     """Same-session retry's failure must NOT tear down the original turn."""
-    db = _mock_db(admit_cas_ok=False, current_status="running")
+    db = _mock_db(admit="busy", current_status="running")
     with patch.object(active_turns, "chat_db", return_value=db):
         with pytest.raises(RuntimeError, match="boom"):
             async with acquire_turn_slot("user-1", "session-a"):
                 raise RuntimeError("boom")
-    assert db.update_chat_session_status.await_count == 1
+    db.update_chat_session_status.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -162,8 +152,7 @@ async def test_anonymous_user_skips_gate() -> None:
     with patch.object(active_turns, "chat_db", return_value=db):
         async with acquire_turn_slot(None, "session-a"):
             pass
-    db.update_chat_session_status.assert_not_awaited()
-    db.count_chat_sessions_by_status.assert_not_awaited()
+    db.admit_chat_session_turn.assert_not_awaited()
 
 
 # ── default cap pinning ───────────────────────────────────────────────

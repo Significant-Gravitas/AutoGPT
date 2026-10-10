@@ -339,6 +339,7 @@ async def test_codex_dispatch_skips_platform_billing_gates() -> None:
     head.metadata.llm_credential_id = "cred-1"
     pending = _pyd_message()
     db = MagicMock()
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     dispatch_turn_mock = AsyncMock()
@@ -400,6 +401,7 @@ async def test_promotion_rechecks_the_advanced_tier_before_spending() -> None:
     head.metadata.llm_auth_provider = "platform"
     pending = _pyd_message(metadata={"model": "advanced"})
     db = MagicMock()
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     dispatch_turn_mock = AsyncMock()
@@ -440,6 +442,7 @@ async def test_promotion_refuses_when_the_entitlement_cannot_be_resolved() -> No
     head.metadata.llm_auth_provider = "platform"
     pending = _pyd_message(metadata={"model": "advanced"})
     db = MagicMock()
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     dispatch_turn_mock = AsyncMock()
@@ -521,7 +524,7 @@ async def test_promotion_order(
     ):
         assert await turn_queue.dispatch_next_for_user("u1") is True
 
-    claim.assert_awaited_once_with(promoted)
+    assert claim.await_args.args[0].session_id == promoted
     assert dispatched.await_args.kwargs["session_id"] == promoted
 
 
@@ -558,7 +561,7 @@ async def test_an_advanced_turn_without_the_tier_does_not_hold_up_the_queue() ->
     ):
         assert await turn_queue.dispatch_next_for_user("u1") is True
 
-    claim.assert_awaited_once_with("sub")
+    assert claim.await_args.args[0].session_id == "sub"
     paywalled.assert_awaited_once_with("u1")
 
 
@@ -603,6 +606,7 @@ async def test_promotion_does_not_recheck_the_tier_for_a_standard_turn() -> None
     head.metadata.llm_auth_provider = "platform"
     pending = _pyd_message(metadata={"model": "standard"})
     db = MagicMock()
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     entitled = AsyncMock(side_effect=AssertionError("tier checked for Balanced"))
@@ -645,6 +649,7 @@ async def test_promotion_uses_current_codex_route_not_stale_platform_tier() -> N
     head.metadata.llm_credential_id = "cred-1"
     pending = _pyd_message(metadata={"model": "advanced"})
     db = MagicMock()
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     dispatch_turn_mock = AsyncMock()
@@ -676,6 +681,7 @@ async def test_microsoft_promotion_skips_platform_billing_gates() -> None:
     head.metadata.llm_credential_id = "cred-microsoft"
     pending = _pyd_message(metadata={"model": "advanced"})
     db = MagicMock()
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     dispatch_turn_mock = AsyncMock()
@@ -794,6 +800,7 @@ async def test_dispatch_happy_path_claims_and_dispatches() -> None:
     head = _queued_row(session_id="s1")
     pending = _pyd_message(metadata={"mode": "extended_thinking"})
     db = MagicMock()
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     dispatch_turn_mock = AsyncMock()
@@ -823,10 +830,14 @@ async def test_dispatch_happy_path_claims_and_dispatches() -> None:
     assert promoted is True
     dispatch_turn_mock.assert_awaited_once()
     invalidate.assert_awaited_once_with("s1")
-    # Single claim transition fired (no restore).
-    db.update_chat_session_status.assert_awaited_once_with(
-        session_id="s1", expect_status="queued", status="running"
-    )
+    # Claimed queued → running under the user's cap; nothing restored.
+    assert db.admit_chat_session_turn.await_args.kwargs == {
+        "session_id": "s1",
+        "user_id": "u1",
+        "expect_status": "queued",
+        "capacity": turn_queue.get_running_turn_limit(),
+    }
+    db.update_chat_session_status.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -836,8 +847,8 @@ async def test_dispatch_rolls_claim_back_on_dispatch_failure() -> None:
     head = _queued_row(session_id="s1")
     pending = _pyd_message(metadata={"mode": "extended_thinking"})
     db = MagicMock()
-    # First call (claim) returns True; second call (restore) also True.
-    db.update_chat_session_status = AsyncMock(side_effect=[True, True])
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
+    db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     dispatch_turn_mock = AsyncMock(side_effect=RuntimeError("RabbitMQ blip"))
     with (
@@ -868,10 +879,7 @@ async def test_dispatch_rolls_claim_back_on_dispatch_failure() -> None:
     # ``committed`` flag), not the dispatcher's — see the
     # ``test_dispatch_turn_cleans_redis_on_enqueue_failure`` test in
     # ``executor/utils_test`` for that contract.
-    assert db.update_chat_session_status.await_count == 2
-    db.update_chat_session_status.assert_any_await(
-        session_id="s1", expect_status="queued", status="running"
-    )
-    db.update_chat_session_status.assert_any_await(
+    db.admit_chat_session_turn.assert_awaited_once()
+    db.update_chat_session_status.assert_awaited_once_with(
         session_id="s1", expect_status="running", status="queued"
     )

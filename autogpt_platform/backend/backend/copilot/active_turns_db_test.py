@@ -1,6 +1,7 @@
 """The running cap against the database: what the spawn tools persist is
 what the cap reads."""
 
+import asyncio
 import uuid
 from unittest.mock import AsyncMock, patch
 
@@ -9,7 +10,11 @@ import pytest_asyncio
 from prisma.models import User
 
 from backend.copilot import active_turns
-from backend.copilot.active_turns import TurnSlot, acquire_turn_slot
+from backend.copilot.active_turns import (
+    ConcurrentTurnLimitError,
+    TurnSlot,
+    acquire_turn_slot,
+)
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_RUNNING,
@@ -80,6 +85,55 @@ async def test_a_chat_fanning_out_six_sub_sessions_leaves_the_user_a_slot():
         assert outcomes == ["running"] * 3 + ["rejected_concurrent_turn_cap"] * 3
     finally:
         await User.prisma().delete(where={"id": user_id})
+
+
+@pytest.mark.parametrize(
+    "capacity, free",
+    [
+        # Six sub-sessions spawned at once with three running: one fits.
+        (4, 1),
+        # Six messages at once with three running: two fit.
+        (5, 2),
+    ],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_admits_fill_exactly_the_free_slots(capacity: int, free: int):
+    user_id = str(uuid.uuid4())
+    await User.prisma().create(
+        data={"id": user_id, "email": f"active-turns-{user_id}@example.com"}
+    )
+    try:
+        for _ in range(3):
+            running = await create_chat_session(user_id, dry_run=False)
+            assert await chat_db().update_chat_session_status(
+                session_id=running.session_id,
+                expect_status=CHAT_STATUS_IDLE,
+                status=CHAT_STATUS_RUNNING,
+                user_id=user_id,
+            )
+        waiting = [await create_chat_session(user_id, dry_run=False) for _ in range(6)]
+
+        admitted = await asyncio.gather(
+            *(_admit(user_id, s.session_id, capacity) for s in waiting)
+        )
+
+        assert sum(admitted) == free
+        assert (
+            await chat_db().count_chat_sessions_by_status(
+                user_id=user_id, status=CHAT_STATUS_RUNNING
+            )
+        ) == 3 + free
+    finally:
+        await User.prisma().delete(where={"id": user_id})
+
+
+async def _admit(user_id: str, session_id: str, capacity: int) -> bool:
+    try:
+        async with acquire_turn_slot(user_id, session_id, capacity=capacity) as slot:
+            slot.keep()
+            return slot.admitted
+    except ConcurrentTurnLimitError:
+        return False
 
 
 async def _keep_slot(slot: TurnSlot, **_) -> None:

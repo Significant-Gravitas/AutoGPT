@@ -35,7 +35,12 @@ from typing import Any, Mapping
 from prisma.errors import UniqueViolationError
 from pydantic import ValidationError
 
-from backend.copilot.active_turns import TurnSlot, count_running_turns
+from backend.copilot.active_turns import (
+    TurnSlot,
+    count_running_turns,
+    get_delegated_turn_limit,
+    get_running_turn_limit,
+)
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
 from backend.copilot.db import is_duplicate_chat_message_id_error
 from backend.copilot.model import (
@@ -258,16 +263,22 @@ async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
     return True
 
 
-async def claim_queued_session(session_id: str) -> bool:
-    """Atomically claim a queued session by transitioning ``chatStatus``
-    ``"queued"`` → ``"running"``.  Returns True iff the CAS matched
-    (i.e. the session was still queued; not cancelled / claimed by a
-    concurrent dispatcher)."""
-    return await chat_db().update_chat_session_status(
-        session_id=session_id,
-        expect_status=CHAT_STATUS_QUEUED,
-        status=CHAT_STATUS_RUNNING,
+async def claim_queued_session(session: ChatSessionInfo) -> bool:
+    """Claim a queued session, ``"queued"`` → ``"running"``, if the user has a
+    slot for it: sub-work below the reserve, their own message below the cap.
+    False when it was cancelled, claimed elsewhere, or there is no slot."""
+    capacity = (
+        get_delegated_turn_limit()
+        if session.metadata.delegated_by_session_id is not None
+        else get_running_turn_limit()
     )
+    admit = await chat_db().admit_chat_session_turn(
+        session_id=session.session_id,
+        user_id=session.user_id,
+        expect_status=CHAT_STATUS_QUEUED,
+        capacity=capacity,
+    )
+    return admit == "admitted"
 
 
 async def dispatch_next_for_user(user_id: str) -> bool:
@@ -317,7 +328,7 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     # Claim by transitioning the session ``queued`` → ``running``.  A
     # parallel cancel between validation and claim rejects this
     # dispatch via the CAS returning False.
-    if not await claim_queued_session(head.session_id):
+    if not await claim_queued_session(head):
         return False
 
     # Find the pending user message in this session (the most recent
