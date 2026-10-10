@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useNativeApp } from "@/hooks/useNativeApp";
 
 const Agentation = dynamic(
   () => import("agentation").then((mod) => mod.Agentation),
@@ -8,5 +9,6 @@ const Agentation = dynamic(
 );
 
 export default function AgentationDevtool() {
-  return <Agentation />;
+  const isNativeApp = useNativeApp();
+  return isNativeApp ? null : <Agentation />;
 }
