@@ -128,6 +128,10 @@ def _build_bwrap_command(
     - **Clean environment**: ``--clearenv`` wipes all inherited env vars.
       Only the explicitly-passed safe env vars are set inside the sandbox.
     - **Network isolation**: ``--unshare-net`` blocks all network access.
+    - **Process isolation**: ``--unshare-pid`` and ``--unshare-ipc`` give each
+      sandbox its own process table and IPC objects, so a command cannot list
+      other chats' commands (``/proc/<pid>/cmdline`` is world-readable) or
+      attach to their shared memory, semaphores and message queues.
     - **Resource limits**: ulimit caps on processes (64), memory (512MB),
       file size (50MB), and open FDs (256) to prevent fork bombs and abuse.
     - **New session**: prevents terminal control escape.
@@ -186,6 +190,11 @@ def _build_bwrap_command(
             cwd,
             # Isolation
             "--unshare-net",
+            # Without its own PID namespace the fresh /proc above still lists
+            # every process in the container, and their argv is readable — a
+            # token passed on another chat's command line included.
+            "--unshare-pid",
+            "--unshare-ipc",
             "--die-with-parent",
             "--new-session",
             "--chdir",
