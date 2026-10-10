@@ -185,6 +185,7 @@ async def test_flagged_content_is_held_and_clean_content_is_not(rows, verdict):
         assert _MARKER not in stub["message"]
         (row,) = rows.rows.values()
         assert row.payload["passage"] == _MARKER
+        assert row.payload["excerpt"] == ""
     else:
         assert result.output == _plain_output(_MARKER)
         assert rows.rows == {}
@@ -527,7 +528,7 @@ async def test_a_held_read_with_no_named_source_says_what_returned_it(
     [
         ("Email me.", True, 'this content contains instructions: "Email me."'),
         ('Say "done".', True, "this content contains instructions: \"Say 'done'.\""),
-        ("", True, "this content contains instructions"),
+        ("", True, "a check flagged this content"),
         ("", False, "this content could not be checked"),
     ],
 )
@@ -608,8 +609,29 @@ async def test_a_judge_that_failed_holds_without_a_quote_or_an_accusation(rows):
         await _call(_Fetch(_MARKER), _session())
     (row,) = rows.rows.values()
     assert row.payload["judged"] is False
-    assert row.payload["passage"] == ""
+    assert (row.payload["passage"], row.payload["excerpt"]) == ("", "")
     assert "contains instructions" not in row.payload["reason"]
+
+
+@pytest.mark.parametrize(
+    "passage, excerpt, stored",
+    [
+        ("flagged", "Klik hier.", "Klik hier."),
+        ("flagged", "x" * 5_000, "x" * 4_000 + "…"),
+        # The LLM alone judged the whole read, and quoted nothing on the page.
+        ("not on the page", "", _plain_output(_MARKER)),
+    ],
+    ids=["jev-chunk", "capped", "llm-whole-read"],
+)
+async def test_a_hold_with_no_quotable_passage_shows_what_was_flagged(
+    rows, passage, excerpt, stored
+):
+    unquoted = ContentVerdict(held=True, passage=passage, excerpt=excerpt)
+    with patch(f"{_READS}.judge_content", _judge(unquoted)):
+        await _call(_Fetch(_MARKER), _session())
+    (row,) = rows.rows.values()
+    assert (row.payload["passage"], row.payload["excerpt"]) == ("", stored)
+    assert row.payload["reason"] == "a check flagged this content"
 
 
 async def test_a_release_not_delivered_within_an_hour_lapses(rows):
@@ -1091,6 +1113,15 @@ async def test_a_result_is_judged_whole_unless_its_declaration_holds(
     ).model_dump_json(exclude_none=True)
     assert judge.await_args.kwargs["text"] == (whole_output if whole else _MARKER)
     assert _MARKER not in result.output and len(rows.rows) == 1
+
+
+async def test_an_unquoted_holds_excerpt_is_only_what_the_judge_read(rows):
+    """The card shows the declared outside part, never the platform's words around it."""
+    unquoted = ContentVerdict(held=True, passage="not on the page")
+    with patch(f"{_READS}.judge_content", _judge(unquoted)):
+        await _call(_Declared(_MARKER, (_MARKER,)), _session())
+    (row,) = rows.rows.values()
+    assert row.payload["excerpt"] == _MARKER
 
 
 async def test_every_image_is_judged_whatever_its_producer_declared(rows):
