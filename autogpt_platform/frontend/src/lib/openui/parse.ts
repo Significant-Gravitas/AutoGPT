@@ -2,6 +2,7 @@ import { createParser } from "@openuidev/lang-core";
 import { catalog, MAX_SOURCE_LENGTH } from "./catalog";
 import { validateWorkspace } from "./validate";
 import { validateSource } from "./source-validation";
+import { validateConnections } from "./validate-connections";
 
 export function parseWorkspace(source: string) {
   if (source.length > MAX_SOURCE_LENGTH)
@@ -30,6 +31,7 @@ export function parseWorkspace(source: string) {
       "Start with root = Workspace(title, description, sections).",
     );
   validateWorkspace(result.root);
+  validateConnections(result.root);
   return result.root;
 }
 

@@ -26,7 +26,9 @@ export function FieldView({
   const disabled = useOpenUIDisabled();
   const field = useFieldView(props.name, props.value ?? "");
   const { error, ...handlers } = useFieldValidation(
-    String(field.value).trim() ? "" : "Fill in this field.",
+    props.required === false || String(field.value).trim()
+      ? ""
+      : "Fill in this field.",
   );
   return (
     <FieldFeedback id={`${id}-error`} error={error}>
@@ -47,7 +49,7 @@ export function FieldView({
         )}
         maxLength={500}
         disabled={disabled}
-        required
+        required={props.required !== false}
       />
     </FieldFeedback>
   );

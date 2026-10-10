@@ -22,6 +22,23 @@ async def test_real_validator_accepts_literal_data_and_rejects_bad_rows():
 
 
 @pytest.mark.asyncio
+async def test_real_validator_checks_connected_fields_and_nullable_bounds():
+    source = (
+        'root = Workspace("Estimate", "Supplied data", [brief, total])\n'
+        'brief = Form("plan", "Adjust", [NumberField("days", "Days", '
+        '2, null, null, 1)], "Continue", "Use these values")\n'
+        'total = CalculatedMetric("plan", "Total", "days * 25 + 10", '
+        '"currency", "USD", 2)'
+    )
+    assert (await openui_validator.validate_openui_source(source)).valid
+    invalid = await openui_validator.validate_openui_source(
+        source.replace("days * 25 + 10", "missing * 25 + 10")
+    )
+    assert not invalid.valid
+    assert "missing" in invalid.error
+
+
+@pytest.mark.asyncio
 async def test_missing_runtime_is_unavailable(monkeypatch):
     monkeypatch.setattr(openui_validator.shutil, "which", lambda _: None)
     with pytest.raises(openui_validator.ValidatorUnavailable):

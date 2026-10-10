@@ -1,5 +1,11 @@
 import { defineComponent } from "@openuidev/lang-core";
 import { z } from "zod/v4";
+import { Comparison, CostTable } from "./catalog-connected";
+import {
+  TextAreaField,
+  ToggleField,
+  MultiSelectField,
+} from "./catalog-rich-fields";
 
 export const SelectField = defineComponent({
   name: "SelectField",
@@ -44,14 +50,14 @@ export const NumberField = defineComponent({
       name: z.string(),
       label: z.string(),
       value: z.number(),
-      min: z.number().nullable(),
-      max: z.number().nullable(),
+      min: z.number().nullable().optional(),
+      max: z.number().nullable().optional(),
       step: z.number().positive(),
     })
     .refine(({ value, min, max, step }) => {
-      if (min !== null && value < min) return false;
-      if (max !== null && value > max) return false;
-      if (min === null) return true;
+      if (min != null && value < min) return false;
+      if (max != null && value > max) return false;
+      if (min == null) return true;
       const steps = (value - min) / step;
       return Math.abs(steps - Math.round(steps)) < 1e-8;
     }),
@@ -67,6 +73,7 @@ export const Field = defineComponent({
     label: z.string(),
     value: z.string(),
     placeholder: z.string(),
+    required: z.boolean().optional(),
   }),
   component: null,
 });
@@ -80,7 +87,17 @@ export const Form = defineComponent({
     title: z.string(),
     fields: z
       .array(
-        z.union([Field.ref, SelectField.ref, DateField.ref, NumberField.ref]),
+        z.union([
+          Field.ref,
+          SelectField.ref,
+          DateField.ref,
+          NumberField.ref,
+          Comparison.ref,
+          CostTable.ref,
+          TextAreaField.ref,
+          ToggleField.ref,
+          MultiSelectField.ref,
+        ]),
       )
       .max(6),
     submitLabel: z.string(),

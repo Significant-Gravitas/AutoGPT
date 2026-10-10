@@ -7,7 +7,7 @@ import {
 } from "@openuidev/react-lang";
 import { useEffect } from "react";
 
-export function useFieldView<T extends string | number>(
+export function useFieldView<T extends string | number | boolean | unknown[]>(
   name: string,
   defaultValue: T,
 ) {

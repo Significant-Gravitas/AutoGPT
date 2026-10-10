@@ -71,10 +71,10 @@ export function buildUIFollowUp(
   fields: Record<string, unknown>,
 ) {
   const values = Object.entries(fields)
-    .slice(0, 10)
+    .slice(0, 24)
     .map(([name, value]) => [
-      name.slice(0, 100),
-      typeof value === "string" ? value.slice(0, 500) : value,
+      name.slice(0, 200),
+      typeof value === "string" ? value.slice(0, 2000) : value,
     ]);
   const body = message.trim().slice(0, 2000);
   return `${body}\n\nFrom the interactive view: ${title.slice(0, 200)}${values.length ? `\nSubmitted values:\n${JSON.stringify(Object.fromEntries(values), null, 2)}` : ""}`;

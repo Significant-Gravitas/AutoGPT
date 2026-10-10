@@ -1,6 +1,6 @@
 # OpenUI in Copilot
 
-An opt-in integration of the [OpenUI React runtime](https://www.openui.com/docs/api-reference/react-lang) into AutoGPT's existing Copilot conversation. The model composes a bounded catalog of 17 AutoGPT components, including interactive maps, timelines, metrics, bar/line/donut charts, searchable and sortable tables, checklists, typed forms, and follow-up buttons.
+An opt-in integration of the [OpenUI React runtime](https://www.openui.com/docs/api-reference/react-lang) into AutoGPT's existing Copilot conversation. The model composes a bounded catalog of 23 AutoGPT components, including interactive maps, timelines, metrics, bar/line/donut charts, searchable and sortable tables, checklists, typed forms, and follow-up buttons.
 
 ## Enable native generation
 
@@ -136,3 +136,18 @@ Browser checks verified fresh login after a host-only cold-auth warmup, rejected
 The candidate's global prompt, deferred library and validator hashes were fixed before final-check response review. Scoring is implementer-authored, not independent or blinded. The standalone validator passes Node 20 portability checks; backend regressions pass 354 tests and scoped Pyright. Configured pre-commit checks pass. Full frontend verification and any reruns are recorded with raw logs in the Desktop report, including unsuccessful orchestration attempts rather than counting them as passes.
 
 Frontend format, lint, types and generated-bundle parity passed after the final license-format correction. The complete suite recorded 9,572 passes, three failures and two expected failures across 881 files. The three unchanged failing files all passed in a sequential rerun; that rerun included all OpenUI/parser/bundle coverage and passed 106 tests across 14 files. The failed full-run log is retained, not relabeled as green.
+
+
+### October 10: connected forms and A/B comparisons
+
+The catalog adds six components: `Comparison`, `CostTable`, `CalculatedMetric`, `TextAreaField`, `ToggleField`, and `MultiSelectField`. `Field` also accepts an optional `required` flag; omitted retains its original required behavior.
+
+`Comparison` presents exactly two identified alternatives inside a Form. At phone widths, drag or swipe left to choose A and right to choose B. Buttons expose the same choice to keyboards and assistive technology. Selection is local, supports undo, and is submitted only through the Form action in the current conversation. Vertical, cancelled, short, secondary-pointer, and disabled gestures do not select. Supporting descriptions expand on mobile; supplied or verified images and source links are optional. Selection publishes the id, title (`name_label`), and optional numeric amount (`name_amount`) in the same form state.
+
+`CostTable` edits up to eight supplied line items, including quantity, unit price, and inclusion. Included rows and a computed `name_total` update locally. Invalid numeric drafts stay visible, receive inline feedback, and suspend the affected total. They block submission while included. Excluded invalid drafts remain in the browser but are not forwarded as bad numeric values. Costs currently use two decimal places; this is an estimate editor, not a billing or payment system.
+
+`CalculatedMetric` reads named numeric fields, selected amounts, and cost subtotals from one Form. Its bounded arithmetic grammar supports constants, field names, `+ - * /`, parentheses, and `count(multiselect_name)`. For example, `stay_amount * nights + extras_total` recomputes as either the choice or inputs change. It does not execute JavaScript. Missing values, invalid field constraints, zero division and overflow withhold the result. Canonical validation rejects unknown form/field references, wrong input kinds and generated-name collisions. These explicit calculations are connected; static metrics, maps, itineraries and recommendations still require a chat follow-up.
+
+The richer controls submit multiline text, booleans and arrays as typed values. Fields, choices and cost-row drafts use the existing exact-source session storage, including Strict Mode restoration and failed-send retry behavior. Shared conversations disable edits and sends. NumberField's documented `null` bounds now survive the upstream parser's required-prop check.
+
+`backend/copilot/eval/openui/connected-journeys.jsonl` freezes sixteen additional scenarios: eight positive, six negative and two boundary cases, with four held out from development. The separate Desktop collection `OpenUI-connected-2026-10-10` contains raw live runs, outcomes, browser evidence and code checks. Read its final report for measured results and remaining limitations; component counts alone are not evidence of task quality.

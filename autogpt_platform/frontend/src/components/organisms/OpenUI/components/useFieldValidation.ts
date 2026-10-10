@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type InvalidEvent } from "react";
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 
 export function useFieldValidation(message: string) {
-  const ref = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
+  const ref = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [touched, setTouched] = useState(false);
   const [composing, setComposing] = useState(false);
   useEffect(() => {
@@ -11,7 +11,7 @@ export function useFieldValidation(message: string) {
   function onBlur() {
     setTouched(true);
   }
-  function onInvalid(event: InvalidEvent<HTMLInputElement>) {
+  function onInvalid(event: SyntheticEvent) {
     event.preventDefault();
     setTouched(true);
   }
@@ -22,8 +22,12 @@ export function useFieldValidation(message: string) {
     setComposing(false);
     setTouched(true);
   }
+  function setRef(node: HTMLInputElement | HTMLTextAreaElement | null) {
+    ref.current = node;
+    node?.setCustomValidity(message);
+  }
   return {
-    ref,
+    ref: setRef,
     error: touched && !composing ? message : "",
     onBlur,
     onInvalid,

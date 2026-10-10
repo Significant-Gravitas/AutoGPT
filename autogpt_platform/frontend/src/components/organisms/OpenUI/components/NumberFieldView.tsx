@@ -9,6 +9,7 @@ import { useFieldView } from "./useFieldView";
 import { useFieldValidation } from "./useFieldValidation";
 import { numberFieldError } from "./fieldValidation";
 import { FieldFeedback } from "./FieldFeedback";
+import { useDerivedField } from "./useDerivedField";
 
 export function NumberFieldView({
   props,
@@ -16,9 +17,9 @@ export function NumberFieldView({
   const id = useId();
   const disabled = useOpenUIDisabled();
   const field = useFieldView<string | number>(props.name, props.value ?? "");
-  const validation = useFieldValidation(
-    numberFieldError(String(field.value), props),
-  );
+  const message = numberFieldError(String(field.value), props);
+  useDerivedField(`${props.name}__valid`, !message);
+  const validation = useFieldValidation(message);
   const { error, ...handlers } = validation;
   return (
     <FieldFeedback id={`${id}-error`} error={error}>

@@ -30,6 +30,24 @@ import { TrendChartView } from "./components/TrendChartView";
 import { DonutChartView } from "./components/DonutChartView";
 import { SelectFieldView, DateFieldView } from "./components/TypedFieldViews";
 import { NumberFieldView } from "./components/NumberFieldView";
+import {
+  Comparison,
+  CostTable,
+  CalculatedMetric,
+} from "@/lib/openui/catalog-connected";
+import {
+  TextAreaField,
+  ToggleField,
+  MultiSelectField,
+} from "@/lib/openui/catalog-rich-fields";
+import { ComparisonView } from "./components/ComparisonView/ComparisonView";
+import { CostTableView } from "./components/CostTableView/CostTableView";
+import { CalculatedMetricView } from "./components/CalculatedMetricView";
+import {
+  TextAreaFieldView,
+  ToggleFieldView,
+  MultiSelectFieldView,
+} from "./components/RichFieldViews";
 
 export const autoGPTLibrary = createLibrary({
   root: "Workspace",
@@ -51,5 +69,11 @@ export const autoGPTLibrary = createLibrary({
     defineComponent({ ...SelectField, component: SelectFieldView }),
     defineComponent({ ...NumberField, component: NumberFieldView }),
     defineComponent({ ...DateField, component: DateFieldView }),
+    defineComponent({ ...Comparison, component: ComparisonView }),
+    defineComponent({ ...CostTable, component: CostTableView }),
+    defineComponent({ ...CalculatedMetric, component: CalculatedMetricView }),
+    defineComponent({ ...TextAreaField, component: TextAreaFieldView }),
+    defineComponent({ ...ToggleField, component: ToggleFieldView }),
+    defineComponent({ ...MultiSelectField, component: MultiSelectFieldView }),
   ],
 });
