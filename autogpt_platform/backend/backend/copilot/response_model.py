@@ -68,6 +68,7 @@ class ResponseType(str, Enum):
     # ``context_compaction`` tool row's JSON output.
     COMPACTION = "data-compaction"
     PROVIDER_FAILURE = "data-provider-failure"
+    CHECKPOINT = "data-checkpoint"
 
 
 class StreamBaseResponse(BaseModel):
@@ -518,5 +519,32 @@ class StreamPendingDrained(StreamBaseResponse):
                 "drainedCount": self.drainedCount,
                 "messages": [m.model_dump() for m in self.messages],
             },
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
+
+class StreamCheckpoint(StreamBaseResponse):
+    """The turn's first ``rows`` rows are persisted, starting at DB ``sequence``.
+
+    Published only after a successful persist with no block open and no tool
+    call pending, so the stream after it is self-contained. ``digest`` is
+    ``stream_checkpoint.rows_digest`` over those rows. Transient: the AI SDK
+    hands it to ``onData`` and stores nothing.
+    """
+
+    type: ResponseType = ResponseType.CHECKPOINT
+    rows: int
+    sequence: int
+    digest: str
+
+    def to_sse(self) -> str:
+        data = {
+            "type": self.type.value,
+            "data": {
+                "rows": self.rows,
+                "sequence": self.sequence,
+                "digest": self.digest,
+            },
+            "transient": True,
         }
         return f"data: {json.dumps(data)}\n\n"

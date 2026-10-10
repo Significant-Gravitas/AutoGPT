@@ -48,6 +48,7 @@ from backend.api.features.store.skill_catalog_checkout import catalog_checkout
 from backend.api.features.store.skill_catalog_release import CatalogError, load_catalog
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
+from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.model import create_chat_session
 from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
@@ -82,11 +83,14 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
 # domains at all -- every one of the 17 store listings is sales, marketing or
 # content, so there is nothing for recruiting, finance, product or ops to
 # preload. That last group should leave this set once such listings exist.
-# Note this set now exempts 23 of the 32 roster entries, so the bound below is
+# Clip joined the roster from an expert raised on the platform, which had one
+# skill and no workflows, and ships the same way.
+# Note this set now exempts 24 of the 33 roster entries, so the bound below is
 # only really checking the remaining nine.
 PERSONAS_WITHOUT_WORKFLOWS = {
     "Alex",
     "Casey",
+    "Clip",
     "Daniel",
     "Devon",
     "Ellis",
@@ -203,8 +207,8 @@ def hire_waits_for_setup(monkeypatch):
     """Most tests assert on what a hire installs, so let them read it back
     once the background setup has finished."""
 
-    async def hire_and_finish_setup(user_id, template_id, name):
-        result = await _hire_without_waiting(user_id, template_id, name)
+    async def hire_and_finish_setup(user_id, template_id, name, surface=None):
+        result = await _hire_without_waiting(user_id, template_id, name, surface)
         await _finish_hire_setup()
         row = await prisma.models.Expert.prisma().find_unique(
             where={"id": result.expert.id}, include=experts_db._WORKFLOW_INCLUDE
@@ -3846,9 +3850,9 @@ def test_the_roster_is_the_expected_size_with_unique_names(
     side edits the test about the roster rather than the one about dev's nine.
     Names must be unique: two entries sharing one is what forced the rename of
     this branch's Casey, Priya and Sasha when dev's wave three landed."""
-    # 24 from dev's waves plus the eight generalists added on top; the senior
-    # sales package was folded into Max rather than shipped as its own entry.
-    assert len(real_roster) == 32
+    # 24 from dev's waves, the eight generalists added on top, and Clip; the
+    # senior sales package was folded into Max rather than shipped as its own entry.
+    assert len(real_roster) == 33
     names = [entry["name"] for entry in real_roster]
     assert len(names) == len(set(names))
 
@@ -6048,12 +6052,15 @@ async def test_list_templates_without_a_category_keeps_uncategorised_experts(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_list_templates_searches_name_role_tagline_and_bio(
+async def test_list_templates_searches_name_role_job_title_tagline_and_bio(
     server: SpinTestServer,
 ):
     suffix = uuid.uuid4().hex[:8]
     by_name = await _template(f"Marigold {suffix}")
     by_role = await _template(f"Roleful {suffix}", role=f"Podcaster {suffix}")
+    by_job_title = await _template(
+        f"Titled {suffix}", jobTitle=f"Social Media Manager {suffix}"
+    )
     by_tagline = await _template(f"Tagged {suffix}", tagline=f"Books {suffix} tours")
     by_bio = await _template(f"Biod {suffix}", bio=f"Fifteen years of {suffix} work")
 
@@ -6062,13 +6069,16 @@ async def test_list_templates_searches_name_role_tagline_and_bio(
 
     assert by_name.id in await ids_for("marigold")
     assert by_role.id in await ids_for(f"podcaster {suffix}")
+    # The title line the card shows ("Jules · Social Media Manager").
+    assert by_job_title.id in await ids_for("social media")
     assert by_tagline.id in await ids_for(f"books {suffix}")
     assert by_bio.id in await ids_for(f"fifteen years of {suffix}")
 
-    # One term, four templates: the OR spans the four searchable columns.
+    # One term, five templates: the OR spans the five searchable columns.
     assert await ids_for(suffix) >= {
         by_name.id,
         by_role.id,
+        by_job_title.id,
         by_tagline.id,
         by_bio.id,
     }
@@ -6140,15 +6150,39 @@ async def test_seed_roster_files_every_template_under_a_canonical_category(
 # =============================================================================
 
 
+def _expert_hired(result, template_id: str, **extra) -> dict:
+    return {
+        "expert_id": result.expert.id,
+        "template_id": template_id,
+        "name": result.expert.name,
+        "failed_preloads_count": 0,
+        **extra,
+    }
+
+
 @pytest.mark.asyncio(loop_scope="session")
-async def test_hire_expert_emits_hire_completed(server: SpinTestServer, test_user):
+async def test_hire_expert_emits_expert_hired(server: SpinTestServer, test_user):
     template = await _seed_template(name="Maria", preload_listings=[])
     with patch.object(experts_db, "emit_funnel_event") as emit:
-        await experts_db.hire_expert(test_user.id, template.id, None)
+        result = await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_called_once_with(
+        test_user.id, "expert_hired", _expert_hired(result, template.id)
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_expert_hired_carries_the_hiring_surface(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        result = await experts_db.hire_expert(
+            test_user.id, template.id, None, "onboarding"
+        )
     emit.assert_called_once_with(
         test_user.id,
-        "hire_completed",
-        {"template_id": template.id, "failed_preloads_count": 0},
+        "expert_hired",
+        _expert_hired(result, template.id, surface="onboarding"),
     )
 
 
@@ -6167,7 +6201,7 @@ async def test_hire_expert_emits_hire_failed_on_unknown_template(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_hire_completed_reports_failed_preloads_count(
+async def test_expert_hired_reports_failed_preloads_count(
     server: SpinTestServer, test_user
 ):
     slv_id = await _seed_store_listing(server)
@@ -6179,11 +6213,11 @@ async def test_hire_completed_reports_failed_preloads_count(
         side_effect=RuntimeError("install exploded"),
     ):
         with patch.object(experts_db, "emit_funnel_event") as emit:
-            await experts_db.hire_expert(test_user.id, template.id, None)
+            result = await experts_db.hire_expert(test_user.id, template.id, None)
     emit.assert_called_once_with(
         test_user.id,
-        "hire_completed",
-        {"template_id": template.id, "failed_preloads_count": 1},
+        "expert_hired",
+        _expert_hired(result, template.id, failed_preloads_count=1),
     )
 
 
@@ -6217,8 +6251,8 @@ async def test_a_raising_retry_keeps_the_failures_an_earlier_attempt_named(
     assert done.setup_failures == ["Agent X", "skill-a"]
     emit.assert_called_once_with(
         test_user.id,
-        "hire_completed",
-        {"template_id": template.id, "failed_preloads_count": 1},
+        "expert_hired",
+        _expert_hired(hired, template.id, failed_preloads_count=1),
     )
 
 
@@ -6253,13 +6287,13 @@ async def test_a_setup_that_only_raised_reports_the_preloads_it_lacks(
     assert done.setup_failures == named
     emit.assert_called_once_with(
         test_user.id,
-        "hire_completed",
-        {"template_id": template.id, "failed_preloads_count": 1},
+        "expert_hired",
+        _expert_hired(hired, template.id, failed_preloads_count=1),
     )
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_idempotent_rehire_does_not_reemit_hire_completed(
+async def test_idempotent_rehire_does_not_reemit_expert_hired(
     server: SpinTestServer, test_user
 ):
     template = await _seed_template(name="Maria", preload_listings=[])
@@ -6270,18 +6304,16 @@ async def test_idempotent_rehire_does_not_reemit_hire_completed(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_reviving_archived_expert_emits_hire_completed(
+async def test_reviving_archived_expert_emits_expert_hired(
     server: SpinTestServer, test_user
 ):
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
     await experts_db.archive_expert(test_user.id, hired.expert.id)
     with patch.object(experts_db, "emit_funnel_event") as emit:
-        await experts_db.hire_expert(test_user.id, template.id, None)
+        revived = await experts_db.hire_expert(test_user.id, template.id, None)
     emit.assert_called_once_with(
-        test_user.id,
-        "hire_completed",
-        {"template_id": template.id, "failed_preloads_count": 0},
+        test_user.id, "expert_hired", _expert_hired(revived, template.id)
     )
 
 
@@ -6301,18 +6333,18 @@ async def test_reviving_a_failed_setup_counts_the_hire_once_setup_settles(
         assert hired.expert.setup_status == "failed"
         await experts_db.archive_expert(test_user.id, hired.expert.id)
         with patch.object(experts_db, "emit_funnel_event") as emit:
-            await experts_db.hire_expert(test_user.id, template.id, None)
+            revived = await experts_db.hire_expert(test_user.id, template.id, None)
 
     # Kills: emitting from the request before the re-claimed setup has run.
     emit.assert_called_once_with(
         test_user.id,
-        "hire_completed",
-        {"template_id": template.id, "failed_preloads_count": 1},
+        "expert_hired",
+        _expert_hired(revived, template.id, failed_preloads_count=1),
     )
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_concurrent_revival_emits_hire_completed_once(
+async def test_concurrent_revival_emits_expert_hired_once(
     server: SpinTestServer, test_user
 ):
     template = await _seed_template(name="Maria", preload_listings=[])
@@ -6330,9 +6362,7 @@ async def test_concurrent_revival_emits_hire_completed_once(
     assert not first.expert.is_archived
     assert not second.expert.is_archived
     emit.assert_called_once_with(
-        test_user.id,
-        "hire_completed",
-        {"template_id": template.id, "failed_preloads_count": 0},
+        test_user.id, "expert_hired", _expert_hired(first, template.id)
     )
 
 
@@ -6383,7 +6413,7 @@ async def test_install_workflow_emits_workflow_installed(
         "workflow_installed_on_expert",
         {
             "expert_id": hired.expert.id,
-            "source": "marketplace",
+            "workflow_source": "marketplace",
             "store_listing_version_id": slv_id,
         },
     )
@@ -6411,7 +6441,7 @@ async def test_install_workflow_emits_for_the_library_source_too(
         "workflow_installed_on_expert",
         {
             "expert_id": hired.expert.id,
-            "source": "library",
+            "workflow_source": "library",
             "library_agent_id": library_agent.id,
         },
     )
@@ -6801,6 +6831,46 @@ async def test_an_expert_can_record_a_routine_it_agreed_in_conversation(
     assert [
         r.id for r in await experts_db.list_routines(test_user.id, hired.expert.id)
     ] == [created.id]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_keeps_the_account_it_was_set_up_on(
+    server: SpinTestServer, test_user
+):
+    """The account picked in the chat lives on the row, so switching the
+    routine off and on again, or rewording it, keeps running on it
+    (SECRT-2804). Re-enabling without naming pins leaves them alone."""
+    template = await _seed_template(name="Briefer", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    work = CredentialPin(id="exa-new", title="Work")
+
+    created = await experts_db.create_routine(
+        test_user.id,
+        hired.expert.id,
+        title="Morning briefing",
+        prompt="Search Exa for AI news.",
+        crons=["H 8 * * *"],
+        credential_pins={"exa": work},
+    )
+    assert created.credential_pins == {"exa": work}
+
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        reworded = await experts_db.enable_routine(
+            test_user.id, hired.expert.id, created.id, prompt="Search Exa daily."
+        )
+        assert reworded.credential_pins == {"exa": work}
+        moved = await experts_db.enable_routine(
+            test_user.id,
+            hired.expert.id,
+            created.id,
+            credential_pins={"exa": CredentialPin(id="exa-old", title="Personal")},
+        )
+    assert moved.credential_pins["exa"].id == "exa-old"
+    assert (await experts_db.get_routine(created.id)).credential_pins[
+        "exa"
+    ].id == "exa-old"
 
 
 @pytest.mark.asyncio(loop_scope="session")

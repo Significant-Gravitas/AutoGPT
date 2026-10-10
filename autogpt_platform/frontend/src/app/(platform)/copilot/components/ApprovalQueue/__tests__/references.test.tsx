@@ -234,3 +234,19 @@ test("unresolved agent IDs stay listed beside a resolved folder headline", async
   expect(view.getByText(/lib-lost-1/)).toBeDefined();
   expect(view.getByText(/lib-lost-2/)).toBeDefined();
 });
+
+test.each([
+  ["Follow-up in two days", "Runs in", "2 days 3 hours", "183420"],
+  ["Weekly follow-up", "Repeats", "Every Monday at 09:00", "0 9 * * 1"],
+  ["Delegate and wait", "Waits up to", "3 minutes", "180"],
+])(
+  "%s: the argument reads as its schema labels and words it",
+  async (story, label, text, raw) => {
+    renderCard(referenceCard(story));
+
+    const view = await card();
+    expect(view.getByText(label)).toBeDefined();
+    expect(view.getByText(text)).toBeDefined();
+    expect(view.queryByText(raw)).toBeNull();
+  },
+);

@@ -5,7 +5,7 @@ Kept out of ``adapter.py`` (already large) — the only thing the adapter needs
 from here is ``build_choice_view`` and ``register_choice_handler``.
 
 The buttons are **stateless**, like Slack's, Telegram's and Teams'. Everything
-needed to resolve a click — the ``bot.choices`` token and the option index —
+needed to resolve a click — the button's kind, its token and the option index —
 is encoded in each button's ``custom_id`` and parsed back out on click, so no
 per-message state lives in this process. A view held in memory instead would
 go dead on every deploy and once discord.py's own view timeout fired, and a
@@ -25,45 +25,49 @@ from backend.copilot.bot.adapters.base import (
     MessageContext,
     PlatformAdapter,
 )
+from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
 
 logger = logging.getLogger(__name__)
-
-_EXPIRED_NOTICE = "This question has expired — type your answer instead."
-_NOT_YOUR_QUESTION = (
-    "This question was for someone else — they still need to answer it."
-)
 
 # Set once by `register_choice_handler`. The click handler is reconstructed by
 # discord.py from the custom_id alone (possibly in a process that never sent
 # the message), so it has no closure to read these from.
 _adapter: PlatformAdapter | None = None
 _on_message: MessageCallback | None = None
+_api: BotBackend | None = None
 
 
 def register_choice_handler(
-    client: discord.Client, adapter: PlatformAdapter, on_message: MessageCallback
+    client: discord.Client,
+    adapter: PlatformAdapter,
+    on_message: MessageCallback,
+    api: BotBackend,
 ) -> None:
     """Wire clicks on choice buttons to ``on_message`` for this process.
 
     Registered once at startup rather than per message: that is what lets a
     button posted before a restart still work afterwards.
     """
-    global _adapter, _on_message
+    global _adapter, _on_message, _api
     _adapter = adapter
     _on_message = on_message
+    _api = api
     client.add_dynamic_items(_ChoiceButton)
 
 
-def build_choice_view(token: str, options: list[str]) -> discord.ui.View:
+def build_choice_view(
+    token: str, options: list[str], kind: ButtonKind = QUESTION_KIND
+) -> discord.ui.View:
     """One button per option (View auto-wraps into rows of 5).
 
     ``timeout=None`` because the buttons carry their own state: expiry is the
-    Redis token's job, and an expired token gives the user the notice above
-    rather than Discord's generic failure.
+    Redis token's job, and an expired token gives the user a notice rather
+    than Discord's generic failure.
     """
     view = discord.ui.View(timeout=None)
     for index, option in enumerate(options):
-        view.add_item(_ChoiceButton.for_option(token, index, option))
+        view.add_item(_ChoiceButton(kind, token, index, option))
     return view
 
 
@@ -73,22 +77,26 @@ class _ChoiceButton(
     # this pattern is what routes a click on a button that may have been
     # posted weeks ago, so a future change to how tokens are minted must not
     # silently orphan every live button.
-    template=r"qans:(?P<token>[0-9A-Za-z_-]{1,64}):(?P<index>[0-9]{1,3})",
+    template=r"(?P<kind>qans|appr):(?P<token>[0-9A-Za-z_-]{1,64}):(?P<index>[0-9]{1,3})",
 ):
-    def __init__(self, token: str, index: int, label: str = "") -> None:
+    def __init__(
+        self, kind: ButtonKind, token: str, index: int, label: str = ""
+    ) -> None:
+        self._kind: ButtonKind = kind
         self._token = token
         self._index = index
+        primary = kind == choices.CARD_KIND and index == 0
         super().__init__(
             discord.ui.Button(
-                style=discord.ButtonStyle.secondary,
+                style=(
+                    discord.ButtonStyle.primary
+                    if primary
+                    else discord.ButtonStyle.secondary
+                ),
                 label=label[:80],
-                custom_id=f"qans:{token}:{index}",
+                custom_id=f"{kind}:{token}:{index}",
             )
         )
-
-    @classmethod
-    def for_option(cls, token: str, index: int, label: str) -> "_ChoiceButton":
-        return cls(token, index, label)
 
     @classmethod
     async def from_custom_id(
@@ -100,33 +108,39 @@ class _ChoiceButton(
     ) -> "_ChoiceButton":
         # Rebuilt from the click alone — the label is whatever Discord still
         # renders on the message, so it is not needed here.
-        return cls(match["token"], int(match["index"]))
+        return cls(
+            choices.BUTTON_KINDS[match["kind"]], match["token"], int(match["index"])
+        )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        if _adapter is None or _on_message is None:
+        if _adapter is None or _on_message is None or _api is None:
             logger.error("Choice button clicked before the handler was registered")
             return
-        resolved = await choices.resolve_choice(
-            "discord", self._token, self._index, str(interaction.user.id)
+        # Answering a card crosses two services and can outlast Discord's
+        # three seconds to acknowledge a click.
+        await interaction.response.defer()
+        answer = await choices.answer_button(
+            _api,
+            "discord",
+            self._kind,
+            self._token,
+            self._index,
+            str(interaction.user.id),
+            _server_id(interaction),
         )
-        if resolved.text is None:
-            await interaction.response.send_message(
-                _NOT_YOUR_QUESTION if resolved.refused else _EXPIRED_NOTICE,
-                ephemeral=True,
-            )
+        if not answer.answered:
+            await interaction.followup.send(answer.text, ephemeral=True)
             return
-        option = resolved.text
         # The token is already consumed, so the answer exists only in this
         # call. The ack is cosmetic (a 404 on a deleted message, or 40060 on
         # a fast double-click) and must never cost the user their answer.
         try:
-            await interaction.response.edit_message(
-                content=f"✅ You answered: {option}", view=None
-            )
+            await interaction.edit_original_response(content=answer.text, view=None)
         except discord.HTTPException:
             logger.exception("Failed to acknowledge choice click; continuing the turn")
-        ctx = _context_from_interaction(interaction, option)
+        ctx = _context_from_interaction(interaction, answer.reply or "")
         if ctx is not None:
+            ctx.follow = answer.follow
             await _on_message(ctx, _adapter)
 
 
@@ -143,7 +157,7 @@ def _context_from_interaction(
     return MessageContext(
         platform="discord",
         channel_type=channel_type,
-        server_id=str(interaction.guild_id) if interaction.guild_id else None,
+        server_id=_server_id(interaction),
         channel_id=str(interaction.channel_id),
         message_id=str(interaction.id),
         user_id=str(interaction.user.id),
@@ -151,3 +165,7 @@ def _context_from_interaction(
         text=option,
         bot_mentioned=True,
     )
+
+
+def _server_id(interaction: discord.Interaction) -> str | None:
+    return str(interaction.guild_id) if interaction.guild_id else None

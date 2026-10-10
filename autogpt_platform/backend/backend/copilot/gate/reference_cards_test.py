@@ -87,6 +87,29 @@ _CALLS: list[tuple[str, str, dict[str, Any]]] = [
         {"file_id": "file-q3", "path": "/reports/q3-report.pdf"},
     ),
     ("Unresolved id", "delete_preset", {"preset_id": "3f0c9a2e-preset-gone"}),
+    (
+        "Follow-up in two days",
+        "schedule_followup",
+        {
+            "message": "Check that Ada finished the partner dossiers.",
+            "delay_seconds": 183_420,
+            "session_id": "s-q3",
+        },
+    ),
+    (
+        "Weekly follow-up",
+        "schedule_followup",
+        {"message": "Review the sales pipeline.", "cron": "0 9 * * 1"},
+    ),
+    (
+        "Delegate and wait",
+        "delegate_to_expert",
+        {
+            "expert_id": "exp-ada",
+            "prompt": "Backfill the partner dossiers for the three new accounts.",
+            "wait_for_result": 180,
+        },
+    ),
 ]
 
 
@@ -100,6 +123,10 @@ async def build_cards() -> list[dict[str, Any]]:
         patch.object(references, "get_workspace_manager", _workspace),
         patch.object(references, "store_db", return_value=_store()),
         patch.object(references, "get_redis_async", _redis),
+        patch(
+            "backend.copilot.tools.expert_delegation.experts_db",
+            return_value=_experts(),
+        ),
     ):
         cards = [await _card(*call) for call in _CALLS]
     return json.loads(json.dumps(cards, default=str))

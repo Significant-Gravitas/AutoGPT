@@ -55,18 +55,40 @@ def resolve_entry(index: CapabilityIndex, capability_id: str) -> CapabilityEntry
     )
 
 
-async def load_connection_state(user_id: str) -> ConnectionState:
-    """Providers, MCP server URLs and hosts the user holds credentials for.
+async def load_connection_state(
+    user_id: str, expert_id: str | None = None
+) -> ConnectionState:
+    """Providers, MCP server URLs and hosts this session holds credentials for.
 
     One store read per call; the credentials manager already caches, so a
     ``find_capability`` turn costs no extra round-trips.
+
+    With an *expert_id* the state is narrowed to the expert's grants — the
+    same filter a run applies — so ``connected`` means "this session can run
+    it", and the account credentials the expert lacks are kept aside as
+    ``ungranted``. A grant lookup that fails leaves the expert with nothing
+    usable, matching the run-time gate rather than overstating what it can do.
     """
     try:
         credentials = await IntegrationCredentialsManager().store.get_all_creds(user_id)
     except Exception:
         logger.warning("Could not load credentials for ranking", exc_info=True)
         return ConnectionState()
-    return connection_state_from(credentials)
+    if expert_id is None:
+        return connection_state_from(credentials)
+
+    from backend.copilot.tools.utils import scope_credentials_to_expert
+
+    try:
+        granted = await scope_credentials_to_expert(user_id, expert_id, credentials)
+    except Exception:
+        logger.warning("Could not load expert credential grants", exc_info=True)
+        return ConnectionState(ungranted=connection_state_from(credentials))
+    granted_ids = {c.id for c in granted}
+    ungranted = [c for c in credentials if c.id not in granted_ids]
+    return connection_state_from(granted).model_copy(
+        update={"ungranted": connection_state_from(ungranted)}
+    )
 
 
 def connection_state_from(credentials: list[Credentials]) -> ConnectionState:

@@ -6,6 +6,7 @@ from backend.data.db_accessors import bot_analytics_db, platform_linking_db
 from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
 from backend.util.settings import Settings
 
+from .cards import answer_card, open_card
 from .chat import (
     ensure_chat_session,
     list_user_chats,
@@ -16,6 +17,8 @@ from .models import (
     BotChatRequest,
     BotEventInput,
     BotGuildInput,
+    CardAnswer,
+    ChannelCard,
     ChatTurnHandle,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
@@ -48,10 +51,10 @@ class PlatformLinkingManager(AppService):
 
     @expose
     async def resolve_user_link(
-        self, platform: Platform, platform_user_id: str
+        self, platform: Platform, platform_user_id: str, include_account: bool = False
     ) -> ResolveResponse:
         return await platform_linking_db().resolve_user_link(
-            platform.value, platform_user_id
+            platform.value, platform_user_id, include_account
         )
 
     @expose
@@ -145,6 +148,30 @@ class PlatformLinkingManager(AppService):
         )
 
     @expose
+    async def open_channel_card(
+        self,
+        platform: Platform,
+        platform_server_id: str | None,
+        platform_user_id: str,
+        session_id: str,
+        review_id: str,
+    ) -> ChannelCard | None:
+        return await open_card(
+            platform, platform_server_id, platform_user_id, session_id, review_id
+        )
+
+    @expose
+    async def answer_channel_card(
+        self,
+        platform: Platform,
+        platform_server_id: str | None,
+        clicker_id: str,
+        token: str,
+        index: int,
+    ) -> CardAnswer:
+        return await answer_card(platform, platform_server_id, clicker_id, token, index)
+
+    @expose
     async def record_bot_event(self, event: BotEventInput) -> None:
         await bot_analytics_db().record_bot_event(event)
 
@@ -195,6 +222,8 @@ class PlatformLinkingManagerClient(AppServiceClient):
     fetch_workspace_artifact = endpoint_to_async(
         PlatformLinkingManager.fetch_workspace_artifact
     )
+    open_channel_card = endpoint_to_async(PlatformLinkingManager.open_channel_card)
+    answer_channel_card = endpoint_to_async(PlatformLinkingManager.answer_channel_card)
     record_bot_event = endpoint_to_async(PlatformLinkingManager.record_bot_event)
     record_guild_joined = endpoint_to_async(PlatformLinkingManager.record_guild_joined)
     mark_guild_left = endpoint_to_async(PlatformLinkingManager.mark_guild_left)
