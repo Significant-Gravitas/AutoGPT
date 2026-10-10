@@ -307,32 +307,45 @@ async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
     session is owned by the user.  Cancel/dispatch races resolve in a single
     atomic update."""
     db = chat_db()
-    # Under the lock a waiter reads under, so it never sees idle without the note.
-    async with _get_session_lock(session_id):
-        # Read before the flip: once idle, a new message can become the latest row.
-        pending = await db.get_latest_user_message_in_session(session_id)
-        if not await db.update_chat_session_status(
-            session_id=session_id,
-            expect_status=CHAT_STATUS_QUEUED,
-            status=CHAT_STATUS_IDLE,
-            user_id=user_id,
-        ):
-            return False
-        spawned = pending is not None and _is_spawned(pending)
-        if spawned:
-            await db.add_chat_message(
-                message_id=str(uuid.uuid4()),
+    child: TurnEnvelope | None = None
+    try:
+        # Under the lock a waiter reads under: it never sees idle without the note.
+        async with _get_session_lock(session_id):
+            # Read before the flip: once idle, a new message can become the latest.
+            pending = await db.get_latest_user_message_in_session(session_id)
+            if not await db.update_chat_session_status(
                 session_id=session_id,
-                role="assistant",
-                content=TURN_CANCELLED,
-                sequence=await db.get_next_sequence(session_id),
-                metadata={_REFUSED_KEY: True},
-            )
-        await invalidate_session_cache(session_id)
-    child = _child_node(pending.metadata or {}) if spawned and pending else None
-    if child is not None:
-        await release_turn(child)
+                expect_status=CHAT_STATUS_QUEUED,
+                status=CHAT_STATUS_IDLE,
+                user_id=user_id,
+            ):
+                return False
+            if pending is not None and _is_spawned(pending):
+                child = _child_node(pending.metadata or {})
+                await _note_cancel(db, session_id)
+            await invalidate_session_cache(session_id)
+    finally:
+        # The node goes back whatever happened to the note.
+        if child is not None:
+            await release_turn(child)
     return True
+
+
+async def _note_cancel(db: Any, session_id: str) -> None:
+    """Close a cancelled child's thread with the note its waiter reads."""
+    try:
+        await db.add_chat_message(
+            message_id=str(uuid.uuid4()),
+            session_id=session_id,
+            role="assistant",
+            content=TURN_CANCELLED,
+            sequence=await db.get_next_sequence(session_id),
+            metadata={_REFUSED_KEY: True},
+        )
+    except Exception:
+        logger.exception(
+            f"cancel_queued_turn: could not note the cancel on session={session_id}"
+        )
 
 
 async def claim_queued_session(

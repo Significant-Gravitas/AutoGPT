@@ -335,6 +335,29 @@ async def test_a_failed_unclaim_does_not_hide_why_the_child_was_not_written() ->
     assert db.update_chat_session_status.await_count == 2
 
 
+@pytest.mark.asyncio
+async def test_a_cancelled_child_returns_its_node_when_its_note_cannot_be_written() -> (
+    None
+):
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata={"envelope": _CHILD})
+    )
+    db.get_next_sequence = AsyncMock(return_value=2)
+    db.add_chat_message = AsyncMock(side_effect=RuntimeError("note failed"))
+    release = AsyncMock()
+
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "release_turn", new=release),
+    ):
+        assert await turn_queue.cancel_queued_turn(user_id="u1", session_id="s1")
+
+    release.assert_awaited_once_with(TurnEnvelope.model_validate(_CHILD))
+
+
 # ── try_enqueue_turn ───────────────────────────────────────────────────
 
 
