@@ -9,6 +9,7 @@ Tests mock at the Prisma model boundary (``ModelName.prisma()``) so the
 real Python logic is exercised while no database connection is needed.
 """
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -2518,6 +2519,12 @@ class TestPR16Transfers:
         self.mock_prisma = MagicMock()
         mocker.patch("backend.api.features.transfers.db.prisma", self.mock_prisma)
 
+        @asynccontextmanager
+        async def _tx():
+            yield self.mock_prisma
+
+        mocker.patch("backend.api.features.transfers.db.transaction", _tx)
+
     def _make_transfer_row(
         self,
         *,
@@ -2665,7 +2672,13 @@ class TestPR16Transfers:
             target_approved_by="user-target",
             completed_at=datetime(2025, 7, 1, tzinfo=timezone.utc),
         )
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=completed)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=completed
+        )
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        graph_row = MagicMock()
+        graph_row.organizationId = "org-1"
+        self.mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph_row)
         self.mock_prisma.agentgraph.update_many = AsyncMock(return_value=1)
         self.mock_prisma.auditlog.create = AsyncMock(return_value=MagicMock())
 
@@ -2679,12 +2692,51 @@ class TestPR16Transfers:
 
         assert result.status == "COMPLETED"
         # Verify the resource was moved to target org, ALL versions, landing
-        # at org-home (teamId=None) so it's visible in the target org.
+        # at org-home (teamId=None) so it's visible in the target org, and
+        # only while the source org still owns it (#15271).
         self.mock_prisma.agentgraph.update_many.assert_called_once()
         move_call = self.mock_prisma.agentgraph.update_many.call_args.kwargs
         assert move_call["data"]["organizationId"] == "org-2"
         assert move_call["data"]["teamId"] is None
-        assert move_call["where"] == {"id": GRAPH_ID}
+        assert move_call["where"] == {"id": GRAPH_ID, "organizationId": "org-1"}
+        # Json columns must get SafeJson, not bare dicts (#15267).
+        from prisma import Json
+
+        assert self.mock_prisma.auditlog.create.call_count == 2
+        for call in self.mock_prisma.auditlog.create.call_args_list:
+            assert isinstance(call.kwargs["data"]["afterJson"], Json)
+            assert isinstance(call.kwargs["data"]["beforeJson"], Json)
+
+    @pytest.mark.asyncio
+    async def test_execute_store_listing_move_is_scoped_to_source_org(self):
+        """A StoreListing move only matches while the source org owns it;
+        a zero-row move aborts and rejects the transfer (#15271)."""
+        approved = self._make_transfer_row(
+            status="SOURCE_APPROVED",
+            resource_type="StoreListing",
+            resource_id="listing-1",
+            source_approved_by=USER_ID,
+            target_approved_by="user-target",
+        )
+        self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=approved)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        listing = MagicMock()
+        listing.isDeleted = False
+        listing.owningOrgId = "org-1"
+        self.mock_prisma.storelisting.find_unique = AsyncMock(return_value=listing)
+        self.mock_prisma.storelisting.update_many = AsyncMock(return_value=0)
+        self.mock_prisma.auditlog.create = AsyncMock(return_value=MagicMock())
+
+        from backend.api.features.transfers.db import execute_transfer
+
+        with pytest.raises(ValueError, match="no longer belongs"):
+            await execute_transfer(transfer_id="tr-1", user_id=USER_ID, org_id="org-1")
+
+        move_call = self.mock_prisma.storelisting.update_many.call_args.kwargs
+        assert move_call["where"] == {"id": "listing-1", "owningOrgId": "org-1"}
+        self.mock_prisma.auditlog.create.assert_not_called()
+        reject_call = self.mock_prisma.transferrequest.update_many.call_args.kwargs
+        assert reject_call["data"] == {"status": "REJECTED"}
 
     @pytest.mark.asyncio
     async def test_execute_rejects_non_party_org(self):
