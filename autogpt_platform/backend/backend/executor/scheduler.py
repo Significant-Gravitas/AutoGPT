@@ -59,6 +59,7 @@ from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
+from backend.integrations.codex.access import has_codex_access
 from backend.monitoring import (
     flush_matured_alerts,
     report_block_error_rates,
@@ -470,7 +471,7 @@ async def _execute_copilot_turn(**kwargs):
             llm_auth_provider, llm_credential_id = await resolve_default_chat_route(
                 args.user_id
             )
-            if not await _owner_may_spend(args, llm_auth_provider):
+            if await _refuse_if_owner_cannot_pay(args, llm_auth_provider):
                 return
             new_session = await create_chat_session(
                 args.user_id,
@@ -560,7 +561,9 @@ async def _execute_copilot_turn(**kwargs):
                 if expert_status != "active":
                     await _skip_inactive_expert_scope(args, expert_status)
                     return
-            if not await _owner_may_spend(args, session.metadata.llm_auth_provider):
+            if await _refuse_if_owner_cannot_pay(
+                args, session.metadata.llm_auth_provider
+            ):
                 return
             target_session_id = args.session_id
             target_session = session
@@ -670,64 +673,78 @@ async def _execute_copilot_turn(**kwargs):
         )
 
 
-async def _owner_may_spend(
+async def _refuse_if_owner_cannot_pay(
     job_args: "CopilotTurnJobArgs", llm_auth_provider: CopilotLlmAuthProvider
 ) -> bool:
-    """Gate a platform-billed fire on the owner's subscription and cost caps,
-    as ``dispatch_next_for_user`` gates a queued turn.
+    """Refuse a fire its owner cannot pay for, as ``dispatch_next_for_user``
+    refuses a queued turn, and say whether it did.
 
-    A refusal skips this fire only. A cron schedule stays registered and
-    resumes once the owner subscribes or the window resets; a one-shot is
-    dropped, as APScheduler drops every one-shot once it fires, so its routine
-    is switched off rather than left pending for a time that has passed.
+    A cron schedule stays registered and resumes once the owner can pay again.
+    APScheduler drops a one-shot once it fires, so one refused by a brown-out is
+    retried, and any other is dropped with its routine switched off rather than
+    left pending for a time that has passed.
     """
-    if llm_auth_provider != "platform":
-        return True
-    if await _owner_can_pay(job_args):
-        return True
-    if job_args.run_at is not None:
-        await _drop_job_from_routine(job_args)
-    return False
-
-
-async def _owner_can_pay(job_args: "CopilotTurnJobArgs") -> bool:
-    outcome = (
-        "this one-shot is dropped"
-        if job_args.run_at is not None
-        else "the schedule stays registered"
-    )
-    if await is_user_paywalled(job_args.user_id):
-        logger.info(
-            f"Skipping scheduled copilot turn {job_args.schedule_id}: the owner has "
-            f"no subscription; {outcome}"
-        )
+    refusal = await _payment_refusal(job_args.user_id, llm_auth_provider)
+    if refusal is None:
         return False
+    if job_args.run_at is None:
+        outcome = "the schedule stays registered"
+    elif refusal.transient:
+        outcome = "the one-shot is retried"
+    else:
+        outcome = "the one-shot is dropped"
+    logger.log(
+        logging.WARNING if refusal.transient else logging.INFO,
+        f"Skipping scheduled copilot turn {job_args.schedule_id}: "
+        f"{refusal.reason}; {outcome}",
+    )
+    if job_args.run_at is None:
+        return True
+    if refusal.transient:
+        await _reschedule_one_shot_after_limits_unreadable(job_args)
+    else:
+        await _drop_job_from_routine(job_args)
+    return True
+
+
+class _PaymentRefusal(BaseModel):
+    reason: str
+    # A brown-out rather than the owner's state, so a one-shot is worth retrying.
+    transient: bool = False
+
+
+async def _payment_refusal(
+    user_id: str, llm_auth_provider: CopilotLlmAuthProvider
+) -> _PaymentRefusal | None:
+    """Why the owner cannot pay for a turn on this route, if they cannot."""
+    if llm_auth_provider == "codex":
+        if await has_codex_access(user_id):
+            return None
+        return _PaymentRefusal(reason="the owner has no Codex access")
+    if llm_auth_provider != "platform":
+        return None
+    if await is_user_paywalled(user_id):
+        return _PaymentRefusal(reason="the owner has no subscription")
     config = ChatConfig()
     try:
         daily_limit, weekly_limit, _ = await get_global_rate_limits(
-            job_args.user_id,
+            user_id,
             config.daily_cost_limit_microdollars,
             config.weekly_cost_limit_microdollars,
         )
         await check_rate_limit(
-            user_id=job_args.user_id,
+            user_id=user_id,
             daily_cost_limit=daily_limit,
             weekly_cost_limit=weekly_limit,
         )
     except RateLimitExceeded as exc:
-        logger.info(
-            f"Skipping scheduled copilot turn {job_args.schedule_id}: the owner is "
-            f"over their {exc.window} usage limit; {outcome}"
+        return _PaymentRefusal(
+            reason=f"the owner is over their {exc.window} usage limit"
         )
-        return False
     except RateLimitUnavailable:
         # A brown-out must not let an unwatched turn past a cap it may be over.
-        logger.warning(
-            f"Skipping scheduled copilot turn {job_args.schedule_id}: usage limits "
-            "are unreadable"
-        )
-        return False
-    return True
+        return _PaymentRefusal(reason="usage limits are unreadable", transient=True)
+    return None
 
 
 def _credential_pins_for_turn(
@@ -769,6 +786,18 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
         args,
         reason="concurrency cap",
         name_suffix="cap-retry",
+        retry_kind="cap",
+    )
+
+
+async def _reschedule_one_shot_after_limits_unreadable(
+    args: "CopilotTurnJobArgs",
+) -> None:
+    # Shares the cap's retry budget: both are transient refusals on our side.
+    await _reschedule_one_shot(
+        args,
+        reason="unreadable usage limits",
+        name_suffix="limits-retry",
         retry_kind="cap",
     )
 

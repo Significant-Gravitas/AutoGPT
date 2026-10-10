@@ -73,19 +73,23 @@ def mock_external_services(monkeypatch: pytest.MonkeyPatch) -> None:
 class _OwnerGate(NamedTuple):
     is_user_paywalled: AsyncMock
     check_rate_limit: AsyncMock
+    has_codex_access: AsyncMock
 
 
 @pytest.fixture(autouse=True)
 def owner_gate(monkeypatch: pytest.MonkeyPatch) -> _OwnerGate:
-    """An owner with a subscription and room under every cap; tests that need
-    another owner set these mocks rather than patching the names again."""
-    gate = _OwnerGate(AsyncMock(return_value=False), AsyncMock())
+    """An owner with a subscription, room under every cap and Codex access;
+    tests that need another owner set these mocks rather than patch again."""
+    gate = _OwnerGate(
+        AsyncMock(return_value=False), AsyncMock(), AsyncMock(return_value=True)
+    )
     monkeypatch.setattr(f"{_SCHEDULER_PATH}.is_user_paywalled", gate.is_user_paywalled)
     monkeypatch.setattr(
         f"{_SCHEDULER_PATH}.get_global_rate_limits",
         AsyncMock(return_value=(1_000_000, 5_000_000, None)),
     )
     monkeypatch.setattr(f"{_SCHEDULER_PATH}.check_rate_limit", gate.check_rate_limit)
+    monkeypatch.setattr(f"{_SCHEDULER_PATH}.has_codex_access", gate.has_codex_access)
     return gate
 
 
@@ -2371,6 +2375,10 @@ def _limits_unreadable(gate: _OwnerGate) -> None:
     gate.check_rate_limit.side_effect = RateLimitUnavailable()
 
 
+def _lost_codex(gate: _OwnerGate) -> None:
+    gate.has_codex_access.return_value = False
+
+
 async def _fire_hourly(session_id: str | None, provider: str) -> dict[str, AsyncMock]:
     args = _args(session_id=session_id, run_at=None, cron="9 * * * *")
     mocks = {
@@ -2403,20 +2411,30 @@ async def _fire_hourly(session_id: str | None, provider: str) -> dict[str, Async
 @pytest.mark.parametrize(
     "session_id", [None, "session-1"], ids=["fresh-chat", "existing-chat"]
 )
-@pytest.mark.parametrize("refuse", [_paywalled, _over_a_cap, _limits_unreadable])
+@pytest.mark.parametrize(
+    ("refuse", "provider"),
+    [
+        (_paywalled, "platform"),
+        (_over_a_cap, "platform"),
+        (_limits_unreadable, "platform"),
+        (_lost_codex, "codex"),
+    ],
+    ids=["paywalled", "over-a-cap", "limits-unreadable", "lost-codex"],
+)
 async def test_a_tick_the_owner_cannot_pay_for_is_skipped_and_the_schedule_kept(
-    owner_gate, refuse, session_id, caplog
+    owner_gate, refuse, provider, session_id, caplog
 ):
     """No turn and no empty chat per tick, and nothing deleted, so the
-    schedule resumes by itself once the owner subscribes or the window resets."""
+    schedule resumes by itself once the owner can pay again."""
     refuse(owner_gate)
     with caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH):
-        mocks = await _fire_hourly(session_id, "platform")
+        mocks = await _fire_hourly(session_id, provider)
 
     mocks["schedule_turn"].assert_not_awaited()
     mocks["create_chat_session"].assert_not_awaited()
     mocks["_self_delete_copilot_turn_schedule"].assert_not_awaited()
     assert "Skipping scheduled copilot turn sched-1" in caplog.text
+    assert "the schedule stays registered" in caplog.text
     assert not any(record.levelno >= logging.ERROR for record in caplog.records)
 
 
@@ -2440,6 +2458,7 @@ async def test_a_codex_billed_tick_is_not_held_to_the_platform_paywall(owner_gat
     mocks = await _fire_hourly("session-1", "codex")
 
     mocks["schedule_turn"].assert_awaited_once()
+    owner_gate.has_codex_access.assert_awaited_once_with("user-1")
 
 
 _ONE_SHOT = {"run_at": datetime.now(tz=timezone.utc) + timedelta(minutes=5)}
@@ -2448,14 +2467,28 @@ _HOURLY = {"run_at": None, "cron": "9 * * * *"}
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("timing", "dropped"),
-    [(_ONE_SHOT, [("routine-1", "sched-1")]), (_HOURLY, [])],
-    ids=["one-shot", "cron"],
+    ("refuse", "timing", "dropped", "retried"),
+    [
+        (_paywalled, _ONE_SHOT, [("routine-1", "sched-1")], False),
+        (_limits_unreadable, _ONE_SHOT, [], True),
+        (_paywalled, _HOURLY, [], False),
+        (_limits_unreadable, _HOURLY, [], False),
+    ],
+    ids=[
+        "paywalled-one-shot",
+        "brown-out-one-shot",
+        "paywalled-cron",
+        "brown-out-cron",
+    ],
 )
-async def test_a_refused_one_shot_routine_is_switched_off(owner_gate, timing, dropped):
-    """APScheduler drops a one-shot once it fires, so left on, a refused one
-    would read as pending for a time that has passed with nothing behind it."""
-    _paywalled(owner_gate)
+async def test_a_refused_one_shot_routine_is_retried_or_switched_off(
+    owner_gate, refuse, timing, dropped, retried
+):
+    """APScheduler drops a one-shot once it fires. A brown-out is ours, so the
+    one-shot comes back in a few minutes; otherwise, left on, it would read as
+    pending for a time that has passed with nothing behind it."""
+    refuse(owner_gate)
+    scheduler_client = AsyncMock()
     routine = ExpertRoutine(
         id="routine-1", title="CI", prompt="Check CI.", enabled=True
     )
@@ -2471,12 +2504,17 @@ async def test_a_refused_one_shot_routine_is_switched_off(owner_gate, timing, dr
         patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store),
         patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),
         patch(f"{_SCHEDULER_PATH}.schedule_turn", schedule_turn),
+        patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=scheduler_client),
     ):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
     schedule_turn.assert_not_awaited()
     calls = store.mark_routine_unscheduled.await_args_list
     assert [c.args for c in calls] == dropped
+    retry = scheduler_client.add_copilot_turn_schedule
+    assert retry.await_count == int(retried)
+    if retried:
+        assert retry.call_args.kwargs["routine_id"] == "routine-1"
 
 
 @pytest.mark.parametrize("name", ["", " ", "\t\n", "\u2003"])
