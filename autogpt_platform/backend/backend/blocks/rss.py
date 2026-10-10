@@ -165,4 +165,8 @@ class ReadRSSFeedBlock(Block):
                     yield "entry", rss_entry
 
             yield "entries", all_entries
-            await asyncio.sleep(input_data.polling_rate)
+            # Only wait between polls when the block runs continuously. In run-once
+            # mode the loop exits immediately after this iteration, so sleeping the
+            # full polling interval here would just delay every run.
+            if input_data.run_continuously:
+                await asyncio.sleep(input_data.polling_rate)
