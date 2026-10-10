@@ -453,8 +453,8 @@ async def _promote_head(user_id: str) -> bool | None:
 
 async def _is_sub_work(session: ChatSessionInfo) -> bool:
     """A message the user typed is theirs whatever session it is in; what an
-    approval wakes in a session another one opened is that session's sub-work."""
-    if session.metadata.delegated_by_session_id is None:
+    approval wakes there is sub-work if :func:`wakes_sub_work` says so."""
+    if not wakes_sub_work(session):
         return False
     # Local: the gate imports this module back.
     from backend.copilot.gate.held import is_answer_row
@@ -562,6 +562,12 @@ def is_users_own_chat(session: ChatSessionInfo) -> bool:
         session.metadata.origin == "interactive"
         and session.metadata.delegated_by_session_id is None
     )
+
+
+def wakes_sub_work(session: ChatSessionInfo) -> bool:
+    """An approval wake here is the sub-work of the session that opened this
+    one, so it is admitted within the user's reserve, direct or queued."""
+    return session.metadata.delegated_by_session_id is not None
 
 
 async def _refuse_queued_turn(head: ChatSessionInfo, reason: str) -> None:

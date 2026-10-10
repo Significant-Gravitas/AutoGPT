@@ -7,13 +7,14 @@ exactly what the approval ran it with.
 
 import asyncio
 import json
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from prisma.enums import ReviewStatus
-from prisma.models import PendingHumanReview
+from prisma.models import PendingHumanReview, User
 
 from backend.copilot import stream_registry
 from backend.copilot.context import set_execution_context
@@ -21,10 +22,14 @@ from backend.copilot.gate import chat_rules, check_action, held
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.model import (
+    CHAT_STATUS_IDLE,
+    CHAT_STATUS_QUEUED,
+    CHAT_STATUS_RUNNING,
     AutopilotMode,
     ChatMessage,
     ChatSession,
     append_and_save_message,
+    create_chat_session,
     get_chat_session,
     update_session_autopilot_mode,
     upsert_chat_session,
@@ -35,7 +40,7 @@ from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.copilot.tree import TurnEnvelope, get_tree_ledger, root_envelope
 from backend.copilot.turn_queue import UNRECORDED_WAKE, WAKE_LATER
-from backend.data.db_accessors import review_db
+from backend.data.db_accessors import chat_db, review_db
 from backend.data.redis_client import get_redis_async
 
 _TOOL = "post_to_chat_platform"
@@ -219,6 +224,44 @@ async def test_a_wake_starts_under_the_envelope_its_call_was_held_under(
         await held.wake(test_user_id, session.session_id)
 
     assert dispatch.await_args.kwargs["envelope"] == _turn_envelope(session)
+
+
+@pytest.mark.parametrize(
+    "delegated_by, starts", [("parent-session", False), (None, True)]
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_wake_in_a_sub_session_leaves_the_users_last_slot(
+    server, gate_on, delegated_by: str | None, starts: bool
+):
+    """Four already run: a wake in a session another one opened is its sub-work,
+    so it waits in the queue as it would had it been queued; in the user's own
+    chat it takes the fifth slot."""
+    user_id = str(uuid.uuid4())
+    await User.prisma().create(
+        data={"id": user_id, "email": f"held-{user_id}@example.com"}
+    )
+    try:
+        for _ in range(4):
+            running = await create_chat_session(user_id, dry_run=False)
+            assert await chat_db().update_chat_session_status(
+                session_id=running.session_id,
+                expect_status=CHAT_STATUS_IDLE,
+                status=CHAT_STATUS_RUNNING,
+                user_id=user_id,
+            )
+        session = await _new_session(user_id, delegated_by=delegated_by)
+        review_id = await _hold(session, user_id, "one slot short")
+        await _answer(review_id, ReviewStatus.APPROVED)
+        dispatch = AsyncMock()
+
+        with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+            await held.wake(user_id, session.session_id)
+
+        assert dispatch.await_count == (1 if starts else 0)
+        status = await chat_db().get_chat_session_status(session.session_id)
+        assert status == (CHAT_STATUS_IDLE if starts else CHAT_STATUS_QUEUED)
+    finally:
+        await User.prisma().delete(where={"id": user_id})
 
 
 @pytest.mark.asyncio(loop_scope="session")
