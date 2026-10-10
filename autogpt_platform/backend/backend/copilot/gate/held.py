@@ -22,6 +22,7 @@ from backend.copilot import woken_turns
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.model import ChatSession
 from backend.copilot.pending_messages import PendingMessage
+from backend.copilot.tree import TreeRefusal, TurnEnvelope
 from backend.data.db_accessors import chat_db, review_db
 from backend.data.redis_client import get_redis_async
 from backend.util.encryption import JSONCryptor
@@ -83,6 +84,9 @@ class HeldCall(BaseModel):
     held_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     # Rebuilt from a card whose stored copy of the arguments no longer binds.
     lost: bool = False
+    # The turn that held it. Its wake starts under this, re-checked against the
+    # tree; a call rebuilt from its card has none and is not woken.
+    envelope: TurnEnvelope | None = None
 
 
 async def remember(session_id: str, call: HeldCall) -> bool:
@@ -209,7 +213,14 @@ async def wake(
     from backend.copilot.executor.utils import dispatch_turn
     from backend.copilot.model import ChatMessage, append_and_save_message
     from backend.copilot.session_permissions import resolve_session_permissions
-    from backend.copilot.turn_queue import InflightCapExceeded, try_enqueue_turn
+    from backend.copilot.turn_queue import (
+        UNRECORDED_WAKE,
+        WAKE_LATER,
+        InflightCapExceeded,
+        is_users_own_chat,
+        post_refusal,
+        try_enqueue_turn,
+    )
 
     try:
         await _restore(user_id, session_id, answered_rows)
@@ -226,6 +237,13 @@ async def wake(
         )
         info = await chat_db().get_chat_session_metadata(session_id)
         if info is None or info.user_id != user_id:
+            return
+        refusal_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{wake_id}:refused"))
+        envelope = max(calls, key=lambda c: c.held_at).envelope
+        if envelope is None and not is_users_own_chat(info):
+            # Deriving one from the turn that just ended would run the approved
+            # action under that turn's limits, not the ones it was held under.
+            await post_refusal(session_id, UNRECORDED_WAKE, message_id=refusal_id)
             return
         permissions = resolve_session_permissions(info)
         metadata = {_WAKE_KEY: True}
@@ -260,6 +278,9 @@ async def wake(
                     llm_credential_id=info.metadata.llm_credential_id,
                     permissions=permissions,
                     message_metadata=metadata,
+                    envelope=envelope,
+                    # Lost in the user's own chat: a root, as their message would be.
+                    root=envelope is None,
                 )
                 # A channel that answered one of these follows this turn.
                 await woken_turns.record(
@@ -278,6 +299,11 @@ async def wake(
                 permissions=(
                     permissions.model_dump(exclude_none=True) if permissions else None
                 ),
+                envelope=envelope,
+            )
+        except TreeRefusal as refused:
+            await post_refusal(
+                session_id, f"{refused.message} {WAKE_LATER}", message_id=refusal_id
             )
     except InflightCapExceeded:
         logger.info(f"Held calls in {session_id} wait for the user's next turn")

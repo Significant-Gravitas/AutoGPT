@@ -33,7 +33,7 @@ import uuid
 from typing import Any, Mapping
 
 from prisma.errors import UniqueViolationError
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from backend.copilot.active_turns import TurnSlot, count_running_turns
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
@@ -43,10 +43,14 @@ from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
     CHAT_STATUS_RUNNING,
     ChatMessage,
+    ChatSession,
+    ChatSessionInfo,
     _get_session_lock,
+    append_and_save_message,
     invalidate_session_cache,
 )
 from backend.copilot.offers import EntitlementUnavailable, advanced_tier_entitled
+from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
     RateLimitUnavailable,
@@ -54,11 +58,23 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
+from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tracking import track_user_message
+from backend.copilot.tree import TreeRefusal, TurnEnvelope
 from backend.data.db_accessors import chat_db
 from backend.integrations.codex.access import has_codex_access
 
 logger = logging.getLogger(__name__)
+
+# Pending-row metadata: the envelope a queued approval wake starts under.
+_ENVELOPE_KEY = "envelope"
+# The assistant row that closes a queued turn the promotion could not start.
+_REFUSED_KEY = "queued_turn_refused"
+WAKE_LATER = "Your answer is kept and reaches the assistant with your next message."
+UNRECORDED_WAKE = (
+    "The approved action could not be resumed: what it was allowed to do was "
+    f"not recorded. {WAKE_LATER}"
+)
 
 
 async def count_queued_turns(user_id: str) -> int:
@@ -112,6 +128,7 @@ async def try_enqueue_turn(
     llm_credential_id: str | None = None,
     permissions: Mapping[str, Any] | None = None,
     request_arrival_at: float = 0.0,
+    envelope: TurnEnvelope | None = None,
 ) -> ChatMessage | None:
     """Admit a queued turn against the user's hard cap.
 
@@ -137,6 +154,7 @@ async def try_enqueue_turn(
         llm_credential_id=llm_credential_id,
         permissions=permissions,
         request_arrival_at=request_arrival_at,
+        envelope=envelope,
     )
 
 
@@ -155,6 +173,7 @@ async def enqueue_turn(
     llm_credential_id: str | None = None,
     permissions: Mapping[str, Any] | None = None,
     request_arrival_at: float = 0.0,
+    envelope: TurnEnvelope | None = None,
 ) -> ChatMessage | None:
     """Persist the user's pending message and flip the session to
     ``"queued"``.  Caller is responsible for the in-flight cap check
@@ -179,6 +198,10 @@ async def enqueue_turn(
         metadata["permissions"] = dict(permissions)
     if request_arrival_at:
         metadata["request_arrival_at"] = request_arrival_at
+    # A wake starts under the envelope its call was held under, whichever turn
+    # frees the slot.
+    if envelope is not None:
+        metadata[_ENVELOPE_KEY] = envelope.model_dump(mode="json")
 
     # The Redis NX session lock serialises with ``append_and_save_message``
     # so two concurrent submits to the same session can't pick the same
@@ -260,10 +283,23 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     the next completion-driven tick once eligibility returns, or the
     user cancels manually.
     """
+    # A head that may never start is closed and the next one tried, in a loop:
+    # recursing once per closed row overflows on a long run of them.
+    while (promoted := await _promote_head(user_id)) is None:
+        pass
+    return promoted
+
+
+async def _promote_head(user_id: str) -> bool | None:
+    """One promotion attempt: whether a session was promoted, or ``None`` when
+    the head was closed as one that may never start, so the next can be tried."""
     # ``executor.utils`` stays a local import: it pulls
     # ``turn_queue.count_inflight_turns`` lazily back through this module,
     # so top-leveling it here would deadlock the import graph.
     from backend.copilot.executor.utils import dispatch_turn
+
+    # Local for the same reason: the gate imports this module back.
+    from backend.copilot.gate.held import is_answer_row
 
     queued = await list_queued_sessions(user_id)
     if not queued:
@@ -286,57 +322,67 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     if not await claim_queued_session(head.session_id):
         return False
 
-    # Find the pending user message in this session (the most recent
-    # user-role row with no following assistant rows — i.e. the one
-    # that triggered the queue).  Its ``metadata`` carries the
-    # dispatcher payload.
-    pending = await chat_db().get_latest_user_message_in_session(head.session_id)
-    if pending is None or pending.content is None:
-        # Shouldn't happen — enqueue_turn always persists a row before
-        # flipping the session to queued.  If it does (corrupted
-        # state), roll back to idle so the next tick doesn't loop.
-        await chat_db().update_chat_session_status(
-            session_id=head.session_id,
-            expect_status=CHAT_STATUS_RUNNING,
-            status=CHAT_STATUS_IDLE,
-        )
-        # Drop the cache so the sidebar doesn't keep showing the
-        # stale ``running`` indicator after the rollback.
-        await invalidate_session_cache(head.session_id)
-        return False
-
-    metadata = pending.metadata or {}
-
-    # A turn can sit in the queue long enough for the plan that bought it to
-    # lapse. The tier was checked when the turn was accepted, but promoting it
-    # is a second, later decision to spend, so it gets its own check --
-    # otherwise a downgrade between the two buys a free Advanced run. The turn
-    # goes back to queued rather than quietly re-running on Standard: nothing
-    # in this feature changes what a turn runs on without being asked. It
-    # promotes itself once entitlement returns, and can be cancelled meanwhile.
-    if route_provider == "platform" and metadata.get("model") == "advanced":
-        try:
-            entitled = await advanced_tier_entitled(user_id)
-        except EntitlementUnavailable:
-            entitled = False
-            logger.warning(
-                "dispatch_next_for_user: could not resolve the Advanced "
-                "entitlement for user=%s; leaving session=%s queued",
-                user_id,
-                head.session_id,
-                exc_info=True,
-            )
-        if not entitled:
+    try:
+        # Find the pending user message in this session (the most recent
+        # user-role row with no following assistant rows — i.e. the one
+        # that triggered the queue).  Its ``metadata`` carries the
+        # dispatcher payload.
+        pending = await chat_db().get_latest_user_message_in_session(head.session_id)
+        if pending is None or pending.content is None:
+            # Shouldn't happen — enqueue_turn always persists a row before
+            # flipping the session to queued.  If it does (corrupted
+            # state), roll back to idle so the next tick doesn't loop.
             await chat_db().update_chat_session_status(
                 session_id=head.session_id,
                 expect_status=CHAT_STATUS_RUNNING,
-                status=CHAT_STATUS_QUEUED,
+                status=CHAT_STATUS_IDLE,
             )
+            # Drop the cache so the sidebar doesn't keep showing the
+            # stale ``running`` indicator after the rollback.
             await invalidate_session_cache(head.session_id)
             return False
 
-    turn_id = str(uuid.uuid4())
-    try:
+        metadata = pending.metadata or {}
+        queued_envelope = _stored_envelope(metadata)
+        if (
+            is_answer_row(pending)
+            and queued_envelope is None
+            and not is_users_own_chat(head)
+        ):
+            # Deriving one from the turn that just ended would run the approved
+            # action under that turn's limits; the answer reaches the next turn.
+            await _refuse_queued_turn(head, UNRECORDED_WAKE)
+            return None
+
+        # A turn can sit in the queue long enough for the plan that bought it to
+        # lapse. The tier was checked when the turn was accepted, but promoting it
+        # is a second, later decision to spend, so it gets its own check --
+        # otherwise a downgrade between the two buys a free Advanced run. The turn
+        # goes back to queued rather than quietly re-running on Standard: nothing
+        # in this feature changes what a turn runs on without being asked. It
+        # promotes itself once entitlement returns, and can be cancelled meanwhile.
+        if route_provider == "platform" and metadata.get("model") == "advanced":
+            try:
+                entitled = await advanced_tier_entitled(user_id)
+            except EntitlementUnavailable:
+                entitled = False
+                logger.warning(
+                    "dispatch_next_for_user: could not resolve the Advanced "
+                    "entitlement for user=%s; leaving session=%s queued",
+                    user_id,
+                    head.session_id,
+                    exc_info=True,
+                )
+            if not entitled:
+                await chat_db().update_chat_session_status(
+                    session_id=head.session_id,
+                    expect_status=CHAT_STATUS_RUNNING,
+                    status=CHAT_STATUS_QUEUED,
+                )
+                await invalidate_session_cache(head.session_id)
+                return False
+
+        turn_id = str(uuid.uuid4())
         # The user's message is already persisted AND the session is
         # already ``chatStatus='running'`` from claim_queued_session.
         # Build a TurnSlot directly (no acquire) so we don't re-check
@@ -364,13 +410,21 @@ async def dispatch_next_for_user(user_id: str) -> bool:
             model=metadata.get("model"),
             llm_auth_provider=head.metadata.llm_auth_provider,
             llm_credential_id=head.metadata.llm_credential_id,
-            permissions=metadata.get("permissions"),
+            permissions=_promotion_permissions(head, metadata),
             request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
+            # A typed message is a root, as the chat route makes it, not the
+            # child of the turn this hook runs in; a wake brings its own.
+            envelope=queued_envelope,
+            root=queued_envelope is None,
         )
+    except TreeRefusal as refused:
+        # Only a stored envelope is re-checked here; a root is never refused.
+        await _refuse_queued_turn(head, f"{refused.message} {WAKE_LATER}")
+        return None
     except BaseException:
         # Roll the claim back so a missed-dispatch tick or the next
         # slot-free event can retry.  ``BaseException`` (not just
-        # ``Exception``) so a task cancellation that lands mid-dispatch
+        # ``Exception``) so a task cancellation that lands after the claim
         # still leaves the session in a recoverable ``queued`` state
         # rather than a stuck ``running``.  Redis-side cleanup of the
         # meta that ``dispatch_turn``'s ``create_session`` wrote is
@@ -408,6 +462,97 @@ async def dispatch_next_for_user(user_id: str) -> bool:
 
     await invalidate_session_cache(head.session_id)
     return True
+
+
+def is_users_own_chat(session: ChatSessionInfo) -> bool:
+    """A chat the user opened themselves, not one another session or a graph
+    started. Its turns are roots, so a wake there whose envelope was lost can
+    start as one; elsewhere nothing on the row bounds what the call held."""
+    return (
+        session.metadata.origin == "interactive"
+        and session.metadata.delegated_by_session_id is None
+    )
+
+
+async def _refuse_queued_turn(head: ChatSessionInfo, reason: str) -> None:
+    """Close a promoted turn that may not start: say why in its thread and
+    free its slot, which a failed post must not keep."""
+    try:
+        await post_refusal(head.session_id, reason)
+    except Exception:
+        # Not raised: the drain goes on, and the next queued turn takes the slot.
+        logger.exception(
+            f"dispatch_next_for_user: could not post why session={head.session_id} "
+            "was not started"
+        )
+    finally:
+        await chat_db().update_chat_session_status(
+            session_id=head.session_id,
+            expect_status=CHAT_STATUS_RUNNING,
+            status=CHAT_STATUS_IDLE,
+        )
+        await invalidate_session_cache(head.session_id)
+
+
+async def post_refusal(
+    session_id: str, reason: str, *, message_id: str | None = None
+) -> None:
+    """Say in the thread why a turn that was waiting will not start."""
+    await append_and_save_message(
+        session_id,
+        ChatMessage(
+            id=message_id,
+            role="assistant",
+            content=reason,
+            metadata={_REFUSED_KEY: True},
+        ),
+    )
+
+
+def queued_turn_refusal(session: ChatSession) -> str | None:
+    """Why a waiting turn was not started, if its thread ends that way."""
+    last = session.messages[-1] if session.messages else None
+    if last is None or not (last.metadata or {}).get(_REFUSED_KEY):
+        return None
+    return last.content
+
+
+def _stored_envelope(metadata: Mapping[str, Any]) -> TurnEnvelope | None:
+    """The envelope a wake was queued under. One that no longer parses (a schema
+    change between deploys) counts as unrecorded, so the wake is not started."""
+    stored = metadata.get(_ENVELOPE_KEY)
+    if not stored:
+        return None
+    try:
+        return TurnEnvelope.model_validate(stored)
+    except ValidationError:
+        logger.warning("dispatch_next_for_user: a stored envelope did not parse")
+        return None
+
+
+def _promotion_permissions(
+    head: ChatSessionInfo, metadata: Mapping[str, Any]
+) -> CopilotPermissions | None:
+    """The session's permissions as they are now, never looser than the ones
+    stored at enqueue. Every writer stores this session's own resolved
+    permissions, so a stored value that no longer parses is read afresh."""
+    current = resolve_session_permissions(head)
+    stored = metadata.get("permissions")
+    if not stored:
+        return current
+    try:
+        queued = CopilotPermissions.model_validate(stored)
+    except ValidationError:
+        logger.warning(
+            f"dispatch_next_for_user: stored permissions on session={head.session_id} "
+            "did not parse; using the session's current ones"
+        )
+        return current
+    return (
+        queued
+        if current is None
+        else queued.merged_with_parent(current, ALL_TOOL_NAMES)
+    )
 
 
 class TurnRefusal(BaseModel):
