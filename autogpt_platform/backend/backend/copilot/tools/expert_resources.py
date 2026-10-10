@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 _EXPERT_ID_PARAM = {
     "type": "string",
     "description": "Target expert (AutoPilot only; experts act on themselves).",
+    "entity": "expert",
 }
 
 
@@ -61,14 +62,21 @@ class InstallExpertWorkflowTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "library_agent_id": {"type": "string", "description": "Library agent."},
+                "library_agent_id": {
+                    "type": "string",
+                    "description": "Library agent.",
+                    "entity": "library_agent",
+                },
                 "username_agent_slug": {
                     "type": "string",
                     "description": "Marketplace 'creator/slug'.",
+                    "title": "Marketplace agent",
                 },
                 "store_listing_version_id": {
                     "type": "string",
                     "description": "Marketplace listing version.",
+                    "title": "Marketplace agent",
+                    "entity": "store_listing",
                 },
                 "expert_id": _EXPERT_ID_PARAM,
             },
@@ -170,8 +178,16 @@ class RemoveExpertWorkflowTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string", "description": "Installed workflow."},
-                "library_agent_id": {"type": "string", "description": "Library agent."},
+                "workflow_id": {
+                    "type": "string",
+                    "description": "Installed workflow.",
+                    "entity": "expert_workflow",
+                },
+                "library_agent_id": {
+                    "type": "string",
+                    "description": "Library agent.",
+                    "entity": "library_agent",
+                },
                 "expert_id": _EXPERT_ID_PARAM,
             },
             "required": [],
@@ -261,8 +277,16 @@ class GrantExpertCredentialTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "expert_id": {"type": "string", "description": "Expert to grant to."},
-                "credential_id": {"type": "string", "description": "Credential id."},
+                "expert_id": {
+                    "type": "string",
+                    "description": "Expert to grant to.",
+                    "entity": "expert",
+                },
+                "credential_id": {
+                    "type": "string",
+                    "description": "Credential id.",
+                    "entity": "credential",
+                },
             },
             "required": ["expert_id", "credential_id"],
         }
@@ -301,8 +325,13 @@ class RevokeExpertCredentialTool(BaseTool):
                 "expert_id": {
                     "type": "string",
                     "description": "Expert to revoke from.",
+                    "entity": "expert",
                 },
-                "credential_id": {"type": "string", "description": "Credential id."},
+                "credential_id": {
+                    "type": "string",
+                    "description": "Credential id.",
+                    "entity": "credential",
+                },
             },
             "required": ["expert_id", "credential_id"],
         }

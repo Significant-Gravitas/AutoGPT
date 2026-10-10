@@ -7,6 +7,7 @@ import {
   CLAMP_LINES,
   CODE_MAX_LINES,
   fieldKind,
+  formattedText,
   humanize,
   lineCount,
   listText,
@@ -18,13 +19,16 @@ interface Props {
   name: string;
   value: unknown;
   clipped: boolean;
+  format?: string | null;
 }
 
-export function FieldValue({ name, value, clipped }: Props) {
+export function FieldValue({ name, value, clipped, format }: Props) {
   const kind = fieldKind(name, value);
   const shortened = clipped ? (
     <span className="ml-1 text-zinc-400">(shortened)</span>
   ) : null;
+  const formatted = formattedText(format, value);
+  if (formatted) return <span>{formatted}</span>;
 
   switch (kind) {
     case "secret":
