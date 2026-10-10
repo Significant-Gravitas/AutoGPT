@@ -69,13 +69,26 @@ async def test_a_queued_wake_starts_under_the_envelope_its_call_was_held_under()
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_queued_wake_with_no_recorded_envelope_is_not_started():
-    """Not derived from the turn that happens to free the slot."""
+async def test_a_queued_wake_with_no_recorded_envelope_starts_as_a_root():
+    """In the user's own chat, not derived from the turn that freed the slot."""
+    promoted, _, _ = await _promote_after(
+        _envelope(1),
+        message=held.WAKE_MESSAGE,
+        message_metadata={held._WAKE_KEY: True},
+    )
+
+    assert promoted is not None
+    assert (promoted.depth, promoted.tools) == (0, None)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_queued_wake_with_no_recorded_envelope_in_a_sub_session_is_not_started():
     promoted, _, _ = await _promote_after(
         _envelope(1),
         message=held.WAKE_MESSAGE,
         message_metadata={held._WAKE_KEY: True},
         expect_refusal=turn_queue.UNRECORDED_WAKE,
+        sub_work=True,
     )
 
     assert promoted is None
@@ -89,6 +102,7 @@ async def test_a_queued_wake_whose_envelope_no_longer_parses_is_not_started():
         message=held.WAKE_MESSAGE,
         message_metadata={held._WAKE_KEY: True, "envelope": {"depth": "deep"}},
         expect_refusal=turn_queue.UNRECORDED_WAKE,
+        sub_work=True,
     )
 
     assert promoted is None
@@ -101,6 +115,7 @@ async def _promote_after(
     message_metadata: dict[str, Any] | None,
     envelope: TurnEnvelope | None = None,
     expect_refusal: str | None = None,
+    sub_work: bool = False,
 ) -> tuple[TurnEnvelope | None, int, int]:
     """Queue a turn behind a full cap, then end a turn carrying ``finished``.
 
@@ -123,7 +138,11 @@ async def _promote_after(
         await stream_registry.create_session(
             ending.session_id, user_id, "chat_stream", "chat", ending_turn
         )
-        waiting = await create_chat_session(user_id, dry_run=False)
+        waiting = await create_chat_session(
+            user_id,
+            dry_run=False,
+            delegated_by_session_id=sessions[1].session_id if sub_work else None,
+        )
         await turn_queue.try_enqueue_turn(
             user_id=user_id,
             inflight_cap=15,

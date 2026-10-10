@@ -77,8 +77,17 @@ def post_tool():
         yield tool
 
 
-async def _new_session(user_id: str, mode: AutopilotMode = "auto") -> ChatSession:
-    session = await upsert_chat_session(ChatSession.new(user_id=user_id, dry_run=False))
+async def _new_session(
+    user_id: str, mode: AutopilotMode = "auto", delegated_by: str | None = None
+) -> ChatSession:
+    session = await upsert_chat_session(
+        ChatSession.new(
+            user_id=user_id,
+            dry_run=False,
+            # A delegation from the user's chat inherits its origin.
+            delegated_by_session_id=delegated_by,
+        )
+    )
     await update_session_autopilot_mode(session.session_id, user_id, mode)
     reloaded = await get_chat_session(session.session_id, user_id)
     assert reloaded is not None
@@ -213,11 +222,40 @@ async def test_a_wake_starts_under_the_envelope_its_call_was_held_under(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_call_rebuilt_from_its_card_is_not_woken(
+async def test_a_call_rebuilt_from_its_card_wakes_as_a_root_in_the_users_own_chat(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
-    """Nothing records the limits it was held under; the next turn carries it."""
+    """Its record was lost, but a turn in the user's own chat is a root anyway:
+    the wake starts as one, under the session's permissions as they are now."""
     session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "lost in Redis")
+    assert await held._claim(session.session_id, review_id)
+    await _answer(review_id, ReviewStatus.APPROVED)
+    rows = await review_db().get_reviews_by_node_exec_ids([review_id], test_user_id)
+    today = CopilotPermissions(tools=["web_fetch"], tools_exclude=True)
+    dispatch = AsyncMock()
+
+    with (
+        patch("backend.copilot.executor.utils.dispatch_turn", dispatch),
+        patch(
+            "backend.copilot.session_permissions.resolve_session_permissions",
+            return_value=today,
+        ),
+    ):
+        await held.wake(test_user_id, session.session_id, rows.values())
+
+    woken = dispatch.await_args.kwargs
+    assert (woken["envelope"], woken["root"]) == (None, True)
+    assert woken["permissions"] == today
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_call_rebuilt_from_its_card_in_a_sub_session_is_not_woken(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """Nothing on the row bounds what the call was held under there; the next
+    turn carries the answer."""
+    session = await _new_session(test_user_id, delegated_by="parent-session")
     review_id = await _hold(session, test_user_id, "lost in Redis")
     assert await held._claim(session.session_id, review_id)
     await _answer(review_id, ReviewStatus.APPROVED)
