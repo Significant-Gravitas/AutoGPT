@@ -42,10 +42,14 @@ from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
     CHAT_STATUS_RUNNING,
     ChatMessage,
+    ChatSession,
+    ChatSessionInfo,
     _get_session_lock,
+    append_and_save_message,
     invalidate_session_cache,
 )
 from backend.copilot.offers import EntitlementUnavailable, advanced_tier_entitled
+from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
     RateLimitUnavailable,
@@ -53,11 +57,23 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
+from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tracking import track_user_message
+from backend.copilot.tree import TreeRefusal, TurnEnvelope
 from backend.data.db_accessors import chat_db
 from backend.integrations.codex.access import has_codex_access
 
 logger = logging.getLogger(__name__)
+
+# Pending-row metadata: the envelope a queued approval wake starts under.
+_ENVELOPE_KEY = "envelope"
+# The assistant row that closes a queued turn the promotion could not start.
+_REFUSED_KEY = "queued_turn_refused"
+WAKE_LATER = "Your answer is kept and reaches the assistant with your next message."
+UNRECORDED_WAKE = (
+    "The approved action could not be resumed: what it was allowed to do was "
+    f"not recorded. {WAKE_LATER}"
+)
 
 
 async def count_queued_turns(user_id: str) -> int:
@@ -111,6 +127,7 @@ async def try_enqueue_turn(
     llm_credential_id: str | None = None,
     permissions: Mapping[str, Any] | None = None,
     request_arrival_at: float = 0.0,
+    envelope: TurnEnvelope | None = None,
 ) -> ChatMessage | None:
     """Admit a queued turn against the user's hard cap.
 
@@ -136,6 +153,7 @@ async def try_enqueue_turn(
         llm_credential_id=llm_credential_id,
         permissions=permissions,
         request_arrival_at=request_arrival_at,
+        envelope=envelope,
     )
 
 
@@ -154,6 +172,7 @@ async def enqueue_turn(
     llm_credential_id: str | None = None,
     permissions: Mapping[str, Any] | None = None,
     request_arrival_at: float = 0.0,
+    envelope: TurnEnvelope | None = None,
 ) -> ChatMessage | None:
     """Persist the user's pending message and flip the session to
     ``"queued"``.  Caller is responsible for the in-flight cap check
@@ -178,6 +197,10 @@ async def enqueue_turn(
         metadata["permissions"] = dict(permissions)
     if request_arrival_at:
         metadata["request_arrival_at"] = request_arrival_at
+    # A wake starts under the envelope its call was held under, whichever turn
+    # frees the slot.
+    if envelope is not None:
+        metadata[_ENVELOPE_KEY] = envelope.model_dump(mode="json")
 
     # The Redis NX session lock serialises with ``append_and_save_message``
     # so two concurrent submits to the same session can't pick the same
@@ -346,6 +369,13 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         return False
 
     metadata = pending.metadata or {}
+    stored = metadata.get(_ENVELOPE_KEY)
+    queued_envelope = TurnEnvelope.model_validate(stored) if stored else None
+    if is_answer_row(pending) and queued_envelope is None:
+        # Deriving one from the turn that just ended would run the approved
+        # action under that turn's limits; the answer reaches the next turn.
+        await _refuse_queued_turn(head, UNRECORDED_WAKE)
+        return await dispatch_next_for_user(user_id)
 
     # A turn can sit in the queue long enough for the plan that bought it to
     # lapse. The tier was checked when the turn was accepted, but promoting it
@@ -404,12 +434,17 @@ async def dispatch_next_for_user(user_id: str) -> bool:
             model=metadata.get("model"),
             llm_auth_provider=head.metadata.llm_auth_provider,
             llm_credential_id=head.metadata.llm_credential_id,
-            permissions=metadata.get("permissions"),
+            permissions=_promotion_permissions(head, metadata),
             request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
             # A typed message is a root, as the chat route makes it, not the
-            # child of the turn this hook runs in. An approval wake is unchanged.
-            root=not is_answer_row(pending),
+            # child of the turn this hook runs in; a wake brings its own.
+            envelope=queued_envelope,
+            root=queued_envelope is None,
         )
+    except TreeRefusal as refused:
+        # Only a stored envelope is re-checked here; a root is never refused.
+        await _refuse_queued_turn(head, f"{refused.message} {WAKE_LATER}")
+        return await dispatch_next_for_user(user_id)
     except BaseException:
         # Roll the claim back so a missed-dispatch tick or the next
         # slot-free event can retry.  ``BaseException`` (not just
@@ -451,3 +486,55 @@ async def dispatch_next_for_user(user_id: str) -> bool:
 
     await invalidate_session_cache(head.session_id)
     return True
+
+
+async def _refuse_queued_turn(head: ChatSessionInfo, reason: str) -> None:
+    """Close a promoted turn that may not start: say why in its thread and
+    free its slot."""
+    await post_refusal(head.session_id, reason)
+    await chat_db().update_chat_session_status(
+        session_id=head.session_id,
+        expect_status=CHAT_STATUS_RUNNING,
+        status=CHAT_STATUS_IDLE,
+    )
+    await invalidate_session_cache(head.session_id)
+
+
+async def post_refusal(
+    session_id: str, reason: str, *, message_id: str | None = None
+) -> None:
+    """Say in the thread why a turn that was waiting will not start."""
+    await append_and_save_message(
+        session_id,
+        ChatMessage(
+            id=message_id,
+            role="assistant",
+            content=reason,
+            metadata={_REFUSED_KEY: True},
+        ),
+    )
+
+
+def queued_turn_refusal(session: ChatSession) -> str | None:
+    """Why a waiting turn was not started, if its thread ends that way."""
+    last = session.messages[-1] if session.messages else None
+    if last is None or not (last.metadata or {}).get(_REFUSED_KEY):
+        return None
+    return last.content
+
+
+def _promotion_permissions(
+    head: ChatSessionInfo, metadata: Mapping[str, Any]
+) -> CopilotPermissions | None:
+    """The session's permissions as they are now, never looser than the ones
+    stored at enqueue."""
+    current = resolve_session_permissions(head)
+    stored = metadata.get("permissions")
+    if not stored:
+        return current
+    queued = CopilotPermissions.model_validate(stored)
+    return (
+        queued
+        if current is None
+        else queued.merged_with_parent(current, ALL_TOOL_NAMES)
+    )

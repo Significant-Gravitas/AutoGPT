@@ -15,6 +15,8 @@ import pytest
 from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview
 
+from backend.copilot import stream_registry
+from backend.copilot.context import set_execution_context
 from backend.copilot.gate import chat_rules, check_action, held
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate.classifier import Judgement
@@ -28,8 +30,11 @@ from backend.copilot.model import (
     upsert_chat_session,
 )
 from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
+from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
+from backend.copilot.tree import TurnEnvelope, get_tree_ledger, root_envelope
+from backend.copilot.turn_queue import UNRECORDED_WAKE, WAKE_LATER
 from backend.data.db_accessors import review_db
 from backend.data.redis_client import get_redis_async
 
@@ -80,12 +85,28 @@ async def _new_session(user_id: str, mode: AutopilotMode = "auto") -> ChatSessio
     return reloaded
 
 
-async def _hold(session: ChatSession, user_id: str, text: str) -> str:
-    decision = await check_action(
-        _TOOL, {"text": text}, user_id, session, tool_call_id="call-1"
-    )
+async def _hold(
+    session: ChatSession,
+    user_id: str,
+    text: str,
+    envelope: TurnEnvelope | None = None,
+) -> str:
+    async def in_a_turn():
+        # The gate runs inside a turn, whose envelope the call's wake starts under.
+        set_execution_context(
+            user_id, session, envelope=envelope or _turn_envelope(session)
+        )
+        return await check_action(
+            _TOOL, {"text": text}, user_id, session, tool_call_id="call-1"
+        )
+
+    decision = await asyncio.create_task(in_a_turn())
     assert not decision.allowed and decision.review_id
     return decision.review_id
+
+
+def _turn_envelope(session: ChatSession) -> TurnEnvelope:
+    return root_envelope(f"turn-{session.session_id}", session_id=session.session_id)
 
 
 async def _answer(review_id: str, status: ReviewStatus, age=timedelta(0)) -> None:
@@ -174,6 +195,98 @@ async def test_an_approval_runs_the_call_with_its_stored_arguments(
     assert 'tool_call_id="call-1"' in delivered[0].content
     assert delivered[0].metadata["held_call"]["outcome"] == "approved"
     assert await _row(review_id, test_user_id) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_wake_starts_under_the_envelope_its_call_was_held_under(
+    setup_test_user, test_user_id, gate_on
+):
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "under its own turn")
+    await _answer(review_id, ReviewStatus.APPROVED)
+    dispatch = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        await held.wake(test_user_id, session.session_id)
+
+    assert dispatch.await_args.kwargs["envelope"] == _turn_envelope(session)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_call_rebuilt_from_its_card_is_not_woken(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """Nothing records the limits it was held under; the next turn carries it."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "lost in Redis")
+    assert await held._claim(session.session_id, review_id)
+    await _answer(review_id, ReviewStatus.APPROVED)
+    rows = await review_db().get_reviews_by_node_exec_ids([review_id], test_user_id)
+    dispatch = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        await held.wake(test_user_id, session.session_id, rows.values())
+        await held.wake(test_user_id, session.session_id, rows.values())
+
+    dispatch.assert_not_awaited()
+    reloaded = await get_chat_session(session.session_id, test_user_id)
+    assert reloaded is not None
+    refusals = [m for m in reloaded.messages if m.content == UNRECORDED_WAKE]
+    assert len(refusals) == 1
+    assert len(await held.resolve_answered(test_user_id, reloaded)) == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_wake_whose_tree_closed_is_not_started(
+    setup_test_user, test_user_id, gate_on
+):
+    """A sub-session's call answered after its tree expired: the reason goes in
+    the chat and the answer waits for the next turn."""
+    session = await _new_session(test_user_id)
+    sub_turn = TurnEnvelope(tree_id=f"tree-{session.session_id}", depth=1)
+    ledger = await get_tree_ledger()
+    await ledger.open(sub_turn.tree_id, ceiling_microdollars=1_000_000, max_nodes=10)
+    review_id = await _hold(session, test_user_id, "after expiry", envelope=sub_turn)
+    await _answer(review_id, ReviewStatus.APPROVED)
+    await (await get_redis_async()).delete(ledger.key(sub_turn.tree_id))
+    enqueued = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueued):
+        await held.wake(test_user_id, session.session_id)
+
+    enqueued.assert_not_awaited()
+    reloaded = await get_chat_session(session.session_id, test_user_id)
+    assert reloaded is not None
+    assert reloaded.messages[-1].content.startswith("This task's tree has closed")
+    assert reloaded.messages[-1].content.endswith(WAKE_LATER)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_tool_revoked_while_a_call_was_held_stays_revoked(
+    setup_test_user, test_user_id, gate_on
+):
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "before the revoke")
+    await _answer(review_id, ReviewStatus.APPROVED)
+    revoked = CopilotPermissions(tools=["web_fetch"], tools_exclude=True)
+    enqueued = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.session_permissions.resolve_session_permissions",
+            return_value=revoked,
+        ),
+        patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueued),
+    ):
+        await held.wake(test_user_id, session.session_id)
+    woken = enqueued.await_args.kwargs
+    # The woken turn holds one of the shared test user's slots until it ends.
+    await stream_registry.mark_session_completed(
+        session.session_id, turn_id=woken["turn_id"]
+    )
+
+    assert not woken["envelope"].permits("web_fetch")
+    assert woken["envelope"].tree_id == _turn_envelope(session).tree_id
 
 
 async def _approve_after_losing_the_held_call(
