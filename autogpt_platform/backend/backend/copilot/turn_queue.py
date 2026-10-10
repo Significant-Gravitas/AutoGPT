@@ -294,6 +294,16 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     the next completion-driven tick once eligibility returns, or the
     user cancels manually.
     """
+    # A head that may never start is closed and the next one tried, in a loop:
+    # recursing once per closed row overflows on a long run of them.
+    while (promoted := await _promote_head(user_id)) is None:
+        pass
+    return promoted
+
+
+async def _promote_head(user_id: str) -> bool | None:
+    """One promotion attempt: whether a session was promoted, or ``None`` when
+    the head was closed as one that may never start, so the next can be tried."""
     # ``executor.utils`` stays a local import: it pulls
     # ``turn_queue.count_inflight_turns`` lazily back through this module,
     # so top-leveling it here would deadlock the import graph.
@@ -356,7 +366,7 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         # Deriving one from the turn that just ended would run the approved
         # action under that turn's limits; the answer reaches the next turn.
         await _refuse_queued_turn(head, UNRECORDED_WAKE)
-        return await dispatch_next_for_user(user_id)
+        return None
 
     turn_id = str(uuid.uuid4())
     try:
@@ -397,7 +407,7 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     except TreeRefusal as refused:
         # Only a stored envelope is re-checked here; a root is never refused.
         await _refuse_queued_turn(head, f"{refused.message} {WAKE_LATER}")
-        return await dispatch_next_for_user(user_id)
+        return None
     except BaseException:
         # Roll the claim back so a missed-dispatch tick or the next
         # slot-free event can retry.  ``BaseException`` (not just
