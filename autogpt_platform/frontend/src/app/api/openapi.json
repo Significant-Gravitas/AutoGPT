@@ -19922,9 +19922,9 @@
             "title": "Expert Lookup Retry Count",
             "default": 0
           },
-          "limits_retry_count": {
+          "plan_lookup_retry_count": {
             "type": "integer",
-            "title": "Limits Retry Count",
+            "title": "Plan Lookup Retry Count",
             "default": 0
           },
           "user_timezone": {

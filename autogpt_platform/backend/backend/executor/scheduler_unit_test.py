@@ -28,7 +28,7 @@ from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
     _MAX_EXPERT_LOOKUP_RETRIES,
-    _MAX_LIMITS_RETRIES,
+    _MAX_PLAN_LOOKUP_RETRIES,
     CopilotTurnJobArgs,
     CopilotTurnJobInfo,
     GraphExecutionJobArgs,
@@ -44,7 +44,7 @@ from backend.executor.scheduler import (
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
     _reschedule_one_shot_after_expert_unavailable,
-    _reschedule_one_shot_after_limits_unreadable,
+    _reschedule_one_shot_after_plan_unreadable,
     _routine_turn_permissions,
     _self_delete_copilot_turn_schedule,
     _self_delete_morning_briefing_schedule,
@@ -74,23 +74,15 @@ def mock_external_services(monkeypatch: pytest.MonkeyPatch) -> None:
 
 class _OwnerGate(NamedTuple):
     is_user_paywalled: AsyncMock
-    check_rate_limit: AsyncMock
     has_codex_access: AsyncMock
 
 
 @pytest.fixture(autouse=True)
 def owner_gate(monkeypatch: pytest.MonkeyPatch) -> _OwnerGate:
-    """An owner with a subscription, room under every cap and Codex access;
-    tests that need another owner set these mocks rather than patch again."""
-    gate = _OwnerGate(
-        AsyncMock(return_value=False), AsyncMock(), AsyncMock(return_value=True)
-    )
+    """An owner with a subscription and Codex access; tests that need another
+    owner set these mocks rather than patch again."""
+    gate = _OwnerGate(AsyncMock(return_value=False), AsyncMock(return_value=True))
     monkeypatch.setattr(f"{_SCHEDULER_PATH}.is_user_paywalled", gate.is_user_paywalled)
-    monkeypatch.setattr(
-        f"{_SCHEDULER_PATH}.get_global_rate_limits",
-        AsyncMock(return_value=(1_000_000, 5_000_000, None)),
-    )
-    monkeypatch.setattr(f"{_SCHEDULER_PATH}.check_rate_limit", gate.check_rate_limit)
     monkeypatch.setattr(f"{_SCHEDULER_PATH}.has_codex_access", gate.has_codex_access)
     return gate
 
@@ -1178,26 +1170,26 @@ async def test_expert_lookup_and_cap_retries_have_independent_budgets():
 
 
 @pytest.mark.asyncio
-async def test_cap_and_limits_retries_have_independent_budgets():
+async def test_cap_and_plan_lookup_retries_have_independent_budgets():
     mock_client = AsyncMock()
     with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
-        await _reschedule_one_shot_after_limits_unreadable(
+        await _reschedule_one_shot_after_plan_unreadable(
             _args(cap_retry_count=_MAX_CAP_RETRIES)
         )
-        limits_kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
+        plan_kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
         mock_client.reset_mock()
         await _reschedule_one_shot_after_cap(
-            _args(limits_retry_count=_MAX_LIMITS_RETRIES)
+            _args(plan_lookup_retry_count=_MAX_PLAN_LOOKUP_RETRIES)
         )
         cap_kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
 
-    assert (limits_kwargs["cap_retry_count"], limits_kwargs["limits_retry_count"]) == (
+    assert (plan_kwargs["cap_retry_count"], plan_kwargs["plan_lookup_retry_count"]) == (
         _MAX_CAP_RETRIES,
         1,
     )
-    assert (cap_kwargs["cap_retry_count"], cap_kwargs["limits_retry_count"]) == (
+    assert (cap_kwargs["cap_retry_count"], cap_kwargs["plan_lookup_retry_count"]) == (
         1,
-        _MAX_LIMITS_RETRIES,
+        _MAX_PLAN_LOOKUP_RETRIES,
     )
 
 
@@ -2392,15 +2384,6 @@ def _paywalled(gate: _OwnerGate) -> None:
     gate.is_user_paywalled.return_value = True
 
 
-def _over_a_cap(gate: _OwnerGate) -> None:
-    resets_at = datetime.now(tz=timezone.utc) + timedelta(hours=3)
-    gate.check_rate_limit.side_effect = RateLimitExceeded("weekly", resets_at)
-
-
-def _limits_unreadable(gate: _OwnerGate) -> None:
-    gate.check_rate_limit.side_effect = RateLimitUnavailable()
-
-
 def _lost_codex(gate: _OwnerGate) -> None:
     gate.has_codex_access.return_value = False
 
@@ -2445,18 +2428,16 @@ async def _fire_hourly(session_id: str | None, provider: str) -> dict[str, Async
     ("refuse", "provider"),
     [
         (_paywalled, "platform"),
-        (_over_a_cap, "platform"),
-        (_limits_unreadable, "platform"),
         (_lost_codex, "codex"),
         (_lookup_fails, "platform"),
     ],
-    ids=["paywalled", "over-a-cap", "limits-unreadable", "lost-codex", "lookup-fails"],
+    ids=["paywalled", "lost-codex", "lookup-fails"],
 )
-async def test_a_tick_the_owner_cannot_pay_for_is_skipped_and_the_schedule_kept(
+async def test_a_tick_whose_owner_lacks_access_is_skipped_and_the_schedule_kept(
     owner_gate, refuse, provider, session_id, caplog
 ):
     """No turn and no empty chat per tick, and nothing deleted, so the
-    schedule resumes by itself once the owner can pay again."""
+    schedule resumes by itself once the owner has access again."""
     refuse(owner_gate)
     with caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH):
         mocks = await _fire_hourly(session_id, provider)
@@ -2473,12 +2454,37 @@ async def test_a_tick_the_owner_cannot_pay_for_is_skipped_and_the_schedule_kept(
 @pytest.mark.parametrize(
     "session_id", [None, "session-1"], ids=["fresh-chat", "existing-chat"]
 )
-async def test_a_tick_the_owner_can_pay_for_fires(owner_gate, session_id):
+async def test_a_tick_whose_owner_has_access_fires(owner_gate, session_id):
     mocks = await _fire_hourly(session_id, "platform")
 
     mocks["schedule_turn"].assert_awaited_once()
     owner_gate.is_user_paywalled.assert_awaited_once_with("user-1")
-    owner_gate.check_rate_limit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "usage",
+    [
+        RateLimitExceeded("daily", datetime.now(tz=timezone.utc) + timedelta(hours=3)),
+        RateLimitUnavailable(),
+    ],
+    ids=["over-a-cap", "limits-unreadable"],
+)
+async def test_running_out_of_autopilot_usage_does_not_stop_a_scheduled_turn(
+    monkeypatch, usage
+):
+    """Usage caps bound AutoPilot, not a schedule: the blocks a scheduled turn
+    runs are gated on credits instead. Patched in the scheduler's namespace too,
+    so a check imported back into it is caught."""
+    check = AsyncMock(side_effect=usage)
+    limits = AsyncMock(return_value=(0, 0, None))
+    for module in ("backend.copilot.rate_limit", _SCHEDULER_PATH):
+        monkeypatch.setattr(f"{module}.check_rate_limit", check, raising=False)
+        monkeypatch.setattr(f"{module}.get_global_rate_limits", limits, raising=False)
+
+    mocks = await _fire_hourly("session-1", "platform")
+
+    mocks["schedule_turn"].assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -2501,25 +2507,23 @@ _HOURLY = {"run_at": None, "cron": "9 * * * *"}
     ("refuse", "timing", "dropped", "retried"),
     [
         (_paywalled, _ONE_SHOT, [("routine-1", "sched-1")], False),
-        (_limits_unreadable, _ONE_SHOT, [], True),
         (_lookup_fails, _ONE_SHOT, [], True),
         (_paywalled, _HOURLY, [], False),
-        (_limits_unreadable, _HOURLY, [], False),
+        (_lookup_fails, _HOURLY, [], False),
     ],
     ids=[
         "paywalled-one-shot",
-        "brown-out-one-shot",
         "lookup-fails-one-shot",
         "paywalled-cron",
-        "brown-out-cron",
+        "lookup-fails-cron",
     ],
 )
 async def test_a_refused_one_shot_routine_is_retried_or_switched_off(
     owner_gate, refuse, timing, dropped, retried
 ):
-    """APScheduler drops a one-shot once it fires. A brown-out is ours, so the
-    one-shot comes back in a few minutes; otherwise, left on, it would read as
-    pending for a time that has passed with nothing behind it."""
+    """APScheduler drops a one-shot once it fires. A failed plan lookup is ours,
+    so the one-shot comes back in a few minutes; otherwise, left on, it would
+    read as pending for a time that has passed with nothing behind it."""
     refuse(owner_gate)
     scheduler_client = AsyncMock()
     routine = ExpertRoutine(
@@ -2560,7 +2564,9 @@ async def test_a_one_shot_retry_that_gives_up_switches_its_routine_off(give_up):
         schedule_id="sched-retry",
         routine_id="routine-1",
         routine_schedule_id="sched-0",
-        limits_retry_count=_MAX_LIMITS_RETRIES if give_up == "exhausted" else 0,
+        plan_lookup_retry_count=(
+            _MAX_PLAN_LOOKUP_RETRIES if give_up == "exhausted" else 0
+        ),
     )
     scheduler_client = AsyncMock()
     scheduler_client.add_copilot_turn_schedule.side_effect = RuntimeError("down")
@@ -2569,7 +2575,7 @@ async def test_a_one_shot_retry_that_gives_up_switches_its_routine_off(give_up):
         patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=scheduler_client),
         patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store),
     ):
-        await _reschedule_one_shot_after_limits_unreadable(args)
+        await _reschedule_one_shot_after_plan_unreadable(args)
 
     store.mark_routine_unscheduled.assert_awaited_once_with("routine-1", "sched-0")
 

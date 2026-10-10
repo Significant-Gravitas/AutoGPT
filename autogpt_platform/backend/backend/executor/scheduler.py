@@ -31,7 +31,7 @@ from sqlalchemy import MetaData, create_engine
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.active_turns import ConcurrentTurnLimitError
-from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
+from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.dream.scheduling import (
     COMMUNITY_REBUILD_REGISTRATION_PREFIX,
@@ -43,13 +43,7 @@ from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
-from backend.copilot.rate_limit import (
-    RateLimitExceeded,
-    RateLimitUnavailable,
-    check_rate_limit,
-    get_global_rate_limits,
-    is_user_paywalled,
-)
+from backend.copilot.rate_limit import is_user_paywalled
 from backend.copilot.transports import resolve_default_chat_route
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
@@ -471,7 +465,7 @@ async def _execute_copilot_turn(**kwargs):
             llm_auth_provider, llm_credential_id = await resolve_default_chat_route(
                 args.user_id
             )
-            if await _refuse_if_owner_cannot_pay(args, llm_auth_provider):
+            if await _refuse_if_owner_lacks_access(args, llm_auth_provider):
                 return
             new_session = await create_chat_session(
                 args.user_id,
@@ -561,7 +555,7 @@ async def _execute_copilot_turn(**kwargs):
                 if expert_status != "active":
                     await _skip_inactive_expert_scope(args, expert_status)
                     return
-            if await _refuse_if_owner_cannot_pay(
+            if await _refuse_if_owner_lacks_access(
                 args, session.metadata.llm_auth_provider
             ):
                 return
@@ -673,22 +667,24 @@ async def _execute_copilot_turn(**kwargs):
         )
 
 
-async def _refuse_if_owner_cannot_pay(
+async def _refuse_if_owner_lacks_access(
     job_args: "CopilotTurnJobArgs", llm_auth_provider: CopilotLlmAuthProvider
 ) -> bool:
-    """Refuse a fire its owner cannot pay for, as ``dispatch_next_for_user``
-    refuses a queued turn, and say whether it did.
+    """Refuse a fire whose owner has no access to the route it bills to, and
+    say whether it did. Usage caps are not checked: running out of AutoPilot
+    usage does not stop a scheduled turn, whose blocks are gated on credits.
 
-    A cron schedule stays registered and resumes once the owner can pay again.
-    APScheduler drops a one-shot once it fires, so one refused by an outage is
-    retried, and any other is dropped with its routine switched off rather than
-    left pending for a time that has passed.
+    A cron schedule stays registered and resumes once the owner has access
+    again. APScheduler drops a one-shot once it fires, so one refused because
+    the owner's plan could not be read is retried, and any other is dropped
+    with its routine switched off rather than left pending for a time that has
+    passed.
     """
     try:
-        refusal = await _payment_refusal(job_args.user_id, llm_auth_provider)
+        refusal = await _access_refusal(job_args.user_id, llm_auth_provider)
     except Exception as exc:
-        # Unknown is not paid for: skip the fire, as for unreadable limits.
-        refusal = _PaymentRefusal(
+        # Unknown access is no access: skip the fire, and retry a one-shot.
+        refusal = _AccessRefusal(
             reason=f"the owner's plan could not be read ({type(exc).__name__}: {exc})",
             transient=True,
         )
@@ -708,49 +704,28 @@ async def _refuse_if_owner_cannot_pay(
     if job_args.run_at is None:
         return True
     if refusal.transient:
-        await _reschedule_one_shot_after_limits_unreadable(job_args)
+        await _reschedule_one_shot_after_plan_unreadable(job_args)
     else:
         await _drop_job_from_routine(job_args)
     return True
 
 
-class _PaymentRefusal(BaseModel):
+class _AccessRefusal(BaseModel):
     reason: str
     # An outage rather than the owner's state, so a one-shot is worth retrying.
     transient: bool = False
 
 
-async def _payment_refusal(
+async def _access_refusal(
     user_id: str, llm_auth_provider: CopilotLlmAuthProvider
-) -> _PaymentRefusal | None:
-    """Why the owner cannot pay for a turn on this route, if they cannot."""
+) -> _AccessRefusal | None:
+    """Why the owner has no access to this route, if they have none."""
     if llm_auth_provider == "codex":
         if await has_codex_access(user_id):
             return None
-        return _PaymentRefusal(reason="the owner has no Codex access")
-    if llm_auth_provider != "platform":
-        return None
-    if await is_user_paywalled(user_id):
-        return _PaymentRefusal(reason="the owner has no subscription")
-    config = ChatConfig()
-    try:
-        daily_limit, weekly_limit, _ = await get_global_rate_limits(
-            user_id,
-            config.daily_cost_limit_microdollars,
-            config.weekly_cost_limit_microdollars,
-        )
-        await check_rate_limit(
-            user_id=user_id,
-            daily_cost_limit=daily_limit,
-            weekly_cost_limit=weekly_limit,
-        )
-    except RateLimitExceeded as exc:
-        return _PaymentRefusal(
-            reason=f"the owner is over their {exc.window} usage limit"
-        )
-    except RateLimitUnavailable:
-        # A brown-out must not let an unwatched turn past a cap it may be over.
-        return _PaymentRefusal(reason="usage limits are unreadable", transient=True)
+        return _AccessRefusal(reason="the owner has no Codex access")
+    if llm_auth_provider == "platform" and await is_user_paywalled(user_id):
+        return _AccessRefusal(reason="the owner has no subscription")
     return None
 
 
@@ -786,7 +761,7 @@ def _session_id_label(args: "CopilotTurnJobArgs") -> str:
 _CONCURRENCY_RETRY_DELAY_SECONDS = 300
 _MAX_CAP_RETRIES = 1
 _MAX_EXPERT_LOOKUP_RETRIES = 1
-_MAX_LIMITS_RETRIES = 1
+_MAX_PLAN_LOOKUP_RETRIES = 1
 
 
 async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
@@ -798,14 +773,14 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
     )
 
 
-async def _reschedule_one_shot_after_limits_unreadable(
+async def _reschedule_one_shot_after_plan_unreadable(
     args: "CopilotTurnJobArgs",
 ) -> None:
     await _reschedule_one_shot(
         args,
-        reason="unreadable usage limits",
-        name_suffix="limits-retry",
-        retry_kind="limits",
+        reason="unreadable owner plan",
+        name_suffix="plan-retry",
+        retry_kind="plan_lookup",
     )
 
 
@@ -825,7 +800,7 @@ async def _reschedule_one_shot(
     *,
     reason: str,
     name_suffix: str,
-    retry_kind: Literal["cap", "expert_lookup", "limits"],
+    retry_kind: Literal["cap", "expert_lookup", "plan_lookup"],
 ) -> None:
     """Re-create a one-shot copilot-turn schedule after a transient failure.
 
@@ -839,19 +814,19 @@ async def _reschedule_one_shot(
         max_retries = _MAX_CAP_RETRIES
         next_cap_retry_count = retry_count + 1
         next_expert_lookup_retry_count = args.expert_lookup_retry_count
-        next_limits_retry_count = args.limits_retry_count
-    elif retry_kind == "limits":
-        retry_count = args.limits_retry_count
-        max_retries = _MAX_LIMITS_RETRIES
+        next_plan_lookup_retry_count = args.plan_lookup_retry_count
+    elif retry_kind == "plan_lookup":
+        retry_count = args.plan_lookup_retry_count
+        max_retries = _MAX_PLAN_LOOKUP_RETRIES
         next_cap_retry_count = args.cap_retry_count
         next_expert_lookup_retry_count = args.expert_lookup_retry_count
-        next_limits_retry_count = retry_count + 1
+        next_plan_lookup_retry_count = retry_count + 1
     else:
         retry_count = args.expert_lookup_retry_count
         max_retries = _MAX_EXPERT_LOOKUP_RETRIES
         next_cap_retry_count = args.cap_retry_count
         next_expert_lookup_retry_count = retry_count + 1
-        next_limits_retry_count = args.limits_retry_count
+        next_plan_lookup_retry_count = args.plan_lookup_retry_count
 
     if retry_count >= max_retries:
         logger.error(
@@ -873,7 +848,7 @@ async def _reschedule_one_shot(
             name=f"{args.schedule_id or 'copilot'}-{name_suffix}",
             cap_retry_count=next_cap_retry_count,
             expert_lookup_retry_count=next_expert_lookup_retry_count,
-            limits_retry_count=next_limits_retry_count,
+            plan_lookup_retry_count=next_plan_lookup_retry_count,
             # Preserve the user's timezone across the reschedule so the new
             # one-shot job's trigger/timezone matches the original request.
             user_timezone=args.user_timezone,
@@ -1848,7 +1823,7 @@ class CopilotTurnJobArgs(BaseModel):
     # concurrency-cap retry (or vice versa).
     cap_retry_count: int = 0
     expert_lookup_retry_count: int = 0
-    limits_retry_count: int = 0
+    plan_lookup_retry_count: int = 0
     # Persisted so ``_reschedule_one_shot_after_cap`` can preserve the user's
     # timezone when re-creating a one-shot job after a concurrency-cap miss —
     # otherwise the rescheduled job's trigger defaults to UTC and the timezone
@@ -2589,7 +2564,7 @@ class Scheduler(AppService):
         user_timezone: str | None = None,
         cap_retry_count: int = 0,
         expert_lookup_retry_count: int = 0,
-        limits_retry_count: int = 0,
+        plan_lookup_retry_count: int = 0,
         organization_id: str | None = None,
         team_id: str | None = None,
         expert_id: str | None = None,
@@ -2604,9 +2579,9 @@ class Scheduler(AppService):
         the turn into it. Otherwise the turn resumes the named (existing)
         session with its full history, after re-validating that scope.
 
-        *cap_retry_count*, *expert_lookup_retry_count* and *limits_retry_count*
-        are set internally to bound their respective transient retry paths;
-        normal callers should leave them at 0.
+        *cap_retry_count*, *expert_lookup_retry_count* and
+        *plan_lookup_retry_count* are set internally to bound their respective
+        transient retry paths; normal callers should leave them at 0.
         """
         # Mirror add_graph_execution_schedule: validate the expert scope at
         # creation (active, owned, PRIVATE) and pin the schedule to the
@@ -2628,7 +2603,7 @@ class Scheduler(AppService):
             run_at=run_at,
             cap_retry_count=cap_retry_count,
             expert_lookup_retry_count=expert_lookup_retry_count,
-            limits_retry_count=limits_retry_count,
+            plan_lookup_retry_count=plan_lookup_retry_count,
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
