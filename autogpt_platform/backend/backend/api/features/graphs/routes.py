@@ -90,7 +90,10 @@ async def get_graph_all_versions(
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> Sequence[graph_db.GraphModel]:
     graphs = await graph_db.get_graph_all_versions(
-        graph_id, user_id=user_id, organization_id=ctx.org_id
+        graph_id,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        include_subgraphs=True,  # needed to construct full credentials input schema
     )
     if not graphs:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
