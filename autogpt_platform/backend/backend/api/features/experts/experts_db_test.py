@@ -1689,6 +1689,7 @@ async def test_a_failed_hub_install_keeps_the_library_skill_of_the_same_slug(
     """The picker can attach one slug from both halves; the two differ only by
     source, so the failed Hub install must not take the library copy with it."""
     owner = await _create_seed_user()
+    copy_skill = AsyncMock(return_value="copied")
     monkeypatch.setattr(
         raise_attachments.skill_db,
         "install_marketplace_skill",
@@ -1704,8 +1705,20 @@ async def test_a_failed_hub_install_keeps_the_library_skill_of_the_same_slug(
             experts_db.raise_attachments,
             "read_user_skill_with_body",
             new_callable=AsyncMock,
-            return_value=SimpleNamespace(name="My Own Playbook"),
+            return_value=SimpleNamespace(name=hub_listing.slug),
         ),
+        patch.object(
+            experts_db,
+            "get_default_skill_with_body",
+            return_value=None,
+        ),
+        patch.object(
+            experts_db,
+            "find_user_skill_slugs",
+            new_callable=AsyncMock,
+            return_value={hub_listing.slug: hub_listing.slug},
+        ),
+        patch.object(experts_db, "copy_skill_to_expert", copy_skill),
     ):
         raised = await experts_db.create_raised_expert(
             owner.id,
@@ -1716,10 +1729,11 @@ async def test_a_failed_hub_install_keeps_the_library_skill_of_the_same_slug(
             + _library_skill(hub_listing.slug),
         )
 
-    assert raised.expert.skills == ["My Own Playbook"]
+    assert raised.expert.skills == [hub_listing.slug]
     assert [(f.source, f.reason) for f in raised.failed_attachments] == [
         ("marketplace", "installation_failed")
     ]
+    copy_skill.assert_awaited_once_with(owner.id, raised.expert.id, hub_listing.slug)
 
 
 @pytest.mark.asyncio(loop_scope="session")

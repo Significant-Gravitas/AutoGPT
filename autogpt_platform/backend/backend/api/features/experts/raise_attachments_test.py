@@ -7,7 +7,7 @@ import prisma.models
 import pytest
 
 from backend.api.features.experts import raise_attachments
-from backend.api.features.experts.models import RaiseAttachment
+from backend.api.features.experts.models import RaiseAttachment, RaiseAttachmentFailure
 from backend.util.exceptions import NotFoundError
 
 
@@ -82,6 +82,50 @@ def _hub_skill(slug: str) -> raise_attachments.ResolvedSkill:
         name=slug,
         marketplace_slug=slug,
     )
+
+
+def _library_skill(name: str) -> raise_attachments.ResolvedSkill:
+    return raise_attachments.ResolvedSkill(
+        attachment=RaiseAttachment(kind="skill", source="library", id=name),
+        name=name,
+    )
+
+
+def _failed_hub_skill(slug: str) -> RaiseAttachmentFailure:
+    return RaiseAttachmentFailure(
+        kind="skill",
+        source="marketplace",
+        id=slug,
+        reason="installation_failed",
+    )
+
+
+def test_skill_names_deduplicate_matching_hub_and_library_names():
+    resolved = raise_attachments.ResolvedRaiseAttachments(
+        workflows=[], skills=[_hub_skill("shared"), _library_skill("shared")]
+    )
+
+    assert resolved.skill_names == ["shared"]
+
+
+def test_a_failed_hub_skill_keeps_a_successful_library_copy_of_the_same_name():
+    skills = [_hub_skill("shared"), _library_skill("shared")]
+
+    dropped = raise_attachments._failed_skill_names_without_survivors(
+        skills, [_failed_hub_skill("shared")], set()
+    )
+
+    assert dropped == set()
+
+
+def test_a_skill_name_is_dropped_only_when_every_source_failed():
+    skills = [_hub_skill("shared"), _library_skill("shared")]
+
+    dropped = raise_attachments._failed_skill_names_without_survivors(
+        skills, [_failed_hub_skill("shared")], {"shared"}
+    )
+
+    assert dropped == {"shared"}
 
 
 async def test_install_marketplace_skills_reports_a_withdrawn_listing():
