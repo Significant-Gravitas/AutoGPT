@@ -127,6 +127,26 @@ describe("ArtifactsPage - office files in the viewer", () => {
     },
   );
 
+  test("a .pptx stored as text/plain shows the loaded slide thumbnail", async () => {
+    useFilesHandler([
+      makeFile({ id: "deck3", name: "deck.pptx", mime_type: "text/plain" }),
+    ]);
+
+    render(<ArtifactsPage />);
+    const viewer = await openViewer();
+
+    const img = within(viewer).getByTestId("file-viewer-office-preview");
+    expect(img.className).toContain("opacity-0");
+
+    fireEvent.load(img);
+
+    expect(img.className).toContain("opacity-100");
+    expect(within(viewer).getByText(/showing the first slide/i)).toBeDefined();
+    expect(within(viewer).queryByText(/can't be previewed/i)).toBeNull();
+    expect(viewer.querySelector("pre")).toBeNull();
+    expect(downloadRequests).toEqual([]);
+  });
+
   test("a deck without a thumbnail falls back to the download prompt", async () => {
     useFilesHandler([
       makeFile({ id: "deck2", name: "deck.pptx", mime_type: PPTX_MIME }),
