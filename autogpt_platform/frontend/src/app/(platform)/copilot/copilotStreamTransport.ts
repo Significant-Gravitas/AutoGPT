@@ -25,6 +25,7 @@ interface CreateTransportArgs {
    * mid-session change is picked up on the next send.
    */
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
+  streamAbortControllerRef?: MutableValue<AbortController | null>;
 }
 
 /**
@@ -59,19 +60,28 @@ class SmoothedCopilotChatTransport extends DefaultChatTransport<UIMessage> {
 export function createCopilotTransport({
   sessionId,
   copilotModelRef,
+  streamAbortControllerRef,
 }: CreateTransportArgs) {
   const baseUrl = `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`;
+  const streamFetch = createShadowFetch(
+    sessionId,
+    isTokenDevtoolEnabled() ? createUsageCapturingFetch(sessionId) : undefined,
+  );
 
   return new SmoothedCopilotChatTransport({
     api: baseUrl,
     // Tee the raw SSE into the stream converter's shadow, and in dev into the
     // token devtool, which reads the `: usage {...}` comments the SDK drops.
-    fetch: createShadowFetch(
-      sessionId,
-      isTokenDevtoolEnabled()
-        ? createUsageCapturingFetch(sessionId)
-        : undefined,
-    ),
+    fetch: (input, init) => {
+      const signal = streamAbortControllerRef?.current?.signal;
+      return streamFetch(input, {
+        ...init,
+        signal:
+          signal && init?.signal
+            ? AbortSignal.any([signal, init.signal])
+            : (signal ?? init?.signal),
+      });
+    },
     prepareSendMessagesRequest: async ({ messages }) => ({
       body: streamRequestBody(
         sessionId,

@@ -92,6 +92,7 @@ from backend.copilot.prompting import (
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_graphiti_supplement,
+    get_openui_supplement,
     get_team_building_supplement,
 )
 from backend.copilot.provider_failure import classify as classify_provider_failure
@@ -1986,6 +1987,7 @@ async def stream_chat_completion_baseline(
     system_prompt = (
         base_system_prompt
         + SHARED_TOOL_NOTES
+        + get_openui_supplement()
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement

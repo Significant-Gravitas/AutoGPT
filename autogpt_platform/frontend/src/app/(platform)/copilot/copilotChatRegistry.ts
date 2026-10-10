@@ -8,8 +8,10 @@ import {
   type MutableValue,
 } from "./copilotStreamTransport";
 import type { CopilotLlmModel } from "./store";
+import { createCopilotRequestLifecycle } from "./copilotRequestLifecycle";
 
-interface CopilotChatRuntime {
+interface CopilotChatRuntime
+  extends ReturnType<typeof createCopilotRequestLifecycle> {
   chat: Chat<UIMessage>;
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
   onFinish?: (args: {
@@ -77,11 +79,15 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   };
   const callbacks: Pick<CopilotChatRuntime, "onFinish" | "onError" | "onData"> =
     {};
+  const streamAbortControllerRef: MutableValue<AbortController | null> = {
+    current: null,
+  };
   const chat = new Chat<UIMessage>({
     id: sessionId,
     transport: createCopilotTransport({
       sessionId,
       copilotModelRef,
+      streamAbortControllerRef,
     }),
     onFinish: (args) => {
       if (args.isDisconnect) {
@@ -101,6 +107,7 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   });
   const runtime = {
     chat,
+    ...createCopilotRequestLifecycle(chat, streamAbortControllerRef),
     copilotModelRef,
     get onData() {
       return callbacks.onData;

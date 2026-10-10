@@ -130,7 +130,7 @@ export function createBackendSim(plans: TurnPlan[]) {
     return null;
   }
 
-  function resume(turn: string, after: string) {
+  function resume(turn: string, after: string, signal: AbortSignal) {
     const index = turns.findIndex((t) => t.id === turn);
     if (index === -1 || !published.has(index)) {
       connections.push({ closed: true, cut() {} });
@@ -147,10 +147,14 @@ export function createBackendSim(plans: TurnPlan[]) {
         { status: 409 },
       );
     }
-    return open(index, from);
+    return open(index, from, signal);
   }
 
-  function open(turnIndex: number, from = state.trimmedBefore) {
+  function open(
+    turnIndex: number,
+    from = state.trimmedBefore,
+    signal?: AbortSignal,
+  ) {
     const frames = turns[turnIndex].frames;
     let index = from;
     let cutRequested = false;
@@ -163,9 +167,12 @@ export function createBackendSim(plans: TurnPlan[]) {
       },
     };
     connections.push(connection);
+    signal?.addEventListener("abort", connection.cut, { once: true });
 
     function close(controller: ReadableStreamDefaultController<Uint8Array>) {
+      if (connection.closed) return;
       connection.closed = true;
+      signal?.removeEventListener("abort", connection.cut);
       controller.close();
     }
 
@@ -201,6 +208,7 @@ export function createBackendSim(plans: TurnPlan[]) {
       cancel() {
         connection.cut();
         connection.closed = true;
+        signal?.removeEventListener("abort", connection.cut);
       },
     });
     return new HttpResponse(stream, { status: 200, headers: SSE_HEADERS });
@@ -208,16 +216,17 @@ export function createBackendSim(plans: TurnPlan[]) {
 
   return {
     handlers: [
-      http.post(STREAM_URL, () => {
+      http.post(STREAM_URL, ({ request }) => {
         startTurn(state.turnIndex + 1);
-        return open(state.turnIndex);
+        return open(state.turnIndex, undefined, request.signal);
       }),
       http.get(STREAM_URL, ({ request }) => {
         const params = new URL(request.url).searchParams;
         const turn = params.get("turn");
-        if (turn !== null) return resume(turn, params.get("after") ?? "0-0");
+        if (turn !== null)
+          return resume(turn, params.get("after") ?? "0-0", request.signal);
         if (!state.running) return new HttpResponse(null, { status: 204 });
-        return open(state.turnIndex);
+        return open(state.turnIndex, undefined, request.signal);
       }),
     ],
     connections,

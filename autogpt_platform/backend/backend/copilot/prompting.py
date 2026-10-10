@@ -9,6 +9,12 @@ handling the distinction between:
 from functools import cache
 
 from backend.blocks.desktop._api import DISPLAY
+from backend.copilot.openui_prompt import OPENUI_SUPPLEMENT
+
+
+def get_openui_supplement() -> str:
+    return OPENUI_SUPPLEMENT
+
 
 # Workflow rules appended to the system prompt on every copilot turn
 # (baseline appends directly; SDK appends via the storage-supplement
@@ -728,10 +734,16 @@ def get_sdk_supplement(use_e2b: bool, expert_session: bool = False) -> str:
     if not use_e2b:
         return (
             _get_local_storage_supplement("/tmp/copilot-<session-id>")
+            + OPENUI_SUPPLEMENT
             + _USER_FOLLOW_UP_NOTE
         )
     computer = "" if expert_session else _COMPUTER_NOTE
-    return _get_cloud_sandbox_supplement() + computer + _USER_FOLLOW_UP_NOTE
+    return (
+        _get_cloud_sandbox_supplement()
+        + OPENUI_SUPPLEMENT
+        + computer
+        + _USER_FOLLOW_UP_NOTE
+    )
 
 
 # The one reply a chat-platform bot does not deliver. A message on Discord,

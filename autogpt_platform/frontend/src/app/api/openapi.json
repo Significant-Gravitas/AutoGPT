@@ -28873,6 +28873,7 @@
           "error",
           "no_results",
           "need_login",
+          "ui_rendered",
           "agents_found",
           "agent_details",
           "setup_requirements",

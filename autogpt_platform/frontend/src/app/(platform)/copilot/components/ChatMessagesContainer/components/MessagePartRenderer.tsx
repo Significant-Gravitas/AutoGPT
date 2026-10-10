@@ -39,6 +39,12 @@ import {
   resolveWorkspaceUrls,
 } from "../helpers";
 import { ReasoningCollapse } from "./ReasoningCollapse";
+import dynamic from "next/dynamic";
+import { isRenderUIPart } from "../../../tools/RenderUI/isRenderUIPart";
+
+const RenderUI = dynamic(() =>
+  import("../../../tools/RenderUI/RenderUI").then((module) => module.RenderUI),
+);
 
 /**
  * Custom img component for Streamdown that renders <video> elements
@@ -160,6 +166,17 @@ export function MessagePartRenderer({
   isCurrentlyStreaming,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
+
+  if (isRenderUIPart(part)) {
+    return (
+      <RenderUI
+        key={key}
+        part={part}
+        readOnly={readOnly}
+        isCurrentlyStreaming={isCurrentlyStreaming}
+      />
+    );
+  }
 
   switch (part.type) {
     case "reasoning": {

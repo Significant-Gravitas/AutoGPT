@@ -192,7 +192,6 @@ export function useCopilotStream({
     status,
     error,
     setMessages,
-    resumeStream,
   } = useChat(
     chatRuntime
       ? {
@@ -432,6 +431,10 @@ export function useCopilotStream({
 
   function resumeStreamFromStart() {
     if (!chatRuntime) return;
+    void chatRuntime.resumeStream(prepareResume);
+  }
+
+  function prepareResume() {
     if (sessionId) {
       markCopilotChatRuntimeHealthy(sessionId);
     }
@@ -478,7 +481,6 @@ export function useCopilotStream({
       const last = prev[prev.length - 1];
       return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;
     });
-    resumeStream();
   }
   resumeStreamRef.current = resumeStreamFromStart;
   const sessionIdRef = useRef(sessionId);
@@ -551,7 +553,9 @@ export function useCopilotStream({
     if (isUserStopping) {
       setIsUserStopping(false);
     }
-    return sdkSendMessage(...args);
+    return chatRuntime
+      ? chatRuntime.sendMessage(...args)
+      : sdkSendMessage(...args);
   }
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams.
@@ -635,7 +639,7 @@ export function useCopilotStream({
 
   const stop = useCopilotStop({
     sessionId,
-    stopStream: sdkStopStream(sdkStop, setMessages),
+    stopStream: sdkStopStream(chatRuntime?.stop ?? sdkStop, setMessages),
     isUserStoppingRef,
     setIsUserStopping,
   });
