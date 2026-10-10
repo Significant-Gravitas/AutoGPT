@@ -164,6 +164,12 @@ async def sdk_service_turn(
         connection.__aenter__.return_value = client
         return connection
 
+    async def no_answered_cards(
+        *_: Any, **__: Any
+    ) -> AsyncGenerator[StreamBaseResponse, None]:
+        return
+        yield
+
     def lock(*_: Any, owner_id: str = "", **__: Any) -> MagicMock:
         return MagicMock(
             try_acquire=AsyncMock(return_value=owner_id),
@@ -191,7 +197,7 @@ async def sdk_service_turn(
         "drain_pending_safe": AsyncMock(
             side_effect=[[], queued_after_first] + [[]] * len(queries)
         ),
-        "resolve_answered": AsyncMock(return_value=[]),
+        "resolve_answered": no_answered_cards,
         "build_session_context": AsyncMock(return_value=""),
         "build_skills_context": AsyncMock(return_value=""),
         "_maybe_prepend_skills_update": AsyncMock(side_effect=lambda *a: a[-1]),

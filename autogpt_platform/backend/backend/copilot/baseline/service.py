@@ -2360,7 +2360,9 @@ async def stream_chat_completion_baseline(
 
     # After the execution context: an approved held call runs here, in this
     # turn's sandbox and tool bounds, and its result opens the turn.
-    held_results = await resolve_answered(user_id, session)
+    held_results: list[PendingMessage] = []
+    async for held_status in resolve_answered(user_id, session, held_results.append):
+        yield held_status
     if held_results and await persist_pending_as_user_rows(
         session, transcript_builder, held_results, log_prefix="[Baseline]"
     ):

@@ -5431,9 +5431,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         yield StreamStatus(message="Preparing conversation context…")
 
         # Answered cards first: their results ride the same fold as pending.
-        pending_messages = await resolve_answered(
-            user_id, session, cap=cap_late_tool_result
-        ) + await drain_pending_safe(session_id, log_prefix)
+        pending_messages: list[PendingMessage] = []
+        async for held_status in resolve_answered(
+            user_id, session, pending_messages.append, cap=cap_late_tool_result
+        ):
+            yield held_status
+        pending_messages += await drain_pending_safe(session_id, log_prefix)
         if pending_messages:
             logger.info(
                 "%s Draining %d pending message(s) at turn start",
