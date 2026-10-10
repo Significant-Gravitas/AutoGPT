@@ -4,6 +4,7 @@ import logging
 from contextvars import ContextVar
 from typing import Any
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from backend.api.features.library.model import (
@@ -36,7 +37,7 @@ from backend.data.execution import (
     ExecutionTrigger,
     GraphExecutionWithNodes,
 )
-from backend.data.graph import GraphModel
+from backend.data.graph import GraphModel, missing_inputs, unknown_inputs
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
 from backend.executor.utils import is_credential_validation_error_message
@@ -233,6 +234,10 @@ class RunAgentTool(BaseTool):
             schedules=bool(params.schedule_name or params.cron),
             saves_preset=params.save_as_preset,
         )
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.RUN_AGENT]
 
     @property
     def description(self) -> str:
@@ -729,20 +734,17 @@ class RunAgentTool(BaseTool):
         )
 
         # --- Reject unknown input fields (always, even for dry runs) ---
-        input_properties = graph.input_schema.get("properties", {})
-        provided_inputs = set(params.inputs.keys())
-        valid_fields = set(input_properties.keys())
-        unrecognized_fields = provided_inputs - valid_fields
+        unrecognized_fields = unknown_inputs(graph.input_schema, params.inputs)
         if unrecognized_fields:
             return (
                 graph_credentials,
                 InputValidationErrorResponse(
                     message=(
-                        f"Unknown input field(s) provided: {', '.join(sorted(unrecognized_fields))}. "
+                        f"Unknown input field(s) provided: {', '.join(unrecognized_fields)}. "
                         f"Agent was not executed. Please use the correct field names from the schema."
                     ),
                     session_id=session_id,
-                    unrecognized_fields=sorted(unrecognized_fields),
+                    unrecognized_fields=unrecognized_fields,
                     inputs=graph.input_schema,
                     graph_id=graph.id,
                     graph_version=graph.version,
@@ -806,10 +808,12 @@ class RunAgentTool(BaseTool):
             )
 
         # --- Input gates ---
-        required_fields = set(graph.input_schema.get("required", []))
-
         # Prompt user when inputs exist but none were provided
-        if input_properties and not provided_inputs and not params.use_defaults:
+        if (
+            graph.input_schema.get("properties")
+            and not params.inputs
+            and not params.use_defaults
+        ):
             credentials = extract_credentials_from_schema(
                 graph.credentials_input_schema
             )
@@ -826,8 +830,8 @@ class RunAgentTool(BaseTool):
             )
 
         # Required inputs missing
-        missing_inputs = required_fields - provided_inputs
-        if missing_inputs and not params.use_defaults:
+        missing_fields = missing_inputs(graph.input_schema, params.inputs)
+        if missing_fields and not params.use_defaults:
             credentials = extract_credentials_from_schema(
                 graph.credentials_input_schema
             )
@@ -836,7 +840,7 @@ class RunAgentTool(BaseTool):
                 AgentDetailsResponse(
                     message=(
                         f"Agent '{graph.name}' is missing required inputs: "
-                        f"{', '.join(missing_inputs)}. "
+                        f"{', '.join(missing_fields)}. "
                         "Please provide these values to run the agent."
                     ),
                     session_id=session_id,

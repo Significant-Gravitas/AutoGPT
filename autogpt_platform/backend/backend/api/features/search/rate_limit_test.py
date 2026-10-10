@@ -19,7 +19,7 @@ def fake_redis(mocker):
     redis.set = AsyncMock()
     redis.incr = AsyncMock()
     mocker.patch(
-        "backend.api.features.search.rate_limit.get_redis_async",
+        "backend.api.utils.rate_limit.get_redis_async",
         new=AsyncMock(return_value=redis),
     )
     return redis
@@ -75,7 +75,7 @@ async def test_fails_open_on_redis_error(mocker):
     moving while a small burst of one user's embedding spend is the only
     downside. Caller never sees an exception in this path."""
     mocker.patch(
-        "backend.api.features.search.rate_limit.get_redis_async",
+        "backend.api.utils.rate_limit.get_redis_async",
         new=AsyncMock(side_effect=RuntimeError("redis down")),
     )
     # Should NOT raise.

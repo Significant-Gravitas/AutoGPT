@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
-from collections.abc import Container
+from collections.abc import Container, Mapping
 from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
@@ -73,22 +73,6 @@ class GraphSettings(BaseModel):
         bool, BeforeValidator(lambda v: v if v is not None else False)
     ] = False
     builder_chat_session_id: str | None = None
-
-    @classmethod
-    def from_graph(
-        cls,
-        graph: "GraphModel",
-        hitl_safe_mode: bool | None = None,
-        sensitive_action_safe_mode: bool = False,
-        builder_chat_session_id: str | None = None,
-    ) -> "GraphSettings":
-        if hitl_safe_mode is None:
-            hitl_safe_mode = True
-        return cls(
-            human_in_the_loop_safe_mode=hitl_safe_mode,
-            sensitive_action_safe_mode=sensitive_action_safe_mode,
-            builder_chat_session_id=builder_chat_session_id,
-        )
 
 
 class Link(BaseDbModel):
@@ -404,6 +388,22 @@ class GraphTriggerInfo(BaseModel):
         description="Input schema for the trigger block"
     )
     credentials_input_name: Optional[str]
+
+
+def unknown_inputs(
+    input_schema: dict[str, Any], inputs: Mapping[str, Any]
+) -> list[str]:
+    """Names in `inputs` that a graph's `input_schema` has no input for."""
+    return sorted(inputs.keys() - input_schema.get("properties", {}).keys())
+
+
+def missing_inputs(
+    input_schema: dict[str, Any], inputs: Mapping[str, Any]
+) -> list[str]:
+    """Required inputs of a graph's `input_schema` that `inputs` omits or sets to null."""
+    return sorted(
+        name for name in input_schema.get("required", []) if inputs.get(name) is None
+    )
 
 
 class Graph(BaseGraph):
@@ -1314,13 +1314,6 @@ class GraphModelWithoutNodes(GraphModel):
     sub_graphs: list[BaseGraph] = Field(default_factory=list, exclude=True)
 
 
-class GraphsPaginated(BaseModel):
-    """Response schema for paginated graphs."""
-
-    graphs: list[GraphMeta]
-    pagination: Pagination
-
-
 # --------------------- CRUD functions --------------------- #
 
 
@@ -1355,7 +1348,7 @@ async def list_graphs_paginated(
     page_size: int = 25,
     filter_by: Literal["active"] | None = "active",
     organization_id: str | None = None,
-) -> GraphsPaginated:
+) -> tuple[list[GraphMeta], Pagination]:
     """
     Retrieves paginated graph metadata objects.
 
@@ -1370,7 +1363,8 @@ async def list_graphs_paginated(
             personal ownership.
 
     Returns:
-        GraphsPaginated: Paginated list of graph metadata.
+        list[GraphMeta]: List of graph info objects.
+        Pagination: Pagination information.
     """
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
@@ -1379,7 +1373,7 @@ async def list_graphs_paginated(
             visibility_filter(user_id, organization_id, team_ids),
         )
     else:
-        where_clause = {"userId": user_id}
+        where_clause: AgentGraphWhereInput = {"userId": user_id}
 
     if filter_by == "active":
         where_clause["isActive"] = True
@@ -1400,14 +1394,11 @@ async def list_graphs_paginated(
 
     graph_models = [GraphMeta.from_db(graph) for graph in graphs]
 
-    return GraphsPaginated(
-        graphs=graph_models,
-        pagination=Pagination(
-            total_items=total_count,
-            total_pages=total_pages,
-            current_page=page,
-            page_size=page_size,
-        ),
+    return graph_models, Pagination(
+        total_items=total_count,
+        total_pages=total_pages,
+        current_page=page,
+        page_size=page_size,
     )
 
 
@@ -1748,7 +1739,51 @@ async def get_graph_all_versions(
     limit: int = MAX_GRAPH_VERSIONS_FETCH,
     team_id: str | None = None,
     organization_id: str | None = None,
+    include_subgraphs: bool = False,
+    offset: int = 0,
 ) -> list[GraphModel]:
+    graph_versions = await AgentGraph.prisma().find_many(
+        where=await _graph_versions_where(graph_id, user_id, team_id, organization_id),
+        order={"version": "desc"},
+        include=AGENT_GRAPH_INCLUDE,
+        take=limit,
+        skip=offset,
+    )
+
+    if not graph_versions:
+        return []
+
+    sub_graphs = (
+        await asyncio.gather(*(get_sub_graphs(g) for g in graph_versions))
+        if include_subgraphs
+        else [None] * len(graph_versions)
+    )
+    versions = [
+        GraphModel.from_db(graph, sub_graphs=subs)
+        for graph, subs in zip(graph_versions, sub_graphs)
+    ]
+    for version in versions:
+        if version.user_id != user_id:
+            # A teammate reading the history: only the owner sees the files
+            # they picked and the credentials embedded in them.
+            version.clear_auto_credentials()
+    return versions
+
+
+async def count_graph_versions(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> int:
+    return await AgentGraph.prisma().count(
+        where=await _graph_versions_where(graph_id, user_id, None, organization_id)
+    )
+
+
+async def _graph_versions_where(
+    graph_id: str,
+    user_id: str,
+    team_id: str | None,
+    organization_id: str | None,
+) -> AgentGraphWhereInput:
     where_clause: AgentGraphWhereInput = {"id": graph_id}
     if organization_id is not None:
         # Same membership predicate as get_graph/list_graphs — NOT a raw
@@ -1765,24 +1800,7 @@ async def get_graph_all_versions(
         where_clause["teamId"] = team_id
     else:
         where_clause["userId"] = user_id
-
-    graph_versions = await AgentGraph.prisma().find_many(
-        where=where_clause,
-        order={"version": "desc"},
-        include=AGENT_GRAPH_INCLUDE,
-        take=limit,
-    )
-
-    if not graph_versions:
-        return []
-
-    versions = [GraphModel.from_db(graph) for graph in graph_versions]
-    for version in versions:
-        if version.user_id != user_id:
-            # A teammate reading the history: only the owner sees the files
-            # they picked and the credentials embedded in them.
-            version.clear_auto_credentials()
-    return versions
+    return where_clause
 
 
 async def delete_graph(
