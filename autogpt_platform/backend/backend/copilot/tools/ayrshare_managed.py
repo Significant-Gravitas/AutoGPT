@@ -121,7 +121,8 @@ def link_accounts_card(
     carries the SSO link as ``connect_url`` for a card that opens it directly.
     """
     entries = {
-        key: {**entry, "connect_url": link.url} for key, entry in missing_credentials.items()
+        key: {**entry, "connect_url": link.url}
+        for key, entry in missing_credentials.items()
     }
     return SetupRequirementsResponse(
         message=message,

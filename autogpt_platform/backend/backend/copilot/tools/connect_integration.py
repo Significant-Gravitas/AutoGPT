@@ -284,6 +284,7 @@ async def _connect_managed(
     field_info = CredentialsFieldInfo[ProviderName, CredentialsType](
         credentials_provider=frozenset([ProviderName(provider)]),
         credentials_types=frozenset(["api_key"]),
+        credentials_scopes=None,
     )
     missing = build_missing_credentials_from_field_info(
         credential_fields={field_key: field_info}, matched_keys=set()

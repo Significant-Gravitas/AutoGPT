@@ -347,9 +347,7 @@ class TestGetSSOLink:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_not_configured_provisions_nothing(self):
-        available, client_cls, ensure_patch, _, ensure = self._patches(
-            configured=False
-        )
+        available, client_cls, ensure_patch, _, ensure = self._patches(configured=False)
         with available, client_cls, ensure_patch:
             with pytest.raises(AyrshareNotConfiguredError):
                 await get_sso_link(_USER_ID, self._store([]))

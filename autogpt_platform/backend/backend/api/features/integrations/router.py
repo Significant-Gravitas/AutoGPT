@@ -2,7 +2,7 @@ import asyncio
 import logging
 import secrets
 from contextlib import suppress
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any, List, Literal, TypeGuard, get_args
 
 from autogpt_libs.auth import get_optional_user_id, get_user_id
@@ -85,7 +85,6 @@ from backend.util.exceptions import (
     ExpertRunPausedError,
     GraphNotAccessibleError,
     GraphNotInLibraryError,
-    MissingConfigError,
     NeedConfirmation,
     NotFoundError,
 )
@@ -1952,9 +1951,7 @@ async def get_ayrshare_sso_url(
     try:
         link = await get_ayrshare_sso_link(user_id, creds_manager.store)
     except AyrshareNotConfiguredError as exc:
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
-        )
+        raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
     except AyrshareProvisioningError as exc:
         raise HTTPException(status_code=HTTP_502_BAD_GATEWAY, detail=str(exc))
     return AyrshareSSOResponse(sso_url=link.url, expires_at=link.expires_at)
