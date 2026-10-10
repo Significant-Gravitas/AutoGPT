@@ -41,6 +41,25 @@ export type CronExpressionParams =
       hour: number;
     });
 
+/**
+ * Largest custom interval per unit. A cron step must be smaller than its
+ * field's range (APScheduler rejects `*\/60` minutes, `*\/24` hours,
+ * `*\/31` days), so 60 minutes and 24 hours are emitted as hourly / daily
+ * and days stop at 30.
+ */
+export const CUSTOM_INTERVAL_MAX: Record<string, number> = {
+  minutes: 60,
+  hours: 24,
+  days: 30,
+};
+
+/** Clamp a custom interval to 1..max for its unit; NaN/empty becomes 1. */
+export function clampCustomIntervalValue(unit: string, value: number): number {
+  const max = CUSTOM_INTERVAL_MAX[unit] ?? CUSTOM_INTERVAL_MAX.days;
+  if (!Number.isFinite(value) || value < 1) return 1;
+  return Math.min(Math.floor(value), max);
+}
+
 export function makeCronExpression(params: CronExpressionParams): string {
   const frequency = params.frequency;
 
@@ -67,12 +86,16 @@ export function makeCronExpression(params: CronExpressionParams): string {
   }
   if (frequency === "custom") {
     const { minute, hour, customInterval } = params;
+    const value = clampCustomIntervalValue(
+      customInterval.unit,
+      customInterval.value,
+    );
     if (customInterval.unit === "minutes") {
-      return `*/${customInterval.value} * * * *`;
+      return value >= 60 ? "0 * * * *" : `*/${value} * * * *`;
     } else if (customInterval.unit === "hours") {
-      return `0 */${customInterval.value} * * *`;
+      return value >= 24 ? "0 0 * * *" : `0 */${value} * * *`;
     } else {
-      return `${minute} ${hour} */${customInterval.value} * *`;
+      return `${minute} ${hour} */${value} * *`;
     }
   }
 
