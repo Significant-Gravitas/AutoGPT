@@ -27,7 +27,12 @@ export function PlanChoice({
       </Text>
       <div className="flex flex-col gap-1">
         <p className="flex items-baseline gap-1.5">
-          <Text variant="h4" as="span" className="text-textBlack">
+          <Text
+            variant="h4"
+            as="span"
+            unmask={false}
+            className="text-textBlack"
+          >
             {plan.amount}
           </Text>
           <Text variant="small" as="span" tone="muted">

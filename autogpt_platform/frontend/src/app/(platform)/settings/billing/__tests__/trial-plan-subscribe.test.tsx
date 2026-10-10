@@ -65,11 +65,10 @@ describe("subscribing to the trial's plan", () => {
     });
     render(<SettingsBillingPage />);
     const dialog = await openConfirmation();
-    expect(
-      within(dialog).getByText(
-        "Your trial ends now and your saved card is charged $20 / month, plus applicable tax.",
-      ),
-    ).toBeDefined();
+    const charge = within(dialog).getByText(
+      "Your trial ends now and your saved card is charged $20 / month, plus applicable tax.",
+    );
+    expect(charge.classList.contains("sentry-unmask")).toBe(false);
     expect(body).not.toHaveBeenCalled();
     expect(analytics.trackPlanSelected).toHaveBeenCalledWith({
       subscription_tier: "PRO",
