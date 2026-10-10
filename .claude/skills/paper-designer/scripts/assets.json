@@ -1,0 +1,136 @@
+{
+  "page": "06 Assets",
+  "groups": [
+    {
+      "name": "Assets/Brand logos",
+      "sources": [
+        "public/autogpt-logo-light-bg.png",
+        "public/autogpt-logo-dark-bg.png",
+        "public/apple-touch-icon.png",
+        "public/favicon.ico",
+        "public/favicon-dev.ico",
+        "public/favicon-local.ico",
+        "public/notification-icon-192.png",
+        "public/notification-icon-512.png",
+        "public/notification-badge-96.png",
+        "public/google-logo.svg",
+        "public/gpt_dark_RGB.svg",
+        "public/email/logo-light.png",
+        "public/storybook/autogpt-logo-storybook.png"
+      ],
+      "columns": 7,
+      "cell": 120,
+      "imgSize": 96,
+      "tile": "#EFEFF0",
+      "note": "Logos, favicons, notification icons. AutoGPTLogo and AutoGPTLogoWhite are SVG React components in src/components/atoms/AutoGPTLogo."
+    },
+    {
+      "name": "Assets/Experts (avatars)",
+      "sources": [
+        "public/experts/frankie.svg",
+        "public/experts/maria.svg",
+        "public/experts/max.svg",
+        "public/experts/otto.svg",
+        "public/experts/streak-fire.png",
+        "public/experts/transparent"
+      ],
+      "columns": 6,
+      "cell": 140,
+      "imgSize": 124,
+      "note": "Expert avatars (Clay & Rock library) and transparent renders."
+    },
+    {
+      "name": "Assets/Expert covers",
+      "sources": [
+        "public/experts/covers"
+      ],
+      "columns": 5,
+      "cell": 200,
+      "imgSize": 200,
+      "fit": "cover",
+      "note": "Cover images behind expert cards and pages."
+    },
+    {
+      "name": "Assets/Characters v2.1 (neutral, 256px)",
+      "sources": [
+        "public/autogpt-characters/v2.1"
+      ],
+      "match": "/neutral/256\\.png$",
+      "columns": 8,
+      "cell": 128,
+      "imgSize": 112,
+      "note": "One neutral pose per identity; manifest.json lists sizes 24 to 1024 and 1x/2x."
+    },
+    {
+      "name": "Assets/Characters v1.1 (legacy)",
+      "sources": [
+        "public/autogpt-characters/v1.1"
+      ],
+      "match": "\\.png$",
+      "columns": 10,
+      "cell": 96,
+      "imgSize": 84,
+      "maxFiles": 80,
+      "note": "Legacy Otto, Maria, Mina masters."
+    },
+    {
+      "name": "Assets/Integration logos",
+      "sources": [
+        "public/integrations"
+      ],
+      "match": "\\.(png|svg)$",
+      "columns": 12,
+      "cell": 84,
+      "imgSize": 48,
+      "tile": "#FFFFFF",
+      "note": "Rendered by the IntegrationLogo molecule."
+    },
+    {
+      "name": "Assets/Email heroes",
+      "sources": [
+        "public/email"
+      ],
+      "match": "hero-.*\\.jpg$",
+      "columns": 4,
+      "cell": 240,
+      "imgSize": 240,
+      "fit": "cover",
+      "note": "Transactional email hero images."
+    },
+    {
+      "name": "Assets/Email marks",
+      "sources": [
+        "public/email"
+      ],
+      "match": "(mark-|otto-).*\\.png$",
+      "columns": 4,
+      "cell": 160,
+      "imgSize": 140,
+      "note": "Otto marks used in email templates."
+    },
+    {
+      "name": "Assets/Misc images",
+      "sources": [
+        "public/images",
+        "public/placeholder.png",
+        "public/storybook"
+      ],
+      "columns": 5,
+      "cell": 200,
+      "imgSize": 200,
+      "fit": "cover",
+      "note": "Team card banner, tour OG image, placeholder, Storybook docs images."
+    },
+    {
+      "name": "Assets/Component-local images",
+      "sources": [
+        "src/components/atoms/LLMItem/assets",
+        "src/app/(platform)/copilot/components/AgentSavedCard/assets"
+      ],
+      "columns": 6,
+      "cell": 120,
+      "imgSize": 96,
+      "note": "Images imported by components (LLMItem provider logos, AgentSavedCard sparkles)."
+    }
+  ]
+}
