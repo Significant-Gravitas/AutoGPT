@@ -74,12 +74,17 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-# The card is fine but the bank wants 3DS. Stripe emits
-# ``authentication_required`` for raw PaymentIntent confirms but
-# ``subscription_payment_intent_requires_action`` for Subscription.modify under
-# ``error_if_incomplete``; both mean the same thing here.
+# The card is fine but the bank wants 3DS. Stripe documents
+# ``authentication_required`` (also a ``card_declined`` decline code) and
+# ``invoice_payment_intent_requires_action`` for an invoice payment that needs
+# action; ``subscription_payment_intent_requires_action`` is kept because it has
+# been reported for Subscription.modify under ``error_if_incomplete``.
 _SCA_CARD_ERROR_CODES = frozenset(
-    {"authentication_required", "subscription_payment_intent_requires_action"}
+    {
+        "authentication_required",
+        "invoice_payment_intent_requires_action",
+        "subscription_payment_intent_requires_action",
+    }
 )
 
 # No router-level auth: /credits/stripe_webhook is authenticated by Stripe's
@@ -509,7 +514,7 @@ async def update_subscription_tier(
         # modify was rolled back, so 402 lets the UI prompt for a new card or
         # surface SCA. SCA codes mean the card is fine but the bank wants 3DS —
         # different message so the user doesn't try a new card.
-        if e.code in _SCA_CARD_ERROR_CODES:
+        if _requires_authentication(e):
             logger.warning(
                 "SCA required on subscription upgrade for user %s: %s", user_id, e
             )
@@ -697,7 +702,7 @@ async def _change_plan_in_place(
     try:
         await convert_cancel_pending_trial(pending_trial)
     except stripe.CardError as e:
-        if e.code not in _SCA_CARD_ERROR_CODES:
+        if not _requires_authentication(e):
             raise
         # Only an on-session Checkout can complete 3DS. The failed charge left
         # the trial untouched, and the stale-subscription cleanup ends it once
@@ -707,6 +712,13 @@ async def _change_plan_in_place(
         )
         return False
     return True
+
+
+def _requires_authentication(error: stripe.CardError) -> bool:
+    decline_code = error.error.decline_code if error.error else None
+    return (
+        error.code in _SCA_CARD_ERROR_CODES or decline_code == "authentication_required"
+    )
 
 
 def _stripe_event_dedup_key(event_id: str) -> str:

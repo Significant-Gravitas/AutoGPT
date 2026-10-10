@@ -58,17 +58,27 @@ def test_update_subscription_tier_cancel_pending_trial_card_declined_returns_402
 
 
 @pytest.mark.parametrize(
-    "code", ["authentication_required", "subscription_payment_intent_requires_action"]
+    "code,decline_code",
+    [
+        ("authentication_required", None),
+        ("invoice_payment_intent_requires_action", None),
+        ("subscription_payment_intent_requires_action", None),
+        ("card_declined", "authentication_required"),
+    ],
 )
 def test_update_subscription_tier_cancel_pending_trial_sca_falls_back_to_checkout(
     client: fastapi.testclient.TestClient,
     trial_conversion: MagicMock,
     code: str,
+    decline_code: str | None,
 ) -> None:
     """Only an on-session Checkout can complete 3DS. The failed charge left the
     trial untouched, and the stale-plan cleanup ends it once the plan is paid."""
     trial_conversion.modify.side_effect = stripe.CardError(
-        "Authentication required.", param="card", code=code
+        "Authentication required.",
+        param="card",
+        code=code,
+        json_body={"error": {"code": code, "decline_code": decline_code}},
     )
 
     response = _post_plan(client, "PRO")
