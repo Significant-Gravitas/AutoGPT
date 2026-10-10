@@ -522,6 +522,22 @@ async def test_replaced_subscription_void_failure_is_resumed_by_the_retry():
 
 
 @pytest.mark.asyncio
+async def test_an_older_invoice_event_also_finishes_voiding_a_replaced_subscription():
+    with World() as world:
+        world.stripe.add_invoice("in_older", "sub_old", status="uncollectible")
+        event = _superseded_by_a_newer_plan(world, balance=0)
+        world.stripe.fail_next["void"] = 1
+        with pytest.raises(stripe.APIConnectionError):
+            await handle_subscription_payment_failure(event)
+        assert world.stripe.cancelled == ["sub_old"]
+
+        await handle_subscription_payment_failure(world.stripe.view("in_older"))
+
+    assert sorted(world.stripe.voided) == ["in_old", "in_older"]
+    assert world.stripe.cancelled == ["sub_old"]
+
+
+@pytest.mark.asyncio
 async def test_replaced_subscription_cancel_failure_raises_and_is_retried():
     with World() as world:
         event = _superseded_by_a_newer_plan(world, balance=0)

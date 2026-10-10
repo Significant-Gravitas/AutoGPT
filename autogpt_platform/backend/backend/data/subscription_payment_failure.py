@@ -119,8 +119,9 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
     if replaced:
         await _end_replaced_subscription(failed)
         return
-    if failed.is_latest and failed.was_replaced:
-        # An earlier delivery cancelled it but did not finish voiding.
+    if failed.was_replaced:
+        # An earlier delivery cancelled it but did not finish voiding. Any of
+        # its invoices' events may finish it, not only the latest one's.
         await _void_unpaid_invoices(failed.sub_id)
         return
     if payment is not None:
