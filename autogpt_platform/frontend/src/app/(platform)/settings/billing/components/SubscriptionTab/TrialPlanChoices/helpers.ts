@@ -3,11 +3,11 @@ import type { SubscriptionTierRequest } from "@/app/api/__generated__/models/sub
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import {
-  formatTrialAmount,
+  formatPlanAmount,
+  formatWholeMoney,
   trialPlanLabels,
 } from "@/components/organisms/TrialCard/helpers";
 
-import { formatCents } from "../../../helpers";
 import { getCheckoutReturnURLs } from "../helpers";
 
 type PlanTier = TrialOfferResponse["tier"];
@@ -34,7 +34,7 @@ export function getOwnPlanChoice(offer: TrialOfferResponse): PlanChoiceDetails {
   return {
     tier: offer.tier,
     label: trialPlanLabels[offer.tier],
-    amount: formatTrialAmount(offer),
+    amount: formatPlanAmount(offer),
     cadence: getCadence(offer),
     description: "Starts today. Your trial ends and the plan takes over.",
   };
@@ -55,7 +55,7 @@ export function getUpgradePlanChoice(
   return {
     tier,
     label: trialPlanLabels[tier],
-    amount: formatCents(cents),
+    amount: formatWholeMoney(cents / 100, "usd"),
     cadence: getCadence(offer),
     description: describeUpgrade(
       offer.tier,

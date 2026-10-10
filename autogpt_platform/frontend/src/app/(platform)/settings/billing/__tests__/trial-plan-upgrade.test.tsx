@@ -175,11 +175,16 @@ describe("upgrading past the trial's plan", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Stripe is unavailable. Please retry.");
     expect(assign).not.toHaveBeenCalled();
-    expect(
-      screen
-        .getByRole("button", { name: "Upgrade to Max" })
-        .hasAttribute("disabled"),
-    ).toBe(false);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Upgrade to Max" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Stripe is unavailable. Please retry.",
+    );
   });
 
   it("does not send user B to the Checkout user A started", async () => {
@@ -206,7 +211,7 @@ describe("upgrading past the trial's plan", () => {
     await waitFor(() => expect(sent).toHaveBeenCalledOnce());
 
     act(() => setTrialUser("user-b"));
-    await screen.findByText("$30.00");
+    await screen.findByText("$30");
     checkout.resolve();
     await act(() => new Promise((settle) => setTimeout(settle, 50)));
 

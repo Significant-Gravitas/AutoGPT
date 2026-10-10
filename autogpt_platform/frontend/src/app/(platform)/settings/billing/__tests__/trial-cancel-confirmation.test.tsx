@@ -22,9 +22,11 @@ beforeEach(() => setTrialUser("user-a"));
 afterEach(() => setTrialUser(null));
 
 it("requires confirmation before irreversibly ending a trial", async () => {
-  const cancel = vi.fn(() =>
-    trialResponse({ active: false, status: "canceled" }),
-  );
+  const sent = vi.fn();
+  const cancel = vi.fn(async ({ request }: { request: Request }) => {
+    sent(await request.json());
+    return trialResponse({ active: false, status: "canceled" });
+  });
   server.use(
     getGetTrialsGetTrialStatusMockHandler200(trialResponse()),
     getPostTrialsCancelTrialMockHandler200(cancel),
@@ -43,6 +45,7 @@ it("requires confirmation before irreversibly ending a trial", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "End trial now" }));
   await screen.findByText(/Cancellation confirmed/);
   expect(cancel).toHaveBeenCalledOnce();
+  expect(sent).toHaveBeenCalledExactlyOnceWith({ keeps_access: false });
 });
 
 it("dismisses confirmation on Escape without canceling", async () => {

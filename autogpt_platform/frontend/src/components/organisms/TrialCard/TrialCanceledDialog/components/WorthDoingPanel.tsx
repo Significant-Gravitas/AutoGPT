@@ -7,8 +7,9 @@ import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOff
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import {
+  describeTrialTimeLeft,
+  formatPlanPrice,
   formatTrialEndDate,
-  formatTrialPrice,
   trialPlanLabels,
 } from "../../helpers";
 
@@ -18,8 +19,9 @@ interface Props {
 }
 
 export function WorthDoingPanel({ offer, endsAt }: Props) {
-  const planStart = endsAt
-    ? ` Resume your trial instead and your plan starts ${formatTrialEndDate(endsAt)}.`
+  const planStart = describePlanStart(endsAt);
+  const resumeNote = planStart
+    ? ` Resume your trial instead and your plan starts ${planStart}.`
     : "";
   const rows = [
     {
@@ -35,12 +37,12 @@ export function WorthDoingPanel({ offer, endsAt }: Props) {
     {
       icon: DollarSignIcon,
       title: "Subscribe any time",
-      body: `${trialPlanLabels[offer.tier]} is ${formatTrialPrice(offer)}, cancel anytime.${planStart}`,
+      body: `${trialPlanLabels[offer.tier]} is ${formatPlanPrice(offer)}, cancel anytime.${resumeNote}`,
     },
   ];
 
   return (
-    <div className="rounded-xl border border-zinc-200 px-4 pt-3">
+    <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 pt-3">
       <Text variant="eyebrow" as="h3">
         Worth doing before then
       </Text>
@@ -63,4 +65,11 @@ export function WorthDoingPanel({ offer, endsAt }: Props) {
       </ul>
     </div>
   );
+}
+
+function describePlanStart(endsAt: Props["endsAt"]) {
+  if (!endsAt) return null;
+  const left = describeTrialTimeLeft(endsAt);
+  if (left.kind === "ended") return null;
+  return left.kind === "days" ? formatTrialEndDate(endsAt) : left.kind;
 }

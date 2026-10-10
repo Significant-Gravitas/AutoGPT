@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
-import { formatTrialPrice } from "@/components/organisms/TrialCard/helpers";
+import { formatPlanPrice } from "@/components/organisms/TrialCard/helpers";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import {
   trackPaywallViewed,
@@ -61,7 +61,7 @@ export function useTrialPlanChoices(offer: TrialOfferResponse) {
     isVisible,
     ownPlan,
     upgradePlan,
-    ownPrice: formatTrialPrice(offer),
+    ownPrice: formatPlanPrice(offer),
     requestedTier,
     isConfirmOpen: confirmFor !== null && confirmFor === userID,
     error,

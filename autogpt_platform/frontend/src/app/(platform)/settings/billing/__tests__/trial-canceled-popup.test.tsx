@@ -1,3 +1,4 @@
+import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
 import {
   getGetTrialsGetTrialStatusMockHandler200,
   getPostTrialsCancelTrialMockHandler200,
@@ -17,9 +18,12 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import {
+  deferredTrialResponse,
   setTrialUser,
+  trialOffer,
   trialResponse,
 } from "@/tests/integrations/trial-fixtures";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockPush = vi.hoisted(() => vi.fn());
@@ -68,6 +72,11 @@ function mockCancelFlow(ends = endsAt) {
   return cancel;
 }
 
+function SubscriptionStatusObserver() {
+  useGetSubscriptionStatus();
+  return null;
+}
+
 async function cancelThroughConfirmation() {
   fireEvent.click(await screen.findByRole("button", { name: "Cancel trial" }));
   const confirm = await screen.findByRole("dialog", {
@@ -107,7 +116,7 @@ describe("post-cancel popup", () => {
     expect(within(popup).getByText("Your work stays")).toBeDefined();
     expect(
       within(popup).getByText(
-        `Pro is $20.00 / month, cancel anytime. Resume your trial instead and your plan starts ${formatTrialEndDate(endsAt)}.`,
+        `Pro is $20 / month, cancel anytime. Resume your trial instead and your plan starts ${formatTrialEndDate(endsAt)}.`,
       ),
     ).toBeDefined();
     expect(posthog.capture).toHaveBeenCalledWith("trial_cancel_popup_viewed", {
@@ -128,6 +137,29 @@ describe("post-cancel popup", () => {
         ([event]) => event === "trial_cancel_popup_viewed",
       ),
     ).toHaveLength(1);
+  });
+
+  it("opens without waiting for the plan status refresh", async () => {
+    mockCancelFlow();
+    const planStatus = deferredTrialResponse<void>();
+    server.use(
+      http.get("*/api/credits/subscription", async () => {
+        await planStatus.promise;
+        return HttpResponse.json({ tier: "TRIAL", monthly_cost: 0 });
+      }),
+    );
+    render(
+      <>
+        <TrialCard />
+        <SubscriptionStatusObserver />
+      </>,
+    );
+    const popup = await cancelThroughConfirmation();
+    expect(popup).toBeDefined();
+    expect(posthog.capture).toHaveBeenCalledWith("trial_cancel_popup_viewed", {
+      days_left: 5,
+    });
+    planStatus.resolve();
   });
 
   it("closes on Escape and leaves the trial cancel-pending", async () => {
@@ -209,9 +241,14 @@ describe("time left in the popup", () => {
       render(<TrialCard />);
       const popup = await cancelThroughConfirmation();
       expect(popup.textContent).toContain(
-        `You still have full access until ${formatTrialEndTime(ends)} ${day}.`,
+        `You still have full access until ${formatTrialEndTime(ends)} ${day}. Nothing changes until then.`,
       );
       expect(popup.textContent).not.toMatch(/\bdays?\b of full access/);
+      expect(
+        within(popup).getByText(
+          `Pro is $20 / month, cancel anytime. Resume your trial instead and your plan starts ${day}.`,
+        ),
+      ).toBeDefined();
       expect(posthog.capture).toHaveBeenCalledWith(
         "trial_cancel_popup_viewed",
         {
@@ -220,4 +257,40 @@ describe("time left in the popup", () => {
       );
     },
   );
+});
+
+describe("popup prices", () => {
+  it("keeps the cents of a price that has them", async () => {
+    mockCancelFlow();
+    server.use(
+      getPostTrialsCancelTrialMockHandler200(
+        trialResponse({
+          cancel_keeps_access: true,
+          cancel_at_period_end: true,
+          offer: { ...trialOffer, unit_amount: 1999 },
+        }),
+      ),
+    );
+    render(<TrialCard />);
+    const popup = await cancelThroughConfirmation();
+    expect(popup.textContent).toContain(
+      "Pro is $19.99 / month, cancel anytime.",
+    );
+  });
+});
+
+describe("popup after the end has passed", () => {
+  it("says access has ended instead of naming a time today", async () => {
+    vi.setSystemTime(new Date(endsAt.getTime() + 5 * 60 * 1000));
+    mockCancelFlow();
+    render(<TrialCard />);
+    const popup = await cancelThroughConfirmation();
+    expect(popup.textContent).toContain(
+      "Your card won't be charged. Your trial access has ended.",
+    );
+    expect(popup.textContent).not.toMatch(/today|Nothing changes/);
+    expect(
+      within(popup).getByText("Pro is $20 / month, cancel anytime."),
+    ).toBeDefined();
+  });
 });

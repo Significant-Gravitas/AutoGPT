@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import {
   getGetSubscriptionStatusQueryKey,
+  getGetV1ListStripeInvoicesQueryKey,
   useUpdateSubscriptionTier,
 } from "@/app/api/__generated__/endpoints/credits/credits";
 import { getGetTrialsGetTrialStatusQueryKey } from "@/app/api/__generated__/endpoints/trials/trials";
@@ -57,22 +58,28 @@ export function useTrialPlanRequest(offer: TrialOfferResponse) {
         title: `You're on ${plan.label}`,
         description: "Your trial has ended and your plan starts today.",
       });
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: getGetTrialsGetTrialStatusQueryKey(),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getGetSubscriptionStatusQueryKey(),
-        }),
-      ]);
+      await refreshBilling();
     } catch (error) {
       failure.reportFailure({
         userID: requestUserID,
         error,
         fallback: `Unable to start ${plan.label}. Please try again.`,
       });
+      // A refusal usually means this page is out of date (the trial was
+      // resumed or ended elsewhere), or Stripe applied a change that timed out.
+      await refreshBilling();
     }
     return false;
+  }
+
+  async function refreshBilling() {
+    await Promise.all(
+      [
+        getGetTrialsGetTrialStatusQueryKey(),
+        getGetSubscriptionStatusQueryKey(),
+        getGetV1ListStripeInvoicesQueryKey(),
+      ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+    );
   }
 
   async function leaveForCheckout(plan: PlanChoiceDetails, url: string) {

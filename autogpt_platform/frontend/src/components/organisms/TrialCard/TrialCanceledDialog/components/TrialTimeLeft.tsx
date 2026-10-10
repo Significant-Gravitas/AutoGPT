@@ -10,8 +10,15 @@ interface Props {
 }
 
 export function TrialTimeLeft({ endsAt }: Props) {
-  if (!endsAt) return <>You still have full access until your trial ends.</>;
+  if (!endsAt)
+    return (
+      <>
+        You still have full access until your trial ends. Nothing changes until
+        then.
+      </>
+    );
   const left = describeTrialTimeLeft(endsAt);
+  if (left.kind === "ended") return <>Your trial access has ended.</>;
   if (left.kind !== "days")
     return (
       <>
@@ -19,7 +26,7 @@ export function TrialTimeLeft({ endsAt }: Props) {
         <strong className="font-semibold">
           {left.time} {left.kind}
         </strong>
-        .
+        . Nothing changes until then.
       </>
     );
   return (
@@ -28,6 +35,7 @@ export function TrialTimeLeft({ endsAt }: Props) {
       <strong className="font-semibold">{formatTrialDays(left.days)}</strong> of
       full access, until{" "}
       <strong className="font-semibold">{formatTrialEnd(endsAt)}</strong>.
+      Nothing changes until then.
     </>
   );
 }

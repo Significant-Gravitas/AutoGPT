@@ -3,9 +3,9 @@ import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialSt
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
+  formatPlanPrice,
   formatTrialEnd,
   formatTrialEndDate,
-  formatTrialPrice,
   trialPlanLabels,
 } from "./helpers";
 import { TrialTitle } from "./TrialTitle/TrialTitle";
@@ -43,7 +43,7 @@ export function TrialCancelPending({
       {trial.ends_at ? (
         <Text variant="small" unmask={false} className="!text-zinc-500">
           Resume to keep the trial and start {trialPlanLabels[offer.tier]} on{" "}
-          {formatTrialEndDate(trial.ends_at)} at {formatTrialPrice(offer)}, plus
+          {formatTrialEndDate(trial.ends_at)} at {formatPlanPrice(offer)}, plus
           applicable tax.
         </Text>
       ) : null}

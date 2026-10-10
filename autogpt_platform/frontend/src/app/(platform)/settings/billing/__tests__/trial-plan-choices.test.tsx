@@ -49,7 +49,7 @@ describe("plan choices while a trial cancellation is pending", () => {
     });
     const [own, upgrade] = within(choices).getAllByRole("listitem");
     expect(within(own).getByText("Pro")).toBeDefined();
-    expect(within(own).getByText("$20.00")).toBeDefined();
+    expect(within(own).getByText("$20")).toBeDefined();
     expect(within(own).getByText("/ month")).toBeDefined();
     expect(
       within(own).getByText(
@@ -60,7 +60,7 @@ describe("plan choices while a trial cancellation is pending", () => {
       within(own).getByRole("button", { name: "Subscribe to Pro" }),
     ).toBeDefined();
     expect(within(upgrade).getByText("Max")).toBeDefined();
-    expect(within(upgrade).getByText("$320.00")).toBeDefined();
+    expect(within(upgrade).getByText("$320")).toBeDefined();
     expect(within(upgrade).getByText("/ month")).toBeDefined();
     expect(
       within(upgrade).getByText(
@@ -80,10 +80,30 @@ describe("plan choices while a trial cancellation is pending", () => {
       name: "Plan choices",
     });
     const [own, upgrade] = within(choices).getAllByRole("listitem");
-    expect(within(own).getByText("$510.00")).toBeDefined();
+    expect(within(own).getByText("$510")).toBeDefined();
     expect(within(own).getByText("/ year")).toBeDefined();
-    expect(within(upgrade).getByText("$3,264.00")).toBeDefined();
+    expect(within(upgrade).getByText("$3,264")).toBeDefined();
     expect(within(upgrade).getByText("/ year")).toBeDefined();
+  });
+
+  it("keeps the cents of prices that have them", async () => {
+    const { state } = mockBilling(
+      trialResponse({
+        ...cancelPending,
+        offer: { ...yearlyOffer, billing_cycle: "monthly", unit_amount: 1999 },
+      }),
+    );
+    state.subscription = {
+      ...trialSubscription,
+      tier_costs: { PRO: 1999, MAX: 32050 },
+    };
+    render(<SettingsBillingPage />);
+    const choices = await screen.findByRole("region", {
+      name: "Plan choices",
+    });
+    const [own, upgrade] = within(choices).getAllByRole("listitem");
+    expect(within(own).getByText("$19.99")).toBeDefined();
+    expect(within(upgrade).getByText("$320.50")).toBeDefined();
   });
 
   it("leaves out a next tier with no price on the trial's cycle", async () => {

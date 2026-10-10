@@ -193,7 +193,7 @@ describe("trial account isolation", () => {
     );
     await waitFor(() => expect(resume).toHaveBeenCalledOnce());
     act(() => setTrialUser("user-b"));
-    await screen.findByText(/\$30\.00/);
+    await screen.findByText(/\$30 \/ month/);
     pending.resolve(trialResponse({ cancel_keeps_access: true }));
     await waitFor(() =>
       expect(

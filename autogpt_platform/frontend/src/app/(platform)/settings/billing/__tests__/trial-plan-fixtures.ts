@@ -39,7 +39,7 @@ export function returnURLs(plan: string, cycle: string) {
 
 export function mockBilling(trial = trialResponse(cancelPending)) {
   const state = { trial, subscription: trialSubscription };
-  const hits = { trial: 0, subscription: 0 };
+  const hits = { trial: 0, subscription: 0, invoices: 0 };
   server.use(
     getGetTrialsGetTrialStatusMockHandler200(() => {
       hits.trial += 1;
@@ -49,7 +49,10 @@ export function mockBilling(trial = trialResponse(cancelPending)) {
       hits.subscription += 1;
       return HttpResponse.json(state.subscription);
     }),
-    http.get("*/api/credits/invoices", () => HttpResponse.json([])),
+    http.get("*/api/credits/invoices", () => {
+      hits.invoices += 1;
+      return HttpResponse.json([]);
+    }),
   );
   return { state, hits };
 }

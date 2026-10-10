@@ -33,9 +33,14 @@ afterEach(() => setTrialUser(null));
 
 describe("cancel confirmation when canceling keeps access", () => {
   it("promises access until the trial ends and no charge", async () => {
-    const cancel = vi.fn(() =>
-      trialResponse({ cancel_at_period_end: true, cancel_keeps_access: true }),
-    );
+    const sent = vi.fn();
+    const cancel = vi.fn(async ({ request }: { request: Request }) => {
+      sent(await request.json());
+      return trialResponse({
+        cancel_at_period_end: true,
+        cancel_keeps_access: true,
+      });
+    });
     server.use(
       getGetTrialsGetTrialStatusMockHandler200(
         trialResponse({ cancel_keeps_access: true }),
@@ -75,6 +80,7 @@ describe("cancel confirmation when canceling keeps access", () => {
     );
     await screen.findByText("Cancellation pending");
     expect(cancel).toHaveBeenCalledOnce();
+    expect(sent).toHaveBeenCalledExactlyOnceWith({ keeps_access: true });
   });
 
   it("shows the ended trial when the cancel finds it already over", async () => {
@@ -148,7 +154,7 @@ describe("cancel-pending trial card", () => {
         `Cancellation confirmed. Your trial will not convert to a paid plan and your card won't be charged. Trial access ends ${formatTrialEnd(endsAt)}.`,
       );
       expect(card.textContent).toContain(
-        `Resume to keep the trial and start Pro on ${formatTrialEndDate(endsAt)} at $20.00 / month, plus applicable tax.`,
+        `Resume to keep the trial and start Pro on ${formatTrialEndDate(endsAt)} at $20 / month, plus applicable tax.`,
       );
       expect(
         screen.getByRole("button", { name: "Resume trial" }),

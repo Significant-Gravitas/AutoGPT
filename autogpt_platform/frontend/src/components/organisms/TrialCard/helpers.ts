@@ -8,11 +8,32 @@ export const trialPlanLabels: Record<TrialOfferResponse["tier"], string> = {
 };
 
 export function formatTrialPrice(offer: TrialOfferResponse) {
-  return `${formatTrialAmount(offer)} / ${offer.billing_cycle === "yearly" ? "year" : "month"}`;
+  const amount = currencyFormatter(offer.currency).format(
+    getTrialChargeAmount(offer),
+  );
+  return `${amount} / ${getTrialCadence(offer)}`;
 }
 
-export function formatTrialAmount(offer: TrialOfferResponse) {
-  return currencyFormatter(offer.currency).format(getTrialChargeAmount(offer));
+// The cancel-pending screens drop the cents of a whole price ("$50 / month")
+// and keep them otherwise ("$19.99 / month").
+export function formatPlanPrice(offer: TrialOfferResponse) {
+  return `${formatPlanAmount(offer)} / ${getTrialCadence(offer)}`;
+}
+
+export function formatPlanAmount(offer: TrialOfferResponse) {
+  return formatWholeMoney(getTrialChargeAmount(offer), offer.currency);
+}
+
+export function formatWholeMoney(amount: number, currency: string) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    trailingZeroDisplay: "stripIfInteger",
+  }).format(amount);
+}
+
+function getTrialCadence(offer: TrialOfferResponse) {
+  return offer.billing_cycle === "yearly" ? "year" : "month";
 }
 
 // What Stripe charges per billing cycle once the trial ends, in major units.
@@ -61,21 +82,26 @@ export function formatTrialDays(days: number) {
   return `${days} ${days === 1 ? "day" : "days"}`;
 }
 
-// Under a day the count would always read "1 day", so name the clock time.
+// Under a day the count would always read "1 day", so name the clock time,
+// but only for today or tomorrow: a DST day can put an end under 24 hours
+// away two dates out, and that keeps the dated form.
 export function describeTrialTimeLeft(endsAt: Date | string, now = new Date()) {
   const end = new Date(endsAt);
-  if (end.getTime() - now.getTime() >= DAY_MS)
-    return {
-      kind: "days" as const,
-      days: getTrialDaysLeft(end, now.getTime()),
-    };
+  const left = end.getTime() - now.getTime();
+  if (left <= 0) return { kind: "ended" as const };
+  const day = left < DAY_MS ? getNearDay(end, now) : null;
+  if (day) return { kind: day, time: formatTrialEndTime(end) };
+  return {
+    kind: "days" as const,
+    days: getTrialDaysLeft(end, now.getTime()),
+  };
+}
+
+function getNearDay(end: Date, now: Date) {
   const tomorrow = new Date(now);
   tomorrow.setDate(now.getDate() + 1);
-  return {
-    kind:
-      end.toDateString() === tomorrow.toDateString()
-        ? ("tomorrow" as const)
-        : ("today" as const),
-    time: formatTrialEndTime(end),
-  };
+  if (end.toDateString() === now.toDateString()) return "today" as const;
+  if (end.toDateString() === tomorrow.toDateString())
+    return "tomorrow" as const;
+  return null;
 }

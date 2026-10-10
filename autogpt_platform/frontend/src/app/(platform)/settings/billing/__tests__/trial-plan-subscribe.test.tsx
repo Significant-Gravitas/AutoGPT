@@ -67,7 +67,7 @@ describe("subscribing to the trial's plan", () => {
     const dialog = await openConfirmation();
     expect(
       within(dialog).getByText(
-        "Your trial ends now and your saved card is charged $20.00 / month, plus applicable tax.",
+        "Your trial ends now and your saved card is charged $20 / month, plus applicable tax.",
       ),
     ).toBeDefined();
     expect(body).not.toHaveBeenCalled();
@@ -93,6 +93,7 @@ describe("subscribing to the trial's plan", () => {
     await waitFor(() =>
       expect(hits.subscription).toBeGreaterThan(before.subscription),
     );
+    await waitFor(() => expect(hits.invoices).toBeGreaterThan(before.invoices));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({ title: "You're on Pro" }),
@@ -111,7 +112,7 @@ describe("subscribing to the trial's plan", () => {
     const dialog = await openConfirmation();
     expect(
       within(dialog).getByText(
-        "Your trial ends now and your saved card is charged $510.00 / year, plus applicable tax.",
+        "Your trial ends now and your saved card is charged $510 / year, plus applicable tax.",
       ),
     ).toBeDefined();
     fireEvent.click(
@@ -125,6 +126,22 @@ describe("subscribing to the trial's plan", () => {
         ...returnURLs("PRO", "yearly"),
       }),
     );
+  });
+
+  it("keeps the cents of a price that has them", async () => {
+    mockBilling(
+      trialResponse({
+        ...cancelPending,
+        offer: { ...yearlyOffer, billing_cycle: "monthly", unit_amount: 1999 },
+      }),
+    );
+    render(<SettingsBillingPage />);
+    const dialog = await openConfirmation();
+    expect(
+      within(dialog).getByText(
+        "Your trial ends now and your saved card is charged $19.99 / month, plus applicable tax.",
+      ),
+    ).toBeDefined();
   });
 
   it("keeps the trial without a request when the person backs out", async () => {
@@ -167,21 +184,51 @@ describe("subscribing to the trial's plan", () => {
     ).toBe(false);
   });
 
+  it.each([409, 402, 422, 502])(
+    "refreshes the trial and plan after a %i refusal",
+    async (status) => {
+      const { state, hits } = mockBilling();
+      mockPlanRequest(() => {
+        state.trial = trialResponse({ cancel_keeps_access: true });
+        return HttpResponse.json(
+          { detail: "Your accepted plan starts after your trial." },
+          { status },
+        );
+      });
+      render(<SettingsBillingPage />);
+      const dialog = await openConfirmation();
+      const before = { ...hits };
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Subscribe to Pro" }),
+      );
+
+      await waitFor(() => expect(hits.trial).toBeGreaterThan(before.trial));
+      await waitFor(() =>
+        expect(hits.subscription).toBeGreaterThan(before.subscription),
+      );
+      expect(
+        await screen.findByRole("button", { name: "Cancel trial" }),
+      ).toBeDefined();
+      expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
+      expect(toast).not.toHaveBeenCalled();
+    },
+  );
+
   it("does not show user B the confirmation user A opened", async () => {
     setTrialUser("user-a");
     mockBilling();
     mockPricePerUser();
     render(<SettingsBillingPage />);
-    await screen.findByText("$20.00");
+    await screen.findByText("$20");
     act(() => setTrialUser("user-b"));
-    await screen.findByText("$30.00");
+    await screen.findByText("$30");
     act(() => setTrialUser("user-a"));
-    await screen.findByText("$20.00");
+    await screen.findByText("$20");
 
     await openConfirmation();
     act(() => setTrialUser("user-b"));
 
-    await screen.findByText("$30.00");
+    await screen.findByText("$30");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
