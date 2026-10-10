@@ -14,7 +14,8 @@ from pydantic import SecretStr
 
 from backend.blocks.ayrshare.post_to_linkedin import PostToLinkedInBlock
 from backend.blocks.ayrshare.post_to_x import PostToXBlock
-from backend.copilot.context import set_turn_unattended
+from backend.copilot.context import _current_permissions, set_turn_unattended
+from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.connect_integration import ConnectIntegrationTool
 from backend.copilot.tools.helpers import execute_block, prepare_block_for_execution
 from backend.copilot.tools.models import (
@@ -22,6 +23,7 @@ from backend.copilot.tools.models import (
     ErrorResponse,
     SetupRequirementsResponse,
 )
+from backend.copilot.tools.run_block import RunBlockTool
 from backend.data.model import APIKeyCredentials, CredentialsMetaInput
 from backend.integrations.ayrshare import (
     AyrshareClient,
@@ -175,6 +177,27 @@ class TestBlockWithoutCredential:
         assert isinstance(result, ErrorResponse)
         assert result.error == "ayrshare_accounts_not_linked"
         assert SSO_URL in result.message
+
+    async def test_a_block_the_session_may_not_run_provisions_nothing(self):
+        block_id = PostToLinkedInBlock().id
+        token = _current_permissions.set(
+            CopilotPermissions(blocks=[block_id], blocks_exclude=True)
+        )
+        try:
+            with ayrshare_backend() as provision:
+                result = await RunBlockTool()._execute(
+                    USER,
+                    make_session(USER),
+                    block_id=block_id,
+                    input_data={"post": "Hello from AutoPilot"},
+                )
+        finally:
+            _current_permissions.reset(token)
+
+        assert isinstance(result, ErrorResponse)
+        assert "not permitted" in result.message
+        assert SSO_URL not in result.message
+        provision.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
