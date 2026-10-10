@@ -4,6 +4,8 @@ import logging
 import re
 
 import pytest
+import sentry_sdk
+from sentry_sdk.integrations.logging import LoggingIntegration
 
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
 from backend.util.exceptions import NotFoundError
@@ -24,6 +26,10 @@ from .bot_backend import BotStreamError
         (
             BotStreamError("backend_stream_error", "x", code="transient_api_error"),
             failures.PROVIDER_BUSY,
+        ),
+        (
+            BotStreamError("backend_stream_error", "x", code="all_attempts_exhausted"),
+            failures.CONVERSATION_TOO_LONG,
         ),
         (
             BotStreamError("backend_stream_error", "x", code="auth_expired"),
@@ -85,3 +91,39 @@ def test_report_logs_the_reference_and_the_raw_error(
     assert "provider said 529" in record.getMessage()
     assert record.__dict__["json_fields"]["bot_error_ref"] == "3f9a2c1d"
     assert record.exc_info is None
+
+
+def test_report_tags_the_sentry_event_with_the_reference() -> None:
+    captured: list[dict] = []
+
+    class Recorder(sentry_sdk.transport.Transport):
+        def capture_envelope(self, envelope):
+            for item in envelope.items:
+                if item.type == "event":
+                    captured.append(item.payload.json)
+
+    # Restore the original client: init(dsn=None) would leave one bound and
+    # active for the rest of the session.
+    original_client = sentry_sdk.get_client()
+    sentry_sdk.init(
+        dsn="https://public@example.invalid/1",
+        transport=Recorder(),
+        integrations=[LoggingIntegration()],
+        default_integrations=False,
+    )
+    try:
+        failures.report_failure(
+            BotStreamError("backend_stream_error", "x", code="usage_limit"),
+            failures.PROVIDER_LIMIT,
+            "3f9a2c1d",
+            platform="telegram",
+        )
+    finally:
+        sentry_sdk.get_global_scope().set_client(original_client)
+
+    [event] = captured
+    assert event["tags"] == {
+        "bot_error_ref": "3f9a2c1d",
+        "bot_error_category": "provider_limit",
+        "bot_platform": "telegram",
+    }

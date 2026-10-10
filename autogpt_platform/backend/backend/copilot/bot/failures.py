@@ -1,13 +1,8 @@
 """What a chat user is told when a bot turn fails, and how the team finds it.
 
-A failed turn used to post one fixed sentence ("AutoGPT ran into an error"),
-whatever the cause, so neither the user nor the team had anything to go on.
-The reply now names the kind of failure in plain words and ends with a short
-reference; the same reference is a Sentry tag and sits on the log line, so a
-screenshot of the chat leads straight to the event.
-
-The raw exception never reaches chat: provider bodies, file paths and ids stay
-in the logs. Only the bounded category and the reference are shown.
+The reply names the kind of failure and ends with a short reference that is
+also a Sentry tag and sits on the log line. The raw exception never reaches
+chat: only the bounded category and the reference are shown.
 """
 
 import logging
@@ -93,12 +88,17 @@ LINK_CHECK_FAILED = FailureCategory(
     reason="the account link couldn't be checked",
     advice=AGAIN_SOON,
 )
+CONVERSATION_TOO_LONG = FailureCategory(
+    key="conversation_too_long",
+    reason="this conversation got too long",
+    advice="Start a new conversation to continue.",
+)
 
 # Stream error codes, from the copilot's StreamError.code: the SDK/baseline
 # codes plus ProviderFailureKind values. An unlisted code is INTERNAL.
 _BY_CODE: dict[str, FailureCategory] = {
     "transient_api_error": PROVIDER_BUSY,
-    "all_attempts_exhausted": PROVIDER_BUSY,
+    "all_attempts_exhausted": CONVERSATION_TOO_LONG,
     "transient": PROVIDER_BUSY,
     "usage_limit": PROVIDER_LIMIT,
     "auth_expired": SERVICE_REJECTED,
