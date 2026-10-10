@@ -264,6 +264,9 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     # so top-leveling it here would deadlock the import graph.
     from backend.copilot.executor.utils import dispatch_turn
 
+    # Local for the same reason: the gate imports this module back.
+    from backend.copilot.gate.held import is_answer_row
+
     queued = await list_queued_sessions(user_id)
     if not queued:
         return False
@@ -403,8 +406,9 @@ async def dispatch_next_for_user(user_id: str) -> bool:
             llm_credential_id=head.metadata.llm_credential_id,
             permissions=metadata.get("permissions"),
             request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
-            # Not the finished turn's child, whose context this hook runs in.
-            root=True,
+            # A typed message is a root, as the chat route makes it, not the
+            # child of the turn this hook runs in. An approval wake is unchanged.
+            root=not is_answer_row(pending),
         )
     except BaseException:
         # Roll the claim back so a missed-dispatch tick or the next

@@ -3,6 +3,7 @@ slot-free hook, which runs inside the turn that just ended."""
 
 import asyncio
 import uuid
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -11,10 +12,12 @@ from prisma.models import User
 
 from backend.copilot import stream_registry, turn_queue
 from backend.copilot.context import set_execution_context
+from backend.copilot.gate import held
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_QUEUED,
     CHAT_STATUS_RUNNING,
+    ChatSession,
     create_chat_session,
 )
 from backend.copilot.tree import TurnEnvelope, admit_turn, get_tree_ledger
@@ -28,6 +31,42 @@ from backend.util.test import SpinTestServer
 async def test_a_promoted_message_is_a_root_not_the_finished_turns_child(
     finished_depth: int,
 ):
+    finished = _envelope(finished_depth)
+    promoted, nodes_before, nodes_after = await _promote_after(
+        finished, message="the message that waited", message_metadata=None
+    )
+
+    assert promoted is not None, "the queued message was never dispatched"
+    assert promoted.depth == 0
+    assert promoted.tools is None
+    assert promoted.tree_id != finished.tree_id
+    assert nodes_after == nodes_before
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_promoted_approval_wake_keeps_its_derivation():
+    finished = _envelope(1)
+    promoted, _, _ = await _promote_after(
+        finished,
+        message=held.WAKE_MESSAGE,
+        message_metadata={held._WAKE_KEY: True},
+    )
+
+    assert promoted is not None
+    assert promoted.depth == 2
+    assert promoted.tree_id == finished.tree_id
+
+
+async def _promote_after(
+    finished: TurnEnvelope,
+    *,
+    message: str,
+    message_metadata: dict[str, Any] | None,
+) -> tuple[TurnEnvelope | None, int, int]:
+    """Queue a turn behind a full cap, then end a turn carrying ``finished``.
+
+    Returns the promoted turn's envelope and the finished tree's node count
+    before and after."""
     user_id = str(uuid.uuid4())
     await User.prisma().create(
         data={"id": user_id, "email": f"turn-queue-{user_id}@example.com"}
@@ -35,31 +74,31 @@ async def test_a_promoted_message_is_a_root_not_the_finished_turns_child(
     try:
         sessions = [await create_chat_session(user_id, dry_run=False) for _ in range(5)]
         for session in sessions:
-            await _flip(user_id, session.session_id, CHAT_STATUS_RUNNING)
-        finished, finished_turn = sessions[0], str(uuid.uuid4())
+            assert await chat_db().update_chat_session_status(
+                session_id=session.session_id,
+                expect_status=CHAT_STATUS_IDLE,
+                status=CHAT_STATUS_RUNNING,
+                user_id=user_id,
+            )
+        ending, ending_turn = sessions[0], str(uuid.uuid4())
         await stream_registry.create_session(
-            finished.session_id, user_id, "chat_stream", "chat", finished_turn
+            ending.session_id, user_id, "chat_stream", "chat", ending_turn
         )
         waiting = await create_chat_session(user_id, dry_run=False)
         await turn_queue.try_enqueue_turn(
             user_id=user_id,
             inflight_cap=15,
             session_id=waiting.session_id,
-            message="the message that waited",
+            message=message,
+            message_metadata=message_metadata,
         )
         assert (
             await chat_db().get_chat_session_status(waiting.session_id)
         ) == CHAT_STATUS_QUEUED
 
-        # The turn that ends is a sub-session's, deep in another tree.
-        finished_envelope = TurnEnvelope(
-            tree_id=str(uuid.uuid4()),
-            depth=finished_depth,
-            tools=frozenset({"run_sub_session", "connect_integration", "web_fetch"}),
-        )
-        await admit_turn(finished_envelope, user_id=user_id)
+        await admit_turn(finished, user_id=user_id)
         ledger = await get_tree_ledger()
-        nodes_before = (await ledger.snapshot(finished_envelope.tree_id))["nodes"]
+        nodes_before = (await ledger.snapshot(finished.tree_id))["nodes"]
 
         enqueued = AsyncMock()
         with (
@@ -76,42 +115,33 @@ async def test_a_promoted_message_is_a_root_not_the_finished_turns_child(
         ):
             # The executor sets the envelope inside the engine's generator and
             # completes the turn in the same task, so the hook inherits it.
-            await asyncio.create_task(
-                _end_turn(user_id, finished_envelope, finished, finished_turn)
-            )
+            await asyncio.create_task(_end_turn(user_id, finished, ending, ending_turn))
 
         promoted = [
-            call.kwargs
+            call.kwargs["envelope"]
             for call in enqueued.await_args_list
             if call.kwargs["session_id"] == waiting.session_id
         ]
-        assert len(promoted) == 1, "the queued message was never dispatched"
-        assert promoted[0]["envelope"].depth == 0
-        assert promoted[0]["envelope"].tools is None
-        assert promoted[0]["envelope"].tree_id != finished_envelope.tree_id
-        assert (await ledger.snapshot(finished_envelope.tree_id))[
-            "nodes"
-        ] == nodes_before
+        nodes_after = (await ledger.snapshot(finished.tree_id))["nodes"]
+        return (promoted[0] if promoted else None), nodes_before, nodes_after
     finally:
         await User.prisma().delete(where={"id": user_id})
 
 
+def _envelope(depth: int) -> TurnEnvelope:
+    """A sub-session's turn, deep in a tree of its own."""
+    return TurnEnvelope(
+        tree_id=str(uuid.uuid4()),
+        depth=depth,
+        tools=frozenset({"run_sub_session", "connect_integration", "web_fetch"}),
+    )
+
+
 async def _end_turn(
-    user_id: str, envelope: TurnEnvelope, finished, finished_turn: str
+    user_id: str, envelope: TurnEnvelope, session: ChatSession, turn_id: str
 ) -> None:
-    set_execution_context(user_id, finished, envelope=envelope)
-    await stream_registry.mark_session_completed(
-        finished.session_id, turn_id=finished_turn
-    )
-
-
-async def _flip(user_id: str, session_id: str, status: str) -> None:
-    assert await chat_db().update_chat_session_status(
-        session_id=session_id,
-        expect_status=CHAT_STATUS_IDLE,
-        status=status,
-        user_id=user_id,
-    )
+    set_execution_context(user_id, session, envelope=envelope)
+    await stream_registry.mark_session_completed(session.session_id, turn_id=turn_id)
 
 
 @pytest_asyncio.fixture(autouse=True)
