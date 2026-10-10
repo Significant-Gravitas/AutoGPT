@@ -457,6 +457,7 @@ async def schedule_turn(
     request_arrival_at: float = 0.0,
     spawn: SpawnRequest | None = None,
     message_metadata: dict[str, Any] | None = None,
+    spawner_envelope: TurnEnvelope | None = None,
     unattended: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
@@ -527,6 +528,7 @@ async def schedule_turn(
             request_arrival_at=request_arrival_at,
             spawn=spawn,
             message_metadata=message_metadata,
+            spawner_envelope=spawner_envelope,
             unattended=unattended,
             credential_pins=credential_pins,
             scheduled=scheduled,
@@ -554,6 +556,7 @@ async def dispatch_turn(
     request_arrival_at: float = 0.0,
     spawn: SpawnRequest | None = None,
     message_metadata: dict[str, Any] | None = None,
+    spawner_envelope: TurnEnvelope | None = None,
     unattended: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
@@ -583,7 +586,7 @@ async def dispatch_turn(
     from backend.copilot import stream_registry
 
     envelope = await _admitted_turn_envelope(
-        turn_id, session_id, user_id, permissions, spawn
+        turn_id, session_id, user_id, permissions, spawn, spawner_envelope
     )
 
     # Everything after the admit above runs inside the try: the tree's node
@@ -654,6 +657,7 @@ async def _admitted_turn_envelope(
     user_id: str | None,
     permissions: CopilotPermissions | None,
     spawn: SpawnRequest | None,
+    spawner_envelope: TurnEnvelope | None = None,
 ) -> TurnEnvelope:
     """Derive this turn's envelope from the running turn's (a child) or mint
     a root, then admit it against the tree ledger.
@@ -662,7 +666,11 @@ async def _admitted_turn_envelope(
     outside any turn — the HTTP route, the scheduler, a graph block — is a
     root by construction rather than by declaration.
     """
-    spawner = get_current_envelope()
+    # An explicit spawner wins over the contextvar: a turn started from the
+    # graph executor is in a different process, so the contextvar is empty
+    # there even though the turn genuinely has a parent (AutoPilotBlock
+    # rebuilds it from the execution context).
+    spawner = spawner_envelope or get_current_envelope()
     if spawn is not None and spawner is None:
         # A caller that passed a SpawnRequest is by construction a spawn tool
         # running inside a turn, so a missing spawner envelope means the
