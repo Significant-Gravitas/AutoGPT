@@ -667,6 +667,56 @@ async def dispatch_turn(
                 )
 
 
+async def queue_spawned_turn(
+    *,
+    session_id: str,
+    user_id: str,
+    message: str,
+    tool_call_id: str,
+    tool_name: str,
+    llm_auth_provider: CopilotLlmAuthProvider,
+    llm_credential_id: str | None,
+    permissions: CopilotPermissions | None,
+    spawn: SpawnRequest | None,
+    message_metadata: dict[str, Any] | None,
+) -> None:
+    """Queue a turn another session started, to begin when a slot frees.
+
+    Its envelope is derived and admitted now, inside the spawning turn it comes
+    from; promotion re-checks it rather than deriving it from whichever turn
+    frees the slot. Raises :class:`ConcurrentTurnLimitError` at the inflight
+    cap, :class:`TreeRefusal` when the tree refuses it and
+    :class:`SessionNotIdle` when the session already has a turn.
+    """
+    from backend.copilot.turn_queue import count_inflight_turns, enqueue_turn
+
+    inflight_cap = get_inflight_turn_limit()
+    if await count_inflight_turns(user_id) >= inflight_cap:
+        raise ConcurrentTurnLimitError(inflight_turn_limit_message(inflight_cap))
+    envelope = await _admitted_turn_envelope(
+        str(uuid4()), session_id, user_id, permissions, spawn
+    )
+    try:
+        await enqueue_turn(
+            user_id=user_id,
+            session_id=session_id,
+            message=message,
+            message_metadata=message_metadata,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
+            permissions=(
+                permissions.model_dump(exclude_none=True) if permissions else None
+            ),
+            envelope=envelope,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            only_if_idle=True,
+        )
+    except BaseException:
+        await release_turn(envelope)
+        raise
+
+
 async def _admitted_turn_envelope(
     turn_id: str,
     session_id: str,

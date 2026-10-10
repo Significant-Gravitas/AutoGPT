@@ -65,7 +65,7 @@ from backend.copilot.rate_limit import (
 )
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tracking import track_user_message
-from backend.copilot.tree import TreeRefusal, TurnEnvelope
+from backend.copilot.tree import TreeRefusal, TurnEnvelope, release_turn
 from backend.data.db_accessors import chat_db
 from backend.integrations.codex.access import has_codex_access
 
@@ -73,9 +73,18 @@ logger = logging.getLogger(__name__)
 
 # Pending-row metadata: the envelope a queued approval wake starts under.
 _ENVELOPE_KEY = "envelope"
+# The admitted child's tree, kept apart from the versioned envelope so its node
+# can still go back when a later deploy no longer parses that envelope.
+_ENVELOPE_TREE_ID_KEY = "envelope_tree_id"
 # The assistant row that closes a queued turn the promotion could not start.
 _REFUSED_KEY = "queued_turn_refused"
 WAKE_LATER = "Your answer is kept and reaches the assistant with your next message."
+TURN_CANCELLED = "This task was cancelled before it started."
+QUEUE_UNAVAILABLE = "Could not queue this task right now; try again shortly."
+UNREADABLE_SPAWN = (
+    "This task's limits could not be read back, so it was not started. "
+    "Start it again."
+)
 UNRECORDED_WAKE = (
     "The approved action could not be resumed: what it was allowed to do was "
     f"not recorded. {WAKE_LATER}"
@@ -108,6 +117,11 @@ async def list_queued_sessions(user_id: str):
     return await chat_db().list_chat_sessions_by_status(
         user_id=user_id, status=CHAT_STATUS_QUEUED
     )
+
+
+class SessionNotIdle(Exception):
+    """The session already has a turn queued or running, so a spawned child
+    cannot be queued into it."""
 
 
 class InflightCapExceeded(Exception):
@@ -179,6 +193,9 @@ async def enqueue_turn(
     permissions: Mapping[str, Any] | None = None,
     request_arrival_at: float = 0.0,
     envelope: TurnEnvelope | None = None,
+    tool_call_id: str | None = None,
+    tool_name: str | None = None,
+    only_if_idle: bool = False,
 ) -> ChatMessage | None:
     """Persist the user's pending message and flip the session to
     ``"queued"``.  Caller is responsible for the in-flight cap check
@@ -203,16 +220,29 @@ async def enqueue_turn(
         metadata["permissions"] = dict(permissions)
     if request_arrival_at:
         metadata["request_arrival_at"] = request_arrival_at
-    # A wake starts under the envelope its call was held under, whichever turn
-    # frees the slot.
+    # A wake starts under the envelope its call was held under, and a spawned
+    # child under the one admitted for it, whichever turn frees the slot.
     if envelope is not None:
         metadata[_ENVELOPE_KEY] = envelope.model_dump(mode="json")
+        metadata[_ENVELOPE_TREE_ID_KEY] = envelope.tree_id
+    if tool_call_id is not None:
+        metadata["tool_call_id"] = tool_call_id
+    if tool_name is not None:
+        metadata["tool_name"] = tool_name
 
     # The Redis NX session lock serialises with ``append_and_save_message``
     # so two concurrent submits to the same session can't pick the same
     # ``sequence`` and PK-collide on ``(sessionId, sequence)``.
     db = chat_db()
-    async with _get_session_lock(session_id):
+    async with _get_session_lock(session_id) as locked:
+        # A spawned child's row is the one promotion replays, so it claims the
+        # idle session first and is written only if it won: a lost claim leaves
+        # nothing behind. Promotion reads the row under this lock, so it never
+        # sees the claim without it, and neither proceeds without the lock.
+        if only_if_idle and not locked:
+            raise TreeRefusal(QUEUE_UNAVAILABLE)
+        if only_if_idle and not await _flip(db, session_id, user_id):
+            raise SessionNotIdle(session_id)
         live_sequence = await db.get_next_sequence(session_id)
         try:
             row = await db.add_chat_message(
@@ -223,23 +253,25 @@ async def enqueue_turn(
                 sequence=live_sequence,
                 metadata=metadata or None,
             )
-        except UniqueViolationError as exc:
-            if message_id and is_duplicate_chat_message_id_error(exc):
+        except BaseException as exc:
+            if only_if_idle:
+                await _unclaim(db, session_id, user_id)
+            if (
+                isinstance(exc, UniqueViolationError)
+                and message_id
+                and is_duplicate_chat_message_id_error(exc)
+            ):
                 return None
             raise
-    # Flip the session to ``"queued"``.  CAS-gated on ``"idle"`` so a
-    # double-submit (session already queued/running) leaves the state
-    # alone; the second pending message persists as a normal ChatMessage
-    # row.  When the session eventually promotes, the dispatcher reads
-    # the most-recent user row via ``get_latest_user_message_in_session``;
-    # earlier pending rows aren't independently scheduled, they sit in
-    # the chat history and the model sees them as context.
-    await db.update_chat_session_status(
-        session_id=session_id,
-        expect_status=CHAT_STATUS_IDLE,
-        status=CHAT_STATUS_QUEUED,
-        user_id=user_id,
-    )
+        # Flip the session to ``"queued"``.  CAS-gated on ``"idle"`` so a
+        # double-submit (session already queued/running) leaves the state
+        # alone; the second pending message persists as a normal ChatMessage
+        # row.  When the session eventually promotes, the dispatcher reads
+        # the most-recent user row via ``get_latest_user_message_in_session``;
+        # earlier pending rows aren't independently scheduled, they sit in
+        # the chat history and the model sees them as context.
+        if not only_if_idle:
+            await _flip(db, session_id, user_id)
     # Invalidate the session cache so the next /chat read picks up the
     # queued row + the session's new status (frontend renders the
     # 'Queued' badge from ``session.chat_status``).
@@ -247,20 +279,76 @@ async def enqueue_turn(
     return row
 
 
-async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
-    """Flip the user's session from ``"queued"`` → ``"idle"``.  Returns
-    True iff the CAS matched AND the session is owned by the user.
-    Cancel/dispatch races resolve in a single atomic update."""
-    ok = await chat_db().update_chat_session_status(
+async def _unclaim(db: Any, session_id: str, user_id: str) -> None:
+    """Undo a child's claim whose row was never written, without masking why."""
+    try:
+        await db.update_chat_session_status(
+            session_id=session_id,
+            expect_status=CHAT_STATUS_QUEUED,
+            status=CHAT_STATUS_IDLE,
+            user_id=user_id,
+        )
+    except Exception:
+        logger.exception(
+            f"enqueue_turn: could not release the claim on session={session_id}"
+        )
+
+
+async def _flip(db: Any, session_id: str, user_id: str) -> bool:
+    return await db.update_chat_session_status(
         session_id=session_id,
-        expect_status=CHAT_STATUS_QUEUED,
-        status=CHAT_STATUS_IDLE,
+        expect_status=CHAT_STATUS_IDLE,
+        status=CHAT_STATUS_QUEUED,
         user_id=user_id,
     )
-    if not ok:
-        return False
-    await invalidate_session_cache(session_id)
+
+
+async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
+    """Flip the user's session from ``"queued"`` → ``"idle"``.  A queued child
+    gets a closing row saying it was cancelled, which its waiter reads, and its
+    node goes back to its tree.  Returns True iff the CAS matched AND the
+    session is owned by the user.  Cancel/dispatch races resolve in a single
+    atomic update."""
+    db = chat_db()
+    child: TurnEnvelope | None = None
+    try:
+        # Under the lock a waiter reads under: it never sees idle without the note.
+        async with _get_session_lock(session_id):
+            # Read before the flip: once idle, a new message can become the latest.
+            pending = await db.get_latest_user_message_in_session(session_id)
+            if not await db.update_chat_session_status(
+                session_id=session_id,
+                expect_status=CHAT_STATUS_QUEUED,
+                status=CHAT_STATUS_IDLE,
+                user_id=user_id,
+            ):
+                return False
+            if pending is not None and _is_spawned(pending):
+                child = _child_node(pending.metadata or {})
+                await _note_cancel(db, session_id)
+            await invalidate_session_cache(session_id)
+    finally:
+        # The node goes back whatever happened to the note.
+        if child is not None:
+            await release_turn(child)
     return True
+
+
+async def _note_cancel(db: Any, session_id: str) -> None:
+    """Close a cancelled child's thread with the note its waiter reads."""
+    try:
+        await db.add_chat_message(
+            message_id=str(uuid.uuid4()),
+            session_id=session_id,
+            role="assistant",
+            content=TURN_CANCELLED,
+            sequence=await db.get_next_sequence(session_id),
+            metadata={_REFUSED_KEY: True},
+        )
+    except Exception:
+        logger.exception(
+            f"cancel_queued_turn: could not note the cancel on session={session_id}"
+        )
 
 
 async def claim_queued_session(
@@ -337,12 +425,31 @@ async def _promote_head(user_id: str) -> bool | None:
         # Cancelled or claimed elsewhere since it was listed: try the next.
         return None
 
+    # The admitted envelope of a queued child, whose node a refusal gives back.
+    child: TurnEnvelope | None = None
+    spawned = False
     try:
         # Find the pending user message in this session (the most recent
         # user-role row with no following assistant rows — i.e. the one
         # that triggered the queue).  Its ``metadata`` carries the
         # dispatcher payload.
-        pending = await chat_db().get_latest_user_message_in_session(head.session_id)
+        # Under the session lock: a spawned child claims the session before it
+        # writes its row, inside the same lock.
+        async with _get_session_lock(head.session_id) as locked:
+            pending = (
+                await chat_db().get_latest_user_message_in_session(head.session_id)
+                if locked
+                else None
+            )
+        if not locked:
+            # Unlocked, a child's claim may not have its row yet: leave it queued.
+            await chat_db().update_chat_session_status(
+                session_id=head.session_id,
+                expect_status=CHAT_STATUS_RUNNING,
+                status=CHAT_STATUS_QUEUED,
+            )
+            await invalidate_session_cache(head.session_id)
+            return False
         if pending is None or pending.content is None:
             # Shouldn't happen — enqueue_turn always persists a row before
             # flipping the session to queued.  If it does (corrupted
@@ -359,6 +466,14 @@ async def _promote_head(user_id: str) -> bool | None:
 
         metadata = pending.metadata or {}
         queued_envelope = _stored_envelope(metadata)
+        spawned = _is_spawned(pending)
+        if spawned and queued_envelope is None:
+            # Nothing but that envelope bounds a child its spawner admitted.
+            await _refuse_queued_turn(
+                head, UNREADABLE_SPAWN, release=_child_node(metadata)
+            )
+            return None
+        child = queued_envelope if spawned else None
         if (
             is_answer_row(pending)
             and queued_envelope is None
@@ -397,16 +512,22 @@ async def _promote_head(user_id: str) -> bool | None:
             model=metadata.get("model"),
             llm_auth_provider=head.metadata.llm_auth_provider,
             llm_credential_id=head.metadata.llm_credential_id,
-            permissions=_promotion_permissions(head, metadata),
+            permissions=_promotion_permissions(head, metadata, spawned=spawned),
             request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
+            tool_call_id=metadata.get("tool_call_id") or "chat_stream",
+            tool_name=metadata.get("tool_name") or "chat",
             # A typed message is a root, as the chat route makes it, not the
-            # child of the turn this hook runs in; a wake brings its own.
+            # child of the turn this hook runs in; a wake or a child brings its own.
             envelope=queued_envelope,
             root=queued_envelope is None,
         )
     except TreeRefusal as refused:
         # Only a stored envelope is re-checked here; a root is never refused.
-        await _refuse_queued_turn(head, f"{refused.message} {WAKE_LATER}")
+        await _refuse_queued_turn(
+            head,
+            refused.message if spawned else f"{refused.message} {WAKE_LATER}",
+            release=child,
+        )
         return None
     except BaseException:
         # Roll the claim back so a missed-dispatch tick or the next
@@ -434,7 +555,7 @@ async def _promote_head(user_id: str) -> bool | None:
             )
         raise
 
-    if pending.role == "user" and pending.content:
+    if pending.role == "user" and pending.content and not spawned:
         try:
             track_user_message(
                 user_id=user_id,
@@ -452,15 +573,16 @@ async def _promote_head(user_id: str) -> bool | None:
 
 
 async def _is_sub_work(session: ChatSessionInfo) -> bool:
-    """A message the user typed is theirs whatever session it is in; what an
-    approval wakes there is sub-work if :func:`wakes_sub_work` says so."""
+    """A message the user typed is theirs whatever session it is in; an
+    approval wake or a spawned child there is sub-work if
+    :func:`wakes_sub_work` says so."""
     if not wakes_sub_work(session):
         return False
     # Local: the gate imports this module back.
     from backend.copilot.gate.held import is_answer_row
 
     waiting = await chat_db().get_latest_user_message_in_session(session.session_id)
-    return waiting is not None and is_answer_row(waiting)
+    return waiting is not None and (is_answer_row(waiting) or _is_spawned(waiting))
 
 
 async def _may_start(gates: "_UserGates", head: ChatSessionInfo) -> bool:
@@ -540,14 +662,17 @@ def is_users_own_chat(session: ChatSessionInfo) -> bool:
 
 
 def wakes_sub_work(session: ChatSessionInfo) -> bool:
-    """An approval wake here is the sub-work of the session that opened this
-    one, so it is admitted within the user's reserve, direct or queued."""
+    """An approval wake or a spawned child here is the sub-work of the session
+    that opened this one, so it is admitted within the user's reserve."""
     return session.metadata.delegated_by_session_id is not None
 
 
-async def _refuse_queued_turn(head: ChatSessionInfo, reason: str) -> None:
-    """Close a promoted turn that may not start: say why in its thread and
-    free its slot, which a failed post must not keep."""
+async def _refuse_queued_turn(
+    head: ChatSessionInfo, reason: str, *, release: TurnEnvelope | None = None
+) -> None:
+    """Close a promoted turn that may not start: say why in its thread, free
+    its slot, which a failed post must not keep, and give back ``release``'s
+    node: the node a queued child was admitted with."""
     try:
         await post_refusal(head.session_id, reason)
     except Exception:
@@ -557,12 +682,16 @@ async def _refuse_queued_turn(head: ChatSessionInfo, reason: str) -> None:
             "was not started"
         )
     finally:
-        await chat_db().update_chat_session_status(
-            session_id=head.session_id,
-            expect_status=CHAT_STATUS_RUNNING,
-            status=CHAT_STATUS_IDLE,
-        )
-        await invalidate_session_cache(head.session_id)
+        try:
+            await chat_db().update_chat_session_status(
+                session_id=head.session_id,
+                expect_status=CHAT_STATUS_RUNNING,
+                status=CHAT_STATUS_IDLE,
+            )
+            await invalidate_session_cache(head.session_id)
+        finally:
+            if release is not None:
+                await release_turn(release)
 
 
 async def post_refusal(
@@ -588,9 +717,29 @@ def queued_turn_refusal(session: ChatSession) -> str | None:
     return last.content
 
 
+def _is_spawned(pending: ChatMessage) -> bool:
+    """A queued child: it carries the envelope admitted for it, where a typed
+    message carries none and a wake carries its holding turn's."""
+    # Local: the gate imports this module back.
+    from backend.copilot.gate.held import is_answer_row
+
+    return _ENVELOPE_KEY in (pending.metadata or {}) and not is_answer_row(pending)
+
+
+def _child_node(metadata: Mapping[str, Any]) -> TurnEnvelope | None:
+    """The node a queued child holds on its tree, found by its stored tree id
+    when the envelope itself no longer parses."""
+    envelope = _stored_envelope(metadata)
+    if envelope is not None:
+        return envelope
+    tree_id = metadata.get(_ENVELOPE_TREE_ID_KEY)
+    # A child is never a root, so depth 1 is enough for release_turn to act.
+    return TurnEnvelope(tree_id=tree_id, depth=1) if isinstance(tree_id, str) else None
+
+
 def _stored_envelope(metadata: Mapping[str, Any]) -> TurnEnvelope | None:
-    """The envelope a wake was queued under. One that no longer parses (a schema
-    change between deploys) counts as unrecorded, so the wake is not started."""
+    """The envelope a wake or a child was queued under. One that no longer
+    parses (a schema change between deploys) counts as unrecorded."""
     stored = metadata.get(_ENVELOPE_KEY)
     if not stored:
         return None
@@ -602,11 +751,11 @@ def _stored_envelope(metadata: Mapping[str, Any]) -> TurnEnvelope | None:
 
 
 def _promotion_permissions(
-    head: ChatSessionInfo, metadata: Mapping[str, Any]
+    head: ChatSessionInfo, metadata: Mapping[str, Any], *, spawned: bool
 ) -> CopilotPermissions | None:
     """The session's permissions as they are now, never looser than the ones
-    stored at enqueue. Every writer stores this session's own resolved
-    permissions, so a stored value that no longer parses is read afresh."""
+    stored at enqueue. Those are the session's own, so a value that no longer
+    parses is read afresh; a child's are its spawner's, so it refuses instead."""
     current = resolve_session_permissions(head)
     stored = metadata.get("permissions")
     if not stored:
@@ -614,6 +763,8 @@ def _promotion_permissions(
     try:
         queued = CopilotPermissions.model_validate(stored)
     except ValidationError:
+        if spawned:
+            raise TreeRefusal(UNREADABLE_SPAWN)
         logger.warning(
             f"dispatch_next_for_user: stored permissions on session={head.session_id} "
             "did not parse; using the session's current ones"

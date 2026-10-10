@@ -28,7 +28,7 @@ import logging
 import time
 from typing import Any
 
-from backend.copilot.active_turns import delegated_turn_limit_message
+from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
@@ -512,6 +512,22 @@ def response_from_outcome(
             elapsed_seconds=round(elapsed, 2),
         ).from_outside()
 
+    if outcome == "queued_for_slot":
+        return SubSessionStatusResponse(
+            message=(
+                f"{actor} is queued: the user's task slots for sub-work are all "
+                "taken, and it starts on its own when one frees. Call "
+                "tool:get_sub_session_result to wait for it or check on it"
+                f"{f', or watch at {link}' if link else ''}."
+            ),
+            session_id=parent_session_id,
+            status="queued",
+            sub_session_id=inner_session_id,
+            sub_autopilot_session_id=inner_session_id,
+            sub_autopilot_session_link=link,
+            elapsed_seconds=round(elapsed, 2),
+        ).from_outside()
+
     if outcome == "running":
         return SubSessionStatusResponse(
             message=(
@@ -546,7 +562,7 @@ def response_from_outcome(
         # Render the actionable message instead of a "see transcript"
         # pointer to nothing.
         return SubSessionStatusResponse(
-            message=delegated_turn_limit_message(),
+            message=spawn_limit_message(),
             session_id=parent_session_id,
             status="error",
             sub_session_id=inner_session_id,

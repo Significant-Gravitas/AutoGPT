@@ -86,13 +86,12 @@ def running_turn_limit_message(limit: int | None = None) -> str:
     )
 
 
-def delegated_turn_limit_message() -> str:
-    """What a spawn tool tells the model when its turn hit the delegated cap."""
+def spawn_limit_message() -> str:
+    """What a spawn tool tells the model when its turn could not even queue."""
     return (
-        f"Sub-work may use {get_delegated_turn_limit()} of the user's "
-        f"{get_running_turn_limit()} task slots, and those are all taken (the "
-        "last slot is kept for the user's own messages). Wait for a running "
-        "task to finish before starting another."
+        f"The user already has {get_inflight_turn_limit()} tasks running or "
+        "waiting to start, the most they may have. Wait for one to finish "
+        "before starting another."
     )
 
 

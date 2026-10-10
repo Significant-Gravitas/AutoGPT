@@ -11,11 +11,11 @@ tests patch the three integration seams — ``enqueue_copilot_turn``,
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot import active_turns
+from backend.copilot import active_turns, turn_queue
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
@@ -807,6 +807,7 @@ class TestGetSubSessionResult:
         sub = MagicMock(user_id="alice", expert_id=None)
         sub.metadata.delegated_by_session_id = None
         assistant = MagicMock()
+        assistant.metadata = None
         assistant.role = "assistant"
         assistant.content = "already done"
         assistant.tool_calls = None
@@ -838,16 +839,23 @@ class TestGetSubSessionResult:
         assert r.response == "already done"
         mock_waiter.result_mock.assert_not_awaited()
 
+    @pytest.mark.parametrize(
+        "prior_metadata",
+        [None, {turn_queue._REFUSED_KEY: True}],
+        ids=["stale-result", "stale-refusal"],
+    )
     @pytest.mark.asyncio
     async def test_resume_turn_in_flight_does_not_return_stale(
-        self, monkeypatch, mock_waiter
+        self, monkeypatch, mock_waiter, prior_metadata
     ):
         """Regression for sentry r3105409601: on a resumed session whose
         stream_registry status is 'running' (new turn is mid-flight) the
-        tool must NOT short-circuit to the prior turn's terminal message.
-        It subscribes to the stream like a normal running-session poll."""
-        # DB state reflects the PREVIOUS turn's terminal assistant message.
+        tool must NOT short-circuit to the prior turn's terminal message,
+        nor to a refusal that closed an earlier queued turn. It subscribes
+        to the stream like a normal running-session poll."""
+        # DB state reflects the PREVIOUS turn's last assistant message.
         prior = MagicMock()
+        prior.metadata = prior_metadata
         prior.role = "assistant"
         prior.content = "OLD stale result"
         prior.tool_calls = None
@@ -884,6 +892,40 @@ class TestGetSubSessionResult:
         assert r.status == "running"
         # And crucially NOT the stale content.
         assert r.response is None or r.response == ""
+
+    @pytest.mark.asyncio
+    async def test_a_turn_that_ended_without_a_reply_is_not_called_cancelled(
+        self, mock_waiter
+    ):
+        """Idle with the user's message last and no stream left: only a cancel
+        that wrote its note says "cancelled"; this one reaches the waiter."""
+        asked = MagicMock(metadata=None, role="user", content="do it", tool_calls=None)
+        sub = MagicMock(
+            user_id="alice", expert_id=None, messages=[asked], chat_status="idle"
+        )
+        sub.metadata.delegated_by_session_id = None
+        mock_waiter.result_mock.return_value = ("failed", SessionResult())
+
+        with (
+            patch(
+                "backend.copilot.tools.get_sub_session_result.get_chat_session",
+                AsyncMock(return_value=sub),
+            ),
+            patch(
+                "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+                AsyncMock(return_value=None),
+            ),
+        ):
+            r = await GetSubSessionResultTool()._execute(
+                user_id="alice",
+                session=_session("alice"),
+                sub_session_id="inner-12",
+                wait_if_running=30,
+            )
+
+        mock_waiter.result_mock.assert_awaited_once()
+        assert isinstance(r, SubSessionStatusResponse)
+        assert turn_queue.TURN_CANCELLED not in (r.message or "")
 
     @pytest.mark.asyncio
     async def test_cancel_publishes_cancel_event(
@@ -925,6 +967,7 @@ class TestGetSubSessionResult:
         sub = MagicMock(user_id="alice", expert_id=None)
         sub.metadata.delegated_by_session_id = None
         assistant = MagicMock()
+        assistant.metadata = None
         assistant.role = "assistant"
         assistant.content = "done — see the docs I wrote"
         assistant.tool_calls = None  # no write calls on the last message
@@ -1108,8 +1151,8 @@ class TestHollowResponseRepro:
 # ---------------------------------------------------------------------------
 
 
-def test_a_sub_refused_at_the_cap_is_told_the_last_slot_is_the_users(monkeypatch):
-    monkeypatch.setattr(active_turns, "get_running_turn_limit", lambda: 5)
+def test_a_sub_refused_at_the_inflight_cap_is_told_to_wait(monkeypatch):
+    monkeypatch.setattr(active_turns, "get_inflight_turn_limit", lambda: 15)
     r = response_from_outcome(
         outcome="rejected_concurrent_turn_cap",
         result=SessionResult(),
@@ -1118,7 +1161,19 @@ def test_a_sub_refused_at_the_cap_is_told_the_last_slot_is_the_users(monkeypatch
         elapsed=1.0,
     )
     assert r.message is not None
-    assert "Sub-work may use 4 of the user's 5 task slots" in r.message
+    assert "already has 15 tasks running or waiting to start" in r.message
+
+
+def test_a_sub_waiting_for_a_slot_is_reported_queued_with_its_handle():
+    r = response_from_outcome(
+        outcome="queued_for_slot",
+        result=SessionResult(queued=True),
+        inner_session_id="inner-1",
+        parent_session_id="parent-1",
+        elapsed=1.0,
+    )
+    assert (r.status, r.sub_session_id) == ("queued", "inner-1")
+    assert "starts on its own when one frees" in (r.message or "")
 
 
 class TestActorParameter:
