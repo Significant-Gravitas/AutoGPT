@@ -44,7 +44,7 @@ from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
 from backend.copilot.transports import resolve_default_chat_route
-from backend.copilot.turn_queue import route_access_refusal
+from backend.copilot.turn_queue import TurnRefusal, turn_refusal
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -464,7 +464,7 @@ async def _execute_copilot_turn(**kwargs):
             llm_auth_provider, llm_credential_id = await resolve_default_chat_route(
                 args.user_id
             )
-            if await _refuse_if_owner_lacks_access(args, llm_auth_provider):
+            if await _refuse_if_turn_may_not_start(args, llm_auth_provider):
                 return
             new_session = await create_chat_session(
                 args.user_id,
@@ -554,7 +554,7 @@ async def _execute_copilot_turn(**kwargs):
                 if expert_status != "active":
                     await _skip_inactive_expert_scope(args, expert_status)
                     return
-            if await _refuse_if_owner_lacks_access(
+            if await _refuse_if_turn_may_not_start(
                 args, session.metadata.llm_auth_provider
             ):
                 return
@@ -666,41 +666,46 @@ async def _execute_copilot_turn(**kwargs):
         )
 
 
-async def _refuse_if_owner_lacks_access(
+async def _refuse_if_turn_may_not_start(
     job_args: "CopilotTurnJobArgs", llm_auth_provider: CopilotLlmAuthProvider
 ) -> bool:
-    """Refuse a fire whose owner has no access to the route it bills to, and
-    say whether it did. Usage caps are not checked: running out of AutoPilot
-    usage does not stop a scheduled turn, whose blocks are gated on credits.
+    """Refuse a fire that may not start, as ``dispatch_next_for_user`` refuses
+    a queued turn, and say whether it did: the owner has no access to the route
+    it bills to, or has used up their AutoPilot usage for the window.
 
-    A cron schedule stays registered and resumes once the owner has access
-    again. APScheduler drops a one-shot once it fires, so one refused because
-    the owner's plan could not be read is retried, and any other is dropped
-    with its routine switched off rather than left pending for a time that has
-    passed.
+    A cron schedule stays registered and resumes once the owner has access or
+    the window resets. APScheduler drops a one-shot once it fires, so one
+    refused by an outage (unreadable usage limits or plan) is retried, and any
+    other is dropped with its routine switched off rather than left pending for
+    a time that has passed.
     """
-    transient = False
+    retry = None
     try:
-        refusal = await route_access_refusal(job_args.user_id, llm_auth_provider)
+        refusal = await turn_refusal(job_args.user_id, llm_auth_provider)
+        if refusal is not None and refusal.transient:
+            retry = _reschedule_one_shot_after_limits_unreadable
     except Exception as exc:
         # Unknown access is no access: skip the fire, and retry a one-shot.
-        refusal = f"plan could not be read ({type(exc).__name__}: {exc})"
-        transient = True
+        refusal = TurnRefusal(
+            reason=f"has an unreadable plan ({type(exc).__name__}: {exc})",
+            transient=True,
+        )
+        retry = _reschedule_one_shot_after_plan_unreadable
     if refusal is None:
         return False
     if job_args.run_at is None:
         outcome = "the schedule stays registered"
-    elif not transient:
+    elif retry is None:
         await _drop_job_from_routine(job_args)
         outcome = "the one-shot is dropped"
-    elif await _reschedule_one_shot_after_plan_unreadable(job_args):
+    elif await retry(job_args):
         outcome = "the one-shot is retried"
     else:
         outcome = "the one-shot is dropped"
     logger.log(
-        logging.WARNING if transient else logging.INFO,
-        f"Skipping scheduled copilot turn {job_args.schedule_id}: owner {refusal}; "
-        f"{outcome}",
+        logging.WARNING if refusal.transient else logging.INFO,
+        f"Skipping scheduled copilot turn {job_args.schedule_id}: owner "
+        f"{refusal.reason}; {outcome}",
     )
     return True
 
@@ -738,6 +743,14 @@ _CONCURRENCY_RETRY_DELAY_SECONDS = 300
 _MAX_CAP_RETRIES = 1
 _MAX_EXPERT_LOOKUP_RETRIES = 1
 _MAX_PLAN_LOOKUP_RETRIES = 1
+_MAX_LIMITS_RETRIES = 1
+_RetryKind = Literal["cap", "expert_lookup", "plan_lookup", "limits"]
+_MAX_RETRIES: dict[_RetryKind, int] = {
+    "cap": _MAX_CAP_RETRIES,
+    "expert_lookup": _MAX_EXPERT_LOOKUP_RETRIES,
+    "plan_lookup": _MAX_PLAN_LOOKUP_RETRIES,
+    "limits": _MAX_LIMITS_RETRIES,
+}
 
 
 async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
@@ -760,6 +773,17 @@ async def _reschedule_one_shot_after_plan_unreadable(
     )
 
 
+async def _reschedule_one_shot_after_limits_unreadable(
+    args: "CopilotTurnJobArgs",
+) -> bool:
+    return await _reschedule_one_shot(
+        args,
+        reason="unreadable usage limits",
+        name_suffix="limits-retry",
+        retry_kind="limits",
+    )
+
+
 async def _reschedule_one_shot_after_expert_unavailable(
     args: "CopilotTurnJobArgs",
 ) -> None:
@@ -776,7 +800,7 @@ async def _reschedule_one_shot(
     *,
     reason: str,
     name_suffix: str,
-    retry_kind: Literal["cap", "expert_lookup", "plan_lookup"],
+    retry_kind: _RetryKind,
 ) -> bool:
     """Re-create a one-shot copilot-turn schedule after a transient failure,
     and say whether it did.
@@ -786,24 +810,15 @@ async def _reschedule_one_shot(
     depths round-trip independently through APScheduler's persisted kwargs so
     a transient expert lookup does not consume the concurrency-cap budget.
     """
-    if retry_kind == "cap":
-        retry_count = args.cap_retry_count
-        max_retries = _MAX_CAP_RETRIES
-        next_cap_retry_count = retry_count + 1
-        next_expert_lookup_retry_count = args.expert_lookup_retry_count
-        next_plan_lookup_retry_count = args.plan_lookup_retry_count
-    elif retry_kind == "plan_lookup":
-        retry_count = args.plan_lookup_retry_count
-        max_retries = _MAX_PLAN_LOOKUP_RETRIES
-        next_cap_retry_count = args.cap_retry_count
-        next_expert_lookup_retry_count = args.expert_lookup_retry_count
-        next_plan_lookup_retry_count = retry_count + 1
-    else:
-        retry_count = args.expert_lookup_retry_count
-        max_retries = _MAX_EXPERT_LOOKUP_RETRIES
-        next_cap_retry_count = args.cap_retry_count
-        next_expert_lookup_retry_count = retry_count + 1
-        next_plan_lookup_retry_count = args.plan_lookup_retry_count
+    counts: dict[_RetryKind, int] = {
+        "cap": args.cap_retry_count,
+        "expert_lookup": args.expert_lookup_retry_count,
+        "plan_lookup": args.plan_lookup_retry_count,
+        "limits": args.limits_retry_count,
+    }
+    retry_count = counts[retry_kind]
+    max_retries = _MAX_RETRIES[retry_kind]
+    counts[retry_kind] = retry_count + 1
 
     if retry_count >= max_retries:
         logger.error(
@@ -823,9 +838,10 @@ async def _reschedule_one_shot(
             message=args.message,
             run_at=new_run_at,
             name=f"{args.schedule_id or 'copilot'}-{name_suffix}",
-            cap_retry_count=next_cap_retry_count,
-            expert_lookup_retry_count=next_expert_lookup_retry_count,
-            plan_lookup_retry_count=next_plan_lookup_retry_count,
+            cap_retry_count=counts["cap"],
+            expert_lookup_retry_count=counts["expert_lookup"],
+            plan_lookup_retry_count=counts["plan_lookup"],
+            limits_retry_count=counts["limits"],
             # Preserve the user's timezone across the reschedule so the new
             # one-shot job's trigger/timezone matches the original request.
             user_timezone=args.user_timezone,
@@ -1803,6 +1819,7 @@ class CopilotTurnJobArgs(BaseModel):
     cap_retry_count: int = 0
     expert_lookup_retry_count: int = 0
     plan_lookup_retry_count: int = 0
+    limits_retry_count: int = 0
     # Persisted so ``_reschedule_one_shot_after_cap`` can preserve the user's
     # timezone when re-creating a one-shot job after a concurrency-cap miss —
     # otherwise the rescheduled job's trigger defaults to UTC and the timezone
@@ -2544,6 +2561,7 @@ class Scheduler(AppService):
         cap_retry_count: int = 0,
         expert_lookup_retry_count: int = 0,
         plan_lookup_retry_count: int = 0,
+        limits_retry_count: int = 0,
         organization_id: str | None = None,
         team_id: str | None = None,
         expert_id: str | None = None,
@@ -2558,9 +2576,8 @@ class Scheduler(AppService):
         the turn into it. Otherwise the turn resumes the named (existing)
         session with its full history, after re-validating that scope.
 
-        *cap_retry_count*, *expert_lookup_retry_count* and
-        *plan_lookup_retry_count* are set internally to bound their respective
-        transient retry paths; normal callers should leave them at 0.
+        The ``*_retry_count`` arguments are set internally to bound their
+        respective transient retry paths; normal callers should leave them at 0.
         """
         # Mirror add_graph_execution_schedule: validate the expert scope at
         # creation (active, owned, PRIVATE) and pin the schedule to the
@@ -2583,6 +2600,7 @@ class Scheduler(AppService):
             cap_retry_count=cap_retry_count,
             expert_lookup_retry_count=expert_lookup_retry_count,
             plan_lookup_retry_count=plan_lookup_retry_count,
+            limits_retry_count=limits_retry_count,
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
