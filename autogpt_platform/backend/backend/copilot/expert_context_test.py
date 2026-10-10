@@ -66,10 +66,10 @@ def hire_experts_flag_on():
 
 # SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
 # constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
-# Last re-pinned for the `<seen_capabilities>` block (SECRT-2791), which tells
-# the model which ids it already described this session.
+# Last re-pinned for the post-compaction re-send note (SECRT-2801), which tells
+# the model the first-message blocks re-sent after a compaction are trusted.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "7a8edb538b8dd4da62fe00d2b2781d7aaf0ff415a276ddc302827192a5696674"
+    "85bf3276123b72ada9eaea69851b34cb66e0b14fd5fd8422cfbcbd67eca92ff9"
 )
 
 
