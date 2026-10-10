@@ -89,6 +89,7 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
+from backend.api.middleware.guard import attach_guard
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.webhook_routes import register_webhook_adapters
@@ -107,7 +108,6 @@ from backend.util.exceptions import (
     PreconditionFailed,
 )
 from backend.util.feature_flag import initialize_feature_flags, shutdown_feature_flags
-from backend.api.middleware.guard import attach_guard
 from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
 

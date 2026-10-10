@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.api.conn_manager import ConnectionManager
+from backend.api.middleware.guard import attach_guard
 from backend.api.model import (
     WSMessage,
     WSMethod,
@@ -22,7 +23,6 @@ from backend.monitoring.instrumentation import (
     instrument_fastapi,
     update_websocket_connections,
 )
-from backend.api.middleware.guard import attach_guard
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
 

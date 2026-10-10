@@ -35,13 +35,13 @@ from pydantic import BaseModel, TypeAdapter, create_model
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 
 import backend.util.exceptions as exceptions
+from backend.api.middleware.guard import attach_guard
 from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess
 from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
-from backend.api.middleware.guard import attach_guard
 from backend.util.settings import Config, get_service_name
 
 logger = logging.getLogger(__name__)
