@@ -164,12 +164,13 @@ class TestBlockWithoutCredential:
         provision.assert_not_awaited()
 
     async def test_unattended_turn_gets_the_link_in_an_error(self):
-        set_turn_unattended(True)
+        session = make_session(USER)
+        set_turn_unattended(session, scheduled=True)
         try:
             with ayrshare_backend():
                 result = await _prepare(PostToLinkedInBlock().id)
         finally:
-            set_turn_unattended(False)
+            set_turn_unattended(session, scheduled=False)
 
         assert isinstance(result, ErrorResponse)
         assert result.error == "ayrshare_accounts_not_linked"
