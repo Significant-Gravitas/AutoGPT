@@ -1150,7 +1150,11 @@ model LibraryFolder {
   visibility     ResourceVisibility @default(PRIVATE)
   Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
-  @@unique([userId, parentId, name]) // Name unique per parent per user
+  // Names are unique among LIVE siblings, which Prisma cannot express: both
+  // rules are partial unique indexes created in migration
+  // 20261008180000_library_folder_name_unique_partial
+  // ("LibraryFolder_userId_parentId_name_live_key" and
+  // "LibraryFolder_userId_name_root_live_key").
   @@index([organizationId])
 }
 
