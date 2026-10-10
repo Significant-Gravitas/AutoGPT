@@ -167,7 +167,7 @@ async def check_action(
         # The first call's card and stored call stand; re-storing would
         # re-point the late result at the retry's tool call id.
         return Decision(allowed=False, reason=_ALREADY_HELD, review_id=review_id)
-    if approved_on_card(tool_name, args, session):
+    if await approved_on_card(tool_name, args, user_id, session_id):
         return Decision(allowed=True, approved=True)
 
     subject = await subject_of() if subject_of is not None else None

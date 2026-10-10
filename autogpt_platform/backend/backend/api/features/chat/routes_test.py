@@ -430,6 +430,30 @@ def test_stream_chat_skips_the_expert_gate_for_a_non_expert_session(
     mocks.enqueue.assert_awaited_once()
 
 
+@pytest.mark.parametrize("is_user_message", [True, False])
+def test_stream_chat_records_card_decisions_only_from_the_users_message(
+    mocker: pytest_mock.MockerFixture, test_user_id: str, is_user_message: bool
+) -> None:
+    """The only writer of the approvals the gate trusts for a proposal's confirm."""
+    _mock_stream_internals(mocker)
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    line = "Approved: create Otto (confirmation_id: c-1)."
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": line, "is_user_message": is_user_message},
+    )
+
+    assert response.status_code == 200
+    if is_user_message:
+        record.assert_awaited_once_with(test_user_id, "sess-1", line)
+    else:
+        record.assert_not_awaited()
+
+
 # ─── Duplicate message dedup ──────────────────────────────────────────
 
 

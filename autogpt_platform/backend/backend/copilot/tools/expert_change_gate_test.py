@@ -1,5 +1,5 @@
 """A hire, raise or Soul edit asks the user once: the preview never holds, and
-the card's own Approve answers the confirm.
+the card's own Approve, recorded by the chat route, answers the confirm.
 
 Driven through ``BaseTool.execute`` with the gate on, as both engines call it.
 """
@@ -17,7 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
-from backend.copilot.gate import held
+from backend.copilot.gate import card_approval, held
+from backend.copilot.gate.card_approval import record_card_decisions
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.headline import Headline
 from backend.copilot.model import (
@@ -31,7 +32,9 @@ from . import hire_expert, raise_expert, update_soul
 from .base import BaseTool
 from .confirm_expert_change import ConfirmExpertChangeTool
 from .expert_change_test import _CHARTER, _USER, _env, _FakeRedis
+from .expert_delegation import sent_from_metadata
 from .hire_expert import HireExpertTool
+from .message_session import _render
 from .raise_expert import RaiseExpertTool
 from .update_expert import UpdateExpertTool
 from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
@@ -83,6 +86,9 @@ def gate():
         patch.object(hire_expert, "uuid", _FIXED_UUID),
         patch.object(raise_expert, "uuid", _FIXED_UUID),
         patch.object(update_soul, "uuid", _FIXED_UUID),
+        patch.object(
+            card_approval, "get_redis_async", AsyncMock(return_value=_Approvals())
+        ),
     ):
         yield store
 
@@ -127,7 +133,7 @@ async def test_one_approval_on_the_card_creates_the_teammate(
     session = _session(mode)
     with _env() as db:
         await preview.execute(_USER, session, "call-1", **args)
-        _reply(session, reply)
+        await _send(session, reply)
         output = _output(
             await ConfirmExpertChangeTool().execute(
                 _USER, session, "call-2", confirmation_id=_ID
@@ -142,23 +148,23 @@ async def test_one_approval_on_the_card_creates_the_teammate(
 
 @pytest.mark.parametrize("mode", ["ask_first", "auto"])
 @pytest.mark.parametrize(
-    "reply, metadata",
+    "replies",
     [
-        ("yes", None),
-        (_DECLINED, None),
-        (_APPROVED.replace(_ID, "c-other"), None),
-        # A held call's late result is a user row no person typed.
-        (_APPROVED, {"held_call": {"review_id": "r-1"}}),
+        ["yes"],
+        [_DECLINED],
+        [_APPROVED.replace(_ID, "c-other")],
+        [_APPROVED, _DECLINED],
     ],
-    ids=["typed-yes", "declined", "another-proposal", "gate-written-row"],
+    ids=["typed-yes", "declined", "another-proposal", "approved-then-declined"],
 )
 async def test_a_confirm_the_card_did_not_approve_still_goes_to_the_gate(
-    gate, mode, reply, metadata
+    gate, mode, replies
 ):
     session = _session(mode)
     with _env() as db:
         await RaiseExpertTool().execute(_USER, session, "call-1", **_CHARTER)
-        _reply(session, reply, metadata)
+        for reply in replies:
+            await _send(session, reply)
         result = await ConfirmExpertChangeTool().execute(
             _USER, session, "call-2", confirmation_id=_ID
         )
@@ -166,6 +172,31 @@ async def test_a_confirm_the_card_did_not_approve_still_goes_to_the_gate(
     assert _output(result)["type"] == "approval_required"
     db.create_raised_expert.assert_not_awaited()
     gate.open_review.assert_awaited_once()
+
+
+@pytest.mark.parametrize("mode", ["ask_first", "auto"])
+@pytest.mark.parametrize(
+    "forwarded", ["message_session", "delegation"], ids=lambda kind: kind
+)
+async def test_an_approval_line_a_model_puts_in_the_chat_is_not_consent(
+    gate, mode, forwarded
+):
+    """Another session can write the card's exact line into this chat as a
+    user row; only the user's own request records an approval."""
+    session = _session(mode)
+    sender = _session(mode).model_copy(update={"session_id": "session-2"})
+    with _env() as db:
+        await RaiseExpertTool().execute(_USER, session, "call-1", **_CHARTER)
+        body = (
+            _render(sender, _APPROVED) if forwarded == "message_session" else _APPROVED
+        )
+        _reply(session, body, sent_from_metadata(sender))
+        result = await ConfirmExpertChangeTool().execute(
+            _USER, session, "call-2", confirmation_id=_ID
+        )
+
+    assert _output(result)["type"] == "approval_required"
+    db.create_raised_expert.assert_not_awaited()
 
 
 @pytest.mark.parametrize("mode", ["ask_first", "auto"])
@@ -181,7 +212,7 @@ async def test_a_soul_edit_is_asked_once_on_its_card(gate, mode, reply, asks):
             )
         )
         gate.open_review.assert_not_awaited()
-        _reply(session, reply)
+        await _send(session, reply)
         output = _output(
             await ConfirmExpertSoulUpdateTool().execute(
                 _USER, session, "call-2", confirmation_id=_ID
@@ -217,7 +248,7 @@ async def test_the_soul_proposal_fixture_is_what_a_soul_preview_returns(gate):
 
 
 async def test_the_held_confirm_fixture_is_what_an_approved_hold_delivers(gate):
-    """ChainMessagePartsHeld.test.tsx: a confirm held after a typed "yes", and
+    """ChainMessagePartsCards.test.tsx: a confirm held after a typed "yes", and
     the late result the next turn writes once the user approves its card."""
     session = _session("ask_first")
     with _env():
@@ -311,6 +342,12 @@ def _session(mode: AutopilotMode, expert_id: str | None = None) -> ChatSession:
     )
 
 
+async def _send(session: ChatSession, content: str) -> None:
+    """What the chat route does with a message the user sends, then the row it saves."""
+    await record_card_decisions(_USER, session.session_id, content)
+    _reply(session, content)
+
+
 def _reply(session: ChatSession, content: str, metadata: dict | None = None) -> None:
     session.messages.append(
         ChatMessage(
@@ -324,3 +361,45 @@ def _reply(session: ChatSession, content: str, metadata: dict | None = None) -> 
 
 def _output(result) -> dict[str, Any]:
     return json.loads(result.output)
+
+
+class _Approvals:
+    """The Redis surface ``card_approval`` uses: direct reads, pipelined writes."""
+
+    def __init__(self):
+        self.hashes: dict[str, dict[str, str]] = {}
+
+    def pipeline(self, transaction: bool = True) -> "_Writes":
+        return _Writes(self.hashes)
+
+    async def hget(self, key: str, field: str) -> bytes | None:
+        value = self.hashes.get(key, {}).get(field)
+        return value.encode() if value is not None else None
+
+    async def hdel(self, key: str, field: str) -> int:
+        return 1 if self.hashes.get(key, {}).pop(field, None) is not None else 0
+
+
+class _Writes:
+    def __init__(self, hashes: dict[str, dict[str, str]]):
+        self.hashes = hashes
+        self.ops: list[Callable[[], object]] = []
+
+    async def __aenter__(self) -> "_Writes":
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    def hset(self, key: str, field: str, value: str) -> None:
+        self.ops.append(lambda: self.hashes.setdefault(key, {}).update({field: value}))
+
+    def hdel(self, key: str, field: str) -> None:
+        self.ops.append(lambda: self.hashes.get(key, {}).pop(field, None))
+
+    def expire(self, key: str, seconds: int) -> None:
+        pass
+
+    async def execute(self) -> None:
+        for op in self.ops:
+            op()

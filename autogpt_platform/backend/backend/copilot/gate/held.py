@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from backend.copilot import woken_turns
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
-from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.model import ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.data.db_accessors import chat_db, review_db
 from backend.data.redis_client import get_redis_async
@@ -136,12 +136,6 @@ async def subject_keys(session_id: str, review_ids: list[str]) -> dict[str, str]
     }
 
 
-def written_by_gate(message: ChatMessage) -> bool:
-    """The wake row and each late result are user rows no person typed."""
-    metadata = message.metadata or {}
-    return "held_call" in metadata or "held_calls_answered" in metadata
-
-
 async def forget(session_id: str, review_id: str) -> None:
     """Drop a call whose card was never opened; nothing can answer it."""
     await _claim(session_id, review_id)
@@ -213,7 +207,7 @@ async def wake(
         get_inflight_turn_limit,
     )
     from backend.copilot.executor.utils import dispatch_turn
-    from backend.copilot.model import append_and_save_message
+    from backend.copilot.model import ChatMessage, append_and_save_message
     from backend.copilot.session_permissions import resolve_session_permissions
     from backend.copilot.turn_queue import InflightCapExceeded, try_enqueue_turn
 
