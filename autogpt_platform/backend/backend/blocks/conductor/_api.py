@@ -10,6 +10,34 @@ API_V0 = f"{CONDUCTOR_API_URL}/v0"
 # wraps `run` in `wait_for(execution_timeout_seconds)`, so the block's own
 # `timeout_seconds` input is bounded below this.
 MAX_WAIT_SECONDS = 2 * 60 * 60
+# Default wait for the send-and-wait blocks. A coding agent turn commonly
+# runs 5-30 minutes, so the default covers a whole turn rather than forcing
+# the caller back into polling from outside.
+DEFAULT_WAIT_SECONDS = 30 * 60
+# Bounds for the automatic poll interval when the caller leaves it at 0.
+MIN_POLL_INTERVAL_SECONDS = 10
+MAX_POLL_INTERVAL_SECONDS = 60
+
+WAIT_GUIDANCE = (
+    "Coding agents typically run 5-30 minutes: prefer a single wait with a "
+    f"large timeout_seconds (max {MAX_WAIT_SECONDS}) over repeated short "
+    "polls or scheduled follow-ups. When timed_out is true the agent is "
+    "still working; keep waiting with Conductor Get Session "
+    "(wait_until_idle=true, after=next_after, prompt_message_id=the prompt's "
+    "message id) rather than scheduling a check."
+)
+NEXT_AFTER_CONTINUATION = (
+    " When timed_out is true, pass it as after to Get Session with "
+    "wait_until_idle=true and the prompt's message id as prompt_message_id "
+    "to keep waiting for the reply."
+)
+TIMEOUT_DESCRIPTION = (
+    f"How long to wait, in seconds (max {MAX_WAIT_SECONDS}). " + WAIT_GUIDANCE
+)
+POLL_INTERVAL_DESCRIPTION = (
+    "Seconds between status checks while waiting; 0 scales it with "
+    f"timeout_seconds ({MIN_POLL_INTERVAL_SECONDS}-{MAX_POLL_INTERVAL_SECONDS}s)"
+)
 
 # The API serves at most this many rows per list request (larger `limit`
 # values are clamped server-side) and defaults to a much smaller page, so
@@ -75,6 +103,20 @@ class RoutineAction(str, Enum):
 class SectionAction(str, Enum):
     CREATE = "create"
     DELETE = "delete"
+
+
+def poll_interval_for(timeout_seconds: int, poll_interval_seconds: int = 0) -> int:
+    """The explicit interval, or one scaled with the wait: about one status
+    check per ninetieth of `timeout_seconds`, within the poll bounds. The
+    wait loop sleeps before each check, so the scaled interval is capped at
+    half the wait to leave room for at least one check in a short wait."""
+    if poll_interval_seconds > 0:
+        return poll_interval_seconds
+    interval = max(
+        MIN_POLL_INTERVAL_SECONDS,
+        min(MAX_POLL_INTERVAL_SECONDS, timeout_seconds // 90),
+    )
+    return max(1, min(interval, timeout_seconds // 2))
 
 
 class ConductorAPIError(ValueError):
