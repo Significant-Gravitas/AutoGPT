@@ -25,7 +25,7 @@ import logging
 from typing import Any
 
 from backend.api.features.experts.models import Expert
-from backend.copilot.active_turns import delegated_turn_limit_message
+from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import (
@@ -329,8 +329,7 @@ def _transferred_response(
     link = _sub_session_link(inner_session_id)
     return SubSessionStatusResponse(
         message=(
-            f"{target_name} owns this now and will report to the user "
-            "directly"
+            f"{target_name} owns this now and will report to the user directly"
             f"{', starting when one of their task slots frees' if waiting_for_slot else ''}."
             f"{f' Follow along at {link}.' if link else ''}"
         ),
@@ -350,7 +349,7 @@ def _refused_transfer_message(
     if outcome == "rejected_concurrent_turn_cap":
         return (
             f"The handoff to {target_name} did not happen — the task is still "
-            f"yours. {delegated_turn_limit_message()}"
+            f"yours. {spawn_limit_message()}"
         )
     if outcome == "refused" and refusal:
         return (

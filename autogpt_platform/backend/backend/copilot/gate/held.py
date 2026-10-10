@@ -208,6 +208,7 @@ async def wake(
     from backend.copilot.active_turns import (
         ConcurrentTurnLimitError,
         acquire_turn_slot,
+        get_delegated_turn_limit,
         get_inflight_turn_limit,
     )
     from backend.copilot.executor.utils import dispatch_turn
@@ -217,8 +218,10 @@ async def wake(
         UNRECORDED_WAKE,
         WAKE_LATER,
         InflightCapExceeded,
+        is_users_own_chat,
         post_refusal,
         try_enqueue_turn,
+        wakes_sub_work,
     )
 
     try:
@@ -239,15 +242,18 @@ async def wake(
             return
         refusal_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{wake_id}:refused"))
         envelope = max(calls, key=lambda c: c.held_at).envelope
-        if envelope is None:
+        if envelope is None and not is_users_own_chat(info):
             # Deriving one from the turn that just ended would run the approved
             # action under that turn's limits, not the ones it was held under.
             await post_refusal(session_id, UNRECORDED_WAKE, message_id=refusal_id)
             return
         permissions = resolve_session_permissions(info)
         metadata = {_WAKE_KEY: True}
+        capacity = get_delegated_turn_limit() if wakes_sub_work(info) else None
         try:
-            async with acquire_turn_slot(user_id, session_id) as slot:
+            async with acquire_turn_slot(
+                user_id, session_id, capacity=capacity
+            ) as slot:
                 # Not admitted: a turn is already running, and its end wakes us.
                 if not slot.admitted:
                     return
@@ -278,6 +284,8 @@ async def wake(
                     permissions=permissions,
                     message_metadata=metadata,
                     envelope=envelope,
+                    # Lost in the user's own chat: a root, as their message would be.
+                    root=envelope is None,
                 )
                 # A channel that answered one of these follows this turn.
                 await woken_turns.record(

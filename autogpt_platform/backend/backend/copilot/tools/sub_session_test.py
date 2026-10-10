@@ -1111,8 +1111,8 @@ class TestHollowResponseRepro:
 # ---------------------------------------------------------------------------
 
 
-def test_a_sub_refused_at_the_cap_is_told_the_last_slot_is_the_users(monkeypatch):
-    monkeypatch.setattr(active_turns, "get_running_turn_limit", lambda: 5)
+def test_a_sub_refused_at_the_inflight_cap_is_told_to_wait(monkeypatch):
+    monkeypatch.setattr(active_turns, "get_inflight_turn_limit", lambda: 15)
     r = response_from_outcome(
         outcome="rejected_concurrent_turn_cap",
         result=SessionResult(),
@@ -1121,7 +1121,19 @@ def test_a_sub_refused_at_the_cap_is_told_the_last_slot_is_the_users(monkeypatch
         elapsed=1.0,
     )
     assert r.message is not None
-    assert "Sub-work may use 4 of the user's 5 task slots" in r.message
+    assert "already has 15 tasks running or waiting to start" in r.message
+
+
+def test_a_sub_waiting_for_a_slot_is_reported_queued_with_its_handle():
+    r = response_from_outcome(
+        outcome="queued_for_slot",
+        result=SessionResult(queued=True),
+        inner_session_id="inner-1",
+        parent_session_id="parent-1",
+        elapsed=1.0,
+    )
+    assert (r.status, r.sub_session_id) == ("queued", "inner-1")
+    assert "starts on its own when one frees" in (r.message or "")
 
 
 class TestActorParameter:

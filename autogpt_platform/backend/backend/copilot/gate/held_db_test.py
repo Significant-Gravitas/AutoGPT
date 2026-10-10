@@ -7,13 +7,14 @@ exactly what the approval ran it with.
 
 import asyncio
 import json
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from prisma.enums import ReviewStatus
-from prisma.models import PendingHumanReview
+from prisma.models import PendingHumanReview, User
 
 from backend.copilot import stream_registry
 from backend.copilot.context import set_execution_context
@@ -21,10 +22,14 @@ from backend.copilot.gate import chat_rules, check_action, held
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.model import (
+    CHAT_STATUS_IDLE,
+    CHAT_STATUS_QUEUED,
+    CHAT_STATUS_RUNNING,
     AutopilotMode,
     ChatMessage,
     ChatSession,
     append_and_save_message,
+    create_chat_session,
     get_chat_session,
     update_session_autopilot_mode,
     upsert_chat_session,
@@ -33,9 +38,9 @@ from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
-from backend.copilot.tree import TurnEnvelope, root_envelope
-from backend.copilot.turn_queue import UNRECORDED_WAKE
-from backend.data.db_accessors import review_db
+from backend.copilot.tree import TurnEnvelope, get_tree_ledger, root_envelope
+from backend.copilot.turn_queue import UNRECORDED_WAKE, WAKE_LATER
+from backend.data.db_accessors import chat_db, review_db
 from backend.data.redis_client import get_redis_async
 
 _TOOL = "post_to_chat_platform"
@@ -77,18 +82,34 @@ def post_tool():
         yield tool
 
 
-async def _new_session(user_id: str, mode: AutopilotMode = "auto") -> ChatSession:
-    session = await upsert_chat_session(ChatSession.new(user_id=user_id, dry_run=False))
+async def _new_session(
+    user_id: str, mode: AutopilotMode = "auto", delegated_by: str | None = None
+) -> ChatSession:
+    session = await upsert_chat_session(
+        ChatSession.new(
+            user_id=user_id,
+            dry_run=False,
+            # A delegation from the user's chat inherits its origin.
+            delegated_by_session_id=delegated_by,
+        )
+    )
     await update_session_autopilot_mode(session.session_id, user_id, mode)
     reloaded = await get_chat_session(session.session_id, user_id)
     assert reloaded is not None
     return reloaded
 
 
-async def _hold(session: ChatSession, user_id: str, text: str) -> str:
+async def _hold(
+    session: ChatSession,
+    user_id: str,
+    text: str,
+    envelope: TurnEnvelope | None = None,
+) -> str:
     async def in_a_turn():
         # The gate runs inside a turn, whose envelope the call's wake starts under.
-        set_execution_context(user_id, session, envelope=_turn_envelope(session))
+        set_execution_context(
+            user_id, session, envelope=envelope or _turn_envelope(session)
+        )
         return await check_action(
             _TOOL, {"text": text}, user_id, session, tool_call_id="call-1"
         )
@@ -205,12 +226,79 @@ async def test_a_wake_starts_under_the_envelope_its_call_was_held_under(
     assert dispatch.await_args.kwargs["envelope"] == _turn_envelope(session)
 
 
+@pytest.mark.parametrize(
+    "delegated_by, starts", [("parent-session", False), (None, True)]
+)
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_call_rebuilt_from_its_card_is_not_woken(
+async def test_a_wake_in_a_sub_session_leaves_the_users_last_slot(
+    server, gate_on, delegated_by: str | None, starts: bool
+):
+    """Four already run: a wake in a session another one opened is its sub-work,
+    so it waits in the queue as it would had it been queued; in the user's own
+    chat it takes the fifth slot."""
+    user_id = str(uuid.uuid4())
+    await User.prisma().create(
+        data={"id": user_id, "email": f"held-{user_id}@example.com"}
+    )
+    try:
+        for _ in range(4):
+            running = await create_chat_session(user_id, dry_run=False)
+            assert await chat_db().update_chat_session_status(
+                session_id=running.session_id,
+                expect_status=CHAT_STATUS_IDLE,
+                status=CHAT_STATUS_RUNNING,
+                user_id=user_id,
+            )
+        session = await _new_session(user_id, delegated_by=delegated_by)
+        review_id = await _hold(session, user_id, "one slot short")
+        await _answer(review_id, ReviewStatus.APPROVED)
+        dispatch = AsyncMock()
+
+        with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+            await held.wake(user_id, session.session_id)
+
+        assert dispatch.await_count == (1 if starts else 0)
+        status = await chat_db().get_chat_session_status(session.session_id)
+        assert status == (CHAT_STATUS_IDLE if starts else CHAT_STATUS_QUEUED)
+    finally:
+        await User.prisma().delete(where={"id": user_id})
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_call_rebuilt_from_its_card_wakes_as_a_root_in_the_users_own_chat(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
-    """Nothing records the limits it was held under; the next turn carries it."""
+    """Its record was lost, but a turn in the user's own chat is a root anyway:
+    the wake starts as one, under the session's permissions as they are now."""
     session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "lost in Redis")
+    assert await held._claim(session.session_id, review_id)
+    await _answer(review_id, ReviewStatus.APPROVED)
+    rows = await review_db().get_reviews_by_node_exec_ids([review_id], test_user_id)
+    today = CopilotPermissions(tools=["web_fetch"], tools_exclude=True)
+    dispatch = AsyncMock()
+
+    with (
+        patch("backend.copilot.executor.utils.dispatch_turn", dispatch),
+        patch(
+            "backend.copilot.session_permissions.resolve_session_permissions",
+            return_value=today,
+        ),
+    ):
+        await held.wake(test_user_id, session.session_id, rows.values())
+
+    woken = dispatch.await_args.kwargs
+    assert (woken["envelope"], woken["root"]) == (None, True)
+    assert woken["permissions"] == today
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_call_rebuilt_from_its_card_in_a_sub_session_is_not_woken(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """Nothing on the row bounds what the call was held under there; the next
+    turn carries the answer."""
+    session = await _new_session(test_user_id, delegated_by="parent-session")
     review_id = await _hold(session, test_user_id, "lost in Redis")
     assert await held._claim(session.session_id, review_id)
     await _answer(review_id, ReviewStatus.APPROVED)
@@ -227,6 +315,31 @@ async def test_a_call_rebuilt_from_its_card_is_not_woken(
     refusals = [m for m in reloaded.messages if m.content == UNRECORDED_WAKE]
     assert len(refusals) == 1
     assert len(await held.resolve_answered(test_user_id, reloaded)) == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_wake_whose_tree_closed_is_not_started(
+    setup_test_user, test_user_id, gate_on
+):
+    """A sub-session's call answered after its tree expired: the reason goes in
+    the chat and the answer waits for the next turn."""
+    session = await _new_session(test_user_id)
+    sub_turn = TurnEnvelope(tree_id=f"tree-{session.session_id}", depth=1)
+    ledger = await get_tree_ledger()
+    await ledger.open(sub_turn.tree_id, ceiling_microdollars=1_000_000, max_nodes=10)
+    review_id = await _hold(session, test_user_id, "after expiry", envelope=sub_turn)
+    await _answer(review_id, ReviewStatus.APPROVED)
+    await (await get_redis_async()).delete(ledger.key(sub_turn.tree_id))
+    enqueued = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueued):
+        await held.wake(test_user_id, session.session_id)
+
+    enqueued.assert_not_awaited()
+    reloaded = await get_chat_session(session.session_id, test_user_id)
+    assert reloaded is not None
+    assert reloaded.messages[-1].content.startswith("This task's tree has closed")
+    assert reloaded.messages[-1].content.endswith(WAKE_LATER)
 
 
 @pytest.mark.asyncio(loop_scope="session")

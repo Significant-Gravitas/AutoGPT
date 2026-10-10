@@ -368,10 +368,8 @@ async def _queue_for_slot(
         return "refused", SessionResult(refusal=refused.message)
     except ConcurrentTurnLimitError:
         logger.warning(
-            "[queue] session=%s user=%s rejected at the inflight cap (tool=%s)",
-            session_id[:12],
-            user_id[:8],
-            tool_name,
+            f"[queue] session={session_id[:12]} user={user_id[:8]} rejected at the "
+            f"inflight cap (tool={tool_name})"
         )
         return "rejected_concurrent_turn_cap", SessionResult()
     return await wait_for_queued_session(

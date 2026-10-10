@@ -587,8 +587,9 @@ async def dispatch_turn(
 
     ``root`` mints a root whatever turn's context the caller runs in: the
     queue's slot-free hook runs inside the turn that just ended. An
-    ``envelope`` was admitted before (a queued child, an approval wake): it is
-    re-checked instead, and its node is not released if dispatch fails.
+    ``envelope`` was admitted before (an approval wake carries the one its
+    call was held under): it is re-checked instead, narrowed by today's
+    ``permissions``, and its node is not released if dispatch fails.
     """
     # Local import: stream_registry imports executor.utils (the
     # COPILOT_CONSUMER_TIMEOUT_SECONDS constant) → top-level circular.

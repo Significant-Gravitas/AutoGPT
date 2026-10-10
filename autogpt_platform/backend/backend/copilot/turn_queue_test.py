@@ -7,6 +7,8 @@ RPC into ``DatabaseManager``. Patching the accessor avoids reaching
 for Prisma directly while still exercising the queue's branching.
 """
 
+import asyncio
+import sys
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,8 +16,11 @@ import pytest
 from prisma.errors import UniqueViolationError
 
 from backend.copilot import turn_queue
+from backend.copilot.gate import held
 from backend.copilot.model import ChatMessage as PydanticChatMessage
 from backend.copilot.model import ChatSessionInfo
+from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.tree import TreeRefusal, TurnEnvelope
 
 
 class _NoopAsyncCM:
@@ -272,7 +277,9 @@ async def test_promoted_turn_tracking_preserves_session_attribution(
         patch.object(turn_queue, "chat_db", return_value=db),
         patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
         patch.object(
-            turn_queue, "claim_queued_session", new=AsyncMock(return_value=claim)
+            turn_queue,
+            "claim_queued_session",
+            new=AsyncMock(return_value="admitted" if claim else "full"),
         ),
         patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
         patch("backend.copilot.executor.utils.dispatch_turn", new=dispatched),
@@ -303,6 +310,374 @@ def _patch_queued_list(rows):
     resolves in-process vs. via DatabaseManagerAsyncClient."""
     return patch.object(
         turn_queue, "list_queued_sessions", new=AsyncMock(return_value=rows)
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_long_run_of_wakes_that_may_not_start_drains_without_recursing() -> (
+    None
+):
+    """Each is closed and the next tried; more of them than the recursion limit
+    must still drain rather than overflow inside the completion hook."""
+    queue = [_queued_row(f"s{i}") for i in range(sys.getrecursionlimit() + 100)]
+    for row in queue:
+        row.metadata.llm_auth_provider = "codex"
+    db = MagicMock()
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata={held._WAKE_KEY: True})
+    )
+
+    async def closed(head, reason):
+        queue.remove(head)
+
+    with (
+        patch.object(
+            turn_queue,
+            "list_queued_sessions",
+            new=AsyncMock(side_effect=lambda _user: list(queue)),
+        ),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
+        ),
+        patch.object(turn_queue, "_refuse_queued_turn", new=closed),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is False
+
+    assert queue == []
+
+
+@pytest.mark.asyncio
+async def test_a_head_taken_since_it_was_listed_does_not_stop_promotion() -> None:
+    """Cancelled or claimed elsewhere between the listing and the claim: the
+    next queued session is tried rather than the dispatch giving up."""
+    gone, waiting = _queued_row("gone"), _queued_row("waiting")
+    for row in (gone, waiting):
+        row.metadata.llm_auth_provider = "codex"
+    db = MagicMock()
+    db.get_latest_user_message_in_session = AsyncMock(return_value=_pyd_message())
+    dispatched = AsyncMock()
+
+    with (
+        patch.object(
+            turn_queue,
+            "list_queued_sessions",
+            new=AsyncMock(side_effect=[[gone, waiting], [waiting]]),
+        ),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue,
+            "claim_queued_session",
+            new=AsyncMock(side_effect=["busy", "admitted"]),
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatched),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is True
+
+    assert dispatched.await_args.kwargs["session_id"] == "waiting"
+
+
+@pytest.mark.asyncio
+async def test_a_turn_the_access_gate_refuses_does_not_hold_up_the_next() -> None:
+    """A wake that may never start is closed; a turn the shared access gate
+    refuses stays queued, unclaimed, and the next one that may start does."""
+    closed, refused, admissible = (
+        _queued_row("closed"),
+        _queued_row("refused"),
+        _queued_row("admissible"),
+    )
+    # An automation's session: not the user's own chat, and not sub-work.
+    closed.metadata.origin = "automation"
+    for row in (closed, admissible):
+        row.metadata.llm_auth_provider = "microsoft_365_copilot"
+    refused.metadata.llm_auth_provider = "codex"
+    waiting = {
+        "closed": _pyd_message(metadata={held._WAKE_KEY: True}),
+        "refused": _pyd_message(),
+        "admissible": _pyd_message(),
+    }
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(side_effect=waiting.get)
+    claim = AsyncMock(return_value="admitted")
+    dispatched = AsyncMock()
+
+    with (
+        patch.object(
+            turn_queue,
+            "list_queued_sessions",
+            new=AsyncMock(
+                side_effect=[[closed, refused, admissible], [refused, admissible]]
+            ),
+        ),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=False)),
+        patch.object(turn_queue, "claim_queued_session", new=claim),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "append_and_save_message", new=AsyncMock()),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatched),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is True
+
+    assert [c.args[0].session_id for c in claim.await_args_list] == [
+        "closed",
+        "admissible",
+    ]
+    assert dispatched.await_args.kwargs["session_id"] == "admissible"
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="closed", expect_status="running", status="idle"
+    )
+
+
+_CHILD = {"tree_id": "t1", "depth": 1}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stored, refusal, reason, released",
+    [
+        # Nothing but its envelope bounds a child its spawner admitted.
+        ({"envelope": {"depth": "deep"}}, None, turn_queue.UNREADABLE_SPAWN, False),
+        # Its stored permissions are its spawner's, never re-derivable.
+        (
+            {"envelope": _CHILD, "permissions": {"tools": 5}},
+            None,
+            turn_queue.UNREADABLE_SPAWN,
+            True,
+        ),
+        # A tree that closed while it waited: no "your answer is kept" note.
+        ({"envelope": _CHILD}, "This tree has closed.", "This tree has closed.", True),
+    ],
+    ids=["envelope-unreadable", "permissions-unreadable", "tree-refused"],
+)
+async def test_a_queued_child_that_may_not_start_is_closed_and_returns_its_node(
+    stored: dict, refusal: str | None, reason: str, released: bool
+) -> None:
+    head = _queued_row()
+    head.metadata.delegated_by_session_id = "parent"
+    head.metadata.llm_auth_provider = "microsoft_365_copilot"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata=stored)
+    )
+    posted = AsyncMock()
+    release = AsyncMock()
+    dispatched = AsyncMock(side_effect=TreeRefusal(refusal) if refusal else None)
+
+    with (
+        patch.object(
+            turn_queue, "list_queued_sessions", new=AsyncMock(side_effect=[[head], []])
+        ),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "resolve_session_permissions", return_value=None),
+        patch.object(turn_queue, "append_and_save_message", new=posted),
+        patch.object(turn_queue, "release_turn", new=release),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatched),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is False
+
+    assert posted.await_args.args[1].content == reason
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="s1", expect_status="running", status="idle"
+    )
+    if released:
+        release.assert_awaited_once_with(TurnEnvelope.model_validate(_CHILD))
+    else:
+        release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_queued_child_is_sub_work_started_under_its_own_tool_call(
+    tracked_message: MagicMock,
+) -> None:
+    """Claimed at the reserve, replayed under the tool call that spawned it, and
+    not counted as a message the user sent."""
+    head = _queued_row()
+    head.metadata.delegated_by_session_id = "parent"
+    head.metadata.llm_auth_provider = "microsoft_365_copilot"
+    db = MagicMock()
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(
+            metadata={
+                "envelope": _CHILD,
+                "tool_call_id": "sub:parent",
+                "tool_name": "run_sub_session",
+            }
+        )
+    )
+    claim = AsyncMock(return_value="admitted")
+    dispatched = AsyncMock()
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "claim_queued_session", new=claim),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "resolve_session_permissions", return_value=None),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatched),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is True
+
+    assert claim.await_args.kwargs["sub_work"] is True
+    kwargs = dispatched.await_args.kwargs
+    assert (kwargs["tool_call_id"], kwargs["tool_name"]) == (
+        "sub:parent",
+        "run_sub_session",
+    )
+    assert kwargs["envelope"] == TurnEnvelope.model_validate(_CHILD)
+    tracked_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_unparseable_stored_permissions_read_the_sessions_current_ones() -> None:
+    """Not left stuck at the head of the queue, and never read as none."""
+    head = _queued_row()
+    head.metadata.llm_auth_provider = "codex"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata={"permissions": {"tools": 5}})
+    )
+    today = CopilotPermissions(tools=["web_fetch"], tools_exclude=True)
+    dispatched = AsyncMock()
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "resolve_session_permissions", return_value=today),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatched),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is True
+
+    assert dispatched.await_args.kwargs["permissions"] == today
+
+
+@pytest.mark.asyncio
+async def test_a_typed_message_behind_sub_work_that_does_not_fit_still_starts() -> None:
+    """Four running: an older approval wake in a delegated session waits for the
+    reserve, while a newer message the user typed into another one fits."""
+    wake, typed = _queued_row("wake"), _queued_row("typed")
+    for row in (wake, typed):
+        row.metadata.delegated_by_session_id = "parent"
+        row.metadata.llm_auth_provider = "codex"
+    waiting = {
+        "wake": _pyd_message(metadata={held._WAKE_KEY: True}),
+        "typed": _pyd_message(),
+    }
+    db = MagicMock()
+    db.get_latest_user_message_in_session = AsyncMock(side_effect=waiting.get)
+    dispatched = AsyncMock()
+
+    with (
+        _patch_queued_list([wake, typed]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue,
+            "claim_queued_session",
+            new=AsyncMock(
+                side_effect=lambda _row, *, sub_work: "full" if sub_work else "admitted"
+            ),
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatched),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is True
+
+    assert dispatched.await_args.kwargs["session_id"] == "typed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stored_envelope",
+    [None, {"tree_id": "t1", "depth": 1}],
+    ids=["unrecorded-wake", "tree-refusal"],
+)
+async def test_a_refusal_that_cannot_be_posted_still_frees_the_slot(
+    stored_envelope: dict | None,
+) -> None:
+    """The session leaves ``running`` and the next queued one is tried."""
+    head = _queued_row()
+    head.metadata.delegated_by_session_id = "parent"
+    head.metadata.llm_auth_provider = "codex"
+    metadata: dict = {held._WAKE_KEY: True}
+    if stored_envelope:
+        metadata["envelope"] = stored_envelope
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata=metadata)
+    )
+
+    with (
+        patch.object(
+            turn_queue, "list_queued_sessions", new=AsyncMock(side_effect=[[head], []])
+        ),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "resolve_session_permissions", return_value=None),
+        patch.object(
+            turn_queue,
+            "append_and_save_message",
+            new=AsyncMock(side_effect=RuntimeError("db blip")),
+        ),
+        patch(
+            "backend.copilot.executor.utils.dispatch_turn",
+            new=AsyncMock(side_effect=TreeRefusal("This tree has closed.")),
+        ),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is False
+
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="s1", expect_status="running", status="idle"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure", [RuntimeError("db blip"), asyncio.CancelledError()], ids=type
+)
+async def test_a_failure_between_the_claim_and_the_dispatch_requeues_the_turn(
+    failure: BaseException,
+) -> None:
+    """Not left ``running`` with no turn to end it: the next tick retries."""
+    head = _queued_row()
+    head.metadata.llm_auth_provider = "codex"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(side_effect=failure)
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        with pytest.raises(type(failure)):
+            await turn_queue.dispatch_next_for_user("u1")
+
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="s1", expect_status="running", status="queued"
     )
 
 
@@ -339,6 +714,7 @@ async def test_codex_dispatch_skips_platform_billing_gates() -> None:
     head.metadata.llm_credential_id = "cred-1"
     pending = _pyd_message()
     db = MagicMock()
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     dispatch_turn_mock = AsyncMock()
@@ -400,10 +776,12 @@ async def test_promotion_rechecks_the_advanced_tier_before_spending() -> None:
     head.metadata.llm_auth_provider = "platform"
     pending = _pyd_message(metadata={"model": "advanced"})
     db = MagicMock()
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     dispatch_turn_mock = AsyncMock()
     entitled = AsyncMock(return_value=False)
+    claim = AsyncMock(return_value="admitted")
 
     with (
         _patch_queued_list([head]),
@@ -417,9 +795,7 @@ async def test_promotion_rechecks_the_advanced_tier_before_spending() -> None:
             new=AsyncMock(return_value=(1, 1, None)),
         ),
         patch("backend.copilot.turn_queue.check_rate_limit", new=AsyncMock()),
-        patch.object(
-            turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)
-        ),
+        patch.object(turn_queue, "claim_queued_session", new=claim),
         patch.object(turn_queue, "advanced_tier_entitled", new=entitled),
         patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
         patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
@@ -429,9 +805,9 @@ async def test_promotion_rechecks_the_advanced_tier_before_spending() -> None:
     assert promoted is False
     entitled.assert_awaited_once_with("u1")
     dispatch_turn_mock.assert_not_awaited()
-    # Back to queued rather than quietly re-run on Standard: nothing here
+    # Left queued rather than quietly re-run on Standard: nothing here
     # changes what a turn runs on without being asked.
-    assert db.update_chat_session_status.await_args.kwargs["status"] == "queued"
+    claim.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -441,9 +817,11 @@ async def test_promotion_refuses_when_the_entitlement_cannot_be_resolved() -> No
     head.metadata.llm_auth_provider = "platform"
     pending = _pyd_message(metadata={"model": "advanced"})
     db = MagicMock()
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     dispatch_turn_mock = AsyncMock()
+    claim = AsyncMock(return_value="admitted")
 
     with (
         _patch_queued_list([head]),
@@ -457,9 +835,7 @@ async def test_promotion_refuses_when_the_entitlement_cannot_be_resolved() -> No
             new=AsyncMock(return_value=(1, 1, None)),
         ),
         patch("backend.copilot.turn_queue.check_rate_limit", new=AsyncMock()),
-        patch.object(
-            turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)
-        ),
+        patch.object(turn_queue, "claim_queued_session", new=claim),
         patch.object(
             turn_queue,
             "advanced_tier_entitled",
@@ -472,7 +848,7 @@ async def test_promotion_refuses_when_the_entitlement_cannot_be_resolved() -> No
 
     assert promoted is False
     dispatch_turn_mock.assert_not_awaited()
-    assert db.update_chat_session_status.await_args.kwargs["status"] == "queued"
+    claim.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -484,6 +860,9 @@ async def test_promotion_refuses_when_the_entitlement_cannot_be_resolved() -> No
         ([("chat", None, "codex"), ("sub", "parent", "platform")], "sub"),
         # With nothing of the user's queued, sub-work is promoted.
         ([("sub", "parent", "platform")], "sub"),
+        # Within each group the oldest goes first.
+        ([("older", None, "platform"), ("newer", None, "platform")], "older"),
+        ([("older", "parent", "platform"), ("newer", "parent", "platform")], "older"),
     ],
 )
 @pytest.mark.asyncio
@@ -494,18 +873,26 @@ async def test_promotion_order(
     for row, (_, delegated_by, route) in zip(rows, queue):
         row.metadata.delegated_by_session_id = delegated_by
         row.metadata.llm_auth_provider = route
+    # A delegated row's turn is sub-work: an approval wake held under its tree.
+    sub_work = {
+        held._WAKE_KEY: True,
+        "envelope": TurnEnvelope(tree_id="tree", depth=1).model_dump(mode="json"),
+    }
+    waiting = {
+        session_id: _pyd_message(
+            metadata=sub_work if delegated_by else {"model": "standard"}
+        )
+        for session_id, delegated_by, _ in queue
+    }
     db = MagicMock()
-    db.get_latest_user_message_in_session = AsyncMock(
-        return_value=_pyd_message(metadata={"model": "standard"})
-    )
-    claim = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(side_effect=waiting.get)
+    claim = AsyncMock(return_value="admitted")
     dispatched = AsyncMock()
 
     with (
         _patch_queued_list(rows),
         patch.object(turn_queue, "chat_db", return_value=db),
         patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=False)),
-        patch.object(turn_queue, "count_running_turns", new=AsyncMock(return_value=0)),
         patch(
             "backend.copilot.turn_queue.is_user_paywalled",
             new=AsyncMock(return_value=False),
@@ -521,8 +908,82 @@ async def test_promotion_order(
     ):
         assert await turn_queue.dispatch_next_for_user("u1") is True
 
-    claim.assert_awaited_once_with(promoted)
+    assert claim.await_args.args[0].session_id == promoted
     assert dispatched.await_args.kwargs["session_id"] == promoted
+
+
+@pytest.mark.asyncio
+async def test_an_advanced_turn_without_the_tier_does_not_hold_up_the_queue() -> None:
+    """Skipped like any session that may not start yet, and the per-user checks
+    are made once however many sessions are tried."""
+    chat, sub = _queued_row("chat"), _queued_row("sub")
+    sub.metadata.delegated_by_session_id = "parent"
+    models = {"chat": "advanced", "sub": "standard"}
+    db = MagicMock()
+    db.get_latest_user_message_in_session = AsyncMock(
+        side_effect=lambda sid: _pyd_message(metadata={"model": models[sid]})
+    )
+    paywalled = AsyncMock(return_value=False)
+    claim = AsyncMock(return_value="admitted")
+
+    with (
+        _patch_queued_list([chat, sub]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "is_user_paywalled", new=paywalled),
+        patch.object(
+            turn_queue,
+            "get_global_rate_limits",
+            new=AsyncMock(return_value=(1, 1, None)),
+        ),
+        patch.object(turn_queue, "check_rate_limit", new=AsyncMock()),
+        patch.object(
+            turn_queue, "advanced_tier_entitled", new=AsyncMock(return_value=False)
+        ),
+        patch.object(turn_queue, "claim_queued_session", new=claim),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=AsyncMock()),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is True
+
+    assert claim.await_args.args[0].session_id == "sub"
+    paywalled.assert_awaited_once_with("u1")
+
+
+@pytest.mark.asyncio
+async def test_a_degraded_rate_limit_service_leaves_the_whole_queue() -> None:
+    chat, sub = _queued_row("chat"), _queued_row("sub")
+    sub.metadata.delegated_by_session_id = "parent"
+    sub.metadata.llm_auth_provider = "codex"
+    codex = AsyncMock(return_value=True)
+    db = MagicMock()
+    db.get_latest_user_message_in_session = AsyncMock(return_value=_pyd_message())
+    claim = AsyncMock(return_value="admitted")
+
+    with (
+        _patch_queued_list([chat, sub]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        # A dispatch that scanned on would start the turn: fail, not hang.
+        patch("backend.copilot.executor.utils.dispatch_turn", new=AsyncMock()),
+        patch.object(
+            turn_queue, "is_user_paywalled", new=AsyncMock(return_value=False)
+        ),
+        patch.object(
+            turn_queue,
+            "get_global_rate_limits",
+            new=AsyncMock(return_value=(1, 1, None)),
+        ),
+        patch.object(
+            turn_queue,
+            "check_rate_limit",
+            new=AsyncMock(side_effect=turn_queue.RateLimitUnavailable()),
+        ),
+        patch.object(turn_queue, "has_codex_access", new=codex),
+        patch.object(turn_queue, "claim_queued_session", new=claim),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is False
+
+    codex.assert_not_awaited()
+    claim.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -532,6 +993,7 @@ async def test_promotion_does_not_recheck_the_tier_for_a_standard_turn() -> None
     head.metadata.llm_auth_provider = "platform"
     pending = _pyd_message(metadata={"model": "standard"})
     db = MagicMock()
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     entitled = AsyncMock(side_effect=AssertionError("tier checked for Balanced"))
@@ -549,7 +1011,7 @@ async def test_promotion_does_not_recheck_the_tier_for_a_standard_turn() -> None
         ),
         patch("backend.copilot.turn_queue.check_rate_limit", new=AsyncMock()),
         patch.object(
-            turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
         ),
         patch.object(turn_queue, "advanced_tier_entitled", new=entitled),
         patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
@@ -574,6 +1036,7 @@ async def test_promotion_uses_current_codex_route_not_stale_platform_tier() -> N
     head.metadata.llm_credential_id = "cred-1"
     pending = _pyd_message(metadata={"model": "advanced"})
     db = MagicMock()
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     dispatch_turn_mock = AsyncMock()
@@ -584,7 +1047,7 @@ async def test_promotion_uses_current_codex_route_not_stale_platform_tier() -> N
         patch.object(turn_queue, "chat_db", return_value=db),
         patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
         patch.object(
-            turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
         ),
         patch.object(turn_queue, "advanced_tier_entitled", new=entitled),
         patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
@@ -605,6 +1068,7 @@ async def test_microsoft_promotion_skips_platform_billing_gates() -> None:
     head.metadata.llm_credential_id = "cred-microsoft"
     pending = _pyd_message(metadata={"model": "advanced"})
     db = MagicMock()
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     dispatch_turn_mock = AsyncMock()
@@ -618,7 +1082,7 @@ async def test_microsoft_promotion_skips_platform_billing_gates() -> None:
         patch.object(turn_queue, "is_user_paywalled", new=platform_gate),
         patch.object(turn_queue, "advanced_tier_entitled", new=platform_gate),
         patch.object(
-            turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
         ),
         patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
         patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
@@ -723,6 +1187,7 @@ async def test_dispatch_happy_path_claims_and_dispatches() -> None:
     head = _queued_row(session_id="s1")
     pending = _pyd_message(metadata={"mode": "extended_thinking"})
     db = MagicMock()
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     dispatch_turn_mock = AsyncMock()
@@ -752,10 +1217,14 @@ async def test_dispatch_happy_path_claims_and_dispatches() -> None:
     assert promoted is True
     dispatch_turn_mock.assert_awaited_once()
     invalidate.assert_awaited_once_with("s1")
-    # Single claim transition fired (no restore).
-    db.update_chat_session_status.assert_awaited_once_with(
-        session_id="s1", expect_status="queued", status="running"
-    )
+    # Claimed queued → running under the user's cap; nothing restored.
+    assert db.admit_chat_session_turn.await_args.kwargs == {
+        "session_id": "s1",
+        "user_id": "u1",
+        "expect_status": "queued",
+        "capacity": turn_queue.get_running_turn_limit(),
+    }
+    db.update_chat_session_status.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -765,8 +1234,8 @@ async def test_dispatch_rolls_claim_back_on_dispatch_failure() -> None:
     head = _queued_row(session_id="s1")
     pending = _pyd_message(metadata={"mode": "extended_thinking"})
     db = MagicMock()
-    # First call (claim) returns True; second call (restore) also True.
-    db.update_chat_session_status = AsyncMock(side_effect=[True, True])
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
+    db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     dispatch_turn_mock = AsyncMock(side_effect=RuntimeError("RabbitMQ blip"))
     with (
@@ -797,10 +1266,7 @@ async def test_dispatch_rolls_claim_back_on_dispatch_failure() -> None:
     # ``committed`` flag), not the dispatcher's — see the
     # ``test_dispatch_turn_cleans_redis_on_enqueue_failure`` test in
     # ``executor/utils_test`` for that contract.
-    assert db.update_chat_session_status.await_count == 2
-    db.update_chat_session_status.assert_any_await(
-        session_id="s1", expect_status="queued", status="running"
-    )
-    db.update_chat_session_status.assert_any_await(
+    db.admit_chat_session_turn.assert_awaited_once()
+    db.update_chat_session_status.assert_awaited_once_with(
         session_id="s1", expect_status="running", status="queued"
     )

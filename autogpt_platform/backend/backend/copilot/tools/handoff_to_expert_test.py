@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.tools import (
     TOOL_GROUPS,
@@ -626,7 +627,19 @@ class TestFailedTransfer:
         self, roster, mock_turn, mock_sessions
     ):
         r = await self._handoff(mock_turn, "rejected_concurrent_turn_cap")
-        assert "kept for the user's own messages" in r.message
+        assert spawn_limit_message() in r.message
+
+    @pytest.mark.asyncio
+    async def test_a_handoff_waiting_for_a_slot_has_still_moved(
+        self, roster, mock_turn, mock_sessions, deleted_sessions
+    ):
+        """Its turn is queued in the target's own session, so the target owns
+        it now and the thread stays."""
+        r = await self._handoff(mock_turn, "queued_for_slot")
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "transferred"
+        assert "starting when one of their task slots frees" in r.message
+        assert deleted_sessions == []
 
     @pytest.mark.parametrize("outcome", ["rejected_concurrent_turn_cap", "failed"])
     @pytest.mark.asyncio

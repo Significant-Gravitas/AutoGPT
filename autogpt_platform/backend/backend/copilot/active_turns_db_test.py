@@ -1,6 +1,7 @@
 """The running cap against the database: what the spawn tools persist is
 what the cap reads."""
 
+import asyncio
 import uuid
 from unittest.mock import AsyncMock, patch
 
@@ -9,9 +10,15 @@ import pytest_asyncio
 from prisma.models import User
 
 from backend.copilot import active_turns
-from backend.copilot.active_turns import TurnSlot, acquire_turn_slot
+from backend.copilot import db as copilot_db
+from backend.copilot.active_turns import (
+    ConcurrentTurnLimitError,
+    TurnSlot,
+    acquire_turn_slot,
+)
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
+    CHAT_STATUS_QUEUED,
     CHAT_STATUS_RUNNING,
     create_chat_session,
 )
@@ -80,6 +87,101 @@ async def test_a_chat_fanning_out_six_sub_sessions_leaves_the_user_a_slot():
         assert outcomes == ["running"] * 3 + ["queued_for_slot"] * 3
     finally:
         await User.prisma().delete(where={"id": user_id})
+
+
+@pytest.mark.parametrize(
+    "capacity, free",
+    [
+        # Six sub-sessions spawned at once with three running: one fits.
+        (4, 1),
+        # Six messages at once with three running: two fit.
+        (5, 2),
+    ],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_admits_fill_exactly_the_free_slots(capacity: int, free: int):
+    user_id = str(uuid.uuid4())
+    await User.prisma().create(
+        data={"id": user_id, "email": f"active-turns-{user_id}@example.com"}
+    )
+    try:
+        for _ in range(3):
+            running = await create_chat_session(user_id, dry_run=False)
+            assert await chat_db().update_chat_session_status(
+                session_id=running.session_id,
+                expect_status=CHAT_STATUS_IDLE,
+                status=CHAT_STATUS_RUNNING,
+                user_id=user_id,
+            )
+        waiting = [await create_chat_session(user_id, dry_run=False) for _ in range(6)]
+
+        admitted = await asyncio.gather(
+            *(_admit(user_id, s.session_id, capacity) for s in waiting)
+        )
+
+        assert sum(admitted) == free
+        assert (
+            await chat_db().count_chat_sessions_by_status(
+                user_id=user_id, status=CHAT_STATUS_RUNNING
+            )
+        ) == 3 + free
+    finally:
+        await User.prisma().delete(where={"id": user_id})
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_claim_on_a_row_that_moved_after_it_was_read_is_busy():
+    """A cancel outside the lock can land between the read and the update."""
+    user_id = str(uuid.uuid4())
+    await User.prisma().create(
+        data={"id": user_id, "email": f"active-turns-{user_id}@example.com"}
+    )
+    try:
+        session = await create_chat_session(user_id, dry_run=False)
+        real = copilot_db.PrismaChatSession.prisma
+
+        with patch.object(
+            copilot_db.PrismaChatSession,
+            "prisma",
+            side_effect=lambda client=None: _ReadBeforeTheCancel(real(client)),
+        ):
+            admit = await copilot_db.admit_chat_session_turn(
+                session_id=session.session_id,
+                user_id=user_id,
+                expect_status=CHAT_STATUS_QUEUED,
+                capacity=5,
+            )
+
+        assert admit == "busy"
+        assert (
+            await chat_db().get_chat_session_status(session.session_id)
+        ) == CHAT_STATUS_IDLE
+    finally:
+        await User.prisma().delete(where={"id": user_id})
+
+
+class _ReadBeforeTheCancel:
+    """The session's actions, with its read taken just before a cancel moved it
+    from queued to idle."""
+
+    def __init__(self, actions) -> None:
+        self._actions = actions
+
+    def __getattr__(self, name: str):
+        return getattr(self._actions, name)
+
+    async def find_unique(self, **kwargs):
+        row = await self._actions.find_unique(**kwargs)
+        return row.model_copy(update={"chatStatus": CHAT_STATUS_QUEUED})
+
+
+async def _admit(user_id: str, session_id: str, capacity: int) -> bool:
+    try:
+        async with acquire_turn_slot(user_id, session_id, capacity=capacity) as slot:
+            slot.keep()
+            return slot.admitted
+    except ConcurrentTurnLimitError:
+        return False
 
 
 async def _keep_slot(slot: TurnSlot, **_) -> None:

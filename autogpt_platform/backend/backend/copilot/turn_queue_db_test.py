@@ -21,6 +21,7 @@ from backend.copilot.model import (
     create_chat_session,
     get_chat_session,
 )
+from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tree import TurnEnvelope, admit_turn, get_tree_ledger
 from backend.data.db import prisma as db_client
 from backend.data.db_accessors import chat_db
@@ -47,31 +48,97 @@ async def test_a_promoted_message_is_a_root_not_the_finished_turns_child(
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_queued_wake_starts_under_the_envelope_its_call_was_held_under():
     held_under = _envelope(1)
-    await (await get_tree_ledger()).open(
-        held_under.tree_id, ceiling_microdollars=1_000_000, max_nodes=10
-    )
-    promoted, _, _ = await _promote_after(
-        _envelope(2),
-        message=held.WAKE_MESSAGE,
-        message_metadata={held._WAKE_KEY: True},
-        envelope=held_under,
-    )
+    ledger = await get_tree_ledger()
+    await ledger.open(held_under.tree_id, ceiling_microdollars=1_000_000, max_nodes=10)
+    revoked = CopilotPermissions(tools=["web_fetch"], tools_exclude=True)
+
+    # A tool revoked while the wake waited stays revoked.
+    with patch.object(turn_queue, "resolve_session_permissions", return_value=revoked):
+        promoted, _, _ = await _promote_after(
+            _envelope(2),
+            message=held.WAKE_MESSAGE,
+            message_metadata={held._WAKE_KEY: True},
+            envelope=held_under,
+        )
 
     assert promoted is not None
     assert (promoted.tree_id, promoted.depth) == (held_under.tree_id, 1)
+    assert not promoted.permits("web_fetch")
+    # The call's turn was counted when it ran; its wake takes no second node.
+    assert (await ledger.snapshot(held_under.tree_id))["nodes"] == 0
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_queued_wake_with_no_recorded_envelope_is_not_started():
-    """Not derived from the turn that happens to free the slot."""
+async def test_a_queued_wake_with_no_recorded_envelope_starts_as_a_root():
+    """In the user's own chat, not derived from the turn that freed the slot."""
+    promoted, _, _ = await _promote_after(
+        _envelope(1),
+        message=held.WAKE_MESSAGE,
+        message_metadata={held._WAKE_KEY: True},
+    )
+
+    assert promoted is not None
+    assert (promoted.depth, promoted.tools) == (0, None)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_queued_wake_with_no_recorded_envelope_in_a_sub_session_is_not_started():
     promoted, _, _ = await _promote_after(
         _envelope(1),
         message=held.WAKE_MESSAGE,
         message_metadata={held._WAKE_KEY: True},
         expect_refusal=turn_queue.UNRECORDED_WAKE,
+        sub_work=True,
+        # Three left running: below the reserve, so the wake is claimed.
+        running=4,
     )
 
     assert promoted is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_queued_wake_whose_envelope_no_longer_parses_is_not_started():
+    """A stored record from before a schema change is as good as none."""
+    promoted, _, _ = await _promote_after(
+        _envelope(1),
+        message=held.WAKE_MESSAGE,
+        message_metadata={held._WAKE_KEY: True, "envelope": {"depth": "deep"}},
+        expect_refusal=turn_queue.UNRECORDED_WAKE,
+        sub_work=True,
+        # Three left running: below the reserve, so the wake is claimed.
+        running=4,
+    )
+
+    assert promoted is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_queued_sub_work_is_not_promoted_into_the_users_last_slot():
+    """Four still run after the turn ends: an approval wake in a session
+    another one opened is that session's sub-work, so the fifth slot stays."""
+    held_under = _envelope(1)
+    await (await get_tree_ledger()).open(
+        held_under.tree_id, ceiling_microdollars=1_000_000, max_nodes=10
+    )
+    promoted, _, _ = await _promote_after(
+        _envelope(1),
+        message=held.WAKE_MESSAGE,
+        message_metadata={held._WAKE_KEY: True},
+        envelope=held_under,
+        sub_work=True,
+    )
+
+    assert promoted is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_message_typed_into_a_delegated_session_takes_the_users_slot():
+    """It is the user's own turn wherever they typed it."""
+    promoted, _, _ = await _promote_after(
+        _envelope(1), message="typed by the user", message_metadata=None, sub_work=True
+    )
+
+    assert promoted is not None
 
 
 async def _promote_after(
@@ -81,6 +148,8 @@ async def _promote_after(
     message_metadata: dict[str, Any] | None,
     envelope: TurnEnvelope | None = None,
     expect_refusal: str | None = None,
+    sub_work: bool = False,
+    running: int = 5,
 ) -> tuple[TurnEnvelope | None, int, int]:
     """Queue a turn behind a full cap, then end a turn carrying ``finished``.
 
@@ -91,7 +160,9 @@ async def _promote_after(
         data={"id": user_id, "email": f"turn-queue-{user_id}@example.com"}
     )
     try:
-        sessions = [await create_chat_session(user_id, dry_run=False) for _ in range(5)]
+        sessions = [
+            await create_chat_session(user_id, dry_run=False) for _ in range(running)
+        ]
         for session in sessions:
             assert await chat_db().update_chat_session_status(
                 session_id=session.session_id,
@@ -103,7 +174,11 @@ async def _promote_after(
         await stream_registry.create_session(
             ending.session_id, user_id, "chat_stream", "chat", ending_turn
         )
-        waiting = await create_chat_session(user_id, dry_run=False)
+        waiting = await create_chat_session(
+            user_id,
+            dry_run=False,
+            delegated_by_session_id=sessions[1].session_id if sub_work else None,
+        )
         await turn_queue.try_enqueue_turn(
             user_id=user_id,
             inflight_cap=15,

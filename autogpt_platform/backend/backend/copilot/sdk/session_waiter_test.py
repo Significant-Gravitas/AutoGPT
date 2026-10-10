@@ -189,8 +189,8 @@ async def test_idle_session_enqueues_normally():
     idle_db = MagicMock()
     # Session is idle → CAS idle → running succeeds; running count is 1
     # after the flip (this caller is the only running session).
+    idle_db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     idle_db.update_chat_session_status = AsyncMock(return_value=True)
-    idle_db.count_chat_sessions_by_status = AsyncMock(return_value=1)
     idle_db.list_chat_sessions_by_status = AsyncMock(return_value=[])
     idle_db.get_chat_session_status = AsyncMock(return_value="idle")
 
@@ -250,9 +250,10 @@ async def test_a_delegated_turn_leaves_the_users_last_slot_free(
 ):
     mock_session_lookup.return_value.metadata.delegated_by_session_id = delegated_by
     db = MagicMock()
-    db.update_chat_session_status = AsyncMock(return_value=True)
-    # Counted after this admit's flip: four were already running.
-    db.count_chat_sessions_by_status = AsyncMock(return_value=5)
+    # Four already running: the admit decides by the capacity it is given.
+    db.admit_chat_session_turn = AsyncMock(
+        side_effect=lambda **kw: "full" if 4 >= kw["capacity"] else "admitted"
+    )
     db.get_chat_session_status = AsyncMock(return_value="idle")
     queued = MagicMock()
     queued.get_chat_session_status = AsyncMock(return_value="queued")
@@ -364,6 +365,10 @@ async def test_in_flight_session_with_allow_queue_false_is_refused():
             "backend.copilot.sdk.session_waiter.queue_user_message",
             new=queue_message,
         ),
+        patch(
+            "backend.copilot.sdk.session_waiter.chat_db",
+            return_value=_status_db("running"),
+        ),
     ):
         outcome, result = await run_copilot_turn_via_queue(
             session_id="sess-busy",
@@ -378,6 +383,34 @@ async def test_in_flight_session_with_allow_queue_false_is_refused():
     assert outcome == "refused"
     assert result.refusal, "a refusal must carry a message the model can act on"
     queue_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_queued_session_with_allow_queue_false_is_refused():
+    """A session that already has a task waiting for a slot takes no second
+    one: its queued row is the one the promotion replays."""
+    scheduled = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.chat_db",
+            return_value=_status_db("queued"),
+        ),
+        patch("backend.copilot.sdk.session_waiter.schedule_turn", new=scheduled),
+    ):
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id="sess-waiting",
+            user_id="u1",
+            message="do the thing",
+            timeout=5,
+            tool_call_id="sub:parent",
+            tool_name="run_sub_session",
+            allow_queue=False,
+        )
+
+    assert outcome == "refused"
+    assert result.refusal
+    scheduled.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -407,3 +440,9 @@ async def test_a_tree_refusal_becomes_the_refused_outcome():
 
     assert outcome == "refused"
     assert result.refusal == "This task's tree has closed."
+
+
+def _status_db(status: str) -> MagicMock:
+    db = MagicMock()
+    db.get_chat_session_status = AsyncMock(return_value=status)
+    return db
