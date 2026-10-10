@@ -18,11 +18,6 @@ def server():
     yield None
 
 
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup():
-    yield
-
-
 def test_the_dry_run_report_counts_reliable_and_skipped(capsys):
     records = [
         RoleRecord(user_id="1", email="kept@x.io", choice="Marketing"),

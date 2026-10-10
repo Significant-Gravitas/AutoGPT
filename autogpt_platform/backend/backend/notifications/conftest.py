@@ -13,7 +13,6 @@ a module that reaches past the RPC fails its test rather than passing it.
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import Iterator
 from unittest.mock import AsyncMock
 
 import pytest
@@ -30,11 +29,6 @@ NOW = datetime(2026, 8, 3, 7, 30, tzinfo=timezone.utc)
 def server() -> None:
     """The notification suite is pure logic; it needs no live stack."""
     return None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup() -> Iterator[None]:
-    yield
 
 
 def make_db_client(**overrides) -> SimpleNamespace:
