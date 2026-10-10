@@ -68,6 +68,7 @@ def _mock_scheduler_client(*, fail_jobs: tuple[str, ...] = ()) -> MagicMock:
 
     client.add_community_rebuild_schedule = _maker("community_rebuild")
     client.add_nightly_batch_schedule = _maker("dream_nightly_batch")
+    client.add_skill_learning_schedule = _maker("skill_learning_nightly")
     return client
 
 
@@ -90,12 +91,16 @@ def _all_flags_on() -> dict[Flag, bool]:
 # ---------------------------------------------------------------------------
 
 
-def test_registry_contains_two_jobs_in_cron_frequency_order():
-    """Weekly community first, daily nightly batch second — the order
-    matches how schedules build up over time and reads naturally in
-    the log narrative."""
+def test_registry_contains_three_jobs_in_cron_frequency_order():
+    """Weekly community first, then the daily crons — the order matches
+    how schedules build up over time and reads naturally in the log
+    narrative."""
     prefixes = [j.job_id_prefix for j in DREAM_SYSTEM_JOBS]
-    assert prefixes == ["community_rebuild", "dream_nightly_batch"]
+    assert prefixes == [
+        "community_rebuild",
+        "dream_nightly_batch",
+        "skill_learning_nightly",
+    ]
 
 
 def test_each_job_has_distinct_registration_key_prefix():
@@ -117,6 +122,44 @@ def test_community_and_nightly_batch_have_distinct_flags():
     )
     assert community.flag == Flag.GRAPHITI_COMMUNITIES_ENABLED
     assert nightly.flag == Flag.DREAM_PASS_ENABLED
+
+
+def test_skill_learning_is_gated_independently_of_the_dream_pass():
+    """Enabling skill learning must not imply the dream pass (or vice
+    versa): its own flag, its own cron id, its own dedup key."""
+    learning = next(
+        j for j in DREAM_SYSTEM_JOBS if j.job_id_prefix == "skill_learning_nightly"
+    )
+    assert learning.flag == Flag.DREAM_SKILL_LEARNING_ENABLED
+    assert learning.skip_reason == "skill_learning_disabled"
+    assert (
+        learning.registration_key_prefix
+        == scheduling.SKILL_LEARNING_REGISTRATION_PREFIX
+    )
+
+
+@pytest.mark.asyncio
+async def test_skill_learning_registers_with_dream_pass_off():
+    client = _mock_scheduler_client()
+    flag_map = {Flag.DREAM_SKILL_LEARNING_ENABLED: True}
+    with patch(_PATH_FLAG, new=_flag_mock(flag_map)), patch(
+        _PATH_TZ, new=AsyncMock(return_value="Europe/Berlin")
+    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
+        _PATH_WRITE_TZ, new=AsyncMock()
+    ), patch(
+        _PATH_CLIENT, return_value=client
+    ):
+        result = await ensure_dream_system_scheduled("abc")
+
+    assert result["skill_learning_nightly"]["id"] == "skill_learning_nightly_abc"
+    assert result["dream_nightly_batch"] == {
+        "skipped": True,
+        "reason": "dream_pass_disabled",
+    }
+    client.add_skill_learning_schedule.assert_awaited_once_with(
+        user_id="abc", user_timezone="Europe/Berlin"
+    )
+    client.add_nightly_batch_schedule.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -554,6 +597,10 @@ def test_exported_key_prefixes_match_registry_rows():
     )
     assert (
         by_prefix["dream_nightly_batch"] == scheduling.NIGHTLY_BATCH_REGISTRATION_PREFIX
+    )
+    assert (
+        by_prefix["skill_learning_nightly"]
+        == scheduling.SKILL_LEARNING_REGISTRATION_PREFIX
     )
 
 

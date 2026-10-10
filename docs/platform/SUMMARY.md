@@ -42,6 +42,7 @@
 * [Using Google Gemini](gemini.md)
 * [Using Ollama](ollama.md)
 * [AutoPilot on a self-hosted LLM (no API keys)](copilot-local-llm.md)
+* [Nightly skill learning](skill-learning.md)
 * [Using AI/ML API](aimlapi.md)
 * [Using D-ID](d_id.md)
 

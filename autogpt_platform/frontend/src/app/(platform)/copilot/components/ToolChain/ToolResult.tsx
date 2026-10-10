@@ -20,6 +20,7 @@ import { capabilityTargetRow } from "./capabilityRow";
 import { ConsultVerdictCard } from "./ConsultCard";
 import { ExecutionCard } from "./ExecutionCard";
 import { FileDiff } from "./FileDiff";
+import { SkillLoadedCard } from "./SkillLoadedCard";
 import { isDiffText } from "./fileDiffHelpers";
 import type { ChainRow } from "./helpers";
 import {
@@ -437,8 +438,12 @@ function toolCard(
       return output && "result" in output ? (
         <KeyValueList value={output.result} />
       ) : null;
-    case "store_skill":
     case "read_skill":
+      if (output && typeof output.version === "number") {
+        return <SkillLoadedCard output={output} />;
+      }
+      return output ? <SkillCard output={output} /> : null;
+    case "store_skill":
     case "delete_skill":
       return output ? <SkillCard output={output} /> : null;
     case "list_skills": {

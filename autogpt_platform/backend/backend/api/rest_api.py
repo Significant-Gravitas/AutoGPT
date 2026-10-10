@@ -65,6 +65,7 @@ import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
 import backend.api.features.schedules.routes as schedules_routes
 import backend.api.features.search.routes as search_routes
+import backend.api.features.skill_learning.routes as skill_learning_routes
 import backend.api.features.skills.routes as skills_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
@@ -554,6 +555,9 @@ app.include_router(
 app.include_router(experts_routes.public_router, tags=["v2", "experts"], prefix="/api")
 app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
 app.include_router(memory_routes.router, tags=["v2", "memory"], prefix="/api")
+app.include_router(
+    skill_learning_routes.router, tags=["v2", "skill-learning"], prefix="/api"
+)
 app.include_router(home_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"

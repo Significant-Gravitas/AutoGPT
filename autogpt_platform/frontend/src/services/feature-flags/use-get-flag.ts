@@ -48,6 +48,10 @@ export enum Flag {
   GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled",
   DREAM_PASS_ENABLED = "dream-pass-enabled",
   DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity",
+  // Nightly skill learning (versioned, evidence-linked skill updates and
+  // their Memory/Expert/chat surfaces). Mirror of the backend flag;
+  // independent of the dream pass. Fail-closed.
+  DREAM_SKILL_LEARNING_ENABLED = "dream-skill-learning-enabled",
   // JSON flag mapping copilot-bot platform key (lowercase) -> visible on the
   // Bots settings page. Lets ops hide a platform (e.g. Slack while its
   // Marketplace review is pending) without a deploy. Missing keys default to
@@ -96,6 +100,7 @@ const defaultFlags = {
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
+  [Flag.DREAM_SKILL_LEARNING_ENABLED]: false,
   [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
   [Flag.COPILOT_VOICE_MODE]: false,
   [Flag.COPILOT_AUTO_MODE]: false,
@@ -162,6 +167,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_ENABLED;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
+    case Flag.DREAM_SKILL_LEARNING_ENABLED:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_SKILL_LEARNING_ENABLED;
     case Flag.COPILOT_VOICE_MODE:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_VOICE_MODE;
     case Flag.COPILOT_AUTO_MODE:

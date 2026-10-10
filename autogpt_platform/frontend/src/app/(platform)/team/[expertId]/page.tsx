@@ -24,7 +24,12 @@ import {
   UserIcon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
-import { notFound, useParams, useRouter } from "next/navigation";
+import {
+  notFound,
+  useParams,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 import { BackToTeamLink } from "../components/BackToTeamLink";
 import { ExpertChatDrawer } from "../components/ExpertChatDrawer/ExpertChatDrawer";
 import { expertToChatTarget } from "../components/ExpertChatDrawer/helpers";
@@ -62,6 +67,13 @@ const TABS = [
 export default function ExpertDetailPage() {
   const { expertId } = useParams<{ expertId: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const initialTab = TABS.some((tab) => tab.value === requestedTab)
+    ? (requestedTab as (typeof TABS)[number]["value"])
+    : "basics";
+  const requestedSkill = searchParams.get("skill");
+  const requestedVersion = searchParams.get("version");
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
   const {
     expert,
@@ -166,18 +178,20 @@ export default function ExpertDetailPage() {
           enabled={Boolean(enabled) && ready}
         />
 
-        <TabsLine variant="compact" defaultValue="basics">
-          <TabsLineList className="overflow-x-auto">
-            {TABS.map((tab) => (
-              <TabsLineTrigger
-                key={tab.value}
-                value={tab.value}
-                icon={tab.icon}
-              >
-                {tab.label}
-              </TabsLineTrigger>
-            ))}
-          </TabsLineList>
+        <TabsLine variant="compact" defaultValue={initialTab}>
+          <div className="overflow-hidden">
+            <TabsLineList className="overflow-x-auto">
+              {TABS.map((tab) => (
+                <TabsLineTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  icon={tab.icon}
+                >
+                  {tab.label}
+                </TabsLineTrigger>
+              ))}
+            </TabsLineList>
+          </div>
 
           <TabsLineContent value="basics">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(300px,1fr)]">
@@ -253,6 +267,8 @@ export default function ExpertDetailPage() {
               accentClassName={
                 getRaisedExpertAccent(expert.role, expert.color).pill
               }
+              initialSkill={requestedSkill}
+              initialVersionId={requestedVersion}
             />
           </TabsLineContent>
 

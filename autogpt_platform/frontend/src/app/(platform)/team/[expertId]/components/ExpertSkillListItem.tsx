@@ -7,10 +7,16 @@ import { cn } from "@/lib/utils";
 import { BookOpen01Icon, Delete02Icon } from "@hugeicons/core-free-icons";
 import { ExpertSkillEntry } from "./useExpertSkills";
 
+export interface SkillLearningLine {
+  label: string;
+  onDetails: () => void;
+}
+
 interface Props {
   entry: ExpertSkillEntry;
   accentClassName?: string;
   isSaving?: boolean;
+  learning?: SkillLearningLine | null;
   onRemove?: (name: string) => void;
 }
 
@@ -18,6 +24,7 @@ export function ExpertSkillListItem({
   entry,
   accentClassName,
   isSaving,
+  learning,
   onRemove,
 }: Props) {
   const details = entry.skill ?? entry.library;
@@ -44,6 +51,15 @@ export function ExpertSkillListItem({
           <Text variant="small" tone="muted">
             {details?.description ?? "Skill details unavailable."}
           </Text>
+          {learning ? (
+            <Text
+              variant="small"
+              tone="secondary"
+              data-testid="skill-learning-line"
+            >
+              {learning.label}
+            </Text>
+          ) : null}
           {triggers.length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-1">
               {triggers.map((trigger) => (
@@ -62,6 +78,16 @@ export function ExpertSkillListItem({
         </div>
       </div>
       <div className="flex flex-shrink-0 items-center gap-2">
+        {learning ? (
+          <Button
+            variant="ghost"
+            size="small"
+            onClick={learning.onDetails}
+            aria-label={`Learning details for ${entry.name}`}
+          >
+            Learning
+          </Button>
+        ) : null}
         {entry.library ? (
           <Button
             as="NextLink"

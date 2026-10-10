@@ -59,6 +59,7 @@ from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.learning.capture import capture_chat_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
 from backend.copilot.sdk.cost_tracking import (
@@ -4620,6 +4621,7 @@ async def _maybe_prepend_skills_update(
     try:
         notice = await build_skills_update_notice(
             user_id,
+            session_id=session.session_id,
             expert_id=session.expert_id,
             prior_contents=[
                 m.content or "" for m in session.messages if m.role == "user"
@@ -6511,6 +6513,22 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             _background_tasks.add(_ingest_task)
             _ingest_task.add_done_callback(_background_tasks.discard)
+
+        # --- Skill learning: record this turn as a learning source ---
+        # Independent of Graphiti: a memory-service failure must not change
+        # what the nightly learner can consider. Fire-and-forget; the
+        # helper is flag-gated and never raises.
+        if expert_identity_validated and user_id and message and is_user_message:
+            _capture_task = asyncio.create_task(
+                capture_chat_turn(
+                    user_id,
+                    session,
+                    list(session.messages[pre_attempt_msg_count:]) if session else [],
+                    message,
+                )
+            )
+            _background_tasks.add(_capture_task)
+            _capture_task.add_done_callback(_background_tasks.discard)
 
         # --- Upload CLI native session file for cross-pod --resume ---
         # The CLI writes its native session JSONL after each turn completes.

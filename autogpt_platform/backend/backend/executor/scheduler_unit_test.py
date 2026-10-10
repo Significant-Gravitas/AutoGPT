@@ -1991,6 +1991,38 @@ class TestMorningBriefingSchedule:
         Scheduler.add_morning_briefing_schedule(sched, **kwargs)
         return sched.scheduler.add_job
 
+    @pytest.mark.parametrize("requested_timezone", ["America/Chicago", "UTC"])
+    def test_learning_reregistration_preserves_an_overdue_job_unless_timezone_changes(
+        self, requested_timezone
+    ):
+        sched = Scheduler.__new__(Scheduler)
+        sched.scheduler = MagicMock()
+        overdue = datetime(2026, 8, 7, 8, tzinfo=timezone.utc)
+        existing = MagicMock(
+            id="skill_learning_nightly_user-1",
+            next_run_time=overdue,
+            trigger=CronTrigger.from_crontab("0 3 * * *", timezone="America/Chicago"),
+        )
+        sched.scheduler.get_job.return_value = existing
+
+        def enabled(coro):
+            coro.close()
+            return True
+
+        with patch(f"{_SCHEDULER_PATH}.run_async", side_effect=enabled):
+            result = Scheduler.add_skill_learning_schedule(
+                sched, user_id="user-1", user_timezone=requested_timezone
+            )
+        if requested_timezone == "America/Chicago":
+            sched.scheduler.add_job.assert_not_called()
+            assert result["next_run_time"] == overdue.isoformat()
+        else:
+            sched.scheduler.add_job.assert_called_once()
+            assert (
+                str(sched.scheduler.add_job.call_args.kwargs["trigger"].timezone)
+                == "UTC"
+            )
+
     def test_registers_daily_9am_cron_in_the_users_timezone(self):
         add_job = self._register(user_id="user-1", user_timezone="America/New_York")
 

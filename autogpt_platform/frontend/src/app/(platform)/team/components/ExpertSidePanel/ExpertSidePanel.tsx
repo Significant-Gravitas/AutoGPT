@@ -60,6 +60,10 @@ export function ExpertSidePanel({
           closeLabel={closeLabel}
           actions={headerActions}
           showIdentity={showIdentity}
+          // The dialog focuses the close button on open. A hover tooltip on
+          // that button would open on focus and then swallow every Escape,
+          // so the phone layout keeps the label without the tooltip.
+          closeTooltip={false}
           onClose={onClose}
         />
         {children}
@@ -140,6 +144,7 @@ interface HeaderProps {
   closeLabel: string;
   actions?: ReactNode;
   showIdentity: boolean;
+  closeTooltip?: boolean;
   onClose: () => void;
 }
 
@@ -149,6 +154,7 @@ function PanelHeader({
   closeLabel,
   actions,
   showIdentity,
+  closeTooltip = true,
   onClose,
 }: HeaderProps) {
   return (
@@ -158,7 +164,7 @@ function PanelHeader({
           <IdentityAvatar
             identity={identity}
             className="h-7 w-7"
-            imageSize={56}
+            imageSize={28}
           />
           <Text
             variant="body-medium"
@@ -179,6 +185,7 @@ function PanelHeader({
         size="icon-xs"
         leadingIcon={Cancel01Icon}
         aria-label={closeLabel}
+        withTooltip={closeTooltip}
         onClick={onClose}
       />
     </div>

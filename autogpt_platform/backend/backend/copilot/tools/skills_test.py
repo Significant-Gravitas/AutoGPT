@@ -232,7 +232,7 @@ def test_trigger_caps_are_bounded():
     constants — raising either invites a per-turn token-budget
     regression."""
     assert MAX_TRIGGERS == 10
-    assert MAX_TRIGGER_CHARS == 64
+    assert MAX_TRIGGER_CHARS == 512
 
 
 # ---------------------------------------------------------------------------

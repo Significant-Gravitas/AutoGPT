@@ -208,6 +208,9 @@ async def _store_uploaded_skill(
             version=parsed.version,
             extra=parsed.extra,
             files=files,
+            version_origin="imported",
+            actor_user_id=user_id,
+            summary="Uploaded by owner",
         )
     except SkillLimitError as exc:
         raise HTTPException(status_code=409, detail=str(exc))

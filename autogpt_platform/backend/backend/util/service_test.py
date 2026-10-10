@@ -17,6 +17,7 @@ from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.data.model import User
+from backend.util import service_rpc_models_test_support as rpc_models
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
@@ -33,6 +34,7 @@ from backend.util.service import (
     endpoint_to_async,
     expose,
     get_service_client,
+    resolve_type_hints,
 )
 
 TEST_SERVICE_PORT = 8765
@@ -129,6 +131,11 @@ class ServiceTest(AppService):
         """Method that always fails - for testing no retry when disabled"""
         raise RuntimeError("Intended error for testing")
 
+    # Exposed functions defined in another module that uses
+    # ``from __future__ import annotations`` (string annotations).
+    echo_record = expose(rpc_models.echo_record)
+    list_records = expose(rpc_models.list_records)
+
 
 class ServiceTestClient(AppServiceClient):
     @classmethod
@@ -144,6 +151,24 @@ class ServiceTestClient(AppServiceClient):
     add_async = endpoint_to_async(ServiceTest.add)
     list_reviews_async = endpoint_to_async(ServiceTest.list_reviews)
     subtract_async = endpoint_to_async(ServiceTest.subtract)
+    echo_record = endpoint_to_async(ServiceTest.echo_record)
+    list_records = endpoint_to_async(ServiceTest.list_records)
+
+
+@pytest.mark.asyncio
+async def test_rpc_resolves_future_annotations_for_request_and_return(server):
+    """A model-valued argument and a ``Model | None`` return declared with
+    string annotations in another module must round-trip as models, not
+    raw dicts, and ``None`` must survive."""
+    with ServiceTest():
+        client = get_service_client(ServiceTestClient)
+        echoed = await client.echo_record(rpc_models.SampleRecord(id="r1", count=2))
+        assert isinstance(echoed, rpc_models.SampleRecord)
+        assert echoed.count == 3
+        assert await client.echo_record(rpc_models.SampleRecord(id="missing")) is None
+        listed = await client.list_records(["a", "b"])
+        assert [r.id for r in listed] == ["a", "b"]
+        assert all(isinstance(r, rpc_models.SampleRecord) for r in listed)
 
 
 @pytest.mark.asyncio
@@ -1097,6 +1122,10 @@ class TestForwardRefReturnAnnotation:
         assert adapter.validate_python([{"id": "0"}]) == [ReviewLike(id="0")]
         with pytest.raises(ValidationError):
             adapter.validate_python([{"id": "0"}, {"id": "1"}])
+
+        resolved = resolve_type_hints(_returns_at_most_one_review)["return"]
+        with pytest.raises(ValidationError):
+            TypeAdapter(resolved).validate_python([{"id": "0"}, {"id": "1"}])
 
     def test_annotation_without_a_schema_yields_no_adapter(self, caplog):
         """Resolvable, but pydantic cannot build a schema: warn once, skip validation."""

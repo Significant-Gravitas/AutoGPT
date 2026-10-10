@@ -28,6 +28,22 @@ export function getScopeName(
   return expert?.name ?? "this expert";
 }
 
+/** Panel identity for a learning record: the Expert, or the personal scope. */
+export function learningSheetScope(
+  expertId: string | null,
+  experts: Expert[] | undefined,
+) {
+  const expert = expertId
+    ? experts?.find((candidate) => candidate.id === expertId)
+    : undefined;
+  return {
+    expertId: expert ? expert.id : null,
+    name: expert ? expert.name : "AutoPilot",
+    avatarUrl: expert ? expert.avatar_url : null,
+    color: expert ? expert.color : null,
+  };
+}
+
 export function formatWhen(createdAt: string | null | undefined) {
   if (!createdAt) return "";
   const parsed = new Date(createdAt);
