@@ -103,8 +103,9 @@ async def test_run_sandboxed_invokes_vetto():
     mock_proc.returncode = 0
     mock_proc.pid = 9999
 
-    with patch("backend.copilot.tools.sandbox.get_sandbox_backend", return_value="vetto"), \
-         patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+    with patch(
+        "backend.copilot.tools.sandbox.get_sandbox_backend", return_value="vetto"
+    ), patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
         stdout, stderr, exit_code, timed_out = await run_sandboxed(
             ["echo", "vetto-test"],
             cwd="/tmp/copilot-test",
