@@ -115,7 +115,6 @@ async def test_converts_cancel_pending_trial_in_place_under_checkout_lock(
         "sub_1",
         cancel_at_period_end=False,
         trial_end="now",
-        proration_behavior="none",
         payment_behavior="error_if_incomplete",
     )
     boundaries.sync.assert_awaited_once_with(dict(boundaries.converted))

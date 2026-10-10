@@ -216,7 +216,6 @@ def test_update_subscription_tier_cancel_pending_trial_converts_its_own_plan(
         "sub_1",
         cancel_at_period_end=False,
         trial_end="now",
-        proration_behavior="none",
         payment_behavior="error_if_incomplete",
     )
     trial_conversion.sync.assert_awaited_once_with(dict(trial_conversion.converted))

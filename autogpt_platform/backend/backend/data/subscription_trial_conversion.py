@@ -59,12 +59,14 @@ async def convert_cancel_pending_trial(trial: TrialState) -> None:
         # is handled; converting before then would bill for both plans.
         if await other_plan_is_live(trial.customer_id, subscription.id):
             raise TrialConversionRefused(ANOTHER_PLAN_LIVE)
+        # No proration_behavior: ending a trial has nothing to prorate, and
+        # "none" would skip the first invoice entirely under Stripe's flexible
+        # billing mode.
         converted = await stripe_call(
             stripe.Subscription.modify_async,
             subscription.id,
             cancel_at_period_end=False,
             trial_end="now",
-            proration_behavior="none",
             payment_behavior="error_if_incomplete",
         )
         invalidate_active_subscription_cache(trial.customer_id)
