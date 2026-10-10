@@ -55,6 +55,19 @@ describe("AutoGPT server URL resolution", () => {
     );
   });
 
+  it.each([
+    ["http://localhost:8006/api", "http://localhost:8006"],
+    ["https://api.example.com/api", "https://api.example.com"],
+    ["https://example.com/apis/api", "https://example.com/apis"],
+    ["https://api.example.com/api/", "https://api.example.com"],
+    ["https://backend.example.com", "https://backend.example.com"],
+  ])("strips only a trailing /api from %s", (apiUrl, baseUrl) => {
+    vi.stubGlobal("window", undefined);
+    vi.stubEnv("AGPT_SERVER_URL", apiUrl);
+
+    expect(environment.getAGPTServerBaseUrl()).toBe(baseUrl);
+  });
+
   it("leaves explicit server-side backend URLs untouched", () => {
     vi.stubGlobal("window", undefined);
     vi.stubEnv("AGPT_SERVER_URL", "http://backend.internal:8006/api");
