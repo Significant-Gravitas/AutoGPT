@@ -542,6 +542,17 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AllQuiet List Incidents](block-integrations/allquiet/incident_search.md#allquiet-list-incidents) | Searches All Quiet incidents by status, severity, team or text |
 | [AllQuiet List Teams](block-integrations/allquiet/teams.md#allquiet-list-teams) | Lists All Quiet teams and their IDs |
 | [AllQuiet Update Incident](block-integrations/allquiet/incidents.md#allquiet-update-incident) | Investigates, resolves, escalates or comments on an All Quiet incident |
+| [Capy Archive Thread](block-integrations/capy/threads.md#capy-archive-thread) | Archives a Capy thread, taking it off the project board |
+| [Capy Get Review Round](block-integrations/capy/reviews.md#capy-get-review-round) | Gets a Capy review round's status and its findings, each with severity, confidence, category, file and line |
+| [Capy Get Thread](block-integrations/capy/threads.md#capy-get-thread) | Gets a Capy thread's current status, title and credit usage, whether it is still working or needs an answer, and a link to watch it |
+| [Capy Get Usage](block-integrations/capy/usage.md#capy-get-usage) | Reports how much your Capy organization spent in a date range, broken down by member, model and kind of usage |
+| [Capy Interrupt Thread](block-integrations/capy/messages.md#capy-interrupt-thread) | Stops the agent in a Capy thread mid-run, for example when it is heading the wrong way |
+| [Capy List Projects](block-integrations/capy/projects.md#capy-list-projects) | Lists the Capy projects your API key can see, with the repositories each one covers |
+| [Capy List Thread Messages](block-integrations/capy/messages.md#capy-list-thread-messages) | Reads a Capy thread's transcript: your brief, the agent's replies (including pull request links and questions), and optionally its tool steps |
+| [Capy List Thread Tasks](block-integrations/capy/tasks.md#capy-list-thread-tasks) | Lists the subagent tasks a Capy thread fanned its work out to, with each task's status and credit spend |
+| [Capy List Threads](block-integrations/capy/threads.md#capy-list-threads) | Lists the agent threads in a Capy project with their status and link, most recently active first |
+| [Capy Start Review](block-integrations/capy/reviews.md#capy-start-review) | Starts a Capy code review on a GitHub pull request |
+| [Capy Wait For Thread](block-integrations/capy/wait.md#capy-wait-for-thread) | Waits for a Capy thread to finish (the agent delivered, asked a question or failed) and returns its status, latest reply and a link to the thread |
 | [Conductor Create Session](block-integrations/conductor/create_session.md#conductor-create-session) | Start a new agent session (chat) in an existing Conductor workspace, optionally with a first prompt, and optionally wait for the agent's reply |
 | [Conductor Create Workspace](block-integrations/conductor/create_workspace.md#conductor-create-workspace) | Create a Conductor cloud workspace for a project or repository, optionally start its agent with a prompt and wait for the reply |
 | [Conductor Get Account](block-integrations/conductor/account.md#conductor-get-account) | Get an overview of your Conductor account in one call: who you are, the projects (repositories) you can open workspaces in, your sections and your routines |
@@ -704,6 +715,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 |------------|-------------|
 | [Agent Executor](block-integrations/misc.md#agent-executor) | Executes an existing agent inside your agent |
 | [AutoPilot](block-integrations/misc.md#autopilot) | Execute tasks using AutoGPT AutoPilot with full access to platform tools (agent management, workspace files, web fetch, block execution, and more) |
+| [Capy Create Thread](block-integrations/capy/create_thread.md#capy-create-thread) | Starts a new Capy agent on a coding task: Capy, an AI software engineer, runs a background coding agent on its own cloud machine against your GitHub repo |
+| [Capy Send Message](block-integrations/capy/messages.md#capy-send-message) | Sends a message to the agent in a Capy thread: a follow-up instruction, a correction, or the answer to its question |
 
 ## CRM Services
 
