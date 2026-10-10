@@ -1844,6 +1844,12 @@ async def _get_active_subscription_cached(
     return await _get_active_subscription(customer_id)
 
 
+def invalidate_active_subscription_cache(customer_id: str) -> None:
+    """Drop the cached lookup after changing the subscription in Stripe, so the
+    status returned right after shows the new period instead of the old one."""
+    _get_active_subscription_cached.cache_delete(customer_id)
+
+
 async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
     """Return the billing cycle ("monthly"/"yearly") of the user's active sub.
 
@@ -2386,6 +2392,11 @@ async def get_pending_subscription_change(
 
     sub = await _get_active_subscription(user.stripe_customer_id)
     if sub is None:
+        return None
+    if sub.get("status") == "trialing" and (sub.get("metadata") or {}).get(
+        "trial_enrollment_id"
+    ):
+        # A cancel-pending trial is not a paid plan with a downgrade queued.
         return None
     period_end = sub.current_period_end
     if not isinstance(period_end, int):
@@ -3185,6 +3196,18 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
     amount_due: int = invoice.get("amount_due", 0)
     sub_id = _invoice_subscription_id(invoice)
     invoice_id: str = invoice.get("id", "")
+
+    if invoice.get("billing_reason") == "subscription_create":
+        # A new plan's first payment failed inside Checkout, which lets the
+        # customer retry; no plan lapsed. Cancelling here would also end the
+        # trial a cancel-pending customer was buying the plan beside.
+        logger.info(
+            "handle_subscription_payment_failure: first payment of new sub %s"
+            " failed for user %s; leaving it to Checkout",
+            sub_id,
+            user.id,
+        )
+        return
 
     if amount_due <= 0:
         logger.info(
