@@ -227,6 +227,43 @@ describe("getFileTypeLabel + getFileTypeIcon", () => {
       expect(typeof Icon).toBe("object");
     }
   });
+
+  test.each([
+    [
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      undefined,
+      "Presentation",
+    ],
+    ["application/vnd.ms-powerpoint", undefined, "Presentation"],
+    [
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      undefined,
+      "Document",
+    ],
+    ["application/msword", undefined, "Document"],
+    ["text/plain", "deck.pptx", "Presentation"],
+    ["application/octet-stream", "deck.ppt", "Presentation"],
+    [undefined, "report.docx", "Document"],
+    ["application/octet-stream", "report.doc", "Document"],
+    ["application/octet-stream", "sheet.xlsx", "Spreadsheet"],
+    [undefined, "sheet.xls", "Spreadsheet"],
+  ])("getFileTypeLabel(%s, %s) === %s", (mime, name, expected) => {
+    expect(getFileTypeLabel(mime, name)).toBe(expected);
+  });
+
+  test("office files get their own icons, by MIME or by extension", () => {
+    const presentation = getFileTypeIcon(
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    );
+    expect(getFileTypeIcon("text/plain", "deck.pptx")).toBe(presentation);
+    expect(getFileTypeIcon(undefined, "report.docx")).toBe(
+      getFileTypeIcon("text/plain"),
+    );
+    expect(getFileTypeIcon("application/octet-stream", "sheet.xlsx")).toBe(
+      getFileTypeIcon("text/csv"),
+    );
+    expect(presentation).not.toBe(getFileTypeIcon("application/octet-stream"));
+  });
 });
 
 describe("getPreviewKind", () => {
