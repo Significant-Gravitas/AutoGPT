@@ -8,25 +8,29 @@ vi.mock("@/services/analytics", () => ({
   analytics: { sendDatafastEvent },
 }));
 
+const { posthog } = vi.hoisted(() => ({
+  posthog: { __loaded: true, is_capturing: () => true, capture: vi.fn() },
+}));
+vi.mock("posthog-js", () => ({ default: posthog }));
+
 import {
   buildStepLayout,
   NO_PAYWALL_STEPS,
-  PAYWALL_FIRST_STEPS,
+  PAYWALL_LAST_STEPS,
 } from "../store";
 import { onboardingStepKey, trackOnboardingStep } from "../tracking";
 
 describe("onboardingStepKey", () => {
-  // Pain points is step 3 with the paywall and step 2 without it, so the
-  // number alone can't identify a step across cohorts.
+  // Optional steps shift numeric positions; analytics keeps stable names.
   it("maps the same key across both step layouts", () => {
     expect(
-      onboardingStepKey(PAYWALL_FIRST_STEPS, PAYWALL_FIRST_STEPS.painPoints),
+      onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.painPoints),
     ).toBe("pain_points");
     expect(
       onboardingStepKey(NO_PAYWALL_STEPS, NO_PAYWALL_STEPS.painPoints),
     ).toBe("pain_points");
     expect(
-      onboardingStepKey(PAYWALL_FIRST_STEPS, PAYWALL_FIRST_STEPS.preparing),
+      onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.preparing),
     ).toBe("preparing");
     expect(
       onboardingStepKey(NO_PAYWALL_STEPS, NO_PAYWALL_STEPS.preparing),
@@ -35,10 +39,11 @@ describe("onboardingStepKey", () => {
 
   it("names the intro steps when the layout has them", () => {
     const steps = buildStepLayout({ hasIntro: true, hasPaywall: true });
-    expect(onboardingStepKey(steps, 1)).toBeNull();
-    expect(onboardingStepKey(steps, 2)).toBe("team");
-    expect(onboardingStepKey(steps, 3)).toBe("autopilot");
-    expect(onboardingStepKey(steps, 4)).toBe("role");
+    expect(onboardingStepKey(steps, 1)).toBe("team");
+    expect(onboardingStepKey(steps, 2)).toBe("autopilot");
+    expect(onboardingStepKey(steps, 3)).toBe("role");
+    expect(onboardingStepKey(steps, 4)).toBe("pain_points");
+    expect(onboardingStepKey(steps, 5)).toBeNull();
     expect(onboardingStepKey(steps, 6)).toBe("preparing");
   });
 
@@ -48,7 +53,8 @@ describe("onboardingStepKey", () => {
       hasHire: true,
       hasPaywall: true,
     });
-    expect(onboardingStepKey(steps, 6)).toBe("hire");
+    expect(onboardingStepKey(steps, 5)).toBe("hire");
+    expect(onboardingStepKey(steps, 6)).toBeNull();
     expect(onboardingStepKey(steps, 7)).toBe("preparing");
   });
 
@@ -56,7 +62,7 @@ describe("onboardingStepKey", () => {
   // double-count the top of the funnel.
   it("returns null for the subscription step", () => {
     expect(
-      onboardingStepKey(PAYWALL_FIRST_STEPS, PAYWALL_FIRST_STEPS.subscription),
+      onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.subscription),
     ).toBeNull();
   });
 });
@@ -65,7 +71,33 @@ describe("trackOnboardingStep", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     sendDatafastEvent.mockReset();
+    posthog.capture.mockReset();
     sessionStorage.clear();
+  });
+
+  // PostHog gets one event with the step as a property; DataFast keeps its
+  // goal per step.
+  it("reports each step to PostHog once, as onboarding_step_viewed", () => {
+    trackOnboardingStep("role");
+    trackOnboardingStep("role");
+    trackOnboardingStep("hire");
+
+    expect(posthog.capture.mock.calls).toEqual([
+      ["onboarding_step_viewed", { step: "role" }],
+      ["onboarding_step_viewed", { step: "hire" }],
+    ]);
+  });
+
+  it("still reports to PostHog when the DataFast script throws", () => {
+    sendDatafastEvent.mockImplementation(() => {
+      throw new Error("datafast unavailable");
+    });
+
+    trackOnboardingStep("team");
+
+    expect(posthog.capture).toHaveBeenCalledWith("onboarding_step_viewed", {
+      step: "team",
+    });
   });
 
   it("reports one goal per step name", () => {

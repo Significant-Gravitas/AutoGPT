@@ -1,6 +1,7 @@
 """Where each person stands with us, as MailerLite subscriber fields.
 
-GTM segments on one status and five dates (see `SubscriberField`). Each
+GTM segments on one status and five dates (see `SubscriberField`), plus the
+checkout opener's segmentation, which `audience_enrichment` works out. Each
 transition below sets the status and the date it is named for, from Stripe's
 own timestamp where the event carries one. The dates describe the current or
 most recent subscription: a new subscription clears the previous one's
@@ -140,10 +141,3 @@ async def queue_fields(
         logger.error(
             f"Could not queue MailerLite fields for user {user_id}: {result.message}"
         )
-
-
-async def queue_signup(user_id: str, email: str, created_at: datetime) -> None:
-    """A new account: `signed`, with the day it was created. It is queued
-    from a background task, so nothing orders it before the account's first
-    checkout; the notification service keeps it from undoing one."""
-    await queue_fields(user_id, email, signed(created_at), AudienceAction.SIGNUP)

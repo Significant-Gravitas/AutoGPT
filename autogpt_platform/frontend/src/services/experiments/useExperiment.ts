@@ -19,9 +19,6 @@ export { resetReportedAssignmentsForTests } from "./useReportAssignment";
  * loading flags: render the control experience and hold any one-shot
  * side effects until it flips, so a late variant is never mis-recorded as
  * control. When PostHog is disabled the experiment resolves immediately.
- *
- * For an experiment bucketed by a LaunchDarkly flag instead, use
- * `useLaunchDarklyExperiment`; both report into the same table.
  */
 export function useExperiment(experimentKey: string) {
   const rawVariant = useFeatureFlagVariantKey(experimentKey);

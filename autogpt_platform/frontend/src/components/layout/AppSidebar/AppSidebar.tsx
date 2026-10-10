@@ -20,6 +20,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { isEditableElement } from "@/lib/platform";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -35,7 +36,6 @@ import {
   Folder01Icon,
   GridViewIcon,
   Home10Icon,
-  NoteEditIcon,
   Store01Icon,
   AddTeamIcon,
 } from "@hugeicons/core-free-icons";
@@ -53,10 +53,6 @@ const MAIN_LINKS: NavLink[] = [
   { name: "Marketplace", href: "/marketplace", icon: Store01Icon },
   { name: "Build", href: "/build", icon: FlowIcon },
 ];
-
-// /home 404s without the experts flag, so the entry only exists for the
-// cohort that has a home to go to.
-const HOME_LINK: NavLink = { name: "Home", href: "/home", icon: Home10Icon };
 
 const WORKSPACE_LINKS: NavLink[] = [
   { name: "Files", href: "/artifacts", icon: Folder01Icon },
@@ -82,9 +78,7 @@ function NavLinkLoader() {
   );
 }
 
-// Rendered inside the New Task <Link> — swap the sparkle for a spinner while
-// navigation to /copilot is pending, then back to the sparkle once it lands.
-function NewTaskIcon() {
+function HomeIcon() {
   const { pending } = useLinkStatus();
 
   if (pending) {
@@ -98,7 +92,7 @@ function NewTaskIcon() {
 
   return (
     <Icon
-      icon={NoteEditIcon}
+      icon={Home10Icon}
       className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
     />
   );
@@ -115,9 +109,7 @@ function useNavItemClassName() {
   );
 }
 
-// New Task shares the nav-item styling with the main links so it sits in the
-// same section with a uniform gap, instead of being a standalone CTA button.
-function NewTaskItem() {
+function HomeItem() {
   const pathname = usePathname();
   const navItemClassName = useNavItemClassName();
 
@@ -125,13 +117,13 @@ function NewTaskItem() {
     <SidebarMenuItem>
       <SidebarMenuButton
         asChild
-        tooltip="New Task"
-        isActive={isLinkActive(pathname, "/copilot")}
+        tooltip="Home"
+        isActive={isLinkActive(pathname, "/home")}
         className={navItemClassName}
       >
-        <Link href="/copilot">
-          <NewTaskIcon />
-          <span className="truncate">New Task</span>
+        <Link href="/home">
+          <HomeIcon />
+          <span className="truncate">Home</span>
           <ShortcutHint letter="O" />
         </Link>
       </SidebarMenuButton>
@@ -188,23 +180,13 @@ function NavMenu({
 function CollapsibleNavGroup({
   label,
   children,
-  scrollable = false,
 }: {
   label: string;
   children: ReactNode;
-  scrollable?: boolean;
 }) {
   return (
-    <Collapsible
-      defaultOpen
-      className={cn(
-        "group/collapsible",
-        scrollable && "flex min-h-0 flex-1 flex-col",
-      )}
-    >
-      <SidebarGroup
-        className={cn("py-1", scrollable && "flex min-h-0 flex-1 flex-col")}
-      >
+    <Collapsible defaultOpen className="group/collapsible">
+      <SidebarGroup className="py-1">
         <SidebarGroupLabel
           asChild
           className="text-[13px] font-medium text-zinc-500 group-data-[collapsible=icon]:hidden"
@@ -217,21 +199,8 @@ function CollapsibleNavGroup({
             />
           </CollapsibleTrigger>
         </SidebarGroupLabel>
-        <CollapsibleContent
-          className={cn(
-            "overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none",
-            scrollable && "flex min-h-0 flex-1 flex-col",
-          )}
-        >
-          <SidebarGroupContent
-            className={
-              scrollable
-                ? "min-h-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                : undefined
-            }
-          >
-            {children}
-          </SidebarGroupContent>
+        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+          <SidebarGroupContent>{children}</SidebarGroupContent>
         </CollapsibleContent>
       </SidebarGroup>
     </Collapsible>
@@ -241,6 +210,7 @@ function CollapsibleNavGroup({
 type Props = ComponentProps<typeof Sidebar>;
 
 export function AppSidebar(props: Props) {
+  const { isLoggedIn } = useAuth();
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
@@ -255,7 +225,6 @@ export function AppSidebar(props: Props) {
       : WORKSPACE_LINKS
   ).filter((link) => link.href !== "/artifacts" || filesEnabled);
 
-  // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.
   useEffect(() => {
     function handleNewTaskShortcut(event: KeyboardEvent) {
       if (event.repeat) return;
@@ -264,7 +233,7 @@ export function AppSidebar(props: Props) {
       if (!event.shiftKey) return;
       if (isEditableElement(document.activeElement)) return;
       event.preventDefault();
-      router.push("/copilot");
+      router.push("/home");
     }
 
     document.addEventListener("keydown", handleNewTaskShortcut);
@@ -272,32 +241,20 @@ export function AppSidebar(props: Props) {
   }, [router]);
 
   return (
-    <Sidebar
-      collapsible="icon"
-      {...props}
-      className="[&_[data-sidebar=sidebar]]:bg-[#fafafa]"
-    >
-      <AppSidebarHeader />
+    <Sidebar collapsible="icon" {...props}>
+      <SidebarContent className="scroll-py-16 gap-0 overflow-y-auto overflow-x-hidden overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] group-data-[collapsible=icon]:scroll-pt-24 group-data-[collapsible=icon]:overflow-y-auto [&::-webkit-scrollbar]:hidden">
+        <AppSidebarHeader />
 
-      <SidebarContent className="gap-2 overflow-hidden">
         <motion.div
           variants={sidebarContainerVariants}
           initial="hidden"
           animate="show"
-          className="flex min-h-0 flex-1 flex-col gap-2"
+          className="flex shrink-0 flex-col gap-2"
         >
           <motion.div variants={itemVariants}>
             <SidebarGroup className="mt-0 py-1">
               <SidebarGroupContent>
-                <NavMenu
-                  links={mainLinks}
-                  leading={
-                    <>
-                      {isHireExpertsEnabled && <NavItem link={HOME_LINK} />}
-                      <NewTaskItem />
-                    </>
-                  }
-                />
+                <NavMenu links={mainLinks} leading={<HomeItem />} />
               </SidebarGroupContent>
             </SidebarGroup>
           </motion.div>
@@ -310,25 +267,27 @@ export function AppSidebar(props: Props) {
             </motion.div>
           ) : null}
 
-          <motion.div
-            variants={itemVariants}
-            className="flex min-h-0 flex-1 flex-col group-data-[collapsible=icon]:hidden"
-          >
-            <CollapsibleNavGroup label="Recent chats" scrollable>
-              {/* Suspense boundary: RecentChats reads useSearchParams(), which
+          {isLoggedIn && (
+            <motion.div
+              variants={itemVariants}
+              className="group-data-[collapsible=icon]:hidden"
+            >
+              <CollapsibleNavGroup label="Recent chats">
+                {/* Suspense boundary: RecentChats reads useSearchParams(), which
                   Next.js requires to be wrapped to avoid forcing the route to
                   client-side rendering. */}
-              <Suspense fallback={null}>
-                <RecentChats />
-              </Suspense>
-            </CollapsibleNavGroup>
-          </motion.div>
+                <Suspense fallback={null}>
+                  <RecentChats />
+                </Suspense>
+              </CollapsibleNavGroup>
+            </motion.div>
+          )}
         </motion.div>
+
+        <SidebarUserActions />
       </SidebarContent>
 
-      <SidebarUserActions />
-
-      <SidebarRail />
+      <SidebarRail className="w-2 translate-x-0 after:left-0 group-data-[side=left]:-right-2 group-data-[side=right]:-left-2 group-data-[side=right]:after:left-auto group-data-[side=right]:after:right-0 sm:hidden md:flex" />
     </Sidebar>
   );
 }

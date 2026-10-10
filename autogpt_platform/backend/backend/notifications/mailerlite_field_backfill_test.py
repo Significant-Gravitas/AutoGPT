@@ -182,7 +182,7 @@ async def test_apply_batches_upserts_at_the_import_pace(configured, monkeypatch)
     changes = backfill.plan([_person(f"p{i}@x.io") for i in range(120)], {}).changes
     progress = []
 
-    ok, failed = await backfill.apply(changes, lambda d, t: progress.append(d))
+    ok, failed, skipped = await backfill.apply(changes, lambda d, t: progress.append(d))
 
     batches = [c.kwargs["json"]["requests"] for c in client.post.await_args_list]
     assert [len(b) for b in batches] == [50, 50, 20]
@@ -197,8 +197,31 @@ async def test_apply_batches_upserts_at_the_import_pace(configured, monkeypatch)
     assert [c.args[0] for c in configured.await_args_list] == [
         mailerlite_backfill.UPSERT_BATCH_INTERVAL_SECONDS
     ] * 2
-    assert (ok, failed) == (120, 0)
+    assert (ok, failed, skipped) == (120, 0, 0)
     assert progress == [50, 100, 120]
+
+
+@pytest.mark.asyncio
+async def test_apply_drops_anyone_who_may_no_longer_be_written(configured, monkeypatch):
+    """The plan is hours old by its last batch: someone who opted out or was
+    seen in Iran or Russia since then is checked out right before the write."""
+    client = MagicMock()
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _response(
+            200,
+            {"responses": [{"code": 200} for _ in kw["json"]["requests"]]},
+        )
+    )
+    monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
+    people = [_person("in@x.io"), _person("out@x.io")]
+    changes = backfill.plan(people, {}).changes
+
+    async def kept_out(user_id: str) -> bool:
+        return user_id == "u-out@x.io"
+
+    assert await backfill.apply(changes, kept_out=kept_out) == (1, 0, 1)
+    (batch,) = [c.kwargs["json"]["requests"] for c in client.post.await_args_list]
+    assert [r["body"]["email"] for r in batch] == ["in@x.io"]
 
 
 @pytest.mark.asyncio
@@ -206,12 +229,21 @@ async def test_apply_counts_a_refused_upsert_without_logging_the_address(
     configured, monkeypatch, caplog
 ):
     client = MagicMock()
-    client.post = AsyncMock(return_value=_response(200, {"responses": [{"code": 422}]}))
+    refusal = {
+        "message": "The given data was invalid.",
+        "errors": {"email": ["bad@x.io is not a deliverable address."]},
+    }
+    client.post = AsyncMock(
+        return_value=_response(200, {"responses": [{"code": 422, "body": refusal}]})
+    )
     monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
     changes = backfill.plan([_person("bad@x.io")], {}).changes
 
-    assert await backfill.apply(changes) == (0, 1)
+    assert await backfill.apply(changes) == (0, 1, 0)
     assert "bad@x.io" not in caplog.text
+    assert " at .io with 422 " in caplog.text
+    assert "The given data was invalid." in caplog.text
+    assert "is not a deliverable address" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -268,3 +300,95 @@ async def test_read_current_stops_on_a_repeated_cursor(configured, monkeypatch):
     with pytest.raises(mailerlite.MailerLiteError, match="repeated"):
         await backfill.read_current()
     assert client.get.await_count == 2
+
+
+def test_without_create_only_existing_subscribers_are_planned():
+    """A Stripe customer is not proof of a checkout: the billing portal makes
+    one too. So `mailerlite-backfill` never creates anyone, and someone
+    MailerLite does not hold gets no change at all."""
+    portal_only = _person("portal@x.io")
+    existing = _person("held@x.io", _paid("active"))
+    plan = backfill.plan(
+        [portal_only, existing],
+        {"held@x.io": {"subscription_status": "signed"}},
+        create=False,
+    )
+    assert [c.person.email for c in plan.changes] == ["held@x.io"]
+    assert not any(c.new for c in plan.changes)
+
+
+@pytest.mark.parametrize("create", [True, False])
+def test_an_opted_out_person_is_counted_and_never_written(create):
+    """A field write creates the subscriber, so someone who refused marketing
+    is left out even when MailerLite already holds them with stale fields."""
+    opted_out = _person("out@x.io", _paid("active")).model_copy(
+        update={"marketing_opt_out_at": CREATED}
+    )
+    plan = backfill.plan(
+        [opted_out, _person("held@x.io", _paid("active"))],
+        {
+            "out@x.io": {"subscription_status": "signed"},
+            "held@x.io": {"subscription_status": "signed"},
+        },
+        create=create,
+    )
+    assert [c.person.email for c in plan.changes] == ["held@x.io"]
+    assert plan.opted_out == 1
+    assert plan.invalid == 0
+    assert plan.statuses[S.SUBSCRIBED] == 1
+
+
+@pytest.mark.parametrize(
+    "excluded",
+    [
+        _person("out@x.io", _paid("active")).model_copy(
+            update={"timezone": "Europe/Moscow"}
+        ),
+        _person("out@firma.ir", _paid("active")),
+        _person("out@x.io", _paid("active")).model_copy(
+            update={"billing_country": "RU"}
+        ),
+        _person("out@x.io", _paid("active")).model_copy(
+            update={"excluded_country": "IR"}
+        ),
+    ],
+    ids=["timezone", "email", "billing", "recorded-by-a-checkout"],
+)
+def test_a_person_placed_in_iran_or_russia_is_counted_and_never_written(excluded):
+    plan = backfill.plan(
+        [excluded, _person("held@x.io", _paid("active"))],
+        {
+            excluded.email: {"subscription_status": "signed"},
+            "held@x.io": {"subscription_status": "signed"},
+        },
+        create=False,
+    )
+    assert [c.person.email for c in plan.changes] == ["held@x.io"]
+    assert plan.excluded_country == 1
+    assert plan.opted_out == 0
+    assert plan.statuses[S.SUBSCRIBED] == 1
+
+
+@pytest.mark.asyncio
+async def test_an_account_that_cannot_be_read_fails_alone_and_the_run_goes_on(
+    configured, monkeypatch, caplog
+):
+    client = MagicMock()
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _response(
+            200,
+            {"responses": [{"code": 200} for _ in kw["json"]["requests"]]},
+        )
+    )
+    monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
+    changes = backfill.plan([_person("in@x.io"), _person("gone@x.io")], {}).changes
+
+    async def kept_out(user_id: str) -> bool:
+        if user_id == "u-gone@x.io":
+            raise RuntimeError("db down")
+        return False
+
+    assert await backfill.apply(changes, kept_out=kept_out) == (1, 1, 0)
+    (batch,) = [c.kwargs["json"]["requests"] for c in client.post.await_args_list]
+    assert [r["body"]["email"] for r in batch] == ["in@x.io"]
+    assert "gone@x.io" not in caplog.text

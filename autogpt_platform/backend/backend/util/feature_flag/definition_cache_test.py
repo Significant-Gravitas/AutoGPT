@@ -7,6 +7,7 @@ import uuid
 
 import pytest
 from ldclient import Context, LDClient
+from ldclient.evaluation import EvaluationDetail
 from posthog import Posthog
 from posthog.request import GetResponse
 from pydantic import ValidationError
@@ -366,9 +367,7 @@ class TestClientWiring:
         mocker.patch.object(ph, "_client", None)
         mocker.patch.object(ph, "_init_attempted", False)
         mocker.patch.object(ph.settings.secrets, "posthog_api_key", "phc_test")
-        mocker.patch.object(
-            ph.settings.secrets, "posthog_personal_api_key", "phx_personal"
-        )
+        mocker.patch.object(ph.settings.secrets, "posthog_secret_key", "phx_personal")
 
     def test_the_client_shares_its_definitions_through_the_cache(self, mocker):
         posthog = mocker.patch.object(ph, "Posthog")
@@ -381,8 +380,8 @@ class TestClientWiring:
         )
         assert kwargs["poll_interval"] == REFRESH
 
-    def test_no_personal_key_means_no_poller_to_share(self, mocker):
-        mocker.patch.object(ph.settings.secrets, "posthog_personal_api_key", "")
+    def test_no_secret_key_means_no_poller_to_share(self, mocker):
+        mocker.patch.object(ph.settings.secrets, "posthog_secret_key", "")
         posthog = mocker.patch.object(ph, "Posthog")
 
         ph.get_flag_client()
@@ -420,7 +419,7 @@ class TestDefaultBackendIsUntouched:
         self, mocker, ld_client, user_context
     ):
         build = mocker.patch.object(ph, "get_flag_definition_cache")
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
 
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
         build.assert_not_called()
@@ -440,7 +439,7 @@ class TestAgainstTheRealSDK:
     def client(self, provider_impl) -> Posthog:
         return Posthog(
             "phc_test",
-            personal_api_key="phx_personal",
+            secret_key="phx_personal",
             enable_local_evaluation=True,
             sync_mode=True,
             poll_interval=REFRESH,
@@ -564,3 +563,8 @@ class TestMetrics:
         provider(redis).get_flag_definitions()
 
         assert REGISTRY.get_sample_value(name, {"outcome": "cached"}) == before + 1
+
+
+def served(value):
+    """LaunchDarkly's answer for a flag it has, as its fallthrough serves it."""
+    return EvaluationDetail(value, 0, {"kind": "FALLTHROUGH"})

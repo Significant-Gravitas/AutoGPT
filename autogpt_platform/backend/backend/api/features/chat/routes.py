@@ -4,12 +4,12 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from autogpt_libs import auth
 from fastapi import APIRouter, HTTPException, Query, Response, Security
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.api.features.experts import experts_db
@@ -419,6 +419,8 @@ class ActiveStreamInfo(BaseModel):
     # turns show honest "time since turn started" instead of the misleading
     # "time since this mount resumed the SSE".
     started_at: str | None = None
+    # The turn's last checkpoint: seed from its rows, resume the stream after it.
+    checkpoint: stream_registry.TurnCheckpoint | None = None
 
 
 class SessionDetailResponse(BaseModel):
@@ -1266,6 +1268,7 @@ async def get_session(
                 turn_id=active_session.turn_id,
                 last_message_id=last_message_id,
                 started_at=active_session.created_at.isoformat(),
+                checkpoint=active_session.checkpoint,
             )
         elif page.session.chat_status == CHAT_STATUS_RUNNING:
             # DB says running but Redis has no live stream — either the
@@ -1974,6 +1977,7 @@ async def stream_chat_post(
             is_user_message=request.is_user_message,
             expert_id=session.expert_id,
             session_origin=session.metadata.origin,
+            session_source_platform=session.metadata.source_platform,
             context=request.context,
             voice=request.voice,
             file_ids=sanitized_file_ids,
@@ -2089,7 +2093,8 @@ async def stream_chat_post(
             )
             while True:
                 try:
-                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
+                    entry = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
+                    _, chunk = entry
                     chunks_yielded += 1
 
                     if not first_chunk_yielded:
@@ -2107,7 +2112,7 @@ async def stream_chat_post(
                             },
                         )
 
-                    yield chunk.to_sse()
+                    yield stream_registry.sse_frame(entry)
 
                     if isinstance(chunk, StreamFinish):
                         total_time = time_module.perf_counter() - event_gen_start
@@ -2257,27 +2262,56 @@ async def get_pending_messages(
     )
 
 
+class StreamResumeRefusal(BaseModel):
+    """Why a resume at a cursor cannot be served from the stream."""
+
+    reason: Literal["trimmed", "expired"]
+    # For "trimmed": seed from the DB rows up to here, then resume after it.
+    checkpoint: stream_registry.TurnCheckpoint | None = None
+
+
 @router.get(
     "/sessions/{session_id}/stream",
+    responses={
+        409: {"model": StreamResumeRefusal, "description": "Cursor was trimmed"},
+        410: {"model": StreamResumeRefusal, "description": "Stream expired"},
+    },
 )
 async def resume_session_stream(
     session_id: str,
+    turn: str | None = Query(
+        default=None, description="Turn to read; with it, only its stored entries"
+    ),
+    after: str = Query(
+        default="0-0",
+        pattern=r"^\d+-\d+$",
+        description="Stream entry id the client last applied",
+    ),
     last_chunk_id: str | None = Query(default=None, include_in_schema=False),
     user_id: str = Security(auth.get_user_id),
 ):
     """
-    Resume an active stream for a session.
+    Resume a session's stream.
 
-    Called by the AI SDK's ``useChat(resume: true)`` on page load.
-    Checks for an active (in-progress) task on the session and either replays
-    the full SSE stream or returns 204 No Content if nothing is running.
+    With ``turn``, serves exactly that turn's stored entries after ``after``
+    (``0-0`` for all of them) and then its live ones: 409 when entries after
+    the cursor were trimmed, 410 when the stream is gone. Every entry frame
+    carries ``id: <turn>:<entry>``.
 
-    Always replays the active turn from ``0-0``. The AI SDK UI-message parser
-    keeps text/reasoning part state inside a single parser instance; resuming
-    from a Redis cursor can skip the ``*-start`` events required by later
-    ``*-delta`` chunks.
+    Without ``turn``, replays the active turn from ``0-0``, or returns 204
+    when nothing is running: the AI SDK's parser cannot continue a block it
+    did not see start.
     """
-    import asyncio
+    if turn is not None:
+        try:
+            subscriber_queue = await stream_registry.subscribe_to_turn(
+                session_id, user_id, turn, after
+            )
+        except stream_registry.TurnStreamTrimmed as trimmed:
+            return _resume_refusal(409, "trimmed", trimmed.checkpoint)
+        except stream_registry.TurnStreamGone:
+            return _resume_refusal(410, "expired")
+        return _resume_response(session_id, subscriber_queue, cursor=True)
 
     active_session, _latest_backend_id = await stream_registry.get_active_session(
         session_id, user_id
@@ -2300,6 +2334,26 @@ async def resume_session_stream(
 
     if subscriber_queue is None:
         return Response(status_code=204)
+    return _resume_response(session_id, subscriber_queue, cursor=False)
+
+
+def _resume_refusal(
+    status_code: int,
+    reason: Literal["trimmed", "expired"],
+    checkpoint: stream_registry.TurnCheckpoint | None = None,
+) -> JSONResponse:
+    body = StreamResumeRefusal(reason=reason, checkpoint=checkpoint)
+    return JSONResponse(status_code=status_code, content=body.model_dump())
+
+
+def _resume_response(
+    session_id: str,
+    subscriber_queue: "asyncio.Queue[stream_registry.StreamEntry]",
+    *,
+    cursor: bool,
+) -> StreamingResponse:
+    """Stream the queue as SSE. A ``cursor`` read writes no made-up frame: a
+    stream that stops without the turn's finish just ends the response."""
 
     async def event_generator() -> AsyncGenerator[str, None]:
         chunk_count = 0
@@ -2307,24 +2361,29 @@ async def resume_session_stream(
         try:
             while True:
                 try:
-                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
-                    if chunk_count < 3:
-                        logger.info(
-                            "Resume stream chunk",
-                            extra={
-                                "session_id": session_id,
-                                "chunk_type": str(chunk.type),
-                            },
-                        )
-                    if not first_chunk_type:
-                        first_chunk_type = str(chunk.type)
-                    chunk_count += 1
-                    yield chunk.to_sse()
-
-                    if isinstance(chunk, StreamFinish):
-                        break
+                    entry = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
                 except asyncio.TimeoutError:
                     yield StreamHeartbeat().to_sse()
+                    continue
+                frame_id, chunk = entry
+                if (
+                    cursor
+                    and frame_id is None
+                    and not isinstance(chunk, StreamHeartbeat)
+                ):
+                    break
+                if chunk_count < 3:
+                    logger.info(
+                        "Resume stream chunk",
+                        extra={"session_id": session_id, "chunk_type": str(chunk.type)},
+                    )
+                if not first_chunk_type:
+                    first_chunk_type = str(chunk.type)
+                chunk_count += 1
+                yield stream_registry.sse_frame(entry)
+
+                if isinstance(chunk, StreamFinish):
+                    break
         except GeneratorExit:
             pass
         except Exception as e:
@@ -2336,7 +2395,7 @@ async def resume_session_stream(
                 )
             except Exception as unsub_err:
                 logger.error(
-                    f"Error unsubscribing from session {active_session.session_id}: {unsub_err}",
+                    f"Error unsubscribing from session {session_id}: {unsub_err}",
                     exc_info=True,
                 )
             logger.info(

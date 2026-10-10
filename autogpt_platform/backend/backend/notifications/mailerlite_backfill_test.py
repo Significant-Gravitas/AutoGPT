@@ -1,6 +1,7 @@
 """The backfill must put each existing customer where the live handlers would
 have, and never fight MailerLite's own tour → changelog handoff."""
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,6 +17,7 @@ from backend.notifications.mailerlite_backfill import (
 )
 
 TOUR, CHANGELOG, TRIAL = "grp_tour", "grp_changelog", "grp_trial"
+OPTED_OUT = datetime(2026, 10, 2, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -253,6 +255,13 @@ async def test_apply_paces_batches_for_the_import_limit(
     ] * 2
 
 
+# MailerLite's validation error, echoing the address back in another case.
+_REFUSAL = {
+    "message": "The given data was invalid.",
+    "errors": {"email": ["Bad@x.io is not a deliverable address."]},
+}
+
+
 @pytest.mark.asyncio
 async def test_apply_counts_failures_and_treats_gone_as_removed(
     configured, no_sleep, monkeypatch, caplog
@@ -260,7 +269,7 @@ async def test_apply_counts_failures_and_treats_gone_as_removed(
     client = MagicMock()
     client.post = AsyncMock(
         side_effect=[
-            _response(200, {"responses": [{"code": 422}]}),
+            _response(200, {"responses": [{"code": 422, "body": _REFUSAL}]}),
             _response(200, {"responses": [{"code": 404}]}),
         ]
     )
@@ -274,8 +283,32 @@ async def test_apply_counts_failures_and_treats_gone_as_removed(
 
     assert result.failed[Decision.ADD_CHANGELOG] == 1
     assert result.succeeded[Decision.REMOVE_CHANGELOG] == 1
-    assert "bad@x.io" not in caplog.text
-    assert mailerlite._pseudonym("bad@x.io") in caplog.text
+    assert "bad@x.io" not in caplog.text.lower()
+    assert f"{mailerlite.pseudonym('bad@x.io')} at .io with 422" in caplog.text
+    assert "The given data was invalid." in caplog.text
+    assert "is not a deliverable address" in caplog.text
+
+
+def test_failure_reason_without_a_body():
+    assert mailerlite_backfill._failure_reason(None, "a@x.io") == "no reason given"
+    assert mailerlite_backfill._failure_reason({}, "a@x.io") == "no reason given"
+
+
+@pytest.mark.parametrize(
+    "email, expected",
+    [
+        ("a@example.com", ".com"),
+        ("a@mail.example.co", ".co"),
+        ("a@example.fart", ".fart"),
+        ("a@example.co.uk", ".co.uk"),
+        ("a@Example.COM.AU ", ".com.au"),
+        ("a@co.uk", ".uk"),
+        ("a@localhost", "no TLD"),
+        ("a@example.", "no TLD"),
+    ],
+)
+def test_top_level_domain(email, expected):
+    assert mailerlite_backfill._top_level_domain(email) == expected
 
 
 @pytest.mark.asyncio
@@ -369,3 +402,154 @@ def _paging_forever(page: dict):
         return _response(200, page)
 
     return get
+
+
+# ── opted out of marketing ─────────────────────────────────────────────────
+
+
+def _opted_out(email: str, *statuses: str) -> Customer:
+    return _customer(email, *statuses).model_copy(
+        update={"marketing_opt_out_at": OPTED_OUT}
+    )
+
+
+@pytest.mark.parametrize(
+    "statuses, audience",
+    [
+        (["active"], _audience()),
+        (["active"], _audience(trial=["a@x.io"])),
+        (["trialing"], _audience()),
+        (["trialing+cancel"], _audience(trial=["a@x.io"])),
+        (["canceled"], _audience(changelog=["a@x.io"])),
+        (["unpaid"], _audience()),
+    ],
+)
+def test_an_opted_out_customer_is_only_ever_skipped(statuses, audience):
+    """Not even a removal: a customer who refused marketing gets no MailerLite
+    call of any kind."""
+    change = mailerlite_backfill.decide(
+        _opted_out("a@x.io", *statuses), audience, trial_enabled=True
+    )
+    assert change.decisions == [Decision.SKIP_OPTED_OUT]
+    assert Decision.SKIP_OPTED_OUT not in mailerlite_backfill.CHANGES
+
+
+@pytest.mark.asyncio
+async def test_apply_never_writes_an_opted_out_customer(
+    configured, no_sleep, monkeypatch
+):
+    client = MagicMock()
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _batch_ok(kw["json"]["requests"])
+    )
+    monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
+    audience = _audience(changelog=["gone@x.io"], trial=["trial@x.io"])
+    changes = mailerlite_backfill.plan(
+        [
+            _opted_out("new@x.io", "active"),
+            _opted_out("gone@x.io", "canceled"),
+            _opted_out("trial@x.io", "active"),
+            _customer("paid@x.io", "active"),
+        ],
+        audience,
+    )
+
+    result = await mailerlite_backfill.apply(changes, audience)
+
+    sent = [call.kwargs["json"]["requests"] for call in client.post.await_args_list]
+    assert sent == [
+        [
+            {
+                "method": "POST",
+                "path": "api/subscribers",
+                "body": {"email": "paid@x.io", "groups": [CHANGELOG]},
+            }
+        ]
+    ]
+    assert sum(result.succeeded.values()) == 1
+    assert sum(result.failed.values()) == 0
+
+
+# ── placed in Iran or Russia ───────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "customer",
+    [
+        _customer("a@x.io", "active").model_copy(update={"timezone": "Asia/Tehran"}),
+        _customer("a@firma.ru", "active"),
+        _customer("a@x.io", "canceled").model_copy(
+            update={"timezone": "Europe/Moscow"}
+        ),
+        _customer("a@x.io", "active").model_copy(update={"billing_country": "RU"}),
+        _customer("a@x.io", "trialing").model_copy(update={"excluded_country": "IR"}),
+    ],
+    ids=[
+        "paying-in-tehran",
+        "russian-address",
+        "churned-in-moscow",
+        "billed-to-russia",
+        "recorded-by-a-checkout",
+    ],
+)
+def test_a_customer_placed_in_iran_or_russia_is_only_ever_skipped(customer):
+    audience = _audience(changelog=[customer.email])
+    change = mailerlite_backfill.decide(customer, audience, trial_enabled=True)
+    assert change.decisions == [Decision.SKIP_EXCLUDED_COUNTRY]
+    assert Decision.SKIP_EXCLUDED_COUNTRY not in mailerlite_backfill.CHANGES
+
+
+@pytest.mark.asyncio
+async def test_apply_drops_anyone_who_may_no_longer_be_written(
+    configured, no_sleep, monkeypatch
+):
+    """The plan is old by the last batch: someone who opted out or was seen
+    in Iran or Russia since then is checked out right before the write."""
+    client = MagicMock()
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _batch_ok(kw["json"]["requests"])
+    )
+    monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
+    audience = _audience()
+    changes = mailerlite_backfill.plan(
+        [_customer("in@x.io", "active"), _customer("out@x.io", "active")], audience
+    )
+
+    async def kept_out(user_id: str) -> bool:
+        return user_id == "u-out@x.io"
+
+    result = await mailerlite_backfill.apply(changes, audience, kept_out=kept_out)
+
+    (batch,) = [c.kwargs["json"]["requests"] for c in client.post.await_args_list]
+    assert [r["body"]["email"] for r in batch] == ["in@x.io"]
+    assert result.succeeded[Decision.ADD_CHANGELOG] == 1
+    assert result.skipped == 1
+
+
+@pytest.mark.asyncio
+async def test_an_account_that_cannot_be_read_fails_alone_and_the_run_goes_on(
+    configured, no_sleep, monkeypatch, caplog
+):
+    client = MagicMock()
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _batch_ok(kw["json"]["requests"])
+    )
+    monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
+    audience = _audience()
+    changes = mailerlite_backfill.plan(
+        [_customer("in@x.io", "active"), _customer("gone@x.io", "active")], audience
+    )
+
+    async def kept_out(user_id: str) -> bool:
+        if user_id == "u-gone@x.io":
+            raise RuntimeError("db down")
+        return False
+
+    result = await mailerlite_backfill.apply(changes, audience, kept_out=kept_out)
+
+    (batch,) = [c.kwargs["json"]["requests"] for c in client.post.await_args_list]
+    assert [r["body"]["email"] for r in batch] == ["in@x.io"]
+    assert result.succeeded[Decision.ADD_CHANGELOG] == 1
+    assert result.failed[Decision.ADD_CHANGELOG] == 1
+    assert result.skipped == 0
+    assert "gone@x.io" not in caplog.text

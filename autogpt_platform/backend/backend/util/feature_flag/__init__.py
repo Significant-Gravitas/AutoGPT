@@ -15,6 +15,7 @@ from autogpt_libs.auth.dependencies import get_optional_user_id
 from fastapi import HTTPException, Security
 from ldclient import Context, LDClient
 from ldclient.config import Config
+from ldclient.evaluation import EvaluationDetail
 from typing_extensions import ParamSpec
 
 from backend.util.cache import cached
@@ -40,8 +41,8 @@ _init_attempted = False
 _shadow_evaluations: set[asyncio.Task] = set()
 _shadow_evaluations_stopped = False
 MAX_CONCURRENT_SHADOW_EVALUATIONS = 100
-# Flags PostHog could not answer for, already reported once. Before phase 2
-# creates the flags that is every read; one record per flag keeps the signal.
+# Flags PostHog could not answer while LaunchDarkly could, already reported
+# once: such a flag fails every read, so one record per flag keeps the signal.
 _unanswered_flags_reported: set[str] = set()
 
 
@@ -104,7 +105,7 @@ class Flag(str, Enum):
     # No "enabled-users list" flag — LD's per-flag targeting natively
     # cohorts the canary (internal team → 5 → 50 → 500 → 5k), and
     # ``is_feature_enabled(..., user_id, ...)`` evaluates each user.
-    # The four flags below are the master gate + three per-feature
+    # The flags below are the master gate + its per-feature
     # gates. Helper functions live next to the code that consumes them
     # (added when each feature lands); these enum entries are
     # scaffolding so the LD keys can be configured ahead of code.
@@ -134,23 +135,6 @@ class Flag(str, Enum):
     # browse and install end-to-end: the routes 404 when off, so the dark
     # launch is not reachable by URL with the shelf hidden. Fail-closed.
     SKILLS_HUB = "skills-hub"
-
-    # Per-feature gate for the web-fact-check tool (P0.5). The tool
-    # can only DEMOTE memories on contradiction; new web-derived
-    # facts ride the ratification loop as tentative. Off on the
-    # local-LLM transport by default (most local installs lack a
-    # search-API key); cloud opt-in. Independent of
-    # ``DREAM_PASS_ENABLED`` so the dream pass can run without
-    # external network calls when this flag is off.
-    DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check"
-
-    # Orchestrator-level kill switch for the web-fact-check hook
-    # introduced alongside the P0.5 scaffolding. Distinct from
-    # ``DREAM_PASS_WEB_FACT_CHECK`` so the hook can be wired into the
-    # orchestrator without auto-running on every dream pass before a
-    # search backend is bound — flip this on per-user once a backend
-    # is configured.
-    DREAM_WEB_FACT_CHECK_ENABLED = "dream-web-fact-check-enabled"
 
     # Per-feature gate for the cascading-expiry helper
     # ``invalidate_entity_direct_neighbors`` (P0.3b). When on, the
@@ -210,38 +194,6 @@ class Flag(str, Enum):
     # a cohort before it reaches everyone.
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
 
-    # Shrinks what Otto reads: strips builder-UI annotations from the
-    # block schemas, and digests oversized tool results to the workspace.
-
-
-# LaunchDarkly keys whose targeting is segment membership or an individual-user
-# target — neither of which any PostHog cohort reproduces until phase 2 creates
-# one. From ld-targeting-summary.md; attribute rules (email domain, role,
-# signup date) are not listed because `_person_properties` already carries them.
-LD_UNPORTED_TARGETING = frozenset(
-    {
-        "ai-agent-execution-summary",
-        "artifacts",
-        "artifacts-page",
-        "autogpt-new-layout",
-        "AutoMod",
-        "beta-blocks",
-        "chat",
-        "chat-mode-option",
-        "chat-search",
-        "chat-sharing",
-        "copilot-bot-platforms",
-        "dream-pass-enabled",
-        "enable-platform-payment",
-        "generic-trigger-agents",
-        "graphiti-memory",
-        "new-tool-ui",
-        "nightly-copilot",
-        "SHOW_ORG_SETTINGS",
-        "task-progress-bar",
-    }
-)
-
 
 def initialize_feature_flags() -> None:
     """Start whichever vendor(s) the configured backend reads from."""
@@ -252,10 +204,10 @@ def initialize_feature_flags() -> None:
     if backend is not FeatureFlagBackend.POSTHOG:
         initialize_launchdarkly()
     if backend is not FeatureFlagBackend.LAUNCHDARKLY:
-        if not settings.secrets.posthog_personal_api_key:
+        if not settings.secrets.posthog_secret_key:
             logger.warning(
                 f"Feature flag backend is {backend.value} without "
-                "POSTHOG_PERSONAL_API_KEY: every flag read becomes a remote "
+                "POSTHOG_SECRET_KEY: every flag read becomes a remote "
                 "/flags call instead of an in-process evaluation"
             )
         posthog.initialize_posthog_flags()
@@ -583,7 +535,7 @@ def _probe_posthog(
 
     The shadow answer is never served, so awaiting it would only add PostHog's
     latency to the request path — up to a 3s remote ``/flags`` call wherever
-    ``POSTHOG_PERSONAL_API_KEY`` is unset and local evaluation is off.
+    ``POSTHOG_SECRET_KEY`` is unset and local evaluation is off.
     """
     if _shadow_evaluations_stopped:
         return
@@ -614,11 +566,12 @@ async def _record_mismatch(
         logger.warning(f"PostHog shadow evaluation raised for {flag_key}: {e}")
         return
 
-    if ld_result == ph_result:
-        return
-
     ld_value, ld_evaluated = ld_result
     ph_value, ph_evaluated = ph_result
+    # A mismatch is a read whose served value would change at the switch, or
+    # one PostHog cannot answer where LaunchDarkly can.
+    if ph_value == ld_value and (ph_evaluated or not ld_evaluated):
+        return
     if not ph_evaluated:
         if flag_key in _unanswered_flags_reported:
             return
@@ -631,11 +584,6 @@ async def _record_mismatch(
                 "user": _user_digest(user_id),
                 "launchdarkly": {"value": ld_value, "evaluated": ld_evaluated},
                 "posthog": {"value": ph_value, "evaluated": ph_evaluated},
-                # Segment and individual-user targeting has no PostHog cohort
-                # until phase 2 builds one, so these flags are expected to
-                # disagree — the diff-week report has to separate them from
-                # real divergence rather than drown in them.
-                "expected_until_cohorts_exist": flag_key in LD_UNPORTED_TARGETING,
             },
             default=repr,
             sort_keys=True,
@@ -677,9 +625,10 @@ async def _evaluate_launchdarkly(
 
     ``evaluated`` is False whenever *default* is standing in for an answer
     LaunchDarkly could not give — no client, an uninitialised one, a failed
-    user-context lookup, or an evaluation that raised. An initialised client
-    is not on its own enough: the context lookup is a database read, so a
-    live client can still fail to produce a value.
+    user-context lookup, a flag LaunchDarkly does not have (or has switched
+    off with no off variation), or an evaluation that raised. An initialised
+    client is not on its own enough: the context lookup is a database read,
+    so a live client can still fail to produce a value.
     """
     try:
         client = get_client()
@@ -696,15 +645,18 @@ async def _evaluate_launchdarkly(
             user_id
         )
 
-        # Evaluate flag
-        result = client.variation(flag_key, user_context, default)
+        detail = client.variation_detail(flag_key, user_context, default)
 
         logger.debug(
-            f"Feature flag {flag_key} for user {user_id}: {result} (type: {type(result).__name__})"
+            "Feature flag %s for user %s: %r (%s)",
+            flag_key,
+            user_id,
+            detail.value,
+            detail.reason,
         )
         # A degraded context evaluates fine, it just answers for an anonymous
         # user rather than this one — so the value is a guess, not an answer.
-        return result, context_resolved
+        return detail.value, context_resolved and not detail.is_default_value()
 
     except Exception as e:
         logger.warning(
@@ -718,14 +670,15 @@ def _person_properties(context: Context) -> dict[str, Any]:
 
     Reads the LaunchDarkly context rather than the auth row so both vendors
     see one cached lookup and cannot drift; ``custom.role`` is dropped
-    because PostHog targets flat properties, and ``email`` because no ported
-    rule reads it — individual targets key on the ``distinct_id``.
+    because PostHog targets flat properties. ``email`` is sent because the
+    ported email rules and the ``ld:employee`` cohort match on it, and a rule
+    on a property the read omits cannot be evaluated in-process.
     """
     if context.anonymous:
         return {}
     return {
         attribute: context.get(attribute)
-        for attribute in ("role", "email_domain", "created_at", "country")
+        for attribute in ("role", "email", "email_domain", "created_at", "country")
         if context.get(attribute) is not None
     }
 
@@ -1072,11 +1025,14 @@ def _flag_backend_initialized() -> bool:
 @contextlib.contextmanager
 def mock_flag_variation(flag_key: str, return_value: Any):
     """Context manager for testing feature flags."""
-    original_variation = get_client().variation
-    get_client().variation = lambda key, context, default: (
-        return_value if key == flag_key else original_variation(key, context, default)
+    client = get_client()
+    original = client.variation_detail
+    client.variation_detail = lambda key, context, default: (
+        EvaluationDetail(return_value, 0, {"kind": "FALLTHROUGH"})
+        if key == flag_key
+        else original(key, context, default)
     )
     try:
         yield
     finally:
-        get_client().variation = original_variation
+        client.variation_detail = original

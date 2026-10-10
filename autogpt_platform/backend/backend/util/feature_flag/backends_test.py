@@ -12,6 +12,7 @@ import sentry_sdk.feature_flags
 from fastapi import HTTPException
 from ldclient import Context, LDClient
 from ldclient.config import Config as LDConfig
+from ldclient.evaluation import EvaluationDetail
 from ldclient.integrations.test_data import TestData
 from posthog import Posthog
 from sentry_sdk.tracing import Span
@@ -114,17 +115,17 @@ class TestDefaultBackendIsUnchanged:
         self, mocker, ld_client, user_context
     ):
         posthog = mocker.patch.object(ph, "evaluate_flag")
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
 
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
-        ld_client.variation.assert_called_once()
+        ld_client.variation_detail.assert_called_once()
         posthog.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_the_default_reads_launchdarkly_for_raw_values(
         self, ld_client, user_context
     ):
-        ld_client.variation.return_value = {"daily": 5}
+        ld_client.variation_detail.return_value = served({"daily": 5})
 
         assert await ff.get_feature_flag_value("copilot-cost-limits", "system") == {
             "daily": 5
@@ -231,7 +232,7 @@ class TestPostHogBackend:
     async def test_targeting_attributes_are_passed_as_person_properties(self, mocker):
         """Every attribute an LD rule targets on has to reach PostHog, or the
         flag silently evaluates against a user without them — and nothing
-        more: the raw email is not one of them."""
+        more: ``custom`` is LaunchDarkly's nesting of ``role``."""
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         client = stub_posthog(mocker, value=True)
         context = (
@@ -255,9 +256,39 @@ class TestPostHogBackend:
         _, kwargs = client.evaluate_flags.call_args
         assert kwargs["person_properties"] == {
             "role": "admin",
+            "email": "x@agpt.co",
             "email_domain": "agpt.co",
             "created_at": "2026-05-07T12:00:00+00:00",
         }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "email,expected", [("x@agpt.co", (True, True)), ("x@gmail.com", (False, True))]
+    )
+    async def test_an_email_cohort_evaluates_in_process(self, mocker, email, expected):
+        """The synced ``ld:employee`` cohort matches on ``email``; without it a
+        read cannot be decided locally and becomes a remote /flags call."""
+        use_backend(mocker, FeatureFlagBackend.POSTHOG)
+        posthog_client = _posthog_with_an_employee_cohort()
+        mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
+        context = (
+            Context.builder("u-1")
+            .kind("user")
+            .anonymous(False)
+            .set("email", email)
+            .set("email_domain", email.split("@")[1])
+            .build()
+        )
+        mocker.patch(
+            "backend.util.feature_flag._fetch_user_context_status",
+            return_value=(context, True),
+        )
+        try:
+            result = await evaluate_feature_flag(Flag.COPILOT_VOICE_MODE, "u-1")
+        finally:
+            posthog_client.shutdown()
+
+        assert result == expected
 
     @pytest.mark.asyncio
     async def test_an_anonymous_context_carries_no_person_properties(self, mocker):
@@ -296,7 +327,7 @@ class TestDualBackend:
         self, mocker, ld_client, user_context
     ):
         use_backend(mocker, FeatureFlagBackend.DUAL)
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
         stub_posthog(mocker, value=False)
 
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
@@ -306,7 +337,7 @@ class TestDualBackend:
         self, mocker, ld_client, user_context, caplog
     ):
         use_backend(mocker, FeatureFlagBackend.DUAL)
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
         stub_posthog(mocker, value=False)
         user_id = str(uuid.uuid4())
 
@@ -333,7 +364,7 @@ class TestDualBackend:
         self, mocker, ld_client, user_context, caplog
     ):
         use_backend(mocker, FeatureFlagBackend.DUAL)
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
         stub_posthog(mocker, value=True)
 
         with caplog.at_level(
@@ -353,7 +384,7 @@ class TestDualBackend:
         """Both say "off", but only one of them knows it — that is the
         difference the diff week exists to find."""
         use_backend(mocker, FeatureFlagBackend.DUAL)
-        ld_client.variation.return_value = False
+        ld_client.variation_detail.return_value = served(False)
         stub_posthog(mocker, value=None)
 
         with caplog.at_level(
@@ -380,7 +411,7 @@ class TestDualBackend:
         """Before phase 2 creates the flags PostHog answers nothing, so every
         read would otherwise log the same record."""
         use_backend(mocker, FeatureFlagBackend.DUAL)
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
         stub_posthog(mocker, value=None)
 
         with caplog.at_level(
@@ -405,7 +436,7 @@ class TestDualBackend:
         self, mocker, ld_client, user_context, caplog
     ):
         use_backend(mocker, FeatureFlagBackend.DUAL)
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
         stub_posthog(mocker, value=False)
 
         with caplog.at_level(
@@ -427,11 +458,39 @@ class TestDualBackend:
         )
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "posthog_value", [None, True], ids=["posthog-lacks-it", "posthog-serves-it"]
+    )
+    async def test_a_flag_launchdarkly_lacks_logs_nothing_if_the_value_holds(
+        self, mocker, user_context, caplog, posthog_value
+    ):
+        """LaunchDarkly serves the caller's default; a PostHog read serving the
+        same changes nothing at the switch, answered or not."""
+        use_backend(mocker, FeatureFlagBackend.DUAL)
+        ld = _launchdarkly_with(TestData.data_source())
+        mocker.patch("backend.util.feature_flag.ldclient.get", return_value=ld)
+        stub_posthog(mocker, value=posthog_value)
+
+        with caplog.at_level(
+            logging.WARNING, logger="backend.util.feature_flag.mismatch"
+        ):
+            try:
+                result = await evaluate_feature_flag(Flag.COPILOT_SDK, "u-1", True)
+                await drain_shadow_evaluations()
+            finally:
+                ld.close()
+
+        assert result == (True, False)
+        assert not [
+            r for r in caplog.records if r.name == "backend.util.feature_flag.mismatch"
+        ]
+
+    @pytest.mark.asyncio
     async def test_a_posthog_failure_cannot_break_the_read(
         self, mocker, ld_client, user_context
     ):
         use_backend(mocker, FeatureFlagBackend.DUAL)
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
         mocker.patch.object(ph, "evaluate_flag", side_effect=Exception("boom"))
 
         assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
@@ -443,7 +502,7 @@ class TestDualBackend:
     ):
         """A mismatch record must never be the thing that raises."""
         use_backend(mocker, FeatureFlagBackend.DUAL)
-        ld_client.variation.return_value = object()
+        ld_client.variation_detail.return_value = served(object())
         stub_posthog(mocker, value=True)
 
         with caplog.at_level(
@@ -474,6 +533,39 @@ class TestDualBackend:
         assert ff._flag_backend_initialized() is False
 
 
+class TestLaunchDarklyAnswers:
+    """Through LaunchDarkly's real evaluator: only a served variation is an answer."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "configure,expected",
+        [
+            (lambda td: td.update(td.flag("AutoMod").boolean_flag()), (True, True)),
+            (
+                lambda td: td.update(td.flag("AutoMod").boolean_flag().on(False)),
+                (False, True),
+            ),
+            (lambda td: None, (True, False)),
+        ],
+        ids=["on", "switched-off", "absent"],
+    )
+    async def test_only_a_served_variation_is_authoritative(
+        self, mocker, user_context, configure, expected
+    ):
+        """A switched-off flag still answers with its off variation; a flag
+        LaunchDarkly does not have answers nothing, whatever the default."""
+        td = TestData.data_source()
+        configure(td)
+        ld = _launchdarkly_with(td)
+        mocker.patch("backend.util.feature_flag.ldclient.get", return_value=ld)
+        try:
+            result = await evaluate_feature_flag(Flag.AUTOMOD, "u-1", True)
+        finally:
+            ld.close()
+
+        assert result == expected
+
+
 class TestDualStaysOffTheRequestPath:
     """The shadow answer is discarded, so nobody may wait for it."""
 
@@ -482,7 +574,7 @@ class TestDualStaysOffTheRequestPath:
         self, mocker, ld_client, user_context
     ):
         use_backend(mocker, FeatureFlagBackend.DUAL)
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
         posthog_started = asyncio.Event()
 
         async def slow_posthog(*args, **kwargs):
@@ -506,7 +598,7 @@ class TestDualStaysOffTheRequestPath:
         """The failed-lookup path is deliberately uncached, so evaluating the
         two vendors independently would double its database reads."""
         use_backend(mocker, FeatureFlagBackend.DUAL)
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
         stub_posthog(mocker, value=True)
         lookup = mocker.patch(
             "backend.util.feature_flag._fetch_user_context_status",
@@ -523,7 +615,7 @@ class TestDualStaysOffTheRequestPath:
         """A slow PostHog costs the diff week its samples, not the process
         its memory."""
         use_backend(mocker, FeatureFlagBackend.DUAL)
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
         mocker.patch.object(ff, "MAX_CONCURRENT_SHADOW_EVALUATIONS", 2)
 
         async def never_finishes(*args, **kwargs):
@@ -538,29 +630,6 @@ class TestDualStaysOffTheRequestPath:
         assert len(ff._shadow_evaluations) == 2
         for task in list(ff._shadow_evaluations):
             task.cancel()
-
-    @pytest.mark.asyncio
-    async def test_segment_targeted_flags_are_marked_as_expected(
-        self, mocker, ld_client, user_context, caplog
-    ):
-        """Until phase 2 builds the cohorts these disagree by construction, and
-        the diff-week report has to be able to set them aside."""
-        use_backend(mocker, FeatureFlagBackend.DUAL)
-        ld_client.variation.return_value = True
-        stub_posthog(mocker, value=False)
-
-        with caplog.at_level(
-            logging.WARNING, logger="backend.util.feature_flag.mismatch"
-        ):
-            await evaluate_feature_flag(Flag.GRAPHITI_MEMORY, "u-1")
-            await drain_shadow_evaluations()
-
-        [message] = [
-            r.getMessage()
-            for r in caplog.records
-            if r.name == "backend.util.feature_flag.mismatch"
-        ]
-        assert _mismatch_record(message)["expected_until_cohorts_exist"] is True
 
 
 class TestShutdownStopsShadowEvaluations:
@@ -581,7 +650,7 @@ class TestShutdownStopsShadowEvaluations:
         use_backend(mocker, FeatureFlagBackend.DUAL)
         mocker.patch.object(ff, "shutdown_launchdarkly")
         mocker.patch.object(ph, "shutdown_posthog_flags")
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
 
         async def never_finishes(*args, **kwargs):
             await asyncio.sleep(30)
@@ -602,7 +671,7 @@ class TestShutdownStopsShadowEvaluations:
         use_backend(mocker, FeatureFlagBackend.DUAL)
         mocker.patch.object(ff, "shutdown_launchdarkly")
         mocker.patch.object(ph, "shutdown_posthog_flags")
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
         get_client = mocker.patch.object(ph, "get_flag_client")
 
         ff.shutdown_feature_flags()
@@ -710,7 +779,7 @@ class TestSentryFlagContext:
         self, mocker, ld_client, user_context, sentry_flags, backend
     ):
         use_backend(mocker, backend)
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
         stub_posthog(mocker, value=backend is FeatureFlagBackend.POSTHOG)
 
         assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
@@ -722,7 +791,7 @@ class TestSentryFlagContext:
         self, ld_client, user_context, sentry_flags, initialized
     ):
         ld_client.is_initialized.return_value = initialized
-        ld_client.variation.return_value = {"daily": 5}
+        ld_client.variation_detail.return_value = served({"daily": 5})
 
         await ff.get_feature_flag_value("copilot-cost-limits", "u-1", {"daily": 1})
         assert sentry_flags.get() == []
@@ -746,7 +815,7 @@ class TestSentryFlagContext:
     async def test_a_non_boolean_answer_to_a_boolean_read_records_the_default(
         self, ld_client, user_context, sentry_flags
     ):
-        ld_client.variation.return_value = "on"
+        ld_client.variation_detail.return_value = served("on")
 
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1", True) == (
             True,
@@ -781,7 +850,7 @@ class TestSentryFlagContext:
         use_backend(mocker, FeatureFlagBackend.LAUNCHDARKLY)
         mocker.patch("backend.util.feature_flag.is_configured", return_value=configured)
         ld_client.is_initialized.return_value = initialized
-        ld_client.variation.return_value = answer
+        ld_client.variation_detail.return_value = served(answer)
         # A stale earlier answer must not be what an error from this route carries.
         sentry_sdk.feature_flags.add_feature_flag(Flag.HIRE_EXPERTS.value, True)
 
@@ -820,7 +889,7 @@ class TestSentryFlagContext:
         sentry_sdk.feature_flags.add_feature_flag(
             f"{Flag.HIRE_EXPERTS.value}.fallback", True
         )
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
 
         await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
 
@@ -838,7 +907,7 @@ class TestSentryFlagContext:
             "add_feature_flag",
             side_effect=RuntimeError("sentry down"),
         )
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
 
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
 
@@ -889,6 +958,10 @@ def _launchdarkly_serving_all_but_india() -> LDClient:
         .if_not_match("country", "IN")
         .then_return(1)
     )
+    return _launchdarkly_with(td)
+
+
+def _launchdarkly_with(td: TestData) -> LDClient:
     return LDClient(LDConfig("sdk-test", update_processor_class=td, send_events=False))
 
 
@@ -929,6 +1002,46 @@ def _posthog_serving_all_but_india() -> Posthog:
     return client
 
 
+def _posthog_with_an_employee_cohort() -> Posthog:
+    """The shape the sync gives an email-targeted segment, evaluated locally."""
+    client = Posthog("phc-test", secret_key="phx-test", enable_local_evaluation=False)
+    client.feature_flags = [
+        {
+            "id": 1,
+            "key": Flag.COPILOT_VOICE_MODE.value,
+            "active": True,
+            "filters": {
+                "groups": [
+                    {
+                        "properties": [{"key": "id", "type": "cohort", "value": 7}],
+                        "rollout_percentage": 100,
+                    }
+                ]
+            },
+        }
+    ]
+    client.cohorts = {
+        "7": {
+            "type": "OR",
+            "values": [
+                {
+                    "type": "AND",
+                    "values": [
+                        {
+                            "key": "email",
+                            "type": "person",
+                            "operator": "regex",
+                            "value": r"@agpt\.co$",
+                        }
+                    ],
+                }
+            ],
+        }
+    }
+    client._get_flags_decision = _no_remote_flags
+    return client
+
+
 def _no_remote_flags(*args, **kwargs):
     raise ConnectionError("remote /flags is unavailable in tests")
 
@@ -941,3 +1054,8 @@ def _gated_route():
         return "served"
 
     return route
+
+
+def served(value):
+    """LaunchDarkly's answer for a flag it has, as its fallthrough serves it."""
+    return EvaluationDetail(value, 0, {"kind": "FALLTHROUGH"})

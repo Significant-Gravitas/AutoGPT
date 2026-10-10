@@ -38,9 +38,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Keep the stored payload small: @@agptfile: references are expanded before the
-# tool handler runs, so an argument can arrive holding a whole file.
-_MAX_ARG_CHARS = 4_000
+# At least the largest call the supervisor judges whole (25,650 bytes beside a
+# short request, classifier._fit), so a card it opens shows the call entire.
+_MAX_ARG_CHARS = 26_000
 
 GATE_NODE_PREFIX = f"{COPILOT_NODE_PREFIX}gate-"
 
@@ -60,6 +60,8 @@ class Subject(BaseModel):
 class FieldLabel(BaseModel):
     key: str
     label: str
+    # How the card words the value, from the schema's ``format``.
+    format: str | None = None
 
 
 class GateReviewPayload(BaseModel):
@@ -137,10 +139,7 @@ def review_payload(
         block_input = args.get("input")
         args = block_input if isinstance(block_input, dict) else {}
     redacted = _redact_secret_keys(args)
-    # Per value, never the whole blob: a long first argument must not push
-    # the one that matters off the card while the approval still binds it.
-    per_value = max(200, _MAX_ARG_CHARS // max(1, len(redacted)))
-    shown = {key: _clip(value, per_value) for key, value in redacted.items()}
+    shown = _clip_all(redacted, _MAX_ARG_CHARS)
     return GateReviewPayload(
         tool=tool_name,
         arguments=shown,
@@ -345,7 +344,7 @@ def _payload_subject(
 
 
 def _field_labels(tool_name: str, shown: dict[str, Any]) -> list[FieldLabel]:
-    """Labels and order from the tool's own input schema, required first."""
+    """Labels, formats and order from the tool's own input schema, required first."""
     from backend.copilot.tools import get_tool  # imports the gate
 
     tool = get_tool(tool_name)
@@ -355,7 +354,11 @@ def _field_labels(tool_name: str, shown: dict[str, Any]) -> list[FieldLabel]:
     order = required + [k for k in props if k not in required]
     order += [k for k in shown if k not in order]
     return [
-        FieldLabel(key=key, label=(props.get(key) or {}).get("title") or _humanize(key))
+        FieldLabel(
+            key=key,
+            label=(props.get(key) or {}).get("title") or _humanize(key),
+            format=(props.get(key) or {}).get("format"),
+        )
         for key in order
         if key in shown
     ]
@@ -369,6 +372,24 @@ def _humanize(key: str) -> str:
     return words[:1].upper() + words[1:]
 
 
+def _clip_all(values: dict[str, Any], budget: int) -> dict[str, Any]:
+    # Short values take what they need and the long ones share the rest, so a
+    # long first argument cannot push the one that matters off the card.
+    shown: dict[str, Any] = {}
+    left = len(values)
+    for key in sorted(values, key=lambda k: len(_text(values[k]))):
+        share = max(200, budget // left)
+        shown[key] = _clip(values[key], share)
+        budget -= min(len(_text(values[key])), share)
+        left -= 1
+    return {key: shown[key] for key in values}
+
+
 def _clip(value: Any, limit: int) -> Any:
-    text = json.dumps(value, default=str)
+    text = _text(value)
     return value if len(text) <= limit else text[:limit] + "…"
+
+
+def _text(value: Any) -> str:
+    # A string is cut as its own text; its JSON form reaches the card escaped.
+    return value if isinstance(value, str) else json.dumps(value, default=str)

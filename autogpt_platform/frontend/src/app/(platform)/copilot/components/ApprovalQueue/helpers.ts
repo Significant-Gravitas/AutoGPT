@@ -3,6 +3,7 @@ import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsL
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import {
   type Fact,
+  type FieldSpec,
   isIdKey,
   type Reference,
   visibleKeys,
@@ -36,7 +37,7 @@ export interface ApprovalItem {
   toolName: string;
   toolCallId: string;
   args: Record<string, unknown>;
-  fields: { key: string; label: string }[];
+  fields: FieldSpec[];
   references: Reference[];
   // Ids per argument before the server clipped it.
   referenceTotals: Record<string, number>;
@@ -111,7 +112,6 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
   };
 }
 
-// A rule on a bare tool covers every call of it, so it is named as an action.
 // The card's arguments as the server built them, on the review and on its late result.
 export function cardArguments(payload: Record<string, unknown>) {
   return {
@@ -122,6 +122,7 @@ export function cardArguments(payload: Record<string, unknown>) {
       .map((f) => ({
         key: String(f.key),
         label: str(f, "label") ?? String(f.key),
+        format: str(f, "format"),
       })),
     clipped: asArray(payload.clipped).filter(
       (k): k is string => typeof k === "string",
@@ -129,6 +130,7 @@ export function cardArguments(payload: Record<string, unknown>) {
   };
 }
 
+// A rule on a bare tool covers every call of it, so it is named as an action.
 export function ruleSubjectName(subject: ApprovalItem["subject"]) {
   return subject.kind === "tool" ? `“${subject.name}”` : subject.name;
 }
