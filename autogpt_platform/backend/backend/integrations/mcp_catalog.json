@@ -698,6 +698,21 @@
     }
   },
   {
+    "name": "mcp_klaviyo",
+    "display_name": "Klaviyo",
+    "description": "Manage Klaviyo profiles, lists, segments, campaigns, flows, and metrics, and pull marketing performance reports.",
+    "mcp_server": {
+      "server_url": "https://mcp.klaviyo.com/mcp",
+      "documentation_url": "https://developers.klaviyo.com/en/docs/klaviyo_mcp_server",
+      "setup_instructions": "Sign in with your Klaviyo account and approve access. Your existing Klaviyo user permissions apply to every tool call.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "klaviyo"
+    }
+  },
+  {
     "name": "mcp_langfuse",
     "display_name": "Langfuse",
     "description": "Work with project traces, prompts, datasets, evaluations, and dashboards.",
