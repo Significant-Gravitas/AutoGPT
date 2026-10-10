@@ -81,6 +81,19 @@ async def test_a_queued_wake_with_no_recorded_envelope_is_not_started():
     assert promoted is None
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_queued_wake_whose_envelope_no_longer_parses_is_not_started():
+    """A stored record from before a schema change is as good as none."""
+    promoted, _, _ = await _promote_after(
+        _envelope(1),
+        message=held.WAKE_MESSAGE,
+        message_metadata={held._WAKE_KEY: True, "envelope": {"depth": "deep"}},
+        expect_refusal=turn_queue.UNRECORDED_WAKE,
+    )
+
+    assert promoted is None
+
+
 async def _promote_after(
     finished: TurnEnvelope,
     *,

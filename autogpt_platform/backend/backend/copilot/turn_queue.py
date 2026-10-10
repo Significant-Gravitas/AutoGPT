@@ -33,6 +33,7 @@ import uuid
 from typing import Any, Mapping
 
 from prisma.errors import UniqueViolationError
+from pydantic import ValidationError
 
 from backend.copilot.active_turns import TurnSlot, count_running_turns
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
@@ -339,8 +340,7 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         return False
 
     metadata = pending.metadata or {}
-    stored = metadata.get(_ENVELOPE_KEY)
-    queued_envelope = TurnEnvelope.model_validate(stored) if stored else None
+    queued_envelope = _stored_envelope(metadata)
     if is_answer_row(pending) and queued_envelope is None:
         # Deriving one from the turn that just ended would run the approved
         # action under that turn's limits; the answer reaches the next turn.
@@ -558,6 +558,19 @@ def queued_turn_refusal(session: ChatSession) -> str | None:
     if last is None or not (last.metadata or {}).get(_REFUSED_KEY):
         return None
     return last.content
+
+
+def _stored_envelope(metadata: Mapping[str, Any]) -> TurnEnvelope | None:
+    """The envelope a wake was queued under. One that no longer parses (a schema
+    change between deploys) counts as unrecorded, so the wake is not started."""
+    stored = metadata.get(_ENVELOPE_KEY)
+    if not stored:
+        return None
+    try:
+        return TurnEnvelope.model_validate(stored)
+    except ValidationError:
+        logger.warning("dispatch_next_for_user: a stored envelope did not parse")
+        return None
 
 
 def _promotion_permissions(
