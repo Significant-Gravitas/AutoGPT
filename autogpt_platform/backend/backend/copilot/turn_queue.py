@@ -564,12 +564,20 @@ def _promotion_permissions(
     head: ChatSessionInfo, metadata: Mapping[str, Any]
 ) -> CopilotPermissions | None:
     """The session's permissions as they are now, never looser than the ones
-    stored at enqueue."""
+    stored at enqueue. Every writer stores this session's own resolved
+    permissions, so a stored value that no longer parses is read afresh."""
     current = resolve_session_permissions(head)
     stored = metadata.get("permissions")
     if not stored:
         return current
-    queued = CopilotPermissions.model_validate(stored)
+    try:
+        queued = CopilotPermissions.model_validate(stored)
+    except ValidationError:
+        logger.warning(
+            f"dispatch_next_for_user: stored permissions on session={head.session_id} "
+            "did not parse; using the session's current ones"
+        )
+        return current
     return (
         queued
         if current is None
