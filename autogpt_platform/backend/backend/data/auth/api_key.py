@@ -6,7 +6,7 @@ from typing import Literal, Optional
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.models import APIKey as PrismaAPIKey
-from prisma.types import APIKeyWhereUniqueInput
+from prisma.types import APIKeyWhereInput, APIKeyWhereUniqueInput
 from pydantic import Field
 
 from backend.data.includes import MAX_USER_API_KEYS_FETCH
@@ -111,10 +111,22 @@ async def create_api_key(
     return APIKeyInfo.from_db(saved_key_obj), generated_key.key
 
 
-async def get_active_api_keys_by_head(head: str) -> list[APIKeyInfoWithHash]:
-    results = await PrismaAPIKey.prisma().find_many(
-        where={"head": head, "status": APIKeyStatus.ACTIVE}
-    )
+# Upper bound on hash verifications (Scrypt n=2**14 each) per validation
+# request. Candidates are first narrowed by head AND tail (3 random chars after
+# the prefix plus 8 random chars, ~66 bits), so more than one candidate for a
+# given key is astronomically unlikely; the cap only bounds worst-case work.
+MAX_API_KEY_VERIFY_CANDIDATES = 5
+
+
+async def get_active_api_keys_by_head(
+    head: str,
+    tail: str | None = None,
+    take: int | None = None,
+) -> list[APIKeyInfoWithHash]:
+    where: APIKeyWhereInput = {"head": head, "status": APIKeyStatus.ACTIVE}
+    if tail is not None:
+        where["tail"] = tail
+    results = await PrismaAPIKey.prisma().find_many(where=where, take=take)
     return [APIKeyInfoWithHash.from_db(key) for key in results]
 
 
@@ -128,7 +140,22 @@ async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
             return None
 
         head = plaintext_key[: APIKeySmith.HEAD_LENGTH]
-        potential_matches = await get_active_api_keys_by_head(head)
+        # Every key ever issued (incl. legacy SHA256 ones) stores its last
+        # TAIL_LENGTH chars as ``tail``. Filtering on head AND tail means a
+        # valid key always stays a candidate, while a guessed/garbage key with
+        # a popular head almost never reaches Scrypt at all.
+        tail = plaintext_key[-APIKeySmith.TAIL_LENGTH :]
+        potential_matches = await get_active_api_keys_by_head(
+            head, tail=tail, take=MAX_API_KEY_VERIFY_CANDIDATES + 1
+        )
+        if len(potential_matches) > MAX_API_KEY_VERIFY_CANDIDATES:
+            logger.warning(
+                "More than %d active API keys share a head and tail; "
+                "verifying only the first %d",
+                MAX_API_KEY_VERIFY_CANDIDATES,
+                MAX_API_KEY_VERIFY_CANDIDATES,
+            )
+            potential_matches = potential_matches[:MAX_API_KEY_VERIFY_CANDIDATES]
 
         matched_api_key = next(
             (pm for pm in potential_matches if pm.match(plaintext_key)),
