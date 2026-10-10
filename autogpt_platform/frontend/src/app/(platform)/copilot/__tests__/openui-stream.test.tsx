@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http } from "msw";
 import type { UIMessageChunk } from "ai";
 import { server } from "@/mocks/mock-server";
-import { campaign } from "@/lib/openui/samples";
+import { campaign } from "@/lib/openui/__tests__/sample-fixtures";
 import {
   assistantTextChunks,
   streamSseResponse,

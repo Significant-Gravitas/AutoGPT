@@ -3,7 +3,7 @@ import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolUIPart } from "ai";
 import { render } from "@/tests/integrations/test-utils";
-import { campaign } from "@/lib/openui/samples";
+import { campaign } from "@/lib/openui/__tests__/sample-fixtures";
 import { CopilotChatActionsProvider } from "../../../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { ChainMessageParts } from "../../../components/ChatMessagesContainer/components/ChainMessageParts";
 import { convertChatSessionMessagesToUiMessages } from "../../../helpers/convertChatSessionToUiMessages";

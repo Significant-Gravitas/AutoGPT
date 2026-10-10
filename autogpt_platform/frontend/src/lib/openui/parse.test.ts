@@ -7,7 +7,7 @@ import {
   leads,
   outreach,
   performance,
-} from "./samples";
+} from "./__tests__/sample-fixtures";
 
 describe("OpenUI workspace contracts", () => {
   it.each([

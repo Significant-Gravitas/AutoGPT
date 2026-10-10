@@ -4,7 +4,7 @@ An integration of the [OpenUI React runtime](https://www.openui.com/docs/api-ref
 
 ## Native generation
 
-Open the normal `/copilot` conversation. Interactive views are available by default using the existing Copilot model, authentication, and billing configuration. Neither generation nor the sample lab requires an OpenUI environment flag. Cloud PR previews use the same behavior after deployment; no server or executor configuration change is needed.
+Open the normal `/copilot` conversation. Interactive views are available by default using the existing Copilot model, authentication, and billing configuration. Generation does not require an OpenUI environment flag. Cloud PR previews use the same behavior after deployment; no server or executor configuration change is needed.
 
 Example requests:
 
@@ -38,20 +38,6 @@ Leaflet's [CVE-2025-69993 advisory](https://security.snyk.io/vuln/SNYK-JS-LEAFLE
 `Timeline` shows dated or timed milestones with done/current/planned states. `TrendChart` supports ordered observations, including negative values; `DonutChart` shows category totals and percentages. Forms can combine `Field`, `SelectField`, `DateField`, and `NumberField`.
 
 Numeric fields retain the typed draft, including incomplete or invalid text, and show a local accessible warning for nonnumeric values, nonfinite numbers, bounds, and increments. Required text and date fields also show local feedback. Invalid submissions focus the first invalid control and never send a chat message. Corrected numeric values are converted to numbers immediately before submission. Drafts remain in the same browser tab; validation errors are not sent to the model. These controls only collect preferences; they do not schedule or execute work.
-
-## Sample lab
-
-Use Node 24 and the repository's pnpm version in `autogpt_platform/frontend`:
-
-```bash
-pnpm install
-pnpm generate:api
-pnpm exec next dev --turbo --port 3000
-```
-
-Open **http://localhost:3000/tour/openui** for prepared examples without a backend or account. **http://localhost:3000/copilot/openui** uses the authenticated platform shell. These sample routes are available directly; normal navigation uses the real Copilot conversation.
-
-The lab demonstrates performance → failure investigation, lead research → outreach planning, and a campaign brief → personalized checklist. All sample data is fictional and labeled. It replays prepared programs, never calls a model or executes agents, and explains unsupported prompts. Use **Continue in Copilot** for actual generation. Interactive/Text response/Source compares the same sample; Export downloads its OpenUI program. The lab resets on refresh.
 
 ## Implementation
 

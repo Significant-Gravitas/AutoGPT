@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "@/tests/integrations/test-utils";
-import { campaign } from "@/lib/openui/samples";
+import { campaign } from "@/lib/openui/__tests__/sample-fixtures";
 import { CopilotChatActionsProvider } from "../../../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { ChainMessageParts } from "../../../components/ChatMessagesContainer/components/ChainMessageParts";
 import type { RenderUIMessagePart } from "../isRenderUIPart";
