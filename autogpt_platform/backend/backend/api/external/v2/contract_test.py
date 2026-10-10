@@ -480,7 +480,7 @@ async def test_bearer_api_key_gets_the_authenticated_rate_limit(
     # The pre-verification counters, which this test isn't about.
     mocker.patch.object(RateLimiter, "exhausted", return_value=False)
     mocker.patch.object(
-        global_rate_limit._presented_key_limiter, "check", return_value=None
+        global_rate_limit._presented_credential_limiter, "check", return_value=None
     )
 
     await _call_rate_limit_middleware(headers=[(b"authorization", b"Bearer agpt_test")])

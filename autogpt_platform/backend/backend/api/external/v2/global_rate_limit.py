@@ -6,13 +6,14 @@ endpoints. Authenticated users get 200 req/min keyed by user ID; unauthenticated
 sessions get 5 req/min keyed by client IP.
 
 Identifies the user through the auth middleware's `resolve_request_auth`.
-Verifying an API key costs a Scrypt hash, which the per-user cap can't bound:
-it can only count a request once the hash is done. So before any hashing,
-API keys are counted per client IP and key head (the part of the key the
-lookup matches on): a head presented too often, or failing too often, is
-refused unhashed until the window rolls over, as is an address failing too
-often across heads. A head is shared by few keys, so one client's bad key or
-flood doesn't lock out the other keys behind the same address.
+Checking a credential costs work the per-user cap can't bound, because it can
+only count a request once the check is done: a Scrypt hash for an API key, a
+database lookup for an OAuth access token. So each credential is counted
+first, per client IP: an API key by its head (the part its lookup matches
+on), a token by a digest of it. One presented too often, or failing too
+often, is refused unchecked until the window rolls over, as is an address
+failing too often across credentials. One client's bad key or flood doesn't
+lock out the other credentials behind the same address.
 
 Every response carries the caller's `X-RateLimit-*` position, and a 429 adds
 `Retry-After`, so a client can back off on the numbers instead of guessing.
@@ -22,6 +23,7 @@ endpoint's own auth dependency handles 401, and the rate limiter fails open.
 """
 
 import contextlib
+import hashlib
 import logging
 from typing import Optional
 
@@ -45,13 +47,13 @@ settings = Settings()
 _authenticated_limiter = RateLimiter("v2:global", max_requests=200, window_seconds=60)
 _anonymous_limiter = RateLimiter("v2:global:anon", max_requests=5, window_seconds=60)
 # Above the per-user cap, so a client within its own limit never meets it.
-_presented_key_limiter = RateLimiter(
-    "v2:global:key-presented", max_requests=300, window_seconds=60
+_presented_credential_limiter = RateLimiter(
+    "v2:global:credential-presented", max_requests=300, window_seconds=60
 )
-_failed_key_limiter = RateLimiter(
-    "v2:global:key-failures", max_requests=30, window_seconds=60
+_failed_credential_limiter = RateLimiter(
+    "v2:global:credential-failures", max_requests=30, window_seconds=60
 )
-# Failures spread over many heads, each of which may match a key to hash.
+# Failures spread over many credentials, each of which costs a check.
 _failed_auth_limiter = RateLimiter(
     "v2:global:auth-failures", max_requests=300, window_seconds=60
 )
@@ -86,9 +88,9 @@ class GlobalRateLimitMiddleware:
             )
 
         ip = client_ip(scope, headers)
-        key_bucket = _key_bucket(ip, api_key, bearer)
-        if key_bucket is not None and (
-            refusal := await _refuse_before_hashing(ip, key_bucket)
+        bucket = _credential_bucket(ip, api_key, bearer)
+        if bucket is not None and (
+            refusal := await _refuse_before_verifying(ip, bucket)
         ):
             await refusal(scope, receive, send)
             return
@@ -97,9 +99,9 @@ class GlobalRateLimitMiddleware:
             auth = await resolve_request_auth(scope, api_key=api_key, bearer=bearer)
         except HTTPException as rejection:
             auth = None
-            if rejection.status_code == 401 and key_bucket is not None:
+            if rejection.status_code == 401 and bucket is not None:
                 with contextlib.suppress(HTTPException):
-                    await _failed_key_limiter.check(key_bucket)
+                    await _failed_credential_limiter.check(bucket)
                 with contextlib.suppress(HTTPException):
                     await _failed_auth_limiter.check(ip)
         except Exception as exc:
@@ -127,19 +129,22 @@ class GlobalRateLimitMiddleware:
         await self.app(scope, receive, _with_rate_limit_headers(send, state))
 
 
-def _key_bucket(
+def _credential_bucket(
     ip: str, api_key: Optional[str], bearer: Optional[HTTPAuthorizationCredentials]
 ) -> Optional[str]:
-    """The pre-verification bucket of a credential that costs a hash, or None.
+    """The pre-verification bucket of a credential that costs work to check, or None.
 
-    API keys are matched on their head and then hashed. A bearer value in the
-    OAuth access-token format is only ever looked up by its digest (see
-    `resolve_auth_info`), so it costs no hash and gets no bucket; the same
-    value sent as `X-API-Key` is tried as a key, so it does.
+    An API key is bucketed by its head. `X-API-Key` is always tried as a key,
+    so its value is too, even in the token format. A bearer in the access-token
+    format is only ever looked up as a token (see `resolve_auth_info`), so it
+    is bucketed by a digest of the token. Any other value is refused without a
+    hash or a lookup, so it needs no bucket.
     """
     if api_key is not None:
         credential = api_key
-    elif bearer is not None and not is_access_token(bearer.credentials):
+    elif bearer is not None:
+        if is_access_token(bearer.credentials):
+            return f"{ip}:token:{_token_digest(bearer.credentials)}"
         credential = bearer.credentials
     else:
         return None
@@ -148,22 +153,29 @@ def _key_bucket(
     return f"{ip}:{credential[: APIKeySmith.HEAD_LENGTH]}"
 
 
-async def _refuse_before_hashing(ip: str, key_bucket: str) -> Optional[Response]:
-    """A 429 for a key that may not be hashed now, or None to go on.
+def _token_digest(token: str) -> str:
+    """Names a token's bucket without putting the token, or the digest it is
+    stored under, in Redis."""
+    return hashlib.sha256(f"v2-rate-limit:{token}".encode()).hexdigest()[:32]
 
-    Counts the presentation itself, so a valid key flooding the API is refused
-    unhashed past the cap, as is a head or an address that keeps failing.
+
+async def _refuse_before_verifying(ip: str, bucket: str) -> Optional[Response]:
+    """A 429 for a credential that may not be checked now, or None to go on.
+
+    Counts the presentation itself, so a valid credential flooding the API is
+    refused unchecked past the cap, as is one, or an address, that keeps
+    failing.
     """
-    if await _failed_key_limiter.exhausted(key_bucket) or (
+    if await _failed_credential_limiter.exhausted(bucket) or (
         await _failed_auth_limiter.exhausted(ip)
     ):
         return error_response(
             429,
             "Too many failed authentication attempts. Try again shortly.",
-            headers={"Retry-After": str(_failed_key_limiter.window_seconds)},
+            headers={"Retry-After": str(_failed_credential_limiter.window_seconds)},
         )
     try:
-        await _presented_key_limiter.check(key_bucket)
+        await _presented_credential_limiter.check(bucket)
     except HTTPException as exc:
         return error_response(exc.status_code, str(exc.detail), headers=exc.headers)
     return None

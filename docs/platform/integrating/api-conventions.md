@@ -77,14 +77,16 @@ A `422` lists every field that failed in `details.errors`. `loc` is the path to 
 | 200 requests | Every authenticated request, per user | 1 minute |
 | 5 requests | Every unauthenticated request, per client IP, except reading the docs | 1 minute |
 | 60 requests | Unauthenticated reads of `/openapi.json`, `/docs` and `/redoc`, per client IP | 1 minute |
-| 30 failed sign-ins | Requests with an invalid key or token, per client IP. Past it, every request carrying a credential gets `429` until the window rolls over. | 1 minute |
+| 300 requests | Requests carrying the same key or token, per client IP, counted before it is checked | 1 minute |
+| 30 failed sign-ins | Requests carrying the same invalid key or token, per client IP. Past it, that key or token gets `429` until the window rolls over. | 1 minute |
+| 300 failed sign-ins | Requests carrying any invalid key or token, per client IP. Past it, every request from that address that carries a key or token gets `429` until the window rolls over. | 1 minute |
 | 60 requests | `POST /library/agents/{agent_id}/runs`, per user | 1 minute |
 | 60 requests | `GET /credits/subscription`, per user | 1 minute |
 | 30 requests | `GET /search`, per user | 1 minute |
 | 20 requests | `POST /files/upload`, per user | 5 minutes |
 | 10 requests | `POST /marketplace/submissions/media`, per user | 5 minutes |
 
-The limits are per user, not per key: every key and token for the same account shares them. Each window is fixed and starts on a clock boundary, so a full window empties at the next minute (or five-minute) mark rather than one request at a time.
+The per-user limits are per user, not per key: every key and token for the same account shares them. The sign-in limits are counted per client IP, before the key or token is checked. Each window is fixed and starts on a clock boundary, so a full window empties at the next minute (or five-minute) mark rather than one request at a time.
 
 Every response carries your position in the window that applies to it: the endpoint's own limit for the endpoints in the table that have one, and the 200-per-minute window for everything else.
 

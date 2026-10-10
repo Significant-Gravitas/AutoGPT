@@ -195,6 +195,15 @@ def counters(mocker: pytest_mock.MockFixture) -> _Counters:
 
 async def _send_with_key(key: bytes, verify: mock.AsyncMock) -> int:
     """One request carrying `key`; the status the middleware answered with."""
+    return await _send([(b"x-api-key", key)])
+
+
+async def _send_with_bearer(token: bytes) -> int:
+    """One request carrying `token` as a bearer; the status it was answered with."""
+    return await _send([(b"authorization", b"Bearer " + token)])
+
+
+async def _send(headers: list[tuple[bytes, bytes]]) -> int:
     statuses: list[int] = []
 
     async def app(scope, receive, send):
@@ -205,7 +214,7 @@ async def _send_with_key(key: bytes, verify: mock.AsyncMock) -> int:
             statuses.append(message["status"])
 
     scope = _scope()
-    scope["headers"] = [(b"x-api-key", key)]
+    scope["headers"] = headers
     await GlobalRateLimitMiddleware(app)(scope, _receive, send)
     return statuses[0]
 
@@ -286,14 +295,14 @@ async def test_a_token_shaped_api_key_header_is_counted_as_a_key(
 
     await _send_with_key(b"agpt_xt_value", verify)
 
-    assert counters.total("key-presented") == 1
+    assert counters.total("credential-presented") == 1
 
 
-async def test_an_oauth_token_is_not_counted_as_a_key_presentation(
+async def test_a_valid_oauth_token_flooding_the_api_is_refused_before_the_lookup(
     mocker: pytest_mock.MockFixture, counters: _Counters
 ) -> None:
-    """Access tokens are looked up by digest, not hashed, so they skip the counter."""
-    mocker.patch(
+    """A token costs a database lookup, which the per-user cap counts only after."""
+    verify = mocker.patch(
         "backend.api.external.v2.global_rate_limit.resolve_request_auth",
         new=mock.AsyncMock(return_value=mock.Mock(user_id="user-1")),
     )
@@ -301,17 +310,55 @@ async def test_an_oauth_token_is_not_counted_as_a_key_presentation(
         global_rate_limit._authenticated_limiter, "check", return_value=None
     )
 
-    async def app(scope, receive, send):
-        await send({"type": "http.response.start", "status": 200, "headers": []})
+    statuses = [await _send_with_bearer(b"agpt_xt_token") for _ in range(310)]
 
-    async def send(message):
-        pass
+    assert statuses.count(200) == 300
+    assert statuses[-1] == 429
+    assert verify.await_count == 300
+    assert "agpt_xt_token" not in "".join(counters.counts)
 
-    scope = _scope()
-    scope["headers"] = [(b"authorization", b"Bearer agpt_xt_token")]
-    await GlobalRateLimitMiddleware(app)(scope, _receive, send)
 
-    assert counters.total("key-presented") == 0
+async def test_forged_oauth_tokens_stop_costing_lookups_once_the_address_keeps_failing(
+    mocker: pytest_mock.MockFixture, counters: _Counters
+) -> None:
+    """Every forged token is new to its own counter; the address's is what fills."""
+    verify = mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(side_effect=HTTPException(status_code=401, detail="no")),
+    )
+
+    for n in range(300):
+        await _send_with_bearer(b"agpt_xt_forged-%d" % n)
+
+    assert await _send_with_bearer(b"agpt_xt_forged-next") == 429
+    assert verify.await_count == 300
+
+
+async def test_one_failing_oauth_token_does_not_lock_out_another(
+    mocker: pytest_mock.MockFixture, counters: _Counters
+) -> None:
+    rejection = HTTPException(status_code=401, detail="Invalid token")
+
+    async def resolve(scope, api_key, bearer):
+        if bearer.credentials == "agpt_xt_expired":
+            raise rejection
+        return mock.Mock(user_id="user-1")
+
+    verify = mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(side_effect=resolve),
+    )
+    mocker.patch.object(
+        global_rate_limit._authenticated_limiter, "check", return_value=None
+    )
+
+    for _ in range(30):
+        await _send_with_bearer(b"agpt_xt_expired")
+    looked_up = verify.await_count
+
+    assert await _send_with_bearer(b"agpt_xt_expired") == 429
+    assert verify.await_count == looked_up
+    assert await _send_with_bearer(b"agpt_xt_current") == 200
 
 
 async def test_a_request_verifies_its_credential_once_even_when_rejected(

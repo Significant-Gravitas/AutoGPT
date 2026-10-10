@@ -523,6 +523,11 @@ async def validate_access_token(
         InvalidTokenError: If token is invalid, expired, or revoked
         InvalidClientError: If the client application is not marked as active
     """
+    if not is_access_token(token):
+        # Every access token carries the prefix, so this can't match one, and
+        # an API's rate limits count only the bearers that cost a lookup.
+        raise InvalidTokenError("access token not found")
+
     token_hash = _hash_token(token)
 
     # Direct lookup by hash
