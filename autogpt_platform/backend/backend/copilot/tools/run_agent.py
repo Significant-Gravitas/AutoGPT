@@ -254,10 +254,12 @@ class RunAgentTool(BaseTool):
                 "username_agent_slug": {
                     "type": "string",
                     "description": "Marketplace format 'username/agent-name'.",
+                    "title": "Marketplace agent",
                 },
                 "library_agent_id": {
                     "type": "string",
                     "description": "Library agent ID or graph ID from your library.",
+                    "entity": "agent_or_graph",
                 },
                 "preset_id": {
                     "type": "string",
@@ -266,6 +268,7 @@ class RunAgentTool(BaseTool):
                         "credentials; 'inputs' override individual fields). Use "
                         "alone — not with an agent identifier or save_as_preset."
                     ),
+                    "entity": "preset",
                 },
                 "inputs": {
                     "type": "object",
@@ -275,14 +278,18 @@ class RunAgentTool(BaseTool):
                 "use_defaults": {
                     "type": "boolean",
                     "description": "Run with default values (confirm with user first).",
+                    "title": "Uses default inputs",
                 },
                 "schedule_name": {
                     "type": "string",
                     "description": "Name for scheduled execution. Providing this triggers scheduling mode (also requires cron).",
+                    "title": "Schedule",
                 },
                 "cron": {
                     "type": "string",
                     "description": "Cron expression (min hour day month weekday).",
+                    "title": "Repeats",
+                    "format": "cron",
                 },
                 "timezone": {
                     "type": "string",
@@ -299,6 +306,8 @@ class RunAgentTool(BaseTool):
                     ),
                     "minimum": 0,
                     "maximum": MAX_TOOL_WAIT_SECONDS,
+                    "title": "Waits up to",
+                    "format": "seconds",
                 },
                 "dry_run": {
                     "type": "boolean",
