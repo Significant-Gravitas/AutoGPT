@@ -23,6 +23,11 @@ PREREGISTERED_APPS: dict[str, PreregisteredApp] = {
         client_secret_field="slack_mcp_client_secret",
         endpoint_hosts=frozenset({"slack.com"}),
     ),
+    "mcp.hubspot.com": PreregisteredApp(
+        client_id_field="hubspot_mcp_client_id",
+        client_secret_field="hubspot_mcp_client_secret",
+        endpoint_hosts=frozenset({"mcp.hubspot.com"}),
+    ),
 }
 
 
@@ -55,6 +60,14 @@ def select_client_auth_method(
     raise ValueError(
         "This MCP server requires an unsupported client authentication method"
     )
+
+
+def requires_registered_client(metadata: dict[str, object]) -> bool:
+    """Whether the server's token endpoint only takes clients that authenticate
+    with a secret, so the public placeholder client can never sign in. A server
+    that does not list its methods keeps the placeholder, as before."""
+    supported = metadata.get("token_endpoint_auth_methods_supported")
+    return isinstance(supported, list) and "none" not in supported
 
 
 def preregistered_client(server_url: str, secrets: Secrets) -> tuple[str, str] | None:
