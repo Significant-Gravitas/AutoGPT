@@ -37,9 +37,9 @@ async def record_card_decisions(user_id: str, session_id: str, message: str) -> 
         async with redis.pipeline(transaction=True) as pipe:
             for approved, confirmation_id in decisions:
                 if approved:
-                    pipe.hset(_key(session_id), confirmation_id, user_id)
+                    pipe.hset(_key(session_id), _field(user_id, confirmation_id), "1")
                 else:
-                    pipe.hdel(_key(session_id), confirmation_id)
+                    pipe.hdel(_key(session_id), _field(user_id, confirmation_id))
             pipe.expire(_key(session_id), _TTL_SECONDS)
             await pipe.execute()
     except Exception:
@@ -58,12 +58,9 @@ async def approved_on_card(
         return False
     try:
         redis = await get_redis_async()
-        recorded = await redis.hget(_key(session_id), confirmation_id)
-        approver = recorded.decode() if isinstance(recorded, bytes) else recorded
-        if approver != user_id:
-            return False
-        await redis.hdel(_key(session_id), confirmation_id)
-        return True
+        # HDEL's count is the answer, so two confirms of one approval cannot both pass.
+        field = _field(user_id, confirmation_id)
+        return await redis.hdel(_key(session_id), field) == 1
     except Exception:
         logger.warning(
             f"Could not read card approvals for session {session_id}", exc_info=True
@@ -73,3 +70,7 @@ async def approved_on_card(
 
 def _key(session_id: str) -> str:
     return f"{_KEY}{session_id}"
+
+
+def _field(user_id: str, confirmation_id: str) -> str:
+    return f"{user_id}:{confirmation_id}"

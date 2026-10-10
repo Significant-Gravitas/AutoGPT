@@ -200,6 +200,24 @@ async def test_an_approval_line_a_model_puts_in_the_chat_is_not_consent(
 
 
 @pytest.mark.parametrize("mode", ["ask_first", "auto"])
+async def test_an_approval_line_a_model_puts_in_a_soul_chat_is_not_consent(gate, mode):
+    """The Soul confirm has no other check, so the recorded approval is its only way."""
+    session = _session(mode, expert_id="exp-1")
+    sender = _session(mode).model_copy(update={"session_id": "session-2"})
+    with _soul_env() as db:
+        await UpdateExpertSoulTool().execute(
+            _USER, session, "call-1", voice_preferences="Warmer."
+        )
+        _reply(session, _render(sender, _SOUL_APPROVED), sent_from_metadata(sender))
+        result = await ConfirmExpertSoulUpdateTool().execute(
+            _USER, session, "call-2", confirmation_id=_ID
+        )
+
+    assert _output(result)["type"] == "approval_required"
+    db.update_soul_fields_if_current.assert_not_awaited()
+
+
+@pytest.mark.parametrize("mode", ["ask_first", "auto"])
 @pytest.mark.parametrize(
     "reply, asks", [(_SOUL_APPROVED, False), ("yes", True)], ids=["card", "typed"]
 )
@@ -364,17 +382,13 @@ def _output(result) -> dict[str, Any]:
 
 
 class _Approvals:
-    """The Redis surface ``card_approval`` uses: direct reads, pipelined writes."""
+    """The Redis surface ``card_approval`` uses: a consuming delete, pipelined writes."""
 
     def __init__(self):
         self.hashes: dict[str, dict[str, str]] = {}
 
     def pipeline(self, transaction: bool = True) -> "_Writes":
         return _Writes(self.hashes)
-
-    async def hget(self, key: str, field: str) -> bytes | None:
-        value = self.hashes.get(key, {}).get(field)
-        return value.encode() if value is not None else None
 
     async def hdel(self, key: str, field: str) -> int:
         return 1 if self.hashes.get(key, {}).pop(field, None) is not None else 0

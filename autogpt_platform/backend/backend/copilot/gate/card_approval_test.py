@@ -1,6 +1,7 @@
 """The card-approval record on a real Redis: what the chat route writes, the
 gate reads once, for that user, in that chat."""
 
+import asyncio
 import uuid
 
 import pytest
@@ -52,3 +53,21 @@ async def test_a_later_decline_withdraws_an_approval():
     )
 
     assert not await approved_on_card(_CONFIRM, {"confirmation_id": "c-1"}, "u-1", chat)
+
+
+async def test_concurrent_confirms_of_one_approval_pass_exactly_once():
+    # Repeated: the first burst on a cold connection rarely interleaves.
+    for _ in range(5):
+        chat = f"s-{uuid.uuid4()}"
+        await record_card_decisions(
+            "u-1", chat, "Approved: create Otto (confirmation_id: c-1)."
+        )
+
+        results = await asyncio.gather(
+            *(
+                approved_on_card(_CONFIRM, {"confirmation_id": "c-1"}, "u-1", chat)
+                for _ in range(10)
+            )
+        )
+
+        assert sum(results) == 1
