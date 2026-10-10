@@ -29,9 +29,8 @@ from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.executor.utils import queue_spawned_turn, schedule_turn
 from backend.copilot.model import (
-    CHAT_STATUS_IDLE,
     CHAT_STATUS_QUEUED,
-    ChatSession,
+    _get_session_lock,
     get_chat_session,
 )
 from backend.copilot.pending_message_helpers import (
@@ -64,7 +63,6 @@ SessionOutcome = Literal[
 
 # How often a waiter checks whether a queued turn has started.
 _QUEUE_POLL_SECONDS = 1.0
-QUEUED_TURN_CANCELLED = "This task was cancelled before it started."
 _ALREADY_WAITING = (
     "That session already has a task waiting to start, so this task cannot be "
     "handed to it right now. Wait for it, or start a fresh one."
@@ -322,34 +320,24 @@ async def wait_for_queued_session(
     *, session_id: str, user_id: str, timeout: float
 ) -> tuple[SessionOutcome, SessionResult]:
     """Wait for a queued turn to start, then for its result, all within
-    ``timeout``. A turn closed at promotion, or taken out of the queue before
-    it started, comes back ``refused``."""
+    ``timeout``. A turn closed at promotion, or cancelled before it started,
+    comes back ``refused`` with the note that closed it."""
     deadline = time.monotonic() + timeout
     while await chat_db().get_chat_session_status(session_id) == CHAT_STATUS_QUEUED:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return "queued_for_slot", SessionResult(queued=True)
         await asyncio.sleep(min(_QUEUE_POLL_SECONDS, remaining))
-    session = await get_chat_session(session_id, user_id)
+    # A cancel or a refusal writes its note under this lock with the flip seen.
+    async with _get_session_lock(session_id):
+        session = await get_chat_session(session_id, user_id)
     refusal = queued_turn_refusal(session) if session else None
     if refusal is not None:
         return "refused", SessionResult(refusal=refusal)
-    if session is None or cancelled_before_start(session):
-        return "refused", SessionResult(refusal=QUEUED_TURN_CANCELLED)
     return await wait_for_session_result(
         session_id=session_id,
         user_id=user_id,
         timeout=max(deadline - time.monotonic(), 0),
-    )
-
-
-def cancelled_before_start(session: ChatSession) -> bool:
-    """Idle with its queued message still the last row: cancelled, not run."""
-    last = session.messages[-1] if session.messages else None
-    return (
-        session.chat_status == CHAT_STATUS_IDLE
-        and last is not None
-        and last.role == "user"
     )
 
 

@@ -11,7 +11,7 @@ tests patch the three integration seams — ``enqueue_copilot_turn``,
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -892,6 +892,40 @@ class TestGetSubSessionResult:
         assert r.status == "running"
         # And crucially NOT the stale content.
         assert r.response is None or r.response == ""
+
+    @pytest.mark.asyncio
+    async def test_a_turn_that_ended_without_a_reply_is_not_called_cancelled(
+        self, mock_waiter
+    ):
+        """Idle with the user's message last and no stream left: only a cancel
+        that wrote its note says "cancelled"; this one reaches the waiter."""
+        asked = MagicMock(metadata=None, role="user", content="do it", tool_calls=None)
+        sub = MagicMock(
+            user_id="alice", expert_id=None, messages=[asked], chat_status="idle"
+        )
+        sub.metadata.delegated_by_session_id = None
+        mock_waiter.result_mock.return_value = ("failed", SessionResult())
+
+        with (
+            patch(
+                "backend.copilot.tools.get_sub_session_result.get_chat_session",
+                AsyncMock(return_value=sub),
+            ),
+            patch(
+                "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+                AsyncMock(return_value=None),
+            ),
+        ):
+            r = await GetSubSessionResultTool()._execute(
+                user_id="alice",
+                session=_session("alice"),
+                sub_session_id="inner-12",
+                wait_if_running=30,
+            )
+
+        mock_waiter.result_mock.assert_awaited_once()
+        assert isinstance(r, SubSessionStatusResponse)
+        assert turn_queue.TURN_CANCELLED not in (r.message or "")
 
     @pytest.mark.asyncio
     async def test_cancel_publishes_cancel_event(

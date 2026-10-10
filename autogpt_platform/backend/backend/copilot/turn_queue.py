@@ -76,6 +76,7 @@ _ENVELOPE_KEY = "envelope"
 # The assistant row that closes a queued turn the promotion could not start.
 _REFUSED_KEY = "queued_turn_refused"
 WAKE_LATER = "Your answer is kept and reaches the assistant with your next message."
+TURN_CANCELLED = "This task was cancelled before it started."
 UNREADABLE_SPAWN = (
     "This task's limits could not be read back, so it was not started. "
     "Start it again."
@@ -229,11 +230,11 @@ async def enqueue_turn(
     # ``sequence`` and PK-collide on ``(sessionId, sequence)``.
     db = chat_db()
     async with _get_session_lock(session_id):
-        # A spawned child's row is the one promotion replays, so it is written
-        # only into an idle session: never behind another queued row.
-        if only_if_idle and (
-            await db.get_chat_session_status(session_id) != CHAT_STATUS_IDLE
-        ):
+        # A spawned child's row is the one promotion replays, so it claims the
+        # idle session first and is written only if it won: a lost claim leaves
+        # nothing behind. Promotion reads the row under this lock, so it never
+        # sees the claim without it.
+        if only_if_idle and not await _flip(db, session_id, user_id):
             raise SessionNotIdle(session_id)
         live_sequence = await db.get_next_sequence(session_id)
         try:
@@ -245,8 +246,19 @@ async def enqueue_turn(
                 sequence=live_sequence,
                 metadata=metadata or None,
             )
-        except UniqueViolationError as exc:
-            if message_id and is_duplicate_chat_message_id_error(exc):
+        except BaseException as exc:
+            if only_if_idle:
+                await db.update_chat_session_status(
+                    session_id=session_id,
+                    expect_status=CHAT_STATUS_QUEUED,
+                    status=CHAT_STATUS_IDLE,
+                    user_id=user_id,
+                )
+            if (
+                isinstance(exc, UniqueViolationError)
+                and message_id
+                and is_duplicate_chat_message_id_error(exc)
+            ):
                 return None
             raise
         # Flip the session to ``"queued"``.  CAS-gated on ``"idle"`` so a
@@ -256,42 +268,56 @@ async def enqueue_turn(
         # the most-recent user row via ``get_latest_user_message_in_session``;
         # earlier pending rows aren't independently scheduled, they sit in
         # the chat history and the model sees them as context.
-        flipped = await db.update_chat_session_status(
-            session_id=session_id,
-            expect_status=CHAT_STATUS_IDLE,
-            status=CHAT_STATUS_QUEUED,
-            user_id=user_id,
-        )
+        if not only_if_idle:
+            await _flip(db, session_id, user_id)
     # Invalidate the session cache so the next /chat read picks up the
     # queued row + the session's new status (frontend renders the
     # 'Queued' badge from ``session.chat_status``).
     await invalidate_session_cache(session_id)
-    if only_if_idle and not flipped:
-        # Started some other way since the check; nothing will replay this row.
-        raise SessionNotIdle(session_id)
     return row
 
 
-async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
-    """Flip the user's session from ``"queued"`` → ``"idle"``, giving a queued
-    child's node back to its tree.  Returns True iff the CAS matched AND the
-    session is owned by the user.  Cancel/dispatch races resolve in a single
-    atomic update."""
-    # Read before the flip: once idle, a new message can become the latest row.
-    pending = await chat_db().get_latest_user_message_in_session(session_id)
-    ok = await chat_db().update_chat_session_status(
+async def _flip(db: Any, session_id: str, user_id: str) -> bool:
+    return await db.update_chat_session_status(
         session_id=session_id,
-        expect_status=CHAT_STATUS_QUEUED,
-        status=CHAT_STATUS_IDLE,
+        expect_status=CHAT_STATUS_IDLE,
+        status=CHAT_STATUS_QUEUED,
         user_id=user_id,
     )
-    if not ok:
-        return False
-    await invalidate_session_cache(session_id)
-    if pending is not None and _is_spawned(pending):
-        child = _stored_envelope(pending.metadata or {})
-        if child is not None:
-            await release_turn(child)
+
+
+async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
+    """Flip the user's session from ``"queued"`` → ``"idle"``.  A queued child
+    gets a closing row saying it was cancelled, which its waiter reads, and its
+    node goes back to its tree.  Returns True iff the CAS matched AND the
+    session is owned by the user.  Cancel/dispatch races resolve in a single
+    atomic update."""
+    db = chat_db()
+    # Under the lock a waiter reads under, so it never sees idle without the note.
+    async with _get_session_lock(session_id):
+        # Read before the flip: once idle, a new message can become the latest row.
+        pending = await db.get_latest_user_message_in_session(session_id)
+        if not await db.update_chat_session_status(
+            session_id=session_id,
+            expect_status=CHAT_STATUS_QUEUED,
+            status=CHAT_STATUS_IDLE,
+            user_id=user_id,
+        ):
+            return False
+        spawned = pending is not None and _is_spawned(pending)
+        if spawned:
+            await db.add_chat_message(
+                message_id=str(uuid.uuid4()),
+                session_id=session_id,
+                role="assistant",
+                content=TURN_CANCELLED,
+                sequence=await db.get_next_sequence(session_id),
+                metadata={_REFUSED_KEY: True},
+            )
+        await invalidate_session_cache(session_id)
+    child = _stored_envelope(pending.metadata or {}) if spawned and pending else None
+    if child is not None:
+        await release_turn(child)
     return True
 
 
@@ -377,7 +403,12 @@ async def _promote_head(user_id: str) -> bool | None:
         # user-role row with no following assistant rows — i.e. the one
         # that triggered the queue).  Its ``metadata`` carries the
         # dispatcher payload.
-        pending = await chat_db().get_latest_user_message_in_session(head.session_id)
+        # Under the session lock: a spawned child claims the session before it
+        # writes its row, inside the same lock.
+        async with _get_session_lock(head.session_id):
+            pending = await chat_db().get_latest_user_message_in_session(
+                head.session_id
+            )
         if pending is None or pending.content is None:
             # Shouldn't happen — enqueue_turn always persists a row before
             # flipping the session to queued.  If it does (corrupted

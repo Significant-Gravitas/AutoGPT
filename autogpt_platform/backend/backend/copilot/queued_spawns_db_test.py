@@ -28,7 +28,6 @@ from backend.copilot.model import (
 )
 from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
 from backend.copilot.sdk.session_waiter import (
-    QUEUED_TURN_CANCELLED,
     SessionResult,
     run_copilot_turn_via_queue,
     wait_for_queued_session,
@@ -132,7 +131,7 @@ async def test_cancelling_a_queued_sub_session_takes_it_out_and_returns_its_node
     polled = await tool._execute(
         user.id, spawner.session, sub_session_id=queued, wait_if_running=0
     )
-    assert (polled.status, polled.message) == ("error", QUEUED_TURN_CANCELLED)
+    assert (polled.status, polled.message) == ("error", turn_queue.TURN_CANCELLED)
     assert await user.nodes(spawner.tree_id) == nodes - 1
     assert queued not in user.dispatched_sessions()
 
@@ -174,7 +173,7 @@ async def test_a_queued_sub_session_cancelled_while_awaited_reports_the_cancel(
     outcome, result = await asyncio.wait_for(waiting, timeout=5)
     await user.end(spawner.session_id)
 
-    assert (outcome, result.refusal) == ("refused", QUEUED_TURN_CANCELLED)
+    assert (outcome, result.refusal) == ("refused", turn_queue.TURN_CANCELLED)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -216,6 +215,13 @@ async def test_two_children_queued_into_one_session_admit_one_node(user: "_User"
 
     assert sorted(type(r).__name__ for r in results) == ["NoneType", "SessionNotIdle"]
     assert await user.nodes(spawner.tree_id) == nodes + 1
+    # The loser wrote nothing: one row, the winner's, for promotion to replay.
+    queued = await get_chat_session(sub.session_id, user.id)
+    assert queued is not None
+    assert [m.content for m in queued.messages if m.role == "user"] in (
+        ["task 0"],
+        ["task 1"],
+    )
     assert await chat_db().get_chat_session_status(sub.session_id) == CHAT_STATUS_QUEUED
     assert await turn_queue.cancel_queued_turn(
         user_id=user.id, session_id=sub.session_id

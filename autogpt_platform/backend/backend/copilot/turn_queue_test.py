@@ -66,6 +66,13 @@ _CHILD = {"tree_id": "t1", "depth": 1}
 
 
 @pytest.fixture(autouse=True)
+def no_session_lock():
+    """The Redis session lock is the DB tests' to exercise."""
+    with patch.object(turn_queue, "_get_session_lock", return_value=_NoopAsyncCM()):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def tracked_message(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     tracker = MagicMock()
     monkeypatch.setattr(turn_queue, "track_user_message", tracker)
@@ -226,11 +233,14 @@ async def test_cancel_queued_turn_returns_false_when_not_owned_or_not_queued() -
 async def test_cancelling_a_queued_turn_returns_only_a_childs_node(
     metadata: dict | None, released: bool
 ) -> None:
+    """A cancelled child also gets the note its waiter reads; nothing else does."""
     db = MagicMock()
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(
         return_value=_pyd_message(metadata=metadata)
     )
+    db.get_next_sequence = AsyncMock(return_value=2)
+    db.add_chat_message = AsyncMock()
     release = AsyncMock()
     with (
         patch.object(turn_queue, "chat_db", return_value=db),
@@ -240,8 +250,41 @@ async def test_cancelling_a_queued_turn_returns_only_a_childs_node(
         assert await turn_queue.cancel_queued_turn(user_id="u1", session_id="s1")
     if released:
         release.assert_awaited_once_with(TurnEnvelope.model_validate(_CHILD))
+        note = db.add_chat_message.await_args.kwargs
+        assert (note["role"], note["content"]) == (
+            "assistant",
+            turn_queue.TURN_CANCELLED,
+        )
+        assert note["metadata"] == {turn_queue._REFUSED_KEY: True}
     else:
         release.assert_not_awaited()
+        db.add_chat_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_child_that_loses_the_claim_writes_no_row() -> None:
+    """Claimed before it is written: when another turn took the session between
+    a look and the flip, nothing is left for promotion to replay."""
+    db = MagicMock()
+    db.get_chat_session_status = AsyncMock(return_value="idle")
+    db.update_chat_session_status = AsyncMock(return_value=False)
+    db.get_next_sequence = AsyncMock(return_value=1)
+    db.add_chat_message = AsyncMock()
+
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        pytest.raises(turn_queue.SessionNotIdle),
+    ):
+        await turn_queue.enqueue_turn(
+            user_id="u1",
+            session_id="s1",
+            message="task",
+            envelope=TurnEnvelope.model_validate(_CHILD),
+            only_if_idle=True,
+        )
+
+    db.add_chat_message.assert_not_awaited()
 
 
 # ── try_enqueue_turn ───────────────────────────────────────────────────
