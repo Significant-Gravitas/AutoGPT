@@ -955,13 +955,9 @@ class UserCredit(UserCreditBase):
             )
             return
 
-        transaction = await CreditTransaction.prisma().find_first_or_raise(
-            where={
-                "transactionKey": str(request.payment_intent),
-                "isActive": True,
-                "type": CreditTransactionType.TOP_UP,
-            }
-        )
+        transaction = await self._find_top_up(request)
+        if not transaction:
+            return
         if request.amount <= 0 or request.amount > transaction.amount:
             raise AssertionError(
                 f"Invalid amount to deduct ${request.amount / 100} from ${transaction.amount / 100} top-up"
@@ -1001,13 +997,9 @@ class UserCredit(UserCreditBase):
         )
 
     async def handle_dispute(self, dispute: stripe.Dispute):
-        transaction = await CreditTransaction.prisma().find_first_or_raise(
-            where={
-                "transactionKey": str(dispute.payment_intent),
-                "isActive": True,
-                "type": CreditTransactionType.TOP_UP,
-            }
-        )
+        transaction = await self._find_top_up(dispute)
+        if not transaction:
+            return
         user_id = transaction.userId
         amount = dispute.amount
         balance = await self.get_credits(user_id)
@@ -1062,6 +1054,25 @@ class UserCredit(UserCreditBase):
             "uncategorized_text": evidence_text[:20000],
         }
         await stripe_call(stripe.Dispute.modify_async, dispute.id, evidence=evidence)
+
+    async def _find_top_up(
+        self, request: stripe.Refund | stripe.Dispute
+    ) -> CreditTransaction | None:
+        # Refunds and disputes of subscription payments reach the same webhook;
+        # only a credit top-up has a ledger row to act on.
+        transaction = await CreditTransaction.prisma().find_first(
+            where={
+                "transactionKey": str(request.payment_intent),
+                "isActive": True,
+                "type": CreditTransactionType.TOP_UP,
+            }
+        )
+        if not transaction:
+            logger.warning(
+                f"Ignoring {request.id}: payment intent {request.payment_intent} "
+                "is not a credit top-up"
+            )
+        return transaction
 
     async def _top_up_credits(
         self,

@@ -1,5 +1,9 @@
 """Unit tests for Stripe webhook handler and subscription checkout helpers."""
 
+import hashlib
+import hmac
+import json
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -7,6 +11,7 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 import stripe
+from httpx import ASGITransport, AsyncClient
 from prisma.enums import SubscriptionTier
 
 from backend.data.credit import (
@@ -15,6 +20,7 @@ from backend.data.credit import (
     sync_tier_from_checkout_session,
 )
 from backend.data.notifications import NotificationResult, PassWorkEvent, PassWorkKind
+from backend.util.test import SpinTestServer
 
 from .billing.subscriptions.routes import (
     _claim_stripe_event,
@@ -25,6 +31,7 @@ from .billing.subscriptions.routes import (
 app = fastapi.FastAPI()
 app.include_router(router)
 client = fastapi.testclient.TestClient(app)
+SIGNING_SECRET = "whsec_refund_test_only"
 
 
 @pytest.fixture(autouse=True)
@@ -288,6 +295,79 @@ def test_stripe_webhook_releases_dedup_on_invoice_retrieve_failure(
 
     assert response.status_code >= 500
     mock_release.assert_awaited_once_with("evt_retrieve_fails")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "event_type, data_object",
+    [
+        (
+            "refund.created",
+            {"object": "refund", "id": "re_non_topup", "status": "succeeded"},
+        ),
+        (
+            "charge.dispute.created",
+            {"object": "dispute", "id": "du_non_topup", "status": "needs_response"},
+        ),
+        (
+            "charge.dispute.closed",
+            {"object": "dispute", "id": "du_non_topup", "status": "lost"},
+        ),
+    ],
+)
+async def test_stripe_webhook_acknowledges_refund_or_dispute_of_non_topup_payment(
+    mocker: pytest_mock.MockFixture,
+    server: SpinTestServer,
+    event_type: str,
+    data_object: dict,
+) -> None:
+    """A refund or dispute of a payment that bought no credits, such as a
+    subscription invoice, answers 200 and keeps its dedup claim; a 500 makes
+    Stripe redeliver it for days."""
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
+        new=SIGNING_SECRET,
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes._claim_stripe_event",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mock_release = mocker.patch(
+        "backend.api.features.billing.subscriptions.routes._release_stripe_event",
+        new_callable=AsyncMock,
+    )
+    payload = json.dumps(
+        {
+            "id": "evt_non_topup",
+            "object": "event",
+            "type": event_type,
+            "data": {
+                "object": {
+                    **data_object,
+                    "payment_intent": "pi_non_topup_payment",
+                    "amount": 6000,
+                }
+            },
+        }
+    )
+    timestamp = int(time.time())
+    signature = hmac.new(
+        SIGNING_SECRET.encode(), f"{timestamp}.{payload}".encode(), hashlib.sha256
+    ).hexdigest()
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as async_client:
+        response = await async_client.post(
+            "/credits/stripe_webhook",
+            content=payload,
+            headers={"stripe-signature": f"t={timestamp},v1={signature}"},
+        )
+
+    assert response.status_code == 200
+    mock_release.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
