@@ -130,6 +130,17 @@ const EXT_KIND: Record<string, string> = {
   ".webm": "video",
   ".m4v": "video",
   ".pdf": "pdf",
+  // Office documents are zip/binary containers: never fetch them as text.
+  ".pptx": "download-only",
+  ".ppt": "download-only",
+  ".docx": "download-only",
+  ".doc": "download-only",
+  ".xlsx": "download-only",
+  ".xls": "download-only",
+  ".key": "download-only",
+  ".odp": "download-only",
+  ".odt": "download-only",
+  ".ods": "download-only",
   ".csv": "csv",
   ".tsv": "csv",
   ".html": "html",
@@ -226,6 +237,12 @@ const BINARY_MIMES = new Set([
   "application/x-executable",
   "application/x-msdos-program",
   "application/vnd.microsoft.portable-executable",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/msword",
+  "application/vnd.ms-excel",
 ]);
 
 const PREVIEWABLE_IMAGE_MIMES = new Set([
