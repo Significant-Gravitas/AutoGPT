@@ -153,6 +153,23 @@ def test_office_preview_extracts_embedded_thumbnail(mocker):
     assert response.headers["content-type"] == "image/webp"
 
 
+@pytest.mark.parametrize("mime_type", ["text/plain", "application/octet-stream"])
+@pytest.mark.parametrize("name", ["deck.pptx", "report.docx", "sheet.xlsx"])
+def test_office_preview_by_extension_despite_wrong_mime(mocker, name, mime_type):
+    # Office files often store with a wrong MIME; the extension must still
+    # route them to thumbnail extraction instead of raw text bytes or a 415.
+    _mock_lookups(mocker, _make_file(name=name, path=f"/{name}", mime_type=mime_type))
+    storage = _mock_storage(mocker, _zip_bytes(with_thumbnail=True))
+    _mock_redis(mocker)
+
+    response = client.get("/files/file-001/preview")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/webp"
+    assert response.content[:4] == b"RIFF"
+    storage.retrieve_partial.assert_not_called()
+
+
 def test_office_preview_without_thumbnail_returns_415(mocker):
     _mock_lookups(mocker, _make_file(mime_type=PPTX_MIME))
     _mock_storage(mocker, _zip_bytes(with_thumbnail=False))
