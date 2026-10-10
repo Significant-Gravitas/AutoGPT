@@ -15,15 +15,21 @@ HubSpotCredentialsInput = CredentialsMetaInput[
 def HubSpotCredentialsField() -> HubSpotCredentialsInput:
     """Creates a HubSpot credentials input on a block."""
     return CredentialsField(
-        description="The HubSpot integration requires an API Key.",
+        description=(
+            "A HubSpot service key or private app access token, sent as a Bearer "
+            "token. Create a service key in HubSpot under Development > Keys > "
+            "Service keys, or a private app under Development > Legacy apps, with "
+            "the CRM scopes for the objects you use. HubSpot no longer accepts "
+            "legacy API keys."
+        ),
     )
 
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
     provider="hubspot",
-    api_key=SecretStr("mock-hubspot-api-key"),
-    title="Mock HubSpot API key",
+    api_key=SecretStr("mock-hubspot-access-token"),
+    title="Mock HubSpot access token",
     expires_at=None,
 )
 
