@@ -11679,6 +11679,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "409": {
+            "description": "The wizard draft changed in another session"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -18842,6 +18845,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Add Bot Url"
           },
+          "dm_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dm Url"
+          },
           "dm_link": {
             "anyOf": [
               { "$ref": "#/components/schemas/PlatformUserLinkInfo" },
@@ -19915,6 +19922,16 @@
             "title": "Expert Lookup Retry Count",
             "default": 0
           },
+          "plan_lookup_retry_count": {
+            "type": "integer",
+            "title": "Plan Lookup Retry Count",
+            "default": 0
+          },
+          "limits_retry_count": {
+            "type": "integer",
+            "title": "Limits Retry Count",
+            "default": 0
+          },
           "user_timezone": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Timezone"
@@ -19934,6 +19951,10 @@
           "routine_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Routine Id"
+          },
+          "routine_schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Routine Schedule Id"
           },
           "credential_pins": {
             "additionalProperties": {
@@ -20633,6 +20654,15 @@
             "type": "boolean",
             "title": "Is Managed",
             "default": false
+          },
+          "service": { "type": "string", "title": "Service", "default": "" },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
           }
         },
         "type": "object",
@@ -22217,7 +22247,16 @@
           "credential_id": { "type": "string", "title": "Credential Id" },
           "provider": { "type": "string", "title": "Provider" },
           "title": { "type": "string", "title": "Title" },
-          "type": { "type": "string", "title": "Type" }
+          "type": { "type": "string", "title": "Type" },
+          "service": { "type": "string", "title": "Service", "default": "" },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
+          }
         },
         "type": "object",
         "required": ["credential_id", "provider", "title", "type"],
@@ -26862,7 +26901,7 @@
             "title": "User Role"
           },
           "pain_points": {
-            "items": { "type": "string" },
+            "items": { "type": "string", "maxLength": 2000 },
             "type": "array",
             "maxItems": 20,
             "title": "Pain Points"
@@ -26915,6 +26954,116 @@
         ],
         "title": "OnboardingStep",
         "description": "Application-level onboarding step identifiers."
+      },
+      "OnboardingWizardProgress": {
+        "properties": {
+          "version": { "type": "integer", "const": 1, "title": "Version" },
+          "currentStep": {
+            "type": "string",
+            "enum": [
+              "team",
+              "autopilot",
+              "role",
+              "painPoints",
+              "hire",
+              "subscription",
+              "connect",
+              "preparing"
+            ],
+            "title": "Currentstep"
+          },
+          "completedSteps": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "team",
+                "autopilot",
+                "role",
+                "painPoints",
+                "hire",
+                "subscription",
+                "connect",
+                "preparing"
+              ]
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Completedsteps"
+          },
+          "role": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "title": "Role"
+          },
+          "otherRole": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "title": "Otherrole"
+          },
+          "painPoints": {
+            "items": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Painpoints"
+          },
+          "otherPainPoint": {
+            "type": "string",
+            "maxLength": 2000,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "title": "Otherpainpoint"
+          },
+          "selectedBilling": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Selectedbilling"
+          },
+          "hasUserSelectedBilling": {
+            "type": "boolean",
+            "title": "Hasuserselectedbilling"
+          },
+          "selectedCountryCode": {
+            "type": "string",
+            "maxLength": 2,
+            "minLength": 2,
+            "pattern": "^[A-Z]{2}$",
+            "title": "Selectedcountrycode"
+          },
+          "hiredTemplateIds": {
+            "items": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Hiredtemplateids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "currentStep",
+          "completedSteps",
+          "role",
+          "otherRole",
+          "painPoints",
+          "otherPainPoint",
+          "selectedBilling",
+          "hasUserSelectedBilling",
+          "selectedCountryCode",
+          "hiredTemplateIds"
+        ],
+        "title": "OnboardingWizardProgress",
+        "description": "Saved wizard answers and navigation, independent of completion or access."
       },
       "OrgAliasResponse": {
         "properties": {
@@ -28095,6 +28244,20 @@
             "type": "array",
             "title": "Supported Auth Types",
             "description": "Credential types this provider accepts. Drives which connection tabs the settings UI renders for the provider. Empty list means no auth types declared."
+          },
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "description": "Grouping key shared by a block provider and its MCP server.",
+            "default": ""
+          },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
           }
         },
         "type": "object",
@@ -33419,6 +33582,17 @@
       "UserOnboarding": {
         "properties": {
           "userId": { "type": "string", "title": "Userid" },
+          "wizardProgress": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/OnboardingWizardProgress" },
+              { "type": "null" }
+            ]
+          },
+          "wizardRevision": {
+            "type": "integer",
+            "title": "Wizardrevision",
+            "default": 0
+          },
           "completedSteps": {
             "items": { "$ref": "#/components/schemas/OnboardingStep" },
             "type": "array",
@@ -33497,6 +33671,26 @@
       },
       "UserOnboardingUpdate": {
         "properties": {
+          "wizardProgress": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/OnboardingWizardProgress" },
+              { "type": "null" }
+            ]
+          },
+          "wizardRevision": {
+            "anyOf": [
+              { "type": "integer", "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Wizardrevision"
+          },
+          "wizardUserId": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Wizarduserid"
+          },
           "walletShown": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Walletshown"

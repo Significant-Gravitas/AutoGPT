@@ -6,6 +6,8 @@ An opt-in integration of the [OpenUI React runtime](https://www.openui.com/docs/
 
 Set `CHAT_OPENUI_ENABLED=true` in the backend's gitignored `.env`, then restart the backend services. Open the normal `/copilot` conversation. Use your existing Copilot model, authentication, and billing configuration; no additional provider key or frontend generation endpoint is needed.
 
+For a cloud PR preview, set the same variable on the preview's server and Copilot executor deployments. The `!deploy` workflow does not copy local `.env` files or enable this flag, so a successful preview deployment alone does not enable generation. The frontend sample-lab flag below is independent.
+
 Example requests:
 
 - “Use my agent run results to show an interactive performance report. Identify failures and offer a next step.”
@@ -54,7 +56,7 @@ The lab demonstrates performance → failure investigation, lead research → ou
 ## Implementation
 
 - `frontend/src/lib/openui/catalog.ts`, `catalog-sections.ts`, and `catalog-fields.ts` define the canonical Zod catalog. Run `pnpm generate:openui` in the frontend to update `backend/backend/copilot/tools/openui_library.txt`. A contract test checks exact parity; `pnpm generate:openui --check` verifies it without writing.
-- `backend/copilot/tools/render_ui.py` requires authentication and matching session ownership, checks the feature flag, bounds inputs, and returns a versioned result. It caps encoded output below the existing truncation thresholds. A bounded lexical check rejects unfinished or mismatched delimiters before publishing a view and returns a repairable tool error. This check respects quoted strings and line comments; it is not a full parser. Component schemas, references, and full OpenUI syntax are still validated in the browser. The backend does not execute the program.
+- `backend/copilot/tools/render_ui.py` requires authentication and matching session ownership, checks the feature flag, bounds inputs, and returns a versioned result. It caps encoded output below the existing truncation thresholds. A bounded lexical preflight rejects unfinished or mismatched delimiters, then the bundled canonical parser validates syntax, component schemas, and references before publication. Invalid programs return repairable tool errors; the browser repeats validation before rendering. The backend parses the program without rendering it or executing generated code.
 - `backend/copilot/openui_prompt.py` contains opt-in task-to-view guidance. It asks the model to verify dated plans, reconcile totals and dependencies, invalidate derived values after constraint changes, preserve reported progress, and use ordinary text or clarification when an interactive view adds no value. Guidance does not guarantee factual correctness or valid programs.
 - `frontend/src/components/organisms/OpenUI` maps the real OpenUI renderer to AutoGPT primitives, Recharts, and Leaflet. No generated JavaScript, HTML, arbitrary components, or tool execution is enabled. Completed programs containing queries or mutations are rejected, and component props are validated against the canonical Zod schemas, including geographic bounds and typed field defaults.
 - `frontend/src/app/(platform)/copilot/tools/RenderUI` handles native result rendering, drafts, summary fallback, and conversation follow-ups.

@@ -191,6 +191,10 @@ class LinkTokenInfoResponse(BaseModel):
 
 class ResolveResponse(BaseModel):
     linked: bool
+    # Masked email of the linked AutoGPT account (e.g. "b***@agpt.co"), only
+    # filled when the caller asks for it, so the bot can tell a user which
+    # account their DMs run as without exposing the full address.
+    account_hint: str | None = None
 
 
 class PlatformLinkInfo(BaseModel):
@@ -235,6 +239,9 @@ class BotPlatformInfo(BaseModel):
     # the UI never calls a Slack workspace a server.
     server_noun: str = "server"
     add_bot_url: str | None = None
+    # Opens a DM with the bot (currently only Telegram). The settings page
+    # leads with it: DMing the bot is the quickest way to link.
+    dm_url: str | None = None
     dm_link: PlatformUserLinkInfo | None = None
     server_links: list[PlatformLinkInfo] = Field(default_factory=list)
     # Set while an install by this user awaits its account link (currently

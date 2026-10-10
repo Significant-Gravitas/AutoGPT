@@ -453,7 +453,12 @@ def test_total_schema_char_budget() -> None:
 # the plus-one ceiling above. Same headroom, for the same reason.
 #     merged tree                                 69,183
 #     + headroom                       +300       69,483
-# Count only the eager tools actually registered by tool_adapter (18,648 chars).
+#
+# Re-measured on #15149 merged with dev f2c683cf2b, which itself measured
+# 69,461, 22 under the line above; find_capability's expert kind adds 27.
+#     merged tree                                 69,488
+#     + headroom                       +300       69,788
+# Count only the eager tools actually registered by tool_adapter.
 _SESSION_WIRE_BUDGET = 18_948
 
 

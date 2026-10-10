@@ -266,10 +266,12 @@ class PostToChatPlatformTool(BaseTool):
                         "Channel name (#standup) or numeric ID. Required "
                         "unless target='dm'."
                     ),
+                    "entity": None,
                 },
                 "content": {
                     "type": "string",
                     "description": "Message body to post.",
+                    "title": "Message",
                 },
                 "mode": {
                     "type": "string",
@@ -466,6 +468,7 @@ class EditChatPlatformMessageTool(BaseTool):
                         "The `channel_id` post_to_chat_platform returned for "
                         "the message being edited."
                     ),
+                    "entity": None,
                 },
                 "ref_id": {
                     "type": "string",
@@ -473,10 +476,13 @@ class EditChatPlatformMessageTool(BaseTool):
                         "The `ref_id` post_to_chat_platform returned for the "
                         "message being edited."
                     ),
+                    "title": "Message",
+                    "entity": None,
                 },
                 "content": {
                     "type": "string",
                     "description": "New message body, replacing the original content.",
+                    "title": "New text",
                 },
             },
             "required": ["channel_id", "ref_id", "content"],
