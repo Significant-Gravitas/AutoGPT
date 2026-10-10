@@ -3,7 +3,9 @@
 Every transition in and out of a trial already produces exactly one trial
 notice, deduped by its own claim, so the group change rides on that notice:
 join on start and on un-cancel, leave on cancel, conversion, failed conversion
-and end. The backend owns both edges of this group (see `mailerlite.py`).
+and end. A trial ended by buying another plan sends no notice, so it leaves
+the group on its own. The backend owns both edges of this group (see
+`mailerlite.py`).
 
 A conversion is also the customer's first paid subscription, so it joins the
 paying audience the way a first checkout does.
@@ -11,6 +13,10 @@ paying audience the way a first checkout does.
 The subscriber's status and dates (`subscriber_fields.py`) ride on the same
 event. The notification service writes only the fields while the trial group
 is not configured.
+
+Nothing is queued for a customer who opted out of marketing, or whom a signal
+places in Iran or Russia (`consent.py`); their trial notices and claims are
+unaffected.
 """
 
 import logging
@@ -19,6 +25,7 @@ from collections.abc import Callable, Mapping
 from backend.data.db_accessors import user_db
 from backend.data.notifications import AudienceAction
 from backend.notifications import subscriber_fields
+from backend.notifications.consent import MarketingContact, audience_change_allowed
 from backend.notifications.queue import queue_audience_change
 from backend.notifications.subscriber_fields import Fields, audience_event
 
@@ -46,7 +53,7 @@ _TRIAL_FIELDS: Mapping[str, Callable[[dict], Fields]] = {
 
 
 async def queue_trial_audience_change(
-    kind: str, user_id: str, email: str, subscription: dict
+    kind: str, user: MarketingContact, subscription: dict
 ) -> None:
     """Queue the trial group change and field update for this notice, if it
     has either.
@@ -59,7 +66,24 @@ async def queue_trial_audience_change(
     action = _TRIAL_GROUP_CHANGES.get(kind)
     if action is None:
         return
-    event = audience_event(action, email, user_id, _TRIAL_FIELDS[kind](subscription))
+    await _queue_group_change(action, user, _TRIAL_FIELDS[kind](subscription))
+
+
+async def leave_trial_group(user: MarketingContact) -> None:
+    """The trial ended because another plan was bought: leave the trial group
+    without writing any fields, so that plan's status and dates stay.
+
+    No notice or claim rides on it: a repeated removal changes nothing. Raises
+    when it cannot be queued, so Stripe retries the event."""
+    await _queue_group_change(AudienceAction.REMOVE_TRIAL, user, None)
+
+
+async def _queue_group_change(
+    action: AudienceAction, user: MarketingContact, fields: Fields | None
+) -> None:
+    if not audience_change_allowed(user, action):
+        return
+    event = audience_event(action, user.email, user.id, fields)
     if event is None:
         return
     result = await queue_audience_change(event)
@@ -67,28 +91,32 @@ async def queue_trial_audience_change(
         raise RuntimeError(f"Could not queue {action.value}: {result.message}")
 
 
-async def join_paying_audience(user_id: str, email: str) -> None:
+async def join_paying_audience(user: MarketingContact) -> None:
     """The onboarding tour for a first subscription, else the changelog.
 
     The conversion notice stands in for the subscription welcome, so this takes
     the same welcome claim a first checkout does: a later resubscription is
-    then treated as the returning customer it is. Called once the notice is
+    then treated as the returning customer it is. A customer who opted out of
+    marketing takes the claim too, since it decides who gets the welcome
+    email, and only the audience change is skipped. Called once the notice is
     out, so, like the tour enrolment after a welcome, a failure is reported
     rather than raised: a Stripe retry would find the notice claimed and do
     nothing, so raising could only fail the webhook.
     """
     try:
-        first = await user_db().claim_welcome_email(user_id)
+        first = await user_db().claim_welcome_email(user.id)
         action = AudienceAction.ENROLL_TOUR if first else AudienceAction.ADD_CHANGELOG
-        event = audience_event(action, email, user_id)
+        if not audience_change_allowed(user, action):
+            return
+        event = audience_event(action, user.email, user.id)
         if event is None:
             return
         result = await queue_audience_change(event)
     except Exception:
-        logger.exception(f"Trial for user {user_id} converted but was not enrolled")
+        logger.exception(f"Trial for user {user.id} converted but was not enrolled")
         return
     if not result.success:
         logger.error(
-            f"Trial for user {user_id} converted but {action.value} could not be "
+            f"Trial for user {user.id} converted but {action.value} could not be "
             f"queued: {result.message}"
         )

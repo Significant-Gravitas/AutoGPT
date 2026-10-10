@@ -1,6 +1,7 @@
 """The notification service puts a checkout opener in the checkout openers
 group with the fields GTM segments on, and a later or weaker event never
-makes MailerLite's copy worse."""
+makes MailerLite's copy worse. The role they answer afterwards fills in that
+subscriber and never creates one."""
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -9,8 +10,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.data.notifications import AudienceAction
+from backend.data.onboarding_role import OnboardingRole
 from backend.notifications import mailerlite, subscriber_fields
-from backend.notifications.audience_enrichment import checkout_fields
+from backend.notifications.audience_enrichment import checkout_fields, role_fields
 from backend.notifications.notifications import NotificationManager
 
 EMAIL = "sam@example.com"
@@ -176,6 +178,56 @@ async def test_the_billing_country_upgrades_a_timezone_guess(mailerlite_configur
 
 
 @pytest.mark.asyncio
+async def test_a_checkout_opener_gets_the_role_they_picked(mailerlite_configured):
+    ml = _FakeMailerLite()
+    with patch.object(mailerlite, "_client", return_value=ml):
+        await _consume(_event(role=OnboardingRole(choice="Other", other="Dentist")))
+    assert ml.subscribers[EMAIL]["role"] == "Other"
+    assert ml.subscribers[EMAIL]["role_other"] == "Dentist"
+
+
+# ── the onboarding profile ─────────────────────────────────────────────────
+
+
+def _profile(role: OnboardingRole):
+    return subscriber_fields.audience_event(
+        AudienceAction.ONBOARDING_PROFILE, EMAIL, "user-1", role_fields(role)
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_role_picked_after_checkout_fills_in_the_opener(
+    mailerlite_configured,
+):
+    """On cloud the paywall comes first: the opener is already a subscriber
+    when they pick, and only the role is written. A switch away from Other
+    clears its text."""
+    held = {"subscription_status": "in_trial", "role": "Other", "role_other": "x"}
+    ml = _FakeMailerLite({EMAIL: held})
+    with patch.object(mailerlite, "_client", return_value=ml):
+        await _consume(_profile(OnboardingRole(choice="Marketing")))
+    assert ml.subscribers[EMAIL] == {
+        "subscription_status": "in_trial",
+        "role": "Marketing",
+        "role_other": None,
+    }
+    assert ml.posts == [
+        {"email": EMAIL, "fields": {"role": "Marketing", "role_other": None}}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_role_never_creates_a_subscriber(mailerlite_configured):
+    """Only checkout openers belong in MailerLite; anyone who picks first
+    gets their role with the checkout event."""
+    ml = _FakeMailerLite()
+    with patch.object(mailerlite, "_client", return_value=ml):
+        await _consume(_profile(OnboardingRole(choice="Marketing")))
+    assert ml.posts == []
+    assert EMAIL not in ml.subscribers
+
+
+@pytest.mark.asyncio
 async def test_every_audience_action_has_a_handler(monkeypatch):
     """An action the consumer cannot route would raise on every delivery."""
     monkeypatch.setattr(mailerlite, "configured", lambda: True)
@@ -189,6 +241,8 @@ async def test_every_audience_action_has_a_handler(monkeypatch):
         "update_fields",
         "record_signup",
         "record_checkout_opened",
+        "unsubscribe",
+        "record_onboarding_profile",
     ):
         handlers[name] = AsyncMock()
         monkeypatch.setattr(mailerlite, name, handlers[name])

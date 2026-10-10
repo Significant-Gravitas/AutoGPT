@@ -18,6 +18,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
+from backend.platform_linking.models import CardTurn
 
 # Callback signature: (ctx, adapter) -> awaitable None
 MessageCallback = Callable[["MessageContext", "PlatformAdapter"], Awaitable[None]]
@@ -187,6 +188,8 @@ class MessageContext:
     # failed), as ``(filename, reason)`` pairs — surfaced to the user and the
     # model so neither thinks the file was read.
     skipped_attachments: tuple[tuple[str, str], ...] = ()
+    # Set by a click that answered a card: carry the turn it woke, say nothing.
+    follow: Optional[CardTurn] = None
 
     @property
     def is_dm(self) -> bool:

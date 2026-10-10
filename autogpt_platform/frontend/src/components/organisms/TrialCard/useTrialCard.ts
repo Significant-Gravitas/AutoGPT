@@ -1,88 +1,51 @@
-import {
-  usePostTrialsCancelTrial,
-  usePostTrialsStartTrialCheckout,
-} from "@/app/api/__generated__/endpoints/trials/trials";
+import { usePostTrialsStartTrialCheckout } from "@/app/api/__generated__/endpoints/trials/trials";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
-import { TrialEvent } from "@/services/analytics/posthog-events";
+import { trackAdsConversionBeforeNavigation } from "@/services/analytics/google-ads";
+import { markTrialCheckoutStarted } from "@/services/analytics/monetization-analytics";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
-import { updateTrialStatusCache } from "@/services/trials/updateTrialStatusCache";
-import { useQueryClient } from "@tanstack/react-query";
-import { usePostHog } from "@posthog/react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { getTrialChargeAmount } from "./helpers";
+import { useTrialCancellation } from "./useTrialCancellation";
+import { useTrialFailure } from "./useTrialFailure";
+import { useTrialOfferViewed } from "./useTrialOfferViewed";
+
+const CHECKOUT_FAILED = "Unable to start trial checkout.";
 
 export function useTrialCard(returnTo: "onboarding" | "billing") {
   const userID = useAuthStore((state) => state.user?.id);
-  const queryClient = useQueryClient();
-  const posthog = usePostHog();
-  const seenOffer = useRef<string | null>(null);
-  const [failure, setFailure] = useState<{
-    userID: string;
-    message: string;
-  } | null>(null);
   const query = useTrialStatus();
-  const { mutateAsync: checkout, isPending: isStarting } =
+  const failure = useTrialFailure(userID);
+  const cancellation = useTrialCancellation({ userID, query, failure });
+  const { mutateAsync: checkout, isPending: isCheckoutPending } =
     usePostTrialsStartTrialCheckout();
-  const { mutateAsync: cancel, isPending: isCanceling } =
-    usePostTrialsCancelTrial();
+  // The mutation settles before the redirect, while the conversion is still
+  // going out; the button must stay busy until the page actually leaves.
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const isStarting = isCheckoutPending || isCheckingOut;
   const offer = query.data?.eligible ? query.data.offer : null;
-
-  useEffect(() => {
-    if (!offer || !userID) return;
-    const identity = `${userID}:${offer.token}`;
-    if (seenOffer.current === identity) return;
-    seenOffer.current = identity;
-    posthog?.capture(TrialEvent.TRIAL_OFFER_VIEWED, {
-      trial_offer_version: offer.version,
-      subscription_tier: offer.tier,
-      trial_duration_days: offer.duration_days,
-      surface: returnTo,
-    });
-  }, [offer, userID, posthog, returnTo]);
+  useTrialOfferViewed({ offer, userID, surface: returnTo });
 
   async function startTrial() {
     if (!offer || !userID || isStarting) return;
-    setFailure(null);
+    failure.clearFailure();
+    setIsCheckingOut(true);
     try {
       const response = await checkout({
         data: { offer_token: offer.token, return_to: returnTo },
       });
       if (useAuthStore.getState().user?.id !== userID) return;
-      if (response.status !== 200)
-        throw new Error("Unable to start trial checkout.");
-      posthog?.capture(TrialEvent.SUBSCRIPTION_TRIAL_CHECKOUT_STARTED, {
-        trial_offer_version: offer.version,
-        surface: returnTo,
+      if (response.status !== 200) throw new Error(CHECKOUT_FAILED);
+      markTrialCheckoutStarted(returnTo);
+      await trackAdsConversionBeforeNavigation("begin_checkout", {
+        value: getTrialChargeAmount(offer),
+        currency: offer.currency.toUpperCase(),
       });
       window.location.assign(response.data.url);
     } catch (error) {
-      setFailure({
-        userID,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Unable to start trial checkout.",
-      });
+      failure.reportFailure({ userID, error, fallback: CHECKOUT_FAILED });
       await query.refetch();
-    }
-  }
-
-  async function cancelTrial() {
-    if (!userID || isCanceling) return;
-    setFailure(null);
-    try {
-      const response = await cancel();
-      if (useAuthStore.getState().user?.id !== userID) return;
-      if (response.status !== 200)
-        throw new Error("Unable to cancel your trial.");
-      await updateTrialStatusCache({ queryClient, userID, response });
-    } catch (error) {
-      setFailure({
-        userID,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Unable to cancel your trial.",
-      });
+    } finally {
+      setIsCheckingOut(false);
     }
   }
 
@@ -90,12 +53,12 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
     userID,
     trial: query.data,
     isLoading: Boolean(userID) && query.isLoading,
-    error: failure && failure.userID === userID ? failure.message : null,
-    queryError: query.isError,
+    error: failure.error,
+    // A failed refetch keeps the cached trial on screen, with its actions.
+    queryError: query.isError && !query.data,
     retry: () => query.refetch(),
     isStarting,
-    isCanceling,
     startTrial,
-    cancelTrial,
+    ...cancellation,
   };
 }

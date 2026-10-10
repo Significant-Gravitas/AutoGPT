@@ -3071,6 +3071,46 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/auth/user/consent": {
+      "post": {
+        "tags": ["v1", "auth"],
+        "summary": "Record user consent",
+        "description": "Record the terms version accepted at signup and, if the user refused\nmarketing email, the opt-out. Idempotent; never clears an opt-out.",
+        "operationId": "postV1Record user consent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordUserConsentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserConsentResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/auth/user/email": {
       "post": {
         "tags": ["v1", "auth"],
@@ -4735,7 +4775,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Resume Session Stream",
-        "description": "Resume an active stream for a session.\n\nCalled by the AI SDK's ``useChat(resume: true)`` on page load.\nChecks for an active (in-progress) task on the session and either replays\nthe full SSE stream or returns 204 No Content if nothing is running.\n\nAlways replays the active turn from ``0-0``. The AI SDK UI-message parser\nkeeps text/reasoning part state inside a single parser instance; resuming\nfrom a Redis cursor can skip the ``*-start`` events required by later\n``*-delta`` chunks.",
+        "description": "Resume a session's stream.\n\nWith ``turn``, serves exactly that turn's stored entries after ``after``\n(``0-0`` for all of them) and then its live ones: 409 when entries after\nthe cursor were trimmed, 410 when the stream is gone. Every entry frame\ncarries ``id: <turn>:<entry>``.\n\nWithout ``turn``, replays the active turn from ``0-0``, or returns 204\nwhen nothing is running: the AI SDK's parser cannot continue a block it\ndid not see start.",
         "operationId": "getV2ResumeSessionStream",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4744,6 +4784,30 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "turn",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Turn to read; with it, only its stored entries",
+              "title": "Turn"
+            },
+            "description": "Turn to read; with it, only its stored entries"
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+-\\d+$",
+              "description": "Stream entry id the client last applied",
+              "default": "0-0",
+              "title": "After"
+            },
+            "description": "Stream entry id the client last applied"
           }
         ],
         "responses": {
@@ -4753,6 +4817,22 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "Cursor was trimmed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamResumeRefusal" }
+              }
+            }
+          },
+          "410": {
+            "description": "Stream expired",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamResumeRefusal" }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -6068,6 +6148,31 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/credits/trial/resume": {
+      "post": {
+        "tags": ["trials"],
+        "summary": "Resume Trial",
+        "operationId": "postTrialsResumeTrial",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrialStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "No live cancel-pending trial to resume, another plan is active, or the trial is already being updated"
+          },
+          "502": { "description": "Stripe update temporarily unavailable" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/credits/{transaction_key}/refund": {
       "post": {
         "tags": ["v1", "credits"],
@@ -6205,6 +6310,19 @@
           }
         },
         "security": [{ "APIKeyAuthenticator-X-Postmark-Webhook-Token": [] }]
+      }
+    },
+    "/api/email/mailerlite/webhook": {
+      "post": {
+        "tags": ["v1", "email"],
+        "summary": "Handle MailerLite webhooks",
+        "operationId": "postV1Handle mailerlite webhooks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
       }
     },
     "/api/email/unsubscribe": {
@@ -11586,6 +11704,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "409": {
+            "description": "The wizard draft changed in another session"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -15244,6 +15365,7 @@
         "summary": "Download agent file",
         "description": "Download agent graph file for a specific marketplace listing version",
         "operationId": "getV2Download agent file",
+        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -16134,6 +16256,98 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/store/submissions/media/{owner_user_id}/{media_type}/{filename}": {
+      "get": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Read private submission media",
+        "description": "Serve a user's private media to them, to members of an organization they\nshare, and to admins. Anyone else gets a 404, as if it did not exist.",
+        "operationId": "getV2Read private submission media",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "owner_user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Owner User Id" }
+          },
+          {
+            "name": "media_type",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Media Type" }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Filename" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/gif": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/mp4": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/webm": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "206": {
+            "description": "Requested byte range",
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/gif": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/mp4": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/webm": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "307": { "description": "Short-lived signed download URL" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Media not found" },
+          "416": { "description": "Requested range is not satisfiable" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": { "description": "Private media is temporarily unavailable" }
         }
       }
     },
@@ -17313,6 +17527,12 @@
           "started_at": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Started At"
+          },
+          "checkpoint": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TurnCheckpoint" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -17750,7 +17970,12 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["reset_password", "verify_email", "change_email"],
+            "enum": [
+              "reset_password",
+              "verify_email",
+              "change_email",
+              "set_password"
+            ],
             "title": "Type"
           },
           "to": { "type": "string", "format": "email", "title": "To" },
@@ -18644,6 +18869,10 @@
           "add_bot_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Add Bot Url"
+          },
+          "dm_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dm Url"
           },
           "dm_link": {
             "anyOf": [
@@ -19718,6 +19947,16 @@
             "title": "Expert Lookup Retry Count",
             "default": 0
           },
+          "plan_lookup_retry_count": {
+            "type": "integer",
+            "title": "Plan Lookup Retry Count",
+            "default": 0
+          },
+          "limits_retry_count": {
+            "type": "integer",
+            "title": "Limits Retry Count",
+            "default": 0
+          },
           "user_timezone": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Timezone"
@@ -19737,6 +19976,17 @@
           "routine_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Routine Id"
+          },
+          "routine_schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Routine Schedule Id"
+          },
+          "credential_pins": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialPin"
+            },
+            "type": "object",
+            "title": "Credential Pins"
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
@@ -20263,6 +20513,16 @@
         "required": ["creators", "pagination"],
         "title": "CreatorsResponse"
       },
+      "CredentialPin": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title", "default": "" }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "CredentialPin",
+        "description": "The account a schedule runs one provider on, chosen when it was made.\n\nThe title is kept so a run can still name the account after it was\ndeleted, which is when the name matters most."
+      },
       "CredentialRejection": {
         "properties": {
           "provider": { "type": "string", "title": "Provider" },
@@ -20419,6 +20679,15 @@
             "type": "boolean",
             "title": "Is Managed",
             "default": false
+          },
+          "service": { "type": "string", "title": "Service", "default": "" },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
           }
         },
         "type": "object",
@@ -22003,7 +22272,16 @@
           "credential_id": { "type": "string", "title": "Credential Id" },
           "provider": { "type": "string", "title": "Provider" },
           "title": { "type": "string", "title": "Title" },
-          "type": { "type": "string", "title": "Type" }
+          "type": { "type": "string", "title": "Type" },
+          "service": { "type": "string", "title": "Service", "default": "" },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
+          }
         },
         "type": "object",
         "required": ["credential_id", "provider", "title", "type"],
@@ -26648,7 +26926,7 @@
             "title": "User Role"
           },
           "pain_points": {
-            "items": { "type": "string" },
+            "items": { "type": "string", "maxLength": 2000 },
             "type": "array",
             "maxItems": 20,
             "title": "Pain Points"
@@ -26701,6 +26979,116 @@
         ],
         "title": "OnboardingStep",
         "description": "Application-level onboarding step identifiers."
+      },
+      "OnboardingWizardProgress": {
+        "properties": {
+          "version": { "type": "integer", "const": 1, "title": "Version" },
+          "currentStep": {
+            "type": "string",
+            "enum": [
+              "team",
+              "autopilot",
+              "role",
+              "painPoints",
+              "hire",
+              "subscription",
+              "connect",
+              "preparing"
+            ],
+            "title": "Currentstep"
+          },
+          "completedSteps": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "team",
+                "autopilot",
+                "role",
+                "painPoints",
+                "hire",
+                "subscription",
+                "connect",
+                "preparing"
+              ]
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Completedsteps"
+          },
+          "role": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "title": "Role"
+          },
+          "otherRole": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "title": "Otherrole"
+          },
+          "painPoints": {
+            "items": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Painpoints"
+          },
+          "otherPainPoint": {
+            "type": "string",
+            "maxLength": 2000,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "title": "Otherpainpoint"
+          },
+          "selectedBilling": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Selectedbilling"
+          },
+          "hasUserSelectedBilling": {
+            "type": "boolean",
+            "title": "Hasuserselectedbilling"
+          },
+          "selectedCountryCode": {
+            "type": "string",
+            "maxLength": 2,
+            "minLength": 2,
+            "pattern": "^[A-Z]{2}$",
+            "title": "Selectedcountrycode"
+          },
+          "hiredTemplateIds": {
+            "items": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Hiredtemplateids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "currentStep",
+          "completedSteps",
+          "role",
+          "otherRole",
+          "painPoints",
+          "otherPainPoint",
+          "selectedBilling",
+          "hasUserSelectedBilling",
+          "selectedCountryCode",
+          "hiredTemplateIds"
+        ],
+        "title": "OnboardingWizardProgress",
+        "description": "Saved wizard answers and navigation, independent of completion or access."
       },
       "OrgAliasResponse": {
         "properties": {
@@ -27881,6 +28269,20 @@
             "type": "array",
             "title": "Supported Auth Types",
             "description": "Credential types this provider accepts. Drives which connection tabs the settings UI renders for the provider. Empty list means no auth types declared."
+          },
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "description": "Grouping key shared by a block provider and its MCP server.",
+            "default": ""
+          },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
           }
         },
         "type": "object",
@@ -28367,6 +28769,24 @@
         "required": ["experiment_key", "variant"],
         "title": "RecordAssignmentRequest"
       },
+      "RecordUserConsentRequest": {
+        "properties": {
+          "terms_version": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$",
+            "title": "Terms Version"
+          },
+          "marketing_opt_out": {
+            "type": "boolean",
+            "title": "Marketing Opt Out"
+          }
+        },
+        "type": "object",
+        "required": ["terms_version", "marketing_opt_out"],
+        "title": "RecordUserConsentRequest"
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -28418,7 +28838,15 @@
       },
       "RequestTopUp": {
         "properties": {
-          "credit_amount": { "type": "integer", "title": "Credit Amount" }
+          "credit_amount": { "type": "integer", "title": "Credit Amount" },
+          "surface": {
+            "anyOf": [
+              { "type": "string", "const": "billing" },
+              { "type": "null" }
+            ],
+            "title": "Surface",
+            "description": "Where the top-up was started; analytics only."
+          }
         },
         "type": "object",
         "required": ["credit_amount"],
@@ -30477,6 +30905,25 @@
         "title": "StreamChatRequest",
         "description": "Request model for streaming chat with optional context."
       },
+      "StreamResumeRefusal": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": ["trimmed", "expired"],
+            "title": "Reason"
+          },
+          "checkpoint": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TurnCheckpoint" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["reason"],
+        "title": "StreamResumeRefusal",
+        "description": "Why a resume at a cursor cannot be served from the stream."
+      },
       "SubmissionStats": {
         "properties": {
           "total": { "type": "integer", "title": "Total" },
@@ -30636,6 +31083,17 @@
             "enum": ["monthly", "yearly"],
             "title": "Billing Cycle",
             "default": "monthly"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["onboarding", "paywall_gate", "billing"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Surface",
+            "description": "Where the plan was picked; analytics only."
           }
         },
         "type": "object",
@@ -31912,6 +32370,17 @@
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
       },
+      "TurnCheckpoint": {
+        "properties": {
+          "entry_id": { "type": "string", "title": "Entry Id" },
+          "rows": { "type": "integer", "title": "Rows" },
+          "sequence": { "type": "integer", "title": "Sequence" }
+        },
+        "type": "object",
+        "required": ["entry_id", "rows", "sequence"],
+        "title": "TurnCheckpoint",
+        "description": "Where a turn's last ``data-checkpoint`` sits in its stream."
+      },
       "UnderstandingUpdatedResponse": {
         "properties": {
           "type": {
@@ -32938,6 +33407,34 @@
         "type": "object",
         "title": "UserAttributionInput"
       },
+      "UserConsentResponse": {
+        "properties": {
+          "terms_accepted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Terms Accepted At"
+          },
+          "terms_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Terms Version"
+          },
+          "marketing_opt_out_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Marketing Opt Out At"
+          },
+          "marketing_opt_out_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Marketing Opt Out Source"
+          }
+        },
+        "type": "object",
+        "title": "UserConsentResponse"
+      },
       "UserCostSummary": {
         "properties": {
           "user_id": {
@@ -33109,6 +33606,17 @@
       "UserOnboarding": {
         "properties": {
           "userId": { "type": "string", "title": "Userid" },
+          "wizardProgress": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/OnboardingWizardProgress" },
+              { "type": "null" }
+            ]
+          },
+          "wizardRevision": {
+            "type": "integer",
+            "title": "Wizardrevision",
+            "default": 0
+          },
           "completedSteps": {
             "items": { "$ref": "#/components/schemas/OnboardingStep" },
             "type": "array",
@@ -33187,6 +33695,26 @@
       },
       "UserOnboardingUpdate": {
         "properties": {
+          "wizardProgress": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/OnboardingWizardProgress" },
+              { "type": "null" }
+            ]
+          },
+          "wizardRevision": {
+            "anyOf": [
+              { "type": "integer", "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Wizardrevision"
+          },
+          "wizardUserId": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Wizarduserid"
+          },
           "walletShown": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Walletshown"

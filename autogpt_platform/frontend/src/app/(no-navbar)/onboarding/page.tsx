@@ -1,4 +1,5 @@
 "use client";
+import { ProgressError } from "./components/ProgressError";
 import { ProgressBar } from "./components/ProgressBar";
 import { StepIndicator } from "./components/StepIndicator";
 import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
@@ -29,21 +30,50 @@ export default function OnboardingPage() {
     preparingStep,
     totalSteps,
     trialConfirmation,
+    paidConfirmation,
+    progressError,
+    progressConflict,
+    retryProgress,
+    completionError,
   } = useOnboardingPage();
   const prevStep = useOnboardingWizardStore((s) => s.prevStep);
   const isStepBusy = useOnboardingWizardStore((s) => s.isStepBusy);
 
+  if (isLoading && paidConfirmation.error)
+    return (
+      <ErrorCard
+        context="your payment"
+        responseError={{ message: paidConfirmation.error }}
+        onRetry={paidConfirmation.retry}
+      />
+    );
+  if (isLoading && paidConfirmation.pending)
+    return (
+      <Text variant="body" role="status">
+        Confirming your subscription…
+      </Text>
+    );
   if (isLoading)
     return !trialConfirmation.ready ? (
       <Text variant="body" role="status">
         Confirming your trial and card setup…
       </Text>
-    ) : null;
+    ) : progressError ? (
+      <ProgressError
+        message={progressError}
+        conflict={progressConflict}
+        retry={retryProgress}
+      />
+    ) : (
+      <Text variant="body" role="status">
+        Loading your setup…
+      </Text>
+    );
 
   // ProgressBar + StepIndicator track only the user-interactive steps.
   // PreparingStep is a transition view that hides both indicators.
   const showDots = currentStep <= totalSteps;
-  // Back is hidden on the first content step (never back into the paywall)
+  // Back is hidden on the first content step
   // and while the current step is mid-flight (brain dump processing) — there
   // is nothing coherent to go back to. Read from the layout so it tracks
   // buildStepLayout rather than a hardcoded position.
@@ -55,6 +85,20 @@ export default function OnboardingPage() {
 
   return (
     <div className="flex min-h-screen w-full flex-col items-center">
+      {progressError && (
+        <ProgressError
+          message={progressError}
+          conflict={progressConflict}
+          retry={retryProgress}
+        />
+      )}
+      {completionError && (
+        <ErrorCard
+          context="your account setup"
+          responseError={{ message: completionError }}
+          onRetry={handlePreparingComplete}
+        />
+      )}
       {trialConfirmation.error ? (
         <ErrorCard
           context="your trial"

@@ -54,3 +54,106 @@ it("shows the trial as the current plan during an active trial", async () => {
   expect(screen.getByText("Your plan")).toBeDefined();
   expect(screen.queryByRole("button", { name: "Get Pro" })).toBeNull();
 });
+
+const trialSubscription = {
+  tier: "TRIAL",
+  monthly_cost: 0,
+  proration_credit_cents: 0,
+  has_active_stripe_subscription: true,
+  tier_costs: { PRO: 5000, MAX: 32000 },
+  tier_multipliers: { PRO: 1, MAX: 8.5 },
+};
+
+function mockBilling(trial: ReturnType<typeof trialResponse>, tier: string) {
+  server.use(
+    getGetTrialsGetTrialStatusMockHandler200(trial),
+    http.get("*/api/credits/subscription", () =>
+      HttpResponse.json({ ...trialSubscription, tier }),
+    ),
+    http.get("*/api/credits/invoices", () => HttpResponse.json([])),
+  );
+}
+
+it("offers plan choices while a trial cancellation is pending", async () => {
+  mockBilling(trialResponse({ cancel_at_period_end: true }), "TRIAL");
+  render(<SettingsBillingPage />);
+  expect(
+    await screen.findByRole("button", { name: "Subscribe to Pro" }),
+  ).toBeDefined();
+  expect(screen.getByRole("button", { name: "Upgrade to Max" })).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Get Pro" })).toBeNull();
+});
+
+it("offers no plan choices during a trial that will convert", async () => {
+  mockBilling(trialResponse({ cancel_at_period_end: false }), "TRIAL");
+  render(<SettingsBillingPage />);
+  await screen.findByRole("button", { name: "Cancel trial" });
+  expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Subscribe to Pro" })).toBeNull();
+});
+
+it("offers no plan choices once a cancel-pending trial has converted", async () => {
+  mockBilling(
+    trialResponse({
+      cancel_at_period_end: true,
+      converted: true,
+    }),
+    "PRO",
+  );
+  render(<SettingsBillingPage />);
+  await screen.findByRole("button", { name: "Upgrade to Max" });
+  expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Subscribe to Pro" })).toBeNull();
+});
+
+it("offers no plan choices once a cancel-pending trial has ended", async () => {
+  mockBilling(
+    trialResponse({
+      active: false,
+      status: "canceled",
+      cancel_at_period_end: true,
+    }),
+    "NO_TIER",
+  );
+  render(<SettingsBillingPage />);
+  await screen.findByRole("button", { name: "Get Pro" });
+  expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Subscribe to Pro" })).toBeNull();
+});
+
+it("shows a plan bought during a cancel-pending trial the cleanup has not ended", async () => {
+  mockBilling(trialResponse({ cancel_at_period_end: true }), "MAX");
+  render(<SettingsBillingPage />);
+  expect(await screen.findByText("Active")).toBeDefined();
+  expect(screen.getAllByText("Your plan")).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: "Resume trial" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "AutoGPT trial" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
+});
+
+it("keeps a trial that will convert as the plan whatever tier is reported", async () => {
+  mockBilling(trialResponse({ cancel_at_period_end: false }), "MAX");
+  render(<SettingsBillingPage />);
+  await screen.findByRole("button", { name: "Cancel trial" });
+  expect(screen.getAllByText("Your plan")).toHaveLength(1);
+  expect(screen.queryByText("Active")).toBeNull();
+});
+
+it.each(["PRO", "MAX"])(
+  "drops the ended trial once a %s plan has replaced it",
+  async (tier) => {
+    mockBilling(
+      trialResponse({
+        active: false,
+        status: "canceled",
+        cancel_at_period_end: true,
+      }),
+      tier,
+    );
+    render(<SettingsBillingPage />);
+    expect(await screen.findByText("Active")).toBeDefined();
+    expect(screen.queryByText("Your trial has ended")).toBeNull();
+    expect(screen.queryByRole("region", { name: "AutoGPT trial" })).toBeNull();
+    expect(screen.getAllByText("Your plan")).toHaveLength(1);
+  },
+);

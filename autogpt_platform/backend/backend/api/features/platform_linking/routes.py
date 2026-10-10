@@ -214,6 +214,7 @@ async def list_bot_platforms(
             add_bot_url=_user_bound_install_url(
                 meta.platform, meta.add_bot_url, user_id
             ),
+            dm_url=meta.dm_url,
             dm_link=dm_by_platform.get(meta.platform),
             server_links=servers_by_platform.get(meta.platform, []),
             pending_install=await _pending_install(

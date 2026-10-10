@@ -42,6 +42,7 @@ from pydantic_core import (
 from typing_extensions import TypedDict
 
 from backend.data.onboarding_steps import OnboardingStep
+from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import ExecutionFailureReason
 from backend.util.json import loads as json_loads
@@ -95,6 +96,20 @@ class User(BaseModel):
     timezone: str = Field(
         default=USER_TIMEZONE_NOT_SET,
         description="User timezone (IANA timezone identifier or 'not-set')",
+    )
+
+    # Consent captured at signup (see record_signup_consent).
+    terms_accepted_at: Optional[datetime] = Field(
+        None, description="When the user accepted the terms and privacy policy"
+    )
+    terms_version: Optional[str] = Field(
+        None, description="Version of the terms and privacy policy accepted"
+    )
+    marketing_opt_out_at: Optional[datetime] = Field(
+        None, description="When the user opted out of marketing email"
+    )
+    marketing_opt_out_source: Optional[str] = Field(
+        None, description="Where the marketing opt-out came from"
     )
 
     # Default Otto connection for chats nobody routed explicitly. Kept as
@@ -156,6 +171,10 @@ class User(BaseModel):
             alerts_enabled=prisma_user.alertsEnabled,
             notify_on_store_verdict=prisma_user.notifyOnStoreVerdict,
             timezone=prisma_user.timezone or USER_TIMEZONE_NOT_SET,
+            terms_accepted_at=prisma_user.termsAcceptedAt,
+            terms_version=prisma_user.termsVersion,
+            marketing_opt_out_at=prisma_user.marketingOptOutAt,
+            marketing_opt_out_source=prisma_user.marketingOptOutSource,
             default_chat_auth_provider=prisma_user.defaultChatAuthProvider,
             default_chat_credential_id=prisma_user.defaultChatCredentialId,
         )
@@ -1094,6 +1113,8 @@ class UserExecutionSummaryStats(BaseModel):
 
 class UserOnboarding(BaseModel):
     userId: str
+    wizardProgress: OnboardingWizardProgress | None = None
+    wizardRevision: int = 0
     # Steps are typed as ``OnboardingStep`` so the API exposes a typed enum to
     # the frontend (the DB stores plain strings). The rename migration keeps
     # existing rows within the enum, and writes are validated on the completion
