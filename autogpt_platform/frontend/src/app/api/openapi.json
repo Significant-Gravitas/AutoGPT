@@ -19922,6 +19922,16 @@
             "title": "Expert Lookup Retry Count",
             "default": 0
           },
+          "plan_lookup_retry_count": {
+            "type": "integer",
+            "title": "Plan Lookup Retry Count",
+            "default": 0
+          },
+          "limits_retry_count": {
+            "type": "integer",
+            "title": "Limits Retry Count",
+            "default": 0
+          },
           "user_timezone": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Timezone"
@@ -19941,6 +19951,10 @@
           "routine_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Routine Id"
+          },
+          "routine_schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Routine Schedule Id"
           },
           "credential_pins": {
             "additionalProperties": {
