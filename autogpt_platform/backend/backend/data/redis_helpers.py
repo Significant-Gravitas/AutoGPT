@@ -13,6 +13,8 @@ patterns we actually use into a single place:
 - :func:`hash_compare_and_set` — set a hash field only if its current
   value matches an expected one.  Genuinely needs Lua because the
   condition depends on the current value (pipeline can't branch).
+- :func:`string_compare_and_set` — the same for a plain string key, with
+  delete as the "new value" option (ownership-checked release/handover).
 
 Everything sharable lives here.  If a new Lua script is tempting in
 application code, add a helper here first — callers should not touch
@@ -63,6 +65,26 @@ return 1
 #   ARGV[3]  list value
 #   ARGV[4]  max list length
 #   ARGV[5]  list TTL seconds
+# Compare-and-set on a string key.  Returns 1 if swapped, 0 otherwise.
+#
+#   KEYS[1]  key
+#   ARGV[1]  expected current value
+#   ARGV[2]  new value, or "" to delete the key
+#   ARGV[3]  TTL in seconds for the new value
+#   ARGV[4]  "1" to also swap when the key is missing
+_STRING_CAS_LUA = """
+local current = redis.call('GET', KEYS[1])
+if current ~= ARGV[1] and not (current == false and ARGV[4] == '1') then
+    return 0
+end
+if ARGV[2] == '' then
+    redis.call('DEL', KEYS[1])
+else
+    redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+end
+return 1
+"""
+
 _GATED_CAPPED_RPUSH_LUA = """
 local current = redis.call('HGET', KEYS[1], ARGV[1])
 if current ~= ARGV[2] then
@@ -431,5 +453,36 @@ async def hash_compare_and_set(
     result = await cast(
         "Any",
         redis.eval(_HASH_CAS_LUA, 1, key, field, expected, new, *(guard or ())),
+    )
+    return int(result) == 1
+
+
+async def string_compare_and_set(
+    redis: AsyncRedisClient,
+    key: str,
+    *,
+    expected: str,
+    new: str | None,
+    ttl_seconds: int = 0,
+    or_missing: bool = False,
+) -> bool:
+    """Atomically replace *key* with *new* (``None`` deletes it) iff it still
+    holds *expected*, or is missing and *or_missing* is set.
+
+    Returns ``True`` if the swap happened.  Use it when a value names its
+    owner, so a holder whose key expired and was taken over cannot overwrite
+    or delete its successor's value.
+    """
+    result = await cast(
+        "Any",
+        redis.eval(
+            _STRING_CAS_LUA,
+            1,
+            key,
+            expected,
+            new or "",
+            ttl_seconds,
+            "1" if or_missing else "0",
+        ),
     )
     return int(result) == 1

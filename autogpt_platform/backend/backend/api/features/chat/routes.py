@@ -67,13 +67,19 @@ from backend.copilot.offers import (
 from backend.copilot.pending_message_helpers import (
     QueuePendingMessageResponse,
     StreamRegistryUnavailable,
+    already_accepted_response,
+    client_message_in_progress_error,
     is_turn_in_flight,
     queue_pending_for_http,
     resolve_attachments_for_http,
 )
 from backend.copilot.pending_messages import (
+    accept_client_message,
+    claim_client_message,
     clear_pending_messages_unsafe,
+    client_message_state,
     peek_pending_messages,
+    release_client_message,
 )
 from backend.copilot.provider_failure import ProviderFailure, ProviderFailureKind
 from backend.copilot.provider_tiers import (
@@ -313,9 +319,9 @@ class StreamChatRequest(BaseModel):
             "scopes it to the authenticated user and session before using "
             "the result as ``ChatMessage.id``. Frontend / network / "
             "RMQ-redelivery retransmits of the same logical send reuse the "
-            "key, so the Postgres unique-constraint on the resulting PK is "
-            "the atomic dedup primitive. A duplicate INSERT returns a "
-            "subscribe-only response without creating a parallel turn. "
+            "key, and the server claims it once: a retransmit neither starts "
+            "a parallel turn nor, while a turn is running, queues the "
+            "message again, and gets a subscribe-only response. "
             "Distinct user clicks (even with identical text) MUST send "
             "different ids — the frontend's per-click ``crypto.randomUUID()`` "
             "guarantees that."
@@ -342,6 +348,15 @@ class QueuePendingMessageRequest(BaseModel):
     context: dict[str, str] | None = None
     file_ids: list[str] | None = Field(default=None, max_length=20)
     folder_ids: list[str] | None = Field(default=None, max_length=5)
+    message_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Optional per-send UUID, scoped like ``StreamChatRequest."
+            "message_id``. A retransmit of a follow-up already queued is "
+            "answered as accepted without queueing it again."
+        ),
+    )
 
 
 class PeekPendingMessagesResponse(BaseModel):
@@ -1828,6 +1843,9 @@ async def stream_chat_post(
             session_id,
         )
 
+    # The kickoff owns a server-derived id and its own replay handling.
+    client_message_id = None if request.expert_kickoff else message_id
+
     # Session-anchored tenancy: the ChatSession row is the authoritative
     # org/team for every turn in it — a user whose active header org
     # differs still charges/attributes turns to the session's org.
@@ -1867,6 +1885,7 @@ async def stream_chat_post(
                 file_ids=request.file_ids,
                 folder_ids=request.folder_ids,
                 expert_id=session.expert_id,
+                client_message_id=client_message_id,
             )
             return _empty_ui_message_stream_response()
         except HTTPException as exc:
@@ -1966,29 +1985,55 @@ async def stream_chat_post(
     # near the start) — that path returns early.  Any request that
     # reaches this point is starting a fresh turn, so we always mint a
     # ``turn_id`` unless ``append_and_save_message`` reports a duplicate.
+    #
+    # The client key is claimed before the turn can go in flight. From then on
+    # a retransmit takes the queue branch above, where the PK cannot catch it:
+    # the row may not be written yet, and a queued copy never gets this id.
+    # A copy that finds the key reserved waits for this request's outcome, so
+    # it is never told a send was taken that is then refused.
+    claim_owner = uuid4().hex
+    claim = (
+        await claim_client_message(session_id, client_message_id, claim_owner)
+        if client_message_id is not None
+        else None
+    )
+    if claim == "reserved":
+        raise client_message_in_progress_error()
+
+    async def release_client_message_claim() -> None:
+        if claim == "claimed" and client_message_id is not None:
+            await release_client_message(session_id, client_message_id, claim_owner)
+
+    async def accept_client_message_claim() -> None:
+        if claim == "claimed" and client_message_id is not None:
+            await accept_client_message(session_id, client_message_id, claim_owner)
+
     try:
-        turn_id = await schedule_chat_turn(
-            session_id=session_id,
-            user_id=user_id,
-            message=message,
-            message_id=message_id,
-            message_metadata=message_metadata,
-            message_already_persisted=resume_persisted_kickoff,
-            is_user_message=request.is_user_message,
-            expert_id=session.expert_id,
-            session_origin=session.metadata.origin,
-            session_source_platform=session.metadata.source_platform,
-            context=request.context,
-            voice=request.voice,
-            file_ids=sanitized_file_ids,
-            organization_id=turn_org_id,
-            team_id=turn_team_id,
-            model=request.model,
-            llm_auth_provider=session.metadata.llm_auth_provider,
-            llm_credential_id=session.metadata.llm_credential_id,
-            permissions=builder_permissions,
-            request_arrival_at=request_arrival_at,
-        )
+        if claim == "accepted":
+            turn_id = None
+        else:
+            turn_id = await schedule_chat_turn(
+                session_id=session_id,
+                user_id=user_id,
+                message=message,
+                message_id=message_id,
+                message_metadata=message_metadata,
+                message_already_persisted=resume_persisted_kickoff,
+                is_user_message=request.is_user_message,
+                expert_id=session.expert_id,
+                session_origin=session.metadata.origin,
+                session_source_platform=session.metadata.source_platform,
+                context=request.context,
+                voice=request.voice,
+                file_ids=sanitized_file_ids,
+                organization_id=turn_org_id,
+                team_id=turn_team_id,
+                model=request.model,
+                llm_auth_provider=session.metadata.llm_auth_provider,
+                llm_credential_id=session.metadata.llm_credential_id,
+                permissions=builder_permissions,
+                request_arrival_at=request_arrival_at,
+            )
     except ConcurrentTurnLimitError as exc:
         if resume_persisted_kickoff:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
@@ -2020,15 +2065,26 @@ async def stream_chat_post(
                 request_arrival_at=request_arrival_at,
             )
         except turn_queue.InflightCapExceeded:
+            await release_client_message_claim()
             raise HTTPException(
                 status_code=429,
                 detail=inflight_turn_limit_message(inflight_cap),
             )
+        except BaseException:
+            # Raised inside the handler above, so the outer BaseException
+            # clause never sees it.
+            await release_client_message_claim()
+            raise
+        await accept_client_message_claim()
         logger.info(
             f"[STREAM] Queued turn for session={session_id} "
             f"(running cap reached; inflight cap={inflight_cap})"
         )
         return _empty_ui_message_stream_response()
+    except BaseException:
+        await release_client_message_claim()
+        raise
+    await accept_client_message_claim()
 
     if turn_id is None:
         logger.info(
@@ -2213,6 +2269,19 @@ async def queue_pending_message(
     session = await _validate_and_get_writable_session(session_id, user_id)
     if session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
+    client_message_id = (
+        scoped_client_message_id(user_id, session_id, request.message_id)
+        if request.message_id
+        else None
+    )
+    # Before the in-flight gate: a retransmit landing after the turn drained
+    # its original must not 409, or the client re-sends it via POST /stream.
+    if client_message_id is not None:
+        state = await client_message_state(session_id, client_message_id)
+        if state == "accepted":
+            return await already_accepted_response(session_id)
+        if state == "reserved":
+            raise client_message_in_progress_error()
     try:
         turn_in_flight = await is_turn_in_flight(session_id)
     except StreamRegistryUnavailable as exc:
@@ -2234,6 +2303,7 @@ async def queue_pending_message(
         file_ids=request.file_ids,
         folder_ids=request.folder_ids,
         expert_id=session.expert_id,
+        client_message_id=client_message_id,
     )
 
 
