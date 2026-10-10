@@ -41,7 +41,7 @@ from backend.data.subscription_trial_checkout import (
 )
 from backend.data.subscription_trial_config import get_trial_offer
 from backend.data.user import get_user_by_id
-from backend.util.feature_flag import Flag, evaluate_feature_flag, is_feature_enabled
+from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.util.product_analytics import track_checkout_started
 from backend.util.settings import Settings
 
@@ -75,9 +75,7 @@ async def get_trial_status(
             rejection_reason=trial.rejection_reason,
             ends_at=trial.ends_at,
             cancel_at_period_end=trial.cancel_at_period_end,
-            cancel_keeps_access=await is_feature_enabled(
-                Flag.TRIAL_CANCEL_AT_PERIOD_END, user_id, default=False
-            ),
+            cancel_keeps_access=not await _cancel_flag_is_off(user_id),
             active=trial.active,
             converted=trial.converted_at is not None,
             onboarding_credits_previously_received=await has_received_onboarding_credit(
@@ -113,9 +111,7 @@ async def get_trial_status(
     return TrialStatusResponse(
         eligible=True,
         offer=TrialOfferResponse.from_offer(accepted),
-        cancel_keeps_access=await is_feature_enabled(
-            Flag.TRIAL_CANCEL_AT_PERIOD_END, user_id, default=False
-        ),
+        cancel_keeps_access=not await _cancel_flag_is_off(user_id),
         onboarding_credits_previously_received=await has_received_onboarding_credit(
             user_id
         ),
@@ -250,7 +246,8 @@ async def resume_trial(user_id: CurrentUser) -> TrialStatusResponse:
 async def _cancel_flag_is_off(user_id: str) -> bool:
     """Only an authoritative "off" ends a trial at once, which cannot be undone.
     An unreadable flag schedules the end instead: that never charges, and the
-    sync after it still ends the trial at once if the flag then reads "off"."""
+    sync after it still ends the trial at once if the flag then reads "off".
+    The status copy (cancel_keeps_access) follows the same rule."""
     return await evaluate_feature_flag(
         Flag.TRIAL_CANCEL_AT_PERIOD_END, user_id, default=False
     ) == (False, True)

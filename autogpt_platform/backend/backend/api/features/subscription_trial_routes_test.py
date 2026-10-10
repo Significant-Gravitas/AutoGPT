@@ -33,17 +33,10 @@ def track_checkout_started(monkeypatch) -> AsyncMock:
 
 @pytest.fixture(autouse=True)
 def cancel_flag(monkeypatch) -> AsyncMock:
-    """The trial-cancel flag as cancel reads it: authoritatively off by default."""
+    """The trial-cancel flag as cancel and the status copy read it:
+    authoritatively off by default."""
     flag = AsyncMock(return_value=(False, True))
     monkeypatch.setattr(routes, "evaluate_feature_flag", flag)
-    return flag
-
-
-@pytest.fixture(autouse=True)
-def keeps_access_copy(monkeypatch) -> AsyncMock:
-    """The same flag as the status copy reads it: off by default."""
-    flag = AsyncMock(return_value=False)
-    monkeypatch.setattr(routes, "is_feature_enabled", flag)
     return flag
 
 

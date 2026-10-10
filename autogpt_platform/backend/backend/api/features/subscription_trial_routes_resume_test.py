@@ -21,7 +21,6 @@ from backend.util.feature_flag import Flag
 billing_return_origin = routes_test.billing_return_origin
 track_checkout_started = routes_test.track_checkout_started
 cancel_flag = routes_test.cancel_flag
-keeps_access_copy = routes_test.keeps_access_copy
 trial = routes_test.trial
 live_stripe = cancel_test.live_stripe
 
@@ -44,8 +43,11 @@ async def test_resume_takes_back_a_scheduled_cancellation(
     live_stripe.expire.assert_awaited_once_with("cus_1")
     live_stripe.modify.assert_awaited_once_with("sub_1", cancel_at_period_end=False)
     live_stripe.sync.assert_awaited_once_with(dict(resumed))
-    cancel_flag.assert_not_awaited()
+    # The flag reads authoritatively off (the fixture default), yet the resume
+    # went through; the only read is the status copy built for the response.
+    assert cancel_flag.await_count == 1
     assert status.active and not status.cancel_at_period_end
+    assert not status.cancel_keeps_access
 
 
 @pytest.mark.asyncio
@@ -138,12 +140,21 @@ async def test_resume_stripe_failure_is_retryable_without_a_sync(trial, live_str
     live_stripe.sync.assert_not_awaited()
 
 
+KEEPS_ACCESS_BY_FLAG_READ = pytest.mark.parametrize(
+    "flag_read,keeps_access",
+    [((True, True), True), ((False, True), False), ((False, False), True)],
+    ids=["on", "off", "unreadable"],
+)
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("enabled", [True, False])
+@KEEPS_ACCESS_BY_FLAG_READ
 async def test_trial_status_says_whether_canceling_keeps_access(
-    trial, keeps_access_copy, enabled
+    trial, cancel_flag, flag_read, keeps_access
 ):
-    keeps_access_copy.return_value = enabled
+    """The copy follows what cancel will do: only an authoritative "off" ends
+    the trial at once, so an unreadable flag promises access too."""
+    cancel_flag.return_value = flag_read
     with (
         patch.object(
             routes, "get_subscription_trial", AsyncMock(return_value=_started(trial))
@@ -153,18 +164,18 @@ async def test_trial_status_says_whether_canceling_keeps_access(
         ),
     ):
         status = await routes.get_trial_status(trial.user_id)
-    assert status.cancel_keeps_access is enabled
-    keeps_access_copy.assert_awaited_once_with(
+    assert status.cancel_keeps_access is keeps_access
+    cancel_flag.assert_awaited_once_with(
         Flag.TRIAL_CANCEL_AT_PERIOD_END, trial.user_id, default=False
     )
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("enabled", [True, False])
+@KEEPS_ACCESS_BY_FLAG_READ
 async def test_trial_offer_says_whether_canceling_keeps_access(
-    trial, keeps_access_copy, enabled
+    trial, cancel_flag, flag_read, keeps_access
 ):
-    keeps_access_copy.return_value = enabled
+    cancel_flag.return_value = flag_read
     user = MagicMock(
         stripe_customer_id=None,
         created_at=datetime.now(UTC),
@@ -184,4 +195,4 @@ async def test_trial_offer_says_whether_canceling_keeps_access(
     ):
         status = await routes.get_trial_status(trial.user_id)
     assert status.eligible
-    assert status.cancel_keeps_access is enabled
+    assert status.cancel_keeps_access is keeps_access

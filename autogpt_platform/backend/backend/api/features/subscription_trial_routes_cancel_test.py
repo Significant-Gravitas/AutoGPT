@@ -27,7 +27,6 @@ FLAG_READS = {
 billing_return_origin = routes_test.billing_return_origin
 track_checkout_started = routes_test.track_checkout_started
 cancel_flag = routes_test.cancel_flag
-keeps_access_copy = routes_test.keeps_access_copy
 trial = routes_test.trial
 
 
@@ -112,10 +111,9 @@ def live_stripe():
 
 @pytest.mark.asyncio
 async def test_cancel_with_the_flag_on_keeps_access_until_trial_end(
-    trial, cancel_flag, keeps_access_copy, live_stripe
+    trial, cancel_flag, live_stripe
 ):
     cancel_flag.return_value = (True, True)
-    keeps_access_copy.return_value = True
     started = _started(trial)
     pending = _live(started, cancel_at_period_end=True)
     live_stripe.retrieve.return_value = _live(started)
@@ -128,7 +126,7 @@ async def test_cancel_with_the_flag_on_keeps_access_until_trial_end(
     live_stripe.modify.assert_awaited_once_with("sub_1", cancel_at_period_end=True)
     live_stripe.end_now.assert_not_awaited()
     live_stripe.sync.assert_awaited_once_with(dict(pending))
-    cancel_flag.assert_awaited_once_with(
+    cancel_flag.assert_awaited_with(
         Flag.TRIAL_CANCEL_AT_PERIOD_END, started.user_id, default=False
     )
     assert status.active and status.status == "trialing"
