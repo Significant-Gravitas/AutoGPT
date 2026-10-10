@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from jwt.algorithms import ECAlgorithm
+from prisma.enums import SubscriptionTier
 
 from backend.api.features import subscription_trial_routes as routes
 from backend.data.subscription_trial import TrialState
@@ -84,12 +85,30 @@ async def test_disabled_flag_hides_pending_enrollment(trial):
 
 
 @pytest.mark.asyncio
-async def test_status_never_exposes_internal_spend_or_stripe_identifiers(trial):
+@pytest.mark.parametrize("trial_status", ["checkout_pending", "trialing", "active"])
+async def test_status_never_exposes_internal_spend_or_stripe_identifiers(
+    trial, trial_status
+):
+    now = datetime.now(UTC)
+    trial = trial.model_copy(
+        update={
+            "status": trial_status,
+            "card_verified_at": now,
+            "ends_at": now + timedelta(days=7),
+            "consumed_at": None if trial_status == "checkout_pending" else now,
+            "converted_at": now if trial_status == "active" else None,
+        }
+    )
     with (
         patch.object(routes, "get_subscription_trial", AsyncMock(return_value=trial)),
         patch.object(routes, "get_trial_offer", AsyncMock(return_value=trial.offer)),
         patch.object(
             routes, "has_received_onboarding_credit", AsyncMock(return_value=True)
+        ),
+        patch.object(
+            routes,
+            "get_user_by_id",
+            AsyncMock(return_value=MagicMock(subscription_tier=SubscriptionTier.PRO)),
         ),
     ):
         status = await routes.get_trial_status(trial.user_id)
@@ -103,6 +122,9 @@ async def test_status_never_exposes_internal_spend_or_stripe_identifiers(trial):
     ):
         assert private not in public
     assert status.onboarding_credits_previously_received
+    assert not status.eligible
+    assert status.active is (trial_status == "trialing")
+    assert status.converted is (trial_status == "active")
 
 
 @pytest.mark.asyncio
@@ -330,7 +352,10 @@ async def test_full_trial_hides_a_pending_enrollments_offer(trial):
 
 
 @pytest.mark.asyncio
-async def test_pending_enrollment_keeps_its_offer_while_it_holds_a_seat(trial):
+@pytest.mark.parametrize("tier", list(SubscriptionTier))
+async def test_pending_enrollment_only_offers_a_trial_without_an_existing_plan(
+    trial, tier
+):
     with (
         patch.object(routes, "get_subscription_trial", AsyncMock(return_value=trial)),
         patch.object(routes, "get_trial_offer", AsyncMock(return_value=trial.offer)),
@@ -338,9 +363,15 @@ async def test_pending_enrollment_keeps_its_offer_while_it_holds_a_seat(trial):
             routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
         ),
         patch.object(routes, "trial_seat_available", AsyncMock(return_value=True)),
+        patch.object(
+            routes,
+            "get_user_by_id",
+            AsyncMock(return_value=MagicMock(subscription_tier=tier)),
+        ),
     ):
         status = await routes.get_trial_status(trial.user_id)
-    assert status.eligible
+    assert status.eligible is (tier == SubscriptionTier.NO_TIER)
+    assert status.status == "checkout_pending"
 
 
 @pytest.mark.asyncio
