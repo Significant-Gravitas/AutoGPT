@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.api.conn_manager import ConnectionManager
+from backend.api.middleware.fastapi_guard_wiring import attach_guard
 from backend.api.model import (
     WSMessage,
     WSMethod,
@@ -53,6 +54,9 @@ async def lifespan(app: FastAPI):
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan, docs_url=docs_url)
+
+# Optional fastapi-guard security middleware (off unless AUTOGPT_GUARD_ENABLED)
+attach_guard(app)
 _connection_manager = None
 
 # Add Prometheus instrumentation

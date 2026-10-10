@@ -89,6 +89,7 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
+from backend.api.middleware.fastapi_guard_wiring import attach_guard
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.webhook_routes import register_webhook_adapters
@@ -290,6 +291,9 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 # Add GZip compression middleware for large responses (like /api/blocks)
 app.add_middleware(GZipMiddleware, minimum_size=50_000)  # 50KB threshold
+
+# Optional fastapi-guard security middleware (off unless AUTOGPT_GUARD_ENABLED)
+attach_guard(app)
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)
