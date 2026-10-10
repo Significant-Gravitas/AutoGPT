@@ -42,6 +42,7 @@ from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
     CHAT_STATUS_RUNNING,
     ChatMessage,
+    ChatSessionInfo,
     _get_session_lock,
     invalidate_session_cache,
 )
@@ -264,61 +265,20 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     # so top-leveling it here would deadlock the import graph.
     from backend.copilot.executor.utils import dispatch_turn
 
-    queued = await list_queued_sessions(user_id)
-    if not queued:
-        return False
-    # The user's own message goes before work another session started.
-    head = next(
-        (s for s in queued if s.metadata.delegated_by_session_id is None), queued[0]
+    # The user's own messages go before work another session started, and one
+    # that may not start yet (an entitlement it lacks) does not hold up the rest.
+    candidates = sorted(
+        await list_queued_sessions(user_id),
+        key=lambda s: s.metadata.delegated_by_session_id is not None,
     )
-
+    head = None
+    for candidate in candidates:
+        if await _may_start(user_id, candidate):
+            head = candidate
+            break
+    if head is None:
+        return False
     route_provider = head.metadata.llm_auth_provider
-    if route_provider == "codex":
-        if not await has_codex_access(user_id):
-            logger.info(
-                "dispatch_next_for_user: user=%s lacks Codex entitlement, "
-                "leaving session=%s queued",
-                user_id,
-                head.session_id,
-            )
-            return False
-    elif route_provider == "platform":
-        if await is_user_paywalled(user_id):
-            logger.info(
-                "dispatch_next_for_user: user=%s paywalled, leaving session=%s queued",
-                user_id,
-                head.session_id,
-            )
-            return False
-
-        cfg = ChatConfig()
-        try:
-            daily_limit, weekly_limit, _ = await get_global_rate_limits(
-                user_id,
-                cfg.daily_cost_limit_microdollars,
-                cfg.weekly_cost_limit_microdollars,
-            )
-            await check_rate_limit(
-                user_id=user_id,
-                daily_cost_limit=daily_limit,
-                weekly_cost_limit=weekly_limit,
-            )
-        except RateLimitExceeded as exc:
-            logger.info(
-                "dispatch_next_for_user: user=%s rate-limited (%s), "
-                "leaving session=%s queued",
-                user_id,
-                exc,
-                head.session_id,
-            )
-            return False
-        except RateLimitUnavailable:
-            logger.warning(
-                "dispatch_next_for_user: rate-limit service degraded for user=%s; "
-                "leaving queue intact for the next tick",
-                user_id,
-            )
-            return False
 
     # Claim by transitioning the session ``queued`` → ``running``.  A
     # parallel cancel between validation and claim rejects this
@@ -447,4 +407,57 @@ async def dispatch_next_for_user(user_id: str) -> bool:
             logger.warning("Failed to track promoted chat turn", exc_info=True)
 
     await invalidate_session_cache(head.session_id)
+    return True
+
+
+async def _may_start(user_id: str, head: ChatSessionInfo) -> bool:
+    """Whether ``head``'s route lets it start now: its entitlement, and for the
+    platform route the paywall and rate limits."""
+    route_provider = head.metadata.llm_auth_provider
+    if route_provider == "codex":
+        if not await has_codex_access(user_id):
+            logger.info(
+                "dispatch_next_for_user: user=%s lacks Codex entitlement, "
+                "leaving session=%s queued",
+                user_id,
+                head.session_id,
+            )
+            return False
+    elif route_provider == "platform":
+        if await is_user_paywalled(user_id):
+            logger.info(
+                "dispatch_next_for_user: user=%s paywalled, leaving session=%s queued",
+                user_id,
+                head.session_id,
+            )
+            return False
+
+        cfg = ChatConfig()
+        try:
+            daily_limit, weekly_limit, _ = await get_global_rate_limits(
+                user_id,
+                cfg.daily_cost_limit_microdollars,
+                cfg.weekly_cost_limit_microdollars,
+            )
+            await check_rate_limit(
+                user_id=user_id,
+                daily_cost_limit=daily_limit,
+                weekly_cost_limit=weekly_limit,
+            )
+        except RateLimitExceeded as exc:
+            logger.info(
+                "dispatch_next_for_user: user=%s rate-limited (%s), "
+                "leaving session=%s queued",
+                user_id,
+                exc,
+                head.session_id,
+            )
+            return False
+        except RateLimitUnavailable:
+            logger.warning(
+                "dispatch_next_for_user: rate-limit service degraded for user=%s; "
+                "leaving queue intact for the next tick",
+                user_id,
+            )
+            return False
     return True

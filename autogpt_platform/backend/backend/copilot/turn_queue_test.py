@@ -473,12 +473,25 @@ async def test_promotion_refuses_when_the_entitlement_cannot_be_resolved() -> No
     assert db.update_chat_session_status.await_args.kwargs["status"] == "queued"
 
 
+@pytest.mark.parametrize(
+    "queue, promoted",
+    [
+        # The user's own message goes first, though sub-work queued earlier.
+        ([("sub", "parent", "platform"), ("chat", None, "platform")], "chat"),
+        # One that may not start (no Codex access) does not hold up the rest.
+        ([("chat", None, "codex"), ("sub", "parent", "platform")], "sub"),
+        # With nothing of the user's queued, sub-work is promoted.
+        ([("sub", "parent", "platform")], "sub"),
+    ],
+)
 @pytest.mark.asyncio
-async def test_the_users_queued_message_is_promoted_before_sub_work() -> None:
-    sub = _mock_session("sub")
-    sub.metadata.delegated_by_session_id = "parent"
-    chat = _mock_session("chat")
-    chat.metadata.delegated_by_session_id = None
+async def test_promotion_order(
+    queue: list[tuple[str, str | None, str]], promoted: str
+) -> None:
+    rows = [_mock_session(session_id) for session_id, _, _ in queue]
+    for row, (_, delegated_by, route) in zip(rows, queue):
+        row.metadata.delegated_by_session_id = delegated_by
+        row.metadata.llm_auth_provider = route
     db = MagicMock()
     db.get_latest_user_message_in_session = AsyncMock(
         return_value=_pyd_message(metadata={"model": "standard"})
@@ -487,8 +500,9 @@ async def test_the_users_queued_message_is_promoted_before_sub_work() -> None:
     dispatched = AsyncMock()
 
     with (
-        _patch_queued_list([sub, chat]),
+        _patch_queued_list(rows),
         patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=False)),
         patch(
             "backend.copilot.turn_queue.is_user_paywalled",
             new=AsyncMock(return_value=False),
@@ -504,8 +518,8 @@ async def test_the_users_queued_message_is_promoted_before_sub_work() -> None:
     ):
         assert await turn_queue.dispatch_next_for_user("u1") is True
 
-    claim.assert_awaited_once_with("chat")
-    assert dispatched.await_args.kwargs["session_id"] == "chat"
+    claim.assert_awaited_once_with(promoted)
+    assert dispatched.await_args.kwargs["session_id"] == promoted
 
 
 @pytest.mark.asyncio
