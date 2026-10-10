@@ -16,9 +16,15 @@ from collections import OrderedDict
 
 from backend.api.features.experts.models import ExpertTemplate
 from backend.copilot.capabilities.index import CapabilityIndex
+from backend.copilot.capabilities.mcp_connections import (
+    catalog_mcp_entry,
+    connected_mcp_entries,
+    stored_mcp_urls,
+)
 from backend.copilot.capabilities.models import CapabilityEntry
+from backend.copilot.capabilities.ranking import normalize_server_url
 from backend.copilot.capabilities.registry import get_registry
-from backend.copilot.capabilities.resolve import resolve_entry
+from backend.copilot.capabilities.resolve import load_connection_state, resolve_entry
 from backend.copilot.capabilities.sources import (
     expert_dispatch,
     expert_entries,
@@ -42,10 +48,12 @@ ROSTER_CACHE_TTL_S = 300
 # search.  A skill list changes rarely and is itself cached for
 # ``SKILLS_INDEX_CACHE_TTL_S``, so the layered index is kept for the same
 # window, keyed by the platform index (a new one after a block reload) and
-# by what the skills say, so a rewritten skill is re-indexed at once.
+# by complete entries, so rewritten skills and changed MCP endpoints are
+# re-indexed at once.
 _LAYERED_MAX = 128
 _layered: OrderedDict[
-    tuple[int, int, tuple[tuple[str, str], ...]], tuple[float, CapabilityIndex]
+    tuple[int, int, tuple[tuple[str, str], ...]],
+    tuple[float, CapabilityIndex, CapabilityIndex],
 ] = OrderedDict()
 
 
@@ -61,18 +69,18 @@ async def session_registry(user_id: str, session: ChatSession) -> CapabilityInde
 def layered_index(
     base: CapabilityIndex, entries: list[CapabilityEntry]
 ) -> CapabilityIndex:
-    """*base* with *entries* layered on, reused within the skill-cache window
-    for the same platform index and the same entries."""
+    """Layer session entries, caching identical metadata for the skill-cache window."""
     if not entries:
         return base
-    key = (id(base), len(base), tuple((e.id, e.description) for e in entries))
+    key = (id(base), len(base), tuple((e.id, e.model_dump_json()) for e in entries))
     now = time.monotonic()
     cached = _layered.get(key)
-    if cached is not None and cached[0] > now:
+    if cached is not None and cached[0] > now and cached[2] is base:
         _layered.move_to_end(key)
         return cached[1]
     index = base.with_entries(entries)
-    _layered[key] = (now + SKILLS_INDEX_CACHE_TTL_S, index)
+    # Retain the base so an evicted skills layer's address cannot be reused.
+    _layered[key] = (now + SKILLS_INDEX_CACHE_TTL_S, index, base)
     _layered.move_to_end(key)
     while len(_layered) > _LAYERED_MAX:
         _layered.popitem(last=False)
@@ -82,8 +90,7 @@ def layered_index(
 async def resolve_session_entry(
     user_id: str, session: ChatSession, capability_id: str
 ) -> CapabilityEntry | None:
-    """``resolve_entry`` over the platform registry, plus the session's
-    skills by ``skill:<name>`` id and experts by ``expert:``/``teammate:`` id.
+    """Resolve platform entries, connected MCP options, session skills and experts.
 
     A skill or expert id is looked up among those only: falling through to
     the registry's name match would let ``skill:web_search`` resolve to the
@@ -101,7 +108,7 @@ async def resolve_session_entry(
         )
     name = skill_name(capability_id)
     if name is None:
-        return resolve_entry(get_registry(), capability_id)
+        return await _resolve_platform_entry(user_id, session, capability_id)
     return next(
         (
             entry
@@ -109,6 +116,42 @@ async def resolve_session_entry(
             if entry.implementations[0].ref == name
         ),
         None,
+    )
+
+
+async def _resolve_platform_entry(
+    user_id: str, session: ChatSession, capability_id: str
+) -> CapabilityEntry | None:
+    """Bind stored catalog options and preserve connected custom URL identity."""
+    index = get_registry()
+    key = capability_id.strip()
+    if "://" in key:
+        catalog = catalog_mcp_entry(index, key)
+        if catalog is not None:
+            return catalog
+    entry = resolve_entry(index, key)
+    if entry is None or entry.kind != "mcp_server":
+        return entry
+    if entry.connection.key and (
+        "://" not in key
+        or normalize_server_url(key) == normalize_server_url(entry.connection.key)
+    ):
+        return entry
+    connections = await load_connection_state(user_id, session.expert_id)
+    if entry.connection.key:
+        return (
+            None
+            if normalize_server_url(key)
+            in {normalize_server_url(url) for url in stored_mcp_urls(connections)}
+            else entry
+        )
+    return next(
+        (
+            bound
+            for bound in connected_mcp_entries(index, connections)
+            if bound.id == entry.id
+        ),
+        entry,
     )
 
 

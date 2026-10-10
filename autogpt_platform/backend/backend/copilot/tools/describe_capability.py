@@ -4,6 +4,7 @@ search index never carries schemas."""
 import logging
 from typing import Any
 
+from backend.copilot.capabilities.mcp_connections import custom_mcp_entry
 from backend.copilot.capabilities.models import SKILL_TOOL, CapabilityEntry
 from backend.copilot.capabilities.registry import configured_tool
 from backend.copilot.capabilities.schema_trim import collapse_large_enums
@@ -98,12 +99,15 @@ class DescribeCapabilityTool(BaseTool):
         expand: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
+        """Describe a capability through its existing permission and discovery gates."""
         session_id = session.session_id
         if not user_id:
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
             )
         entry = await resolve_session_entry(user_id, session, id)
+        if entry is None and id.strip().lower().startswith("https://"):
+            entry = custom_mcp_entry(id.strip())
         if entry is None:
             return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session_id)
         # Describing answers to the gate that running does. An MCP

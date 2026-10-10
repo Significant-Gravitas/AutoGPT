@@ -107,14 +107,22 @@ class CapabilityIndex:
         return len(self.entries)
 
     def with_entries(self, extra: Sequence[CapabilityEntry]) -> CapabilityIndex:
-        """This index plus *extra*: the per-session layer (the owner's
-        skills) over the platform registry.  The platform documents are
-        reused, so only *extra* is tokenised; this index is left as is."""
+        """Layer entries by ID without mutating this index or duplicating presets.
+
+        Unchanged platform documents are reused; only *extra* is tokenised.
+        """
         if not extra:
             return self
+        extra_ids = {entry.id for entry in extra}
+        kept = [
+            idx for idx, entry in enumerate(self.entries) if entry.id not in extra_ids
+        ]
         return CapabilityIndex(
-            [*self.entries, *extra],
-            documents=[*self._documents, *(_document(e) for e in extra)],
+            [*(self.entries[idx] for idx in kept), *extra],
+            documents=[
+                *(self._documents[idx] for idx in kept),
+                *(_document(e) for e in extra),
+            ],
         )
 
     def get(self, capability_id: str) -> CapabilityEntry | None:
@@ -166,14 +174,17 @@ class CapabilityIndex:
         rest = [idx for idx in scores if idx not in exact]
         fallback: list[SearchHit] = []
         if service_indices is not None:
-            # A skill is not a service, but the one written for the named
-            # service is the best answer there is, so skills stay in; so do
-            # experts, since "someone to run my LinkedIn" names one.
+            # Skills, experts and custom MCP endpoints can match a service
+            # without a catalog service tag, so keep their lexical matches.
             main = [
                 idx
                 for idx in rest
                 if idx in service_indices
                 or self.entries[idx].kind in ("skill", "expert")
+                or (
+                    self.entries[idx].kind == "mcp_server"
+                    and self.entries[idx].id.lower().startswith("https://")
+                )
             ]
             others = [idx for idx in rest if idx not in main]
             fallback = _ranked(

@@ -13,6 +13,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
 
 from .recording import saving_into
+from .scripted import UNSENT_MODEL_KEY
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
@@ -45,7 +46,11 @@ def baseline_offline(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         baseline,
         "config",
         baseline.config.model_copy(
-            update={"use_e2b_sandbox": False, "use_local": False}
+            update={
+                "api_key": UNSENT_MODEL_KEY,
+                "use_e2b_sandbox": False,
+                "use_local": False,
+            }
         ),
     )
     for name, value in {

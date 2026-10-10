@@ -1,8 +1,8 @@
 """Human review for MCP calls made through ``run_capability``.
 
 With the auto-mode gate off, MCP tool annotations are untrusted and mostly
-absent, so a call to a server that is not in the official catalog pauses for
-review when the tool looks like a write; catalog servers run without a pause.
+absent, so a call without a shared catalog endpoint pauses for review when
+the tool looks like a write; shared catalog endpoints run without a pause.
 With the gate on, none of this runs: the server's effect map decides, or the
 tool asks on first use (``gate/subject.py``).
 
@@ -97,7 +97,7 @@ async def open_mcp_review(
         input_data=data,
         message=(
             f"Run MCP tool '{payload.tool}' on {host} with the shown arguments? "
-            "This server is not in the official catalog."
+            "This endpoint requires approval for writes."
         ),
         editable=True,
         organization_id=organization_id,
