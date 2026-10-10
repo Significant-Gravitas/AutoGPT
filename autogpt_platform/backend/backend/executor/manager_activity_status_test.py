@@ -329,3 +329,95 @@ def test_nested_credit_failure_marker_respects_cancellation_precedence(
     assert status == expected_status
     assert stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE
     assert stats.error == "Organization has 0 credits but needs 25"
+
+
+def _queued_node(node_exec_id: str, status: ExecutionStatus):
+    from backend.data.execution import NodeExecutionEntry
+
+    entry = NodeExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+        node_exec_id=node_exec_id,
+        node_id=f"node-{node_exec_id}",
+        block_id="block-1",
+        inputs={},
+    )
+    return SimpleNamespace(
+        status=status,
+        to_node_execution_entry=lambda execution_context: entry.model_copy(
+            update={"execution_context": execution_context}
+        ),
+    )
+
+
+def test_redispatched_review_and_running_nodes_are_not_charged_again():
+    """#15272: on resume the executor re-queues REVIEW/RUNNING node execs.
+    They were charged on first dispatch; charging again orphans that debit
+    because reconciliation only settles against the latest charge."""
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    db_client = MagicMock()
+    db_client.get_credits.return_value = 100
+    db_client.get_node_executions.return_value = [
+        _queued_node("review", ExecutionStatus.REVIEW),
+        _queued_node("running", ExecutionStatus.RUNNING),
+        _queued_node("queued", ExecutionStatus.QUEUED),
+    ]
+    db_client.has_pending_reviews_for_graph_exec.return_value = False
+    processor = ExecutionProcessor()
+    processor._cleanup_graph_execution = MagicMock()
+    processor.node_evaluation_loop = MagicMock()
+    processor.node_execution_loop = MagicMock()
+    processor.on_node_execution = MagicMock()
+    completed_future = MagicMock()
+    completed_future.result.return_value = None
+
+    def complete_coroutine(coroutine, _loop):
+        if hasattr(coroutine, "close"):
+            coroutine.close()
+        return completed_future
+
+    dispatched: list = []
+    processor.on_node_execution.side_effect = lambda node_exec, **_: dispatched.append(
+        node_exec
+    )
+    charge_usage = MagicMock(return_value=(7, 93, 7))
+    increment = MagicMock(return_value=1)
+
+    with (
+        patch("backend.executor.manager.get_db_client", return_value=db_client),
+        patch(
+            "backend.executor.manager.asyncio.run_coroutine_threadsafe",
+            side_effect=complete_coroutine,
+        ),
+        patch("backend.executor.manager.billing.charge_usage", charge_usage),
+        patch(
+            "backend.executor.manager.billing.resolve_block_cost",
+            return_value=(MagicMock(), 7, {}),
+        ),
+        patch("backend.executor.manager.billing.handle_low_balance"),
+        patch("backend.executor.manager.increment_execution_count", increment),
+    ):
+        processor._on_graph_execution(
+            graph_exec=execution,
+            cancel=threading.Event(),
+            log_metadata=MagicMock(),
+            execution_stats=GraphExecutionStats(),
+            cluster_lock=MagicMock(),
+        )
+
+    charged = [c.kwargs["node_exec"].node_exec_id for c in charge_usage.call_args_list]
+    assert charged == ["queued"]
+    assert increment.call_count == 1
+    by_id = {n.node_exec_id: n for n in dispatched}
+    assert set(by_id) == {"review", "running", "queued"}
+    # Reconciliation still settles the re-dispatched nodes against the
+    # amount that was billed on their first dispatch.
+    assert by_id["review"].pre_flight_charge == 7
+    assert by_id["running"].pre_flight_charge == 7

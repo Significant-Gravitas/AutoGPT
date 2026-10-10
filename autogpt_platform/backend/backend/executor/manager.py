@@ -1196,6 +1196,13 @@ class ExecutionProcessor:
                 node_entry = node_exec.to_node_execution_entry(
                     graph_exec.execution_context
                 )
+                # REVIEW/RUNNING were already charged before the pause/crash;
+                # skip the second pre-flight debit on re-dispatch (#15272).
+                if node_exec.status in (
+                    ExecutionStatus.REVIEW,
+                    ExecutionStatus.RUNNING,
+                ):
+                    node_entry.already_charged = True
                 execution_queue.add(node_entry)
 
             # ------------------------------------------------------------
@@ -1229,9 +1236,13 @@ class ExecutionProcessor:
                     f"for node {queued_node_exec.node_id}",
                 )
 
-                # Charge usage (may raise) — skipped for dry runs
+                # Charge usage (may raise) — skipped for dry runs and for
+                # REVIEW/RUNNING re-dispatches that were already charged.
                 try:
-                    if not graph_exec.execution_context.dry_run:
+                    if (
+                        not graph_exec.execution_context.dry_run
+                        and not queued_node_exec.already_charged
+                    ):
                         (
                             cost,
                             remaining_balance,
@@ -1255,6 +1266,12 @@ class ExecutionProcessor:
                             current_balance=remaining_balance,
                             transaction_cost=cost,
                         )
+                    elif queued_node_exec.already_charged:
+                        # Keep post-flight reconciliation settling against
+                        # the amount billed on first dispatch.
+                        queued_node_exec.pre_flight_charge = billing.resolve_block_cost(
+                            queued_node_exec
+                        )[1]
                 except InsufficientBalanceError as balance_error:
                     error = balance_error  # Set error to trigger FAILED status
                     node_exec_id = queued_node_exec.node_exec_id
