@@ -403,6 +403,8 @@ async def dispatch_next_for_user(user_id: str) -> bool:
             llm_credential_id=head.metadata.llm_credential_id,
             permissions=metadata.get("permissions"),
             request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
+            # Not the finished turn's child, whose context this hook runs in.
+            root=True,
         )
     except BaseException:
         # Roll the claim back so a missed-dispatch tick or the next
