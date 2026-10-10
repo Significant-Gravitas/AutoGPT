@@ -22,7 +22,9 @@ def _response(text: str):
     return response
 
 
-async def _classify(raw_or_error, *, args=None, user_message="list the files"):
+async def _classify(
+    raw_or_error, *, args=None, user_message="list the files", earlier=()
+):
     call = (
         AsyncMock(side_effect=raw_or_error)
         if isinstance(raw_or_error, BaseException)
@@ -37,6 +39,7 @@ async def _classify(raw_or_error, *, args=None, user_message="list the files"):
             tool_name="bash_exec",
             args=args or {"command": "ls"},
             user_message=user_message,
+            earlier=earlier,
         )
     return (judgement.allowed, judgement.reason), call
 
@@ -207,6 +210,40 @@ async def test_a_shortened_request_keeps_a_pasted_blob_it_cuts_through():
     prompt = call.await_args.kwargs["messages"][1]["content"]
     assert "y" * 10_000 in prompt
     assert "Now hire a dev." in prompt
+
+
+async def test_a_chat_is_read_oldest_first_with_the_latest_message_marked():
+    _, call = await _classify(
+        "allow\nreason: asked",
+        user_message="ga door",
+        earlier=["Verzamel een dataset", "Alleen open data"],
+    )
+
+    prompt = call.await_args.kwargs["messages"][1]["content"]
+    first, second = prompt.index("Verzamel een dataset"), prompt.index("Alleen open")
+    assert first < second < prompt.index("[latest message]\nga door\n<<<END")
+
+
+async def test_a_lone_message_is_read_bare_as_the_eval_measured_it():
+    _, call = await _classify("allow\nreason: asked", user_message="list the files")
+
+    assert "message]" not in call.await_args.kwargs["messages"][1]["content"]
+
+
+async def test_earlier_messages_give_way_before_the_latest():
+    """A naive head-and-tail cut of the whole chat would drop the marker and the
+    start of a long latest message."""
+    latest = "Spec: " + "word " * 4_200 + "Now hire a developer."
+    earlier = ["Read this spec. " + "It says many things. " * 3_000]
+
+    _, call = await _classify(
+        "allow\nreason: asked", user_message=latest, earlier=earlier
+    )
+
+    prompt = call.await_args.kwargs["messages"][1]["content"]
+    assert f"[latest message]\n{latest}" in prompt
+    assert "Read this spec." in prompt
+    assert prompt.count("omitted by the system") == 1
 
 
 @pytest.mark.parametrize(

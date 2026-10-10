@@ -213,10 +213,12 @@ async def check_action(
                 f"Could not read {', '.join(unread)}, so this could not be checked."
             )
         else:
+            *earlier, latest = _user_requests(session) or [""]
             judgement = await supervise(
                 tool_name=tool_name,
                 args=_judged_args(args, files),
-                user_message=_last_user_message(session),
+                user_message=latest,
+                earlier=earlier,
             )
             if judgement.allowed:
                 return ALLOW
@@ -306,17 +308,20 @@ def _judged_args(
     return judged
 
 
-def _last_user_message(session: ChatSession) -> str:
+def _user_requests(session: ChatSession) -> list[str]:
+    """What the user wrote in this chat, oldest first. Never the assistant's
+    rows: the supervisor checks an assistant whose reading may have steered it."""
     # Deferred: copilot.service imports the tool registry, which imports this gate.
     from backend.copilot.service import strip_injected_context_for_display
 
-    for message in reversed(session.messages):
-        if message.role == "user" and message.content:
-            if held.is_answer_row(message):
-                continue
-            # A first turn's row starts with the server's context blocks.
-            return strip_injected_context_for_display(message.content)
-    return ""
+    return [
+        # A first turn's row starts with the server's context blocks.
+        strip_injected_context_for_display(message.content)
+        for message in session.messages
+        if message.role == "user"
+        and message.content
+        and not held.is_answer_row(message)
+    ]
 
 
 __all__ = [
