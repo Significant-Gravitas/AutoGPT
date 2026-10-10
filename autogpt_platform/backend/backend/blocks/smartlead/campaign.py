@@ -84,6 +84,7 @@ class CreateCampaignBlock(Block):
                     created_at="2024-01-01T00:00:00Z",
                 )
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -309,6 +310,7 @@ class SaveCampaignSequencesBlock(Block):
                     message="Sequences saved successfully",
                 )
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

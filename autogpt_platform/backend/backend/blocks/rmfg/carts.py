@@ -149,6 +149,7 @@ class RMFGCreateCartBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=CART_TEST_OUTPUT,
             test_mock={"create_cart": lambda *args, **kwargs: TEST_CART},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -269,6 +270,7 @@ class RMFGUpdateCartBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=CART_TEST_OUTPUT,
             test_mock={"update_cart": lambda *args, **kwargs: TEST_CART},
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

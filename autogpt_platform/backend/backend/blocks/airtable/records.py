@@ -254,6 +254,7 @@ class AirtableCreateRecordsBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -320,6 +321,7 @@ class AirtableUpdateRecordsBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

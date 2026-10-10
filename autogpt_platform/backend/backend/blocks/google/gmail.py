@@ -734,6 +734,7 @@ class GmailCreateDraftBlock(GmailBase):
                     "message": {"id": "msg1"},
                 },
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -878,6 +879,7 @@ class GmailAddLabelBlock(GmailBase):
                     "label_id": "Label_1",
                 },
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -964,6 +966,7 @@ class GmailRemoveLabelBlock(GmailBase):
                     "label_id": "Label_1",
                 },
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -1485,6 +1488,7 @@ class GmailDraftReplyBlock(GmailBase):
                     "message": {"id": "m2", "threadId": "t1"},
                 }
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

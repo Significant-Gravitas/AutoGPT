@@ -125,6 +125,7 @@ class AddMemoryBlock(Block, Mem0Base):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock={"_get_client": lambda credentials: MockMemoryClient()},
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

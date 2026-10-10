@@ -135,6 +135,7 @@ class RMFGAnalyzeDesignBlock(Block):
                 "read_step_file": lambda *args, **kwargs: ("bracket.step", b"ISO"),
                 "analyze": lambda *args, **kwargs: TEST_DESIGN,
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

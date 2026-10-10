@@ -2,6 +2,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -57,6 +58,7 @@ class LinearCreateCommentBlock(Block):
                     "Test comment",
                 )
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

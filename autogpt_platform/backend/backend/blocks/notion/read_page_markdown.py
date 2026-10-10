@@ -3,6 +3,7 @@ from __future__ import annotations
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -60,6 +61,7 @@ class NotionReadPageMarkdownBlock(Block):
                     "Test Page",
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

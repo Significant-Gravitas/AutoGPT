@@ -91,6 +91,7 @@ class AirtableCreateTableBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -138,6 +139,7 @@ class AirtableUpdateTableBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -190,6 +192,7 @@ class AirtableCreateFieldBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -238,6 +241,7 @@ class AirtableUpdateFieldBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

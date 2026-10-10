@@ -7,6 +7,7 @@ from pydantic import model_validator
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -96,6 +97,7 @@ class NotionCreatePageBlock(Block):
                     "https://notion.so/Test-Page-12345678123412341234123456789012",
                 )
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

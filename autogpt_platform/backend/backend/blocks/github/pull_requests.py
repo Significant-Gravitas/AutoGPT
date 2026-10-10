@@ -456,6 +456,7 @@ class GithubAssignPRReviewerBlock(Block):
             test_mock={
                 "assign_reviewer": lambda *args, **kwargs: "Reviewer assigned successfully"
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -523,6 +524,7 @@ class GithubUnassignPRReviewerBlock(Block):
             test_mock={
                 "unassign_reviewer": lambda *args, **kwargs: "Reviewer unassigned successfully"
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

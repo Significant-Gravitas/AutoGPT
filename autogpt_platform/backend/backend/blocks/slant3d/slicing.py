@@ -2,7 +2,12 @@ from urllib.parse import quote
 
 from pydantic import model_validator
 
-from backend.blocks._base import BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import (
+    BlockEffect,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.execution import ExecutionContext
 from backend.data.model import APIKeyCredentials, SchemaField
 from backend.util.type import MediaFileType
@@ -87,6 +92,7 @@ class Slant3DSlicerBlock(Slant3DBlockBase):
                     "data": {"total": 8.23},
                 }
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

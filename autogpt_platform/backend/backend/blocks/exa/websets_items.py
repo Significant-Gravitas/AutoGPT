@@ -404,6 +404,7 @@ class ExaBulkWebsetItemsBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaBulkWebsetItemsBlock.Input,
             output_schema=ExaBulkWebsetItemsBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -477,6 +478,7 @@ class ExaWebsetItemsSummaryBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWebsetItemsSummaryBlock.Input,
             output_schema=ExaWebsetItemsSummaryBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

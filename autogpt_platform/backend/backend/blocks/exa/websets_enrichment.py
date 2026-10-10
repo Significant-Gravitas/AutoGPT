@@ -174,6 +174,7 @@ class ExaCreateEnrichmentBlock(Block):
             categories={BlockCategory.AI, BlockCategory.SEARCH},
             input_schema=ExaCreateEnrichmentBlock.Input,
             output_schema=ExaCreateEnrichmentBlock.Output,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -403,6 +404,7 @@ class ExaUpdateEnrichmentBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaUpdateEnrichmentBlock.Input,
             output_schema=ExaUpdateEnrichmentBlock.Output,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -528,6 +530,7 @@ class ExaCancelEnrichmentBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaCancelEnrichmentBlock.Input,
             output_schema=ExaCancelEnrichmentBlock.Output,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
