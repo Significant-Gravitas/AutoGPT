@@ -6187,7 +6187,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "409": {
-            "description": "No live cancel-pending trial to resume, or another plan is active"
+            "description": "No live cancel-pending trial to resume, another plan is active, or the trial is already being updated"
           },
           "502": { "description": "Stripe update temporarily unavailable" }
         },

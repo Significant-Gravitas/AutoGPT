@@ -2,7 +2,7 @@
 whether canceling keeps access until the trial ends."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from prisma.enums import SubscriptionTier
@@ -71,6 +71,8 @@ async def test_resume_without_a_live_scheduled_cancellation_is_conflict(
     assert (error.value.status_code, error.value.detail) == (409, detail)
     live_stripe.modify.assert_not_awaited()
     live_stripe.expire.assert_not_awaited()
+    synced = [] if live is None else [call(dict(live_stripe.retrieve.return_value))]
+    assert live_stripe.sync.await_args_list == synced
 
 
 @pytest.mark.asyncio
@@ -88,7 +90,7 @@ async def test_resume_while_a_checkout_is_starting_is_a_retryable_conflict(
             await routes.resume_trial(pending.user_id)
     assert (error.value.status_code, error.value.detail) == (
         409,
-        "Another checkout is already starting. Please retry.",
+        "Your trial is already being updated. Please retry.",
     )
     live_stripe.retrieve.assert_not_awaited()
     live_stripe.expire.assert_not_awaited()

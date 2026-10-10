@@ -6,14 +6,23 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 from backend.api.features import subscription_trial_routes as routes
 from backend.api.features import subscription_trial_routes_test as routes_test
+from backend.api.features.subscription_trial_models import TrialCancelRequest
 from backend.data import subscription_trial_cancel as trial_cancel
 from backend.data.subscription_trial import TrialState
 from backend.util.feature_flag import Flag
 
 ENDED = "This trial has ended. Manage the plan in billing."
+PROMISED = {"trial_cancel_keeps_access": "true"}
+FLAG_READS = {
+    "on": (True, True),
+    "off": (False, True),
+    "unreadable": (False, False),
+    "unreadable-on": (True, False),
+}
 
 billing_return_origin = routes_test.billing_return_origin
 track_checkout_started = routes_test.track_checkout_started
@@ -206,19 +215,83 @@ async def test_flag_on_cancel_of_a_converted_trial_is_conflict(
     cancel_flag.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("value", [(False, False), (True, False)])
-async def test_an_unreadable_flag_refuses_to_cancel_before_touching_stripe(
-    trial, cancel_flag, live_stripe, value
-):
-    """Guessing "off" would end, for good, a trial the person was promised."""
-    cancel_flag.return_value = value
+async def _cancel(trial: TrialState, live_stripe, keeps_access: bool | None) -> None:
     started = _started(trial)
+    live_stripe.retrieve.return_value = _live(started)
+    live_stripe.modify.return_value = _live(started, cancel_at_period_end=True)
+    live_stripe.end_now.return_value = _live(started, status="canceled")
+    body = (
+        None if keeps_access is None else TrialCancelRequest(keeps_access=keeps_access)
+    )
     with patch.object(
         routes, "get_subscription_trial", AsyncMock(return_value=started)
     ):
-        with pytest.raises(routes.HTTPException) as error:
-            await routes.cancel_trial(started.user_id)
-    assert error.value.status_code == 502
-    assert error.value.detail == "Unable to cancel your trial. Please retry."
-    assert live_stripe.mock_calls == []
+        await routes.cancel_trial(started.user_id, body)
+
+
+BODIES = {"no-body": None, "ends-now-copy": False, "keeps-access-copy": True}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "flag,keeps_access",
+    [
+        pytest.param(FLAG_READS[read], BODIES[copy], id=f"{read}-{copy}")
+        for read in FLAG_READS
+        for copy in BODIES
+        if read != "off" or BODIES[copy]
+    ],
+)
+async def test_cancel_schedules_the_end_unless_nothing_says_access_is_kept(
+    trial, cancel_flag, live_stripe, flag, keeps_access
+):
+    """A scheduled end never charges and can be taken back; ending at once
+    cannot. An unreadable flag, or a person told they keep access, schedules."""
+    cancel_flag.return_value = flag
+    await _cancel(trial, live_stripe, keeps_access)
+    promise = {"metadata": PROMISED} if keeps_access else {}
+    live_stripe.modify.assert_awaited_once_with(
+        "sub_1", cancel_at_period_end=True, **promise
+    )
+    live_stripe.end_now.assert_not_awaited()
+    live_stripe.old_sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("keeps_access", [None, False], ids=["no-body", "ends-now"])
+async def test_cancel_ends_the_trial_now_only_on_an_authoritative_off(
+    trial, cancel_flag, live_stripe, keeps_access
+):
+    cancel_flag.return_value = (False, True)
+    await _cancel(trial, live_stripe, keeps_access)
+    live_stripe.end_now.assert_awaited_once_with(
+        "sub_1", invoice_now=False, prorate=False
+    )
+    live_stripe.modify.assert_not_awaited()
+    live_stripe.old_sync.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "request_body,scheduled",
+    [({"json": {"keeps_access": True}}, True), ({}, False), ({"json": {}}, False)],
+    ids=["keeps-access", "no-body", "empty-body"],
+)
+async def test_cancel_reads_the_promise_from_the_request_body(
+    trial, cancel_flag, live_stripe, request_body, scheduled
+):
+    started = _started(trial)
+    live_stripe.retrieve.return_value = _live(started)
+    live_stripe.modify.return_value = _live(started, cancel_at_period_end=True)
+    live_stripe.end_now.return_value = _live(started, status="canceled")
+    with patch.object(
+        routes, "get_subscription_trial", AsyncMock(return_value=started)
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=routes_test._app(started)),
+            base_url="https://example.com",
+        ) as client:
+            response = await client.post("/credits/trial/cancel", **request_body)
+    assert response.status_code == 200
+    assert live_stripe.modify.await_count == int(scheduled)
+    assert live_stripe.end_now.await_count == int(not scheduled)

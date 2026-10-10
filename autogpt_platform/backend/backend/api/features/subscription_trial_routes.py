@@ -197,8 +197,11 @@ async def cancel_trial(
         or trial.converted_at is not None
     ):
         raise HTTPException(409, "No trial subscription is available to cancel")
-    if await _cancel_keeps_access(user_id):
-        await _apply_trial_change(schedule_trial_cancellation(trial), CANCEL_RETRY)
+    promised = body is not None and body.keeps_access
+    if promised or not await _cancel_flag_is_off(user_id):
+        await _apply_trial_change(
+            schedule_trial_cancellation(trial, keeps_access=promised), CANCEL_RETRY
+        )
         return await get_trial_status(user_id)
     try:
         subscription = await stripe_call(
@@ -228,7 +231,10 @@ async def cancel_trial(
     "/resume",
     responses={
         409: {
-            "description": "No live cancel-pending trial to resume, or another plan is active"
+            "description": (
+                "No live cancel-pending trial to resume, another plan is active,"
+                " or the trial is already being updated"
+            )
         },
         502: {"description": "Stripe update temporarily unavailable"},
     },
@@ -241,14 +247,13 @@ async def resume_trial(user_id: CurrentUser) -> TrialStatusResponse:
     return await get_trial_status(user_id)
 
 
-async def _cancel_keeps_access(user_id: str) -> bool:
-    """Refuse on an unreadable flag: guessing "off" would end the trial for good."""
-    keeps_access, authoritative = await evaluate_feature_flag(
+async def _cancel_flag_is_off(user_id: str) -> bool:
+    """Only an authoritative "off" ends a trial at once, which cannot be undone.
+    An unreadable flag schedules the end instead: that never charges, and the
+    sync after it still ends the trial at once if the flag then reads "off"."""
+    return await evaluate_feature_flag(
         Flag.TRIAL_CANCEL_AT_PERIOD_END, user_id, default=False
-    )
-    if not authoritative:
-        raise HTTPException(502, CANCEL_RETRY)
-    return keeps_access
+    ) == (False, True)
 
 
 async def _apply_trial_change(change: Awaitable[None], retry: str) -> None:

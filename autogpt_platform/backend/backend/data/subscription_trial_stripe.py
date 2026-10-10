@@ -8,6 +8,7 @@ from prisma.enums import SubscriptionTier
 
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.stripe_client import stripe_call, stripe_list_items
+from backend.data.subscription_checkout import other_plan_is_live
 from backend.data.subscription_trial import TrialState, get_subscription_trial
 from backend.data.subscription_trial_claims import claim_trial_identities
 from backend.data.subscription_trial_payment import Invoice as Invoice
@@ -21,6 +22,12 @@ from backend.util.feature_flag import Flag, evaluate_feature_flag
 # Our clock may trail Stripe's: a trial Stripe ended "now" can read as ending
 # a moment from now here.
 STRIPE_CLOCK_SKEW_SECONDS = 300
+# Marks a trial whose end was scheduled after the person was told so.
+KEEPS_ACCESS_METADATA = "trial_cancel_keeps_access"
+
+
+def access_promised(metadata: dict[str, str] | None) -> bool:
+    return (metadata or {}).get(KEEPS_ACCESS_METADATA) == "true"
 
 
 async def reconcile_trial_subscription(
@@ -151,11 +158,15 @@ async def _ends_scheduled_cancellation_now(
 ) -> bool:
     """A cancel-pending trial keeps its access until Stripe ends it at trial_end.
 
-    Only an authoritative "off" ends it now, as before the flag, and never one
-    already recorded as cancel-pending: turning the flag off must not take back
-    access that was promised.
-    """
-    if not snapshot.cancel_at_period_end or trial.cancel_at_period_end:
+    A plan bought meanwhile ends it now, so TRIAL never overwrites that plan if
+    its stale-subscription cleanup failed. Otherwise only an authoritative "off"
+    ends it now, never once access was promised (the row or the subscription
+    records it): turning the flag off must not take that back."""
+    if not snapshot.cancel_at_period_end:
+        return False
+    if await other_plan_is_live(trial.customer_id, snapshot.id):
+        return True
+    if trial.cancel_at_period_end or access_promised(snapshot.metadata):
         return False
     return await evaluate_feature_flag(
         Flag.TRIAL_CANCEL_AT_PERIOD_END, trial.user_id, default=False
@@ -216,7 +227,11 @@ def trial_subscription_tier(
     if end is None:
         return SubscriptionTier.NO_TIER
     if subscription.status == "trialing" and end > now.timestamp():
-        if subscription.has_verified_card(now):
+        # A cancel-pending trial is never charged, so the card verified at its
+        # start holds even if it expires before trial_end.
+        if subscription.has_verified_card(now) or (
+            subscription.cancel_at_period_end and trial.card_verified_at is not None
+        ):
             return SubscriptionTier.TRIAL
         return SubscriptionTier.NO_TIER
     invoice = subscription.latest_invoice

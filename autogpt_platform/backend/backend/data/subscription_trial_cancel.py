@@ -12,26 +12,40 @@ import stripe
 from backend.data.credit import sync_subscription_from_stripe
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_checkout import (
+    ANOTHER_PLAN_LIVE,
     SubscriptionCheckoutUnavailable,
     expire_other_subscription_checkouts,
     other_plan_is_live,
     subscription_checkout_lock,
 )
 from backend.data.subscription_trial import TrialState
+from backend.data.subscription_trial_stripe import (
+    KEEPS_ACCESS_METADATA,
+    access_promised,
+)
 
 TRIAL_ENDED = "This trial has ended. Manage the plan in billing."
 NOTHING_TO_RESUME = "Nothing to resume."
-ANOTHER_PLAN_LIVE = "Another plan is already active. Manage it in billing."
+TRIAL_BUSY = "Your trial is already being updated. Please retry."
 
 
 class TrialChangeRefused(ValueError):
     """The live trial cannot take this change; the message is safe to show."""
 
 
-async def schedule_trial_cancellation(trial: TrialState) -> None:
+async def schedule_trial_cancellation(
+    trial: TrialState, *, keeps_access: bool = False
+) -> None:
+    """``keeps_access``: the person was told access lasts until trial_end. The
+    subscription records that, so no later reconcile ends the trial early."""
     subscription = await _live_trial_subscription(trial)
-    if not subscription.get("cancel_at_period_end"):
-        subscription = await _set_cancel_at_period_end(subscription, True)
+    change: stripe.Subscription.ModifyParams = {"cancel_at_period_end": True}
+    if keeps_access:
+        change["metadata"] = {KEEPS_ACCESS_METADATA: "true"}
+    if not subscription.get("cancel_at_period_end") or (
+        keeps_access and not access_promised(subscription.get("metadata"))
+    ):
+        subscription = await _change_live_trial(subscription, change)
     await sync_subscription_from_stripe(dict(subscription))
 
 
@@ -47,15 +61,15 @@ async def resume_trial_subscription(trial: TrialState | None) -> None:
         async with subscription_checkout_lock(trial.user_id):
             await _resume_locked(trial)
     except SubscriptionCheckoutUnavailable as exc:
-        raise TrialChangeRefused(str(exc)) from exc
+        raise TrialChangeRefused(TRIAL_BUSY) from exc
 
 
 async def _resume_locked(trial: TrialState) -> None:
     subscription = await _live_trial_subscription(trial)
     if (subscription.get("trial_end") or 0) <= datetime.now(UTC).timestamp():
-        raise TrialChangeRefused(TRIAL_ENDED)
+        raise await _synced_refusal(subscription, TRIAL_ENDED)
     if not subscription.get("cancel_at_period_end"):
-        raise TrialChangeRefused(NOTHING_TO_RESUME)
+        raise await _synced_refusal(subscription, NOTHING_TO_RESUME)
     # A plan checkout opened while cancel-pending must not complete beside the
     # resumed trial: that would leave two live subscriptions. The checkout lock
     # keeps a new one from opening between this expiry and the resume.
@@ -65,7 +79,10 @@ async def _resume_locked(trial: TrialState) -> None:
     # trial convert next to it and bill twice.
     if await other_plan_is_live(trial.customer_id, subscription.id):
         raise TrialChangeRefused(ANOTHER_PLAN_LIVE)
-    subscription = await _set_cancel_at_period_end(subscription, False)
+    change: stripe.Subscription.ModifyParams = {"cancel_at_period_end": False}
+    if access_promised(subscription.get("metadata")):
+        change["metadata"] = {KEEPS_ACCESS_METADATA: ""}
+    subscription = await _change_live_trial(subscription, change)
     await sync_subscription_from_stripe(dict(subscription))
 
 
@@ -82,22 +99,26 @@ async def _live_trial_subscription(trial: TrialState) -> stripe.Subscription:
         or metadata.get("user_id") != trial.user_id
     ):
         raise TrialChangeRefused(TRIAL_ENDED)
-    if subscription.get("status") == "canceled":
-        await sync_subscription_from_stripe(dict(subscription))
-        raise TrialChangeRefused(TRIAL_ENDED)
     if subscription.get("status") != "trialing":
-        raise TrialChangeRefused(TRIAL_ENDED)
+        raise await _synced_refusal(subscription, TRIAL_ENDED)
     return subscription
 
 
-async def _set_cancel_at_period_end(
-    subscription: stripe.Subscription, cancel_at_period_end: bool
+async def _synced_refusal(
+    subscription: stripe.Subscription, message: str
+) -> TrialChangeRefused:
+    """Stripe moved on before its webhook landed: save its state first, so the
+    status the person reloads shows why the change was refused."""
+    await sync_subscription_from_stripe(dict(subscription))
+    return TrialChangeRefused(message)
+
+
+async def _change_live_trial(
+    subscription: stripe.Subscription, change: stripe.Subscription.ModifyParams
 ) -> stripe.Subscription:
     try:
         return await stripe_call(
-            stripe.Subscription.modify_async,
-            subscription.id,
-            cancel_at_period_end=cancel_at_period_end,
+            stripe.Subscription.modify_async, subscription.id, **change
         )
     except stripe.InvalidRequestError as exc:
         # Stripe rejects the update once the trial has ended between our read
@@ -105,5 +126,4 @@ async def _set_cancel_at_period_end(
         latest = await stripe_call(stripe.Subscription.retrieve_async, subscription.id)
         if latest.get("status") != "canceled":
             raise
-        await sync_subscription_from_stripe(dict(latest))
-        raise TrialChangeRefused(TRIAL_ENDED) from exc
+        raise await _synced_refusal(latest, TRIAL_ENDED) from exc

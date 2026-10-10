@@ -125,15 +125,6 @@ async def test_cancel_schedules_the_end_instead_of_ending_the_trial(trial, api):
 
 
 @pytest.mark.asyncio
-async def test_a_second_cancel_writes_nothing_to_stripe(trial, api):
-    pending = _live(trial, cancel_at_period_end=True)
-    api.retrieve.return_value = pending
-    await cancel.schedule_trial_cancellation(trial)
-    _assert_no_writes(api)
-    api.sync.assert_awaited_once_with(dict(pending))
-
-
-@pytest.mark.asyncio
 async def test_resume_takes_back_the_scheduled_end(trial, api):
     resumed = _live(trial)
     api.retrieve.return_value = _live(trial, cancel_at_period_end=True)
@@ -199,12 +190,13 @@ async def test_resume_is_refused_while_another_plan_is_live(trial, api):
 
 @pytest.mark.asyncio
 async def test_resume_while_a_checkout_is_starting_is_refused_untouched(trial, api):
+    """Another tab resuming, or a plan change starting, holds the lock."""
     api.lock.side_effect = SubscriptionCheckoutUnavailable(
         "Another checkout is already starting. Please retry."
     )
     with pytest.raises(
         cancel.TrialChangeRefused,
-        match="^Another checkout is already starting. Please retry.$",
+        match="^Your trial is already being updated. Please retry.$",
     ):
         await cancel.resume_trial_subscription(trial)
     api.retrieve.assert_not_awaited()
@@ -213,22 +205,29 @@ async def test_resume_while_a_checkout_is_starting_is_refused_untouched(trial, a
 
 
 @pytest.mark.asyncio
-async def test_resume_without_a_scheduled_end_writes_nothing(trial, api):
-    api.retrieve.return_value = _live(trial)
+async def test_resume_without_a_scheduled_end_reconciles_then_writes_nothing(
+    trial, api
+):
+    """The saved trial can still say cancel-pending (a renewal in the billing
+    portal whose webhook has not landed): the sync lets the reload show it."""
+    live = _live(trial)
+    api.retrieve.return_value = live
     with pytest.raises(cancel.TrialChangeRefused, match="^Nothing to resume.$"):
         await cancel.resume_trial_subscription(trial)
     _assert_no_writes(api)
-    api.sync.assert_not_awaited()
+    api.sync.assert_awaited_once_with(dict(live))
 
 
 @pytest.mark.asyncio
-async def test_resume_after_trial_end_is_refused(trial, api):
+async def test_resume_after_trial_end_is_reconciled_then_refused(trial, api):
     past = int((datetime.now(UTC) - timedelta(minutes=1)).timestamp())
-    api.retrieve.return_value = _live(trial, cancel_at_period_end=True, trial_end=past)
+    live = _live(trial, cancel_at_period_end=True, trial_end=past)
+    api.retrieve.return_value = live
     with pytest.raises(cancel.TrialChangeRefused) as refused:
         await cancel.resume_trial_subscription(trial)
     assert str(refused.value) == ENDED
     _assert_no_writes(api)
+    api.sync.assert_awaited_once_with(dict(live))
 
 
 @pytest.mark.asyncio
@@ -257,10 +256,13 @@ OPERATIONS = [
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("operation,pending", OPERATIONS)
-async def test_a_trial_stripe_already_ended_is_reconciled_then_refused(
-    trial, api, operation, pending
+@pytest.mark.parametrize("status", ["canceled", "active", "past_due"])
+async def test_a_trial_stripe_no_longer_runs_is_reconciled_then_refused(
+    trial, api, operation, pending, status
 ):
-    ended = _live(trial, status="canceled", cancel_at_period_end=pending)
+    """Stripe ended or converted it before its webhook landed: the sync lets
+    the status the person reloads show what happened."""
+    ended = _live(trial, status=status, cancel_at_period_end=pending)
     api.retrieve.return_value = ended
     with pytest.raises(cancel.TrialChangeRefused) as refused:
         await operation(trial)
@@ -336,17 +338,8 @@ async def test_resume_stops_if_other_plans_cannot_be_listed(trial, api):
         {"metadata": {"trial_enrollment_id": "trial-x", "user_id": "user-1"}},
         {"metadata": {"trial_enrollment_id": "trial-1", "user_id": "user-x"}},
         {"metadata": None},
-        {"status": "active"},
-        {"status": "past_due"},
     ],
-    ids=[
-        "other-customer",
-        "other-enrollment",
-        "other-user",
-        "no-metadata",
-        "converted",
-        "past-due",
-    ],
+    ids=["other-customer", "other-enrollment", "other-user", "no-metadata"],
 )
 async def test_only_this_enrollments_live_trial_can_change(
     trial, api, operation, pending, change
