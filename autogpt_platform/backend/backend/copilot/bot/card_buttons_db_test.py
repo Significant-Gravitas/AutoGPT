@@ -28,6 +28,7 @@ from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.choices import CARD_KIND
 from backend.copilot.bot.handler import MessageHandler
 from backend.copilot.bot.text import format_batch
+from backend.copilot.context import set_execution_context
 from backend.copilot.gate import channel as gate_channel
 from backend.copilot.gate import chat_rules, check_action, held, resolve_mode
 from backend.copilot.gate.classifier import Judgement
@@ -43,6 +44,7 @@ from backend.copilot.model import (
 from backend.copilot.response_model import StreamCheckpoint, StreamTextDelta
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
+from backend.copilot.tree import root_envelope
 from backend.data.db_accessors import review_db
 from backend.data.redis_client import get_redis_async
 from backend.platform_linking import cards
@@ -409,12 +411,28 @@ async def _linked_session(user_id: str, platform: str) -> ChatSession:
     )
 
 
+async def _hold(user_id: str, session: ChatSession, text: str, call_id: str):
+    """Hold a call as the gate does: inside a turn, whose envelope its wake
+    starts under."""
+
+    async def in_a_turn():
+        set_execution_context(
+            user_id,
+            session,
+            envelope=root_envelope(f"turn-{call_id}", session_id=session.session_id),
+        )
+        return await check_action(_POST, {"text": text}, user_id, session, call_id)
+
+    decision = await asyncio.create_task(in_a_turn())
+    assert not decision.allowed and decision.review_id
+    return decision
+
+
 async def _held_card(
     channel: _Channel, user_id: str, text: str = "hello"
 ) -> tuple[ChatSession, str, ChannelCard]:
     session = await _linked_session(user_id, channel.platform)
-    decision = await check_action(_POST, {"text": text}, user_id, session, "call-1")
-    assert not decision.allowed and decision.review_id
+    decision = await _hold(user_id, session, text, "call-1")
     # Opened from a member's message: the card is still the owner's to answer.
     card = await cards.open_card(
         Platform(channel.platform.upper()),
@@ -885,8 +903,7 @@ async def _bot_following(
 async def _another_card(
     channel: _Channel, user_id: str, session: ChatSession
 ) -> ChannelCard:
-    decision = await check_action(_POST, {"text": "again"}, user_id, session, "call-2")
-    assert not decision.allowed and decision.review_id
+    decision = await _hold(user_id, session, "again", "call-2")
     card = await cards.open_card(
         Platform(channel.platform.upper()),
         channel.server_id,
