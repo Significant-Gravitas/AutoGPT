@@ -6,10 +6,11 @@ import {
   getTrialDaysLeft,
 } from "../helpers";
 
-const realTimeZone = process.env.TZ;
+// Deleting TZ leaves Node on the last zone set, so restore the zone by name.
+const realTimeZone =
+  process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 afterEach(() => {
-  if (realTimeZone === undefined) delete process.env.TZ;
-  else process.env.TZ = realTimeZone;
+  process.env.TZ = realTimeZone;
 });
 
 const HOUR = 60 * 60 * 1000;
