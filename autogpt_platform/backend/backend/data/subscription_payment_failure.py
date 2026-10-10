@@ -21,7 +21,7 @@ from prisma.models import User
 from pydantic import BaseModel
 
 from backend.data.credit import _invoice_subscription_id, sync_subscription_from_stripe
-from backend.data.stripe_client import stripe_call
+from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.stripe_invoice_payments import payment_in_progress, stripe_id
 from backend.data.subscription_wallet_payment import (
     pay_invoice_from_wallet,
@@ -39,6 +39,8 @@ logger = logging.getLogger(__name__)
 # paying. ``incomplete`` is left alone: its first payment may still be
 # authenticated, and Stripe expires it on its own.
 _UNPAID_STATUSES = ("past_due", "unpaid")
+# Subscription states that give the customer a plan.
+_LIVE_STATUSES = ("active", "trialing")
 
 
 class FailedInvoice(BaseModel):
@@ -74,7 +76,9 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
     - A payment still processing (e.g. a bank debit) is left to settle before
       anything else: the wallet is not touched and the tier sync cuts access.
     - A wallet payment already started for this invoice is finished first.
-    - Balance covers it → debit the wallet and mark the invoice paid.
+    - Balance covers it → debit the wallet and mark the invoice paid, unless
+      the customer has a newer plan: paying would reactivate the old one, and
+      its update event would then cancel the newer plan as a duplicate.
     - Otherwise → recompute the tier from that subscription, which is
       ``past_due`` or ``unpaid`` and so gives no access unless another plan
       is active. Nothing changes in Stripe: its retries and the payment link
@@ -87,9 +91,8 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
     if await _left_to_settle(failed, payment):
         return
     if payment is not None:
-        await settle_wallet_payment(
-            failed.user_id, failed.invoice_id, may_pay=failed.is_unpaid
-        )
+        may_pay = failed.is_unpaid and not await _replaced_by_another_plan(failed)
+        await settle_wallet_payment(failed.user_id, failed.invoice_id, may_pay=may_pay)
         return
     if not failed.is_unpaid:
         logger.info(
@@ -99,6 +102,14 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         )
         return
     if failed.invoice.get("amount_due", 0) <= 0:
+        return
+    if await _replaced_by_another_plan(failed):
+        logger.info(
+            f"Not paying invoice {failed.invoice_id} of user {failed.user_id}"
+            f" from the wallet: subscription {failed.sub_id} was replaced by"
+            " another plan"
+        )
+        await sync_subscription_from_stripe(failed.subscription)
         return
     if await pay_invoice_from_wallet(
         failed.user_id, failed.customer_id, failed.sub_id, failed.invoice
@@ -132,6 +143,21 @@ async def _left_to_settle(failed: FailedInvoice, payment: WalletPayment | None) 
     )
     await sync_subscription_from_stripe(failed.subscription)
     return True
+
+
+async def _replaced_by_another_plan(failed: FailedInvoice) -> bool:
+    """Whether the customer has another active or trialing subscription."""
+    for status in _LIVE_STATUSES:
+        subscriptions = await stripe_call(
+            stripe.Subscription.list_async,
+            customer=failed.customer_id,
+            status=status,
+            limit=10,
+        )
+        async for subscription in stripe_list_items(subscriptions):
+            if subscription["id"] != failed.sub_id:
+                return True
+    return False
 
 
 async def _load_failed_invoice(invoice: dict) -> FailedInvoice | None:
