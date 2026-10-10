@@ -17,11 +17,8 @@ in cluster mode, so everything here stays single-key: SET NX plus
 single-key Lua scripts, no multi-key scripts and no cross-key
 transactions.
 
-TTL is transport-aware per ``dream/p0-spec.md`` §13:
-  * Cloud (OpenRouter / Anthropic direct): 1800 s (30 min)
-  * Local (Ollama / vLLM / LM Studio): 7200 s (2 hr)
-The longer local TTL accommodates CPU-only inference timelines for
-the three-phase pipeline.
+The sync-path TTL is 1800 s (30 min), sized to the scheduler's job
+timeout; the batch path extends it (see ``BATCH_LOCK_TTL_SECONDS``).
 """
 
 from __future__ import annotations
@@ -37,9 +34,8 @@ logger = logging.getLogger(__name__)
 
 DREAM_LOCK_KEY_PREFIX = "dream:inflight:"
 
-# Default TTLs. Callers can override per-transport when local.
+# Sync-path lock TTL (30 min).
 DEFAULT_LOCK_TTL_SECONDS = 1800
-LOCAL_LOCK_TTL_SECONDS = 7200
 
 # Batch path: the dream pass is async and stays in flight up to the
 # BatchExecutor's MAX_BATCH_LIFETIME_SECONDS (24h). The lock must outlive the

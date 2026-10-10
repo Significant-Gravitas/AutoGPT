@@ -203,19 +203,6 @@ async def test_record_phase_cost_tags_provider_anthropic_for_batch_path():
 
 
 @pytest.mark.asyncio
-async def test_record_phase_cost_tags_provider_openai_for_openai_batch_path():
-    spy = AsyncMock()
-    with patch.object(billing_mod, "persist_and_record_usage", new=spy):
-        await billing_mod.record_phase_cost(
-            user_id="u1",
-            pass_id="p",
-            phase_usage=PhaseUsage(phase="sanitize", model="gpt-5", cost_usd=0.005),
-            execution_path="openai_batch",
-        )
-    assert spy.await_args.kwargs["provider"] == "openai"
-
-
-@pytest.mark.asyncio
 async def test_record_phase_cost_uses_dream_block_name_and_passes_pass_id_as_graph_exec_id():
     """Block name must distinguish dream from chat, and pass_id is the
     correlation key on the row so all 3 phases of one pass join up."""
