@@ -131,6 +131,14 @@ it("shows a plan bought during a cancel-pending trial the cleanup has not ended"
   expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
 });
 
+it("keeps a trial that will convert as the plan whatever tier is reported", async () => {
+  mockBilling(trialResponse({ cancel_at_period_end: false }), "MAX");
+  render(<SettingsBillingPage />);
+  await screen.findByRole("button", { name: "Cancel trial" });
+  expect(screen.getAllByText("Your plan")).toHaveLength(1);
+  expect(screen.queryByText("Active")).toBeNull();
+});
+
 it.each(["PRO", "MAX"])(
   "drops the ended trial once a %s plan has replaced it",
   async (tier) => {

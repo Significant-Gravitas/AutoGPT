@@ -19,7 +19,10 @@ export function useSubscriptionTab(isPlanCheckoutReturn: boolean) {
   // A plan bought during a cancel-pending trial is the plan even while the
   // trial row still reads active (its stale-subscription cleanup failed).
   const isSupersededTrial = Boolean(
-    trial?.active && !trial.converted && hasPaidPlan,
+    trial?.active &&
+      trial.cancel_at_period_end &&
+      !trial.converted &&
+      hasPaidPlan,
   );
   const cancelPendingOffer = getCancelPendingOffer(trial);
 
