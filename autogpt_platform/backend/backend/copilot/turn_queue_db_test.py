@@ -96,12 +96,31 @@ async def test_a_queued_wake_whose_envelope_no_longer_parses_is_not_started():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_queued_sub_work_is_not_promoted_into_the_users_last_slot():
-    """Four still run after the turn ends: the fifth slot stays the user's."""
+    """Four still run after the turn ends: an approval wake in a session
+    another one opened is that session's sub-work, so the fifth slot stays."""
+    held_under = _envelope(1)
+    await (await get_tree_ledger()).open(
+        held_under.tree_id, ceiling_microdollars=1_000_000, max_nodes=10
+    )
     promoted, _, _ = await _promote_after(
-        _envelope(1), message="sub-work", message_metadata=None, sub_work=True
+        _envelope(1),
+        message=held.WAKE_MESSAGE,
+        message_metadata={held._WAKE_KEY: True},
+        envelope=held_under,
+        sub_work=True,
     )
 
     assert promoted is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_message_typed_into_a_delegated_session_takes_the_users_slot():
+    """It is the user's own turn wherever they typed it."""
+    promoted, _, _ = await _promote_after(
+        _envelope(1), message="typed by the user", message_metadata=None, sub_work=True
+    )
+
+    assert promoted is not None
 
 
 async def _promote_after(

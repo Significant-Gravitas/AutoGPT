@@ -1477,8 +1477,13 @@ async def admit_chat_session_turn(
         )
         if running >= capacity:
             return "full"
-        await sessions.update(where={"id": session_id}, data={"chatStatus": "running"})
-    return "admitted"
+        # Conditional: a transition outside this lock (a cancel) may have
+        # moved the row since it was read.
+        updated = await sessions.update_many(
+            where={"id": session_id, "userId": user_id, "chatStatus": expect_status},
+            data={"chatStatus": "running"},
+        )
+    return "admitted" if updated else "busy"
 
 
 async def update_chat_session_status(

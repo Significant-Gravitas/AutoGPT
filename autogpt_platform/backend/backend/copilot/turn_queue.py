@@ -30,7 +30,7 @@ cancels manually.
 
 import logging
 import uuid
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 from prisma.errors import UniqueViolationError
 from pydantic import ValidationError
@@ -263,22 +263,18 @@ async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
     return True
 
 
-async def claim_queued_session(session: ChatSessionInfo) -> bool:
+async def claim_queued_session(
+    session: ChatSessionInfo, *, sub_work: bool
+) -> Literal["admitted", "full", "busy"]:
     """Claim a queued session, ``"queued"`` → ``"running"``, if the user has a
     slot for it: sub-work below the reserve, their own message below the cap.
-    False when it was cancelled, claimed elsewhere, or there is no slot."""
-    capacity = (
-        get_delegated_turn_limit()
-        if session.metadata.delegated_by_session_id is not None
-        else get_running_turn_limit()
-    )
-    admit = await chat_db().admit_chat_session_turn(
+    ``"busy"`` when it was cancelled or claimed elsewhere since it was read."""
+    return await chat_db().admit_chat_session_turn(
         session_id=session.session_id,
         user_id=session.user_id,
         expect_status=CHAT_STATUS_QUEUED,
-        capacity=capacity,
+        capacity=get_delegated_turn_limit() if sub_work else get_running_turn_limit(),
     )
-    return admit == "admitted"
 
 
 async def dispatch_next_for_user(user_id: str) -> bool:
@@ -327,19 +323,27 @@ async def _promote_head(user_id: str) -> bool | None:
                 break
     except RateLimitUnavailable:
         logger.warning(
-            "dispatch_next_for_user: rate-limit service degraded for user=%s; "
-            "leaving queue intact for the next tick",
-            user_id,
+            f"dispatch_next_for_user: rate-limit service degraded for user={user_id}; "
+            "leaving queue intact for the next tick"
         )
         return False
     if head is None:
         return False
 
-    # Claim by transitioning the session ``queued`` → ``running``.  A
-    # parallel cancel between validation and claim rejects this
-    # dispatch via the CAS returning False.
-    if not await claim_queued_session(head):
+    # A message the user typed is theirs whatever session it is in; what an
+    # approval wakes in a session another one opened is that session's sub-work.
+    waiting = await chat_db().get_latest_user_message_in_session(head.session_id)
+    sub_work = (
+        head.metadata.delegated_by_session_id is not None
+        and waiting is not None
+        and is_answer_row(waiting)
+    )
+    claim = await claim_queued_session(head, sub_work=sub_work)
+    if claim == "full":
         return False
+    if claim == "busy":
+        # Cancelled or claimed elsewhere since it was listed: try the next.
+        return None
 
     # Find the pending user message in this session (the most recent
     # user-role row with no following assistant rows — i.e. the one
@@ -472,10 +476,8 @@ async def _may_start(gates: "_UserGates", head: ChatSessionInfo) -> bool:
     model = (pending.metadata or {}).get("model") if pending else None
     if model == "advanced" and not await gates.advanced_tier():
         logger.info(
-            "dispatch_next_for_user: user=%s lacks the Advanced tier, "
-            "leaving session=%s queued",
-            gates.user_id,
-            head.session_id,
+            f"dispatch_next_for_user: user={gates.user_id} lacks the Advanced tier, "
+            f"leaving session={head.session_id} queued"
         )
         return False
     return True
@@ -496,8 +498,7 @@ class _UserGates:
             self._codex = await has_codex_access(self.user_id)
             if not self._codex:
                 logger.info(
-                    "dispatch_next_for_user: user=%s lacks Codex entitlement",
-                    self.user_id,
+                    f"dispatch_next_for_user: user={self.user_id} lacks Codex entitlement"
                 )
         return self._codex
 
@@ -515,8 +516,7 @@ class _UserGates:
             except EntitlementUnavailable:
                 logger.warning(
                     "dispatch_next_for_user: could not resolve the Advanced "
-                    "entitlement for user=%s",
-                    self.user_id,
+                    f"entitlement for user={self.user_id}",
                     exc_info=True,
                 )
                 self._advanced = False
@@ -524,7 +524,7 @@ class _UserGates:
 
     async def _platform_spend(self) -> bool:
         if await is_user_paywalled(self.user_id):
-            logger.info("dispatch_next_for_user: user=%s paywalled", self.user_id)
+            logger.info(f"dispatch_next_for_user: user={self.user_id} paywalled")
             return False
         cfg = ChatConfig()
         daily_limit, weekly_limit, _ = await get_global_rate_limits(
@@ -540,7 +540,7 @@ class _UserGates:
             )
         except RateLimitExceeded as exc:
             logger.info(
-                "dispatch_next_for_user: user=%s rate-limited (%s)", self.user_id, exc
+                f"dispatch_next_for_user: user={self.user_id} rate-limited ({exc})"
             )
             return False
         return True
