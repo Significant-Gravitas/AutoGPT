@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 
-from backend.api.middleware.guard import attach_guard
+from backend.api.middleware.fastapi_guard_wiring import attach_guard
 from backend.api.middleware.security import SecurityHeadersMiddleware
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError

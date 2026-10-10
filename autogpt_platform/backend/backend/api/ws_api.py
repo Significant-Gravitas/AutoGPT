@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.api.conn_manager import ConnectionManager
-from backend.api.middleware.guard import attach_guard
+from backend.api.middleware.fastapi_guard_wiring import attach_guard
 from backend.api.model import (
     WSMessage,
     WSMethod,

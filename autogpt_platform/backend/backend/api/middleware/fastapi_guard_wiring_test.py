@@ -6,7 +6,7 @@ import itertools
 import pytest
 from fastapi import FastAPI
 
-from backend.api.middleware.guard import attach_guard
+from backend.api.middleware.fastapi_guard_wiring import attach_guard
 
 pytest.importorskip("guard")
 
