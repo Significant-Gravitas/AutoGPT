@@ -1085,7 +1085,16 @@ export default class BackendAPI {
 
         this.webSocket.onclose = (event) => {
           const phase = this.webSocket?.state;
-          if (phase == "connecting" || phase == "connected") {
+          const wasIntentional =
+            this.isIntentionallyDisconnected || this._hasDisconnectIntent();
+
+          // A logout (in this tab or another) closes the socket on purpose;
+          // closing one that is still connecting surfaces as a 1006, which
+          // is not a failure worth an error log or a Sentry event.
+          if (
+            !wasIntentional &&
+            (phase == "connecting" || phase == "connected")
+          ) {
             const { summary, extra } = describeCloseEvent(
               event,
               this.wsUrl,
@@ -1109,9 +1118,6 @@ export default class BackendAPI {
 
           this._stopWSHeartbeat(); // Stop heartbeat when connection closes
           this.wsConnecting = null;
-
-          const wasIntentional =
-            this.isIntentionallyDisconnected || this._hasDisconnectIntent();
 
           if (!wasIntentional) {
             this.wsOnDisconnectHandlers.forEach((handler) => handler());
