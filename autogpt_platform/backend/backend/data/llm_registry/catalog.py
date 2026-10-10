@@ -112,6 +112,34 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="claude-haiku-5-5",
+                display_name="Claude Haiku 5.5",
+                provider="anthropic",
+                creator="anthropic",
+                # Same compaction-cap convention as the rest of the Claude
+                # 5 family: native window is 1M, capped at 200K here.
+                context_window=200000,
+                max_output_tokens=128000,
+                price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # OpenRouter live listing 2026-10-08 (anthropic/claude-haiku-5.5):
+                # $0.10/1M in, $0.50/1M out, cache read $0.01/1M, cache write
+                # (5m) $0.125/1M. Above 100K prompt tokens OpenRouter lists
+                # $0.50/$2.50; credits here use the base tier (standard 1.5x
+                # margin, i.e. USD x 150).
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=15.0,
+                    output_credits_per_1m=75.0,
+                    cache_read_credits_per_1m=1.5,
+                    cache_creation_credits_per_1m=18.75,
+                    provider_input_usd_per_1m=0.10,
+                    provider_output_usd_per_1m=0.50,
+                ),
+            ),
+            CatalogModel(
                 slug="claude-opus-4-5-20251101",
                 display_name="Claude Opus 4.5",
                 provider="anthropic",
