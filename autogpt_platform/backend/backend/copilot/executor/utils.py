@@ -560,6 +560,7 @@ async def dispatch_turn(
     unattended: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
+    root: bool = False,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
@@ -580,13 +581,16 @@ async def dispatch_turn(
     Failure semantics: if ``create_session`` or the queue publish raises,
     ``slot.keep()`` is never reached, so the context manager that owns
     ``slot`` releases it on exit — no leak.
+
+    ``root`` mints a root whatever turn's context the caller runs in: the
+    queue's slot-free hook runs inside the turn that just ended.
     """
     # Local import: stream_registry imports executor.utils (the
     # COPILOT_CONSUMER_TIMEOUT_SECONDS constant) → top-level circular.
     from backend.copilot import stream_registry
 
     envelope = await _admitted_turn_envelope(
-        turn_id, session_id, user_id, permissions, spawn
+        turn_id, session_id, user_id, permissions, spawn, root=root
     )
 
     # Everything after the admit above runs inside the try: the tree's node
@@ -657,6 +661,8 @@ async def _admitted_turn_envelope(
     user_id: str | None,
     permissions: CopilotPermissions | None,
     spawn: SpawnRequest | None,
+    *,
+    root: bool = False,
 ) -> TurnEnvelope:
     """Derive this turn's envelope from the running turn's (a child) or mint
     a root, then admit it against the tree ledger.
@@ -665,7 +671,7 @@ async def _admitted_turn_envelope(
     outside any turn — the HTTP route, the scheduler, a graph block — is a
     root by construction rather than by declaration.
     """
-    spawner = get_current_envelope()
+    spawner = None if root else get_current_envelope()
     if spawn is not None and spawner is None:
         # A caller that passed a SpawnRequest is by construction a spawn tool
         # running inside a turn, so a missing spawner envelope means the
