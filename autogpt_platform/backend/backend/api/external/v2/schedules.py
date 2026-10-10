@@ -20,6 +20,7 @@ from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotFoundError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
+from .library.helpers import assert_inputs_match
 from .models import AgentRunSchedule, AgentRunScheduleCreateRequest
 from .pagination import Page, PageRequest, page_request
 from .tenancy import TenantContext, require_permission
@@ -108,6 +109,7 @@ async def create_schedule(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Graph #{graph_id} v{request.graph_version} not found.",
         )
+    assert_inputs_match(graph.input_schema, request.inputs)
 
     # Determine timezone
     if request.timezone:

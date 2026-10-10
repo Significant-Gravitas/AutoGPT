@@ -49,9 +49,9 @@ Rules the integration must follow:
 - Run agents with POST /library/agents/{agent_id}/runs, using the library agent ID, not
   the graph ID. Send an Idempotency-Key header on every run you start. Let callers pass
   their own key (such as a job ID) and generate one only when they don't.
-- The API doesn't validate inputs: unknown names are ignored, and a run missing a
-  required input still starts. Check inputs against the agent's input_schema
-  (properties and required) before starting a run.
+- Build inputs from the agent's input_schema (properties and required). A run or
+  schedule with an unknown input name, or a required input left out or null, is a 422
+  whose error.details.errors names each one.
 - A run is asynchronous. Poll GET /runs/{run_id} with backoff until status is COMPLETED,
   FAILED or TERMINATED, under one overall deadline that also bounds each request and each
   sleep. Treat REVIEW as waiting on a person, never as finished: by default, stop
@@ -144,8 +144,8 @@ Coding agents read standing instructions from `AGENTS.md` (Codex, Cursor, Copilo
 - Run agents by library agent ID: POST /library/agents/{agent_id}/runs, always with an
   Idempotency-Key header. Get a graph's library agent with GET /graphs/{graph_id}/library-agent.
   GET /library/agents leaves input_schema empty: read it from GET /library/agents/{agent_id}.
-- The API ignores unknown input names and doesn't reject a run that lacks a required input.
-  Check inputs against input_schema (properties and required) before starting a run.
+- Build inputs from input_schema (properties and required). An unknown input name, or a
+  required input left out or null, is a 422 naming each in error.details.errors.
 - Runs are asynchronous: poll GET /runs/{run_id} with backoff and a deadline until COMPLETED,
   FAILED or TERMINATED. REVIEW waits for a person. COMPLETED can still lack outputs: check
   them, and read `error` outputs from node_executions with status FAILED.
@@ -182,7 +182,7 @@ description: Integrate with the AutoGPT Platform API v2 - run AutoGPT agents, re
 
 ## Running an agent
 1. Find it: GET /library/agents (items[].id is the library agent ID). From a graph ID: GET /graphs/{graph_id}/library-agent.
-2. Inputs: keys of input_schema.properties from GET /library/agents/{agent_id} (the list leaves input_schema empty). The API ignores unknown names and doesn't reject missing required ones, so check against input_schema.required yourself. File inputs (format "file") take a file_uri from POST /files/upload.
+2. Inputs: keys of input_schema.properties from GET /library/agents/{agent_id} (the list leaves input_schema empty). An unknown name, or a required input left out or null, is a 422 whose error.details.errors names each. File inputs (format "file") take a file_uri from POST /files/upload.
 3. Credentials: GET /library/agents/{agent_id}/credentials. Pass credentials_inputs {field_name: {id, provider, type}} from matching_credentials.
 4. Start: POST /library/agents/{agent_id}/runs with {"inputs": {...}, "credentials_inputs": {...}} and an Idempotency-Key header. Answers 202 with the run.
 5. Wait: GET /runs/{run_id} with backoff and one overall deadline until COMPLETED, FAILED or TERMINATED. REVIEW means a person must answer (GET /runs/reviews, POST /runs/{run_id}/reviews): by default stop polling and report the run ID; stop the run with POST /runs/{run_id}/stop if nobody will answer.
@@ -212,7 +212,7 @@ Graph = nodes (block_id + input_default) + links (source_id/source_name -> sink_
 | Trusting `COMPLETED` | Check the outputs exist, and read `error` outputs from failed nodes. |
 | Retrying `POST .../runs` without an idempotency key | Send `Idempotency-Key`, or a retry starts and bills a second run. |
 | Retrying other writes after a `5xx` | The write may have happened. Retry only on `429`, and check before repeating. |
-| Sending an input name the agent doesn't have | It's silently ignored. Check names against `input_schema` first. |
-| Leaving out a required input | The run still starts and finishes with no outputs. Check `input_schema.required` first. |
+| Sending an input name the agent doesn't have | A `422`. Take names from `input_schema.properties`. |
+| Leaving out a required input, or sending it as `null` | A `422`. Send every name in `input_schema.required`. |
 | Treating an MCP tool result as a success because `is_error` isn't set | Some failures arrive as an ordinary result whose JSON is `{"type": "error", "message": ...}`. Check `is_error` and `type`. |
 | Getting `429` with `5 requests per 60s` | Requests aren't carrying a valid key, so they count as anonymous. Fix the header. |

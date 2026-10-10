@@ -1,13 +1,14 @@
-"""Bad marketplace searches are the caller's error, not a 500."""
+"""The v2 marketplace routes: searches, library adds and media uploads."""
 
 import io
+from typing import Optional
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException, Response, UploadFile
 from prisma.enums import APIKeyPermission
 
 from backend.api.features.library.exceptions import (
@@ -16,9 +17,9 @@ from backend.api.features.library.exceptions import (
 
 from .errors import add_v2_exception_handlers
 from .marketplace import (
-    _read_media_within_limit,
     add_agent_to_library,
     marketplace_router,
+    upload_submission_media,
 )
 from .tenancy import TenantContext, require_auth
 
@@ -28,6 +29,8 @@ _AUTH = TenantContext(
     type="api_key",
     organization_id="org-1",
 )
+_LIMIT = 10 * 1024 * 1024
+_ELEVEN_MB = 11 * 1024 * 1024
 
 
 @pytest.fixture
@@ -105,28 +108,49 @@ def test_a_listing_already_in_another_organizations_library_is_a_conflict(
     assert response.status_code == 409
 
 
-async def test_an_oversized_media_upload_is_refused_without_reading_it_all(
-    mocker: pytest_mock.MockFixture,
+@pytest.mark.parametrize(
+    "declared_size", [_ELEVEN_MB, None], ids=["size-known", "size-unknown"]
+)
+async def test_oversized_media_is_refused_without_being_read_whole(
+    mocker: pytest_mock.MockFixture, declared_size: Optional[int]
 ) -> None:
-    """The whole body was read into memory before the 10 MB check."""
-    upload = UploadFile(file=io.BytesIO(b"x" * (10 * 1024 * 1024 + 1)), size=None)
-    read = mocker.patch.object(upload, "read", wraps=upload.read)
+    """The whole body in memory is what the cap exists to prevent."""
+    mocker.patch(
+        "backend.api.external.v2.marketplace.media_upload_limiter.check",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    scan = mocker.patch(
+        "backend.api.external.v2.marketplace.scan_content_safe",
+        new_callable=AsyncMock,
+    )
+    store = mocker.patch(
+        "backend.api.features.store.media.upload_media", new_callable=AsyncMock
+    )
+    body = _CountingBody(b"\0" * _ELEVEN_MB)
 
-    with pytest.raises(HTTPException) as raised:
-        await _read_media_within_limit(upload)
+    with pytest.raises(HTTPException) as refused:
+        await upload_submission_media(
+            response=Response(),
+            file=UploadFile(file=body, size=declared_size, filename="big.png"),
+            auth=TenantContext(
+                user_id="user-1",
+                scopes=[APIKeyPermission.WRITE_STORE],
+                type="api_key",
+                organization_id="org-1",
+            ),
+        )
 
-    assert raised.value.status_code == 413
-    assert all(call.args == (64 * 1024,) for call in read.await_args_list)
+    assert refused.value.status_code == 413
+    assert body.bytes_read <= (0 if declared_size else _LIMIT + 64 * 1024)
+    scan.assert_not_awaited()
+    store.assert_not_awaited()
 
 
-async def test_a_declared_oversized_media_upload_is_refused_before_reading(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    upload = UploadFile(file=io.BytesIO(b""), size=11 * 1024 * 1024)
-    read = mocker.patch.object(upload, "read", new_callable=AsyncMock)
+class _CountingBody(io.BytesIO):
+    bytes_read = 0
 
-    with pytest.raises(HTTPException) as raised:
-        await _read_media_within_limit(upload)
-
-    assert raised.value.status_code == 413
-    read.assert_not_awaited()
+    def read(self, size: Optional[int] = -1) -> bytes:
+        chunk = super().read(size)
+        self.bytes_read += len(chunk)
+        return chunk

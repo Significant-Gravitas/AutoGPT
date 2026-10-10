@@ -25,7 +25,8 @@ from fastapi.dependencies.utils import get_flat_params
 from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials
 from prisma.enums import APIKeyPermission, ReviewStatus
-from starlette.routing import Match
+from starlette.requests import Request
+from starlette.routing import Match, Route
 
 from backend.api.external.middleware import resolve_auth_info
 from backend.api.external.v2.errors import add_v2_exception_handlers
@@ -72,6 +73,29 @@ def test_openapi_schema_builds():
 
     assert schema["paths"], "v2 OpenAPI schema has no paths"
     assert "/search" in schema["paths"]
+
+
+async def test_the_served_spec_lists_only_the_declared_servers(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """FastAPI otherwise serves the mount path as the first server, a relative URL
+    that is wrong behind a proxy prefix such as the single container's `/_agpt`."""
+    from backend.api.external.v2.app import v2_app
+
+    declared = [server["url"] for server in v2_app.servers]
+    monkeypatch.setattr(v2_app, "openapi_schema", None)
+    monkeypatch.setattr(v2_app, "servers", list(v2_app.servers))
+    (served,) = [
+        route
+        for route in v2_app.routes
+        if isinstance(route, Route) and route.path == v2_app.openapi_url
+    ]
+
+    response = await served.endpoint(
+        Request({"type": "http", "root_path": "/_agpt/external-api/v2"})
+    )
+
+    assert [s["url"] for s in json.loads(response.body)["servers"]] == declared
 
 
 def test_static_routes_are_not_shadowed_by_path_params():
@@ -579,6 +603,19 @@ def test_every_operation_documents_the_error_envelope():
     )
 
 
+@pytest.mark.parametrize("code", ["402", "409", "503"])
+def test_run_start_documents_its_payment_and_idempotency_refusals(code: str):
+    """402: no balance or no plan. 409: the `Idempotency-Key`'s run is not recorded
+    yet. 503: the key cannot be checked, so the run is not started."""
+    from backend.api.external.v2.app import v2_app
+    from backend.api.external.v2.errors import ErrorResponse
+
+    run_start = v2_app.openapi()["paths"]["/library/agents/{agent_id}/runs"]["post"]
+
+    schema = run_start["responses"][code]["content"]["application/json"]["schema"]
+    assert schema["$ref"] == f"#/components/schemas/{ErrorResponse.__name__}"
+
+
 @pytest.mark.parametrize(
     "exception,expected_status,expected_code",
     [
@@ -821,12 +858,14 @@ def _mock_review_db(
     from backend.data import execution as execution_db
     from backend.data.execution import ExecutionStatus
 
-    # The run carries the tenancy the reviews are checked against.
+    # The caller's own run, carrying the tenancy the reviews are checked against.
     mocker.patch.object(
         execution_db,
         "get_graph_execution",
         new=mock.AsyncMock(
-            return_value=mock.Mock(organization_id=_tenant.organization_id)
+            return_value=mock.Mock(
+                organization_id=_tenant.organization_id, user_id=_tenant.user_id
+            )
         ),
     )
     mocker.patch.object(

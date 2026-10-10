@@ -31,7 +31,7 @@ from .models import (
     RunStatus,
 )
 from .pagination import Page, PageRequest, page_request
-from .tenancy import TenantContext, in_tenant, require_permission
+from .tenancy import TenantContext, in_tenant, owned_by_caller, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ async def submit_reviews(
     Approving a review continues execution; rejecting terminates that branch.
     """
     # Reviews carry no organization of their own; the run they belong to does.
-    await _own_run(run_id, auth)
+    await _assert_own_run_in_tenant(run_id, auth)
 
     outcome = await process_reviews(
         auth.user_id,
@@ -221,7 +221,8 @@ async def stop_run(
     Waits up to 15 seconds for the run to stop, then returns it with its status
     at that moment. A run that has already finished answers `409`.
     """
-    run = await _own_run(run_id, auth)
+    # The cancel is published before stop_graph_execution checks the owner.
+    run = await _assert_own_run_in_tenant(run_id, auth)
     if run.status in _FINISHED:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -239,7 +240,7 @@ async def stop_run(
         # down, which the returned status shows.
         logger.warning(f"Run #{run_id} did not stop within {_STOP_WAIT_SECONDS}s")
 
-    return AgentGraphRun.from_internal(await _own_run(run_id, auth))
+    return AgentGraphRun.from_internal(await _assert_own_run_in_tenant(run_id, auth))
 
 
 @runs_router.delete(
@@ -253,7 +254,7 @@ async def delete_run(
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_RUN)),
 ) -> None:
     """Delete an agent run. A shared run stops being downloadable too."""
-    await _own_run(run_id, auth)
+    await _assert_own_run_in_tenant(run_id, auth)
 
     await sharing.delete_execution(auth.user_id, run_id)
 
@@ -280,7 +281,7 @@ async def enable_sharing(
     Sharing again issues a new token, and links from the earlier share stop
     working.
     """
-    await _own_run(run_id, auth)
+    await _assert_own_run_in_tenant(run_id, auth)
 
     share_token = await sharing.share_execution(auth.user_id, run_id)
 
@@ -302,7 +303,7 @@ async def disable_sharing(
     ),
 ) -> None:
     """Disable public sharing for a run, and the file downloads it allowed."""
-    await _own_run(run_id, auth)
+    await _assert_own_run_in_tenant(run_id, auth)
 
     await sharing.unshare_execution(auth.user_id, run_id)
 
@@ -313,15 +314,20 @@ _FINISHED = frozenset(
 _STOP_WAIT_SECONDS = 15.0
 
 
-async def _own_run(run_id: str, auth: TenantContext) -> GraphExecution:
-    """The caller's own run in this tenant, or 404, before acting on it.
+async def _assert_own_run_in_tenant(run_id: str, auth: TenantContext) -> GraphExecution:
+    """Also 403 for an org-mate's run, which the owner-scoped writes cannot reach."""
+    return owned_by_caller(
+        await _assert_run_in_tenant(run_id, auth), auth, f"Run #{run_id}"
+    )
 
-    Reads may show a teammate's run in the same organization; stopping,
-    deleting, sharing or reviewing it is that teammate's to do.
-    """
+
+async def _assert_run_in_tenant(run_id: str, auth: TenantContext) -> GraphExecution:
+    """404 before acting on a run the credentials cannot reach."""
     return in_tenant(
         await execution_db.get_graph_execution(
-            user_id=auth.user_id, execution_id=run_id
+            user_id=auth.user_id,
+            execution_id=run_id,
+            organization_id=auth.organization_id,
         ),
         auth,
         f"Run #{run_id}",

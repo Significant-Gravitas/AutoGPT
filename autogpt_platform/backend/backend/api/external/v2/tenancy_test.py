@@ -138,7 +138,9 @@ async def test_run_creation_carries_org_and_team(
     mocker.patch(
         "backend.api.features.library.db.get_library_agent",
         new_callable=AsyncMock,
-        return_value=Mock(organization_id=ORG_A, graph_id="graph-1", graph_version=1),
+        return_value=Mock(
+            organization_id=ORG_A, graph_id="graph-1", graph_version=1, input_schema={}
+        ),
     )
     add_execution = mocker.patch(
         "backend.executor.utils.add_graph_execution",

@@ -12,6 +12,7 @@ from backend.api.features.library.model import LibraryAgentSort
 from backend.data import graph as graph_db
 from backend.executor import utils as execution_utils
 
+from ..errors import ErrorResponse
 from ..idempotency import (
     idempotency_key,
     idempotent_run,
@@ -29,7 +30,7 @@ from ..models import (
 from ..pagination import Page, PageRequest, page_request
 from ..rate_limit import enforce, graph_exec_limiter
 from ..tenancy import TenantContext, in_tenant, require_permission
-from .helpers import assert_can_pay
+from .helpers import assert_can_pay, assert_inputs_match
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +180,20 @@ async def fork_library_agent(
     summary="Execute library agent",
     operation_id="executeLibraryAgent",
     status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        status.HTTP_402_PAYMENT_REQUIRED: {
+            "model": ErrorResponse,
+            "description": "No active plan, or a credit balance of zero",
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": ErrorResponse,
+            "description": "The `Idempotency-Key`'s run has not been recorded yet",
+        },
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "model": ErrorResponse,
+            "description": "The `Idempotency-Key` cannot be checked right now",
+        },
+    },
 )
 async def execute_agent(
     response: Response,
@@ -211,6 +226,7 @@ async def execute_agent(
             auth,
             f"Agent #{agent_id}",
         )
+        assert_inputs_match(library_agent.input_schema, request.inputs)
 
         result = await execution_utils.add_graph_execution(
             graph_id=library_agent.graph_id,

@@ -13,9 +13,10 @@ from prisma.enums import APIKeyPermission
 
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus, GraphExecution
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import NotAuthorizedError
 
-from .runs import delete_run, disable_sharing, enable_sharing, stop_run
+from .models import AgentRunReviewDecision, AgentRunReviewsSubmitRequest
+from .runs import delete_run, disable_sharing, enable_sharing, stop_run, submit_reviews
 from .tenancy import TenantContext
 
 USER_ID = "user-1"
@@ -103,26 +104,38 @@ async def test_deleting_a_run_revokes_its_file_downloads(run_db) -> None:
         lambda: disable_sharing(run_id="run-1", auth=_auth()),
         lambda: delete_run(run_id="run-1", auth=_auth()),
         lambda: stop_run(run_id="run-1", auth=_auth()),
+        lambda: submit_reviews(
+            AgentRunReviewsSubmitRequest(
+                reviews=[AgentRunReviewDecision(node_exec_id="node-1", approved=True)]
+            ),
+            run_id="run-1",
+            auth=_auth(),
+        ),
     ],
-    ids=["share", "unshare", "delete", "stop"],
+    ids=["share", "unshare", "delete", "stop", "review"],
 )
-async def test_writes_look_runs_up_by_owner_only(
+async def test_writes_refuse_a_teammates_run(
     run_db, mocker: pytest_mock.MockFixture, write
 ) -> None:
-    """A teammate's run in the same organization is visible to reads, but its
-    owner-only lookup finds nothing: no write happens and the caller gets 404."""
-    run_db.get_graph_execution.return_value = None
+    """A teammate's run in the same organization is visible to reads, but the
+    writes beneath these routes are its owner's: none happens, and the caller
+    gets 403."""
+    run_db.get_graph_execution.return_value = _run().model_copy(
+        update={"user_id": "teammate"}
+    )
     stop = mocker.patch(
         "backend.executor.utils.stop_graph_execution", new_callable=AsyncMock
     )
+    reviews = mocker.patch(
+        "backend.api.external.v2.runs.process_reviews", new_callable=AsyncMock
+    )
 
-    with pytest.raises(NotFoundError):
+    with pytest.raises(NotAuthorizedError):
         await write()
 
     assert run_db.calls == []
     stop.assert_not_awaited()
-    for call in run_db.get_graph_execution.await_args_list:
-        assert "organization_id" not in call.kwargs
+    reviews.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
