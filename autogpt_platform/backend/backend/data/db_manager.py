@@ -626,6 +626,7 @@ class DatabaseManager(AppService):
     # Hire / raise from the copilot chat tools, plus the counts their
     # preview step uses to refuse a change that could never land.
     list_templates = _(experts_db.list_templates)
+    get_template = _(experts_db.get_template)
     with_bundled_skills = _(experts_db.with_bundled_skills)
     hire_expert = _(experts_db.hire_expert)
     expert_setup_status = _(experts_db.expert_setup_status)
@@ -1065,6 +1066,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     revoke_expert_credential = d.revoke_expert_credential
     list_expert_credentials = d.list_expert_credentials
     list_templates = d.list_templates
+    get_template = d.get_template
     with_bundled_skills = d.with_bundled_skills
     hire_expert = d.hire_expert
     expert_setup_status = d.expert_setup_status

@@ -337,6 +337,15 @@ async def list_templates(
     return [_to_model(row) for row in rows]
 
 
+async def get_template(template_id: str) -> Expert | None:
+    """One live roster template, read by id rather than found in the roster."""
+    row = await prisma.models.Expert.prisma().find_first(
+        where={"id": template_id, "isTemplate": True, "isArchived": False},
+        include=_TEMPLATE_WORKFLOW_INCLUDE,
+    )
+    return _to_model(row) if row else None
+
+
 def _template_where(
     search_query: str | None, category: str | None
 ) -> prisma.types.ExpertWhereInput:

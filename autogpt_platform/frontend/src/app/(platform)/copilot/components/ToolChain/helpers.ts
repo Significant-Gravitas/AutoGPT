@@ -165,14 +165,21 @@ function getProviderIconSrc(tool: ToolUIPart): string | undefined {
 // it into a chain would bury both behind a collapsed "summarized context".
 export const COMPACTION_PART_TYPE = "tool-context_compaction";
 
-// Hiring, raising or updating an expert is the user's call, not a step the
-// model worked through — the card renders as its own message part so the
-// approval never sits inside a chain that collapses on top of it.
+export const SOUL_CHANGE_TOOLS = new Set([
+  "update_expert_soul",
+  "confirm_expert_soul_update",
+]);
+
+// Hiring, raising or updating an expert, or editing its Soul, is the user's
+// call, not a step the model worked through — the card renders as its own
+// message part so the approval never sits inside a chain that collapses on
+// top of it.
 export const EXPERT_CHANGE_TOOLS = new Set([
   "hire_expert",
   "raise_expert",
   "update_expert",
   "confirm_expert_change",
+  ...SOUL_CHANGE_TOOLS,
 ]);
 
 export function isExpertChangePart(part: MessagePart): boolean {

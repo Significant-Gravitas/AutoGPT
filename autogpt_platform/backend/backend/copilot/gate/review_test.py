@@ -102,9 +102,7 @@ def test_the_headline_names_the_action_and_its_object():
         "object": "Q3 reports",
         "object_key": "name",
     }
-    assert headline_for("raise_expert", {"name": "Ada"}).text == (
-        "Create teammate “Ada”"
-    )
+    assert headline_for("delete_skill", {"name": "Ada"}).text == ("Delete skill “Ada”")
     assert headline_for("delete_folder", {"folder_id": "f1"}).text == (
         "Delete library folder"
     )
