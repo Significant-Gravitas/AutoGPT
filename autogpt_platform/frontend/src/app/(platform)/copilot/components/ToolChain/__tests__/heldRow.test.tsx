@@ -442,3 +442,37 @@ test("a settled block run's row shows the card's redacted copy, never the raw ca
   expect(isShown(screen.getByText("hidden"))).toBe(true);
   expect(screen.queryByText(/sk-live-4242/)).toBeNull();
 });
+
+test("a settled call's row words its arguments as its card does", () => {
+  // Built by the backend's review_payload; its time limit is a "seconds" field.
+  const { review } = realCards().find(
+    (card) => card.story === "Sandbox Command",
+  )!;
+  const payload = review.payload as Record<string, unknown>;
+  const part = {
+    type: "tool-bash_exec",
+    state: "output-available",
+    toolCallId: "call-13",
+    input: payload.arguments,
+    output: {
+      type: "approval_required",
+      tool_name: "bash_exec",
+      reason: "Ask First is on.",
+      review_id: review.node_exec_id,
+      ask: "Run a command in the sandbox",
+    },
+  } as MessagePart;
+  heldRowView(
+    part,
+    resultRow(
+      "call-13",
+      review.node_exec_id,
+      "rejected",
+      payload,
+      "Nothing ran",
+    ),
+  );
+  openRow(/Didn't run a command in the sandbox/);
+  expect(isShown(screen.getByText("Time limit"))).toBe(true);
+  expect(isShown(screen.getByText("1 minute"))).toBe(true);
+});
