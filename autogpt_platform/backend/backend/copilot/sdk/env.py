@@ -173,6 +173,9 @@ def build_sdk_env(
     # CLI has been closed, killing the sub-agent and losing its work.  This
     # also stops the CLI from moving long tool calls to the background.
     env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
+    # Keep TodoWrite, the checklist the UI renders; the CLI otherwise swaps in
+    # its TaskCreate/TaskUpdate tools.
+    env["CLAUDE_CODE_ENABLE_TASKS"] = "0"
     # Strip Anthropic-specific beta headers that OpenRouter rejects.
     # NOTE: this disables ALL experimental betas including
     # context-management-2025-06-27.  This is intentional: OpenRouter
