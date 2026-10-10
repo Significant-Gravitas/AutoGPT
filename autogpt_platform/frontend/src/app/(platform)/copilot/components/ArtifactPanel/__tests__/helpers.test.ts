@@ -524,8 +524,44 @@ describe("classifyArtifact", () => {
     }
   });
 
+  // ── Office documents ────────────────────────────────────────────
+  // Office files are zip archives. Fetching one as text dumps the raw bytes
+  // into a <pre> (SECRT-2437), so the extension wins over any text-like MIME.
+
+  it.each([
+    "deck.pptx",
+    "deck.ppt",
+    "report.docx",
+    "report.doc",
+    "sheet.xlsx",
+    "sheet.xls",
+    "talk.key",
+    "slides.odp",
+    "notes.odt",
+    "table.ods",
+  ])("keeps %s download-only even with a text MIME", (name) => {
+    for (const mime of [null, "text/plain", "application/octet-stream"]) {
+      const c = classifyArtifact(mime, name);
+      expect(c.type).toBe("download-only");
+      expect(c.openable).toBe(false);
+    }
+  });
+
+  it.each([
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/msword",
+    "application/vnd.ms-excel",
+  ])("treats office MIME %s as download-only without an extension", (mime) => {
+    const c = classifyArtifact(mime, "noext");
+    expect(c.type).toBe("download-only");
+    expect(c.openable).toBe(false);
+  });
+
   it("does not open certificate/key files", () => {
-    // .pem and .key have no extension mapping and null MIME → download-only
+    // .pem has no extension mapping; .key maps to download-only (Keynote)
     for (const file of ["cert.pem", "server.key", "ca.crt", "id.p12"]) {
       expect(classifyArtifact(null, file).openable).toBe(false);
     }
