@@ -366,7 +366,11 @@ async def _promote_head(user_id: str) -> bool | None:
 
     metadata = pending.metadata or {}
     queued_envelope = _stored_envelope(metadata)
-    if is_answer_row(pending) and queued_envelope is None:
+    if (
+        is_answer_row(pending)
+        and queued_envelope is None
+        and not is_users_own_chat(head)
+    ):
         # Deriving one from the turn that just ended would run the approved
         # action under that turn's limits; the answer reaches the next turn.
         await _refuse_queued_turn(head, UNRECORDED_WAKE)
@@ -544,6 +548,16 @@ class _UserGates:
             )
             return False
         return True
+
+
+def is_users_own_chat(session: ChatSessionInfo) -> bool:
+    """A chat the user opened themselves, not one another session or a graph
+    started. Its turns are roots, so a wake there whose envelope was lost can
+    start as one; elsewhere nothing on the row bounds what the call held."""
+    return (
+        session.metadata.origin == "interactive"
+        and session.metadata.delegated_by_session_id is None
+    )
 
 
 async def _refuse_queued_turn(head: ChatSessionInfo, reason: str) -> None:

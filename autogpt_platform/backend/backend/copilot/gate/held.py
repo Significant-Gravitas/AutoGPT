@@ -217,6 +217,7 @@ async def wake(
         UNRECORDED_WAKE,
         WAKE_LATER,
         InflightCapExceeded,
+        is_users_own_chat,
         post_refusal,
         try_enqueue_turn,
     )
@@ -239,7 +240,7 @@ async def wake(
             return
         refusal_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{wake_id}:refused"))
         envelope = max(calls, key=lambda c: c.held_at).envelope
-        if envelope is None:
+        if envelope is None and not is_users_own_chat(info):
             # Deriving one from the turn that just ended would run the approved
             # action under that turn's limits, not the ones it was held under.
             await post_refusal(session_id, UNRECORDED_WAKE, message_id=refusal_id)
@@ -278,6 +279,8 @@ async def wake(
                     permissions=permissions,
                     message_metadata=metadata,
                     envelope=envelope,
+                    # Lost in the user's own chat: a root, as their message would be.
+                    root=envelope is None,
                 )
                 # A channel that answered one of these follows this turn.
                 await woken_turns.record(
