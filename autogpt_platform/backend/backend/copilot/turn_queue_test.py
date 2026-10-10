@@ -18,6 +18,7 @@ from backend.copilot import turn_queue
 from backend.copilot.gate import held
 from backend.copilot.model import ChatMessage as PydanticChatMessage
 from backend.copilot.model import ChatSessionInfo
+from backend.copilot.permissions import CopilotPermissions
 
 
 class _NoopAsyncCM:
@@ -375,6 +376,35 @@ async def test_a_head_taken_since_it_was_listed_does_not_stop_promotion() -> Non
         assert await turn_queue.dispatch_next_for_user("u1") is True
 
     assert dispatched.await_args.kwargs["session_id"] == "waiting"
+
+
+@pytest.mark.asyncio
+async def test_unparseable_stored_permissions_read_the_sessions_current_ones() -> None:
+    """Not left stuck at the head of the queue, and never read as none."""
+    head = _queued_row()
+    head.metadata.llm_auth_provider = "codex"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata={"permissions": {"tools": 5}})
+    )
+    today = CopilotPermissions(tools=["web_fetch"], tools_exclude=True)
+    dispatched = AsyncMock()
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "resolve_session_permissions", return_value=today),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatched),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is True
+
+    assert dispatched.await_args.kwargs["permissions"] == today
 
 
 @pytest.mark.asyncio
