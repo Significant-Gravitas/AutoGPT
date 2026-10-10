@@ -156,9 +156,9 @@ class FakeStripe:
         sub = self.subscriptions[sub_id]
         if sub["status"] == "canceled":
             raise stripe.InvalidRequestError("already canceled", None)
-        sub.update(status="canceled", cancellation_details=params.get(
-            "cancellation_details"
-        ))
+        sub.update(
+            status="canceled", cancellation_details=params.get("cancellation_details")
+        )
         self.cancelled.append(sub_id)
         return dict(sub)
 
