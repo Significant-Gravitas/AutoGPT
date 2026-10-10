@@ -11,15 +11,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.copilot.capabilities.index import CapabilityIndex
 from backend.copilot.capabilities.mcp_review import COPILOT_MCP_NODE_PREFIX
 from backend.copilot.capabilities.ranking import ConnectionState
-from backend.copilot.capabilities.registry import get_registry
+from backend.copilot.capabilities.registry import build_entries, get_registry
 from backend.copilot.capabilities.sources import EAGER_CORE
 from backend.copilot.context import set_execution_context
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.prompting import SHARED_TOOL_NOTES
 from backend.copilot.tools import (
     DEFERRED_TOOL_NAMES,
+    TOOL_GROUPS,
     TOOL_REGISTRY,
     get_available_tools,
 )
@@ -348,6 +350,84 @@ async def test_find_capability_no_results_points_to_open_world():
         )
     assert isinstance(result, NoResultsResponse)
     assert any("MCP server" in s for s in result.suggestions)
+
+
+# SECRT-2820: Gmail is a family of Google blocks, which a machine without
+# Google OAuth secrets disables; score against the whole catalogue.
+GOOGLE_STATE = ConnectionState(providers=frozenset({"google"}))
+SLACK_STATE = ConnectionState(providers=frozenset({"slack"}))
+
+
+@pytest.fixture(scope="module")
+def full_index() -> CapabilityIndex:
+    return CapabilityIndex(
+        build_entries(TOOL_REGISTRY, TOOL_GROUPS, include_disabled_blocks=True)
+    )
+
+
+async def _find(index: CapabilityIndex, state: ConnectionState, **kwargs):
+    with (
+        patch(
+            "backend.copilot.tools.find_capability.load_connection_state",
+            AsyncMock(return_value=state),
+        ),
+        patch(
+            "backend.copilot.tools.find_capability.session_registry",
+            AsyncMock(return_value=index),
+        ),
+    ):
+        return await FindCapabilityTool()._execute(USER, make_session(USER), **kwargs)
+
+
+async def test_find_capability_kind_tool_surfaces_the_connected_gmail_blocks(
+    full_index,
+):
+    """Dev trace 2901dcfb: kind="tool" with Google connected listed eight
+    unrelated tools, and the model web-searched for a Gmail MCP server."""
+    result = await _find(
+        full_index, GOOGLE_STATE, query="Gmail list recent emails", kind="tool"
+    )
+    assert isinstance(result, CapabilityListResponse)
+    assert all(c["kind"] == "tool" for c in result.capabilities)
+    gmail = [c for c in result.other_kinds if c["name"].startswith("Gmail")]
+    assert gmail and all(c["connected"] is True for c in gmail)
+    assert len(result.other_kinds) <= 3
+    assert "kind='tool' hid" in result.message
+    assert "search again without kind" in result.message
+    assert "MCP server" not in result.message
+
+
+async def test_find_capability_by_name_kind_lookup_gets_no_hint(full_index):
+    result = await _find(full_index, GOOGLE_STATE, query="web_search", kind="tool")
+    assert isinstance(result, CapabilityListResponse)
+    assert result.capabilities[0]["name"] == "web_search"
+    assert result.other_kinds == []
+    assert "without kind" not in result.message
+
+
+async def test_find_capability_kind_emptied_list_never_suggests_an_mcp_server(
+    full_index,
+):
+    """Prod Sep 30: kind="mcp_server" for "slack" came back empty and the
+    no-results reply sent the model to an off-catalog MCP server."""
+    result = await _find(full_index, SLACK_STATE, query="slack", kind="mcp_server")
+    assert isinstance(result, CapabilityListResponse)
+    assert result.capabilities == [] and result.count == 0
+    slack = [c for c in result.other_kinds if "Slack" in c["name"]]
+    assert slack and all(c["connected"] is True for c in slack)
+    assert "search again without kind" in result.message
+    assert "MCP server" not in result.message
+
+    nothing = await _find(full_index, SLACK_STATE, query="zzqx", kind="mcp_server")
+    assert isinstance(nothing, NoResultsResponse)
+    assert not any("MCP server" in s for s in nothing.suggestions)
+    assert any("without kind" in s for s in nothing.suggestions)
+
+
+def test_find_capability_kind_description_says_usually_omit():
+    description = FindCapabilityTool().parameters["properties"]["kind"]["description"]
+    assert description.startswith("Usually omit")
+    assert "kind='tool' hides blocks" in description
 
 
 async def test_find_capability_returns_the_session_owner_s_skill(skills):

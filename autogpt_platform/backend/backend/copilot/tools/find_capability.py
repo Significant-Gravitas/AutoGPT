@@ -84,7 +84,7 @@ class FindCapabilityTool(BaseTool):
                 "kind": {
                     "type": "string",
                     "enum": list(KINDS),
-                    "description": "Restrict to one kind of capability.",
+                    "description": "Usually omit; kind='tool' hides blocks like Gmail.",
                 },
             },
             "required": ["query"],
@@ -133,37 +133,59 @@ class FindCapabilityTool(BaseTool):
             permissions=get_current_permissions(),
             prefer_mcp=session.expert_id is not None and context != "graph",
         )
-        if not result.hits and not result.fallback:
+        if not result.hits and not result.fallback and not result.other_kinds:
             return NoResultsResponse(
                 message=f"No capability found for '{query}'",
-                suggestions=[
-                    "Try the service name alone, or a broader action ('email', 'sheet', 'http')",
-                    "For a service with no result, web_search '<service> MCP server' and "
-                    "call run_capability with the server URL as the id",
-                ],
+                suggestions=_no_result_suggestions(kind),
                 session_id=session_id,
             )
         capabilities = [_listing(hit, connections) for hit in result.hits]
         fallback = [_listing(hit, connections) for hit in result.fallback]
-        return CapabilityListResponse(
-            message=_message(
-                result.service,
-                len(result.hits),
-                len(result.fallback),
-                skills=any(hit.entry.kind == "skill" for hit in result.hits),
-                experts=any(hit.entry.kind == "expert" for hit in result.hits),
-                needs_grant=any(
-                    c.get("connected") == NEEDS_EXPERT_GRANT
-                    for c in capabilities + fallback
-                ),
+        other_kinds = [_listing(hit, connections) for hit in result.other_kinds]
+        message = _message(
+            result.service,
+            len(result.hits),
+            len(result.fallback),
+            skills=any(hit.entry.kind == "skill" for hit in result.hits),
+            experts=any(hit.entry.kind == "expert" for hit in result.hits),
+            needs_grant=any(
+                c.get("connected") == NEEDS_EXPERT_GRANT
+                for c in capabilities + fallback + other_kinds
             ),
+        )
+        if result.other_kinds:
+            message += (
+                f" kind='{kind}' hid {result.hidden_by_kind} better or connected "
+                "match(es) of other kinds, listed under other_kinds; search again "
+                "without kind before concluding nothing covers this."
+            )
+        return CapabilityListResponse(
+            message=message,
             query=query,
             capabilities=capabilities,
             count=len(result.hits),
             fallback=fallback,
+            other_kinds=other_kinds,
             service=result.service,
             session_id=session_id,
         )
+
+
+def _no_result_suggestions(kind: str | None) -> list[str]:
+    """What to try next.  An off-catalog MCP server is the last resort, so it
+    is never suggested while a ``kind`` filter may be what emptied the list:
+    integrations such as Gmail and Slack are blocks, and kind='tool' or
+    'mcp_server' hides them (SECRT-2820)."""
+    if kind is not None:
+        return [
+            f"Search again without kind: kind='{kind}' hides every other kind "
+            "of capability, including the user's connected blocks",
+        ]
+    return [
+        "Try the service name alone, or a broader action ('email', 'sheet', 'http')",
+        "For a service with no result, web_search '<service> MCP server' and "
+        "call run_capability with the server URL as the id",
+    ]
 
 
 def _listing(hit: SearchHit, connections: ConnectionState) -> dict[str, Any]:

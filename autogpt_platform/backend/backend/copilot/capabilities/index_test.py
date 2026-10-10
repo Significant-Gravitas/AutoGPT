@@ -232,6 +232,324 @@ def test_eager_tools_are_flagged_in_listing(index):
     assert hit.entry.listing()["eager"] is True
 
 
+# --- SECRT-2676: connected MCP and first-party tools must not lose to blocks ---
+
+DISCORD_ID = "55555555-5555-5555-5555-555555555555"
+DISCORD_READ_ID = "66666666-6666-6666-6666-666666666666"
+LINEAR_MCP_URL = "https://mcp.linear.app/mcp"
+SENTRY_MCP_URL = "https://mcp.sentry.dev/mcp"
+SLACK_MCP_URL = "https://mcp.slack.com/mcp"
+
+
+def _mcp(entry_id, name, purpose, url, tags):
+    return CapabilityEntry(
+        id=entry_id,
+        kind="mcp_server",
+        name=name,
+        purpose=purpose,
+        tags=tags,
+        context="direct",
+        implementations=[Implementation(kind="mcp_server", ref=url)],
+        connection=Connection(required=True, key_type="server_url", key=url),
+    )
+
+
+@pytest.fixture
+def rival_index() -> CapabilityIndex:
+    """A block and a connected service competing for the same job."""
+    return CapabilityIndex(
+        [
+            _block(
+                LINEAR_ID,
+                "LinearCreateIssueBlock",
+                "Create a new issue in Linear.",
+                provider="linear",
+                args=("title", "team"),
+            ),
+            _block(
+                DISCORD_ID,
+                "SendDiscordMessageBlock",
+                "Send a message to a Discord channel.",
+                provider="discord",
+                args=("channel", "message"),
+            ),
+            # Covers every concept of the Discord query, so it sets the best
+            # coverage the lift is measured against. Without a block of this
+            # shape the fixture cannot reproduce a connected family of blocks
+            # being carried over the first-party tool.
+            _block(
+                DISCORD_READ_ID,
+                "ReadDiscordMessagesBlock",
+                "Read and post messages on a Discord channel.",
+                provider="discord",
+                args=("channel",),
+            ),
+            _mcp(
+                "mcp:mcp.linear.app",
+                "Linear",
+                "Search issues, projects, and documents, with optional "
+                "updates to your team's work.",
+                LINEAR_MCP_URL,
+                ["linear", "mcp", "linear", "mcp.linear.app"],
+            ),
+            _mcp(
+                "mcp:mcp.sentry.dev",
+                "Sentry",
+                "Investigate errors and performance, triage issues.",
+                SENTRY_MCP_URL,
+                ["sentry", "mcp", "sentry", "mcp.sentry.dev"],
+            ),
+            CapabilityEntry(
+                id="tool:read_workspace_file",
+                kind="tool",
+                name="read_workspace_file",
+                purpose="Read a file from the agent workspace.",
+                tags=["workspace", "file"],
+                context="direct",
+                implementations=[
+                    Implementation(
+                        kind="tool", ref="read_workspace_file", context="direct"
+                    )
+                ],
+                argument_names=["path"],
+            ),
+            CapabilityEntry(
+                id="tool:post_to_chat_platform",
+                kind="tool",
+                name="post_to_chat_platform",
+                purpose=(
+                    "Post to a linked chat platform (Discord, Slack, "
+                    "Telegram or Microsoft Teams)."
+                ),
+                tags=["chat", "platform", "post"],
+                context="direct",
+                implementations=[
+                    Implementation(
+                        kind="tool", ref="post_to_chat_platform", context="direct"
+                    )
+                ],
+                argument_names=["platform", "channel", "content"],
+            ),
+        ]
+    )
+
+
+def test_platform_tool_survives_a_service_query(rival_index):
+    """Naming a service must not hide the first-party tool that does the job.
+
+    The service restriction used to drop every tool, so this query could only
+    ever return the Discord blocks.
+    """
+    result = rival_index.search("post a message to discord")
+    assert result.service == "discord"
+    assert "post_to_chat_platform" in result.names
+    # It need not lead — an entry that covers every concept of the query may
+    # legitimately rank above it — but it must beat the write block the bug
+    # report watched it lose to.
+    assert result.names.index("post_to_chat_platform") < result.names.index(
+        "SendDiscordMessageBlock"
+    )
+
+
+def test_platform_tool_survives_even_when_the_block_provider_is_connected(rival_index):
+    """A Discord credential may be a read-only OAuth the write block cannot
+    use, so the tool stays listed even when every block reads connected.
+
+    A connected family of blocks must not be carried over the tool by the
+    coverage lift: ReadDiscordMessagesBlock sets the best coverage here, and
+    lifting the connected 2.0 blocks to it once pushed the tool off the list.
+    """
+    state = ConnectionState(providers=frozenset({"discord"}))
+    result = rival_index.search("post a message to discord", connections=state)
+    assert "post_to_chat_platform" in result.names
+    assert result.names.index("post_to_chat_platform") < result.names.index(
+        "SendDiscordMessageBlock"
+    )
+
+
+def test_service_query_does_not_pull_in_unrelated_tools(rival_index):
+    """The SECRT-2433 boundary again: a tool only joins a service list when it
+    names that service, not merely because it shares a verb."""
+    result = rival_index.search("read a discord message", connections=None)
+    assert result.service == "discord"
+    assert "read_workspace_file" not in result.names
+    assert "post_to_chat_platform" in result.names
+
+
+def test_connected_mcp_outranks_a_block_for_the_same_job(rival_index):
+    state = ConnectionState(server_urls=frozenset({LINEAR_MCP_URL}))
+    result = rival_index.search("create a linear issue", connections=state)
+    assert result.names[0] == "Linear"
+    assert result.hits[0].connected is True
+    assert "LinearCreateIssueBlock" in result.names
+
+
+def test_block_still_wins_when_nothing_is_connected(rival_index):
+    """The SECRT-2433 boundary: with no connected alternative the block ranks
+    exactly as it did before."""
+    result = rival_index.search("create a linear issue", connections=ConnectionState())
+    assert result.names[0] == "LinearCreateIssueBlock"
+
+
+def test_an_exact_block_name_in_a_phrase_does_not_pin_it_over_a_connected_mcp(
+    rival_index,
+):
+    """AutoPilot searches "Linear create issue", which is also the block's
+    name.  With no Linear credential for the block, the connected server
+    leads, and the block is still listed."""
+    state = ConnectionState(server_urls=frozenset({LINEAR_MCP_URL}))
+    result = rival_index.search("Linear create issue", connections=state)
+    assert result.names[0] == "Linear"
+    assert "LinearCreateIssueBlock" in result.names
+    assert all(hit.reason == "search" for hit in result.hits)
+
+
+def test_an_exact_block_name_keeps_its_pin_when_the_block_is_connected(rival_index):
+    state = ConnectionState(
+        providers=frozenset({"linear"}), server_urls=frozenset({LINEAR_MCP_URL})
+    )
+    result = rival_index.search("Linear create issue", connections=state)
+    assert result.names[0] == "LinearCreateIssueBlock"
+    assert result.hits[0].reason == "exact_name"
+
+
+def test_a_query_spelling_the_class_name_keeps_the_pin(rival_index):
+    state = ConnectionState(server_urls=frozenset({LINEAR_MCP_URL}))
+    for query in ("LinearCreateIssueBlock", "linear create issue block"):
+        result = rival_index.search(query, connections=state)
+        assert result.names[0] == "LinearCreateIssueBlock", query
+        assert result.hits[0].reason == "exact_name", query
+
+
+def test_an_exact_block_name_keeps_its_pin_with_no_connected_alternative(
+    rival_index,
+):
+    for state in (ConnectionState(), None):
+        result = rival_index.search("Linear create issue", connections=state)
+        assert result.names[0] == "LinearCreateIssueBlock"
+        assert result.hits[0].reason == "exact_name"
+
+
+def test_an_exact_tool_name_unpins_the_block_that_shares_it(rival_index):
+    """A tool with the block's name is an exact hit itself, so it never
+    reached the list of alternatives and the block kept its pin above it."""
+    tool = CapabilityEntry(
+        id="tool:linear_create_issue",
+        kind="tool",
+        name="linear_create_issue",
+        purpose="Create an issue in Linear.",
+        tags=["linear", "create", "issue"],
+        context="direct",
+        implementations=[
+            Implementation(kind="tool", ref="linear_create_issue", context="direct")
+        ],
+    )
+    result = rival_index.with_entries([tool]).search(
+        "Linear create issue", connections=ConnectionState()
+    )
+    assert result.names[0] == "linear_create_issue"
+    block = next(h for h in result.hits if h.entry.name == "LinearCreateIssueBlock")
+    assert block.reason == "search"
+
+
+def test_graph_context_keeps_the_block_order(rival_index):
+    """Building an agent lists blocks only: tools and MCP servers are
+    direct-only, so neither the tool-first order nor the MCP lift nor the
+    unpin can move a buildable block, and graph-only blocks stay listed."""
+    layered = rival_index.with_entries(
+        [_block(INPUT_ID, "AgentInputBlock", "Graph input.", context="graph")]
+    )
+    state = ConnectionState(
+        providers=frozenset({"discord"}), server_urls=frozenset({LINEAR_MCP_URL})
+    )
+    pinned = layered.search("Linear create issue", context="graph", connections=state)
+    assert pinned.names[0] == "LinearCreateIssueBlock"
+    assert pinned.hits[0].reason == "exact_name"
+    for query in ("post a message to discord", "Linear create issue"):
+        result = layered.search(query, context="graph", connections=state)
+        assert {h.entry.kind for h in result.hits} == {"block"}, query
+    assert layered.search("agent input", context="graph").names == ["AgentInputBlock"]
+
+
+def test_a_distant_connected_service_is_not_lifted(rival_index):
+    """A connected server the query does not name competes on coverage like
+    anything else: Sentry matches only "issue" here, so it must not displace
+    the block that matches both words.  The query names no service, so
+    nothing is filtered out before ranking and the lift itself is tested."""
+    state = ConnectionState(server_urls=frozenset({SENTRY_MCP_URL}))
+    result = rival_index.search("create issue", connections=state)
+    assert result.service is None
+    assert "Sentry" in result.names
+    assert result.names[0] == "LinearCreateIssueBlock"
+
+
+def test_a_connected_server_is_not_lifted_on_a_query_that_does_not_name_it(
+    rival_index,
+):
+    """kcze's case on #15011: Linear matches "update" through "updates" in
+    its description, half of a two-word query, and was lifted over the block
+    that matches both words the moment it was connected."""
+    sheets = _block(
+        "77777777-7777-7777-7777-777777777777",
+        "GoogleSheetsUpdateCellBlock",
+        "Update a single cell in a Google Sheets spreadsheet.",
+        provider="google_sheets",
+        args=("spreadsheet_id", "cell", "value"),
+        tags=("spreadsheet",),
+    )
+    index = rival_index.with_entries([sheets])
+    state = ConnectionState(server_urls=frozenset({LINEAR_MCP_URL}))
+    result = index.search("update spreadsheet", connections=state)
+    assert result.service is None
+    assert "Linear" in result.names
+    assert result.names[0] == "GoogleSheetsUpdateCellBlock"
+    unconnected = index.search("update spreadsheet", connections=None)
+    assert unconnected.names[0] == "GoogleSheetsUpdateCellBlock"
+
+
+def test_an_unrelated_connected_server_does_not_lead_a_service_less_query(
+    rival_index,
+):
+    """A connected Slack server shares only "send" with "send email"; the
+    email block that matches both words still leads.  The block is not
+    called SendEmailBlock, which the query would pin as an exact name."""
+    email = _block(
+        "88888888-8888-8888-8888-888888888888",
+        "GmailSendBlock",
+        "Send an email from a Gmail account.",
+        provider="google",
+        args=("to", "subject", "body"),
+        tags=("email",),
+    )
+    slack = _mcp(
+        "mcp:mcp.slack.com",
+        "Slack",
+        "Send messages, search channels and read threads in Slack.",
+        SLACK_MCP_URL,
+        ["slack", "mcp", "slack", "mcp.slack.com"],
+    )
+    state = ConnectionState(server_urls=frozenset({SLACK_MCP_URL}))
+    result = rival_index.with_entries([email, slack]).search(
+        "send email", connections=state
+    )
+    assert result.service is None
+    assert "Slack" in result.names
+    assert result.names[0] == "GmailSendBlock"
+
+
+def test_the_lift_stays_one_concept_wide_on_a_query_naming_the_server(
+    rival_index,
+):
+    """Naming the service lets its connected server be lifted, but only past a
+    one-concept gap: here the block matches two more words than Linear."""
+    state = ConnectionState(server_urls=frozenset({LINEAR_MCP_URL}))
+    result = rival_index.search("linear create issue title", connections=state)
+    assert result.service == "linear"
+    by_name = {hit.entry.name: hit.coverage for hit in result.hits}
+    assert by_name["LinearCreateIssueBlock"] - by_name["Linear"] > 1
+    assert result.names[0] == "LinearCreateIssueBlock"
+
+
 # ------------------------------------------------- the per-session skill layer
 
 
@@ -300,7 +618,220 @@ def test_a_platform_entry_keeps_a_bare_ref_a_skill_shares(index):
     assert layered.get("skill:web_search") is clone
 
 
-def _mcp(host: str, name: str, service: str, purpose: str):
+def test_a_service_query_keeps_both_skills_and_platform_tools(rival_index):
+    """Both layers that carry no service tag stay in a service query's main
+    list: the owner's skill for the service and the first-party tool."""
+    announce = _skill("discord-announce", "Post a release announcement to Discord.")
+    result = rival_index.with_entries([announce]).search("post to discord")
+    assert result.service == "discord"
+    assert {"discord-announce", "post_to_chat_platform"} <= set(result.names)
+    assert not {"discord-announce", "post_to_chat_platform"} & {
+        h.entry.name for h in result.fallback
+    }
+
+
+# --- SECRT-2820: a kind filter must not hide the user's connected blocks ---
+
+GMAIL_LIST_ID = "99999999-9999-9999-9999-999999999991"
+GMAIL_READ_ID = "99999999-9999-9999-9999-999999999992"
+GOOGLE = ConnectionState(providers=frozenset({"google"}))
+
+
+def _tool(name, purpose, *, description="", tags=()):
+    return CapabilityEntry(
+        id=f"tool:{name}",
+        kind="tool",
+        name=name,
+        purpose=purpose,
+        description=description or purpose,
+        tags=sorted({*name.split("_"), *tags}),
+        context="direct",
+        implementations=[Implementation(kind="tool", ref=name, context="direct")],
+    )
+
+
+CONNECT_INTEGRATION = _tool(
+    "connect_integration",
+    "Prompt the user to connect a required integration. Supported providers: "
+    "'github'.",
+    description=(
+        "Prompt the user to connect a required integration. Supported "
+        "providers: 'github'. ONLY call this tool for one of the supported "
+        "providers listed above - do NOT call it for Google, Gmail, Slack, or "
+        "any other provider not in the list."
+    ),
+)
+
+
+@pytest.fixture
+def gmail_index(rival_index) -> CapabilityIndex:
+    """The 2901dcfb shape: Gmail is a family of Google blocks, and the tools
+    that share a word with the query only by accident."""
+    return rival_index.with_entries(
+        [
+            _block(
+                GMAIL_LIST_ID,
+                "GmailListLabelsBlock",
+                "Retrieve all labels from a Gmail account for organising emails.",
+                provider="google",
+                tags=("email",),
+            ),
+            _block(
+                GMAIL_READ_ID,
+                "GmailReadBlock",
+                "Read recent emails from a Gmail inbox.",
+                provider="google",
+                args=("query", "max_results"),
+                tags=("email",),
+            ),
+            CONNECT_INTEGRATION,
+            _tool("web_search", "Search the web for live info (news, recent docs)."),
+            _tool("list_skills", "List the skills available here."),
+            _tool(
+                "create_feature_request",
+                "File a feature request; the team follows up by email.",
+            ),
+        ]
+    )
+
+
+def test_a_kind_filter_surfaces_the_connected_blocks_it_hid(gmail_index):
+    """2901dcfb: kind="tool" with Google connected returned eight unrelated
+    tools and the model went looking for a Gmail MCP server.  The connected
+    Gmail blocks come back beside the filtered list, with a count."""
+    result = gmail_index.search(
+        "Gmail list recent emails", kind="tool", connections=GOOGLE
+    )
+    assert all(hit.entry.kind == "tool" for hit in result.hits)
+    hidden = [hit.entry.name for hit in result.other_kinds]
+    assert "GmailReadBlock" in hidden
+    assert all(hit.connected for hit in result.other_kinds)
+    assert result.hidden_by_kind >= len(result.other_kinds) > 0
+
+
+def test_a_kind_filter_that_empties_the_list_still_surfaces_other_kinds(
+    rival_index,
+):
+    """Prod Sep 30: kind="mcp_server" for a service with no server in the
+    catalog came back empty.  The blocks it hid are surfaced instead."""
+    result = rival_index.search(
+        "send discord message",
+        kind="mcp_server",
+        connections=ConnectionState(providers=frozenset({"discord"})),
+    )
+    assert result.hits == []
+    assert "SendDiscordMessageBlock" in [h.entry.name for h in result.other_kinds]
+
+
+def test_other_kinds_are_capped_at_three(gmail_index):
+    state = ConnectionState(providers=frozenset({"google", "discord"}))
+    result = gmail_index.search("email message", kind="skill", connections=state)
+    assert result.hits == []
+    assert len(result.other_kinds) == 3
+    assert result.hidden_by_kind > 3
+
+
+def test_a_by_name_kind_lookup_gets_no_other_kinds(gmail_index):
+    """Most kind calls are deliberate lookups by name; they must not be told
+    to search again."""
+    result = gmail_index.search("web_search", kind="tool", connections=GOOGLE)
+    assert result.names[0] == "web_search"
+    assert result.other_kinds == [] and result.hidden_by_kind == 0
+
+
+def test_an_unconnected_weaker_match_of_another_kind_is_not_surfaced(rival_index):
+    """Only a connected entry, or one covering more of the query than the
+    filtered list does, is worth a second search."""
+    result = rival_index.search(
+        "post to discord", kind="tool", connections=ConnectionState()
+    )
+    assert result.names[0] == "post_to_chat_platform"
+    assert result.other_kinds == []
+
+
+def test_no_kind_means_no_other_kinds(gmail_index):
+    result = gmail_index.search("Gmail list recent emails", connections=GOOGLE)
+    assert result.other_kinds == [] and result.hidden_by_kind == 0
+    assert result.names[0] in {"GmailReadBlock", "GmailListLabelsBlock"}
+
+
+def test_a_tool_does_not_lead_connected_blocks_on_a_query_naming_no_service(
+    gmail_index,
+):
+    """ "email" names no service; create_feature_request only ties on
+    coverage, so the user's connected Gmail blocks lead.  #15011 put tools
+    first for every query and moved 19 such queries."""
+    result = gmail_index.search("email", connections=GOOGLE)
+    assert result.service is None
+    assert result.hits[0].entry.kind == "block"
+    assert result.hits[0].connected is True
+    assert "create_feature_request" in result.names
+
+
+def test_a_negative_mention_does_not_pull_a_tool_into_a_service_query(gmail_index):
+    """connect_integration says "do NOT call it for Google, Gmail, Slack":
+    only a tool's name, purpose and tags count as naming the service."""
+    slack = _mcp(
+        "mcp:mcp.slack.com",
+        "Slack",
+        "Send messages, search channels and read threads in Slack.",
+        SLACK_MCP_URL,
+        ["slack", "mcp", "slack", "mcp.slack.com"],
+    )
+    result = gmail_index.with_entries([slack]).search("slack send message")
+    assert result.service == "slack"
+    assert "connect_integration" not in result.names
+    assert "post_to_chat_platform" in result.names
+
+
+def test_other_kinds_look_past_the_filtered_kind_filling_the_top_slots():
+    """The unfiltered search used to stop at the page limit, so nine tools
+    outranking the connected block took every slot and the block, the one
+    thing the filter hid, was never seen."""
+    tools = [
+        _tool(f"ledger_export_{n}", "Export ledger rows to a quarterly report.")
+        for n in range(9)
+    ]
+    block = _block(
+        "99999999-9999-9999-9999-999999999993",
+        "AcmeLedgerBlock",
+        "Read rows from the Acme ledger.",
+        provider="acme",
+        tags=("ledger",),
+    )
+    index = CapabilityIndex([*tools, block])
+    state = ConnectionState(providers=frozenset({"acme"}))
+    query = "export ledger quarterly report"
+    assert "AcmeLedgerBlock" not in index.search(query, connections=state).names
+    result = index.search(query, kind="tool", connections=state)
+    assert [hit.entry.name for hit in result.other_kinds] == ["AcmeLedgerBlock"]
+    assert result.hidden_by_kind == 1
+
+
+def test_a_connection_helper_does_not_join_a_service_query(index):
+    """connect_integration's purpose names "github" and its description
+    "credential issues", so it tied the GitHub blocks on "github issue" and,
+    as a tool, led the list.  It only connects an account for the sandbox."""
+    helper = _tool(
+        "connect_integration",
+        "Prompt the user to connect a required integration. Supported "
+        "providers: 'github'.",
+        description=(
+            "Prompt the user to connect a required integration. Supported "
+            "providers: 'github'. Do NOT call this for agent block credential "
+            "issues."
+        ),
+    )
+    result = index.with_entries([helper]).search("github issue")
+    assert result.service == "github"
+    assert result.names[0] == "GithubMakeIssueBlock"
+    assert "connect_integration" not in result.names
+
+
+# --- #15199: an expert chat lists a service's MCP server before its blocks ---
+
+
+def _service_mcp(host: str, name: str, service: str, purpose: str):
     return CapabilityEntry(
         id=f"mcp:{host}",
         kind="mcp_server",
@@ -330,13 +861,15 @@ def twin_index() -> CapabilityIndex:
     return CapabilityIndex(
         [
             linear_block,
-            _mcp(
+            _service_mcp(
                 "mcp.linear.app",
                 "Linear",
                 "linear",
                 "Issues, projects and cycles in Linear.",
             ),
-            _mcp("mcp.sentry.dev", "Sentry", "sentry", "Errors and traces in Sentry."),
+            _service_mcp(
+                "mcp.sentry.dev", "Sentry", "sentry", "Errors and traces in Sentry."
+            ),
         ]
     )
 
@@ -407,7 +940,7 @@ def test_prefer_mcp_does_not_move_one_service_ahead_of_another():
         [
             linear_block,
             github_block,
-            _mcp(
+            _service_mcp(
                 "mcp.linear.app",
                 "Linear",
                 "linear",
@@ -425,4 +958,44 @@ def test_prefer_mcp_does_not_move_one_service_ahead_of_another():
     )
     assert result.ids.index("mcp:mcp.linear.app") < result.ids.index(
         f"block:{LINEAR_ID}"
+    )
+
+
+def test_an_expert_chat_with_a_service_mcp_server_ranks_connection_first(
+    rival_index,
+):
+    """Where both orders could apply, #15199's wins: an expert chat whose
+    service query found that service's MCP server ranks connection first, so
+    the connected Discord block leads the first-party tool it would otherwise
+    follow.  The tool is still listed."""
+    discord_ids = {f"block:{DISCORD_ID}", f"block:{DISCORD_READ_ID}"}
+    index = CapabilityIndex(
+        [
+            (
+                entry.model_copy(update={"service": "discord"})
+                if entry.id in discord_ids
+                else entry
+            )
+            for entry in rival_index.entries
+        ]
+        + [
+            _service_mcp(
+                "mcp.discord.example",
+                "Discord",
+                "discord",
+                "Read and post messages in Discord channels.",
+            )
+        ]
+    )
+    state = ConnectionState(providers=frozenset({"discord"}))
+    query = "post a message to discord"
+
+    expert = index.search(query, connections=state, prefer_mcp=True)
+    assert expert.names.index("SendDiscordMessageBlock") < expert.names.index(
+        "post_to_chat_platform"
+    )
+
+    default = index.search(query, connections=state)
+    assert default.names.index("post_to_chat_platform") < default.names.index(
+        "SendDiscordMessageBlock"
     )
