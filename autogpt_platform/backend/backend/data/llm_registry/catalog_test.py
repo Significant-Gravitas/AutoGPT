@@ -437,15 +437,15 @@ def test_qwen3_8_flash_bills_at_authored_rates():
 
 
 def test_deepseek_v4_1_flash_bills_at_authored_rates():
-    """DeepSeek V4.1 Flash (OpenRouter live rate $0.03/$0.75 per 1M,
+    """DeepSeek V4.1 Flash (OpenRouter live rate $0.0283/$1 per 1M,
     $0.00375/1M cached input as of 2026-10-02 — this route reprices
     continuously by design) — flat tier and per-1M projections must
     match the authored catalog entry."""
     flash = LLMModel("deepseek/deepseek-v4.1-flash")
     assert MODEL_COST[flash] == 1
     assert TOKEN_COST[flash].model_dump() == {
-        "input": 4.5,
-        "output": 112.5,
+        "input": 4.245,
+        "output": 150.0,
         "cache_read": 0.5625,
         "cache_creation": 0.0,
     }
@@ -501,14 +501,14 @@ def test_mercury_2_5_bills_at_authored_rates():
 
 
 def test_hy4_preview_bills_at_authored_rates():
-    """Tencent Hy4 Preview (OpenRouter, live list price $0.834/$2.501 per
+    """Tencent Hy4 Preview (OpenRouter, live list price $0.7506/$2.2509 per
     1M, $0.042/1M cached input) — flat tier and per-1M projections must
     match the authored catalog entry."""
     hy4 = LLMModel("tencent/hy4-preview")
     assert MODEL_COST[hy4] == 2
     assert TOKEN_COST[hy4].model_dump() == {
-        "input": 125.1,
-        "output": 375.15,
+        "input": 112.59,
+        "output": 337.635,
         "cache_read": 6.3,
         "cache_creation": 0.0,
     }

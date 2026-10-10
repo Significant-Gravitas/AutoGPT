@@ -590,8 +590,8 @@ def _build_catalog() -> CatalogPayload:
                 # scripts/check_openrouter_prices.py.
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=4.5,
-                    output_credits_per_1m=112.5,
+                    input_credits_per_1m=4.245,
+                    output_credits_per_1m=150.0,
                     cache_read_credits_per_1m=0.5625,
                 ),
             ),
@@ -1050,8 +1050,8 @@ def _build_catalog() -> CatalogPayload:
                 # Flagged by scripts/check_openrouter_prices.py.
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=65.1225,
-                    output_credits_per_1m=274.2,
+                    input_credits_per_1m=65.625,
+                    output_credits_per_1m=367.5,
                 ),
             ),
             CatalogModel(
@@ -2029,11 +2029,11 @@ def _build_catalog() -> CatalogPayload:
                 # standard 1.5x margin (verified live 2026-09-21).
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=125.1,
-                    output_credits_per_1m=375.15,
+                    input_credits_per_1m=112.59,
+                    output_credits_per_1m=337.635,
                     cache_read_credits_per_1m=6.3,
-                    provider_input_usd_per_1m=0.834,
-                    provider_output_usd_per_1m=2.501,
+                    provider_input_usd_per_1m=0.7506,
+                    provider_output_usd_per_1m=2.2509,
                 ),
             ),
             # ----- Unbiased -----
