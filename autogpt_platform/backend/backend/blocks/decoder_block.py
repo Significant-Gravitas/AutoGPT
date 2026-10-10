@@ -1,5 +1,3 @@
-import codecs
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -43,5 +41,17 @@ This is a "quoted" string.""",
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        decoded_text = codecs.decode(input_data.text, "unicode_escape")
+        # unicode_escape decodes bytes as Latin-1. Calling it on a str encodes
+        # the str as UTF-8 first, so non-ASCII text came out as mojibake
+        # (café → cafÃ©). Encode non-Latin-1 chars as backslash escapes
+        # instead, which unicode_escape turns back into the original chars.
+        try:
+            decoded_text = input_data.text.encode("latin-1", "backslashreplace").decode(
+                "unicode_escape"
+            )
+        except UnicodeDecodeError as e:
+            raise ValueError(
+                f"Text contains an invalid escape sequence: {e.reason} "
+                f"(position {e.start})"
+            ) from e
         yield "decoded_text", decoded_text
