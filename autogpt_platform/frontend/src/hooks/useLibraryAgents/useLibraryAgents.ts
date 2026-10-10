@@ -1,26 +1,38 @@
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { buildAgentInfoMap } from "./store";
 
 export function useLibraryAgents() {
-  const { data: agentsQueryData, isLoading: isRefreshing } =
-    useGetV2ListLibraryAgentsInfinite(
-      {
-        page: 1,
-        page_size: 100,
-        is_hidden: false,
+  const {
+    data: agentsQueryData,
+    isLoading: isRefreshing,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useGetV2ListLibraryAgentsInfinite(
+    {
+      page: 1,
+      page_size: 100,
+      is_hidden: false,
+    },
+    {
+      query: {
+        getNextPageParam: getPaginationNextPageNumber,
+        // Don't block rendering - fetch in background
+        refetchOnMount: false,
+        refetchOnWindowFocus: false,
+        staleTime: 5 * 60 * 1000, // 5 minutes
       },
-      {
-        query: {
-          getNextPageParam: getPaginationNextPageNumber,
-          // Don't block rendering - fetch in background
-          refetchOnMount: false,
-          refetchOnWindowFocus: false,
-          staleTime: 5 * 60 * 1000, // 5 minutes
-        },
-      },
-    );
+    },
+  );
+
+  // Auto-fetch all pages so the agentInfoMap is complete (#11229)
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const agents = agentsQueryData ? unpaginate(agentsQueryData, "agents") : [];
 
