@@ -1,4 +1,4 @@
-import { expect, Locator, Page } from "@playwright/test";
+import { expect, Locator, Page, Response } from "@playwright/test";
 import { getSeededTestUser } from "../credentials/accounts";
 import { getSelectors } from "../utils/selectors";
 import { BasePage } from "./base.page";
@@ -90,10 +90,20 @@ export class LibraryPage extends BasePage {
 
   async searchAgents(searchTerm: string): Promise<void> {
     console.log(`searching for agents with term: ${searchTerm}`);
-    const { getRole } = getSelectors(this.page);
+    const { getId, getRole } = getSelectors(this.page);
     const searchInput = getRole("textbox", "Search agents");
+    // Cards render only after hydration; text typed before it never reaches onChange.
+    await expect(getId("library-agent-card").first()).toBeVisible({
+      timeout: 15000,
+    });
+    // The search applies after a debounce; until then the unfiltered list is clickable.
+    const searchApplied = this.page.waitForResponse(
+      (response) => isAgentListResponseFor(response, searchTerm),
+      { timeout: 15000 },
+    );
     await searchInput.fill(searchTerm);
     await expect(searchInput).toHaveValue(searchTerm);
+    await searchApplied;
   }
 
   async clearSearch(): Promise<void> {
@@ -442,6 +452,17 @@ export class LibraryPage extends BasePage {
     const newAgentsLoaded = await this.scrollAndWaitForNewAgents();
     return newAgentsLoaded > 0;
   }
+}
+
+function isAgentListResponseFor(
+  response: Response,
+  searchTerm: string,
+): boolean {
+  const url = new URL(response.url());
+  return (
+    url.pathname.endsWith("/api/library/agents") &&
+    url.searchParams.get("search_term") === searchTerm
+  );
 }
 
 // Locator functions
@@ -1168,7 +1189,6 @@ export async function importAgentFromFile(
 
   await page.goto("/library");
   await libraryPage.searchAgents(agentName);
-  await libraryPage.waitForAgentsToLoad();
 
   // Look up the specific imported card directly rather than calling
   // getAgents() in a loop. getAgents() iterates every visible card and
@@ -1225,7 +1245,6 @@ export async function openSavedAgentInLibrary(
   await page.goto("/library");
   await libraryPage.waitForAgentsToLoad();
   await libraryPage.searchAgents(agentName);
-  await libraryPage.waitForAgentsToLoad();
   await navigateToAgentByName(page, agentName);
   await waitForAgentPageLoad(page, agentName);
 }
