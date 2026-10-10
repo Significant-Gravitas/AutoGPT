@@ -17,14 +17,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from backend.api.features.experts.models import ExpertRoutine
-from backend.api.features.experts.routines import (
-    RoutineNotFoundError,
-    RoutineUnansweredAsksError,
-)
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import experts_db
+from backend.util.exceptions import RoutineNotFoundError, RoutineUnansweredAsksError
 
 from .base import BaseTool
 from .expert_scope import RoutineOwner, resolve_routine_owner
@@ -293,7 +290,13 @@ class ScheduleRoutineTool(BaseTool):
             )
         except RoutineNotFoundError:
             return ErrorResponse(
-                message=f"Routine '{routine_id}' was not found.",
+                message=(
+                    f"Routine '{routine_id}' is not one of the account's own. "
+                    "If it belongs to an expert, pass that expert's `expert_id` "
+                    "from list_routines."
+                    if owner.expert_id is None
+                    else f"Routine '{routine_id}' was not found on this expert."
+                ),
                 error="routine_not_found",
                 session_id=session_id,
             )
