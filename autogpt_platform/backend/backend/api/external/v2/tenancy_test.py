@@ -8,7 +8,10 @@ the database is the one bound to the credential: a key minted in org A never
 passes org B, and a key with no org passes the caller's personal org.
 """
 
+import ast
 import inspect
+import re
+import textwrap
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
@@ -569,12 +572,24 @@ def _checks_tenant(source: str) -> bool:
 
 
 # Helpers that fetch a row by id and check its tenant before returning it.
-_TENANT_CHECKING_HELPERS = [runs._own_run]
+_TENANT_CHECKING_HELPERS = [runs._assert_run_in_tenant, runs._assert_own_run_in_tenant]
 
 
 def test_the_tenant_checking_helpers_check_the_tenant() -> None:
+    """Each calls `in_tenant`, or another of them that does."""
     for helper in _TENANT_CHECKING_HELPERS:
-        assert "in_tenant" in inspect.getsource(helper), helper.__name__
+        checks = ["in_tenant"] + [
+            other.__name__ for other in _TENANT_CHECKING_HELPERS if other is not helper
+        ]
+        body = _body(helper)
+        assert any(re.search(rf"\b{name}\(", body) for name in checks), helper.__name__
+
+
+def _body(function) -> str:
+    """The function's statements without its signature, whose name says "tenant"."""
+    definition = ast.parse(textwrap.dedent(inspect.getsource(function))).body[0]
+    assert isinstance(definition, (ast.FunctionDef, ast.AsyncFunctionDef))
+    return "\n".join(ast.unparse(statement) for statement in definition.body)
 
 
 # Item handlers that touch nothing an organization owns: workspace files and
