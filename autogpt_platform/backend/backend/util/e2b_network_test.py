@@ -19,6 +19,7 @@ from backend.util.e2b_network import (
     credential_record,
     forget_sandbox,
     kill_sandbox,
+    reattach_command,
     secret_digest,
 )
 
@@ -117,6 +118,22 @@ class TestOff:
 
 
 class TestPinned:
+    @pytest.mark.asyncio
+    async def test_a_command_reattach_leaves_the_pinned_network_alone(self):
+        """Reattaching to a running command is not a box connect: no new
+        credential, no network update, the box keeps what it was pinned to."""
+        box, redis = _box("sb-1"), _redis({"e2b:egress:box:sb-1": "box-a1"})
+        handle = MagicMock()
+        box.commands.connect = AsyncMock(return_value=handle)
+        with (
+            _configured(_PROXY),
+            patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
+        ):
+            assert await reattach_command(box, 42, timeout=30) is handle
+        box.commands.connect.assert_awaited_once_with(42, timeout=30)
+        box.update_network.assert_not_awaited()
+        assert redis.store == {"e2b:egress:box:sb-1": "box-a1"}
+
     @pytest.mark.asyncio
     async def test_create_pins_the_box_under_a_credential_the_proxy_can_resolve(self):
         box, redis = _box("sb-1"), _redis()

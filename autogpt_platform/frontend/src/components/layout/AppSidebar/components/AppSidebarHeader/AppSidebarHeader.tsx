@@ -44,7 +44,7 @@ export function AppSidebarHeader() {
   );
 
   return (
-    <SidebarHeader className="mb-1 flex animate-fade-in flex-row items-center justify-between gap-2 p-2 group-data-[collapsible=icon]:flex-col">
+    <SidebarHeader className="sticky top-0 z-10 mb-1 flex shrink-0 animate-fade-in flex-row items-center justify-between gap-2 bg-sidebar p-2 group-data-[collapsible=icon]:flex-col">
       <div
         className={cn(
           "relative flex items-center",

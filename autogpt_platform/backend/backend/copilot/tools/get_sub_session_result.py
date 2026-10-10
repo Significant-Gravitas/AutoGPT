@@ -131,12 +131,12 @@ class GetSubSessionResultTool(BaseTool):
             return ErrorResponse(
                 message="sub_session_id is required",
                 session_id=session.session_id,
-            )
+            ).from_outside()
         if user_id is None:
             return ErrorResponse(
                 message="Authentication required",
                 session_id=session.session_id,
-            )
+            ).from_outside()
 
         # Ownership check on every call — loads the ChatSession and
         # confirms the caller owns it. Returning the same "not found"
@@ -150,7 +150,7 @@ class GetSubSessionResultTool(BaseTool):
                     "never existed or belongs to another user."
                 ),
                 session_id=session.session_id,
-            )
+            ).from_outside()
 
         started_at = time.monotonic()
         delegate = await _delegated_expert_info(user_id, sub, session)
@@ -167,7 +167,7 @@ class GetSubSessionResultTool(BaseTool):
                         "you need instead."
                     ),
                     session_id=session.session_id,
-                )
+                ).from_outside()
             # Fan out the cancel event. Whichever worker is running the
             # sub will break out of its stream and finalise the session
             # as failed. Return "cancelled" immediately; the sub may
@@ -183,7 +183,7 @@ class GetSubSessionResultTool(BaseTool):
                     sub_autopilot_session_id=inner_session_id,
                     sub_autopilot_session_link=_sub_session_link(inner_session_id),
                     elapsed_seconds=0.0,
-                ),
+                ).from_outside(),
                 delegate,
             )
 
@@ -235,7 +235,7 @@ class GetSubSessionResultTool(BaseTool):
                     sub_autopilot_session_link=link,
                     elapsed_seconds=round(elapsed, 2),
                     progress=progress,
-                ),
+                ).from_outside(progress),
                 delegate,
             )
 

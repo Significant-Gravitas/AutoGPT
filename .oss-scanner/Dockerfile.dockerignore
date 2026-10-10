@@ -1,0 +1,9 @@
+# Docker reads this file instead of the repository's .dockerignore when it builds .oss-scanner/Dockerfile (an
+# ignore file named after a Dockerfile, next to it, takes precedence). The repository's one is written for the
+# product images: it leaves out everything but a few folders, so autogpt_platform/db/ is missing, and every hidden
+# file, so .nvmrc is too. This build reads both, and the scanner expects the whole checkout in /src, so leave out
+# only what a fresh clone never has.
+**/node_modules/
+**/.venv/
+**/.next/
+**/__pycache__/

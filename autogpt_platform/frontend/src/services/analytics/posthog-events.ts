@@ -1,6 +1,6 @@
 // Every PostHog event name the browser sends, in one place. What each one
 // means, who sends it and which properties it carries is in
-// docs/platform/tracking-plan.md; the backend's list is
+// docs/engineering/tracking-plan.md; the backend's list is
 // backend/util/posthog_events.py.
 //
 // The names follow the product analytics plan ("Every Second Counts"). Never
@@ -21,6 +21,15 @@ export const PageEvent = {
 // PostHog resolved the same flag to different values.
 export const FeatureFlagEvent = {
   FEATURE_FLAG_MISMATCHED: "feature_flag_mismatched",
+} as const;
+
+// Marketing email refusals made in the app. `surface` says where; the
+// refusal itself is stored on the user (`marketingOptOutAt`).
+export const MarketingConsentEvent = {
+  // `surface: "signup"`: "opt out" in the legal line under the signup buttons
+  // was clicked (not Undo). Nothing else rides along: there is no user yet,
+  // so it only measures the opt-out rate.
+  MARKETING_OPTED_OUT: "marketing_opted_out",
 } as const;
 
 export const ExpertsFunnelEvent = {
@@ -140,12 +149,33 @@ export const CredentialConnectionFailureEvent = {
 
 export const TrialEvent = {
   TRIAL_OFFER_VIEWED: "trial_offer_viewed",
-  SUBSCRIPTION_TRIAL_CHECKOUT_STARTED: "subscription_trial_checkout_started",
+  TRIAL_CANCEL_POPUP_VIEWED: "trial_cancel_popup_viewed",
+  TRIAL_RESUME_CLICKED: "trial_resume_clicked",
+  TRIAL_SUBSCRIBE_NOW_CLICKED: "trial_subscribe_now_clicked",
+} as const;
+
+export const TourEvent = {
+  TOUR_STARTED: "tour_started",
+  TOUR_SCENARIO_STARTED: "tour_scenario_started",
+  TOUR_SCENARIO_COMPLETED: "tour_scenario_completed",
+  TOUR_CTA_CLICKED: "tour_cta_clicked",
+} as const;
+
+export const OnboardingEvent = {
+  ONBOARDING_STEP_VIEWED: "onboarding_step_viewed",
+} as const;
+
+export const MonetizationEvent = {
+  PAYWALL_VIEWED: "paywall_viewed",
+  PLAN_SELECTED: "plan_selected",
+  BILLING_PORTAL_OPENED: "billing_portal_opened",
+  CHECKOUT_ABANDONED: "checkout_abandoned",
 } as const;
 
 export const PostHogEvent = {
   ...PageEvent,
   ...FeatureFlagEvent,
+  ...MarketingConsentEvent,
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,
   ...BrainDumpEvent,
@@ -153,21 +183,14 @@ export const PostHogEvent = {
   ...VoiceModeEvent,
   ...CredentialConnectionFailureEvent,
   ...TrialEvent,
+  ...TourEvent,
+  ...OnboardingEvent,
+  ...MonetizationEvent,
 } as const;
 
-// In the tracking plan and NOT sent yet (SECRT-2723). Move a name into its
-// group above in the change that starts sending it.
-export const PlannedPostHogEvent = {
-  ONBOARDING_STEP_VIEWED: "onboarding_step_viewed",
-  PAYWALL_VIEWED: "paywall_viewed",
-  PLAN_SELECTED: "plan_selected",
-  BILLING_PORTAL_OPENED: "billing_portal_opened",
-  CHECKOUT_ABANDONED: "checkout_abandoned",
-  TOUR_STARTED: "tour_started",
-  TOUR_SCENARIO_STARTED: "tour_scenario_started",
-  TOUR_SCENARIO_COMPLETED: "tour_scenario_completed",
-  TOUR_CTA_CLICKED: "tour_cta_clicked",
-} as const;
+// In the tracking plan and NOT sent yet. Move a name into its group above in
+// the change that starts sending it.
+export const PlannedPostHogEvent: Record<string, string> = {};
 
 export type EventName<Group extends Record<string, string>> =
   Group[keyof Group];

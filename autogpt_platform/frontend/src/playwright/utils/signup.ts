@@ -23,7 +23,7 @@ export async function signupTestUser(
   const userEmail = email || faker.internet.email();
   const userPassword = password || faker.internet.password({ length: 12 });
 
-  const { getText, getField, getRole, getButton, getId } = getSelectors(page);
+  const { getText, getField, getButton, getId } = getSelectors(page);
 
   try {
     // Navigate to signup page
@@ -41,10 +41,6 @@ export async function signupTestUser(
     const confirmPasswordInput = page.locator("#confirmPassword");
     await confirmPasswordInput.fill(userPassword);
 
-    // Agree to terms and submit. Scope to the Terms checkbox by accessible
-    // name — in dev/local the AgentationDevtool renders extra checkboxes
-    // globally, so a bare getByRole("checkbox") trips Playwright strict mode.
-    await getRole("checkbox", /agree to the terms/i).click();
     const signupButton = getButton("Sign up");
     await signupButton.click();
 

@@ -36,6 +36,7 @@ from typing import Any
 
 from apscheduler.triggers.cron import CronTrigger
 
+from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.tools.session_context import is_followups_feature_enabled
 from backend.copilot.tracking import track_chat_outcome
@@ -44,7 +45,13 @@ from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .base import BaseTool
-from .models import ErrorResponse, ResponseType, ToolResponseBase
+from .models import (
+    ErrorResponse,
+    ResponseType,
+    SetupRequirementsResponse,
+    ToolResponseBase,
+)
+from .schedule_credentials import INTEGRATIONS_PARAM, pin_schedule_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +123,8 @@ class ScheduleFollowupTool(BaseTool):
                         "Mutually exclusive with cron."
                     ),
                     "minimum": 60,
+                    "title": "Runs in",
+                    "format": "seconds",
                 },
                 "cron": {
                     "type": "string",
@@ -125,6 +134,8 @@ class ScheduleFollowupTool(BaseTool):
                         "(e.g. '0 9 * * 1' = Mondays at 9am). Mutually "
                         "exclusive with delay_seconds."
                     ),
+                    "title": "Repeats",
+                    "format": "cron",
                 },
                 "session_id": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
@@ -142,11 +153,14 @@ class ScheduleFollowupTool(BaseTool):
                         "or in a different expert scope are rejected as "
                         "'session_not_found'."
                     ),
+                    "title": "Lands in",
+                    "entity": "chat_session",
                 },
                 "name": {
                     "type": "string",
                     "description": "Optional short label shown in the schedules UI.",
                 },
+                "integrations": INTEGRATIONS_PARAM,
             },
             "required": ["message"],
         }
@@ -255,6 +269,14 @@ class ScheduleFollowupTool(BaseTool):
                     session_id=current_session_id,
                 )
 
+        # Last, once nothing else can refuse the call: asking the user to pick
+        # an account for a schedule that then fails validation wastes the pick.
+        pins = await pin_schedule_credentials(
+            user_id, session, session.expert_id, kwargs.get("integrations")
+        )
+        if isinstance(pins, SetupRequirementsResponse):
+            return pins
+
         try:
             info = await get_scheduler_client().add_copilot_turn_schedule(
                 user_id=user_id,
@@ -270,6 +292,7 @@ class ScheduleFollowupTool(BaseTool):
                 organization_id=session.organization_id if session else None,
                 team_id=session.team_id if session else None,
                 expert_id=session.expert_id if session else None,
+                credential_pins=pins,
             )
         except ValueError as e:
             return ErrorResponse(
@@ -300,9 +323,18 @@ class ScheduleFollowupTool(BaseTool):
             else f"once at {info.next_run_time}"
         )
         return ScheduleCreatedResponse(
-            message=f"Follow-up scheduled {when_str}{target_note}.",
+            message=f"Follow-up scheduled {when_str}{target_note}." + _pins_note(pins),
             schedule_id=info.id,
             next_run_time=info.next_run_time,
             is_recurring=is_recurring,
             session_id=current_session_id,
         )
+
+
+def _pins_note(pins: CredentialPins) -> str:
+    if not pins:
+        return ""
+    accounts = ", ".join(
+        f"{provider}: '{pin.title or pin.id}'" for provider, pin in sorted(pins.items())
+    )
+    return f" Every run uses these accounts: {accounts}."
