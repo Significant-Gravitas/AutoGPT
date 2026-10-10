@@ -7,6 +7,7 @@ RPC into ``DatabaseManager``. Patching the accessor avoids reaching
 for Prisma directly while still exercising the queue's branching.
 """
 
+import sys
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +15,7 @@ import pytest
 from prisma.errors import UniqueViolationError
 
 from backend.copilot import turn_queue
+from backend.copilot.gate import held
 from backend.copilot.model import ChatMessage as PydanticChatMessage
 
 
@@ -302,6 +304,41 @@ def _patch_queued_list(rows):
     return patch.object(
         turn_queue, "list_queued_sessions", new=AsyncMock(return_value=rows)
     )
+
+
+@pytest.mark.asyncio
+async def test_a_long_run_of_wakes_that_may_not_start_drains_without_recursing() -> (
+    None
+):
+    """Each is closed and the next tried; more of them than the recursion limit
+    must still drain rather than overflow inside the completion hook."""
+    queue = [_mock_session(f"s{i}") for i in range(sys.getrecursionlimit() + 100)]
+    for row in queue:
+        row.metadata.llm_auth_provider = "codex"
+    db = MagicMock()
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata={held._WAKE_KEY: True})
+    )
+
+    async def closed(head, reason):
+        queue.remove(head)
+
+    with (
+        patch.object(
+            turn_queue,
+            "list_queued_sessions",
+            new=AsyncMock(side_effect=lambda _user: list(queue)),
+        ),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)
+        ),
+        patch.object(turn_queue, "_refuse_queued_turn", new=closed),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is False
+
+    assert queue == []
 
 
 @pytest.mark.asyncio
