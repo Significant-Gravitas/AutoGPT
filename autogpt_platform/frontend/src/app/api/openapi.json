@@ -30423,7 +30423,13 @@
             "type": "string",
             "title": "Store Listing Version Id"
           },
-          "score": { "type": "integer", "title": "Score" },
+          "score": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Score",
+            "description": "Star rating, 1 to 5"
+          },
           "comments": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Comments"
