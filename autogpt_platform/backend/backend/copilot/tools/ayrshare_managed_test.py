@@ -6,7 +6,6 @@ call), so on the old code they fail on behaviour, not on a missing symbol.
 """
 
 from contextlib import ExitStack, contextmanager
-from datetime import datetime, timezone
 from typing import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -31,7 +30,6 @@ from backend.integrations.ayrshare import (
     PostResponse,
 )
 from backend.integrations.credentials_store import IntegrationCredentialsStore
-from backend.integrations.managed_providers.ayrshare import AyrshareSSOLink
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockExecutionError
 
@@ -302,11 +300,7 @@ class TestPostToUnlinkedNetwork:
                 "x",
             )
         )
-        link = AyrshareSSOLink(url=SSO_URL, expires_at=datetime.now(timezone.utc))
-        with patch(
-            "backend.copilot.tools.ayrshare_managed.get_sso_link",
-            AsyncMock(return_value=link),
-        ):
+        with ayrshare_backend(has_profile=True):
             result = await _run(PostToXBlock(), post, spend)
 
         assert isinstance(result, SetupRequirementsResponse)
