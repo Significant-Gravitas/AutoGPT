@@ -360,67 +360,67 @@ async def _promote_head(user_id: str) -> bool | None:
     if not await claim_queued_session(head.session_id):
         return False
 
-    # Find the pending user message in this session (the most recent
-    # user-role row with no following assistant rows — i.e. the one
-    # that triggered the queue).  Its ``metadata`` carries the
-    # dispatcher payload.
-    pending = await chat_db().get_latest_user_message_in_session(head.session_id)
-    if pending is None or pending.content is None:
-        # Shouldn't happen — enqueue_turn always persists a row before
-        # flipping the session to queued.  If it does (corrupted
-        # state), roll back to idle so the next tick doesn't loop.
-        await chat_db().update_chat_session_status(
-            session_id=head.session_id,
-            expect_status=CHAT_STATUS_RUNNING,
-            status=CHAT_STATUS_IDLE,
-        )
-        # Drop the cache so the sidebar doesn't keep showing the
-        # stale ``running`` indicator after the rollback.
-        await invalidate_session_cache(head.session_id)
-        return False
-
-    metadata = pending.metadata or {}
-    queued_envelope = _stored_envelope(metadata)
-    if (
-        is_answer_row(pending)
-        and queued_envelope is None
-        and not is_users_own_chat(head)
-    ):
-        # Deriving one from the turn that just ended would run the approved
-        # action under that turn's limits; the answer reaches the next turn.
-        await _refuse_queued_turn(head, UNRECORDED_WAKE)
-        return None
-
-    # A turn can sit in the queue long enough for the plan that bought it to
-    # lapse. The tier was checked when the turn was accepted, but promoting it
-    # is a second, later decision to spend, so it gets its own check --
-    # otherwise a downgrade between the two buys a free Advanced run. The turn
-    # goes back to queued rather than quietly re-running on Standard: nothing
-    # in this feature changes what a turn runs on without being asked. It
-    # promotes itself once entitlement returns, and can be cancelled meanwhile.
-    if route_provider == "platform" and metadata.get("model") == "advanced":
-        try:
-            entitled = await advanced_tier_entitled(user_id)
-        except EntitlementUnavailable:
-            entitled = False
-            logger.warning(
-                "dispatch_next_for_user: could not resolve the Advanced "
-                "entitlement for user=%s; leaving session=%s queued",
-                user_id,
-                head.session_id,
-                exc_info=True,
-            )
-        if not entitled:
+    try:
+        # Find the pending user message in this session (the most recent
+        # user-role row with no following assistant rows — i.e. the one
+        # that triggered the queue).  Its ``metadata`` carries the
+        # dispatcher payload.
+        pending = await chat_db().get_latest_user_message_in_session(head.session_id)
+        if pending is None or pending.content is None:
+            # Shouldn't happen — enqueue_turn always persists a row before
+            # flipping the session to queued.  If it does (corrupted
+            # state), roll back to idle so the next tick doesn't loop.
             await chat_db().update_chat_session_status(
                 session_id=head.session_id,
                 expect_status=CHAT_STATUS_RUNNING,
-                status=CHAT_STATUS_QUEUED,
+                status=CHAT_STATUS_IDLE,
             )
+            # Drop the cache so the sidebar doesn't keep showing the
+            # stale ``running`` indicator after the rollback.
             await invalidate_session_cache(head.session_id)
             return False
 
-    turn_id = str(uuid.uuid4())
-    try:
+        metadata = pending.metadata or {}
+        queued_envelope = _stored_envelope(metadata)
+        if (
+            is_answer_row(pending)
+            and queued_envelope is None
+            and not is_users_own_chat(head)
+        ):
+            # Deriving one from the turn that just ended would run the approved
+            # action under that turn's limits; the answer reaches the next turn.
+            await _refuse_queued_turn(head, UNRECORDED_WAKE)
+            return None
+
+        # A turn can sit in the queue long enough for the plan that bought it to
+        # lapse. The tier was checked when the turn was accepted, but promoting it
+        # is a second, later decision to spend, so it gets its own check --
+        # otherwise a downgrade between the two buys a free Advanced run. The turn
+        # goes back to queued rather than quietly re-running on Standard: nothing
+        # in this feature changes what a turn runs on without being asked. It
+        # promotes itself once entitlement returns, and can be cancelled meanwhile.
+        if route_provider == "platform" and metadata.get("model") == "advanced":
+            try:
+                entitled = await advanced_tier_entitled(user_id)
+            except EntitlementUnavailable:
+                entitled = False
+                logger.warning(
+                    "dispatch_next_for_user: could not resolve the Advanced "
+                    "entitlement for user=%s; leaving session=%s queued",
+                    user_id,
+                    head.session_id,
+                    exc_info=True,
+                )
+            if not entitled:
+                await chat_db().update_chat_session_status(
+                    session_id=head.session_id,
+                    expect_status=CHAT_STATUS_RUNNING,
+                    status=CHAT_STATUS_QUEUED,
+                )
+                await invalidate_session_cache(head.session_id)
+                return False
+
+        turn_id = str(uuid.uuid4())
         # The user's message is already persisted AND the session is
         # already ``chatStatus='running'`` from claim_queued_session.
         # Build a TurnSlot directly (no acquire) so we don't re-check
@@ -462,7 +462,7 @@ async def _promote_head(user_id: str) -> bool | None:
     except BaseException:
         # Roll the claim back so a missed-dispatch tick or the next
         # slot-free event can retry.  ``BaseException`` (not just
-        # ``Exception``) so a task cancellation that lands mid-dispatch
+        # ``Exception``) so a task cancellation that lands after the claim
         # still leaves the session in a recoverable ``queued`` state
         # rather than a stuck ``running``.  Redis-side cleanup of the
         # meta that ``dispatch_turn``'s ``create_session`` wrote is
@@ -514,14 +514,22 @@ def is_users_own_chat(session: ChatSessionInfo) -> bool:
 
 async def _refuse_queued_turn(head: ChatSessionInfo, reason: str) -> None:
     """Close a promoted turn that may not start: say why in its thread and
-    free its slot."""
-    await post_refusal(head.session_id, reason)
-    await chat_db().update_chat_session_status(
-        session_id=head.session_id,
-        expect_status=CHAT_STATUS_RUNNING,
-        status=CHAT_STATUS_IDLE,
-    )
-    await invalidate_session_cache(head.session_id)
+    free its slot, which a failed post must not keep."""
+    try:
+        await post_refusal(head.session_id, reason)
+    except Exception:
+        # Not raised: the drain goes on, and the next queued turn takes the slot.
+        logger.exception(
+            f"dispatch_next_for_user: could not post why session={head.session_id} "
+            "was not started"
+        )
+    finally:
+        await chat_db().update_chat_session_status(
+            session_id=head.session_id,
+            expect_status=CHAT_STATUS_RUNNING,
+            status=CHAT_STATUS_IDLE,
+        )
+        await invalidate_session_cache(head.session_id)
 
 
 async def post_refusal(
