@@ -308,12 +308,12 @@ async def _promote_head(user_id: str) -> bool | None:
     # Local for the same reason: the gate imports this module back.
     from backend.copilot.gate.held import is_answer_row
 
-    # The user's own messages go before work another session started, oldest
-    # first in each; one that may not start yet does not hold up the rest.
-    candidates = sorted(
-        await list_queued_sessions(user_id),
-        key=lambda s: s.metadata.delegated_by_session_id is not None,
-    )
+    # The user's own turns go before sub-work, oldest first in each, so sub-work
+    # that does not fit means nothing behind it does; one that may not start yet
+    # does not hold up the rest.
+    queued = await list_queued_sessions(user_id)
+    sub_work = {s.session_id: await _is_sub_work(s) for s in queued}
+    candidates = sorted(queued, key=lambda s: sub_work[s.session_id])
     gates = _UserGates(user_id)
     head = None
     try:
@@ -330,15 +330,7 @@ async def _promote_head(user_id: str) -> bool | None:
     if head is None:
         return False
 
-    # A message the user typed is theirs whatever session it is in; what an
-    # approval wakes in a session another one opened is that session's sub-work.
-    waiting = await chat_db().get_latest_user_message_in_session(head.session_id)
-    sub_work = (
-        head.metadata.delegated_by_session_id is not None
-        and waiting is not None
-        and is_answer_row(waiting)
-    )
-    claim = await claim_queued_session(head, sub_work=sub_work)
+    claim = await claim_queued_session(head, sub_work=sub_work[head.session_id])
     if claim == "full":
         return False
     if claim == "busy":
@@ -457,6 +449,18 @@ async def _promote_head(user_id: str) -> bool | None:
 
     await invalidate_session_cache(head.session_id)
     return True
+
+
+async def _is_sub_work(session: ChatSessionInfo) -> bool:
+    """A message the user typed is theirs whatever session it is in; what an
+    approval wakes in a session another one opened is that session's sub-work."""
+    if session.metadata.delegated_by_session_id is None:
+        return False
+    # Local: the gate imports this module back.
+    from backend.copilot.gate.held import is_answer_row
+
+    waiting = await chat_db().get_latest_user_message_in_session(session.session_id)
+    return waiting is not None and is_answer_row(waiting)
 
 
 async def _may_start(gates: "_UserGates", head: ChatSessionInfo) -> bool:
