@@ -39,8 +39,7 @@ def test_preserves_strings_comments_and_forward_references(source: str):
 
 
 @pytest.mark.asyncio
-async def test_returns_a_repairable_error_instead_of_a_broken_view(monkeypatch):
-    monkeypatch.setenv("CHAT_OPENUI_ENABLED", "true")
+async def test_returns_a_repairable_error_instead_of_a_broken_view():
     result = await RenderUITool()._execute(
         "owner",
         make_session("owner"),

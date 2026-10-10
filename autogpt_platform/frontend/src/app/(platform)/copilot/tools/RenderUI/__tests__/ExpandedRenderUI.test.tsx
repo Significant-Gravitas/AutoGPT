@@ -41,6 +41,39 @@ function showResult(source: string, send = vi.fn(), readOnly = false) {
 describe("useful generated views in chat", () => {
   beforeEach(() => sessionStorage.clear());
 
+  it.each([
+    '<img src=x onerror="alert(1)">',
+    '<svg onload="alert(1)"></svg>',
+    '\"><img src=x onerror="alert(1)">',
+    '<a href="javascript:alert(1)">Place</a>',
+  ])("renders map content as literal text: %s", async (name) => {
+    const location = {
+      name,
+      latitude: 41.89,
+      longitude: -87.63,
+      category: "Museum",
+      detail: name,
+    };
+    const send = vi.fn().mockResolvedValue(undefined);
+    showResult(
+      `root = Workspace("Trip", "Supplied locations", [Map("Stops", "Select a place", [${JSON.stringify(location)}])])`,
+      send,
+    );
+    const marker = await screen.findByRole("button", { name });
+    expect(marker.getAttribute("title")).toBe(name);
+    expect(marker.querySelector("img, svg, a, script")).toBeNull();
+    fireEvent.mouseOver(marker);
+    await waitFor(() => {
+      const tooltip = document.querySelector(".leaflet-tooltip");
+      expect(tooltip?.textContent).toBe(name);
+      expect(tooltip?.querySelector("img, svg, a, script")).toBeNull();
+    });
+    fireEvent.click(marker);
+    expect(screen.getByText("41.89000, -87.63000")).toBeDefined();
+    expect(document.querySelector("[onerror], [onload]")).toBeNull();
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("filters places, selects a real map marker, and discusses it in the current chat", async () => {
     const send = vi.fn().mockResolvedValue(undefined);
     showResult(places, send);

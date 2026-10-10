@@ -1,6 +1,4 @@
-import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { isOpenUIEnabled } from "@/lib/openui/config";
 import { OpenUILab } from "@/app/(platform)/copilot/openui/components/OpenUILab/OpenUILab";
 
 export const metadata: Metadata = {
@@ -9,6 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function OpenUIDemoPage() {
-  if (!isOpenUIEnabled()) notFound();
   return <OpenUILab standalone />;
 }

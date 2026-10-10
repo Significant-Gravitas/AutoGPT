@@ -12,6 +12,7 @@ from backend.copilot.capabilities import registry
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.capabilities.index import CapabilityIndex
 from backend.copilot.capabilities.sources.static_tools import tool_entries
+from backend.copilot.config import ChatConfig
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.sdk.tool_adapter import (
     _make_truncating_wrapper,
@@ -31,8 +32,7 @@ SOURCE = 'root = Workspace("Revenue", "From the uploaded report", [Metrics([Metr
 
 
 @pytest.fixture
-def enabled(monkeypatch):
-    monkeypatch.setenv("CHAT_OPENUI_ENABLED", "true")
+def render_ui_tool(monkeypatch):
     monkeypatch.setattr(
         registry,
         "_registry",
@@ -41,7 +41,7 @@ def enabled(monkeypatch):
     return TOOL_REGISTRY["render_ui"]
 
 
-def test_render_ui_is_discoverable_but_does_not_expand_every_turn(enabled):
+def test_render_ui_is_discoverable_but_does_not_expand_every_turn(render_ui_tool):
 
     assert "render_ui" not in {
         tool["function"]["name"] for tool in get_available_tools()
@@ -50,42 +50,70 @@ def test_render_ui_is_discoverable_but_does_not_expand_every_turn(enabled):
         "run_capability",
         {"id": "tool:render_ui", "input": {"source": SOURCE, "summary": "Revenue."}},
     )
-    assert call is not None and call.tool is enabled
+    assert call is not None and call.tool is render_ui_tool
     assert call.name == "render_ui" and call.args["source"] == SOURCE
 
 
 @pytest.mark.parametrize("use_e2b", [False, True])
 @pytest.mark.parametrize("expert_session", [False, True])
-def test_prompt_guidance_is_opt_in_for_both_engines(
+def test_prompt_guidance_is_available_by_default_for_both_engines(
     monkeypatch, use_e2b, expert_session
 ):
-    for enabled in (False, True, False):
-        monkeypatch.setenv("CHAT_OPENUI_ENABLED", str(enabled).lower())
-        assert ("tool:render_ui" in prompting.get_openui_supplement()) == enabled
+    monkeypatch.setattr(
+        ChatConfig, "model_config", {**ChatConfig.model_config, "env_file": None}
+    )
+    for value in (None, "false", "true"):
+        if value is None:
+            monkeypatch.delenv("CHAT_OPENUI_ENABLED", raising=False)
+        else:
+            monkeypatch.setenv("CHAT_OPENUI_ENABLED", value)
+        assert "tool:render_ui" in prompting.get_openui_supplement()
         supplement = prompting.get_sdk_supplement(use_e2b, expert_session)
-        assert ("tool:render_ui" in supplement) == enabled
+        assert "tool:render_ui" in supplement
 
 
 @pytest.mark.asyncio
-async def test_render_ui_requires_a_logged_in_user(enabled):
-    result = await enabled.execute(
+@pytest.mark.parametrize("legacy_flag", [None, "false"])
+async def test_render_ui_works_without_deployment_configuration(
+    monkeypatch, legacy_flag
+):
+    monkeypatch.setattr(
+        ChatConfig, "model_config", {**ChatConfig.model_config, "env_file": None}
+    )
+    if legacy_flag is None:
+        monkeypatch.delenv("CHAT_OPENUI_ENABLED", raising=False)
+    else:
+        monkeypatch.setenv("CHAT_OPENUI_ENABLED", legacy_flag)
+    tool = TOOL_REGISTRY["render_ui"]
+    assert tool.is_available
+    result = await tool._execute(
+        "owner", make_session("owner"), source=SOURCE, summary="Revenue."
+    )
+    assert result.type == ResponseType.UI_RENDERED
+
+
+@pytest.mark.asyncio
+async def test_render_ui_requires_a_logged_in_user(render_ui_tool):
+    result = await render_ui_tool.execute(
         None, make_session("owner"), "ui-call", source=SOURCE, summary="Revenue."
     )
     assert json.loads(result.output)["type"] == "need_login"
 
 
 @pytest.mark.asyncio
-async def test_render_ui_limits_encoded_size_before_tool_output_truncation(enabled):
+async def test_render_ui_limits_encoded_size_before_tool_output_truncation(
+    render_ui_tool,
+):
     source = 'root = Workspace("' + "🎨" * 20_000 + '", "Example", [])'
     assert len(source) < 60_000
-    result = await enabled._execute(
+    result = await render_ui_tool._execute(
         "owner", make_session("owner"), source=source, summary="Summary"
     )
     assert result.type == ResponseType.ERROR
 
 
 @pytest.mark.asyncio
-async def test_baseline_dispatch_emits_and_records_the_ui_payload(enabled):
+async def test_baseline_dispatch_emits_and_records_the_ui_payload(render_ui_tool):
 
     state = _BaselineStreamState()
     session = make_session("owner")
@@ -121,7 +149,7 @@ async def test_baseline_dispatch_emits_and_records_the_ui_payload(enabled):
 
 
 @pytest.mark.asyncio
-async def test_sdk_dispatch_preserves_the_ui_payload_for_the_frontend(enabled):
+async def test_sdk_dispatch_preserves_the_ui_payload_for_the_frontend(render_ui_tool):
 
     async def dispatcher_should_not_run(args):
         raise AssertionError("Expected dispatch to render_ui")
@@ -144,8 +172,7 @@ async def test_sdk_dispatch_preserves_the_ui_payload_for_the_frontend(enabled):
 
 
 @pytest.mark.asyncio
-async def test_render_ui_returns_a_persistable_result(monkeypatch):
-    monkeypatch.setenv("CHAT_OPENUI_ENABLED", "true")
+async def test_render_ui_returns_a_persistable_result():
     tool = TOOL_REGISTRY["render_ui"]
     session = make_session("owner")
     result = await tool._execute(
@@ -163,19 +190,8 @@ async def test_render_ui_returns_a_persistable_result(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_render_ui_refuses_disabled_or_another_users_session(monkeypatch):
+async def test_render_ui_refuses_another_users_session():
     tool = TOOL_REGISTRY["render_ui"]
-    monkeypatch.setenv("CHAT_OPENUI_ENABLED", "false")
-    assert not tool.is_available
-    result = await tool._execute(
-        user_id="owner",
-        session=make_session("owner"),
-        source=SOURCE,
-        summary="Revenue.",
-    )
-    assert result.type == ResponseType.ERROR
-    monkeypatch.setenv("CHAT_OPENUI_ENABLED", "true")
-    assert tool.is_available
     result = await tool._execute(
         user_id="other-user",
         session=make_session("owner"),
@@ -196,8 +212,7 @@ async def test_render_ui_refuses_disabled_or_another_users_session(monkeypatch):
     ],
     ids=["empty", "oversized", "fenced", "html"],
 )
-async def test_render_ui_rejects_invalid_or_oversized_inputs(monkeypatch, source):
-    monkeypatch.setenv("CHAT_OPENUI_ENABLED", "true")
+async def test_render_ui_rejects_invalid_or_oversized_inputs(source):
     result = await TOOL_REGISTRY["render_ui"]._execute(
         user_id="owner",
         session=make_session("owner"),
@@ -221,9 +236,9 @@ async def test_render_ui_rejects_invalid_or_oversized_inputs(monkeypatch, source
     ],
 )
 async def test_render_ui_rejects_schema_errors_before_publishing(
-    enabled, section, issue
+    render_ui_tool, section, issue
 ):
-    result = await enabled._execute(
+    result = await render_ui_tool._execute(
         "owner",
         make_session("owner"),
         source=f'root = Workspace("Test", "Supplied data", [{section}])',
@@ -237,14 +252,14 @@ async def test_render_ui_rejects_schema_errors_before_publishing(
 
 @pytest.mark.asyncio
 async def test_validator_outage_returns_text_guidance_without_publishing(
-    enabled, monkeypatch
+    render_ui_tool, monkeypatch
 ):
     monkeypatch.setattr(
         render_ui,
         "validate_openui_source",
         AsyncMock(side_effect=ValidatorUnavailable("Unavailable")),
     )
-    result = await enabled._execute(
+    result = await render_ui_tool._execute(
         "owner", make_session("owner"), source=SOURCE, summary="Revenue."
     )
     assert result.type == ResponseType.ERROR
@@ -253,7 +268,9 @@ async def test_validator_outage_returns_text_guidance_without_publishing(
 
 
 @pytest.mark.asyncio
-async def test_sdk_returns_repair_feedback_then_publishes_only_corrected_view(enabled):
+async def test_sdk_returns_repair_feedback_then_publishes_only_corrected_view(
+    render_ui_tool,
+):
     async def dispatcher_should_not_run(args):
         raise AssertionError("Expected render_ui dispatch")
 

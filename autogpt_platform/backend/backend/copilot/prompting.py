@@ -9,13 +9,10 @@ handling the distinction between:
 from functools import cache
 
 from backend.blocks.desktop._api import DISPLAY
-from backend.copilot.config import ChatConfig
 from backend.copilot.openui_prompt import OPENUI_SUPPLEMENT
 
 
 def get_openui_supplement() -> str:
-    if not ChatConfig().openui_enabled:
-        return ""
     return OPENUI_SUPPLEMENT
 
 
@@ -710,6 +707,7 @@ browser the user should watch or take over.
 """
 
 
+@cache
 def get_sdk_supplement(use_e2b: bool, expert_session: bool = False) -> str:
     """Get the supplement for SDK mode (Claude Agent SDK).
 
@@ -733,23 +731,16 @@ def get_sdk_supplement(use_e2b: bool, expert_session: bool = False) -> str:
     Returns:
         The supplement string to append to the system prompt
     """
-    return _get_sdk_supplement(use_e2b, expert_session, get_openui_supplement())
-
-
-@cache
-def _get_sdk_supplement(
-    use_e2b: bool, expert_session: bool, openui_supplement: str
-) -> str:
     if not use_e2b:
         return (
             _get_local_storage_supplement("/tmp/copilot-<session-id>")
-            + openui_supplement
+            + OPENUI_SUPPLEMENT
             + _USER_FOLLOW_UP_NOTE
         )
     computer = "" if expert_session else _COMPUTER_NOTE
     return (
         _get_cloud_sandbox_supplement()
-        + openui_supplement
+        + OPENUI_SUPPLEMENT
         + computer
         + _USER_FOLLOW_UP_NOTE
     )

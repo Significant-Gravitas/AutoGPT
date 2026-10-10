@@ -1,12 +1,10 @@
 # OpenUI in Copilot
 
-An opt-in integration of the [OpenUI React runtime](https://www.openui.com/docs/api-reference/react-lang) into AutoGPT's existing Copilot conversation. The model composes a bounded catalog of 23 AutoGPT components, including interactive maps, timelines, metrics, bar/line/donut charts, searchable and sortable tables, checklists, typed forms, and follow-up buttons.
+An integration of the [OpenUI React runtime](https://www.openui.com/docs/api-reference/react-lang) into AutoGPT's existing Copilot conversation. The model composes a bounded catalog of 23 AutoGPT components, including interactive maps, timelines, metrics, bar/line/donut charts, searchable and sortable tables, checklists, typed forms, and follow-up buttons.
 
-## Enable native generation
+## Native generation
 
-Set `CHAT_OPENUI_ENABLED=true` in the backend's gitignored `.env`, then restart the backend services. Open the normal `/copilot` conversation. Use your existing Copilot model, authentication, and billing configuration; no additional provider key or frontend generation endpoint is needed.
-
-For a cloud PR preview, set the same variable on the preview's server and Copilot executor deployments. The `!deploy` workflow does not copy local `.env` files or enable this flag, so a successful preview deployment alone does not enable generation. The frontend sample-lab flag below is independent.
+Open the normal `/copilot` conversation. Interactive views are available by default using the existing Copilot model, authentication, and billing configuration. Neither generation nor the sample lab requires an OpenUI environment flag. Cloud PR previews use the same behavior after deployment; no server or executor configuration change is needed.
 
 Example requests:
 
@@ -15,7 +13,7 @@ Example requests:
 - “Help plan a product launch. Give me an editable brief before you build the plan.”
 - “Map these customer locations and propose a visit timeline. Let me change the travel mode, date, and budget in this chat.” Supply coordinates or let Copilot retrieve them through its existing tools.
 
-Otto first retrieves real data through its existing tools. When an interactive view helps, it discovers `tool:render_ui` and calls it through `run_capability`. The component schema is deferred, so ordinary turns do not carry the full library. Both the baseline and Claude SDK engines use their existing dispatch, permissions, stream, persistence, and cost accounting paths. The feature is off by default. Disabling it prevents new views; previously saved views remain readable.
+Otto first retrieves real data through its existing tools. When an interactive view helps, it discovers `tool:render_ui` and calls it through `run_capability`. The component schema is deferred, so ordinary turns do not carry the full library. Both the baseline and Claude SDK engines use their existing dispatch, permissions, stream, persistence, and cost accounting paths.
 
 ## Conversation behavior
 
@@ -35,6 +33,8 @@ Otto first retrieves real data through its existing tools. When an interactive v
 
 The Leaflet bundle loads only for a completed map. Basemap tiles come from OpenStreetMap with visible attribution and browser caching, following its [tile policy](https://operations.osmfoundation.org/policies/tiles/). The map does not request geolocation, geocode addresses, calculate routes, or prefetch offline tiles. Coordinates must come from the user or tools. Place names and details are rendered as text and are not sent to the tile service. If tiles fail, the searchable list and conversation actions remain usable. Review the tile provider's capacity and terms before a broader deployment.
 
+Leaflet's [CVE-2025-69993 advisory](https://security.snyk.io/vuln/SNYK-JS-LEAFLET-16427276) covers passing untrusted HTML strings to its popup or tooltip APIs; Snyk lists no fixed version. This integration passes a DOM element populated with `textContent` to `bindTooltip`, uses a DOM element for marker icons, and never calls `bindPopup`. The only HTML string is the fixed OpenStreetMap attribution. This follows the [maintainers' documented mitigation](https://github.com/Leaflet/Leaflet/issues/10214). Integration tests open actual Leaflet tooltips through the chat renderer with image-event, SVG-event, attribute-breakout, and JavaScript-link payloads, and verify that the payloads remain literal text with no injected elements or event handlers. These application safeguards do not change Snyk's package-level finding.
+
 `Timeline` shows dated or timed milestones with done/current/planned states. `TrendChart` supports ordered observations, including negative values; `DonutChart` shows category totals and percentages. Forms can combine `Field`, `SelectField`, `DateField`, and `NumberField`.
 
 Numeric fields retain the typed draft, including incomplete or invalid text, and show a local accessible warning for nonnumeric values, nonfinite numbers, bounds, and increments. Required text and date fields also show local feedback. Invalid submissions focus the first invalid control and never send a chat message. Corrected numeric values are converted to numbers immediately before submission. Drafts remain in the same browser tab; validation errors are not sent to the model. These controls only collect preferences; they do not schedule or execute work.
@@ -46,18 +46,18 @@ Use Node 24 and the repository's pnpm version in `autogpt_platform/frontend`:
 ```bash
 pnpm install
 pnpm generate:api
-NEXT_PUBLIC_OPENUI_EXPERIMENT=true pnpm exec next dev --turbo --port 3000
+pnpm exec next dev --turbo --port 3000
 ```
 
-Open **http://localhost:3000/tour/openui** for prepared examples without a backend or account. **http://localhost:3000/copilot/openui** uses the authenticated platform shell. The optional **UI Lab** sidebar entry uses this frontend flag, which is separate from the backend generation flag and takes effect at build time.
+Open **http://localhost:3000/tour/openui** for prepared examples without a backend or account. **http://localhost:3000/copilot/openui** uses the authenticated platform shell. These sample routes are available directly; normal navigation uses the real Copilot conversation.
 
 The lab demonstrates performance → failure investigation, lead research → outreach planning, and a campaign brief → personalized checklist. All sample data is fictional and labeled. It replays prepared programs, never calls a model or executes agents, and explains unsupported prompts. Use **Continue in Copilot** for actual generation. Interactive/Text response/Source compares the same sample; Export downloads its OpenUI program. The lab resets on refresh.
 
 ## Implementation
 
 - `frontend/src/lib/openui/catalog.ts`, `catalog-sections.ts`, and `catalog-fields.ts` define the canonical Zod catalog. Run `pnpm generate:openui` in the frontend to update `backend/backend/copilot/tools/openui_library.txt`. A contract test checks exact parity; `pnpm generate:openui --check` verifies it without writing.
-- `backend/copilot/tools/render_ui.py` requires authentication and matching session ownership, checks the feature flag, bounds inputs, and returns a versioned result. It caps encoded output below the existing truncation thresholds. A bounded lexical preflight rejects unfinished or mismatched delimiters, then the bundled canonical parser validates syntax, component schemas, and references before publication. Invalid programs return repairable tool errors; the browser repeats validation before rendering. The backend parses the program without rendering it or executing generated code.
-- `backend/copilot/openui_prompt.py` contains opt-in task-to-view guidance. It asks the model to verify dated plans, reconcile totals and dependencies, invalidate derived values after constraint changes, preserve reported progress, and use ordinary text or clarification when an interactive view adds no value. Guidance does not guarantee factual correctness or valid programs.
+- `backend/copilot/tools/render_ui.py` requires authentication and matching session ownership, bounds inputs, and returns a versioned result. It caps encoded output below the existing truncation thresholds. A bounded lexical preflight rejects unfinished or mismatched delimiters, then the bundled canonical parser validates syntax, component schemas, and references before publication. Invalid programs return repairable tool errors; the browser repeats validation before rendering. The backend parses the program without rendering it or executing generated code.
+- `backend/copilot/openui_prompt.py` contains task-to-view guidance. It asks the model to verify dated plans, reconcile totals and dependencies, invalidate derived values after constraint changes, preserve reported progress, and use ordinary text or clarification when an interactive view adds no value. Guidance does not guarantee factual correctness or valid programs.
 - `frontend/src/components/organisms/OpenUI` maps the real OpenUI renderer to AutoGPT primitives, Recharts, and Leaflet. No generated JavaScript, HTML, arbitrary components, or tool execution is enabled. Completed programs containing queries or mutations are rejected, and component props are validated against the canonical Zod schemas, including geographic bounds and typed field defaults.
 - `frontend/src/app/(platform)/copilot/tools/RenderUI` handles native result rendering, drafts, summary fallback, and conversation follow-ups.
 - Existing `/copilot` authentication and shared-session rules apply; no new protected prefix is introduced.
@@ -77,7 +77,7 @@ poetry run pytest backend/copilot/tools/render_ui_test.py backend/copilot/tools/
 poetry run format
 ```
 
-Tests exercise real Copilot host streaming and follow-up POSTs on both transport implementations, saved session conversion, shared views, draft restoration under React Strict Mode, failed and duplicate sends, malformed output, and catalog parity. Backend tests exercise discovery, opt-in prompting, authentication, ownership, encoded limits, and the real baseline/SDK dispatch envelopes. Automated tests use prepared model output; smoke-test each deployment against its configured provider.
+Tests exercise real Copilot host streaming and follow-up POSTs on both transport implementations, saved session conversion, shared views, draft restoration under React Strict Mode, failed and duplicate sends, malformed output, and catalog parity. Backend tests exercise discovery, default prompting, authentication, ownership, encoded limits, and the real baseline/SDK dispatch envelopes. Automated tests use prepared model output; smoke-test each deployment against its configured provider.
 
 On October 8, 2026, a private deployment using an authenticated ChatGPT/Codex connection generated a launch review from supplied fictional data in the normal chat. The response included metrics, a chart, a searchable comparison table, a recommendation, a checklist, and an editable form. Changing the audience and budget and submitting the form produced an updated plan in the same conversation. Both generated views, edited inputs, and checklist selections survived a page reload. Table filtering and the actual generated forms were also checked at a 390-pixel viewport. This test found and fixed default field initialization overwriting restored drafts when Strict Mode replays effects; defaults now check the current form state before writing.
 

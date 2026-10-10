@@ -38,7 +38,6 @@ import {
   Home10Icon,
   Store01Icon,
   AddTeamIcon,
-  TestTube01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -57,9 +56,6 @@ const MAIN_LINKS: NavLink[] = [
 
 const WORKSPACE_LINKS: NavLink[] = [
   { name: "Files", href: "/artifacts", icon: Folder01Icon },
-  ...(process.env.NEXT_PUBLIC_OPENUI_EXPERIMENT === "true"
-    ? [{ name: "UI Lab", href: "/copilot/openui", icon: TestTube01Icon }]
-    : []),
 ];
 
 function isLinkActive(pathname: string | null, href: string) {

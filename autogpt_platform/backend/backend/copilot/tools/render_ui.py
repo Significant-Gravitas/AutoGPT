@@ -6,7 +6,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ErrorResponse, ResponseType, ToolResponseBase
@@ -64,10 +63,6 @@ class RenderUITool(BaseTool):
         return True
 
     @property
-    def is_available(self) -> bool:
-        return ChatConfig().openui_enabled
-
-    @property
     def parameters(self) -> dict[str, object]:
         return {
             "type": "object",
@@ -93,7 +88,7 @@ class RenderUITool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs: object
     ) -> ToolResponseBase:
-        if not self.is_available or not user_id or user_id != session.user_id:
+        if not user_id or user_id != session.user_id:
             return ErrorResponse(
                 message="Interactive views are not available for this session.",
                 session_id=session.session_id,
