@@ -202,13 +202,14 @@ class TestConnectIntegration:
         assert isinstance(result, ErrorResponse)
         assert result.error == "ayrshare_not_configured"
 
-    def test_ayrshare_is_offered(self):
-        tool = ConnectIntegrationTool()
-        assert tool.parameters["properties"]["provider"]["enum"] == [
-            "github",
-            "ayrshare",
-        ]
-        assert "'ayrshare'" in tool.description
+
+def test_connect_integration_offers_ayrshare():
+    tool = ConnectIntegrationTool()
+    assert tool.parameters["properties"]["provider"]["enum"] == [
+        "github",
+        "ayrshare",
+    ]
+    assert "'ayrshare'" in tool.description
 
 
 def _patch_execution(spend: AsyncMock, *, post: AsyncMock | None = None):
