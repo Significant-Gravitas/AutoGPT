@@ -89,10 +89,8 @@ class ConnectIntegrationTool(BaseTool):
         return (
             f"Prompt the user to connect a required integration. "
             f"Supported providers: {supported}. "
-            "'ayrshare' is AutoGPT's own social posting account (LinkedIn, X, "
-            "Instagram and the other post_to_* blocks): it returns the link "
-            "where the user links their social accounts; never ask for an "
-            "Ayrshare API key. "
+            "'ayrshare' (post_to_* blocks) returns the link where the user "
+            "links their social accounts; never ask for its API key. "
             "ONLY call this tool for one of the supported providers listed above — "
             "do NOT call it for Google, Gmail, Slack, or any other provider not in the list. "
             "Call this ONLY when an external CLI or API call in the sandbox "
