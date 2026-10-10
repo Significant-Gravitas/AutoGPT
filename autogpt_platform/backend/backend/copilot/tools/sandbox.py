@@ -25,20 +25,28 @@ _MAX_TIMEOUT = 120
 # Sandbox capability detection (cached at first call)
 # ---------------------------------------------------------------------------
 
-_BWRAP_AVAILABLE: bool | None = None
+_SANDBOX_BACKEND: str | None = None
+
+
+def get_sandbox_backend() -> str | None:
+    """Return the active local sandbox backend ('vetto', 'bwrap', or None)."""
+    global _SANDBOX_BACKEND
+    if _SANDBOX_BACKEND is None:
+        if shutil.which("vetto") is not None:
+            _SANDBOX_BACKEND = "vetto"
+        elif platform.system() == "Linux" and shutil.which("bwrap") is not None:
+            _SANDBOX_BACKEND = "bwrap"
+        else:
+            _SANDBOX_BACKEND = "none"
+    return None if _SANDBOX_BACKEND == "none" else _SANDBOX_BACKEND
 
 
 def has_full_sandbox() -> bool:
-    """Return True if bubblewrap is available (filesystem + network isolation).
+    """Return True if a local sandbox runtime is available (Vetto or bubblewrap).
 
-    On non-Linux platforms (macOS), always returns False.
+    Supports Vetto on Linux, macOS, and Windows, or bubblewrap on Linux.
     """
-    global _BWRAP_AVAILABLE
-    if _BWRAP_AVAILABLE is None:
-        _BWRAP_AVAILABLE = (
-            platform.system() == "Linux" and shutil.which("bwrap") is not None
-        )
-    return _BWRAP_AVAILABLE
+    return get_sandbox_backend() is not None
 
 
 WORKSPACE_PREFIX = "/tmp/copilot-"
@@ -198,6 +206,24 @@ def _build_bwrap_command(
     return cmd
 
 
+def _build_vetto_command(
+    command: list[str], cwd: str, env: dict[str, str], timeout: int
+) -> list[str]:
+    """Build a Vetto command with kernel filesystem containment, secret masking, and airgapped network."""
+    cmd = [
+        "vetto",
+        "run",
+        "--workspace",
+        cwd,
+        f"--timeout={timeout}s",
+        "--net=off",
+    ]
+    for key, value in env.items():
+        cmd.extend(["--env", f"{key}={value}"])
+    cmd.extend(["--", *command])
+    return cmd
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -209,18 +235,19 @@ async def run_sandboxed(
     timeout: int = _DEFAULT_TIMEOUT,
     env: dict[str, str] | None = None,
 ) -> tuple[str, str, int, bool]:
-    """Run a command inside a bubblewrap sandbox.
+    """Run a command inside an isolated sandbox (Vetto or bubblewrap).
 
     Callers **must** check :func:`has_full_sandbox` before calling this
-    function.  If bubblewrap is not available, this function raises
+    function.  If no sandbox runtime is available, this function raises
     :class:`RuntimeError` rather than running unsandboxed.
 
     Returns:
         (stdout, stderr, exit_code, timed_out)
     """
-    if not has_full_sandbox():
+    backend = get_sandbox_backend()
+    if not backend:
         raise RuntimeError(
-            "run_sandboxed() requires bubblewrap but bwrap is not available. "
+            "run_sandboxed() requires a sandbox runtime but neither Vetto nor bwrap is available. "
             "Callers must check has_full_sandbox() before calling this function."
         )
 
@@ -237,7 +264,10 @@ async def run_sandboxed(
     if env:
         safe_env.update(env)
 
-    full_command = _build_bwrap_command(command, cwd, safe_env)
+    if backend == "vetto":
+        full_command = _build_vetto_command(command, cwd, safe_env, timeout)
+    else:
+        full_command = _build_bwrap_command(command, cwd, safe_env)
 
     try:
         proc = await asyncio.create_subprocess_exec(
