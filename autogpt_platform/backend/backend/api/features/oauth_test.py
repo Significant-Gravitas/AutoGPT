@@ -1298,7 +1298,11 @@ async def test_validate_access_token_fails_when_app_disabled(
     """
     from datetime import datetime, timedelta, timezone
 
-    from backend.data.auth.oauth import InvalidClientError, validate_access_token
+    from backend.data.auth.oauth import (
+        ACCESS_TOKEN_PREFIX,
+        InvalidClientError,
+        validate_access_token,
+    )
 
     # Create an OAuth app
     app_id = str(uuid.uuid4())
@@ -1322,8 +1326,9 @@ async def test_validate_access_token_fails_when_app_disabled(
         }
     )
 
-    # Create an access token directly in the database
-    token_plaintext = f"test_token_{secrets.token_urlsafe(32)}"
+    # Create an access token directly in the database, in the format
+    # create_access_token issues (validation refuses any other)
+    token_plaintext = f"{ACCESS_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
     token_hash = hashlib.sha256(token_plaintext.encode()).hexdigest()
     now = datetime.now(timezone.utc)
 
