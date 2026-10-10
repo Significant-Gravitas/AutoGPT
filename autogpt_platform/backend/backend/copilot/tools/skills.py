@@ -2447,6 +2447,7 @@ async def build_skills_update_notice(
 _EXPERT_ID_PARAM = {
     "type": "string",
     "description": "Manage this expert's skills (Otto only).",
+    "entity": "expert",
 }
 
 

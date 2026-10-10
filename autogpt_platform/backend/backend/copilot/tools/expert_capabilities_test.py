@@ -20,6 +20,7 @@ from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.model import ChatSessionMetadata
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools import (
+    TOOL_REGISTRY,
     expert_tool_disabled_groups,
     origin_disabled_tools,
     tool_names_in_groups,
@@ -155,6 +156,20 @@ async def test_describe_expert_asks_only_for_what_the_id_does_not_carry(team):
     assert "calls hire_expert" in result.message
     assert set(result.parameters["properties"]) == {"name"}
     assert result.parameters["required"] == []
+
+
+async def test_describe_teammate_sends_the_model_no_card_hints(team):
+    # delegate_to_expert's schema labels its arguments for the approval card;
+    # the model gets the same parameters as from the tool itself.
+    result = await DescribeCapabilityTool()._execute(
+        USER, make_session(USER), id="teammate:exp-vera"
+    )
+
+    assert isinstance(result, CapabilityDetailsResponse)
+    expected = TOOL_REGISTRY["delegate_to_expert"].model_parameters["properties"]
+    assert result.parameters["properties"] == {
+        key: spec for key, spec in expected.items() if key != "expert_id"
+    }
 
 
 @pytest.mark.parametrize("validate_only", [True, False])

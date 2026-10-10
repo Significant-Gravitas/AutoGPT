@@ -25,6 +25,7 @@ from backend.copilot.tools import (
 )
 
 from ._test_data import make_session
+from .base import without_card_hints
 from .describe_capability import DescribeCapabilityTool
 from .find_capability import FindCapabilityTool
 from .models import (
@@ -441,13 +442,13 @@ async def test_a_skill_id_never_resolves_to_the_platform_tool_of_that_name(skill
     assert isinstance(result, ErrorResponse)
 
 
-async def test_describe_tool_returns_parameters():
+async def test_describe_tool_returns_parameters_without_the_card_hints():
     result = await DescribeCapabilityTool()._execute(
-        USER, make_session(USER), id="tool:list_schedules"
+        USER, make_session(USER), id="tool:schedule_followup"
     )
     assert isinstance(result, CapabilityDetailsResponse)
-    assert result.capability["id"] == "tool:list_schedules"
-    assert result.parameters == TOOL_REGISTRY["list_schedules"].parameters
+    assert result.capability["id"] == "tool:schedule_followup"
+    assert result.parameters == TOOL_REGISTRY["schedule_followup"].model_parameters
 
 
 async def test_describe_block_collapses_large_enums_unless_expanded():
@@ -527,7 +528,11 @@ def _stub_tool(name: str) -> MagicMock:
     tool = MagicMock()
     tool.name = name
     tool.description = "stub"
-    tool.parameters = {"type": "object", "properties": {"x": {"type": "string"}}}
+    tool.parameters = {
+        "type": "object",
+        "properties": {"x": {"type": "string", "title": "X"}},
+    }
+    tool.model_parameters = without_card_hints(tool.parameters)
     tool._execute = AsyncMock(return_value=ErrorResponse(message="ran", session_id="s"))
     return tool
 
@@ -549,7 +554,10 @@ async def test_run_tool_describes_without_running():
             validate_only=True,
         )
     assert isinstance(result, CapabilityDetailsResponse)
-    assert result.parameters == stub.parameters
+    assert result.parameters == {
+        "type": "object",
+        "properties": {"x": {"type": "string"}},
+    }
     stub._execute.assert_not_awaited()
 
 
