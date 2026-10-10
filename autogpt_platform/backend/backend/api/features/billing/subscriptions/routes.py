@@ -37,7 +37,6 @@ from backend.data.credit import (
     get_proration_credit_cents,
     get_subscription_price_id,
     get_user_billing_cycle,
-    handle_subscription_payment_failure,
     handle_subscription_payment_success,
     modify_stripe_subscription_for_tier,
     release_pending_subscription_schedule,
@@ -50,6 +49,9 @@ from backend.data.notifications import PassWorkEvent, PassWorkKind
 from backend.data.redis_client import get_redis_async
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_checkout import AnotherPlanLive
+from backend.data.subscription_payment_failure import (
+    handle_subscription_payment_failure,
+)
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_billing import (
     TRIAL_BILLING_EVENTS,
@@ -61,6 +63,9 @@ from backend.data.subscription_trial_conversion import (
     convert_cancel_pending_trial,
     get_cancel_pending_trial,
     is_trial_plan,
+)
+from backend.data.subscription_wallet_payment import (
+    reconcile_wallet_payment_on_paid_invoice,
 )
 from backend.data.user import get_user_by_id
 from backend.notifications import lifecycle
@@ -954,6 +959,7 @@ async def stripe_webhook(request: Request):
             await sync_subscription_schedule_from_stripe(data_object)
 
         if event_type == "invoice.payment_succeeded":
+            await reconcile_wallet_payment_on_paid_invoice(data_object)
             await handle_subscription_payment_success(data_object)
             await on_trial_invoice(data_object, paid=True)
 
@@ -979,6 +985,7 @@ async def stripe_webhook(request: Request):
                 invoice = await stripe_call(stripe.Invoice.retrieve_async, invoice_id)
                 invoice_payload = cast(dict, invoice)
                 if event_type == "invoice_payment.paid":
+                    await reconcile_wallet_payment_on_paid_invoice(invoice_payload)
                     await handle_subscription_payment_success(invoice_payload)
                     await on_trial_invoice(invoice_payload, paid=True)
                 else:
