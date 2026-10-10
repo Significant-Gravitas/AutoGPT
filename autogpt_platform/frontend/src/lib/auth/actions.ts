@@ -2,6 +2,7 @@
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import * as Sentry from "@sentry/nextjs";
 import { cookies, headers } from "next/headers";
+import { IMPERSONATION_COOKIE_NAME } from "@/lib/constants";
 import { auth } from "./auth";
 import { getRedirectPath } from "./helpers";
 import { getServerSession } from "./server/getServerSession";
@@ -163,6 +164,16 @@ async function clearAuthCookies() {
         httpOnly: true,
         sameSite: "lax",
         secure: cookie.name.startsWith("__Secure-"),
+      });
+    } else if (cookie.name === IMPERSONATION_COOKIE_NAME) {
+      // Admin impersonation must not outlive the session, or the next user on
+      // this browser sends X-Act-As-User-Id and every request 403s. Match the
+      // attributes the client sets it with (lib/impersonation.ts).
+      cookieStore.set(cookie.name, "", {
+        maxAge: 0,
+        path: "/",
+        sameSite: "lax",
+        secure: true,
       });
     }
   }

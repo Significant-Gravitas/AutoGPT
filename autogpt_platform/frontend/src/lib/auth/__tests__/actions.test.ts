@@ -233,6 +233,21 @@ describe("serverLogout", () => {
     expect(captureExceptionMock).toHaveBeenCalledWith(revocationError);
   });
 
+  it("expires the admin impersonation cookie so it can't outlive the session", async () => {
+    signOutMock.mockResolvedValue({ success: true });
+    cookieJar.set("better-auth.session_token", "tok");
+    cookieJar.set("admin-impersonate-user-id", "impersonated-user");
+
+    await serverLogout();
+
+    expect(cookieJar.has("admin-impersonate-user-id")).toBe(false);
+    const expiry = setCalls.find((c) => c.name === "admin-impersonate-user-id");
+    expect(expiry?.options?.maxAge).toBe(0);
+    expect(expiry?.options?.path).toBe("/");
+    // Set client-side with Secure (lib/impersonation.ts); match it.
+    expect(expiry?.options?.secure).toBe(true);
+  });
+
   it("expires __Secure- cookies WITH the Secure attribute so HTTPS logout isn't rejected", async () => {
     // Regression: a bare cookies().delete() emits Set-Cookie without `Secure`,
     // which the browser rejects for `__Secure-`-prefixed cookies over HTTPS —

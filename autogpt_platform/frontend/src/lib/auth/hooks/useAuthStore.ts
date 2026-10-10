@@ -2,6 +2,7 @@
 
 import type BackendAPI from "@/lib/autogpt-server-api/client";
 import { resetAnalyticsIdentity } from "@/services/analytics/reset-identity";
+import { ImpersonationState } from "@/lib/impersonation";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
@@ -145,6 +146,10 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     }
 
     broadcastLogout();
+
+    // Drop any admin impersonation (sessionStorage + cookie) so the next user
+    // signing in on this browser doesn't send X-Act-As-User-Id and get 403s.
+    ImpersonationState.clear();
 
     // Clear React Query cache to prevent stale data from old user
     if (typeof window !== "undefined") {

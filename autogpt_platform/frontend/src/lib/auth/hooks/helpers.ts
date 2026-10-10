@@ -12,6 +12,7 @@ import {
   setWebSocketDisconnectIntent,
 } from "../helpers";
 import type { User } from "../types";
+import { ImpersonationState } from "@/lib/impersonation";
 
 interface FetchUserResult {
   user: User | null;
@@ -135,6 +136,10 @@ export function handleStorageEvent(
   }
 
   setWebSocketDisconnectIntent();
+
+  // Another tab logged out: drop this tab's sessionStorage copy of any admin
+  // impersonation too, or it would be re-sent after the next sign-in.
+  ImpersonationState.clear();
 
   if (params.api) {
     params.api.disconnectWebSocket();

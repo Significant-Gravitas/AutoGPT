@@ -14,6 +14,12 @@ vi.mock("../../helpers", () => ({
   setWebSocketDisconnectIntent: vi.fn(),
   setupSessionEventListeners: vi.fn(() => ({ cleanup: vi.fn() })),
 }));
+vi.mock("@/lib/react-query/queryClient", () => ({
+  getQueryClient: () => ({ clear: vi.fn() }),
+}));
+vi.mock("@/services/analytics/reset-identity", () => ({
+  resetAnalyticsIdentity: vi.fn(),
+}));
 vi.mock("../helpers", () => ({
   fetchUser: vi.fn(),
   handleStorageEvent: vi.fn(),
@@ -21,6 +27,8 @@ vi.mock("../helpers", () => ({
   validateSession: vi.fn(),
 }));
 
+import { IMPERSONATION_STORAGE_KEY } from "@/lib/constants";
+import { ImpersonationState } from "@/lib/impersonation";
 import type { User } from "../../types";
 import { validateSession as validateSessionHelper } from "../helpers";
 import { useAuthStore } from "../useAuthStore";
@@ -176,5 +184,18 @@ describe("useAuthStore.validateSession", () => {
     expect(stillValid).toBe(true);
     expect(useAuthStore.getState().user).toBe(user);
     expect(router.push).not.toHaveBeenCalled();
+  });
+});
+
+describe("useAuthStore.logOut", () => {
+  it("clears admin impersonation so the next user doesn't act as someone else", async () => {
+    ImpersonationState.set("impersonated-user");
+    expect(ImpersonationState.get()).toBe("impersonated-user");
+
+    await useAuthStore.getState().logOut();
+
+    expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBeNull();
+    expect(document.cookie).not.toContain(`${IMPERSONATION_STORAGE_KEY}=`);
+    expect(ImpersonationState.get()).toBeNull();
   });
 });
