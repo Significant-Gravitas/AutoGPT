@@ -49,6 +49,7 @@ from backend.data.credit import (
 from backend.data.notifications import PassWorkEvent, PassWorkKind
 from backend.data.redis_client import get_redis_async
 from backend.data.stripe_client import stripe_call
+from backend.data.subscription_checkout import AnotherPlanLive
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_billing import (
     TRIAL_BILLING_EVENTS,
@@ -72,6 +73,14 @@ from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+
+# The card is fine but the bank wants 3DS. Stripe emits
+# ``authentication_required`` for raw PaymentIntent confirms but
+# ``subscription_payment_intent_requires_action`` for Subscription.modify under
+# ``error_if_incomplete``; both mean the same thing here.
+_SCA_CARD_ERROR_CODES = frozenset(
+    {"authentication_required", "subscription_payment_intent_requires_action"}
+)
 
 # No router-level auth: /credits/stripe_webhook is authenticated by Stripe's
 # signature, not by a user, so each route keeps its own dependency.
@@ -487,7 +496,7 @@ async def update_subscription_tier(
     # Modify in place if there's a sub; else fall through to Checkout below.
     try:
         modified = await _change_plan_in_place(
-            user_id, tier, request.billing_cycle, target_price_id, pending_trial
+            user_id, tier, request.billing_cycle, pending_trial
         )
         if modified:
             return await get_subscription_status(user_id)
@@ -499,14 +508,8 @@ async def update_subscription_tier(
         # Auto-charge failed under payment_behavior=error_if_incomplete: the
         # modify was rolled back, so 402 lets the UI prompt for a new card or
         # surface SCA. SCA codes mean the card is fine but the bank wants 3DS —
-        # different message so the user doesn't try a new card. Stripe emits
-        # ``authentication_required`` for raw PaymentIntent confirms but
-        # ``subscription_payment_intent_requires_action`` for Subscription.modify
-        # under ``error_if_incomplete``; both must map to the SCA branch.
-        if e.code in {
-            "authentication_required",
-            "subscription_payment_intent_requires_action",
-        }:
+        # different message so the user doesn't try a new card.
+        if e.code in _SCA_CARD_ERROR_CODES:
             logger.warning(
                 "SCA required on subscription upgrade for user %s: %s", user_id, e
             )
@@ -645,6 +648,8 @@ async def update_subscription_tier(
             datafast_visitor_id=x_datafast_visitor_id,
             datafast_session_id=x_datafast_session_id,
         )
+    except AnotherPlanLive as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except stripe.StripeError as e:
@@ -677,7 +682,6 @@ async def _change_plan_in_place(
     user_id: str,
     tier: SubscriptionTier,
     billing_cycle: Literal["monthly", "yearly"],
-    target_price_id: str,
     pending_trial: TrialState | None,
 ) -> bool:
     """Change the plan without Checkout; False means Checkout is needed.
@@ -688,9 +692,20 @@ async def _change_plan_in_place(
     """
     if pending_trial is None:
         return await modify_stripe_subscription_for_tier(user_id, tier, billing_cycle)
-    if not is_trial_plan(pending_trial, tier, billing_cycle, target_price_id):
+    if not is_trial_plan(pending_trial, tier, billing_cycle):
         return False
-    await convert_cancel_pending_trial(pending_trial)
+    try:
+        await convert_cancel_pending_trial(pending_trial)
+    except stripe.CardError as e:
+        if e.code not in _SCA_CARD_ERROR_CODES:
+            raise
+        # Only an on-session Checkout can complete 3DS. The failed charge left
+        # the trial untouched, and the stale-subscription cleanup ends it once
+        # the Checkout plan is active.
+        logger.warning(
+            f"SCA required on trial conversion for user {user_id}; using Checkout: {e}"
+        )
+        return False
     return True
 
 

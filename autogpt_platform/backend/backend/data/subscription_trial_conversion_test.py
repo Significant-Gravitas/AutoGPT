@@ -6,6 +6,7 @@ import pytest
 import stripe
 from prisma.enums import SubscriptionTier
 
+from backend.data import credit
 from backend.data import subscription_trial_conversion as conversion
 from backend.data.subscription_trial import TrialState
 
@@ -224,9 +225,12 @@ async def test_refuses_while_another_plan_is_live(
         live, {"id": "sub_max", "status": status}
     )
 
-    with pytest.raises(conversion.TrialConversionRefused, match="has ended"):
+    with pytest.raises(conversion.TrialConversionRefused) as refused:
         await conversion.convert_cancel_pending_trial(pending_trial)
 
+    assert str(refused.value) == (
+        "Another plan is already active. Manage it in billing."
+    )
     boundaries.expire.assert_awaited_once_with("cus_1")
     boundaries.modify.assert_not_awaited()
     boundaries.sync.assert_not_awaited()
@@ -245,6 +249,31 @@ async def test_ended_plans_do_not_block_the_conversion(pending_trial, live, boun
 
     boundaries.modify.assert_awaited_once()
     boundaries.sync.assert_awaited_once_with(dict(boundaries.converted))
+
+
+@pytest.fixture
+def subscription_lookup():
+    """The short-lived active-subscription lookup the status route reads."""
+    lookup = credit._get_active_subscription_cached
+    lookup.cache_delete("cus_1")
+    yield lookup
+    lookup.cache_delete("cus_1")
+
+
+@pytest.mark.asyncio
+async def test_conversion_refreshes_the_cached_subscription_lookup(
+    pending_trial, live, boundaries, subscription_lookup
+):
+    """The status returned right after shows the paid period, not the trial's."""
+    trialing = stripe.Subscription.construct_from(live, "test-key")
+    with patch.object(
+        credit,
+        "_get_active_subscription",
+        AsyncMock(side_effect=[trialing, boundaries.converted]),
+    ):
+        assert await subscription_lookup("cus_1") is trialing
+        await conversion.convert_cancel_pending_trial(pending_trial)
+        assert await subscription_lookup("cus_1") is boundaries.converted
 
 
 @pytest.mark.asyncio
@@ -298,18 +327,16 @@ async def test_no_trial_is_not_cancel_pending():
 
 
 @pytest.mark.parametrize(
-    "tier,billing_cycle,price_id,expected",
+    "tier,billing_cycle,expected",
     [
-        (SubscriptionTier.PRO, "monthly", "price_pro", True),
-        (SubscriptionTier.MAX, "monthly", "price_max", False),
-        (SubscriptionTier.PRO, "yearly", "price_pro", False),
-        (SubscriptionTier.PRO, "monthly", "price_pro_v2", False),
+        (SubscriptionTier.PRO, "monthly", True),
+        (SubscriptionTier.MAX, "monthly", False),
+        (SubscriptionTier.PRO, "yearly", False),
     ],
 )
 def test_only_the_accepted_plan_converts_in_place(
-    pending_trial, tier, billing_cycle, price_id, expected
+    pending_trial, tier, billing_cycle, expected
 ):
-    assert (
-        conversion.is_trial_plan(pending_trial, tier, billing_cycle, price_id)
-        is expected
-    )
+    """The plan is matched on tier and cycle: the conversion bills the price
+    the trial accepted, as the plan card shows, even after a re-price."""
+    assert conversion.is_trial_plan(pending_trial, tier, billing_cycle) is expected

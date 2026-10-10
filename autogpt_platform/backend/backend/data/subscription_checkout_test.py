@@ -243,3 +243,57 @@ async def test_a_live_plan_on_a_later_page_is_found():
     ):
         assert await subscription_checkout.other_plan_is_live("cus_test", "sub_trial")
     next_page.assert_awaited_once()
+
+
+def _cancel_pending_trial_and(*others: dict) -> stripe.ListObject:
+    trial = {
+        "id": "sub_trial",
+        "status": "trialing",
+        "cancel_at_period_end": True,
+        "metadata": {"trial_enrollment_id": "trial-1"},
+    }
+    return _subscriptions(*others, trial)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["active", "trialing", "past_due", "incomplete"])
+async def test_cancel_pending_trial_blocks_checkout_while_another_plan_is_live(status):
+    """A plan bought while the trial is cancel-pending ends the trial only once
+    its webhook is handled; a second Checkout before then bills twice."""
+    listed = _cancel_pending_trial_and(
+        {"id": "sub_max", "status": status, "metadata": {}}
+    )
+    with (
+        patch.object(
+            subscription_checkout,
+            "get_subscription_trial",
+            AsyncMock(return_value=MagicMock(id="trial-1", converted_at=None)),
+        ),
+        patch.object(stripe.Subscription, "list_async", AsyncMock(return_value=listed)),
+    ):
+        with pytest.raises(subscription_checkout.AnotherPlanLive) as refused:
+            await subscription_checkout.ensure_no_unconverted_trial(
+                "user-1", "cus_test"
+            )
+
+    assert isinstance(
+        refused.value, subscription_checkout.SubscriptionCheckoutUnavailable
+    )
+    assert str(refused.value) == "Another plan is already active. Manage it in billing."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["canceled", "incomplete_expired"])
+async def test_cancel_pending_trial_ignores_plans_that_ended(status):
+    listed = _cancel_pending_trial_and(
+        {"id": "sub_old", "status": status, "metadata": {}}
+    )
+    with (
+        patch.object(
+            subscription_checkout,
+            "get_subscription_trial",
+            AsyncMock(return_value=MagicMock(id="trial-1", converted_at=None)),
+        ),
+        patch.object(stripe.Subscription, "list_async", AsyncMock(return_value=listed)),
+    ):
+        await subscription_checkout.ensure_no_unconverted_trial("user-1", "cus_test")

@@ -5,9 +5,13 @@ from datetime import UTC, datetime
 import stripe
 from prisma.enums import SubscriptionTier
 
-from backend.data.credit import sync_subscription_from_stripe
+from backend.data.credit import (
+    invalidate_active_subscription_cache,
+    sync_subscription_from_stripe,
+)
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_checkout import (
+    ANOTHER_PLAN_LIVE,
     expire_other_subscription_checkouts,
     other_plan_is_live,
     subscription_checkout_lock,
@@ -33,17 +37,12 @@ async def get_cancel_pending_trial(user_id: str) -> TrialState | None:
 
 
 def is_trial_plan(
-    trial: TrialState,
-    tier: SubscriptionTier,
-    billing_cycle: str,
-    price_id: str | None,
+    trial: TrialState, tier: SubscriptionTier, billing_cycle: str
 ) -> bool:
+    """Whether this is the plan the trial accepted. The conversion bills the
+    accepted price, the one the plan card shows, even after a re-price."""
     offer = trial.offer
-    return (
-        tier.value == offer.tier
-        and billing_cycle == offer.billing_cycle
-        and price_id == offer.price_id
-    )
+    return tier.value == offer.tier and billing_cycle == offer.billing_cycle
 
 
 async def convert_cancel_pending_trial(trial: TrialState) -> None:
@@ -59,7 +58,7 @@ async def convert_cancel_pending_trial(trial: TrialState) -> None:
         # A plan bought through Checkout ends the trial only once its webhook
         # is handled; converting before then would bill for both plans.
         if await other_plan_is_live(trial.customer_id, subscription.id):
-            raise TrialConversionRefused(TRIAL_ENDED)
+            raise TrialConversionRefused(ANOTHER_PLAN_LIVE)
         converted = await stripe_call(
             stripe.Subscription.modify_async,
             subscription.id,
@@ -68,6 +67,7 @@ async def convert_cancel_pending_trial(trial: TrialState) -> None:
             proration_behavior="none",
             payment_behavior="error_if_incomplete",
         )
+        invalidate_active_subscription_cache(trial.customer_id)
         await sync_subscription_from_stripe(dict(converted))
 
 

@@ -1844,6 +1844,12 @@ async def _get_active_subscription_cached(
     return await _get_active_subscription(customer_id)
 
 
+def invalidate_active_subscription_cache(customer_id: str) -> None:
+    """Drop the cached lookup after changing the subscription in Stripe, so the
+    status returned right after shows the new period instead of the old one."""
+    _get_active_subscription_cached.cache_delete(customer_id)
+
+
 async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
     """Return the billing cycle ("monthly"/"yearly") of the user's active sub.
 

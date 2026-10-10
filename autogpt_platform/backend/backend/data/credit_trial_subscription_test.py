@@ -10,7 +10,9 @@ from prisma.enums import SubscriptionTier
 
 from backend.data import credit_subscription_test
 from backend.data.credit import (
+    _get_active_subscription_cached,
     get_pending_subscription_change,
+    invalidate_active_subscription_cache,
     sync_subscription_from_stripe,
 )
 from backend.data.credit_subscription_test import _clear_cache, _make_user
@@ -169,3 +171,25 @@ async def test_get_pending_subscription_change_reports_paid_cancel(metadata):
     assert pending_tier == SubscriptionTier.NO_TIER
     assert int(effective_at.timestamp()) == period_end
     assert pending_cycle is None
+
+
+@pytest.mark.asyncio
+async def test_invalidating_the_subscription_lookup_refetches_only_that_customer():
+    """A subscription changed in place is read fresh on the next status call;
+    other customers keep their cached lookup."""
+    trialing = {"id": "sub_trial", "status": "trialing"}
+    converted = {"id": "sub_trial", "status": "active"}
+    other = {"id": "sub_other", "status": "active"}
+    with patch(
+        "backend.data.credit._get_active_subscription",
+        new_callable=AsyncMock,
+        side_effect=[trialing, other, converted],
+    ) as lookup:
+        assert await _get_active_subscription_cached("cus_trial") is trialing
+        assert await _get_active_subscription_cached("cus_other") is other
+
+        invalidate_active_subscription_cache("cus_trial")
+
+        assert await _get_active_subscription_cached("cus_trial") is converted
+        assert await _get_active_subscription_cached("cus_other") is other
+    assert lookup.await_count == 3
