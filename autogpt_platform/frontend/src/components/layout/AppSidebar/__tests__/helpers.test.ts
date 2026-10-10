@@ -161,19 +161,23 @@ describe("scrollSidebarToWhenReachable", () => {
     expect(observers[0].disconnect).toHaveBeenCalled();
   });
 
-  it("stops following once the user scrolls or clicks in the sidebar", () => {
-    const observers = stubResizeObserver();
-    const wheel = sidebarScrollArea({ scrollHeight: 900 });
-    scrollSidebarToWhenReachable(wheel.target, wheel.list, "smooth");
-    const keys = sidebarScrollArea({ scrollHeight: 900 });
-    scrollSidebarToWhenReachable(keys.target, keys.list, "smooth");
+  it.each(["wheel", "touchstart", "pointerdown", "keydown"])(
+    "stops following on %s in the sidebar, not on its own scrolling or input elsewhere",
+    (type) => {
+      const observers = stubResizeObserver();
+      const { container, target, list } = sidebarScrollArea({
+        scrollHeight: 900,
+      });
+      scrollSidebarToWhenReachable(target, list, "smooth");
 
-    wheel.container.dispatchEvent(new Event("wheel"));
-    keys.target.dispatchEvent(new Event("keydown", { bubbles: true }));
+      container.dispatchEvent(new Event("scroll"));
+      document.body.dispatchEvent(new Event(type, { bubbles: true }));
+      expect(observers[0].disconnect).not.toHaveBeenCalled();
 
-    expect(observers[0].disconnect).toHaveBeenCalled();
-    expect(observers[1].disconnect).toHaveBeenCalled();
-  });
+      target.dispatchEvent(new Event(type, { bubbles: true }));
+      expect(observers[0].disconnect).toHaveBeenCalled();
+    },
+  );
 
   it("gives up after a few seconds, or when stopped", () => {
     vi.useFakeTimers();
