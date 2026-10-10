@@ -2,6 +2,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { AuthCard } from "@/components/auth/AuthCard";
+import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 import { ExpiredLinkMessage } from "@/components/auth/ExpiredLinkMessage";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
 import LoadingBox from "@/components/__legacy__/ui/loading";
@@ -160,6 +161,7 @@ function ResetPasswordContent() {
         <AuthCard title="Reset Password">
           <ExpiredLinkMessage onRequestNewLink={handleShowEmailForm} />
         </AuthCard>
+        <CookieSettingsLink className="mt-6" />
       </div>
     );
   }
@@ -251,6 +253,7 @@ function ResetPasswordContent() {
           </form>
         )}
       </AuthCard>
+      <CookieSettingsLink className="mt-6" />
     </div>
   );
 }

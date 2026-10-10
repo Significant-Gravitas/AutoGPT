@@ -37,6 +37,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 
 function DisabledMenuItem({
   icon,
@@ -152,11 +153,12 @@ export function TourSidebar({ variant = "tour" }: Props) {
         </motion.div>
       </SidebarContent>
 
-      {(variant === "marketplace" || !isDemoComplete) && (
-        <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
+      <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
+        {(variant === "marketplace" || !isDemoComplete) && (
           <TourUpsellCard surface={variant} />
-        </SidebarFooter>
-      )}
+        )}
+        <CookieSettingsLink className="self-center" />
+      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>
