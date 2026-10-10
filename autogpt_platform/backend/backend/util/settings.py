@@ -596,6 +596,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The user agent for the Reddit API",
     )
 
+    typesafe_api_base_url: str = Field(
+        default="https://api.typesafe.ai",
+        description="Base URL the TypeSafe Jev blocks call. Self-hosted installs can "
+        "point it at a proxy or a Jev-compatible server; the SDK's TYPESAFE_BASE_URL "
+        "is deliberately not read.",
+    )
+
     scheduler_db_pool_size: int = Field(
         default=3,
         description="The pool size for the scheduler database connection pool",
@@ -887,7 +894,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="If True, allow execution to continue if AutoMod fails",
     )
 
-    @field_validator("platform_base_url", "frontend_base_url")
+    @field_validator("platform_base_url", "frontend_base_url", "typesafe_api_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:
         if not v:
