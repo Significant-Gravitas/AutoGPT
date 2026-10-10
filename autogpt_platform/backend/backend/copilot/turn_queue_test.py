@@ -722,6 +722,39 @@ async def test_a_queued_child_that_may_not_start_is_closed_and_returns_its_node(
 
 
 @pytest.mark.asyncio
+async def test_a_refused_child_returns_its_node_when_its_slot_cannot_be_freed() -> None:
+    head = _queued_row()
+    head.metadata.delegated_by_session_id = "parent"
+    head.metadata.llm_auth_provider = "microsoft_365_copilot"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(side_effect=RuntimeError("db down"))
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata={"envelope": _CHILD})
+    )
+    release = AsyncMock()
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "resolve_session_permissions", return_value=None),
+        patch.object(turn_queue, "append_and_save_message", new=AsyncMock()),
+        patch.object(turn_queue, "release_turn", new=release),
+        patch(
+            "backend.copilot.executor.utils.dispatch_turn",
+            new=AsyncMock(side_effect=TreeRefusal("This tree has closed.")),
+        ),
+        pytest.raises(RuntimeError, match="db down"),
+    ):
+        await turn_queue.dispatch_next_for_user("u1")
+
+    release.assert_awaited_once_with(TurnEnvelope.model_validate(_CHILD))
+
+
+@pytest.mark.asyncio
 async def test_a_queued_child_is_sub_work_started_under_its_own_tool_call(
     tracked_message: MagicMock,
 ) -> None:

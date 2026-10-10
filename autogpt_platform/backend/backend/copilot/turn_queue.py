@@ -682,14 +682,16 @@ async def _refuse_queued_turn(
             "was not started"
         )
     finally:
-        await chat_db().update_chat_session_status(
-            session_id=head.session_id,
-            expect_status=CHAT_STATUS_RUNNING,
-            status=CHAT_STATUS_IDLE,
-        )
-        await invalidate_session_cache(head.session_id)
-        if release is not None:
-            await release_turn(release)
+        try:
+            await chat_db().update_chat_session_status(
+                session_id=head.session_id,
+                expect_status=CHAT_STATUS_RUNNING,
+                status=CHAT_STATUS_IDLE,
+            )
+            await invalidate_session_cache(head.session_id)
+        finally:
+            if release is not None:
+                await release_turn(release)
 
 
 async def post_refusal(
