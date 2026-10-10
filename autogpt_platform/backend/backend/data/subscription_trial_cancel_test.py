@@ -94,7 +94,13 @@ def api():
             cancel, "other_plan_is_live", AsyncMock(return_value=False)
         ) as other_plan,
         patch.object(cancel, "sync_subscription_from_stripe", AsyncMock()) as sync,
+        patch.object(
+            cancel,
+            "subscription_card_can_be_charged",
+            AsyncMock(return_value=True, name="card"),
+        ) as card,
     ):
+        calls.card = card
         for name, mock in (
             ("retrieve", retrieve),
             ("modify", modify),
@@ -173,6 +179,22 @@ async def test_resume_takes_back_the_scheduled_end(trial, api):
     await cancel.resume_trial_subscription(trial)
     api.modify.assert_awaited_once_with("sub_1", cancel_at_period_end=False)
     api.sync.assert_awaited_once_with(dict(resumed))
+
+
+@pytest.mark.asyncio
+async def test_resume_without_a_card_stripe_can_charge_is_refused_untouched(trial, api):
+    """Only a cancel-pending trial keeps access on a card Stripe can't
+    charge; resuming would end the access it still has."""
+    api.retrieve.return_value = _live(trial, cancel_at_period_end=True)
+    api.card.return_value = False
+    with pytest.raises(
+        cancel.TrialChangeRefused,
+        match="^Update your card under Payment method, then resume your trial.$",
+    ):
+        await cancel.resume_trial_subscription(trial)
+    assert api.card.await_args.args[0] == "sub_1"
+    _assert_no_writes(api)
+    api.sync.assert_not_awaited()
 
 
 @pytest.mark.asyncio

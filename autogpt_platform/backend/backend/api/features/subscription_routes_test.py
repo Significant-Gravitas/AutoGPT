@@ -88,6 +88,17 @@ def _stub_pending_subscription_change(mocker: pytest_mock.MockFixture) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _stub_cancel_pending_trial(mocker: pytest_mock.MockFixture) -> None:
+    """No trial scheduled to end, so TRIAL and NO_TIER requests here don't
+    read the trial from the DB. The trial guard tests cover that lookup."""
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_cancel_pending_trial",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+
+@pytest.fixture(autouse=True)
 def track_checkout_started(mocker: pytest_mock.MockFixture) -> AsyncMock:
     """Keep analytics off the network and let tests assert the event."""
     return mocker.patch(

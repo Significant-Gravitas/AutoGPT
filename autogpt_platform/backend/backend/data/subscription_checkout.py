@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from typing import Callable
 
 import stripe
 from pydantic import BaseModel
@@ -11,6 +12,7 @@ from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_trial import get_subscription_trial
 
 _ENDED_STATUSES = ("canceled", "incomplete_expired")
+_ACCESS_STATUSES = ("active", "trialing")
 ANOTHER_PLAN_LIVE = "Another plan is already active. Manage it in billing."
 
 
@@ -63,14 +65,31 @@ async def other_plan_is_live(customer_id: str, exclude_subscription_id: str) -> 
     trial only once its webhook is handled, and the stale-subscription cleanup
     can fail; until then both are live, so keeping the trial would bill twice.
     """
+    return await _another_plan(
+        customer_id,
+        exclude_subscription_id,
+        lambda status: status not in _ENDED_STATUSES,
+    )
+
+
+async def other_plan_has_access(customer_id: str, exclude_subscription_id: str) -> bool:
+    """Whether a plan besides this one grants access now. Unlike
+    other_plan_is_live, a Checkout whose first payment failed or is still
+    pending does not count: its subscription is ``incomplete`` and grants
+    nothing, so it must not end a trial that still has access."""
+    return await _another_plan(
+        customer_id, exclude_subscription_id, lambda status: status in _ACCESS_STATUSES
+    )
+
+
+async def _another_plan(
+    customer_id: str, exclude_subscription_id: str, counts: Callable[[str], bool]
+) -> bool:
     subscriptions = await stripe_call(
         stripe.Subscription.list_async, customer=customer_id, status="all", limit=100
     )
     async for subscription in stripe_list_items(subscriptions):
-        if (
-            subscription.id != exclude_subscription_id
-            and subscription.status not in _ENDED_STATUSES
-        ):
+        if subscription.id != exclude_subscription_id and counts(subscription.status):
             return True
     return False
 

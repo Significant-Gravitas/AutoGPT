@@ -198,6 +198,65 @@ def test_update_subscription_tier_cancel_pending_trial_other_plan_uses_checkout(
     assert trial_conversion.checkout.call_args.kwargs["billing_cycle"] == billing_cycle
 
 
+@pytest.mark.parametrize("tier,converts", [("PRO", True), ("MAX", False)])
+def test_update_subscription_tier_cancel_pending_trial_without_access_can_buy_a_plan(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    trial_conversion: MagicMock,
+    tier: str,
+    converts: bool,
+) -> None:
+    """A cancel-pending trial whose card stopped verifying is on NO_TIER. It
+    still takes the trial path; the trial subscription would otherwise make
+    every plan request fail until trial_end."""
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=MagicMock(subscription_tier=SubscriptionTier.NO_TIER),
+    )
+
+    response = _post_plan(client, tier)
+
+    assert response.status_code == 200
+    assert trial_conversion.modify.await_count == int(converts)
+    assert trial_conversion.checkout.await_count == int(not converts)
+    trial_conversion.modify_for_tier.assert_not_awaited()
+
+
+def test_update_subscription_tier_cancel_pending_trial_card_it_cannot_charge_uses_checkout(
+    client: fastapi.testclient.TestClient,
+    trial_conversion: MagicMock,
+) -> None:
+    """Only Checkout can take a new card; the trial is left as it was."""
+    trial_conversion.card.return_value = False
+
+    response = _post_plan(client, "PRO")
+
+    assert response.status_code == 200
+    assert response.json()["url"] == CHECKOUT_URL
+    trial_conversion.modify.assert_not_awaited()
+    trial_conversion.checkout.assert_awaited_once()
+
+
+def test_update_subscription_tier_cancel_pending_trial_converts_without_a_current_price(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    trial_conversion: MagicMock,
+) -> None:
+    """The conversion bills the price the trial accepted, so it needs no
+    current LaunchDarkly price for the plan."""
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = _post_plan(client, "PRO")
+
+    assert response.status_code == 200
+    trial_conversion.modify.assert_awaited_once()
+
+
 @asynccontextmanager
 async def _unlocked(user_id: str):
     yield

@@ -85,6 +85,11 @@ def live_stripe():
         patch.object(
             routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
         ),
+        patch.object(
+            trial_cancel,
+            "subscription_card_can_be_charged",
+            AsyncMock(return_value=True),
+        ),
     ):
         for name, mock in (
             ("retrieve", get),

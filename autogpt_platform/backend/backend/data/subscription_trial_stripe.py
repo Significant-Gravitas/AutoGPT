@@ -8,7 +8,7 @@ from prisma.enums import SubscriptionTier
 
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.stripe_client import stripe_call, stripe_list_items
-from backend.data.subscription_checkout import other_plan_is_live
+from backend.data.subscription_checkout import other_plan_has_access
 from backend.data.subscription_trial import TrialState, get_subscription_trial
 from backend.data.subscription_trial_claims import claim_trial_identities
 from backend.data.subscription_trial_payment import Invoice as Invoice
@@ -152,10 +152,13 @@ async def _ends_scheduled_cancellation_now(
     """A cancel-pending trial keeps its access until Stripe ends it at trial_end.
 
     A plan bought meanwhile ends it now, so TRIAL never overwrites that plan if
-    its stale-subscription cleanup failed."""
-    return snapshot.cancel_at_period_end and await other_plan_is_live(
-        trial.customer_id, snapshot.id
-    )
+    its stale-subscription cleanup failed. So do items changed off the accepted
+    price: the reconcile refuses an unconverted trial on any other price."""
+    if not snapshot.cancel_at_period_end:
+        return False
+    if not snapshot.has_accepted_price(trial.offer):
+        return True
+    return await other_plan_has_access(trial.customer_id, snapshot.id)
 
 
 async def _completed_card_checkout(

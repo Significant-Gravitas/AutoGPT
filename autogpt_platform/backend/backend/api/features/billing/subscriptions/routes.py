@@ -404,11 +404,19 @@ async def update_subscription_tier(
     # Checkout flow so "start paying for my current tier" is not a no-op.
     current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
     pending_trial = None
-    if current_tier == SubscriptionTier.TRIAL and tier != SubscriptionTier.NO_TIER:
+    if tier != SubscriptionTier.NO_TIER and current_tier in (
+        SubscriptionTier.TRIAL,
+        SubscriptionTier.NO_TIER,
+    ):
         # Only a trial scheduled to end may start a paid plan before trial_end.
+        # One that lost its card (NO_TIER) takes the same path, or the trial
+        # subscription would refuse every plan until trial_end.
         pending_trial = await get_cancel_pending_trial(user_id)
-        if pending_trial is None:
+        if pending_trial is None and current_tier == SubscriptionTier.TRIAL:
             raise HTTPException(409, TRIAL_RUNNING)
+    converts_trial = pending_trial is not None and is_trial_plan(
+        pending_trial, tier, request.billing_cycle
+    )
     current_cycle = await get_user_billing_cycle(user_id) or "monthly"
     has_active_stripe_subscription = (
         await get_active_subscription_period_end(user_id) is not None
@@ -491,8 +499,9 @@ async def update_subscription_tier(
             detail=f"Subscription not available for tier {tier.value}",
         )
 
-    # Target has no LD price — not provisionable (matches the GET hiding).
-    if target_price_id is None:
+    # Target has no LD price — not provisionable (matches the GET hiding). The
+    # trial's own plan converts on the price it accepted, which needs none.
+    if target_price_id is None and not converts_trial:
         raise HTTPException(
             status_code=422,
             detail=f"Subscription not available for tier {tier.value}",
@@ -504,7 +513,15 @@ async def update_subscription_tier(
             user_id, tier, request.billing_cycle, pending_trial
         )
         if modified:
-            return await get_subscription_status(user_id)
+            status = await get_subscription_status(user_id)
+            if converts_trial and status.tier != tier.value:
+                # Stripe charged the card but the reconcile did not see a
+                # conversion; the person needs the paid plan they bought.
+                logger.error(
+                    f"Trial conversion for user {user_id} left tier"
+                    f" {status.tier}, not {tier.value}"
+                )
+            return status
     except TrialConversionRefused as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
@@ -700,7 +717,7 @@ async def _change_plan_in_place(
     if not is_trial_plan(pending_trial, tier, billing_cycle):
         return False
     try:
-        await convert_cancel_pending_trial(pending_trial)
+        converted = await convert_cancel_pending_trial(pending_trial)
     except stripe.CardError as e:
         if not _requires_authentication(e):
             raise
@@ -711,7 +728,9 @@ async def _change_plan_in_place(
             f"SCA required on trial conversion for user {user_id}; using Checkout: {e}"
         )
         return False
-    return True
+    if not converted:
+        logger.info(f"Trial conversion for user {user_id} needs a card; using Checkout")
+    return converted
 
 
 def _requires_authentication(error: stripe.CardError) -> bool:

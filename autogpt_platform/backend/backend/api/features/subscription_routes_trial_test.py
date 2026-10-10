@@ -108,6 +108,9 @@ def trial_conversion(
         AsyncMock(return_value=cancel_pending_trial),
     )
     mocker.patch.object(conversion, "subscription_checkout_lock", lock)
+    card = mocker.patch.object(
+        conversion, "subscription_card_can_be_charged", AsyncMock(return_value=True)
+    )
     retrieve = recorded(
         "retrieve", stripe.Subscription.construct_from(live, "test-key")
     )
@@ -116,6 +119,7 @@ def trial_conversion(
         calls=calls,
         live=live,
         retrieve=retrieve,
+        card=card,
         converted=converted,
         others=mocker.patch.object(
             stripe.Subscription,

@@ -3197,6 +3197,18 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
     sub_id = _invoice_subscription_id(invoice)
     invoice_id: str = invoice.get("id", "")
 
+    if invoice.get("billing_reason") == "subscription_create":
+        # A new plan's first payment failed inside Checkout, which lets the
+        # customer retry; no plan lapsed. Cancelling here would also end the
+        # trial a cancel-pending customer was buying the plan beside.
+        logger.info(
+            "handle_subscription_payment_failure: first payment of new sub %s"
+            " failed for user %s; leaving it to Checkout",
+            sub_id,
+            user.id,
+        )
+        return
+
     if amount_due <= 0:
         logger.info(
             "handle_subscription_payment_failure: amount_due=%d for user %s;"

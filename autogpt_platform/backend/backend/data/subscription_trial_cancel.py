@@ -19,10 +19,12 @@ from backend.data.subscription_checkout import (
     subscription_checkout_lock,
 )
 from backend.data.subscription_trial import TrialState
+from backend.data.subscription_trial_payment import subscription_card_can_be_charged
 
 TRIAL_ENDED = "This trial has ended. Manage the plan in billing."
 NOTHING_TO_RESUME = "Nothing to resume."
 TRIAL_BUSY = "Your trial is already being updated. Please retry."
+CARD_NEEDED = "Update your card under Payment method, then resume your trial."
 
 
 class TrialChangeRefused(ValueError):
@@ -69,6 +71,10 @@ async def _resume_locked(trial: TrialState) -> None:
         raise await _synced_refusal(subscription, TRIAL_ENDED)
     if not subscription.get("cancel_at_period_end"):
         raise await _synced_refusal(subscription, NOTHING_TO_RESUME)
+    # Only a cancel-pending trial keeps access without a card Stripe can charge;
+    # resuming without one would end the access it still has.
+    if not await subscription_card_can_be_charged(subscription.id, datetime.now(UTC)):
+        raise TrialChangeRefused(CARD_NEEDED)
     # A plan checkout opened while cancel-pending must not complete beside the
     # resumed trial: that would leave two live subscriptions. The checkout lock
     # keeps a new one from opening between this expiry and the resume.

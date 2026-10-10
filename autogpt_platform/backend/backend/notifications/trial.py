@@ -270,7 +270,12 @@ def _notice_applies(trial: TrialState, kind: TrialNoticeKind, current: dict) -> 
             and not current.get("cancel_at_period_end")
         )
     if kind == "canceled":
-        return in_trial and bool(current.get("cancel_at_period_end"))
+        # It promises access until trial_end, which only a verified card gives.
+        return (
+            in_trial
+            and trial.card_verified_at is not None
+            and bool(current.get("cancel_at_period_end"))
+        )
     if kind == "converted":
         return status == "active" and trial.converted_at is not None
     if kind == "payment_failed":

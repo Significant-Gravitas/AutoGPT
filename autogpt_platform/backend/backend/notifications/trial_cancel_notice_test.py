@@ -2,7 +2,7 @@
 access until the trial ends, and each cancel or resume flip sends the notice
 for the trial's current state, never for one that has already converted."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -134,6 +134,21 @@ async def test_a_converted_trial_is_left_to_the_paid_lifecycle(trial, previous):
     handled, notify = await _on_update(converted, previous)
     assert not handled
     notify.assert_not_awaited()
+
+
+@pytest.mark.parametrize("verified", [True, False])
+def test_the_canceled_notice_needs_the_card_that_keeps_access(trial, verified):
+    """It promises full access until trial_end, which a trial whose card
+    stopped verifying no longer has."""
+    trial = trial.model_copy(
+        update={"card_verified_at": datetime.now(UTC) if verified else None}
+    )
+    raw = {
+        "status": "trialing",
+        "trial_end": int((datetime.now(UTC) + timedelta(days=3)).timestamp()),
+        "cancel_at_period_end": True,
+    }
+    assert notices._notice_applies(trial, "canceled", raw) is verified
 
 
 def test_an_early_conversion_seen_before_its_invoice_is_not_a_resume(trial):

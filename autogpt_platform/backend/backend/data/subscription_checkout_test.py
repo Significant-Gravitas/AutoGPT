@@ -232,6 +232,32 @@ async def test_this_plan_and_ended_plans_are_not_another_live_plan(others):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status,has_access",
+    [
+        ("active", True),
+        ("trialing", True),
+        ("incomplete", False),
+        ("past_due", False),
+        ("canceled", False),
+    ],
+)
+async def test_only_an_active_or_trialing_plan_grants_access(status, has_access):
+    """An incomplete plan (a Checkout whose first payment failed or is still
+    pending) grants nothing, so it must not end a trial that still has access."""
+    listed = _subscriptions(
+        {"id": "sub_trial", "status": "trialing"}, {"id": "sub_max", "status": status}
+    )
+    with patch.object(
+        stripe.Subscription, "list_async", AsyncMock(return_value=listed)
+    ):
+        assert (
+            await subscription_checkout.other_plan_has_access("cus_test", "sub_trial")
+            is has_access
+        )
+
+
+@pytest.mark.asyncio
 async def test_a_live_plan_on_a_later_page_is_found():
     first = _subscriptions({"id": "sub_old", "status": "canceled"}, has_more=True)
     second = _subscriptions({"id": "sub_max", "status": "active"})

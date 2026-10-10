@@ -190,6 +190,57 @@ async def test_a_cancel_pending_trial_ends_once_another_plan_is_live(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["incomplete", "past_due"])
+async def test_a_plan_that_grants_no_access_never_ends_a_cancel_pending_trial(
+    trial, subscription, boundaries, status
+):
+    """A Checkout whose first payment failed or is still pending leaves its
+    subscription incomplete for up to a day. It grants nothing, so the trial
+    keeps the access it was promised until trial_end."""
+    trial = _recorded_cancel_pending(trial)
+    subscription["cancel_at_period_end"] = True
+    unpaid_plan = stripe.ListObject.construct_from(
+        {
+            "data": [{"id": "sub_max", "object": "subscription", "status": status}],
+            "has_more": False,
+        },
+        "test-key",
+    )
+    with (
+        patch.object(
+            fulfillment.stripe.Subscription,
+            "list_async",
+            AsyncMock(return_value=unpaid_plan),
+        ),
+        patch.object(
+            fulfillment.stripe.Subscription, "cancel_async", AsyncMock()
+        ) as cancel,
+    ):
+        result = await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
+    assert result is not None and result[1] == SubscriptionTier.TRIAL
+    cancel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_pending_trial_on_changed_items_ends_now(
+    trial, subscription, boundaries
+):
+    """The reconcile refuses an unconverted trial on any price but the accepted
+    one, so a cancel-pending trial whose items changed ends now, as every
+    cancel-pending trial used to, instead of failing every sync."""
+    subscription.update(cancel_at_period_end=True, items=None)
+    canceled = {**subscription, "status": "canceled", "cancel_at_period_end": False}
+    with patch.object(
+        fulfillment.stripe.Subscription,
+        "cancel_async",
+        AsyncMock(return_value=canceled),
+    ) as cancel:
+        result = await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
+    assert result is not None and result[1] == SubscriptionTier.NO_TIER
+    cancel.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_a_trial_not_cancel_pending_never_looks_for_other_plans(
     trial, boundaries
 ):
