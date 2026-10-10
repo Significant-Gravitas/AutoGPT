@@ -88,6 +88,17 @@ def _stub_pending_subscription_change(mocker: pytest_mock.MockFixture) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _stub_cancel_pending_trial(mocker: pytest_mock.MockFixture) -> None:
+    """No trial scheduled to end, so TRIAL and NO_TIER requests here don't
+    read the trial from the DB. The trial guard tests cover that lookup."""
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_cancel_pending_trial",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+
+@pytest.fixture(autouse=True)
 def track_checkout_started(mocker: pytest_mock.MockFixture) -> AsyncMock:
     """Keep analytics off the network and let tests assert the event."""
     return mocker.patch(
@@ -1707,6 +1718,58 @@ def test_update_subscription_tier_pro_to_max_subscription_payment_intent_require
             " before it can be completed successfully.",
             param=None,
             code="subscription_payment_intent_requires_action",
+        ),
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "MAX",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 402
+    detail = response.json()["detail"].lower()
+    assert "authentication" in detail
+    assert "card was declined" not in detail
+
+
+@pytest.mark.parametrize(
+    "code,decline_code",
+    [
+        ("invoice_payment_intent_requires_action", None),
+        ("card_declined", "authentication_required"),
+    ],
+)
+def test_update_subscription_tier_pro_to_max_documented_authentication_codes_return_402(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    code: str,
+    decline_code: str | None,
+) -> None:
+    """Stripe documents invoice_payment_intent_requires_action, and
+    authentication_required as a card_declined decline code, for a payment the
+    bank wants authenticated: both get the authentication copy, not a decline."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    _patch_payment_flag(mocker)
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        side_effect=stripe.CardError(
+            "This payment requires additional user action before it can be"
+            " completed successfully.",
+            param=None,
+            code=code,
+            json_body={"error": {"code": code, "decline_code": decline_code}},
         ),
     )
 
