@@ -3,14 +3,26 @@ import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { useCopilotUIStore } from "../../store";
 import { Folder01Icon, Menu01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { cn } from "@/lib/utils";
 
-export function MobileHeader() {
+interface Props {
+  embedded?: boolean;
+}
+
+export function MobileHeader({ embedded = false }: Props) {
   const setDrawerOpen = useCopilotUIStore((s) => s.setDrawerOpen);
   const toggleContextPanel = useCopilotUIStore((s) => s.toggleContextPanel);
   return (
     <div
-      className="fixed z-50 flex gap-2"
-      style={{ left: "1rem", top: `${NAVBAR_HEIGHT_PX + 20}px` }}
+      className={cn(
+        "z-50 flex gap-2",
+        embedded ? "shrink-0 px-4 pb-1 pt-3" : "fixed",
+      )}
+      style={
+        embedded
+          ? undefined
+          : { left: "1rem", top: `${NAVBAR_HEIGHT_PX + 20}px` }
+      }
     >
       <Button
         variant="icon"

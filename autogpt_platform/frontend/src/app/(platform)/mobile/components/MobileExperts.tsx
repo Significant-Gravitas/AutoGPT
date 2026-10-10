@@ -58,7 +58,7 @@ export function MobileExperts() {
         </ul>
       )}
       <Link
-        href="/marketplace"
+        href="/marketplace#experts"
         className="flex min-h-11 items-center justify-center rounded-full border border-zinc-200 bg-white px-5 text-sm font-medium"
       >
         Find an expert

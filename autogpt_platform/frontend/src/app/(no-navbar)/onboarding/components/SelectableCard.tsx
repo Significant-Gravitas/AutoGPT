@@ -39,7 +39,7 @@ export function SelectableCard({
       <span className="flex items-center justify-center text-zinc-500">
         {icon}
       </span>
-      <Text variant="body-medium" as="span" className="whitespace-nowrap">
+      <Text variant="body-medium" as="span" className="text-center">
         {label}
       </Text>
     </button>

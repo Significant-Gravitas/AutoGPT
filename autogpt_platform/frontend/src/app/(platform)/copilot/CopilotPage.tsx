@@ -45,7 +45,7 @@ export function CopilotPage() {
   // Use the same mount-gated decision as PlatformChrome so the ChatSidebar is
   // hidden in lockstep with the layout swap — avoids a one-frame flash where
   // the classic shell renders without its sidebar before the new layout mounts.
-  const { showNewLayout } = usePlatformChrome();
+  const { showNewLayout, isNativeApp } = usePlatformChrome();
   const { isUserLoading, isLoggedIn } = useAuth();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
@@ -76,17 +76,20 @@ export function CopilotPage() {
       // layout subtracts the navbar + preview banner. `svh` keeps the input
       // visible when mobile browser chrome is shown.
       style={
-        showNewLayout
-          ? { height: "100svh" }
-          : {
-              height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
-            }
+        isNativeApp
+          ? { height: "calc(100dvh - var(--mobile-navigation-height, 64px))" }
+          : showNewLayout
+            ? { height: "100svh" }
+            : {
+                height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
+              }
       }
       className="min-h-0"
     >
       {!isMobile && !showNewLayout && <ChatSidebar />}
       <MainArea
         isMobile={isMobile}
+        isNativeApp={isNativeApp}
         showNewLayout={showNewLayout}
         sessionId={sessionId}
         droppedFiles={droppedFiles}
@@ -103,6 +106,7 @@ export function CopilotPage() {
 
 interface MainAreaProps {
   isMobile: boolean;
+  isNativeApp: boolean;
   showNewLayout: boolean;
   sessionId: string | null;
   droppedFiles: File[];
@@ -111,6 +115,7 @@ interface MainAreaProps {
 
 function MainArea({
   isMobile,
+  isNativeApp,
   showNewLayout,
   sessionId,
   droppedFiles,
@@ -125,7 +130,9 @@ function MainArea({
         >
           {/* New layout replaces these floating buttons: sessions live in the
               app sidebar, workspace files toggle sits in the inset header. */}
-          {isMobile && !showNewLayout && <MobileHeader />}
+          {isMobile && !showNewLayout && (
+            <MobileHeader embedded={isNativeApp} />
+          )}
           <div
             className={cn(
               "flex flex-col gap-3 px-4 pt-4 empty:hidden",

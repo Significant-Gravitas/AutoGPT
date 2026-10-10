@@ -262,6 +262,7 @@ export function createFixtureServer({
     if (
       url.pathname === "/" ||
       url.pathname === "/copilot" ||
+      url.pathname === "/home" ||
       url.pathname === "/mobile" ||
       url.pathname === "/slow"
     ) {

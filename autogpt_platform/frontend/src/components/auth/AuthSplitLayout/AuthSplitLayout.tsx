@@ -21,7 +21,7 @@ export function AuthSplitLayout({ marketing, children, className }: Props) {
           showRadialGradient={false}
           className="absolute inset-0 h-full w-full lg:hidden"
         />
-        <div className="relative z-10 flex w-full max-w-[26rem] flex-col">
+        <div className="relative z-10 flex w-full max-w-[26rem] flex-col max-md:[&_input]:text-base">
           <AutoGPTLogo className="mx-auto mb-10 h-auto w-32 sm:w-40 lg:hidden" />
           {children}
         </div>

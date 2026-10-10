@@ -52,7 +52,7 @@ final class ServerSettingsViewController: UIViewController, UITextFieldDelegate 
     label.adjustsFontForContentSizeCategory = true
 
     addressField.text = address
-    addressField.placeholder = "https://platform.agpt.co"
+    addressField.placeholder = "https://autogpt.example.com"
     addressField.accessibilityLabel = "Server address"
     addressField.font = NativeTheme.font(
       "Geist-Regular", size: 16, style: .body, compatibleWith: traitCollection)

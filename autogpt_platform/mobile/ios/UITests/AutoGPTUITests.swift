@@ -2,6 +2,19 @@ import XCTest
 
 final class AutoGPTUITests: XCTestCase {
   @MainActor
+  func testWelcomeOffersCloudAndOwnServer() {
+    let app = XCUIApplication()
+    app.launchEnvironment["AUTOGPT_UI_TEST_SCREEN"] = "welcome"
+    app.launch()
+    XCTAssertTrue(app.buttons["Use AutoGPT Cloud"].waitForExistence(timeout: 5))
+    app.buttons["Connect to your own server"].tap()
+    XCTAssertTrue(app.textFields["Server address"].waitForExistence(timeout: 3))
+    app.buttons["Cancel"].tap()
+    XCTAssertTrue(app.buttons["Use AutoGPT Cloud"].exists)
+    capture("Choose AutoGPT Cloud or your own server")
+  }
+
+  @MainActor
   func testNativePushBridgeReturnsStatusWithoutRequestingPermission() {
     let app = XCUIApplication()
     app.launchEnvironment["AUTOGPT_ORIGIN"] = "http://127.0.0.1:8765"

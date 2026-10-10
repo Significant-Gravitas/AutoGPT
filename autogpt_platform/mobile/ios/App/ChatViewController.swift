@@ -6,6 +6,7 @@ import WebKit
 @MainActor
 final class ChatViewController: UIViewController {
   private var origin: AppOrigin
+  private var hasSelectedServer: Bool
   private var webView: WKWebView!
   private let progress = UIProgressView(progressViewStyle: .bar)
   private let statusScroll = UIScrollView()
@@ -18,6 +19,7 @@ final class ChatViewController: UIViewController {
   private var progressObservation: NSKeyValueObservation?
   private var historyObservation: NSKeyValueObservation?
   private var primaryAction: (() -> Void)?
+  private var secondaryAction: (() -> Void)?
   private var isSigningIn = false
   private var isChangingServer = false
   private var lastCommittedURL: URL?
@@ -25,15 +27,15 @@ final class ChatViewController: UIViewController {
   private var pushBridge: NativePushBridge?
 
   init() {
-    var address = UserDefaults.standard.string(forKey: "serverOrigin") ?? "https://platform.agpt.co"
+    var address = UserDefaults.standard.string(forKey: "serverOrigin")
     var allowLocalHTTP = false
     #if DEBUG
       allowLocalHTTP = true
       if let override = ProcessInfo.processInfo.environment["AUTOGPT_ORIGIN"] { address = override }
     #endif
-    origin =
-      (try? AppOrigin(address, allowLocalHTTP: allowLocalHTTP))
-      ?? (try! AppOrigin("https://platform.agpt.co"))
+    let selected = address.flatMap { try? AppOrigin($0, allowLocalHTTP: allowLocalHTTP) }
+    origin = selected ?? (try! AppOrigin("https://platform.agpt.co"))
+    hasSelectedServer = selected != nil
     super.init(nibName: nil, bundle: nil)
   }
 
@@ -66,6 +68,10 @@ final class ChatViewController: UIViewController {
       self, selector: #selector(openNotification), name: NativePush.opened, object: nil)
     #if DEBUG
       if let screen = ProcessInfo.processInfo.environment["AUTOGPT_UI_TEST_SCREEN"] {
+        if screen == "welcome" {
+          showWelcome()
+          return
+        }
         showSignIn()
         if screen == "error" { showError("Check your connection and try again.") }
         return
@@ -143,7 +149,7 @@ final class ChatViewController: UIViewController {
     secondaryButton.setTitle("Open in browser", for: .normal)
     secondaryButton.titleLabel?.adjustsFontForContentSizeCategory = true
     secondaryButton.addAction(
-      UIAction { [weak self] _ in self?.openInBrowser() }, for: .touchUpInside)
+      UIAction { [weak self] _ in self?.secondaryAction?() }, for: .touchUpInside)
     [statusTitle, statusMessage, primaryButton, secondaryButton].forEach(status.addArrangedSubview)
     status.setCustomSpacing(40, after: brand)
     status.setCustomSpacing(8, after: statusTitle)
@@ -224,7 +230,7 @@ final class ChatViewController: UIViewController {
       browser.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
       browser.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
       browser.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-      browser.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+      browser.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
     ])
     if progress.superview == nil {
       progress.translatesAutoresizingMaskIntoConstraints = false
@@ -277,6 +283,9 @@ final class ChatViewController: UIViewController {
       UIAction(title: "Server settings", image: UIImage(systemName: "gearshape")) { [weak self] _ in
         self?.settings()
       },
+      UIAction(title: "Choose workspace", image: UIImage(systemName: "network")) { [weak self] _ in
+        self?.showWelcome()
+      },
     ]
     if !downloads.isEmpty {
       actions = [
@@ -307,6 +316,10 @@ final class ChatViewController: UIViewController {
 
   private func loadChat() {
     guard !isSigningIn, !isChangingServer else { return }
+    guard hasSelectedServer else {
+      showWelcome()
+      return
+    }
     cancelExports()
     statusScroll.isHidden = true
     webView.isHidden = false
@@ -334,6 +347,10 @@ final class ChatViewController: UIViewController {
 
   private func retry() {
     guard !isSigningIn, !isChangingServer else { return }
+    guard hasSelectedServer else {
+      showWelcome()
+      return
+    }
     cancelExports()
     statusScroll.isHidden = true
     webView.isHidden = false
@@ -350,6 +367,8 @@ final class ChatViewController: UIViewController {
     applyStatusText(title: title, message: message)
     primaryButton.setTitle(button, for: .normal)
     primaryAction = action
+    secondaryButton.setTitle("Open in browser", for: .normal)
+    secondaryAction = { [weak self] in self?.openInBrowser() }
     statusScroll.isHidden = false
     statusScroll.setContentOffset(.zero, animated: false)
     UIAccessibility.post(notification: .screenChanged, argument: statusTitle)
@@ -378,8 +397,34 @@ final class ChatViewController: UIViewController {
       button: "Sign in to AutoGPT", action: { [weak self] in self?.signIn() })
   }
 
+  private func showWelcome() {
+    webView.stopLoading()
+    showStatus(
+      title: "Your AI team, on your phone",
+      message:
+        "Use AutoGPT Cloud, or connect to a server you run yourself. Your chats and experts stay with the workspace you choose.",
+      button: "Use AutoGPT Cloud",
+      action: { [weak self] in self?.connect(to: "https://platform.agpt.co") })
+    secondaryButton.setTitle("Connect to your own server", for: .normal)
+    secondaryAction = { [weak self] in self?.settings() }
+  }
+
+  private func showWorkspaceUnavailable() {
+    let isCloud = origin.url.absoluteString == "https://platform.agpt.co"
+    showStatus(
+      title: "Mobile access isn't available yet",
+      message: isCloud
+        ? "AutoGPT Cloud needs an update before it can connect to this app. You can use it in your browser, or connect to your own server."
+        : "This server needs an AutoGPT update for mobile access. Update your server, or choose another workspace.",
+      button: "Choose workspace", action: { [weak self] in self?.showWelcome() })
+  }
+
   private func signIn() {
     guard !isSigningIn, !isChangingServer, let window = view.window else { return }
+    guard hasSelectedServer else {
+      showWelcome()
+      return
+    }
     clearPush()
     isSigningIn = true
     installWebView()
@@ -437,46 +482,59 @@ final class ChatViewController: UIViewController {
   }
 
   private func openInBrowser() {
-    let target = webView.url.flatMap { origin.contains($0) ? $0 : nil } ?? origin.chatURL
+    let target =
+      statusScroll.isHidden
+      ? webView.url.flatMap { origin.contains($0) ? $0 : nil } ?? origin.chatURL
+      : origin.chatURL
     UIApplication.shared.open(target)
   }
 
   private func settings() {
     guard !isSigningIn, !isChangingServer, presentedViewController == nil else { return }
-    let sheet = ServerSettingsViewController(address: origin.url.absoluteString) {
+    let address =
+      hasSelectedServer && origin.url.host != "platform.agpt.co" ? origin.url.absoluteString : ""
+    let sheet = ServerSettingsViewController(address: address) {
       [weak self] address in
-      guard let self, !self.isSigningIn, !self.isChangingServer else { return }
-      do {
-        var allowLocalHTTP = false
-        #if DEBUG
-          allowLocalHTTP = true
-        #endif
-        let next = try AppOrigin(address, allowLocalHTTP: allowLocalHTTP)
-        if next == self.origin { return }
-        self.clearPush()
-        self.authentication.cancel()
-        self.isChangingServer = true
-        self.installWebView()
-        self.showStatus(
-          title: "Changing servers", message: "Clearing the previous website session.",
-          button: "Connecting…", action: {})
-        self.primaryButton.isEnabled = false
-        self.secondaryButton.isEnabled = false
-        Task { @MainActor in
-          await self.webView.configuration.websiteDataStore.removeData(
-            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
-          self.isChangingServer = false
-          self.primaryButton.isEnabled = true
-          self.secondaryButton.isEnabled = true
-          self.origin = next
-          self.lastCommittedURL = nil
-          UserDefaults.standard.set(next.url.absoluteString, forKey: "serverOrigin")
-          self.installWebView()
-          self.loadChat()
-        }
-      } catch { self.showError(error.localizedDescription) }
+      self?.connect(to: address)
     }
     present(sheet, animated: true)
+  }
+
+  private func connect(to address: String) {
+    guard !isSigningIn, !isChangingServer else { return }
+    do {
+      var allowLocalHTTP = false
+      #if DEBUG
+        allowLocalHTTP = true
+      #endif
+      let next = try AppOrigin(address, allowLocalHTTP: allowLocalHTTP)
+      if next == self.origin && hasSelectedServer {
+        loadChat()
+        return
+      }
+      self.clearPush()
+      self.authentication.cancel()
+      self.isChangingServer = true
+      self.installWebView()
+      self.showStatus(
+        title: "Changing servers", message: "Clearing the previous website session.",
+        button: "Connecting…", action: {})
+      self.primaryButton.isEnabled = false
+      self.secondaryButton.isEnabled = false
+      Task { @MainActor in
+        await self.webView.configuration.websiteDataStore.removeData(
+          ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+        self.isChangingServer = false
+        self.primaryButton.isEnabled = true
+        self.secondaryButton.isEnabled = true
+        self.origin = next
+        self.hasSelectedServer = true
+        self.lastCommittedURL = nil
+        UserDefaults.standard.set(next.url.absoluteString, forKey: "serverOrigin")
+        self.installWebView()
+        self.loadChat()
+      }
+    } catch { self.showError(error.localizedDescription) }
   }
 
 }
@@ -541,7 +599,11 @@ extension ChatViewController: WKNavigationDelegate {
       let response = navigationResponse.response as? HTTPURLResponse, response.statusCode >= 400
     {
       decisionHandler(.cancel)
-      showError("The server returned an error (\(response.statusCode)). Try again in a moment.")
+      if response.statusCode == 404, response.url?.path == "/mobile" {
+        showWorkspaceUnavailable()
+      } else {
+        showError("The server returned an error (\(response.statusCode)). Try again in a moment.")
+      }
     } else {
       decisionHandler(navigationResponse.canShowMIMEType ? .allow : .download)
     }

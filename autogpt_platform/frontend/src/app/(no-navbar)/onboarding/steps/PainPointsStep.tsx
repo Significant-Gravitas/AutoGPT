@@ -100,7 +100,7 @@ export function PainPointsStep() {
   const orderedPainPoints = orderPainPoints(topIDs);
 
   return (
-    <FadeIn>
+    <FadeIn className="w-full max-w-xl">
       <div className="flex w-full flex-col items-center gap-8 px-4">
         <div className="flex max-w-lg flex-col items-center gap-2 px-4 text-center">
           <Text variant="h4">What&apos;s eating your time?</Text>
@@ -110,7 +110,7 @@ export function PainPointsStep() {
         </div>
 
         <div className="flex w-full flex-col items-center gap-4">
-          <div className="flex w-full max-w-[100vw] flex-nowrap gap-4 overflow-x-auto px-8 scrollbar-none md:grid md:grid-cols-3 md:overflow-hidden md:px-0">
+          <div className="grid w-full grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
             {orderedPainPoints.map((p) => (
               <SelectableCard
                 key={p.id}
@@ -118,6 +118,7 @@ export function PainPointsStep() {
                 label={p.label}
                 selected={painPoints.includes(p.id)}
                 onClick={() => togglePainPoint(p.id)}
+                className="w-full min-w-0"
               />
             ))}
           </div>

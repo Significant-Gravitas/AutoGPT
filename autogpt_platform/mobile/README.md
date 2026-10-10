@@ -1,6 +1,6 @@
 # AutoGPT mobile apps
 
-Native iOS and Android hosts for AutoGPT's existing chat interfaces. The default entry point is `https://platform.agpt.co/mobile`, a workspace with **Chats**, **Experts**, and **Needs you**. Existing conversations reopen by session ID; choosing an expert opens their hosted chat. Questions, approvals, editable reviews, and setup prompts retain the website's controls. Web improvements reach the apps without copying components or issuing an app update.
+Native iOS and Android hosts for AutoGPT's existing chat interfaces. The iPhone app offers **Use AutoGPT Cloud** and **Connect to your own server** on first launch and remembers the selected workspace. Android defaults to AutoGPT Cloud and supports server settings. The selected server's `/mobile` workspace provides **Chats**, **Experts**, and **Needs you**, with persistent navigation to these screens and **Settings** throughout the app. Existing conversations reopen by session ID; choosing an expert opens their chat. Questions, approvals, editable reviews, and setup prompts retain the website's controls.
 
 - [Build and test iOS](ios/README.md)
 - [Build and test Android](android/README.md)
@@ -15,7 +15,7 @@ This is a development prototype. Store publication, production deployment, relea
 
 Native sign-in and server settings reuse AutoGPT's full logo, licensed Poppins and Geist fonts, custom zinc palette, and pill controls. These small native surfaces preserve dynamic text scaling and scrolling; the hosted web application supplies the chat design.
 
-The shells manage persistent website sessions, safe URL handling, system-browser sign-in, keyboard and safe areas, Back navigation, loading/recovery, file selection, file export, and user-controlled microphone permission. General responsive-web design remains in the separate web workstream.
+The shells manage persistent website sessions, safe URL handling, system-browser sign-in, keyboard and safe areas, Back navigation, loading/recovery, file selection, file export, and user-controlled microphone permission. The iPhone web view resizes above the keyboard; the app layout keeps the composer and workspace navigation inside that viewport. Login inputs avoid focus zoom, and onboarding choices fit a phone-width grid.
 
 The iOS app uses UIKit, WebKit, AuthenticationServices, UserNotifications, and a local Swift package. Android uses the platform WebView, AndroidX, and Firebase Messaging. There is no separate chat API client, copied message renderer, or React Native/Capacitor runtime.
 
@@ -30,6 +30,8 @@ HTTPS origins can be selected explicitly for self-hosted and preview deployments
 ## Browser sign-in
 
 The selected web deployment must include the mobile authentication endpoints from this PR. Until those endpoints are deployed, the existing hosted website can be used through **Open in browser**, but the app's browser-to-app sign-in cannot complete against that deployment.
+
+If `/mobile` is unavailable, the iPhone app explains that the workspace needs an update and offers **Choose workspace** or the existing website. **App menu → Choose workspace** returns to the Cloud/self-hosted choice. **Server settings** accepts an HTTPS origin; simulator Debug builds also accept loopback HTTP for a real local development stack.
 
 1. The app creates a random proof and state, then opens the existing web login in the system authentication browser.
 2. The signed-in browser asks the user to connect the app, displaying and binding the current account.

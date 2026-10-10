@@ -1,6 +1,6 @@
 # AutoGPT for iOS
 
-A small UIKit/WKWebView host for the existing AutoGPT website. Chat, streaming, agents, history, settings, and onboarding stay on the website. The app provides safe navigation, browser sign-in, persistent website storage, keyboard/safe-area integration, native file selection, and attachment export. There is no JavaScript-to-native bridge on iOS.
+A UIKit/WKWebView host for the existing AutoGPT website. Chat, streaming, agents, history, settings, and onboarding stay on the website. The app provides workspace selection, safe navigation, browser sign-in, persistent website storage, keyboard/safe-area integration, native file selection, attachment export, and an origin-scoped push notification bridge.
 
 The app uses a single `UIWindowScene`; multiple windows are disabled. Browser app-account authentication remains owned by `ASWebAuthenticationSession`.
 
@@ -39,7 +39,7 @@ Install the matching Xcode platform support before running the included XCUITest
 
 ## Connection and authentication
 
-The default is `https://platform.agpt.co/mobile`. **App menu → Server settings** accepts a deliberate HTTPS origin, including a self-hosted or preview deployment. Paths, embedded credentials, queries, and fragments are rejected. Changing servers clears this app's website data.
+First launch offers **Use AutoGPT Cloud** (`https://platform.agpt.co`) or **Connect to your own server**. The app remembers that choice and opens its `/mobile` workspace on subsequent launches. **App menu → Choose workspace** returns to the chooser, and **Server settings** accepts a deliberate HTTPS origin, including a self-hosted or preview deployment. Paths, embedded credentials, queries, and fragments are rejected. Changing servers clears this app's website data.
 
 The same deployment must include this PR's `/api/auth/mobile/start`, `/api/auth/mobile/authorize`, and `/api/auth/mobile/exchange` endpoints. Until those endpoints are deployed, **Open in browser** can use the existing website, but native browser-to-app sign-in cannot complete against that deployment.
 
@@ -49,7 +49,7 @@ External user links open in the system browser. Programmatic external navigation
 
 Provider connections that use popup callbacks must be completed through **Open in browser**, followed by **Reload** in the app. Use the same AutoGPT account in both. See [provider connection limitations](../README.md#provider-connections); device-code polling flows remain available.
 
-WebKit handles the keyboard viewport. Rotating or resizing the app dismisses the keyboard to avoid stale focus scrolling; the page remains loaded, and tapping the input resumes editing. Native sign-in and recovery screens scroll when landscape or larger text leaves less room.
+The web view follows the native keyboard layout guide so the message box stays above the keyboard. The web app supplies persistent Chats, Experts, Needs you, and Settings navigation. Rotating or resizing the app dismisses the keyboard to avoid stale focus scrolling; the page remains loaded, and tapping the input resumes editing. Native sign-in and recovery screens scroll when landscape or larger text leaves less room.
 
 ## Local checks
 
@@ -77,6 +77,8 @@ swift-format lint --strict --recursive \
 
 ## Current verification
 
+- On iPhone 16 Pro / iOS 18.3, a separate local workspace completed real Better Auth browser sign-in, onboarding, a live model conversation, and an `ask_question` response through **Needs you**. The answer resumed the same conversation and cleared its persisted pending question. Hiring Alex opened the expert's own conversation, and both chats remained available after reinstalling the app. These checks used a local account and real database/model services, not the integration fixture.
+- Cloud/self-hosted selection and the hosted deployment's missing-mobile-route recovery were checked in the simulator. Hosted-account sign-in remains blocked until the mobile web/auth changes are deployed; this is separate from local-workspace verification.
 - Swift origin and PKCE contract tests pass on the host.
 - Simulator Debug and unsigned iPhone Release builds pass with the iOS 26.5 SDK.
 - It launches on the installed iPhone 16 Pro / iOS 18.3 simulator and intercepts the real hosted site's login redirect.

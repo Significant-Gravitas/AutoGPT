@@ -7,10 +7,12 @@ import { PlatformChrome } from "../PlatformChrome";
 
 const showNewLayoutMock = vi.fn<() => boolean>(() => false);
 const showTourSidebarMock = vi.fn<() => boolean>(() => false);
+const isNativeAppMock = vi.fn<() => boolean>(() => false);
 vi.mock("../usePlatformChrome", () => ({
   usePlatformChrome: () => ({
     showNewLayout: showNewLayoutMock(),
     showTourSidebar: showTourSidebarMock(),
+    isNativeApp: isNativeAppMock(),
   }),
 }));
 
@@ -45,7 +47,34 @@ describe("PlatformChrome", () => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     showNewLayoutMock.mockReturnValue(false);
     showTourSidebarMock.mockReturnValue(false);
+    isNativeAppMock.mockReturnValue(false);
     useTourStore.setState({ isDemoComplete: false });
+  });
+
+  it("keeps chats, experts, requests and settings reachable inside the native app", () => {
+    isNativeAppMock.mockReturnValue(true);
+    render(
+      <PlatformChrome>
+        <div>Conversation with an expert</div>
+      </PlatformChrome>,
+    );
+
+    expect(
+      screen.getByRole("navigation", { name: "App navigation" }),
+    ).toBeDefined();
+    for (const [name, href] of [
+      ["Chats", "/mobile?tab=chats"],
+      ["Experts", "/mobile?tab=experts"],
+      ["Needs you", "/mobile?tab=attention"],
+      ["Settings", "/settings/profile"],
+    ]) {
+      expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(
+        href,
+      );
+    }
+    expect(screen.getByText("Conversation with an expert")).toBeDefined();
+    expect(screen.queryByTestId("navbar")).toBeNull();
+    expect(screen.queryByTestId("app-sidebar")).toBeNull();
   });
 
   it("renders the classic Navbar shell when the new layout is off", () => {

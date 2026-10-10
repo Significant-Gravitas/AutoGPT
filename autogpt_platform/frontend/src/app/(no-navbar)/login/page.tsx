@@ -157,7 +157,7 @@ export default function LoginPage() {
         </Link>
       </div>
 
-      <MobileWarningBanner />
+      <MobileWarningBanner nextUrl={safeNextUrl} />
       <EmailNotAllowedModal
         isOpen={showNotAllowedModal}
         onClose={handleCloseNotAllowedModal}

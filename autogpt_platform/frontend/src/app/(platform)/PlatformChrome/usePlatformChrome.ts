@@ -1,5 +1,6 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useNativeApp } from "@/hooks/useNativeApp";
 
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { matchesRoute } from "@/lib/utils";
@@ -22,6 +23,7 @@ const NEW_LAYOUT_EXCLUDED_PREFIXES = [
 ];
 
 export function usePlatformChrome() {
+  const isNativeApp = useNativeApp();
   const pathname = usePathname();
   const isNewLayoutEnabled = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
   // Also initializes the auth store — required here because the tour shell
@@ -66,7 +68,9 @@ export function usePlatformChrome() {
   const isNewLayoutActive = isMounted && Boolean(isNewLayoutEnabled);
 
   return {
-    showNewLayout: isNewLayoutActive && !isExcludedRoute && !showTourSidebar,
+    showNewLayout:
+      isNewLayoutActive && !isExcludedRoute && !showTourSidebar && !isNativeApp,
+    isNativeApp,
     isNewLayoutActive,
     // On copilot the inset header floats over the chat instead of stacking
     // above it, so messages scroll to the viewport top. Kept separate from

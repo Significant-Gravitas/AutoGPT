@@ -21,7 +21,7 @@ public struct AppOrigin: Equatable, Sendable {
     url = normalized
   }
 
-  public var chatURL: URL { url.appendingPathComponent("copilot") }
+  public var chatURL: URL { url.appendingPathComponent("home") }
 
   public func contains(_ candidate: URL) -> Bool {
     guard let parts = URLComponents(url: candidate, resolvingAgainstBaseURL: false),
