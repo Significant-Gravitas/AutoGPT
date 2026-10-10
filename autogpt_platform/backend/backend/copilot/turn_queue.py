@@ -265,20 +265,28 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     # so top-leveling it here would deadlock the import graph.
     from backend.copilot.executor.utils import dispatch_turn
 
-    # The user's own messages go before work another session started, and one
-    # that may not start yet (an entitlement it lacks) does not hold up the rest.
+    # The user's own messages go before work another session started, oldest
+    # first in each; one that may not start yet does not hold up the rest.
     candidates = sorted(
         await list_queued_sessions(user_id),
         key=lambda s: s.metadata.delegated_by_session_id is not None,
     )
+    gates = _UserGates(user_id)
     head = None
-    for candidate in candidates:
-        if await _may_start(user_id, candidate):
-            head = candidate
-            break
+    try:
+        for candidate in candidates:
+            if await _may_start(gates, candidate):
+                head = candidate
+                break
+    except RateLimitUnavailable:
+        logger.warning(
+            "dispatch_next_for_user: rate-limit service degraded for user=%s; "
+            "leaving queue intact for the next tick",
+            user_id,
+        )
+        return False
     if head is None:
         return False
-    route_provider = head.metadata.llm_auth_provider
 
     # Claim by transitioning the session ``queued`` → ``running``.  A
     # parallel cancel between validation and claim rejects this
@@ -306,34 +314,6 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         return False
 
     metadata = pending.metadata or {}
-
-    # A turn can sit in the queue long enough for the plan that bought it to
-    # lapse. The tier was checked when the turn was accepted, but promoting it
-    # is a second, later decision to spend, so it gets its own check --
-    # otherwise a downgrade between the two buys a free Advanced run. The turn
-    # goes back to queued rather than quietly re-running on Standard: nothing
-    # in this feature changes what a turn runs on without being asked. It
-    # promotes itself once entitlement returns, and can be cancelled meanwhile.
-    if route_provider == "platform" and metadata.get("model") == "advanced":
-        try:
-            entitled = await advanced_tier_entitled(user_id)
-        except EntitlementUnavailable:
-            entitled = False
-            logger.warning(
-                "dispatch_next_for_user: could not resolve the Advanced "
-                "entitlement for user=%s; leaving session=%s queued",
-                user_id,
-                head.session_id,
-                exc_info=True,
-            )
-        if not entitled:
-            await chat_db().update_chat_session_status(
-                session_id=head.session_id,
-                expect_status=CHAT_STATUS_RUNNING,
-                status=CHAT_STATUS_QUEUED,
-            )
-            await invalidate_session_cache(head.session_id)
-            return False
 
     turn_id = str(uuid.uuid4())
     try:
@@ -410,54 +390,96 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     return True
 
 
-async def _may_start(user_id: str, head: ChatSessionInfo) -> bool:
-    """Whether ``head``'s route lets it start now: its entitlement, and for the
-    platform route the paywall and rate limits."""
+async def _may_start(gates: "_UserGates", head: ChatSessionInfo) -> bool:
+    """Whether ``head`` may start now: its route's entitlement and, on the
+    platform route, the paywall, the rate limits and an Advanced turn's tier."""
     route_provider = head.metadata.llm_auth_provider
     if route_provider == "codex":
-        if not await has_codex_access(user_id):
-            logger.info(
-                "dispatch_next_for_user: user=%s lacks Codex entitlement, "
-                "leaving session=%s queued",
-                user_id,
-                head.session_id,
-            )
-            return False
-    elif route_provider == "platform":
-        if await is_user_paywalled(user_id):
-            logger.info(
-                "dispatch_next_for_user: user=%s paywalled, leaving session=%s queued",
-                user_id,
-                head.session_id,
-            )
-            return False
+        return await gates.codex_access()
+    if route_provider != "platform":
+        return True
+    if not await gates.platform_spend():
+        return False
+    # A turn can sit in the queue long enough for the plan that bought it to
+    # lapse. The tier was checked when the turn was accepted, but promoting it
+    # is a second, later decision to spend, so it gets its own check --
+    # otherwise a downgrade between the two buys a free Advanced run. The turn
+    # stays queued rather than quietly re-running on Standard: nothing in this
+    # feature changes what a turn runs on without being asked. It promotes
+    # itself once entitlement returns, and can be cancelled meanwhile.
+    pending = await chat_db().get_latest_user_message_in_session(head.session_id)
+    model = (pending.metadata or {}).get("model") if pending else None
+    if model == "advanced" and not await gates.advanced_tier():
+        logger.info(
+            "dispatch_next_for_user: user=%s lacks the Advanced tier, "
+            "leaving session=%s queued",
+            gates.user_id,
+            head.session_id,
+        )
+        return False
+    return True
 
+
+class _UserGates:
+    """The per-user checks, made at most once per dispatch however many queued
+    sessions are tried."""
+
+    def __init__(self, user_id: str) -> None:
+        self.user_id = user_id
+        self._codex: bool | None = None
+        self._platform: bool | None = None
+        self._advanced: bool | None = None
+
+    async def codex_access(self) -> bool:
+        if self._codex is None:
+            self._codex = await has_codex_access(self.user_id)
+            if not self._codex:
+                logger.info(
+                    "dispatch_next_for_user: user=%s lacks Codex entitlement",
+                    self.user_id,
+                )
+        return self._codex
+
+    async def platform_spend(self) -> bool:
+        """The paywall and the rate limits. Raises :class:`RateLimitUnavailable`,
+        which leaves the whole queue for the next tick."""
+        if self._platform is None:
+            self._platform = await self._platform_spend()
+        return self._platform
+
+    async def advanced_tier(self) -> bool:
+        if self._advanced is None:
+            try:
+                self._advanced = await advanced_tier_entitled(self.user_id)
+            except EntitlementUnavailable:
+                logger.warning(
+                    "dispatch_next_for_user: could not resolve the Advanced "
+                    "entitlement for user=%s",
+                    self.user_id,
+                    exc_info=True,
+                )
+                self._advanced = False
+        return self._advanced
+
+    async def _platform_spend(self) -> bool:
+        if await is_user_paywalled(self.user_id):
+            logger.info("dispatch_next_for_user: user=%s paywalled", self.user_id)
+            return False
         cfg = ChatConfig()
+        daily_limit, weekly_limit, _ = await get_global_rate_limits(
+            self.user_id,
+            cfg.daily_cost_limit_microdollars,
+            cfg.weekly_cost_limit_microdollars,
+        )
         try:
-            daily_limit, weekly_limit, _ = await get_global_rate_limits(
-                user_id,
-                cfg.daily_cost_limit_microdollars,
-                cfg.weekly_cost_limit_microdollars,
-            )
             await check_rate_limit(
-                user_id=user_id,
+                user_id=self.user_id,
                 daily_cost_limit=daily_limit,
                 weekly_cost_limit=weekly_limit,
             )
         except RateLimitExceeded as exc:
             logger.info(
-                "dispatch_next_for_user: user=%s rate-limited (%s), "
-                "leaving session=%s queued",
-                user_id,
-                exc,
-                head.session_id,
+                "dispatch_next_for_user: user=%s rate-limited (%s)", self.user_id, exc
             )
             return False
-        except RateLimitUnavailable:
-            logger.warning(
-                "dispatch_next_for_user: rate-limit service degraded for user=%s; "
-                "leaving queue intact for the next tick",
-                user_id,
-            )
-            return False
-    return True
+        return True
