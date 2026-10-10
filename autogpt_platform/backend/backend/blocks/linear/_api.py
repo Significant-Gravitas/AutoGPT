@@ -182,6 +182,7 @@ class LinearClient:
         description: str | None = None,
         priority: int | None = None,
         project_id: str | None = None,
+        parent_id: str | None = None,
     ) -> CreateIssueResponse:
         try:
             mutation = """
@@ -208,11 +209,14 @@ class LinearClient:
             if project_id:
                 variables["input"]["projectId"] = project_id
 
-            if description:
+            if description is not None:
                 variables["input"]["description"] = description
 
-            if priority:
+            if priority is not None:
                 variables["input"]["priority"] = priority
+
+            if parent_id is not None:
+                variables["input"]["parentId"] = parent_id
 
             added_issue = await self.mutate(mutation, variables)
             return CreateIssueResponse(**added_issue["issueCreate"])
