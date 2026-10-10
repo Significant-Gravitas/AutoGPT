@@ -2,6 +2,7 @@
 
 The fakes hold state, so a test can deliver the same event twice, fail a
 Stripe call part way, and check what a retry does with what was left behind.
+The tier sync is the real one, so a test sees the tier the customer ends up on.
 Fake Stripe shapes each invoice by API version like the real one: before
 2025-03-31.basil it carries ``paid_out_of_band`` and ``payment_intent``; from
 basil on it has neither, and ``payments`` only when expanded.
@@ -18,7 +19,7 @@ import stripe
 from prisma.enums import CreditTransactionType, SubscriptionTier
 from prisma.errors import UniqueViolationError
 
-from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
+from backend.data.credit import sync_subscription_from_stripe
 from backend.data.subscription_payment_failure import (
     handle_subscription_payment_failure,
 )
@@ -44,6 +45,7 @@ class FakeStripe:
         self.payment_intents: dict[str, dict] = {}
         self.cancelled: list[str] = []
         self.voided: list[str] = []
+        self.last_status: dict[str, str] = {}
         self.paid_out_of_band: list[str] = []
         self.fail_next: dict[str, int] = {}
         # Runs after Stripe applied a pay, before the response returns.
@@ -102,6 +104,12 @@ class FakeStripe:
         if sub["latest_invoice"] == invoice_id:
             sub["status"] = "active"
 
+    def card_fails(self, invoice_id: str) -> None:
+        """Stripe's own retry of the customer's card fails again."""
+        invoice = self.invoices[invoice_id]
+        assert invoice["status"] == "open"
+        self.subscriptions[invoice["subscription"]]["status"] = "past_due"
+
     def _maybe_fail(self, call: str) -> None:
         if self.fail_next.get(call, 0) > 0:
             self.fail_next[call] -= 1
@@ -136,35 +144,22 @@ class FakeStripe:
         return self.view(invoice_id)
 
     async def cancel(self, sub_id: str, **params):
-        self._maybe_fail("cancel")
-        sub = self.subscriptions[sub_id]
-        if sub["status"] == "canceled":
-            raise stripe.InvalidRequestError("already canceled", None)
-        assert params == {
-            "cancellation_details": {"comment": PAYMENT_FAILURE_CANCELLATION_COMMENT}
-        }
-        sub["status"] = "canceled"
         self.cancelled.append(sub_id)
-        return dict(sub)
+        raise AssertionError("an unpaid subscription must not be cancelled")
 
-    async def list_invoices(self, subscription: str, status: str, limit: int):
+    async def void(self, invoice_id: str, **params):
+        self.voided.append(invoice_id)
+        raise AssertionError("an unpaid invoice must stay payable")
+
+    async def list_subscriptions(self, customer: str, status: str, limit: int):
         page = MagicMock()
         page.data = [
-            stripe.Invoice.construct_from(self.view(inv["id"]), "sk_test")
-            for inv in self.invoices.values()
-            if inv["subscription"] == subscription and inv["status"] == status
+            dict(sub)
+            for sub in self.subscriptions.values()
+            if sub["customer"] == customer and sub["status"] == status
         ]
         page.has_more = False
         return page
-
-    async def void(self, invoice_id: str):
-        self._maybe_fail("void")
-        invoice = self.invoices[invoice_id]
-        if invoice["status"] not in ("open", "uncollectible"):
-            raise stripe.InvalidRequestError("not open", None)
-        invoice["status"] = "void"
-        self.voided.append(invoice_id)
-        return self.view(invoice_id)
 
 
 def _invoice_payment(status: str, pi_id: str) -> dict:
@@ -224,12 +219,13 @@ class FakeLedger:
 
 
 class World:
-    def __init__(self, balance: int = 0, trial=None, api_version: str = ACACIA) -> None:
+    def __init__(self, balance: int = 0, api_version: str = ACACIA) -> None:
         self.api_version = api_version
         self.stripe = FakeStripe()
         self.ledger = FakeLedger(balance)
         self.synced: list[dict] = []
-        self.trial = trial
+        self.tier = SubscriptionTier.PRO
+        self.tier_writes: list[SubscriptionTier] = []
         self.locks: dict[str, asyncio.Lock] = {}
         self._stack = ExitStack()
 
@@ -240,12 +236,34 @@ class World:
 
     async def _sync(self, subscription: dict, **kwargs):
         self.synced.append(dict(subscription))
+        await sync_subscription_from_stripe(subscription, **kwargs)
+
+    async def _find_user(self, **kwargs):
+        return MagicMock(id=USER, subscriptionTier=self.tier)
+
+    async def _set_tier(self, user_id: str, tier: SubscriptionTier, **kwargs):
+        self.tier = tier
+        self.tier_writes.append(tier)
+
+    def subscription_updated(self, sub_id: str) -> Awaitable[None]:
+        """Stripe's ``customer.subscription.updated`` for ``sub_id``."""
+        return sync_subscription_from_stripe(dict(self.stripe.subscriptions[sub_id]))
 
     def __enter__(self):
-        user = MagicMock(id=USER, subscriptionTier=SubscriptionTier.PRO)
-        users = MagicMock(find_first=AsyncMock(return_value=user))
+        users = MagicMock(find_first=self._find_user)
         fs = self.stripe
         patches = [
+            patch("backend.data.credit.User.prisma", return_value=users),
+            patch("backend.data.credit.set_subscription_tier", self._set_tier),
+            patch(
+                "backend.data.credit.build_price_to_tier_map",
+                new=AsyncMock(return_value={"price_pro": SubscriptionTier.PRO}),
+            ),
+            patch("backend.data.credit._cleanup_stale_subscriptions", new=AsyncMock()),
+            patch("backend.data.credit._track_billing_event"),
+            patch("backend.data.credit.schedule_posthog_lifecycle_sync"),
+            patch("backend.data.credit.get_pending_subscription_change"),
+            patch.object(stripe.Subscription, "list_async", fs.list_subscriptions),
             patch(
                 "backend.data.subscription_payment_failure.User.prisma",
                 return_value=users,
@@ -273,13 +291,8 @@ class World:
                 "backend.data.subscription_payment_failure.sync_subscription_from_stripe",
                 side_effect=self._sync,
             ),
-            patch(
-                "backend.data.subscription_payment_failure.get_subscription_trial",
-                new=AsyncMock(return_value=self.trial),
-            ),
             patch.object(stripe.Invoice, "retrieve_async", fs.retrieve_invoice),
             patch.object(stripe.Invoice, "pay_async", fs.pay),
-            patch.object(stripe.Invoice, "list_async", fs.list_invoices),
             patch.object(stripe.Invoice, "void_invoice_async", fs.void),
             patch.object(
                 stripe.Subscription, "retrieve_async", fs.retrieve_subscription
@@ -303,15 +316,64 @@ def _renewal_failed(world: World, sub_id="sub_1", invoice_id="in_1", **kw) -> di
 
 
 @pytest.mark.asyncio
-async def test_unpaid_past_due_subscription_is_cancelled_and_its_invoice_voided():
+async def test_unpaid_renewal_cuts_access_and_leaves_the_bill_payable():
     with World(balance=0) as world:
         event = _renewal_failed(world)
         await handle_subscription_payment_failure(event)
 
-    assert world.stripe.cancelled == ["sub_1"]
-    assert world.stripe.voided == ["in_1"]
-    assert world.synced[-1]["status"] == "canceled"
+    assert world.tier == SubscriptionTier.NO_TIER
+    assert world.stripe.cancelled == []
+    assert world.stripe.voided == []
+    assert world.stripe.subscriptions["sub_1"]["status"] == "past_due"
+    assert world.stripe.invoices["in_1"]["status"] == "open"
     assert world.ledger.transactions == {}
+
+
+@pytest.mark.asyncio
+async def test_stripe_retry_paying_later_restores_access():
+    with World(balance=0) as world:
+        event = _renewal_failed(world)
+        await handle_subscription_payment_failure(event)
+        assert world.tier == SubscriptionTier.NO_TIER
+
+        world.stripe.card_pays("in_1")
+        await reconcile_wallet_payment_on_paid_invoice(world.stripe.view("in_1"))
+        await world.subscription_updated("sub_1")
+        # The original failure, delivered again after the payment.
+        await handle_subscription_payment_failure(event)
+
+    assert world.tier == SubscriptionTier.PRO
+    assert world.tier_writes == [SubscriptionTier.NO_TIER, SubscriptionTier.PRO]
+    assert world.ledger.transactions == {}
+
+
+@pytest.mark.asyncio
+async def test_each_failed_retry_keeps_access_cut_without_cancelling():
+    with World(balance=0) as world:
+        event = _renewal_failed(world)
+        await handle_subscription_payment_failure(event)
+        world.stripe.card_fails("in_1")
+        await handle_subscription_payment_failure(event)
+
+    assert world.tier == SubscriptionTier.NO_TIER
+    assert world.tier_writes == [SubscriptionTier.NO_TIER]
+    assert world.stripe.cancelled == []
+    assert world.stripe.voided == []
+
+
+@pytest.mark.asyncio
+async def test_retry_after_a_top_up_is_paid_from_the_wallet():
+    with World(balance=0) as world:
+        event = _renewal_failed(world)
+        await handle_subscription_payment_failure(event)
+        world.ledger.balance = 5000
+        world.stripe.card_fails("in_1")
+        await handle_subscription_payment_failure(event)
+        await world.subscription_updated("sub_1")
+
+    assert world.ledger.transactions == {"in_1": -2000}
+    assert world.stripe.paid_out_of_band == ["in_1"]
+    assert world.tier == SubscriptionTier.PRO
 
 
 @pytest.mark.asyncio
@@ -324,12 +386,13 @@ async def test_old_failure_never_cancels_a_newer_active_subscription():
         world.stripe.add_invoice("in_new", "sub_new", status="paid")
         await handle_subscription_payment_failure(event)
 
-    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.cancelled == []
     assert world.stripe.subscriptions["sub_new"]["status"] == "active"
-    assert world.stripe.voided == ["in_old"]
-    # The tier is recomputed from the cancelled subscription, so the sync can
-    # see sub_new and keep the paid tier, instead of a blanket NO_TIER write.
+    # The tier is recomputed from the failed subscription, so the sync sees
+    # sub_new and keeps the paid tier, instead of a blanket NO_TIER write.
     assert [s["id"] for s in world.synced] == ["sub_old"]
+    assert world.tier == SubscriptionTier.PRO
+    assert world.tier_writes == []
 
 
 @pytest.mark.asyncio
@@ -340,102 +403,82 @@ async def test_failure_of_an_invoice_that_is_no_longer_latest_does_nothing():
         world.stripe.add_invoice("in_2", "sub_1")
         await handle_subscription_payment_failure(event)
 
-    assert world.stripe.cancelled == []
     assert world.stripe.paid_out_of_band == []
     assert world.ledger.transactions == {}
+    assert world.synced == []
 
 
 @pytest.mark.asyncio
 async def test_delayed_failure_after_the_customer_paid_does_nothing():
     with World(balance=0) as world:
         event = _renewal_failed(world)
-        world.stripe.invoices["in_1"]["status"] = "paid"
-        world.stripe.subscriptions["sub_1"]["status"] = "active"
+        world.stripe.card_pays("in_1")
         await handle_subscription_payment_failure(event)
 
+    assert world.synced == []
+    assert world.tier == SubscriptionTier.PRO
+
+
+@pytest.mark.asyncio
+async def test_duplicate_failure_event_writes_the_tier_once():
+    with World(balance=0) as world:
+        event = _renewal_failed(world)
+        await handle_subscription_payment_failure(event)
+        await handle_subscription_payment_failure(event)
+
+    assert world.tier_writes == [SubscriptionTier.NO_TIER]
     assert world.stripe.cancelled == []
-    assert world.stripe.voided == []
+
+
+@pytest.mark.asyncio
+async def test_failure_after_stripe_ended_the_subscription_does_nothing():
+    """Stripe's own final action after its retries cancels the subscription;
+    its deletion event syncs the tier, so a late failure has nothing to do."""
+    with World(balance=5000) as world:
+        event = _renewal_failed(world)
+        world.stripe.subscriptions["sub_1"]["status"] = "canceled"
+        await handle_subscription_payment_failure(event)
+
+    assert world.ledger.transactions == {}
     assert world.synced == []
 
 
 @pytest.mark.asyncio
-async def test_duplicate_failure_event_after_cancellation_is_a_no_op():
-    with World(balance=0) as world:
-        event = _renewal_failed(world)
-        await handle_subscription_payment_failure(event)
-        await handle_subscription_payment_failure(event)
-
-    assert world.stripe.cancelled == ["sub_1"]
-    assert world.stripe.voided == ["in_1"]
-
-
-@pytest.mark.asyncio
-async def test_void_failure_is_resumed_by_the_retry():
-    with World(balance=0) as world:
-        event = _renewal_failed(world)
-        world.stripe.fail_next["void"] = 1
-        with pytest.raises(stripe.APIConnectionError):
-            await handle_subscription_payment_failure(event)
-        assert world.stripe.cancelled == ["sub_1"]
-        assert world.stripe.invoices["in_1"]["status"] == "open"
-
-        await handle_subscription_payment_failure(event)
-
-    assert world.stripe.cancelled == ["sub_1"]
-    assert world.stripe.voided == ["in_1"]
-
-
-@pytest.mark.asyncio
-async def test_cancel_failure_raises_so_the_webhook_retries():
-    with World(balance=0) as world:
-        event = _renewal_failed(world)
-        world.stripe.fail_next["cancel"] = 1
-        with pytest.raises(stripe.APIConnectionError):
-            await handle_subscription_payment_failure(event)
-        assert world.stripe.voided == []
-        assert world.synced == []
-
-        await handle_subscription_payment_failure(event)
-
-    assert world.stripe.cancelled == ["sub_1"]
-    assert world.stripe.voided == ["in_1"]
-
-
-@pytest.mark.asyncio
-async def test_payment_still_processing_is_not_cancelled_or_voided():
-    with World(balance=0) as world:
+async def test_payment_still_processing_leaves_the_wallet_alone():
+    with World(balance=5000) as world:
         event = _renewal_failed(world, payment_intent="pi_1")
         world.stripe.payment_intents["pi_1"] = {"id": "pi_1", "status": "processing"}
         await handle_subscription_payment_failure(event)
 
-    assert world.stripe.cancelled == []
-    assert world.stripe.voided == []
+    assert world.ledger.transactions == {}
     assert [s["status"] for s in world.synced] == ["past_due"]
+    assert world.tier == SubscriptionTier.NO_TIER
 
 
 @pytest.mark.asyncio
-async def test_unconverted_trial_invoice_stays_open_for_card_repair():
-    trial = MagicMock(converted_at=None, subscription_id="sub_1")
-    with World(balance=0, trial=trial) as world:
+async def test_trial_first_invoice_takes_the_same_path():
+    """An unconverted trial's first invoice stays open for a card fix like any
+    other; the trial reconcile maps the past-due trial to NO_TIER."""
+    with World(balance=0) as world:
         event = _renewal_failed(world)
-        await handle_subscription_payment_failure(event)
+        world.stripe.subscriptions["sub_1"]["metadata"] = {"trial_enrollment_id": "t1"}
+
+        async def reconcile_trial(user_id: str, sub_id: str):
+            sub = world.stripe.subscriptions[sub_id]
+            assert sub["status"] == "past_due"
+            await world._set_tier(user_id, SubscriptionTier.NO_TIER)
+            return dict(sub), SubscriptionTier.NO_TIER
+
+        with patch(
+            "backend.data.credit.reconcile_trial_subscription",
+            side_effect=reconcile_trial,
+        ), patch("backend.data.credit.invalidate_subscription_caches"):
+            await handle_subscription_payment_failure(event)
 
     assert world.stripe.cancelled == []
     assert world.stripe.voided == []
-    assert [s["status"] for s in world.synced] == ["past_due"]
-
-
-@pytest.mark.asyncio
-async def test_converted_trial_renewal_failure_is_cancelled():
-    trial = MagicMock(
-        converted_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
-        subscription_id="sub_1",
-    )
-    with World(balance=0, trial=trial) as world:
-        event = _renewal_failed(world)
-        await handle_subscription_payment_failure(event)
-
-    assert world.stripe.cancelled == ["sub_1"]
+    assert world.stripe.invoices["in_1"]["status"] == "open"
+    assert world.tier == SubscriptionTier.NO_TIER
 
 
 @pytest.mark.asyncio
@@ -571,27 +614,3 @@ async def test_non_subscription_invoice_is_ignored():
         )
 
     assert world.ledger.transactions == {}
-
-
-@pytest.mark.asyncio
-async def test_cancelled_subscription_also_voids_its_uncollectible_invoices():
-    with World(balance=0) as world:
-        event = _renewal_failed(world)
-        world.stripe.add_invoice("in_0", "sub_1", status="uncollectible")
-        await handle_subscription_payment_failure(event)
-
-    assert world.stripe.cancelled == ["sub_1"]
-    assert sorted(world.stripe.voided) == ["in_0", "in_1"]
-
-
-@pytest.mark.asyncio
-async def test_resumed_void_skips_an_invoice_whose_payment_is_processing():
-    with World(balance=0) as world:
-        event = _renewal_failed(world)
-        world.stripe.subscriptions["sub_1"]["status"] = "canceled"
-        world.stripe.add_invoice("in_2", "sub_1", payment_intent="pi_2")
-        world.stripe.payment_intents["pi_2"] = {"id": "pi_2", "status": "processing"}
-        await handle_subscription_payment_failure(event)
-
-    assert world.stripe.voided == ["in_1"]
-    assert world.stripe.invoices["in_2"]["status"] == "open"

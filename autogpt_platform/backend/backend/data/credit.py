@@ -1596,13 +1596,6 @@ def invalidate_subscription_caches(user_id: str) -> None:
     get_pending_subscription_change.cache_delete(user_id)
 
 
-# Stripe stamps ``cancellation_details.reason = "cancellation_requested"`` on
-# any cancel made through the API, including ours after a failed renewal the
-# balance could not cover. This comment on that cancel is what lets the
-# ``customer.subscription.deleted`` handler report it as involuntary churn.
-PAYMENT_FAILURE_CANCELLATION_COMMENT = "autogpt:payment_failed"
-
-
 async def _cancel_customer_subscriptions(
     customer_id: str,
     exclude_sub_id: str | None = None,
@@ -1663,7 +1656,7 @@ async def _cancel_customer_subscriptions(
                 canceled = await stripe_call(
                     stripe.Subscription.cancel_async,
                     sub_id,
-                    **_cancel_params(None, trial=True),
+                    **_cancel_params(trial=True),
                 )
                 if (sub.get("metadata") or {}).get("trial_enrollment_id"):
                     await sync_subscription_from_stripe(dict(canceled))
@@ -1671,22 +1664,17 @@ async def _cancel_customer_subscriptions(
                 await stripe_call(
                     stripe.Subscription.cancel_async,
                     sub_id,
-                    **_cancel_params(None, trial=False),
+                    **_cancel_params(trial=False),
                 )
     return len(seen_ids)
 
 
-def _cancel_params(
-    cancellation_comment: str | None, *, trial: bool
-) -> stripe.Subscription.CancelParams:
-    """A trial ends without an invoice or proration; a comment, when given,
-    becomes ``cancellation_details.comment``."""
+def _cancel_params(*, trial: bool) -> stripe.Subscription.CancelParams:
+    """A trial ends without an invoice or proration."""
     params: stripe.Subscription.CancelParams = {}
     if trial:
         params["invoice_now"] = False
         params["prorate"] = False
-    if cancellation_comment:
-        params["cancellation_details"] = {"comment": cancellation_comment}
     return params
 
 
