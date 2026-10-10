@@ -15,7 +15,7 @@ from google.cloud import storage as gcs_storage
 
 from backend.util.gcs_utils import (
     download_with_fresh_session,
-    generate_signed_url,
+    generate_iam_signed_url,
     is_not_found_error,
 )
 from backend.util.settings import Config
@@ -419,7 +419,7 @@ class CloudStorageHandler:
         self._validate_file_access(blob_name, user_id, graph_exec_id)
 
         sync_client = self._get_sync_gcs_client()
-        return await generate_signed_url(
+        return await generate_iam_signed_url(
             sync_client, bucket_name, blob_name, expiration_hours * 3600
         )
 
