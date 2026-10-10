@@ -18,7 +18,6 @@ export function TrialPlanChoices({ offer }: Props) {
     ownPrice,
     requestedTier,
     isConfirmOpen,
-    error,
     onSelectOwnPlan,
     onConfirmOwnPlan,
     onCloseConfirm,
@@ -50,11 +49,6 @@ export function TrialPlanChoices({ offer }: Props) {
           />
         ) : null}
       </ul>
-      {error ? (
-        <p role="alert" className="px-1 text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
       <ConfirmTrialPlanDialog
         isOpen={isConfirmOpen}
         planLabel={ownPlan.label}

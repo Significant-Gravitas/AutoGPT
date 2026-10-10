@@ -135,4 +135,31 @@ describe("resuming a cancel-pending trial", () => {
     ).toBe(false);
     expect(screen.getByText("Cancellation pending")).toBeDefined();
   });
+
+  it("keeps the trial card when the refetch after a failed resume fails too", async () => {
+    let limited = false;
+    server.use(
+      http.get("*/api/credits/trial", () =>
+        limited
+          ? HttpResponse.json({ detail: "Too many requests" }, { status: 429 })
+          : HttpResponse.json(cancelPending),
+      ),
+      http.post("*/api/credits/trial/resume", () => {
+        limited = true;
+        return HttpResponse.json(
+          { detail: "Too many requests" },
+          { status: 429 },
+        );
+      }),
+    );
+    render(<TrialCard />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Resume trial" }),
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Too many requests",
+    );
+    expect(screen.getByText("Cancellation pending")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Resume trial" })).toBeDefined();
+  });
 });

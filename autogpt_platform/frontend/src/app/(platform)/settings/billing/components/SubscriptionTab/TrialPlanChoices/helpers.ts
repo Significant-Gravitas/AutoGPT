@@ -51,7 +51,8 @@ export function getUpgradePlanChoice(
       ? subscription.tier_costs_yearly
       : subscription.tier_costs;
   const cents = costs?.[tier];
-  if (cents === undefined) return null;
+  // The backend sends 0 when the price is unknown or has no such cycle.
+  if (!cents) return null;
   return {
     tier,
     label: trialPlanLabels[tier],
@@ -63,6 +64,24 @@ export function getUpgradePlanChoice(
       subscription.tier_multipliers,
     ),
     cents,
+  };
+}
+
+// The plan only counts as started once the server reports it: a charge the
+// reconcile hasn't recorded yet still reads as the trial.
+export function describePlanResult(
+  plan: PlanChoiceDetails,
+  tier: SubscriptionStatusResponse["tier"] | undefined,
+) {
+  if (tier === plan.tier)
+    return {
+      title: `You're on ${plan.label}`,
+      description: "Your trial has ended and your plan starts today.",
+    };
+  return {
+    title: "Payment received",
+    description:
+      "Your plan is still being set up. This page updates when it's ready.",
   };
 }
 

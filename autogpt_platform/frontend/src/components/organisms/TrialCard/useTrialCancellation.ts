@@ -72,7 +72,8 @@ export function useTrialCancellation({ userID, query, failure }: Args) {
       failure.reportFailure({ userID, error, fallback: RESUME_FAILED });
       await query.refetch();
     } finally {
-      dialog.closeDialog();
+      // Only this account's popup: another account may have opened its own.
+      dialog.closeDialogFor(userID);
     }
   }
 

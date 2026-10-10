@@ -54,7 +54,8 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
     trial: query.data,
     isLoading: Boolean(userID) && query.isLoading,
     error: failure.error,
-    queryError: query.isError,
+    // A failed refetch keeps the cached trial on screen, with its actions.
+    queryError: query.isError && !query.data,
     retry: () => query.refetch(),
     isStarting,
     startTrial,

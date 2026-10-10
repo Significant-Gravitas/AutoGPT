@@ -172,8 +172,13 @@ describe("upgrading past the trial's plan", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Upgrade to Max" }),
     );
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Stripe is unavailable. Please retry.");
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: "Unable to start Max",
+        description: "Stripe is unavailable. Please retry.",
+        variant: "destructive",
+      }),
+    );
     expect(assign).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(
@@ -181,9 +186,6 @@ describe("upgrading past the trial's plan", () => {
           .getByRole("button", { name: "Upgrade to Max" })
           .hasAttribute("disabled"),
       ).toBe(false),
-    );
-    expect(screen.getByRole("alert").textContent).toContain(
-      "Stripe is unavailable. Please retry.",
     );
   });
 
@@ -216,6 +218,6 @@ describe("upgrading past the trial's plan", () => {
     await act(() => new Promise((settle) => setTimeout(settle, 50)));
 
     expect(assign).not.toHaveBeenCalled();
-    expect(screen.queryByRole("alert")).toBeNull();
+    expect(toast).not.toHaveBeenCalled();
   });
 });

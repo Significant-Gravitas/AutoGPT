@@ -6,12 +6,12 @@ import { useState } from "react";
 import {
   getGetSubscriptionStatusQueryKey,
   getGetV1ListStripeInvoicesQueryKey,
+  type getSubscriptionStatusResponse,
   useUpdateSubscriptionTier,
 } from "@/app/api/__generated__/endpoints/credits/credits";
 import { getGetTrialsGetTrialStatusQueryKey } from "@/app/api/__generated__/endpoints/trials/trials";
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { useTrialFailure } from "@/components/organisms/TrialCard/useTrialFailure";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import {
   centsToUSD,
@@ -19,20 +19,23 @@ import {
   trackAdsConversionBeforeNavigation,
 } from "@/services/analytics/google-ads";
 
-import { buildPlanRequest, type PlanChoiceDetails } from "./helpers";
+import { readTier } from "../helpers";
+import {
+  buildPlanRequest,
+  describePlanResult,
+  type PlanChoiceDetails,
+} from "./helpers";
 
 export function useTrialPlanRequest(offer: TrialOfferResponse) {
   const userID = useAuthStore((state) => state.user?.id);
   const queryClient = useQueryClient();
   const { mutateAsync: updateTier } = useUpdateSubscriptionTier();
-  const failure = useTrialFailure(userID);
   const [requestedTier, setRequestedTier] = useState<
     PlanChoiceDetails["tier"] | null
   >(null);
 
   async function requestPlan(plan: PlanChoiceDetails) {
     if (!userID || requestedTier) return false;
-    failure.clearFailure();
     setRequestedTier(plan.tier);
     try {
       return await submitPlan(plan, userID);
@@ -45,6 +48,16 @@ export function useTrialPlanRequest(offer: TrialOfferResponse) {
 
   async function submitPlan(plan: PlanChoiceDetails, requestUserID: string) {
     try {
+      // A plan changed in another tab would turn this into a plain plan
+      // change, charged without the confirmation this page shows.
+      if (!(await isStillOnTrial())) {
+        toast({
+          title: "Your plan changed",
+          description: "Review your current plan below.",
+        });
+        await refreshBilling();
+        return false;
+      }
       const response = await updateTier({
         data: buildPlanRequest(plan, offer.billing_cycle),
       });
@@ -54,22 +67,30 @@ export function useTrialPlanRequest(offer: TrialOfferResponse) {
         await leaveForCheckout(plan, url);
         return true;
       }
-      toast({
-        title: `You're on ${plan.label}`,
-        description: "Your trial has ended and your plan starts today.",
-      });
+      const tier = response.status === 200 ? response.data.tier : undefined;
+      toast(describePlanResult(plan, tier));
       await refreshBilling();
     } catch (error) {
-      failure.reportFailure({
-        userID: requestUserID,
-        error,
-        fallback: `Unable to start ${plan.label}. Please try again.`,
+      if (useAuthStore.getState().user?.id !== requestUserID) return false;
+      // A toast, not an inline alert: the refresh below usually unmounts these
+      // choices (the trial was resumed or ended elsewhere).
+      toast({
+        title: `Unable to start ${plan.label}`,
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
       });
-      // A refusal usually means this page is out of date (the trial was
-      // resumed or ended elsewhere), or Stripe applied a change that timed out.
       await refreshBilling();
     }
     return false;
+  }
+
+  async function isStillOnTrial() {
+    const queryKey = getGetSubscriptionStatusQueryKey();
+    await queryClient.refetchQueries({ queryKey, exact: true });
+    const response =
+      queryClient.getQueryData<getSubscriptionStatusResponse>(queryKey);
+    return readTier(response) === "TRIAL";
   }
 
   async function refreshBilling() {
@@ -93,7 +114,6 @@ export function useTrialPlanRequest(offer: TrialOfferResponse) {
 
   return {
     requestedTier,
-    error: failure.error,
     requestPlan,
   };
 }

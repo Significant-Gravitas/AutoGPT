@@ -120,6 +120,20 @@ describe("plan choices while a trial cancellation is pending", () => {
     expect(screen.queryByRole("button", { name: "Upgrade to Max" })).toBeNull();
   });
 
+  it("leaves out a next tier whose price came back as 0", async () => {
+    const { state } = mockBilling();
+    state.subscription = {
+      ...trialSubscription,
+      tier_costs: { PRO: 5000, MAX: 0 },
+    };
+    render(<SettingsBillingPage />);
+    expect(
+      await screen.findByRole("button", { name: "Subscribe to Pro" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Upgrade to Max" })).toBeNull();
+    expect(screen.queryByText("$0")).toBeNull();
+  });
+
   it("falls back to plain copy when usage multipliers are missing", async () => {
     const { state } = mockBilling();
     state.subscription = { ...trialSubscription, tier_multipliers: {} };

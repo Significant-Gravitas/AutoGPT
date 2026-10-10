@@ -171,11 +171,15 @@ describe("subscribing to the trial's plan", () => {
       within(dialog).getByRole("button", { name: "Subscribe to Pro" }),
     );
 
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Your card was declined.");
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: "Unable to start Pro",
+        description: "Your card was declined.",
+        variant: "destructive",
+      }),
+    );
     expect(body).toHaveBeenCalledOnce();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(toast).not.toHaveBeenCalled();
     expect(
       screen
         .getByRole("button", { name: "Subscribe to Pro" })
@@ -209,9 +213,55 @@ describe("subscribing to the trial's plan", () => {
         await screen.findByRole("button", { name: "Cancel trial" }),
       ).toBeDefined();
       expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
-      expect(toast).not.toHaveBeenCalled();
+      expect(toast).toHaveBeenCalledWith({
+        title: "Unable to start Pro",
+        description: "Your accepted plan starts after your trial.",
+        variant: "destructive",
+      });
     },
   );
+
+  it("never charges from a page whose plan changed elsewhere", async () => {
+    const { state } = mockBilling();
+    const body = mockPlanRequest(() =>
+      HttpResponse.json({ ...trialSubscription, url: "" }),
+    );
+    render(<SettingsBillingPage />);
+    const dialog = await openConfirmation();
+    state.subscription = { ...trialSubscription, tier: "PRO" };
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Subscribe to Pro" }),
+    );
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: "Your plan changed",
+        description: "Review your current plan below.",
+      }),
+    );
+    expect(body).not.toHaveBeenCalled();
+  });
+
+  it("does not announce a plan the server has not started yet", async () => {
+    mockBilling();
+    mockPlanRequest(() => HttpResponse.json({ ...trialSubscription, url: "" }));
+    render(<SettingsBillingPage />);
+    const dialog = await openConfirmation();
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Subscribe to Pro" }),
+    );
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Payment received" }),
+      ),
+    );
+    expect(toast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "You're on Pro" }),
+    );
+  });
 
   it("does not show user B the confirmation user A opened", async () => {
     setTrialUser("user-a");

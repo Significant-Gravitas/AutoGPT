@@ -29,7 +29,7 @@ export function useTrialPlanChoices(offer: TrialOfferResponse) {
           : undefined,
     },
   });
-  const { requestedTier, error, requestPlan } = useTrialPlanRequest(offer);
+  const { requestedTier, requestPlan } = useTrialPlanRequest(offer);
   const [confirmFor, setConfirmFor] = useState<string | null>(null);
 
   // A trial status that lags behind a plan change must not offer the choices
@@ -64,7 +64,6 @@ export function useTrialPlanChoices(offer: TrialOfferResponse) {
     ownPrice: formatPlanPrice(offer),
     requestedTier,
     isConfirmOpen: confirmFor !== null && confirmFor === userID,
-    error,
     onSelectOwnPlan: () => {
       trackSelection(ownPlan);
       setConfirmFor(userID ?? null);

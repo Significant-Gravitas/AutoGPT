@@ -14,12 +14,19 @@ export function useSubscriptionTab(isPlanCheckoutReturn: boolean) {
   // An ended trial that a paid plan replaced is history, not the plan; it
   // waits for the tier so it never flashes above the plan card.
   const isEndedTrial = Boolean(trial && !trial.eligible && !trial.active);
-  const isReplaced = tier.isPending || isPaidTier(tier.data);
+  const hasPaidPlan = isPaidTier(tier.data);
+  const isReplaced = tier.isPending || hasPaidPlan;
+  // A plan bought during a cancel-pending trial is the plan even while the
+  // trial row still reads active (its stale-subscription cleanup failed).
+  const isSupersededTrial = Boolean(
+    trial?.active && !trial.converted && hasPaidPlan,
+  );
   const cancelPendingOffer = getCancelPendingOffer(trial);
 
   return {
-    showPlan: !isLoading && (!trial?.active || trial.converted),
-    showTrialCard: !(isEndedTrial && isReplaced),
+    showPlan:
+      !isLoading && (!trial?.active || trial.converted || isSupersededTrial),
+    showTrialCard: !(isEndedTrial && isReplaced) && !isSupersededTrial,
     planChoicesOffer: isConfirmingPlan ? null : cancelPendingOffer,
     isConfirmingPlan: Boolean(cancelPendingOffer) && isConfirmingPlan,
   };

@@ -203,6 +203,35 @@ describe("trial account isolation", () => {
     expect(screen.getByText("Cancellation pending")).toBeDefined();
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  it("does not close user B's popup when user A's late resume lands", async () => {
+    const pending = deferredTrialResponse<ReturnType<typeof trialResponse>>();
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(() =>
+        useAuthStore.getState().user?.id === "user-a"
+          ? trialResponse({ cancel_at_period_end: true })
+          : trialForCurrentUser(),
+      ),
+      getPostTrialsResumeTrialMockHandler200(() => pending.promise),
+      getPostTrialsCancelTrialMockHandler200(
+        trialResponse({ cancel_at_period_end: true }),
+      ),
+    );
+    render(<TrialCard />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Resume trial" }),
+    );
+    act(() => setTrialUser("user-b"));
+    await confirmCancel();
+    await screen.findByRole("dialog", { name: "Cancellation confirmed" });
+
+    pending.resolve(trialResponse());
+    await act(() => new Promise((settle) => setTimeout(settle, 50)));
+
+    expect(
+      screen.getByRole("dialog", { name: "Cancellation confirmed" }),
+    ).toBeDefined();
+  });
 });
 
 function trialForCurrentUser() {

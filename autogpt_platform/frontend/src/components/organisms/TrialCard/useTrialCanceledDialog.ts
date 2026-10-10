@@ -43,6 +43,8 @@ export function useTrialCanceledDialog({ userID, endsAt }: Args) {
     isOpen: openFor !== null && openFor === userID,
     openDialog,
     closeDialog: () => setOpenFor(null),
+    closeDialogFor: (ownerID: string) =>
+      setOpenFor((current) => (current === ownerID ? null : current)),
     subscribeNow,
   };
 }

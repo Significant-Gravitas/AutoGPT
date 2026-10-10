@@ -121,6 +121,16 @@ it("offers no plan choices once a cancel-pending trial has ended", async () => {
   expect(screen.queryByRole("button", { name: "Subscribe to Pro" })).toBeNull();
 });
 
+it("shows a plan bought during a cancel-pending trial the cleanup has not ended", async () => {
+  mockBilling(trialResponse({ cancel_at_period_end: true }), "MAX");
+  render(<SettingsBillingPage />);
+  expect(await screen.findByText("Active")).toBeDefined();
+  expect(screen.getAllByText("Your plan")).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: "Resume trial" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "AutoGPT trial" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
+});
+
 it.each(["PRO", "MAX"])(
   "drops the ended trial once a %s plan has replaced it",
   async (tier) => {
