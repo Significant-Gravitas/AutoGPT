@@ -80,6 +80,7 @@ _ENVELOPE_TREE_ID_KEY = "envelope_tree_id"
 _REFUSED_KEY = "queued_turn_refused"
 WAKE_LATER = "Your answer is kept and reaches the assistant with your next message."
 TURN_CANCELLED = "This task was cancelled before it started."
+QUEUE_UNAVAILABLE = "Could not queue this task right now; try again shortly."
 UNREADABLE_SPAWN = (
     "This task's limits could not be read back, so it was not started. "
     "Start it again."
@@ -233,11 +234,13 @@ async def enqueue_turn(
     # so two concurrent submits to the same session can't pick the same
     # ``sequence`` and PK-collide on ``(sessionId, sequence)``.
     db = chat_db()
-    async with _get_session_lock(session_id):
+    async with _get_session_lock(session_id) as locked:
         # A spawned child's row is the one promotion replays, so it claims the
         # idle session first and is written only if it won: a lost claim leaves
         # nothing behind. Promotion reads the row under this lock, so it never
-        # sees the claim without it.
+        # sees the claim without it, and neither proceeds without the lock.
+        if only_if_idle and not locked:
+            raise TreeRefusal(QUEUE_UNAVAILABLE)
         if only_if_idle and not await _flip(db, session_id, user_id):
             raise SessionNotIdle(session_id)
         live_sequence = await db.get_next_sequence(session_id)
@@ -432,10 +435,21 @@ async def _promote_head(user_id: str) -> bool | None:
         # dispatcher payload.
         # Under the session lock: a spawned child claims the session before it
         # writes its row, inside the same lock.
-        async with _get_session_lock(head.session_id):
-            pending = await chat_db().get_latest_user_message_in_session(
-                head.session_id
+        async with _get_session_lock(head.session_id) as locked:
+            pending = (
+                await chat_db().get_latest_user_message_in_session(head.session_id)
+                if locked
+                else None
             )
+        if not locked:
+            # Unlocked, a child's claim may not have its row yet: leave it queued.
+            await chat_db().update_chat_session_status(
+                session_id=head.session_id,
+                expect_status=CHAT_STATUS_RUNNING,
+                status=CHAT_STATUS_QUEUED,
+            )
+            await invalidate_session_cache(head.session_id)
+            return False
         if pending is None or pending.content is None:
             # Shouldn't happen — enqueue_turn always persists a row before
             # flipping the session to queued.  If it does (corrupted

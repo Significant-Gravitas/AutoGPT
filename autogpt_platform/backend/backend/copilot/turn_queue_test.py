@@ -33,6 +33,13 @@ class _NoopAsyncCM:
         return None
 
 
+class _UnheldLock(_NoopAsyncCM):
+    """The session lock as Redis down or a timed-out acquire leaves it."""
+
+    async def __aenter__(self):
+        return False
+
+
 def _pyd_message(**overrides) -> PydanticChatMessage:
     """Build a Pydantic ChatMessage with sensible defaults."""
     base = {
@@ -356,6 +363,58 @@ async def test_a_cancelled_child_returns_its_node_when_its_note_cannot_be_writte
         assert await turn_queue.cancel_queued_turn(user_id="u1", session_id="s1")
 
     release.assert_awaited_once_with(TurnEnvelope.model_validate(_CHILD))
+
+
+@pytest.mark.asyncio
+async def test_a_child_is_not_queued_without_the_session_lock() -> None:
+    """Promotion reads its row under that lock, so unlocked it claims nothing."""
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.add_chat_message = AsyncMock()
+
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "_get_session_lock", return_value=_UnheldLock()),
+        pytest.raises(TreeRefusal, match="try again"),
+    ):
+        await turn_queue.enqueue_turn(
+            user_id="u1",
+            session_id="s1",
+            message="task",
+            envelope=TurnEnvelope.model_validate(_CHILD),
+            only_if_idle=True,
+        )
+
+    db.update_chat_session_status.assert_not_awaited()
+    db.add_chat_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_promotion_without_the_session_lock_leaves_the_turn_queued() -> None:
+    """Unlocked, a child's claim may not have its row yet: the next tick tries."""
+    head = _queued_row()
+    head.metadata.llm_auth_provider = "microsoft_365_copilot"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(return_value=_pyd_message())
+    dispatched = AsyncMock()
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "_get_session_lock", return_value=_UnheldLock()),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatched),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is False
+
+    dispatched.assert_not_awaited()
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="s1", expect_status="running", status="queued"
+    )
 
 
 # ── try_enqueue_turn ───────────────────────────────────────────────────
