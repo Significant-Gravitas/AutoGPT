@@ -61,6 +61,10 @@ def _queued_row(session_id: str = "s1", title: str | None = "T") -> ChatSessionI
     )
 
 
+# A queued child's stored envelope.
+_CHILD = {"tree_id": "t1", "depth": 1}
+
+
 @pytest.fixture(autouse=True)
 def tracked_message(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     tracker = MagicMock()
@@ -174,6 +178,7 @@ async def test_cancel_queued_turn_returns_true_and_invalidates_cache() -> None:
     invalidates the session cache so the frontend drops the badge."""
     db = MagicMock()
     db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(return_value=None)
     invalidate = AsyncMock()
     with (
         patch.object(turn_queue, "chat_db", return_value=db),
@@ -194,9 +199,49 @@ async def test_cancel_queued_turn_returns_true_and_invalidates_cache() -> None:
 async def test_cancel_queued_turn_returns_false_when_not_owned_or_not_queued() -> None:
     db = MagicMock()
     db.update_chat_session_status = AsyncMock(return_value=False)
-    with patch.object(turn_queue, "chat_db", return_value=db):
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata={"envelope": _CHILD})
+    )
+    release = AsyncMock()
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "release_turn", new=release),
+    ):
         ok = await turn_queue.cancel_queued_turn(user_id="u1", session_id="s1")
     assert ok is False
+    release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "metadata, released",
+    [
+        ({"envelope": _CHILD}, True),
+        # A wake carries the node of the turn that held its call, not its own.
+        ({"envelope": _CHILD, held._WAKE_KEY: True}, False),
+        (None, False),
+    ],
+    ids=["child", "wake", "typed"],
+)
+async def test_cancelling_a_queued_turn_returns_only_a_childs_node(
+    metadata: dict | None, released: bool
+) -> None:
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata=metadata)
+    )
+    release = AsyncMock()
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "release_turn", new=release),
+    ):
+        assert await turn_queue.cancel_queued_turn(user_id="u1", session_id="s1")
+    if released:
+        release.assert_awaited_once_with(TurnEnvelope.model_validate(_CHILD))
+    else:
+        release.assert_not_awaited()
 
 
 # ── try_enqueue_turn ───────────────────────────────────────────────────
@@ -430,9 +475,6 @@ async def test_a_turn_the_access_gate_refuses_does_not_hold_up_the_next() -> Non
     db.update_chat_session_status.assert_awaited_once_with(
         session_id="closed", expect_status="running", status="idle"
     )
-
-
-_CHILD = {"tree_id": "t1", "depth": 1}
 
 
 @pytest.mark.asyncio

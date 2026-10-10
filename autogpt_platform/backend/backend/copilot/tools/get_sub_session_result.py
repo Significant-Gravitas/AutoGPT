@@ -32,7 +32,7 @@ from backend.copilot.sdk.session_waiter import (
     wait_for_session_result,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
-from backend.copilot.turn_queue import cancel_queued_spawn, queued_turn_refusal
+from backend.copilot.turn_queue import cancel_queued_turn, queued_turn_refusal
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
@@ -177,7 +177,12 @@ class GetSubSessionResultTool(BaseTool):
             # still emit a little more output before the worker notices,
             # but the agent doesn't need to wait for that. A queued one has
             # nothing running yet, so it simply leaves the queue.
-            if not (queued and await cancel_queued_spawn(user_id, inner_session_id)):
+            if not (
+                queued
+                and await cancel_queued_turn(
+                    user_id=user_id, session_id=inner_session_id
+                )
+            ):
                 await enqueue_cancel_task(inner_session_id)
             return apply_delegated_expert(
                 SubSessionStatusResponse(
@@ -205,7 +210,7 @@ class GetSubSessionResultTool(BaseTool):
             getattr(registry_session, "status", "") == "running"
         )
         terminal_result = None if turn_in_flight else _already_terminal_result(sub)
-        refusal = queued_turn_refusal(sub)
+        refusal = None if turn_in_flight else queued_turn_refusal(sub)
         outcome: SessionOutcome
         result: SessionResult
         if queued:

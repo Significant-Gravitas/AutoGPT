@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.copilot import active_turns
+from backend.copilot import active_turns, turn_queue
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
@@ -839,17 +839,23 @@ class TestGetSubSessionResult:
         assert r.response == "already done"
         mock_waiter.result_mock.assert_not_awaited()
 
+    @pytest.mark.parametrize(
+        "prior_metadata",
+        [None, {turn_queue._REFUSED_KEY: True}],
+        ids=["stale-result", "stale-refusal"],
+    )
     @pytest.mark.asyncio
     async def test_resume_turn_in_flight_does_not_return_stale(
-        self, monkeypatch, mock_waiter
+        self, monkeypatch, mock_waiter, prior_metadata
     ):
         """Regression for sentry r3105409601: on a resumed session whose
         stream_registry status is 'running' (new turn is mid-flight) the
-        tool must NOT short-circuit to the prior turn's terminal message.
-        It subscribes to the stream like a normal running-session poll."""
-        # DB state reflects the PREVIOUS turn's terminal assistant message.
+        tool must NOT short-circuit to the prior turn's terminal message,
+        nor to a refusal that closed an earlier queued turn. It subscribes
+        to the stream like a normal running-session poll."""
+        # DB state reflects the PREVIOUS turn's last assistant message.
         prior = MagicMock()
-        prior.metadata = None
+        prior.metadata = prior_metadata
         prior.role = "assistant"
         prior.content = "OLD stale result"
         prior.tool_calls = None

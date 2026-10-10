@@ -13,6 +13,7 @@ import pytest_asyncio
 from prisma.models import User
 from pydantic import BaseModel, ConfigDict
 
+from backend.api.features.chat.routes import cancel_session_task
 from backend.copilot import active_turns, stream_registry, turn_queue
 from backend.copilot.active_turns import acquire_turn_slot
 from backend.copilot.context import set_execution_context
@@ -123,6 +124,25 @@ async def test_cancelling_a_queued_sub_session_takes_it_out_and_returns_its_node
     await user.end(spawner.session_id)
 
     assert cancelled.status == "cancelled"
+    assert await chat_db().get_chat_session_status(queued) == CHAT_STATUS_IDLE
+    assert await user.nodes(spawner.tree_id) == nodes - 1
+    assert queued not in user.dispatched_sessions()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cancelling_a_queued_sub_session_over_http_returns_its_node(
+    user: "_User",
+):
+    """The chat page's Stop button dequeues through the same path."""
+    spawner = await user.running_chat()
+    subs = await user.spawn(spawner, 4)
+    (queued,) = [s for o, s in subs if o == "queued_for_slot"]
+    nodes = await user.nodes(spawner.tree_id)
+
+    response = await cancel_session_task(session_id=queued, user_id=user.id)
+    await user.end(spawner.session_id)
+
+    assert response.reason == "dequeued"
     assert await chat_db().get_chat_session_status(queued) == CHAT_STATUS_IDLE
     assert await user.nodes(spawner.tree_id) == nodes - 1
     assert queued not in user.dispatched_sessions()

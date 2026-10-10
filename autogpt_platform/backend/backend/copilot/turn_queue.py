@@ -258,9 +258,12 @@ async def enqueue_turn(
 
 
 async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
-    """Flip the user's session from ``"queued"`` → ``"idle"``.  Returns
-    True iff the CAS matched AND the session is owned by the user.
-    Cancel/dispatch races resolve in a single atomic update."""
+    """Flip the user's session from ``"queued"`` → ``"idle"``, giving a queued
+    child's node back to its tree.  Returns True iff the CAS matched AND the
+    session is owned by the user.  Cancel/dispatch races resolve in a single
+    atomic update."""
+    # Read before the flip: once idle, a new message can become the latest row.
+    pending = await chat_db().get_latest_user_message_in_session(session_id)
     ok = await chat_db().update_chat_session_status(
         session_id=session_id,
         expect_status=CHAT_STATUS_QUEUED,
@@ -270,14 +273,6 @@ async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
     if not ok:
         return False
     await invalidate_session_cache(session_id)
-    return True
-
-
-async def cancel_queued_spawn(user_id: str, session_id: str) -> bool:
-    """Take a queued child out of the queue and give its node back to its tree."""
-    pending = await chat_db().get_latest_user_message_in_session(session_id)
-    if not await cancel_queued_turn(user_id=user_id, session_id=session_id):
-        return False
     if pending is not None and _is_spawned(pending):
         child = _stored_envelope(pending.metadata or {})
         if child is not None:
