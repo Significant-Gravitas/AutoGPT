@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from backend.blocks import get_block
+from backend.copilot.capabilities.block_meta import get_block_provider
 from backend.copilot.capabilities.mcp_review import (
     MCPReviewPayload,
     needs_review,
@@ -31,6 +32,8 @@ from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.activity_event import ActivityEventDraft
 
+from .ayrshare_managed import connect_for_block as ayrshare_connect_for_block
+from .ayrshare_managed import is_ayrshare
 from .base import GATE_APPROVED, BaseTool
 from .capability_gates import gate_denied, gate_denied_error
 from .describe_capability import (
@@ -270,6 +273,12 @@ async def _run_block(
         )
         if isinstance(prep, ToolResponseBase) and not picker_only:
             return prep
+        if not isinstance(prep, ToolResponseBase) and is_ayrshare(
+            get_block_provider(prep.block)
+        ):
+            return await ayrshare_connect_for_block(
+                user_id, prep.block, block_id, session.session_id
+            )
         return CapabilityDetailsResponse(
             message=(
                 f"The user is already connected for {entry.name}. "

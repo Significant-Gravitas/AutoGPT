@@ -54,6 +54,9 @@ from backend.util.request import HTTPClientError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
+from .ayrshare_managed import is_ayrshare, is_not_linked_error
+from .ayrshare_managed import not_linked_response as ayrshare_not_linked_response
+from .ayrshare_managed import provision_for_block as provision_ayrshare_for_block
 from .expert_scope import (
     annotate_expert_grants,
     provider_slug,
@@ -607,6 +610,10 @@ async def execute_block(
                     )
 
     except BlockError as e:
+        if is_ayrshare(get_block_provider(block)) and is_not_linked_error(e):
+            return await ayrshare_not_linked_response(
+                user_id, block, block_id, e, session_id
+            )
         status_code = credential_rejection_status(e)
         if status_code is not None and matched_credentials:
             logger.warning(
@@ -1053,6 +1060,18 @@ async def prepare_block_for_execution(
     matched_credentials, missing_credentials = await resolve_block_credentials(
         user_id, block, input_data, session.expert_id, session_id=session_id
     )
+    # Ayrshare's credential is a profile AutoGPT provisions, never one the
+    # user brings: create it now and hand back the account-linking link.
+    if (
+        any(is_ayrshare(m.provider) for m in missing_credentials)
+        and not (dry_run or validate_only)
+        and (
+            managed := await provision_ayrshare_for_block(
+                user_id, block, block_id, session_id
+            )
+        )
+    ):
+        return managed
 
     try:
         input_schema: dict[str, Any] = block.input_schema.jsonschema()

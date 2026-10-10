@@ -23,10 +23,20 @@ from backend.copilot.tools.utils import build_missing_credentials_from_field_inf
 from backend.data.model import CredentialsFieldInfo, CredentialsType
 from backend.integrations.providers import ProviderName
 
+from .ayrshare_managed import AYRSHARE, link_accounts_card, link_message, sso_link
 from .base import BaseTool
 from .expert_scope import annotate_expert_grants
 
 CONNECT_INTEGRATION_TOOL = "connect_integration"
+
+# Providers whose account AutoGPT holds: connecting hands the user a link to
+# link their own accounts to it, never a key or token field.  Kept out of
+# SUPPORTED_PROVIDERS, which also decides what is injected into the sandbox.
+MANAGED_PROVIDERS: dict[str, str] = {AYRSHARE: "Ayrshare"}
+
+
+def _supported_providers() -> list[str]:
+    return [*SUPPORTED_PROVIDERS, *MANAGED_PROVIDERS]
 
 
 def _merged_scopes(provider: str, extra: list[str]) -> frozenset[str]:
@@ -75,10 +85,14 @@ class ConnectIntegrationTool(BaseTool):
 
     @property
     def description(self) -> str:
-        supported = ", ".join(f"'{p}'" for p in SUPPORTED_PROVIDERS)
+        supported = ", ".join(f"'{p}'" for p in _supported_providers())
         return (
             f"Prompt the user to connect a required integration. "
             f"Supported providers: {supported}. "
+            "'ayrshare' is AutoGPT's own social posting account (LinkedIn, X, "
+            "Instagram and the other post_to_* blocks): it returns the link "
+            "where the user links their social accounts; never ask for an "
+            "Ayrshare API key. "
             "ONLY call this tool for one of the supported providers listed above — "
             "do NOT call it for Google, Gmail, Slack, or any other provider not in the list. "
             "Call this ONLY when an external CLI or API call in the sandbox "
@@ -110,7 +124,7 @@ class ConnectIntegrationTool(BaseTool):
                         "Integration provider slug, e.g. 'github'. "
                         "Must be one of the supported providers."
                     ),
-                    "enum": list(SUPPORTED_PROVIDERS.keys()),
+                    "enum": _supported_providers(),
                 },
                 "reason": {
                     "type": "string",
@@ -167,9 +181,11 @@ class ConnectIntegrationTool(BaseTool):
             str(s).strip() for s in (scopes or []) if str(s).strip()
         ]
 
+        if provider in MANAGED_PROVIDERS and user_id:
+            return await _connect_managed(user_id, provider, reason, session_id)
         entry = SUPPORTED_PROVIDERS.get(provider)
         if not entry:
-            supported = ", ".join(f"'{p}'" for p in SUPPORTED_PROVIDERS)
+            supported = ", ".join(f"'{p}'" for p in _supported_providers())
             return ErrorResponse(
                 message=(
                     f"Unknown provider '{provider}'. Supported providers: {supported}."
@@ -249,3 +265,38 @@ class ConnectIntegrationTool(BaseTool):
                 },
             ),
         )
+
+
+async def _connect_managed(
+    user_id: str, provider: str, reason: str, session_id: str | None
+) -> ToolResponseBase:
+    """The card for a provider AutoGPT holds the account for.
+
+    Provisions the user's profile when it does not exist yet, through the
+    same path as the builder's connect button, and hands back its link.
+    """
+    link = await sso_link(user_id)
+    if isinstance(link, ErrorResponse):
+        link.session_id = session_id
+        return link
+    display_name = MANAGED_PROVIDERS[provider]
+    field_key = f"{provider}_credentials"
+    field_info = CredentialsFieldInfo[ProviderName, CredentialsType](
+        credentials_provider=frozenset([ProviderName(provider)]),
+        credentials_types=frozenset(["api_key"]),
+    )
+    missing = build_missing_credentials_from_field_info(
+        credential_fields={field_key: field_info}, matched_keys=set()
+    )
+    missing[field_key]["title"] = f"{display_name} Credentials"
+    missing[field_key]["provider_name"] = display_name
+    lead = "To post to social networks, the user links their accounts once."
+    return link_accounts_card(
+        agent_id=f"connect_{provider}",
+        agent_name=display_name,
+        missing_credentials=missing,
+        link=link,
+        message=link_message(link, f"{lead} {reason}".strip()),
+        session_id=session_id,
+        execution_modes=(),
+    )
