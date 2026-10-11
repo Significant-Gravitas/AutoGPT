@@ -193,8 +193,9 @@ def _session() -> ChatSession:
 class _DryRun(RunAgentTool):
     """``run_agent`` from the point the graph and its inputs are settled."""
 
-    def __init__(self, graph: GraphModel):
+    def __init__(self, graph: GraphModel, inputs: dict[str, Any] | None = None):
         self.graph = graph
+        self.inputs = inputs or {"topic": "Monday coffee"}
 
     async def _execute(self, user_id, session, **kwargs):
         return await self._run_agent(
@@ -202,7 +203,7 @@ class _DryRun(RunAgentTool):
             session=session,
             graph=self.graph,
             graph_credentials={},
-            inputs={"topic": "Monday coffee"},
+            inputs=self.inputs,
             dry_run=True,
             wait_for_result=60,
         )
@@ -248,10 +249,10 @@ def _executions(run: GraphExecutionWithNodes):
     )
 
 
-async def _dry_run(judge, graph, run) -> tuple[str, str]:
+async def _dry_run(judge, graph, run, inputs=None) -> tuple[str, str]:
     """(what the model receives, what the judge read)."""
     with _executions(run):
-        result = await _DryRun(graph).execute("user-1", _session(), "call-1")
+        result = await _DryRun(graph, inputs).execute("user-1", _session(), "call-1")
     judge.assert_awaited_once()
     return result.output, judge.await_args.kwargs["text"]
 
@@ -286,6 +287,22 @@ async def test_an_llm_output_that_absorbed_a_fetched_instruction_is_judged(judge
     _, judged = await _dry_run(judge, *_summary_run(response=absorbed))
 
     assert absorbed in judged
+
+
+@pytest.mark.asyncio
+async def test_a_run_input_a_block_echoes_is_judged(judge):
+    """The run's inputs are the model's arguments, which it may have copied
+    from something it read: they are not the graph's, so a block echoing one
+    does not hide it from the judge."""
+    graph, run = _haiku_run()
+    topic = run.node_executions[0]
+    topic.input_data["value"] = _INJECTION
+    topic.output_data = {"result": [_INJECTION]}
+
+    _, judged = await _dry_run(judge, graph, run, inputs={"topic": _INJECTION})
+
+    assert _INJECTION in judged
+    assert "You are a haiku poet" not in judged
 
 
 @pytest.mark.asyncio

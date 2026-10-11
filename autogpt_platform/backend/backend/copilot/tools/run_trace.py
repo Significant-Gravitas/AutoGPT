@@ -9,7 +9,8 @@ as a quoted prompt telling the reader to act and held the user's first run.
 
 So a trace declares every block's output and every input a link or the run fed
 a node, each with the graph's own text cut out of it; what is left is whatever
-a block fetched, received or generated.
+a block fetched, received or generated. The run's inputs are not the graph's:
+the model may have copied them from something it read, so they stay judged.
 """
 
 import re
@@ -29,16 +30,15 @@ def run_outside(
     graph: Graph | None,
     node_executions: list[dict[str, Any]] | None,
     *parts: Any,
-    run_inputs: Mapping[str, Any] | None = None,
 ) -> tuple[Any, ...]:
     """``parts`` and the trace, to declare with ``from_outside``, less the text
-    the graph (and the model, through ``run_inputs``) wrote. Without the graph
-    the trace is declared whole; a node it does not have keeps every input."""
+    the graph wrote. Without the graph the trace is declared whole; a node it
+    does not have keeps every input."""
     if graph is None:
         return (*parts, node_executions)
     nodes = [node for g in (graph, *graph.sub_graphs) for node in g.nodes]
     defaults = {node.id: node.input_default for node in nodes}
-    authored = _authored([node.input_default for node in nodes] + [run_inputs or {}])
+    authored = _authored([node.input_default for node in nodes])
     trace = [
         [
             _unset_inputs(ne.get("input_data"), defaults.get(ne.get("node_id", ""))),

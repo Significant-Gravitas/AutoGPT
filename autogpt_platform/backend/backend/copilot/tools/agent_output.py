@@ -553,9 +553,7 @@ class AgentOutputTool(BaseTool):
                 ).from_outside()
 
             graph = await _trace_graph(user_id, execution)
-            return self._build_response(
-                agent, execution, [], session_id, graph=graph
-            )
+            return self._build_response(agent, execution, [], session_id, graph=graph)
 
         # Resolve agent from identifiers
         agent, error = await self._resolve_agent(

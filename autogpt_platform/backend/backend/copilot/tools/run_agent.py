@@ -1185,13 +1185,7 @@ class RunAgentTool(BaseTool):
                         nodes_failed=node_failures or None,
                     ),
                 ).from_outside(
-                    *run_outside(
-                        graph,
-                        node_executions_data,
-                        outputs,
-                        node_failures,
-                        run_inputs=inputs,
-                    )
+                    *run_outside(graph, node_executions_data, outputs, node_failures)
                 )
             elif completed and completed.status == ExecutionStatus.FAILED:
                 error_detail = completed.stats.error if completed.stats else None
