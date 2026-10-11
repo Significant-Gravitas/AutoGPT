@@ -5866,8 +5866,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 if ctx.transcript_lost:
                     skip_transcript_upload = True
 
-                # Rebuild SDK options and query for the reduced context
-                sdk_options_retry = copy(sdk_options)
+                # Rebuild SDK options and query for the reduced context. The
+                # options start from the last launch's, so the retry sends the
+                # prompt that launch sent: after a building-mode restart, the
+                # one with the guide (``guide_in_system_prompt`` stays True).
+                sdk_options_retry = copy(state.options)
                 if ctx.use_resume and ctx.resume_file:
                     sdk_options_retry.resume = ctx.resume_file
                     sdk_options_retry.session_id = None
@@ -5888,12 +5891,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     sdk_options_retry.session_id = session_id
                     # The new CLI total starts at zero; retain the turn's spend.
                     state.usage.cli_session_total_usd = None
-                # Recompute system_prompt for retry. When enabled, the preset
-                # is safe on every turn (requires CLI ≥ 2.1.98, bundled in
-                # claude-agent-sdk >= 0.1.64).
-                sdk_options_retry.system_prompt = _configured_system_prompt_value(
-                    system_prompt
-                )
                 state.options = sdk_options_retry
                 # Retry intentionally omits prior_messages (transcript+gap context) and
                 # falls back to full session.messages[:-1] from DB — the authoritative
