@@ -106,12 +106,24 @@ export default class BackendAPI {
   heartbeatIntervalID: number | null = null;
   heartbeatTimeoutID: number | null = null;
 
+  private wsWanted = false;
+  private wsReconnectAttempts = 0;
+  private wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private wsReconnectWaiters: (() => void)[] = [];
+
   constructor(
     baseUrl: string = environment.getAGPTServerApiUrl(),
     wsUrl: string = environment.getAGPTWsServerUrl(),
   ) {
     this.baseUrl = baseUrl;
     this.wsUrl = wsUrl;
+
+    if (isClient) {
+      window.addEventListener("online", () => this._checkWSConnection());
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") this._checkWSConnection();
+      });
+    }
   }
 
   async isAuthenticated(): Promise<boolean> {
@@ -1043,19 +1055,24 @@ export default class BackendAPI {
     }
 
     this.isIntentionallyDisconnected = false;
+    this.wsWanted = true;
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
         let token = "";
+        let tokenFetchFailed = false;
         try {
           const { token: serverToken, error } = await getWebSocketToken();
           if (serverToken && !error) {
             token = serverToken;
           } else if (error) {
+            tokenFetchFailed = true;
             console.warn("Failed to get WebSocket token from server:", error);
           }
         } catch (error) {
+          // Typically the network is still down (e.g. just after waking up)
+          // or a deploy invalidated the server action; both are transient.
+          tokenFetchFailed = true;
           console.warn("Failed to get token for WebSocket connection:", error);
-          // Intentionally fall through; we'll bail out below if no token is available
         }
 
         // If we don't have a token, skip attempting a connection.
@@ -1067,6 +1084,9 @@ export default class BackendAPI {
           resolve();
           this.wsConnecting = null;
           this.webSocket = null;
+          // A signed-out user has no token and nothing to retry; a failed
+          // fetch must not leave live updates dead until the next reload.
+          if (tokenFetchFailed) void this._scheduleWSReconnect();
           return;
         }
 
@@ -1079,6 +1099,7 @@ export default class BackendAPI {
           console.info("[BackendAPI] WebSocket connected to", this.wsUrl);
           this._startWSHeartbeat(); // Start heartbeat when connection opens
           this._clearDisconnectIntent(); // Clear disconnect intent when connected
+          this.wsReconnectAttempts = 0;
           this.wsOnConnectHandlers.forEach((handler) => handler());
           resolve();
         };
@@ -1115,7 +1136,7 @@ export default class BackendAPI {
 
           if (!wasIntentional) {
             this.wsOnDisconnectHandlers.forEach((handler) => handler());
-            setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+            this._scheduleWSReconnect().then(resolve);
           } else {
             // Ensure pending connect calls settle on intentional close
             resolve();
@@ -1142,6 +1163,8 @@ export default class BackendAPI {
 
   disconnectWebSocket() {
     this.isIntentionallyDisconnected = true;
+    this.wsWanted = false;
+    this._cancelWSReconnect();
     this._stopWSHeartbeat(); // Stop heartbeat when disconnecting
     if (
       this.webSocket &&
@@ -1151,6 +1174,39 @@ export default class BackendAPI {
       this.webSocket.close();
     }
     this.wsConnecting = null;
+  }
+
+  /** Reconnects after a capped, jittered backoff; resolves once that attempt settles. */
+  private _scheduleWSReconnect(): Promise<void> {
+    return new Promise((resolve) => {
+      this.wsReconnectWaiters.push(resolve);
+      if (this.wsReconnectTimer !== null) return;
+      const delay = getWSReconnectDelay(this.wsReconnectAttempts++);
+      this.wsReconnectTimer = setTimeout(() => this._reconnectWSNow(), delay);
+    });
+  }
+
+  private _reconnectWSNow() {
+    if (this.wsReconnectTimer !== null) clearTimeout(this.wsReconnectTimer);
+    this.wsReconnectTimer = null;
+    const waiters = this.wsReconnectWaiters.splice(0);
+    void this.connectWebSocket().finally(() => waiters.forEach((w) => w()));
+  }
+
+  private _cancelWSReconnect() {
+    if (this.wsReconnectTimer !== null) clearTimeout(this.wsReconnectTimer);
+    this.wsReconnectTimer = null;
+    this.wsReconnectWaiters.splice(0).forEach((w) => w());
+  }
+
+  /** Back online or back in view: don't wait out the backoff or the next heartbeat. */
+  private _checkWSConnection() {
+    if (!this.wsWanted || this.isIntentionallyDisconnected) return;
+    if (this.webSocket?.readyState === WebSocket.OPEN) {
+      this._sendWSHeartbeat();
+    } else if (this.wsReconnectTimer !== null) {
+      this._reconnectWSNow();
+    }
   }
 
   private _hasDisconnectIntent(): boolean {
@@ -1196,23 +1252,29 @@ export default class BackendAPI {
 
   private _startWSHeartbeat() {
     this._stopWSHeartbeat();
-    this.heartbeatIntervalID = window.setInterval(() => {
-      if (this.webSocket?.readyState === WebSocket.OPEN) {
-        this.webSocket.send(
-          JSON.stringify({
-            method: "heartbeat",
-            data: "ping",
-            success: true,
-          }),
-        );
+    this.heartbeatIntervalID = window.setInterval(
+      () => this._sendWSHeartbeat(),
+      this.HEARTBEAT_INTERVAL,
+    );
+  }
 
-        this.heartbeatTimeoutID = window.setTimeout(() => {
-          console.warn("Heartbeat timeout - reconnecting");
-          this.webSocket?.close();
-          this.connectWebSocket();
-        }, this.HEARTBEAT_TIMEOUT);
-      }
-    }, this.HEARTBEAT_INTERVAL);
+  private _sendWSHeartbeat() {
+    if (this.webSocket?.readyState !== WebSocket.OPEN) return;
+    if (this.heartbeatTimeoutID) return;
+    this.webSocket.send(
+      JSON.stringify({
+        method: "heartbeat",
+        data: "ping",
+        success: true,
+      }),
+    );
+
+    this.heartbeatTimeoutID = window.setTimeout(() => {
+      this.heartbeatTimeoutID = null;
+      console.warn("Heartbeat timeout - reconnecting");
+      this.webSocket?.close();
+      this.connectWebSocket();
+    }, this.HEARTBEAT_TIMEOUT);
   }
 
   private _stopWSHeartbeat() {
@@ -1232,6 +1294,18 @@ export default class BackendAPI {
       this.heartbeatTimeoutID = null;
     }
   }
+}
+
+const WS_RECONNECT_BASE_DELAY_MS = 1_000;
+const WS_RECONNECT_MAX_DELAY_MS = 30_000;
+
+/** Exponential backoff with jitter, so a server restart isn't met by every client at once. */
+export function getWSReconnectDelay(attempt: number): number {
+  const ceiling = Math.min(
+    WS_RECONNECT_MAX_DELAY_MS,
+    WS_RECONNECT_BASE_DELAY_MS * 2 ** attempt,
+  );
+  return ceiling / 2 + Math.random() * (ceiling / 2);
 }
 
 declare global {

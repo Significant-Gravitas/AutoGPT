@@ -4,7 +4,11 @@ vi.mock("@/lib/auth/actions", () => ({
   getWebSocketToken: vi.fn(async () => ({ token: "test-token" })),
 }));
 
-import BackendAPI, { buildOAuthLoginQuery } from "../client";
+import { getWebSocketToken } from "@/lib/auth/actions";
+import BackendAPI, {
+  buildOAuthLoginQuery,
+  getWSReconnectDelay,
+} from "../client";
 
 describe("BackendAPI.oAuthLogin", () => {
   it("passes credentialID through to buildOAuthLoginQuery", async () => {
@@ -216,5 +220,39 @@ describe("BackendAPI WebSocket failure logging", () => {
     expect(message).toContain("CLOSED");
     expect(message).not.toContain("[object");
     expect(message).not.toContain("test-token");
+  });
+
+  it("keeps retrying the reconnect when fetching a token fails", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const socket = await connect();
+    socket.state = "connected";
+    socket.onopen!();
+
+    vi.mocked(getWebSocketToken)
+      .mockClear()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    socket.onclose!({ code: 1006, reason: "", wasClean: false });
+
+    // Two failed token fetches, each followed by a backed-off retry, then a
+    // fresh socket — never a dead client waiting for a page reload.
+    await vi.waitFor(
+      async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(sockets).toHaveLength(2);
+      },
+      { interval: 1 },
+    );
+    expect(getWebSocketToken).toHaveBeenCalledTimes(3);
+  });
+
+  it("backs off reconnects exponentially, with jitter, up to a cap", () => {
+    vi.spyOn(Math, "random").mockReturnValue(1);
+    expect(getWSReconnectDelay(0)).toBe(1_000);
+    expect(getWSReconnectDelay(3)).toBe(8_000);
+    expect(getWSReconnectDelay(10)).toBe(30_000);
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    expect(getWSReconnectDelay(10)).toBe(15_000);
   });
 });

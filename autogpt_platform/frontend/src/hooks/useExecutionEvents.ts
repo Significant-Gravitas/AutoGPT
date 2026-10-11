@@ -12,6 +12,7 @@ interface UseExecutionEventsOptions {
   graphIds?: (GraphID | string)[];
   enabled?: boolean;
   onExecutionUpdate?: ExecutionEventHandler;
+  onReconnect?: () => void;
 }
 
 /**
@@ -23,19 +24,24 @@ interface UseExecutionEventsOptions {
  * @param options.graphIds - Array of graph IDs to subscribe to (multiple graphs)
  * @param options.enabled - Whether the subscription is enabled (default: true)
  * @param options.onExecutionUpdate - Callback invoked when an execution is updated
+ * @param options.onReconnect - Called once subscriptions are restored after a
+ *   reconnect; refetch here, since events sent while disconnected are lost
  */
 export function useExecutionEvents({
   graphId,
   graphIds,
   enabled = true,
   onExecutionUpdate,
+  onReconnect,
 }: UseExecutionEventsOptions) {
   const api = useBackendAPI();
   const onExecutionUpdateRef = useRef(onExecutionUpdate);
+  const onReconnectRef = useRef(onReconnect);
 
   useEffect(() => {
     onExecutionUpdateRef.current = onExecutionUpdate;
-  }, [onExecutionUpdate]);
+    onReconnectRef.current = onReconnect;
+  }, [onExecutionUpdate, onReconnect]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -45,7 +51,7 @@ export function useExecutionEvents({
 
     // Normalize IDs to strings for consistent comparison
     const normalizedIds = idsToSubscribe.map((id) => String(id));
-    const subscribedIds = new Set<string>();
+    let hasConnected = false;
 
     const handleExecutionEvent = (execution: GraphExecution) => {
       // Filter by graphIds if provided, using normalized string comparison
@@ -57,12 +63,13 @@ export function useExecutionEvents({
       onExecutionUpdateRef.current?.(execution);
     };
 
+    // The server drops every subscription along with the socket, so they
+    // are all re-sent on each (re)connect.
     const connectHandler = api.onWebSocketConnect(() => {
-      normalizedIds.forEach((id) => {
-        // Track subscriptions to avoid duplicate subscriptions
-        if (subscribedIds.has(id)) return;
-        subscribedIds.add(id);
+      const isReconnect = hasConnected;
+      hasConnected = true;
 
+      const subscriptions = normalizedIds.map((id) =>
         api.subscribeToGraphExecutions(id as GraphID).catch((error) => {
           console.error(
             `Failed to subscribe to execution updates for graph ${id}:`,
@@ -71,9 +78,11 @@ export function useExecutionEvents({
           Sentry.captureException(error, {
             tags: { graphId: id },
           });
-          subscribedIds.delete(id);
-        });
-      });
+        }),
+      );
+      if (isReconnect) {
+        void Promise.all(subscriptions).then(() => onReconnectRef.current?.());
+      }
     });
 
     const messageHandler = api.onWebSocketMessage(
@@ -88,7 +97,6 @@ export function useExecutionEvents({
       messageHandler();
       // Note: Backend automatically cleans up subscriptions on websocket disconnect
       // If IDs change while connected, old subscriptions remain but are filtered client-side
-      subscribedIds.clear();
     };
   }, [api, graphId, graphIds, enabled]);
 }
