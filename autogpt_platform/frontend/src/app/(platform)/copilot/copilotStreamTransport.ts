@@ -5,7 +5,11 @@ import type { ChatTransport, FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
 import { getAutopilotModeChoice } from "./autopilotModeStore";
-import { trackStreamFetch, type StreamFlight } from "./copilotStreamFlight";
+import {
+  assertStillCurrent,
+  trackStreamFetch,
+  type StreamFlight,
+} from "./copilotStreamFlight";
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
@@ -79,15 +83,19 @@ export function createCopilotTransport({
       ),
       flight,
     ),
-    prepareSendMessagesRequest: async ({ messages }) => ({
-      body: streamRequestBody(
-        sessionId,
-        messages[messages.length - 1],
-        copilotModelRef.current,
-      ),
-      headers: await getCopilotAuthHeaders(),
-    }),
-    prepareReconnectToStreamRequest: async () => {
+    prepareSendMessagesRequest: async ({ messages, requestMetadata }) => {
+      const headers = await getCopilotAuthHeaders();
+      assertStillCurrent(flight, requestMetadata);
+      return {
+        body: streamRequestBody(
+          sessionId,
+          messages[messages.length - 1],
+          copilotModelRef.current,
+        ),
+        headers,
+      };
+    },
+    prepareReconnectToStreamRequest: async ({ requestMetadata }) => {
       // Always replay from "0-0" (no ?last_chunk_id). AI SDK v5's
       // UIMessageStream parser throws UIMessageStreamError on any *-delta /
       // *-end whose matching *-start is missing from its *parser-local*
@@ -97,10 +105,9 @@ export function createCopilotTransport({
       // cursor) crashes on the first orphan delta. Replay overlap with the
       // in-memory `messages` is handled by `deduplicateMessages` on the
       // consumer side.
-      return {
-        api: baseUrl,
-        headers: await getCopilotAuthHeaders(),
-      };
+      const headers = await getCopilotAuthHeaders();
+      assertStillCurrent(flight, requestMetadata);
+      return { api: baseUrl, headers };
     },
   });
 }

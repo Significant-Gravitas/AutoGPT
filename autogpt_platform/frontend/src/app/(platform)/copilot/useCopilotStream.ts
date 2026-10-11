@@ -459,17 +459,22 @@ export function useCopilotStream({
     if (flight.resumeQueued) return;
     if (reason === "attach" && hasHealthyStream(flight)) return;
     flight.resumeQueued = true;
-    void startRequest(flight, () => {
-      flight.resumeQueued = false;
-      if (!isMountedRef.current || isUserStoppingRef.current) return undefined;
-      if (sessionId) {
-        markCopilotChatRuntimeHealthy(sessionId);
-      }
-      // Whatever asked, the page-load resume must not run this turn again.
-      hasResumedRef.current = true;
-      trimReplayedTurn();
-      return resumeStream();
-    });
+    void startRequest(
+      flight,
+      (generation) => {
+        flight.resumeQueued = false;
+        if (!isMountedRef.current || isUserStoppingRef.current)
+          return undefined;
+        if (sessionId) {
+          markCopilotChatRuntimeHealthy(sessionId);
+        }
+        // Whatever asked, the page-load resume must not run this turn again.
+        hasResumedRef.current = true;
+        trimReplayedTurn();
+        return resumeStream({ metadata: { flightGeneration: generation } });
+      },
+      { replace: true },
+    );
   }
 
   function trimReplayedTurn() {
@@ -589,10 +594,23 @@ export function useCopilotStream({
       setIsUserStopping(false);
     }
     if (!chatRuntime) return sdkSendMessage(...args);
-    // A send beside a live request breaks both (see copilotStreamFlight).
-    await startRequest(chatRuntime.flight, () =>
-      // Stop pressed while the previous request was ending.
-      isUserStoppingRef.current ? undefined : sdkSendMessage(...args),
+    // A send beside a live request breaks both (see copilotStreamFlight), so
+    // it waits for the live one to finish.
+    await startRequest(
+      chatRuntime.flight,
+      (generation) => {
+        // Stop pressed while the previous request was finishing.
+        if (isUserStoppingRef.current) return undefined;
+        const [message, options] = args;
+        return sdkSendMessage(message, {
+          ...options,
+          metadata: {
+            ...(options?.metadata as object | undefined),
+            flightGeneration: generation,
+          },
+        });
+      },
+      { replace: false },
     );
   }
 

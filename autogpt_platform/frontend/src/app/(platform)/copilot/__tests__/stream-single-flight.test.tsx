@@ -31,11 +31,20 @@ vi.mock("@/services/environment", async (importActual) => {
   };
 });
 
+const { authGate } = vi.hoisted(() => ({
+  authGate: { held: null as Promise<void> | null },
+}));
+
 vi.mock("../helpers", async (importActual) => {
   const actual = await importActual<typeof import("../helpers")>();
   return {
     ...actual,
-    getCopilotAuthHeaders: async () => ({ "x-test-auth": "yes" }),
+    getCopilotAuthHeaders: async () => {
+      const held = authGate.held;
+      authGate.held = null;
+      if (held) await held;
+      return { "x-test-auth": "yes" };
+    },
   };
 });
 
@@ -95,6 +104,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  authGate.held = null;
   releases.splice(0).forEach((release) => release());
   consoleError.mockRestore();
   vi.useRealTimers();
@@ -262,6 +272,39 @@ describe("copilot stream — one live stream per chat", () => {
         timeout: 5000,
       });
       expect(resumedTurns).toEqual(["turn-2"]);
+      expect(maxOpenStreams).toBe(1);
+      expect(sdkCleanupCrashes()).toEqual([]);
+    },
+  );
+
+  it(
+    "a resume replaced while it is still preparing never reaches the network",
+    { timeout: 30000 },
+    async () => {
+      // The restore's resume waits on its auth headers; the restore watchdog
+      // replaces it meanwhile. Its abort must land before it ever fetches.
+      const auth = hold();
+      authGate.held = auth.released;
+      let resumes = 0;
+      server.use(
+        http.get(STREAM_URL, ({ request }) => {
+          resumes += 1;
+          return liveTurn({
+            text: "Restored once.",
+            signal: request.signal,
+            released: hold().released,
+          });
+        }),
+      );
+      renderHost({ sessionResponse: liveSession(() => "turn-1") });
+
+      // Restore watchdog (6 s), reconnect delay (1 s), then the bounded wait
+      // for the replaced request, which is still stuck in its headers.
+      await screen.findByText(/Working on it/, undefined, { timeout: 20000 });
+      auth.release();
+      await act(() => new Promise((resolve) => setTimeout(resolve, 1000)));
+
+      expect(resumes).toBe(1);
       expect(maxOpenStreams).toBe(1);
       expect(sdkCleanupCrashes()).toEqual([]);
     },

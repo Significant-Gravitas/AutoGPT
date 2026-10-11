@@ -31,6 +31,8 @@ export interface StreamFlight {
   queue: Promise<void>;
   /** A resume is queued and has not started yet. */
   resumeQueued: boolean;
+  /** Counts request starts; a request carries the number it started with. */
+  generation: number;
   /** When the live request last received bytes, heartbeats included. */
   lastActivityAt: number;
   abortController: AbortController | null;
@@ -41,6 +43,7 @@ export function createStreamFlight(): StreamFlight {
     request: null,
     queue: Promise.resolve(),
     resumeQueued: false,
+    generation: 0,
     lastActivityAt: 0,
     abortController: null,
   };
@@ -56,13 +59,15 @@ export function trackStreamFetch(
   flight: StreamFlight,
 ): typeof fetch {
   return async (input, init) => {
-    const controller = new AbortController();
+    // The request's own controller, made before it started, so an abort that
+    // lands while the request is still preparing (auth headers) takes effect.
+    const controller = flight.abortController ?? new AbortController();
+    flight.abortController = controller;
     const outer = init?.signal;
     if (outer?.aborted) controller.abort(outer.reason);
     outer?.addEventListener("abort", () => controller.abort(outer.reason), {
       once: true,
     });
-    flight.abortController = controller;
     flight.lastActivityAt = Date.now();
     const response = await inner(input, { ...init, signal: controller.signal });
     if (!response.body) return response;
@@ -97,26 +102,36 @@ export function trackStreamFetch(
 }
 
 /**
- * Start a send or resume once the live request has ended and every start
- * queued before it has run, so two can never be live at once. `start` may
- * return nothing to stand down. Resolves when the started request ends.
+ * Start a send or resume once no request is live and every start queued
+ * before it has run, so two can never be live at once. A resume (`replace`)
+ * ends the live request; a send waits for it to finish, outside the queue so
+ * a resume replacing a dead stream is never stuck behind it. `start` may
+ * return nothing to stand down. It gets the request's generation, which the
+ * request must carry as `flightGeneration` in its SDK request metadata.
+ * Resolves when the started request ends.
  */
 export async function startRequest<T>(
   flight: StreamFlight,
-  start: () => Promise<T> | undefined,
+  start: (generation: number) => Promise<T> | undefined,
+  { replace }: { replace: boolean },
 ) {
-  const started = flight.queue.then(async () => {
-    await endLiveRequest(flight);
-    const request = start();
-    if (request) trackRequest(flight, request);
-    return { request };
-  });
-  flight.queue = started.then(
-    () => {},
-    () => {},
-  );
-  const { request } = await started;
-  return request;
+  for (;;) {
+    if (!replace) await flight.request?.catch(() => {});
+    const started = flight.queue.then(async () => {
+      if (!replace && flight.request) return { retry: true as const };
+      await endLiveRequest(flight);
+      flight.abortController = new AbortController();
+      const request = start(++flight.generation);
+      if (request) trackRequest(flight, request);
+      return { request };
+    });
+    flight.queue = started.then(
+      () => {},
+      () => {},
+    );
+    const outcome = await started;
+    if (!("retry" in outcome)) return outcome.request;
+  }
 }
 
 function trackRequest<T>(flight: StreamFlight, request: Promise<T>) {
@@ -127,6 +142,22 @@ function trackRequest<T>(flight: StreamFlight, request: Promise<T>) {
       if (flight.request === request) flight.request = null;
     });
   return request;
+}
+
+/**
+ * Called once a request's headers are ready, right before its fetch. A
+ * request that was replaced while it was still preparing (the bounded wait in
+ * `endLiveRequest` gave up on it) must not reach the network beside its
+ * replacement; failing it as an abort ends it quietly.
+ */
+export function assertStillCurrent(flight: StreamFlight, metadata: unknown) {
+  const generation =
+    typeof metadata === "object" && metadata !== null
+      ? (metadata as { flightGeneration?: unknown }).flightGeneration
+      : undefined;
+  if (typeof generation === "number" && generation !== flight.generation) {
+    throw new DOMException("Replaced before it started", "AbortError");
+  }
 }
 
 /** A request is live and has received bytes within the stall window. */
