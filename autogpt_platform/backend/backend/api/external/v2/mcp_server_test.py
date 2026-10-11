@@ -31,6 +31,7 @@ from backend.copilot.gate.classifier import Judgement
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.tools import TOOL_REGISTRY
+from backend.copilot.tools.base import CARD_HINTS
 from backend.copilot.tools.models import ErrorResponse
 
 
@@ -106,6 +107,14 @@ async def test_the_advertised_schema_names_required_arguments_and_nothing_extra(
     assert "source_path" not in (
         registered["write_workspace_file"].inputSchema["properties"]
     )
+
+
+async def test_the_advertised_schema_carries_none_of_the_approval_cards_hints():
+    """The card's label and entity hints are for the web app, and `"entity":
+    null` is not JSON Schema a client must accept."""
+    for tool in await FastMCP.list_tools(create_mcp_server()):
+        for name, spec in tool.inputSchema["properties"].items():
+            assert not CARD_HINTS & set(spec), f"{tool.name}.{name}"
 
 
 def test_create_feature_request_stays_off_the_external_surface():

@@ -21,7 +21,7 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
-from backend.copilot.tools.base import BaseTool
+from backend.copilot.tools.base import BaseTool, without_card_hints
 from backend.data.credit import get_credit_model
 
 from .rate_limit import file_upload_limiter, graph_exec_limiter, search_limiter
@@ -36,8 +36,10 @@ def input_schema(tool: BaseTool) -> dict[str, Any]:
 
     The chat's own schema leaves ``required`` out for the sake of a model whose
     tool call was cut short; an MCP client has no such excuse, so it is kept.
+    The approval card's hints are left out, as they are from what the chat's
+    model is sent: they aren't JSON Schema, and a client may refuse them.
     """
-    parameters = tool.external_parameters
+    parameters = without_card_hints(tool.external_parameters)
     schema: dict[str, Any] = {
         "type": "object",
         "properties": parameters.get("properties", {}),
