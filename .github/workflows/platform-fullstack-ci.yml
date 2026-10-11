@@ -184,15 +184,18 @@ jobs:
             min_tests: 28
             embeddings: true
             hosted: false
+            known_failures: false
           # Holistic *-journey.spec.ts flows on the hosted configuration:
           # hosted feature flags, credits on. Advisory until proven stable
           # (ADVISORY_CHECK_RUNS in check_actions_status.py). No OpenAI key,
           # so the seed skips embeddings and finishes in ~30 s.
           - suite: journeys
             config: playwright.journeys.config.ts
-            min_tests: 2
+            min_tests: 3
             embeddings: false
             hosted: true
+            # Journeys may pin a known bug with test.fail(); it must still fail.
+            known_failures: true
     permissions:
       contents: read
       # Only dev pushes and the merge queue write the GHCR build cache. Every
@@ -527,6 +530,7 @@ jobs:
           python ../../.github/scripts/validate_playwright_json.py
           --synthesize-invalid
           --min-tests ${{ matrix.min_tests }}
+          ${{ matrix.known_failures && '--allow-known-failures' || '' }}
           test-results/results.json
 
       - name: Validate coverage report
