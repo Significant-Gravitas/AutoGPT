@@ -8,7 +8,7 @@ the executor would. Only the queue, the outbound GitHub call and the user's
 library safe-mode settings are stubbed.
 """
 
-from typing import Any, AsyncGenerator, Awaitable, Callable
+from typing import Any, AsyncGenerator, Awaitable, Callable, Sequence
 
 import httpx
 import pytest
@@ -60,13 +60,17 @@ async def client(server, mock_jwt_user) -> AsyncGenerator[httpx.AsyncClient, Non
 
 
 class Parked(BaseModel):
-    """A run whose single node is waiting for review."""
+    """A run whose node is waiting for review, once per iteration."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     graph_exec_id: str
-    node_exec_id: str
-    run_node: Callable[[ExecutionContext], Awaitable[list[tuple[str, Any]]]]
+    node_exec_ids: list[str]
+    run_node: Callable[..., Awaitable[list[tuple[str, Any]]]]
+
+    @property
+    def node_exec_id(self) -> str:
+        return self.node_exec_ids[0]
 
 
 @pytest.fixture
@@ -105,7 +109,9 @@ async def park_for_review(
     user_id: str,
     *,
     dry_run: bool = False,
+    more_iterations: Sequence[dict[str, Any]] = (),
 ) -> Parked:
+    iterations = [input_data, *more_iterations]
     graph = make_graph_model(
         Graph(
             name=f"Review resume: {block.name}",
@@ -121,18 +127,28 @@ async def park_for_review(
     graph_exec = await create_graph_execution(
         graph_id=graph.id,
         graph_version=graph.version,
-        starting_nodes_input=[(node_id, input_data)],
+        starting_nodes_input=[(node_id, data) for data in iterations],
         inputs={},
         user_id=user_id,
         is_dry_run=dry_run,
     )
-    node_exec_id = graph_exec.node_executions[0].node_exec_id
+    node_exec_ids = [
+        next(
+            ne.node_exec_id
+            for ne in graph_exec.node_executions
+            if ne.input_data == data
+        )
+        for data in iterations
+    ]
 
-    async def run_node(context: ExecutionContext) -> list[tuple[str, Any]]:
+    async def run_node(
+        context: ExecutionContext, iteration: int = 0
+    ) -> list[tuple[str, Any]]:
+        node_exec_id = node_exec_ids[iteration]
         return [
             output
             async for output in block.execute(
-                input_data,
+                iterations[iteration],
                 execution_context=context.model_copy(
                     update={"node_id": node_id, "node_exec_id": node_exec_id}
                 ),
@@ -146,25 +162,24 @@ async def park_for_review(
             )
         ]
 
-    # Safe mode is on when the node first runs, so the gate holds it.
-    held = await run_node(
-        ExecutionContext(
-            user_id=user_id,
-            graph_id=graph.id,
-            graph_exec_id=graph_exec.id,
-            graph_version=graph.version,
-            root_execution_id=graph_exec.id,
-            human_in_the_loop_safe_mode=True,
-            sensitive_action_safe_mode=True,
-            dry_run=dry_run,
-        )
+    # Safe mode is on when the node first runs, so the gate holds each one.
+    first_run = ExecutionContext(
+        user_id=user_id,
+        graph_id=graph.id,
+        graph_exec_id=graph_exec.id,
+        graph_version=graph.version,
+        root_execution_id=graph_exec.id,
+        human_in_the_loop_safe_mode=True,
+        sensitive_action_safe_mode=True,
+        dry_run=dry_run,
     )
-    assert held == []
+    for iteration in range(len(iterations)):
+        assert await run_node(first_run, iteration) == []
     assert await update_graph_execution_stats(
         graph_exec_id=graph_exec.id, status=ExecutionStatus.REVIEW
     )
     return Parked(
-        graph_exec_id=graph_exec.id, node_exec_id=node_exec_id, run_node=run_node
+        graph_exec_id=graph_exec.id, node_exec_ids=node_exec_ids, run_node=run_node
     )
 
 
@@ -239,6 +254,59 @@ async def test_an_approved_action_runs_once_as_approved_after_safe_mode_is_off(
         edited["title"],
         edited["body"],
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_approving_future_runs_does_not_override_a_rejection_of_another(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    queue,
+    create_issue,
+    test_user_id: str,
+) -> None:
+    """Two iterations of one node are held. The user approves the first with
+    "approve future" and rejects the second, with safe mode still on.
+
+    The gate looked for any approval first, and the node-wide auto-approval
+    matched the rejected iteration too, so it ran without its own answer ever
+    being read.
+    """
+    approved = {**ISSUE_INPUT, "title": "Refund customer 4411"}
+    rejected = {**ISSUE_INPUT, "title": "Refund customer 9999"}
+    parked = await park_for_review(
+        GithubMakeIssueBlock(), approved, test_user_id, more_iterations=[rejected]
+    )
+    settings_at_answer_time(mocker, sensitive_action_safe_mode=True)
+
+    response = await client.post(
+        "/api/review/action",
+        json={
+            "reviews": [
+                {
+                    "node_exec_id": parked.node_exec_ids[0],
+                    "approved": True,
+                    "auto_approve_future": True,
+                },
+                {
+                    "node_exec_id": parked.node_exec_ids[1],
+                    "approved": False,
+                    "message": "Not this one",
+                },
+            ]
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["failed_count"] == 0
+
+    resumed = resumed_context(queue)
+    assert resumed.sensitive_action_safe_mode is True
+    with pytest.raises(BlockExecutionError, match="rejected by reviewer"):
+        await parked.run_node(resumed, 1)
+    create_issue.assert_not_awaited()
+
+    await parked.run_node(resumed, 0)
+    create_issue.assert_awaited_once()
+    assert create_issue.await_args.args[2] == approved["title"]
 
 
 @pytest.mark.asyncio(loop_scope="session")

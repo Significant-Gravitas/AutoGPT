@@ -37,9 +37,11 @@ class HITLReviewHelper:
     ) -> Optional[ReviewDecision]:
         """The approval or rejection already recorded for this node execution.
 
-        For a node running with safe mode off: safe mode may have been on when
-        the node was held for review, and the human's answer still binds it.
-        Returns None when no review exists or it is still waiting.
+        It binds whatever the node's safe mode is now and outranks node-wide
+        auto-approvals. Returns None when no review exists or it is still
+        waiting. Read-only: ``handle_review_decision`` marks the review
+        processed as before; the safe-mode-off callers need not, since the
+        decision is read again on every run of the node either way.
         """
         reviews = (
             await get_database_manager_async_client().get_reviews_by_node_exec_ids(
@@ -238,6 +240,18 @@ class HITLReviewHelper:
             ReviewDecision if review is complete (approved/rejected),
             None if execution should pause (awaiting review)
         """
+        # This node execution's own answer outranks any blanket approval: an
+        # "approve future" given on one iteration of the node must not run
+        # another iteration the human rejected.
+        if decision := await HITLReviewHelper.get_existing_decision(
+            node_exec_id=node_exec_id, user_id=user_id
+        ):
+            if not decision.review_result.processed:
+                await HITLReviewHelper.update_review_processed_status(
+                    node_exec_id=node_exec_id, processed=True
+                )
+            return decision
+
         review_result = await HITLReviewHelper._handle_review_request(
             input_data=input_data,
             user_id=user_id,

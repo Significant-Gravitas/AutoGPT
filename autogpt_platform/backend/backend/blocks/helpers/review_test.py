@@ -23,6 +23,9 @@ async def test_handle_review_decision_threads_org_to_review_row():
     get_or_create = AsyncMock(return_value=approved)
 
     with (
+        patch.object(
+            HITLReviewHelper, "get_existing_decision", AsyncMock(return_value=None)
+        ),
         patch.object(HITLReviewHelper, "check_approval", AsyncMock(return_value=None)),
         patch.object(HITLReviewHelper, "get_or_create_human_review", get_or_create),
     ):

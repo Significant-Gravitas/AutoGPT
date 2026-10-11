@@ -3104,6 +3104,12 @@ async def test_pause_override_parks_a_marked_block_with_library_setting_off(
         "handle_review_decision",
         new=mocker.AsyncMock(return_value=None),
     )
+    # No decision has been made on this node yet.
+    mocker.patch.object(
+        HITLReviewHelper,
+        "get_existing_decision",
+        new=mocker.AsyncMock(return_value=None),
+    )
     block = SendEmailBlock()
     assert block.is_irreversible_action
     should_pause, _ = await block.is_block_exec_need_review(
