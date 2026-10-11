@@ -14,6 +14,7 @@ from backend.copilot.sdk.service import (
     _format_conversation_context,
     _transcript_watermark_after_turn,
 )
+from backend.copilot.sdk.turn_summary import TurnSummaryCollector
 
 # ---------------------------------------------------------------------------
 # _format_conversation_context
@@ -1063,3 +1064,32 @@ async def test_build_query_resume_gap_is_sequence_based_with_reasoning_rows(
         session_id="test-session",
     )
     assert result == _history(*expected_lines) + "\n\nNow, the user says:\nCURRENT"
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_gap_rows_reach_the_turn_summary():
+    """The rows sent as gap on a resumed turn are the history rows the turn's
+    summary line reports."""
+    session = _make_session(
+        _seq_rows(
+            ("user", "turn 1"),
+            ("assistant", "reply 1"),
+            ("user", "turn 2"),
+            ("assistant", "reply 2"),
+            ("user", "turn 3"),
+        )
+    )
+    collector = TurnSummaryCollector("test-session")
+
+    query, _ = await _build_query_message(
+        "turn 3",
+        session,
+        use_resume=True,
+        transcript_msg_count=2,
+        session_id="test-session",
+        turn_summary=collector,
+    )
+    collector.record_query(query, use_resume=True, covered_rows=2, session_rows=5)
+
+    assert collector.summary.query_path == "resume_gap"
+    assert collector.summary.history_rows == 2
