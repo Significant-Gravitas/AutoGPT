@@ -528,3 +528,78 @@ describe("AutoPilot streaming — our usage cap next to a linked subscription", 
     expect(screen.queryByText(/More room for what’s next/i)).toBeNull();
   });
 });
+
+describe("AutoPilot reopened — a failure stored on the chat", () => {
+  function failedChat(kind: string) {
+    return [
+      {
+        id: "row-0",
+        role: "user",
+        content: "Summarize my inbox.",
+        sequence: 0,
+      },
+      {
+        id: "row-1",
+        role: "assistant",
+        content: "[__COPILOT_ERROR_f7a1__] The connection refused this turn.",
+        sequence: 1,
+        metadata: {
+          provider_failure: {
+            kind,
+            message: "The connection refused this turn.",
+            authProvider: "codex",
+            credentialId: "cred-1",
+            resetsAt: null,
+            retryable: false,
+            reconnectFixesIt: kind === "auth_expired",
+          },
+        },
+      },
+    ];
+  }
+
+  // Still on the connection that failed, so the failure is still live.
+  const onThatConnection = {
+    dry_run: false,
+    builder_graph_id: null,
+    llm_auth_provider: "codex",
+    llm_credential_id: "cred-1",
+  } as const;
+
+  beforeEach(() => {
+    server.use(getGetV2ListChatConnectionsMockHandler200({ offers: [] }));
+  });
+
+  it("reopens the continue-elsewhere dialog for a spent quota", async () => {
+    renderHost({
+      sessionOverride: {
+        messages: failedChat("usage_limit"),
+        metadata: onThatConnection,
+      },
+    });
+
+    expect(
+      await screen.findByText(/hit this connection's limit/i, undefined, {
+        timeout: 5000,
+      }),
+    ).toBeDefined();
+  }, 15_000);
+
+  it("leaves it closed for a failure that is not a limit", async () => {
+    renderHost({
+      sessionOverride: {
+        messages: failedChat("auth_expired"),
+        metadata: onThatConnection,
+      },
+    });
+
+    await screen.findByText("Summarize my inbox.", undefined, {
+      timeout: 5000,
+    });
+    await expect(
+      screen.findByText(/hit this connection's limit/i, undefined, {
+        timeout: 1500,
+      }),
+    ).rejects.toThrow();
+  }, 15_000);
+});
