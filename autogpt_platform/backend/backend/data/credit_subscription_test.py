@@ -1828,6 +1828,42 @@ async def test_handle_subscription_payment_failure_balance_covers_pays_invoice()
 
 
 @pytest.mark.asyncio
+async def test_handle_subscription_payment_failure_ignores_a_new_plans_first_payment():
+    """A card declined in Checkout leaves the new plan incomplete for the
+    customer to retry. Treating it as a lapsed plan would cancel every live
+    subscription, including a cancel-pending trial that still has access."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.TRIAL)
+    invoice = {
+        "id": "in_first",
+        "customer": "cus_123",
+        "subscription": "sub_new_max",
+        "amount_due": 32000,
+        "billing_reason": "subscription_create",
+    }
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction", new_callable=AsyncMock
+        ) as mock_add_tx,
+        patch(
+            "backend.data.credit._cancel_customer_subscriptions",
+            new_callable=AsyncMock,
+        ) as mock_cancel,
+        patch(
+            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
+        ) as mock_set,
+    ):
+        await handle_subscription_payment_failure(invoice)
+    mock_add_tx.assert_not_awaited()
+    mock_cancel.assert_not_awaited()
+    mock_set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_handle_subscription_payment_failure_invoice_pay_error_does_not_raise():
     """Failure to mark the invoice as paid is logged but does not propagate."""
     import stripe as stripe_mod
