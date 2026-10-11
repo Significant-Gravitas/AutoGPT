@@ -12,7 +12,9 @@ curl --fail --location --retry 2 \
 (cd "$maestro_dir" && shasum -a 256 -c checksums_sha256.txt && unzip -q maestro.zip)
 
 xcrun simctl list devices available --json > e2e/artifacts/devices.json
-device_id=$(python3 scripts/select-simulator.py e2e/artifacts/devices.json)
+sdk_version=$(xcrun --sdk iphonesimulator --show-sdk-version)
+echo "Selecting an iPhone simulator for iOS $sdk_version"
+device_id=$(python3 scripts/select-simulator.py e2e/artifacts/devices.json "$sdk_version")
 xcrun simctl boot "$device_id"
 xcrun simctl bootstatus "$device_id" -b
 

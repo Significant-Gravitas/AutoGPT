@@ -5,7 +5,7 @@ derived_data="${NATIVE_DERIVED_DATA:-.build/SimulatorChecks}"
 simulator_arch=$(uname -m)
 mkdir -p e2e/artifacts
 
-top -l 0 -s 15 -n 12 -o mem -stats pid,command,cpu,mem,threads > e2e/artifacts/build-resources.log &
+top -l 0 -s 15 -n 20 -o cpu -F -R -stats pid,command,cpu,mem,threads > e2e/artifacts/build-resources.log &
 resources_pid=$!
 trap 'kill "$resources_pid" 2>/dev/null || true; wait "$resources_pid" 2>/dev/null || true' EXIT
 

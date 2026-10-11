@@ -49,7 +49,7 @@ jobs:
 
   ios:
     name: iOS build and launch journey
-    runs-on: macos-26-intel
+    runs-on: macos-26
     timeout-minutes: 10
     env:
       CI: "1"
@@ -117,23 +117,18 @@ jobs:
           (cd ios && pod install) > e2e/artifacts/pods.log 2>&1 || { tail -100 e2e/artifacts/pods.log; exit 1; }
 
       - name: Build functional-test simulator app
-        id: build
+        run: bash scripts/build-simulator.sh
+
+      - name: Prepare simulator after compilation
+        id: simulator
         run: |
-          bash scripts/prepare-ios-e2e.sh > e2e/artifacts/device-setup.log 2>&1 &
-          prepare_pid=$!
-          trap 'kill "$prepare_pid" 2>/dev/null || true' EXIT
-          build_status=0
-          bash scripts/build-simulator.sh || build_status=$?
-          prepare_status=0
-          wait "$prepare_pid" || prepare_status=$?
-          trap - EXIT
-          if [ "$prepare_status" -ne 0 ]; then tail -100 e2e/artifacts/device-setup.log; fi
-          if [ "$build_status" -ne 0 ] || [ "$prepare_status" -ne 0 ]; then exit 1; fi
+          bash scripts/prepare-ios-e2e.sh > e2e/artifacts/device-setup.log 2>&1 \
+            || { tail -100 e2e/artifacts/device-setup.log; exit 1; }
 
       - name: Run native launch journey
         env:
-          NATIVE_SIMULATOR_ID: ${{ steps.build.outputs.simulator-id }}
-          MAESTRO_BIN: ${{ steps.build.outputs.maestro }}
+          NATIVE_SIMULATOR_ID: ${{ steps.simulator.outputs.simulator-id }}
+          MAESTRO_BIN: ${{ steps.simulator.outputs.maestro }}
         run: |
           xcrun simctl install "$NATIVE_SIMULATOR_ID" .build/SimulatorChecks/Build/Products/Release-iphonesimulator/AutoGPT.app
           "$MAESTRO_BIN" --device "$NATIVE_SIMULATOR_ID" test --format junit \
@@ -147,9 +142,10 @@ jobs:
           PODS_CACHE_HIT: ${{ steps.pods-cache.outputs.cache-hit }}
         run: |
           df -h . | tee e2e/artifacts/disk-after.txt
+          ps -axo pid,ppid,state,pcpu,rss,comm > e2e/artifacts/processes-after.txt
           {
-            echo 'Standard free macos-26-intel runner; Xcode 26.6; x86_64 simulator.'
-            echo 'This artifact runs on Intel simulators; the shared Apple Silicon simulator uses a local arm64 build.'
+            echo 'Standard free macos-26 runner; Xcode 26.6; arm64 simulator.'
+            echo 'Controlled measurement: compile before booting the simulator; select the runtime matching the SDK.'
             echo 'Release runtime and bundled JS; native optimization and debug symbol generation disabled for functional tests.'
             echo "JavaScript cache hit: ${JAVASCRIPT_CACHE_HIT:-false}"
             echo "CocoaPods cache hit: ${PODS_CACHE_HIT:-false}"
