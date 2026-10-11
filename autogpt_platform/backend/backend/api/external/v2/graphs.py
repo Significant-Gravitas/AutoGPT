@@ -331,17 +331,18 @@ async def set_active_version(
     new_active_graph = await before_graph_activate(
         new_active_graph, user_id=auth.user_id
     )
-    await graph_db.set_graph_active_version(
-        graph_id=graph_id,
-        version=new_active_version,
-        user_id=auth.user_id,
-    )
-
+    # Before the flag flips, as in update_graph: this can refuse (409), and
+    # would leave the graph active on a version its library entry isn't on.
     await library_db.update_agent_version_in_library(
         auth.user_id,
         new_active_graph.id,
         new_active_graph.version,
         organization_ids=organization_ids,
+    )
+    await graph_db.set_graph_active_version(
+        graph_id=graph_id,
+        version=new_active_version,
+        user_id=auth.user_id,
     )
 
     if current_active_graph and current_active_graph.version != new_active_version:

@@ -7,6 +7,9 @@ import pytest_mock
 from prisma.enums import APIKeyPermission
 
 from backend.api.features.library import db as library_db
+from backend.api.features.library.exceptions import (
+    LibraryAgentInAnotherOrganizationError,
+)
 from backend.api.features.orgs.db import get_user_default_team
 from backend.blocks import _base
 from backend.blocks.agent import AgentExecutorBlock
@@ -168,6 +171,39 @@ async def test_a_graph_with_a_version_beyond_the_caller_is_not_changed(
     activate.assert_not_awaited()
     writes["create_graph"].assert_not_awaited()
     writes["update_agent_version_in_library"].assert_not_awaited()
+
+
+async def test_a_refused_library_move_leaves_the_active_version_alone(
+    mocker: pytest_mock.MockFixture, graph_in_org_1: AsyncMock
+) -> None:
+    """The move can answer 409; after it, the graph would be active on a
+    version its library entry isn't on."""
+    graph = Mock(
+        user_id=_AUTH.user_id, organization_id="org-1", id="graph-1", version=2
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph", new_callable=AsyncMock, return_value=graph
+    )
+    mocker.patch(
+        "backend.api.external.v2.graphs.before_graph_activate",
+        new_callable=AsyncMock,
+        return_value=graph,
+    )
+    mocker.patch(
+        "backend.api.features.library.db.update_agent_version_in_library",
+        new_callable=AsyncMock,
+        side_effect=LibraryAgentInAnotherOrganizationError("elsewhere"),
+    )
+    flip = mocker.patch(
+        "backend.data.graph.set_graph_active_version", new_callable=AsyncMock
+    )
+
+    with pytest.raises(LibraryAgentInAnotherOrganizationError):
+        await set_active_version(
+            "graph-1", GraphSetActiveVersionRequest(active_graph_version=2), auth=_AUTH
+        )
+
+    flip.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
