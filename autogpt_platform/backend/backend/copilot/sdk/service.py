@@ -6041,6 +6041,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     log_prefix=log_prefix,
                 )
                 expert_identity_validated = True
+                # The restart sends a new query: the summary describes it.
+                turn_summary.record_query(
+                    state.query_message,
+                    use_resume=state.use_resume,
+                    covered_rows=state.transcript_msg_count,
+                    session_rows=len(session.messages),
+                )
                 yield restart_status
                 continue
             except _HandledStreamError as exc:

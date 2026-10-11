@@ -25,6 +25,7 @@ from backend.copilot import service as copilot_service
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.conftest import build_test_transcript
+from backend.copilot.sdk.query_blocks import scan_context_blocks
 from backend.copilot.sdk.retry_scenarios_test import _make_sdk_patches
 from backend.copilot.sdk.service import stream_chat_completion_sdk
 from backend.copilot.sdk.turn_summary_model import TURN_SUMMARY_MARKER, short_hash
@@ -138,15 +139,22 @@ async def _run_turn(
 
 
 def _launches(*scripts) -> tuple:
-    """A client factory that plays one script per CLI launch, and the options
-    each launch was given."""
+    """A client factory that plays one script per CLI launch, the options each
+    launch was given, and the client each launch got."""
     options: list[ClaudeAgentOptions] = []
+    clients: list[AsyncMock] = []
 
     def factory(*args, **kwargs):
         options.append(kwargs["options"])
-        return scripts[len(options) - 1]()
+        clients.append(scripts[len(options) - 1]())
+        return clients[-1]
 
-    return factory, options
+    return factory, options, clients
+
+
+def _sent_query(client: AsyncMock) -> str:
+    """The query a launch sent to its CLI."""
+    return client.__aenter__.return_value.query.await_args.args[0]
 
 
 def _summaries(caplog: pytest.LogCaptureFixture) -> list[dict]:
@@ -155,6 +163,17 @@ def _summaries(caplog: pytest.LogCaptureFixture) -> list[dict]:
         for r in caplog.records
         if r.name == _SUMMARY_LOGGER and r.getMessage().startswith(TURN_SUMMARY_MARKER)
     ]
+
+
+def _assert_line_reads_the_query(summary: dict, query: str, path: str) -> None:
+    """The line's query fields describe *query*, the last launch's."""
+    blocks, prefix_chars = scan_context_blocks(query)
+    largest = max(blocks, key=lambda block: block[1], default=None)
+    assert summary["query_chars"] == len(query)
+    assert summary["query_path"] == path
+    assert summary["context_blocks"] == [name for name, _ in blocks]
+    assert summary["context_prefix_chars"] == prefix_chars
+    assert summary.get("context_largest_block") == (largest and largest[0])
 
 
 @pytest.mark.asyncio
@@ -175,7 +194,7 @@ async def test_a_successful_turn_logs_one_summary(tmp_path, caplog):
     assert summary["transcript_download_bytes"] > 0
     assert summary["transcript_covered_rows"] == 2
     assert summary["session_rows"] == 3
-    assert summary["query_path"] in {"resume", "no_resume_history"}
+    assert summary["query_path"] == "no_resume_history"
     assert summary["transcript_upload_skipped"] == "no_session_file"
     assert summary["system_prompt_chars"] > 0
     assert "error_class" not in summary
@@ -286,7 +305,7 @@ def _assert_line_reads_the_launch(summary: dict, options: ClaudeAgentOptions) ->
 async def test_first_launch_line_reads_the_live_prompt(
     tmp_path, caplog, langfuse_prompt_v38
 ):
-    factory, options = _launches(lambda: _client(_answer()))
+    factory, options, clients = _launches(lambda: _client(_answer()))
 
     with caplog.at_level(logging.INFO, logger=_SUMMARY_LOGGER):
         await _run_turn(
@@ -300,13 +319,14 @@ async def test_first_launch_line_reads_the_live_prompt(
     [launch] = options
     assert launch.env == _ROUTE_ENV
     _assert_line_reads_the_launch(summary, launch)
+    _assert_line_reads_the_query(summary, _sent_query(clients[0]), "no_resume_history")
 
 
 @pytest.mark.asyncio
 async def test_context_size_retry_keeps_hooks_env_and_live_prompt(
     tmp_path, caplog, langfuse_prompt_v38
 ):
-    factory, options = _launches(
+    factory, options, clients = _launches(
         lambda: _client(
             [], query_error=Exception("prompt is too long (context_length_exceeded)")
         ),
@@ -331,7 +351,9 @@ async def test_context_size_retry_keeps_hooks_env_and_live_prompt(
     first, retry = options
     assert (summary["cli_launches"], summary["retries"]) == (2, 1)
     assert summary["context_rebuilds"] == 1
-    assert summary["query_path"].startswith("rebuilt_")
+    _assert_line_reads_the_query(
+        summary, _sent_query(clients[1]), "rebuilt_no_resume_history"
+    )
     assert retry.hooks is first.hooks
     assert retry.env == first.env == _ROUTE_ENV
     assert _prompt_text(retry) == _prompt_text(first)
@@ -344,7 +366,7 @@ async def test_building_mode_restart_keeps_hooks_env_and_sends_the_guide(
 ):
     session = _session()
     session.building_mode_requested = True
-    factory, options = _launches(
+    factory, options, clients = _launches(
         lambda: _client(_answer()[:1]), lambda: _client(_answer())
     )
 
@@ -374,3 +396,4 @@ async def test_building_mode_restart_keeps_hooks_env_and_sends_the_guide(
     assert restart.env == first.env == _ROUTE_ENV
     assert _prompt_text(restart) == _prompt_text(first) + _GUIDE
     _assert_line_reads_the_launch(summary, restart)
+    _assert_line_reads_the_query(summary, _sent_query(clients[1]), "resume")
