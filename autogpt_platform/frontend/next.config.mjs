@@ -14,6 +14,8 @@ const nextConfig = {
   // tag preview deployments as previews rather than as production.
   env: {
     NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
+    // Sentry initialises in the browser too, so its kill switch must reach it.
+    DISABLE_SENTRY: process.env.DISABLE_SENTRY ?? "",
   },
   // Suppress the "X-Powered-By: Next.js" header (framework fingerprinting).
   poweredByHeader: false,

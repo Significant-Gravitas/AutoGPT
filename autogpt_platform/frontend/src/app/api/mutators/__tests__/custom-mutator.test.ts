@@ -28,6 +28,8 @@ vi.mock("@/lib/autogpt-server-api/helpers", () => ({
 
 vi.mock("@sentry/nextjs", () => ({
   getTraceData: vi.fn(() => ({})),
+  captureMessage: vi.fn(),
+  addBreadcrumb: vi.fn(),
 }));
 
 import { customMutator } from "../custom-mutator";
@@ -345,5 +347,48 @@ describe("customMutator validation errors", () => {
       message,
       status: 422,
     });
+  });
+});
+
+describe("customMutator — response dates", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(true);
+    mockGetSystemHeaders.mockReturnValue({});
+  });
+
+  it("returns server timestamps as Dates and user inputs verbatim", async () => {
+    const execution = {
+      id: "exec-1",
+      started_at: "2024-03-10T09:30:00Z",
+      inputs: { when: "2024-03-10T09:30:00", at: "2024-03-10T09:30:00Z" },
+      nodes: [{ input_default: { when: "2024-03-10T09:30:00Z" } }],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () => Promise.resolve(execution),
+      }),
+    );
+
+    const res = await customMutator<{
+      data: typeof execution;
+      status: number;
+      headers: Headers;
+    }>("/test", {
+      method: "GET",
+    });
+
+    expect(res.data.started_at).toBeInstanceOf(Date);
+    expect(res.data.inputs).toEqual(execution.inputs);
+    expect(res.data.nodes[0].input_default).toEqual(
+      execution.nodes[0].input_default,
+    );
+    expect(JSON.parse(JSON.stringify(res.data.inputs))).toEqual(
+      execution.inputs,
+    );
   });
 });
