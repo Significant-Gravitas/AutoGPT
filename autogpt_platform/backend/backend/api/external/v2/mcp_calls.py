@@ -12,6 +12,7 @@ from typing import Any, Sequence
 from fastapi import HTTPException
 from mcp.server.fastmcp.exceptions import ToolError
 from prisma.enums import APIKeyPermission
+from pydantic import TypeAdapter, ValidationError
 
 from backend.api.utils.rate_limit import RateLimiter
 from backend.copilot.config import ChatConfig
@@ -28,6 +29,8 @@ from backend.data.credit import get_credit_model
 from .rate_limit import file_upload_limiter, graph_exec_limiter, search_limiter
 
 logger = logging.getLogger(__name__)
+
+_LAX_BOOL = TypeAdapter(bool)
 
 config = ChatConfig()
 
@@ -120,9 +123,28 @@ def _tool_limiters(tool: BaseTool, args: dict[str, Any]) -> list[RateLimiter]:
     return list(dict.fromkeys(limiters))
 
 
+def spends_platform_money(tool: BaseTool, args: dict[str, Any]) -> bool:
+    """Whether this call bills the platform's own account.
+
+    The tool's own answer, plus a `run_agent` dry run: it bills no credits, so
+    no balance refuses it, but it simulates every block with a model on the
+    platform's key, which is what the usage allowance meters.
+    """
+    return tool.spends_platform_money or (tool.name == "run_agent" and _dry_run(args))
+
+
 def _starts_a_paid_run(args: dict[str, Any]) -> bool:
     """A run now, not a dry run and not a schedule, as REST's run route refuses."""
-    return not (args.get("dry_run") or args.get("schedule_name") or args.get("cron"))
+    return not (_dry_run(args) or args.get("schedule_name") or args.get("cron"))
+
+
+def _dry_run(args: dict[str, Any]) -> bool:
+    """`dry_run` as the tool's own model reads it, so a value such as "false"
+    isn't a dry run here and a real run there. One it can't read, it refuses."""
+    try:
+        return _LAX_BOOL.validate_python(args.get("dry_run", False))
+    except ValidationError:
+        return False
 
 
 async def check_spend_allowance(user_id: str) -> None:

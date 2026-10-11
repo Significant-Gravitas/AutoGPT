@@ -15,7 +15,11 @@ from mcp.types import CallToolRequest, CallToolRequestParams, ListToolsRequest
 from prisma.enums import APIKeyPermission
 from starlette.routing import Match
 
-from backend.api.external.v2.mcp_calls import TOOL_LIMITERS
+from backend.api.external.v2.mcp_calls import (
+    TOOL_LIMITERS,
+    _starts_a_paid_run,
+    spends_platform_money,
+)
 from backend.api.external.v2.mcp_server import (
     EXTERNAL_USE_EXCLUSIONS,
     META_KEY_REQUIRED_SCOPES,
@@ -394,6 +398,52 @@ async def test_a_tool_that_spends_platform_money_checks_the_allowance_first(
     run.assert_not_called()
     assert result.isError
     assert refusal in result.content[0].text
+
+
+async def test_a_dry_run_checks_the_allowance_first(
+    mocker: pytest_mock.MockerFixture, no_tenancy_lookups: mock.AsyncMock
+):
+    """A dry run bills no credits, so no balance refuses it, but it simulates
+    every block with a model on the platform's key: past the allowance, or on
+    an unpaid account, it doesn't start."""
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=_token(*_tool_scopes("run_agent")),
+    )
+    mocker.patch.object(
+        TOOL_LIMITERS["run_agent"], "check", new_callable=mock.AsyncMock
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_calls.is_user_paywalled",
+        new_callable=mock.AsyncMock,
+        return_value=True,
+    )
+    run = mocker.patch.object(type(TOOL_REGISTRY["run_agent"]), "_execute")
+
+    result = await _call("run_agent", {"library_agent_id": "agent-1", "dry_run": True})
+
+    run.assert_not_called()
+    assert result.isError
+    assert "needs an active subscription" in result.content[0].text
+
+
+@pytest.mark.parametrize(
+    "args, paid_run, spends",
+    [
+        ({"dry_run": True}, False, True),
+        ({}, True, False),
+        # Read as the tool's own model reads it: not a dry run here and a real
+        # run there.
+        ({"dry_run": "false"}, True, False),
+        ({"dry_run": "true"}, False, True),
+        ({"cron": "0 9 * * *"}, False, False),
+    ],
+)
+def test_a_run_agent_call_is_a_paid_run_or_platform_spend_as_the_tool_reads_it(
+    args: dict[str, Any], paid_run: bool, spends: bool
+):
+    assert _starts_a_paid_run(args) is paid_run
+    assert spends_platform_money(TOOL_REGISTRY["run_agent"], args) is spends
 
 
 async def test_a_tool_called_over_mcp_runs_without_waiting_for_an_approval(

@@ -42,6 +42,7 @@ from backend.api.external.v2.mcp_calls import (
     check_tool_limits,
     input_schema,
     missing_scopes,
+    spends_platform_money,
 )
 from backend.api.external.v2.mcp_tenancy import check_ids_in_tenant
 from backend.api.external.v2.tenancy import resolve_credential_tenancy
@@ -430,7 +431,7 @@ def _create_tool_handler(
             tool.name, kwargs, user_id, access_token.organization_id
         )
         await check_tool_limits(tool, kwargs, user_id, access_token.organization_id)
-        if tool.spends_platform_money:
+        if spends_platform_money(tool, kwargs):
             await check_spend_allowance(user_id)
 
         # An automation session: nobody is watching to answer an approval
