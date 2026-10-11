@@ -15,11 +15,12 @@ export function useIsBillingEnabled() {
 }
 
 // For gating a whole route: ``isResolved`` stays false until the flag vendor
-// has answered, so a self-hosted install that turns payments on through a
-// vendor is not sent to a 404 before the answer arrives.
+// has answered or timed out, so a self-hosted install that turns payments on
+// through a vendor is not sent to a 404 before the answer arrives, and one
+// whose vendor never answers still gets a page.
 export function useBillingStatus() {
-  const { enabled, answered } = useFlagStatus(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { enabled, ready } = useFlagStatus(Flag.ENABLE_PLATFORM_PAYMENT);
   if (environment.isCloud())
     return { isBillingEnabled: true, isResolved: true };
-  return { isBillingEnabled: enabled === true, isResolved: answered };
+  return { isBillingEnabled: enabled === true, isResolved: ready };
 }
