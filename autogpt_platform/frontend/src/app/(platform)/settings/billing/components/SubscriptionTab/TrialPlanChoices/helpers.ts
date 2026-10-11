@@ -22,7 +22,6 @@ export interface PlanChoiceDetails {
   amount: string;
   cadence: "month" | "year";
   description: string;
-  cents?: number;
 }
 
 export function getCancelPendingOffer(trial: TrialStatusResponse | undefined) {
@@ -63,8 +62,18 @@ export function getUpgradePlanChoice(
       tier,
       subscription.tier_multipliers,
     ),
-    cents,
   };
+}
+
+export function formatChoicePrice(plan: PlanChoiceDetails) {
+  return `${plan.amount} / ${plan.cadence}`;
+}
+
+export function findPlanChoice(
+  plans: (PlanChoiceDetails | null)[],
+  tier: PlanChoiceDetails["tier"],
+) {
+  return plans.find((plan) => plan?.tier === tier) ?? null;
 }
 
 // The plan only counts as started once the server reports it: a charge the

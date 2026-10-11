@@ -37,6 +37,9 @@ _NO_ADAPTER_SLEEP_SECONDS = 3600
 class CoPilotChatBridge(AppService):
     """Bridges Otto to external chat platforms via per-platform adapters."""
 
+    # Its chat turns are gated by PlatformLinkingManager, which reads the flags.
+    reads_feature_flags = False
+
     def __init__(self):
         super().__init__()
         # Flipped to True once `_run_adapters` reaches its blocking gather
