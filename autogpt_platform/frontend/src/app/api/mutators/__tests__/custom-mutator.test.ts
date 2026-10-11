@@ -28,6 +28,8 @@ vi.mock("@/lib/autogpt-server-api/helpers", () => ({
 
 vi.mock("@sentry/nextjs", () => ({
   getTraceData: vi.fn(() => ({})),
+  captureMessage: vi.fn(),
+  addBreadcrumb: vi.fn(),
 }));
 
 import { customMutator } from "../custom-mutator";
