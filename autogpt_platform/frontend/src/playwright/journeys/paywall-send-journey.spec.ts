@@ -25,7 +25,14 @@ test("a send after the plan lapses offers one way to upgrade and keeps the messa
   journeyUser: _journeyUser,
 }) => {
   const copilot = new CopilotPage(page);
+  // Sending before the AI connections load is refused client-side ("AI
+  // connections are still loading"), which is not what this journey is about.
+  const connectionsLoaded = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/chat/transports") && response.ok(),
+  );
   await copilot.open();
+  await connectionsLoaded;
   const composer = page.locator("#chat-input-empty");
   await expect(composer).toBeEditable();
 

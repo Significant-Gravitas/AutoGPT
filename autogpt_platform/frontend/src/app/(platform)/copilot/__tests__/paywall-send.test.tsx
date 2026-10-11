@@ -17,6 +17,7 @@ import { useChatSession } from "../useChatSession";
 // real composer hook to pin the failure to one toast.
 
 const toast = vi.hoisted(() => vi.fn());
+const transports = vi.hoisted(() => ({ loaded: true }));
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: (...args: unknown[]) => toast(...args),
@@ -30,20 +31,22 @@ vi.mock(
       typeof import("@/app/api/__generated__/endpoints/chat/chat")
     >()),
     useGetV2ListChatTransports: () => ({
-      data: {
-        status: 200,
-        data: {
-          transports: [
-            {
-              auth_provider: "platform",
-              credential_id: null,
-              label: "AutoGPT Platform",
-              available: true,
-              default: true,
+      data: !transports.loaded
+        ? undefined
+        : {
+            status: 200,
+            data: {
+              transports: [
+                {
+                  auth_provider: "platform",
+                  credential_id: null,
+                  label: "AutoGPT Platform",
+                  available: true,
+                  default: true,
+                },
+              ],
             },
-          ],
-        },
-      },
+          },
       isError: false,
     }),
   }),
@@ -85,9 +88,10 @@ async function send(text: string) {
 afterEach(() => {
   server.resetHandlers();
   toast.mockReset();
+  transports.loaded = true;
 });
 
-describe("a first send the server refuses", () => {
+describe("a refused first send", () => {
   it("offers plans once for a paywalled account and keeps the message", async () => {
     answerSessionCreate(
       402,
@@ -121,5 +125,16 @@ describe("a first send the server refuses", () => {
     );
     expect(toast.mock.calls[0][0].action).toBeUndefined();
     expect(textarea.value).toBe("hello");
+  });
+
+  it("says once that AI connections are still loading", async () => {
+    transports.loaded = false;
+    const textarea = await send("too quick");
+
+    expect(toast).toHaveBeenCalledOnce();
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "AI connections are still loading" }),
+    );
+    expect(textarea.value).toBe("too quick");
   });
 });

@@ -21,7 +21,7 @@ import {
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
-import { isPaywallError } from "./helpers/sendFailureToast";
+import { isPaywallError, ReportedSendError } from "./helpers/sendFailureToast";
 import { getSessionSentFrom } from "./sentFrom";
 import {
   getAvailableLLMTransports,
@@ -259,7 +259,7 @@ export function useChatSession({
         title: "Could not check AI connections",
         description: "Refresh the page and try again.",
       });
-      throw new Error("Could not load AI connections");
+      throw new ReportedSendError("Could not load AI connections");
     }
     if (chatTransports !== undefined && availableTransports.length === 0) {
       toast({
@@ -268,7 +268,7 @@ export function useChatSession({
         description:
           "Connect ChatGPT or Microsoft 365 Copilot in Settings → Integrations, or configure a chat API or local model on this server.",
       });
-      throw new Error("chat_transport_not_configured");
+      throw new ReportedSendError("chat_transport_not_configured");
     }
     if (!resolvedLLMAuth) {
       const connectionsAreLoading = chatTransports === undefined;
@@ -281,7 +281,7 @@ export function useChatSession({
           ? "Wait a moment and try again."
           : "Select the connection your expert should use before starting a new task.",
       });
-      throw new Error(
+      throw new ReportedSendError(
         connectionsAreLoading
           ? "AI connections are still loading"
           : "AI connection selection required",

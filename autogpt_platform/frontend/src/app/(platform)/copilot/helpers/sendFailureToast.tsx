@@ -15,6 +15,15 @@ export function isPaywallError(error: unknown) {
   return error instanceof ApiError && error.status === 402;
 }
 
+/** A send refused before it left the browser, by a check that already told
+ *  the user why in its own words. The caller must not toast it again. */
+export class ReportedSendError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReportedSendError";
+  }
+}
+
 interface Args {
   title: string;
   error: unknown;
@@ -33,6 +42,7 @@ export function toastSendFailure({
   recovery,
   paywallRecovery = recovery,
 }: Args) {
+  if (error instanceof ReportedSendError) return;
   if (isPaywallError(error)) {
     toast({
       title: "Choose a plan to keep chatting",
