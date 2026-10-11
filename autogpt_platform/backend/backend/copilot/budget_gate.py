@@ -22,10 +22,12 @@ from backend.copilot.model import ChatSession, upsert_chat_session
 from backend.copilot.pending_messages import peek_pending_count
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
+    SubscriptionTier,
     check_rate_limit,
     get_global_rate_limits,
 )
 from backend.copilot.turn_pause import TurnPause, append_pause_marker
+from backend.copilot.usage_activation import get_ready_usage_state
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +59,15 @@ async def refusal_for(user_id: str | None) -> TurnPause | None:
         # No plan, or the trial is over: nothing to spend, and nothing that
         # refills. Settled here because an ended trial's usage state still
         # reads TRIAL, which check_rate_limit's tier guard would take for a
-        # subscription change and report as unavailable.
+        # subscription change and report as unavailable -- and which is
+        # what says the pause is the trial's rather than a missing plan's.
+        state = await get_ready_usage_state(user_id)
+        ended_trial = state.tier == SubscriptionTier.TRIAL
         return TurnPause(
-            reason="weekly", resets_at=None, checkpoint_saved=False, started=False
+            reason="trial" if ended_trial else "weekly",
+            resets_at=None,
+            checkpoint_saved=False,
+            started=False,
         )
     try:
         await check_rate_limit(
