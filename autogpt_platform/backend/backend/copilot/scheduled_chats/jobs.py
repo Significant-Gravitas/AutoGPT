@@ -17,21 +17,26 @@ logger = logging.getLogger(__name__)
 
 async def pause_jobs(user_id: str, schedule_ids: list[str]) -> bool:
     """Pause every job, and say whether that worked. On a failure the jobs
-    this call paused are resumed again. No jobs cannot be paused."""
+    this call paused are resumed again. A job deleted since fires no more,
+    so it is skipped; with no live job left there is nothing to pause."""
     scheduler = get_scheduler_client()
     paused: list[str] = []
+    live = False
     for schedule_id in schedule_ids:
         try:
             # False: already paused, by its owner, and it stays that way.
             if await scheduler.pause_schedule(schedule_id, user_id=user_id):
                 paused.append(schedule_id)
+            live = True
+        except NotFoundError:
+            continue
         except Exception:
             logger.warning(
                 "Could not pause scheduled chat job %s", schedule_id, exc_info=True
             )
             await _put_back(scheduler.resume_schedule, user_id, paused)
             return False
-    return bool(schedule_ids)
+    return live
 
 
 async def resume_jobs(user_id: str, schedule_ids: list[str]) -> None:

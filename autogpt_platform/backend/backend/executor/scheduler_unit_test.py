@@ -2585,8 +2585,9 @@ def _over_the_daily_limit(gate: _OwnerGate, resets_at: datetime) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("window", ["daily", "weekly"])
 async def test_a_one_shot_refused_by_a_used_up_limit_waits_for_the_reset(
-    owner_gate, post_notice
+    owner_gate, post_notice, window
 ):
     """Nick (2026-10-10): once usage comes back, the run should happen. A
     one-shot is moved to the reset, spread over a few minutes, and its chat is
@@ -2594,7 +2595,7 @@ async def test_a_one_shot_refused_by_a_used_up_limit_waits_for_the_reset(
     resets_at = datetime.now(tz=timezone.utc).replace(microsecond=0) + timedelta(
         hours=3
     )
-    _over_the_daily_limit(owner_gate, resets_at)
+    owner_gate.check_rate_limit.side_effect = RateLimitExceeded(window, resets_at)
     scheduler_client = AsyncMock()
     with patch(
         f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=scheduler_client

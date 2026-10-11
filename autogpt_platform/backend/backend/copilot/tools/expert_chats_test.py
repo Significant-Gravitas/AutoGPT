@@ -336,6 +336,26 @@ class TestReadRendering:
         assert "[called: run_agent]" in result.messages[1].content
 
     @pytest.mark.asyncio
+    async def test_the_platforms_notes_to_the_owner_are_left_out(self) -> None:
+        db = _FakeChatDB(
+            messages=[
+                _msg(
+                    1,
+                    "assistant",
+                    "Paused: Discord monitor can't use Discord",
+                    metadata={
+                        "kind": "scheduled_chat_notice",
+                        "hidden_from_model": True,
+                    },
+                ),
+                _msg(2, "assistant", "Posted the summary"),
+            ]
+        )
+        result = await _read(db)
+        assert isinstance(result, ExpertChatTranscriptResponse)
+        assert [m.sequence for m in result.messages] == [2]
+
+    @pytest.mark.asyncio
     async def test_tool_output_is_available_on_request(self) -> None:
         db = _FakeChatDB(messages=[_msg(1, "tool", "bulk", tool_call_id="c1")])
         result = await _read(db, include_tool_results=True)

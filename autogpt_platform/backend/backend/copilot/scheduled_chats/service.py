@@ -217,7 +217,9 @@ async def _tell(
             exc_info=True,
         )
         if told:
-            # Not told after all: the next run that fails this way tells again.
+            # Not told after all: a later run that fails this way tells
+            # again. A paused chat has no later run, but the Scheduled page
+            # still lists it, with Resume.
             await ScheduledChatStreak.prisma().update(
                 where={"id": row.id}, data={"notifiedAt": None}
             )
