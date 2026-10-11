@@ -1741,7 +1741,23 @@ class TestStreamChatCompletionRetryIntegration:
         assert any(isinstance(e, StreamStart) for e in events)
 
     @pytest.mark.asyncio
-    async def test_handled_stream_error_transient_retries_then_succeeds(self):
+    @pytest.mark.parametrize(
+        "error, text",
+        [
+            ("rate_limit", "rate limit exceeded (status code 429)"),
+            # How the bundled CLI (2.1.284) words a 529: no status-code
+            # phrase for the text patterns to find, only the category.
+            (
+                "server_error",
+                "API Error: 529 Overloaded. This is a server-side issue, "
+                "usually temporary — try again in a moment.",
+            ),
+        ],
+        ids=["rate_limit", "server_error"],
+    )
+    async def test_handled_stream_error_transient_retries_then_succeeds(
+        self, error: str, text: str
+    ):
         """_HandledStreamError(code="transient_api_error") triggers backoff retry.
 
         When ``_run_stream_attempt`` raises ``_HandledStreamError`` with
@@ -1758,7 +1774,7 @@ class TestStreamChatCompletionRetryIntegration:
         """
         import contextlib
 
-        from claude_agent_sdk import AssistantMessage, ResultMessage
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
         from backend.copilot.response_model import (
             StreamError,
@@ -1778,16 +1794,16 @@ class TestStreamChatCompletionRetryIntegration:
             async def _receive():
                 if attempt == 1:
                     # First call: emit AssistantMessage with a transient error field
-                    # so _run_stream_attempt detects is_transient_api_error and
+                    # so _run_stream_attempt detects is_transient_assistant_error and
                     # raises _HandledStreamError(code="transient_api_error").
                     yield AssistantMessage(
-                        content=[],
+                        content=[TextBlock(text=text)],
                         model="claude-sonnet-4-6",
-                        error="rate_limit",
+                        error=error,
                     )
                     yield ResultMessage(
                         subtype="error",
-                        result="rate limit exceeded (status code 429)",
+                        result=text,
                         duration_ms=50,
                         duration_api_ms=0,
                         is_error=True,
