@@ -49,6 +49,7 @@ from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import ChatSessionInfo, create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
+from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.transports import resolve_default_chat_route
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
@@ -848,6 +849,14 @@ async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None
         )
 
 
+# When a chat's resume or send at the reset was cancelled, by job id. A job
+# cancelled while it runs is already out of the job store, so the cancel
+# finds nothing to remove; before firing or putting itself back the job looks
+# here. In process, like the jobs themselves: one scheduler runs them.
+_at_reset_cancels: dict[str, datetime] = {}
+_at_reset_cancels_lock = threading.Lock()
+_AT_RESET_CANCEL_MEMORY = timedelta(hours=2)
+
 # An at-reset turn that can't fire yet (the chat is busy, the budget or the
 # expert can't be read, the queue turned it away) tries again five minutes
 # later, this many times: an hour, so a long turn already running in the chat
@@ -869,6 +878,12 @@ async def _execute_at_reset_turn(args: "CopilotTurnJobArgs", kind: AtResetKind) 
         if chat is None:
             return
         verdict = await fire_verdict(kind, chat, args.created_at)
+        if _cancelled_after_set(args):
+            logger.info(
+                f"{kind}-at-reset turn for session {label} was cancelled "
+                "while it ran; dropping it"
+            )
+            return
         if verdict.action == "fire":
             await _dispatch_at_reset_turn(args, kind, chat.session)
         elif verdict.action == "wait" and verdict.run_at is not None:
@@ -945,6 +960,9 @@ async def _dispatch_at_reset_turn(
         team_id=args.team_id,
         llm_auth_provider=session.metadata.llm_auth_provider,
         llm_credential_id=session.metadata.llm_credential_id,
+        # It carries on the user's own chat, so under the chat's own
+        # limits, as a message sent there now would be (a builder chat's).
+        permissions=resolve_session_permissions(session),
         scheduled=ScheduledTurnOrigin(schedule_id=args.schedule_id),
     )
     logger.info(
@@ -976,6 +994,12 @@ async def _readd_at_reset_turn(
     args: "CopilotTurnJobArgs", *, run_at: datetime, retries: int
 ) -> None:
     """Put an at-reset turn back under its own id, keeping when it was set."""
+    if _cancelled_after_set(args):
+        logger.info(
+            f"Not putting back the {args.purpose}-at-reset turn for session "
+            f"{_session_id_label(args)}: it was cancelled while it ran"
+        )
+        return
     try:
         await get_scheduler_client().add_copilot_turn_schedule(
             user_id=args.user_id,
@@ -998,6 +1022,29 @@ async def _readd_at_reset_turn(
             f"{_session_id_label(args)}",
             exc_info=True,
         )
+
+
+def _remember_at_reset_cancel(job_id: str) -> None:
+    now = datetime.now(tz=timezone.utc)
+    with _at_reset_cancels_lock:
+        stale = [
+            key
+            for key, at in _at_reset_cancels.items()
+            if now - at > _AT_RESET_CANCEL_MEMORY
+        ]
+        for key in stale:
+            del _at_reset_cancels[key]
+        _at_reset_cancels[job_id] = now
+
+
+def _cancelled_after_set(args: "CopilotTurnJobArgs") -> bool:
+    """Whether the user cancelled this job after it was set: setting it
+    again after a cancel makes a new job, set later than the cancel."""
+    with _at_reset_cancels_lock:
+        cancelled_at = _at_reset_cancels.get(args.schedule_id)
+    if cancelled_at is None:
+        return False
+    return args.created_at is None or args.created_at <= cancelled_at
 
 
 async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
@@ -2617,7 +2664,12 @@ class Scheduler(AppService):
         job_id = at_reset_schedule_id(kind, session_id)
         job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
         info = _job_to_info(job) if job else None
-        if job is None or info is None or info.user_id != user_id:
+        if job is not None and (info is None or info.user_id != user_id):
+            return False
+        # Remembered even with no job to remove: it may be running right
+        # now, about to fire or to put itself back.
+        _remember_at_reset_cancel(job_id)
+        if job is None:
             return False
         job.remove()
         self._invalidate_jobs_cache()
