@@ -9,11 +9,19 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+from prisma.enums import AlertCause, AlertConditionStatus
 from prisma.errors import UniqueViolationError
-from prisma.models import ChatMessage, ExpertRoutine, ScheduledChatStreak, User
+from prisma.models import (
+    AlertCondition,
+    ChatMessage,
+    ExpertRoutine,
+    ScheduledChatStreak,
+    User,
+)
 
 from backend.copilot import db as copilot_db
 from backend.copilot.scheduled_chats.outcomes import RunFailure, RunOutcome
+from backend.copilot.scheduled_chats.reconnect import resume_after_reconnect
 from backend.copilot.scheduled_chats.service import (
     ScheduledRun,
     list_paused_scheduled_chats,
@@ -240,6 +248,95 @@ async def test_resume_restarts_the_jobs_clears_the_streak_and_says_so(
         assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
         headlines = [n.metadata["headline"] for n in await _notes(session_id)]
         assert headlines[-1] == "Resumed “Discord monitor”"
+    finally:
+        await _cleanup(user_id)
+
+
+async def _alert(user_id: str) -> AlertCondition | None:
+    return await AlertCondition.prisma().find_first(
+        where={"userId": user_id, "causeKey": "scheduled_chat:sched-1"}
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_pause_raises_the_alert_and_resume_resolves_it(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """The alert engine turns it into the email (where user email is on) or
+    the Briefing card; resuming cancels a send still in its debounce."""
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+
+        alert = await _alert(user_id)
+        assert alert is not None
+        assert alert.cause == AlertCause.PAUSED_FAILURES
+        assert alert.status == AlertConditionStatus.PENDING
+        assert alert.data["agent"] == "Discord monitor"
+        assert alert.data["step"] == "Discord connection"
+
+        assert await resume_scheduled_chat(user_id, "sched-1")
+
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reconnecting_the_provider_resumes_what_it_paused(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        # Another chat only told about Twitter, and one about Discord's twin.
+        twitter = RunOutcome(failure=_TWITTER, whole_run=False)
+        for _ in range(3):
+            await record_scheduled_run(
+                _run(user_id, session_id, twitter, schedule_key="briefing")
+            )
+
+        await resume_after_reconnect(user_id, "discord")
+
+        scheduler.resume_schedule.assert_awaited_once_with("sched-1", user_id=user_id)
+        keys = {
+            row.scheduleKey
+            for row in await ScheduledChatStreak.prisma().find_many(
+                where={"userId": user_id}
+            )
+        }
+        assert keys == {"briefing"}
+
+        await resume_after_reconnect(user_id, "twitter")
+
+        assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_one_chat_that_cannot_resume_does_not_hold_up_the_rest(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for key in ("first", "second"):
+            for _ in range(3):
+                await record_scheduled_run(
+                    _run(user_id, session_id, failed, schedule_key=key, schedule_id=key)
+                )
+        scheduler.resume_schedule.side_effect = [RuntimeError("scheduler down"), True]
+
+        await resume_after_reconnect(user_id, "discord")
+
+        assert scheduler.resume_schedule.await_count == 2
+        assert len(await list_paused_scheduled_chats(user_id)) == 1
     finally:
         await _cleanup(user_id)
 

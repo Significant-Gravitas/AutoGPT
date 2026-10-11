@@ -14,6 +14,7 @@ from prisma.models import ExpertRoutine, ScheduledChatStreak
 from prisma.types import ScheduledChatStreakWhereUniqueInput
 from pydantic import BaseModel, ValidationError
 
+from backend.copilot.scheduled_chats import alerts
 from backend.copilot.scheduled_chats.failure_notices import (
     failing_notice,
     pause_summary,
@@ -63,6 +64,8 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
     row = await ScheduledChatStreak.prisma().find_unique(where=where)
     current = _streak_of(row)
     step = advance(current, run.outcome)
+    if step.ended_notified:
+        await alerts.resolve(run.user_id, run.schedule_key)
     if step.streak is None:
         if row is not None:
             await ScheduledChatStreak.prisma().delete(where={"id": row.id})
@@ -86,6 +89,16 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
     if streak.paused:
         notice = paused_notice(
             streak.failure, title=title, failures=streak.failures, streak_id=row.id
+        )
+        await alerts.raise_paused(
+            run.user_id,
+            run.schedule_key,
+            alerts.paused_cause(
+                streak.failure,
+                title=title,
+                failures=streak.failures,
+                session_id=run.session_id,
+            ),
         )
     elif step.tell:
         notice = failing_notice(
@@ -118,6 +131,7 @@ async def resume_scheduled_chat(user_id: str, schedule_key: str) -> bool:
     for schedule_id in row.scheduleIds:
         await scheduler.resume_schedule(schedule_id, user_id=user_id)
     await ScheduledChatStreak.prisma().delete(where={"id": row.id})
+    await alerts.resolve(user_id, schedule_key)
     if row.sessionId is not None:
         try:
             await post_notice(
