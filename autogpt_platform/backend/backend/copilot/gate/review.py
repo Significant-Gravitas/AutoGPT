@@ -60,6 +60,8 @@ class Subject(BaseModel):
 class FieldLabel(BaseModel):
     key: str
     label: str
+    # How the card words the value, from the schema's ``format``.
+    format: str | None = None
 
 
 class GateReviewPayload(BaseModel):
@@ -342,7 +344,7 @@ def _payload_subject(
 
 
 def _field_labels(tool_name: str, shown: dict[str, Any]) -> list[FieldLabel]:
-    """Labels and order from the tool's own input schema, required first."""
+    """Labels, formats and order from the tool's own input schema, required first."""
     from backend.copilot.tools import get_tool  # imports the gate
 
     tool = get_tool(tool_name)
@@ -352,7 +354,11 @@ def _field_labels(tool_name: str, shown: dict[str, Any]) -> list[FieldLabel]:
     order = required + [k for k in props if k not in required]
     order += [k for k in shown if k not in order]
     return [
-        FieldLabel(key=key, label=(props.get(key) or {}).get("title") or _humanize(key))
+        FieldLabel(
+            key=key,
+            label=(props.get(key) or {}).get("title") or _humanize(key),
+            format=(props.get(key) or {}).get("format"),
+        )
         for key in order
         if key in shown
     ]

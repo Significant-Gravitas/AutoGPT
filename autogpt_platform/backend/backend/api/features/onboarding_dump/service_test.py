@@ -158,6 +158,13 @@ class DumpStore:
 
 
 @pytest.fixture(autouse=True)
+def personalization_admission(mocker: MockerFixture) -> AsyncMock:
+    return mocker.patch.object(
+        service, "enforce_personalization_budget", new=AsyncMock()
+    )
+
+
+@pytest.fixture(autouse=True)
 def dumps(mocker: MockerFixture) -> DumpStore:
     store = DumpStore()
     module = "backend.api.features.onboarding_dump.db"
@@ -315,7 +322,7 @@ async def test_transcript_lands_in_the_business_understanding(
 
 @pytest.mark.asyncio
 async def test_typed_dump_is_labelled_as_typed_in_the_understanding(
-    extraction: dict[str, AsyncMock]
+    extraction: dict[str, AsyncMock],
 ):
     background = BackgroundTasks()
     await service.finalize_typed_dump(
@@ -454,6 +461,7 @@ async def test_two_concurrent_voice_finalizes_only_process_the_take_once(
     dumps: DumpStore,
     storage_mocks: dict[str, AsyncMock],
     transcribe: AsyncMock,
+    personalization_admission: AsyncMock,
 ):
     """Only the caller that wins the atomic claim does the work.
 
@@ -475,11 +483,15 @@ async def test_two_concurrent_voice_finalizes_only_process_the_take_once(
 
     transcribe.assert_awaited_once()
     storage_mocks["store_audio"].assert_awaited_once()
+    personalization_admission.assert_awaited_once_with(USER_ID)
 
 
 @pytest.mark.asyncio
 async def test_two_concurrent_typed_finalizes_only_queue_one_pipeline(
-    mocker: MockerFixture, dumps: DumpStore, extraction: dict[str, AsyncMock]
+    mocker: MockerFixture,
+    dumps: DumpStore,
+    extraction: dict[str, AsyncMock],
+    personalization_admission: AsyncMock,
 ):
     await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.typed)
     release_both_past_the_guard(mocker, dumps)
@@ -500,6 +512,7 @@ async def test_two_concurrent_typed_finalizes_only_queue_one_pipeline(
     # One winner queues the extraction/greeting pair; the loser queues
     # nothing, so the understanding is written exactly once.
     assert extraction["upsert_business_understanding"].await_count == 1
+    personalization_admission.assert_awaited_once_with(USER_ID)
 
 
 @pytest.mark.asyncio
@@ -1359,8 +1372,8 @@ async def test_a_failed_team_job_still_stores_an_answer(
     """
     templates.side_effect = RuntimeError("database down")
     generate_team.side_effect = (
-        lambda transcript, *, user_role, pain_points, templates: (
-            ExpertRecommendations(source="fallback")
+        lambda transcript, *, user_role, pain_points, templates: ExpertRecommendations(
+            source="fallback"
         )
     )
     await start_voice_take(dumps)

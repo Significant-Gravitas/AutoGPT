@@ -180,23 +180,13 @@ function NavMenu({
 function CollapsibleNavGroup({
   label,
   children,
-  scrollable = false,
 }: {
   label: string;
   children: ReactNode;
-  scrollable?: boolean;
 }) {
   return (
-    <Collapsible
-      defaultOpen
-      className={cn(
-        "group/collapsible",
-        scrollable && "flex min-h-0 flex-1 flex-col",
-      )}
-    >
-      <SidebarGroup
-        className={cn("py-1", scrollable && "flex min-h-0 flex-1 flex-col")}
-      >
+    <Collapsible defaultOpen className="group/collapsible">
+      <SidebarGroup className="py-1">
         <SidebarGroupLabel
           asChild
           className="text-[13px] font-medium text-zinc-500 group-data-[collapsible=icon]:hidden"
@@ -209,21 +199,8 @@ function CollapsibleNavGroup({
             />
           </CollapsibleTrigger>
         </SidebarGroupLabel>
-        <CollapsibleContent
-          className={cn(
-            "overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none",
-            scrollable && "flex min-h-0 flex-1 flex-col",
-          )}
-        >
-          <SidebarGroupContent
-            className={
-              scrollable
-                ? "min-h-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                : undefined
-            }
-          >
-            {children}
-          </SidebarGroupContent>
+        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+          <SidebarGroupContent>{children}</SidebarGroupContent>
         </CollapsibleContent>
       </SidebarGroup>
     </Collapsible>
@@ -264,19 +241,15 @@ export function AppSidebar(props: Props) {
   }, [router]);
 
   return (
-    <Sidebar
-      collapsible="icon"
-      {...props}
-      className="[&_[data-sidebar=sidebar]]:bg-[#fafafa]"
-    >
-      <AppSidebarHeader />
+    <Sidebar collapsible="icon" {...props}>
+      <SidebarContent className="scroll-py-16 gap-0 overflow-y-auto overflow-x-hidden overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] group-data-[collapsible=icon]:scroll-pt-24 group-data-[collapsible=icon]:overflow-y-auto [&::-webkit-scrollbar]:hidden">
+        <AppSidebarHeader />
 
-      <SidebarContent className="gap-2 overflow-hidden">
         <motion.div
           variants={sidebarContainerVariants}
           initial="hidden"
           animate="show"
-          className="flex min-h-0 flex-1 flex-col gap-2"
+          className="flex shrink-0 flex-col gap-2"
         >
           <motion.div variants={itemVariants}>
             <SidebarGroup className="mt-0 py-1">
@@ -297,9 +270,9 @@ export function AppSidebar(props: Props) {
           {isLoggedIn && (
             <motion.div
               variants={itemVariants}
-              className="flex min-h-0 flex-1 flex-col group-data-[collapsible=icon]:hidden"
+              className="group-data-[collapsible=icon]:hidden"
             >
-              <CollapsibleNavGroup label="Recent chats" scrollable>
+              <CollapsibleNavGroup label="Recent chats">
                 {/* Suspense boundary: RecentChats reads useSearchParams(), which
                   Next.js requires to be wrapped to avoid forcing the route to
                   client-side rendering. */}
@@ -310,11 +283,11 @@ export function AppSidebar(props: Props) {
             </motion.div>
           )}
         </motion.div>
+
+        <SidebarUserActions />
       </SidebarContent>
 
-      <SidebarUserActions />
-
-      <SidebarRail />
+      <SidebarRail className="w-2 translate-x-0 after:left-0 group-data-[side=left]:-right-2 group-data-[side=right]:-left-2 group-data-[side=right]:after:left-auto group-data-[side=right]:after:right-0 sm:hidden md:flex" />
     </Sidebar>
   );
 }
