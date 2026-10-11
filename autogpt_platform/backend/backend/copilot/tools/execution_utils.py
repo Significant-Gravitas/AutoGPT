@@ -8,6 +8,7 @@ from typing_extensions import TypedDict
 
 from backend.blocks import get_block
 from backend.data.db_accessors import execution_db
+from backend.data.event_bus import EventStreamLostError
 from backend.data.execution import (
     AsyncRedisExecutionEventBus,
     ExecutionStatus,
@@ -39,6 +40,7 @@ PAUSED_STATUSES = frozenset(
 STOP_WAITING_STATUSES = TERMINAL_STATUSES | PAUSED_STATUSES
 
 _POST_SUBSCRIBE_RECHECK_DELAY = 0.1  # seconds to wait for subscription to establish
+_RESUBSCRIBE_DELAY = 1.0  # seconds between resubscribes while Redis is down
 
 
 async def wait_for_execution(
@@ -149,21 +151,39 @@ async def _subscribe_and_wait(
 
     async def _consume() -> None:
         nonlocal result_execution
-        try:
-            async for event in listen_iter:
-                if isinstance(event, GraphExecutionEvent):
-                    logger.debug(f"Received execution update: {event.status}")
-                    if event.status in STOP_WAITING_STATUSES:
-                        result_execution = await exec_db.get_graph_execution(
-                            user_id=user_id,
-                            execution_id=execution_id,
-                            include_node_executions=False,
-                        )
-                        done.set()
-                        return
-        except Exception as e:
-            logger.error(f"Error in execution consumer: {e}", exc_info=True)
-            done.set()
+        events = listen_iter
+        while True:
+            try:
+                async for event in events:
+                    if isinstance(event, GraphExecutionEvent):
+                        logger.debug(f"Received execution update: {event.status}")
+                        if event.status in STOP_WAITING_STATUSES:
+                            result_execution = await exec_db.get_graph_execution(
+                                user_id=user_id,
+                                execution_id=execution_id,
+                                include_node_executions=False,
+                            )
+                            done.set()
+                            return
+            except EventStreamLostError as e:
+                # Events sent while the stream was down are gone: check the
+                # database, then listen again.
+                logger.warning(f"Execution {execution_id} event stream lost: {e}")
+            except Exception as e:
+                logger.error(f"Error in execution consumer: {e}", exc_info=True)
+                done.set()
+                return
+            execution = await exec_db.get_graph_execution(
+                user_id=user_id,
+                execution_id=execution_id,
+                include_node_executions=False,
+            )
+            if execution and execution.status in STOP_WAITING_STATUSES:
+                result_execution = execution
+                done.set()
+                return
+            await asyncio.sleep(_RESUBSCRIBE_DELAY)
+            events = event_bus.listen_events(channel_key).__aiter__()
 
     consume_task = asyncio.create_task(_consume())
     task_holder.append(consume_task)
