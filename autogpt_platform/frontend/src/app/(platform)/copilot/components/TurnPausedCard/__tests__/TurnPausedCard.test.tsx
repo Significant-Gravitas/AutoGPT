@@ -229,17 +229,19 @@ describe("TurnPausedCard — what it says and offers", () => {
       "Otto didn't start this because you're out of today's budget. It resets at 1:00 AM, in 4 h 12 min.",
       ["Resume at 1:00 AM", "Upgrade"],
     ],
+    // No plan (a trial that is over): the backend sends "weekly" with no
+    // reset, so there is no window to name and nothing to wait for.
     [
       "a budget with no plan behind it, which never refills",
       pause({ reason: "weekly", resets_at: null }),
-      "Paused · out of this week's budget",
+      "Paused · out of AutoPilot budget",
       "Otto saved its progress above.",
       ["Upgrade"],
     ],
     [
       "a turn refused on a budget that never refills",
-      pause({ resets_at: null, started: false }),
-      "Not started · out of today's budget",
+      pause({ reason: "weekly", resets_at: null, started: false }),
+      "Not started · out of AutoPilot budget",
       "Otto didn't start this because you're out of AutoPilot budget.",
       ["Upgrade"],
     ],
@@ -274,9 +276,9 @@ describe("TurnPausedCard — what it says and offers", () => {
 
   it("offers ChatGPT beside Upgrade on a budget that never refills, and never a resume", async () => {
     const calls = backend({ offers: [PLATFORM, CHATGPT] });
-    renderCard(pause({ resets_at: null }));
+    renderCard(pause({ reason: "weekly", resets_at: null }));
     const card = await screen.findByRole("region", {
-      name: "Paused · out of today's budget",
+      name: "Paused · out of AutoPilot budget",
     });
 
     await waitFor(() =>
