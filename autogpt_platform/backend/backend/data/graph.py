@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
-from collections.abc import Container, Mapping
+from collections.abc import Collection, Container, Mapping
 from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
@@ -42,7 +42,11 @@ from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
-from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
+from backend.util.exceptions import (
+    GraphNotAccessibleError,
+    GraphNotInLibraryError,
+    NotAuthorizedError,
+)
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.request import parse_url
@@ -1731,6 +1735,31 @@ async def set_graph_active_version(graph_id: str, version: int, user_id: str) ->
             "isActive": True,
         },
     )
+
+
+async def get_graph_organization_ids(graph_id: str) -> set[str | None]:
+    """The organizations a graph's versions are tagged with, None standing for
+    untagged ones. Every owner's versions count."""
+    versions = await AgentGraph.prisma().find_many(where={"id": graph_id})
+    return {version.organizationId for version in versions}
+
+
+async def assert_graph_within(
+    graph_id: str, organization_ids: Collection[str | None]
+) -> None:
+    """Refuse to change a graph that has a version outside *organization_ids*.
+
+    A version saved or activated on it becomes the active one for all of its
+    versions, and moves the library entries and webhook presets that follow
+    the graph, so on a graph that reaches another organization it would
+    change what that organization runs.
+    """
+    if not await get_graph_organization_ids(graph_id) <= set(organization_ids):
+        raise NotAuthorizedError(
+            f"Graph #{graph_id} has versions outside this credential's "
+            "organization; change it with a credential for the organization "
+            "it belongs to"
+        )
 
 
 async def get_graph_all_versions(

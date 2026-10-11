@@ -40,6 +40,9 @@ from backend.api.external.v2.pagination import (
 )
 from backend.api.external.v2.tenancy import TenantContext, require_auth
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
+from backend.api.features.library.exceptions import (
+    LibraryAgentInAnotherOrganizationError,
+)
 from backend.api.utils.rate_limit import RateLimiter
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -624,6 +627,7 @@ def test_run_start_documents_its_payment_and_idempotency_refusals(code: str):
         (ValueError("bad"), 400, "bad_request"),
         (RuntimeError("boom"), 500, "internal_error"),
         (HTTPException(status_code=409, detail="taken"), 409, "conflict"),
+        (LibraryAgentInAnotherOrganizationError("elsewhere"), 409, "conflict"),
     ],
 )
 def test_error_bodies_all_have_the_envelope(

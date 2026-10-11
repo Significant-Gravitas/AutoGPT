@@ -10,6 +10,7 @@ from starlette import status
 from backend.api.features.library import db as library_db
 from backend.api.features.library.model import LibraryAgentSort
 from backend.data import graph as graph_db
+from backend.data.tenancy import writable_organization_ids
 from backend.executor import utils as execution_utils
 
 from ..errors import ErrorResponse
@@ -117,6 +118,12 @@ async def update_library_agent(
             f"Folder #{request.folder_id}",
         )
 
+    # Only this organization's entries may give way to the chosen version.
+    organization_ids = (
+        await writable_organization_ids(auth.user_id, auth.organization_id)
+        if request.graph_version is not None
+        else None
+    )
     updated = await library_db.update_library_agent(
         library_agent_id=agent_id,
         user_id=auth.user_id,
@@ -125,6 +132,7 @@ async def update_library_agent(
         is_favorite=request.is_favorite,
         is_archived=request.is_archived,
         folder_id=request.folder_id,
+        organization_ids=organization_ids,
     )
     return LibraryAgent.from_internal(updated)
 

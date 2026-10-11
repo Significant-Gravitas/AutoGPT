@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import logging
+from collections.abc import Collection
 from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
@@ -17,6 +18,7 @@ import backend.data.integrations as integrations_db
 from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
+    LibraryAgentInAnotherOrganizationError,
 )
 from backend.data.db import get_database_schema, transaction
 from backend.data.execution import get_graph_execution
@@ -28,6 +30,7 @@ from backend.data.includes import (
     library_agent_include,
 )
 from backend.data.model import CredentialsMetaInput, GraphInput
+from backend.data.tenancy import organization_filter, writable_organization_ids
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
@@ -754,6 +757,9 @@ async def update_agent_version_in_library(
     user_id: str,
     agent_graph_id: str,
     agent_graph_version: int,
+    *,
+    library_agent_id: Optional[str] = None,
+    organization_ids: Optional[Collection[str | None]] = None,
 ) -> library_model.LibraryAgent:
     """
     Updates the agent version in the library for any agent owned by the user.
@@ -762,25 +768,45 @@ async def update_agent_version_in_library(
         user_id: Owner of the LibraryAgent.
         agent_graph_id: The agent graph's ID to update.
         agent_graph_version: The new version of the agent graph.
+        library_agent_id: The entry to move; without it, the user's first
+            entry for the graph.
+        organization_ids: Confine the change to entries tagged with these
+            organizations (None for untagged ones), so that a call acting in
+            one organization moves only its own entry and removes none of
+            another's.
 
     Raises:
         DatabaseError: If there's an error with the update.
         NotFoundError: If no library agent is found for this user and agent.
+        LibraryAgentInAnotherOrganizationError: If the target version is in
+            the user's library in an organization outside ``organization_ids``.
     """
     logger.debug(
         f"Updating agent version in library for user #{user_id}, "
         f"agent #{agent_graph_id} v{agent_graph_version}"
     )
+    entry: prisma.types.LibraryAgentWhereInput = {
+        "userId": user_id,
+        "agentGraphId": agent_graph_id,
+    }
+    if library_agent_id is not None:
+        entry["id"] = library_agent_id
+    if organization_ids is not None:
+        entry["AND"] = [
+            cast(
+                prisma.types.LibraryAgentWhereInput,
+                organization_filter(organization_ids),
+            )
+        ]
     async with transaction() as tx:
         library_agent = await prisma.models.LibraryAgent.prisma(tx).find_first_or_raise(
-            where={
-                "userId": user_id,
-                "agentGraphId": agent_graph_id,
-            },
+            where=entry
         )
 
-        # Delete any conflicting LibraryAgent for the target version
-        await prisma.models.LibraryAgent.prisma(tx).delete_many(
+        # An entry is unique per user, graph and version, so one already on
+        # the target version gives way; another organization's isn't this
+        # call's to remove.
+        conflicts = await prisma.models.LibraryAgent.prisma(tx).find_many(
             where={
                 "userId": user_id,
                 "agentGraphId": agent_graph_id,
@@ -788,6 +814,17 @@ async def update_agent_version_in_library(
                 "id": {"not": library_agent.id},
             }
         )
+        if organization_ids is not None and any(
+            conflict.organizationId not in organization_ids for conflict in conflicts
+        ):
+            raise LibraryAgentInAnotherOrganizationError(
+                f"Version {agent_graph_version} of this agent is already in your "
+                "library in another organization"
+            )
+        if conflicts:
+            await prisma.models.LibraryAgent.prisma(tx).delete_many(
+                where={"id": {"in": [conflict.id for conflict in conflicts]}}
+            )
 
         lib = await prisma.models.LibraryAgent.prisma(tx).update(
             where={"id": library_agent.id},
@@ -879,9 +916,20 @@ async def update_graph_in_library(
     """Create a new version of an existing graph and update the library entry.
 
     ``organization_id``/``team_id`` tag the new version; None leaves it untagged.
+    A call acting in ``organization_id`` may only version a graph that lies
+    within the organizations it may change (``writable_organization_ids``),
+    and moves only their library entries and webhook presets.
     ``move_webhook_presets`` False leaves the user's webhook presets on the
     versions they run now.
     """
+    organization_ids = (
+        await writable_organization_ids(user_id, organization_id)
+        if organization_id is not None
+        else None
+    )
+    if organization_ids is not None:
+        await graph_db.assert_graph_within(graph.id, organization_ids)
+
     existing_versions = await graph_db.get_graph_all_versions(graph.id, user_id)
     current_active_version = (
         next((v for v in existing_versions if v.is_active), None)
@@ -913,7 +961,10 @@ async def update_graph_in_library(
         raise NotFoundError(f"Library agent not found for graph {created_graph.id}")
 
     library_agent = await update_agent_version_in_library(
-        user_id, created_graph.id, created_graph.version
+        user_id,
+        created_graph.id,
+        created_graph.version,
+        organization_ids=organization_ids,
     )
 
     if created_graph.is_active:
@@ -936,6 +987,7 @@ async def update_graph_in_library(
             await migrate_webhook_presets_to_new_version(
                 user_id=user_id,
                 new_graph=created_graph,
+                organization_ids=organization_ids,
             )
 
     return created_graph, library_agent
@@ -952,6 +1004,7 @@ async def update_library_agent(
     is_deleted: Optional[Literal[False]] = None,
     settings: Optional[GraphSettings] = None,
     folder_id: Optional[str] = None,
+    organization_ids: Optional[Collection[str | None]] = None,
 ) -> library_model.LibraryAgent:
     """
     Updates the specified LibraryAgent record.
@@ -965,6 +1018,8 @@ async def update_library_agent(
         is_archived: Whether this agent is archived.
         settings: User-specific settings for this library agent.
         folder_id: Folder ID to move agent to (None to skip).
+        organization_ids: With ``graph_version``, the organizations whose
+            entries the change may touch; see ``update_agent_version_in_library``.
 
     Returns:
         The updated LibraryAgent.
@@ -1022,6 +1077,8 @@ async def update_library_agent(
             user_id=user_id,
             agent_graph_id=agent.graph_id,
             agent_graph_version=graph_version,
+            library_agent_id=library_agent_id,
+            organization_ids=organization_ids,
         )
 
     # Otherwise, just update the simple fields
@@ -2486,6 +2543,8 @@ async def set_preset_webhook(
 async def migrate_webhook_presets_to_new_version(
     user_id: str,
     new_graph: graph_db.GraphModel,
+    *,
+    organization_ids: Optional[Collection[str | None]] = None,
 ) -> library_model.WebhookPresetMigrationResult:
     """
     Migrates webhook-attached presets for a graph to a newly activated version.
@@ -2519,6 +2578,8 @@ async def migrate_webhook_presets_to_new_version(
     Args:
         user_id: The owner of the presets.
         new_graph: The newly activated graph version to migrate presets to.
+        organization_ids: Confine the migration to presets tagged with these
+            organizations (None for untagged ones).
 
     Returns:
         The migration outcome: the number of presets migrated and the presets
@@ -2529,14 +2590,27 @@ async def migrate_webhook_presets_to_new_version(
         # New version has no webhook trigger to migrate presets onto.
         return library_model.WebhookPresetMigrationResult()
 
+    in_organizations = (
+        [
+            cast(
+                prisma.types.AgentPresetWhereInput,
+                organization_filter(organization_ids),
+            )
+        ]
+        if organization_ids is not None
+        else None
+    )
+    candidates_where: prisma.types.AgentPresetWhereInput = {
+        "userId": user_id,
+        "agentGraphId": new_graph.id,
+        "agentGraphVersion": {"lt": new_graph.version},
+        "webhookId": {"not": None},
+        "isDeleted": False,
+    }
+    if in_organizations:
+        candidates_where["AND"] = in_organizations
     candidates = await prisma.models.AgentPreset.prisma().find_many(
-        where={
-            "userId": user_id,
-            "agentGraphId": new_graph.id,
-            "agentGraphVersion": {"lt": new_graph.version},
-            "webhookId": {"not": None},
-            "isDeleted": False,
-        },
+        where=candidates_where
     )
     if not candidates:
         return library_model.WebhookPresetMigrationResult()
@@ -2584,18 +2658,21 @@ async def migrate_webhook_presets_to_new_version(
             skipped_presets=skipped_presets
         )
 
-    # Preserve candidate order for a deterministic query. Re-assert userId and
-    # the version guard so a concurrent activation that already bumped a preset
-    # past new_graph.version can't be downgraded between the find_many above
-    # and this update.
+    # Preserve candidate order for a deterministic query. Re-assert userId,
+    # the organizations and the version guard so a concurrent activation that
+    # already bumped a preset past new_graph.version can't be downgraded
+    # between the find_many above and this update.
     ids_to_migrate = [preset.id for preset in candidates if preset.id in compatible_ids]
+    migrate_where: prisma.types.AgentPresetWhereInput = {
+        "id": {"in": ids_to_migrate},
+        "userId": user_id,
+        "agentGraphVersion": {"lt": new_graph.version},
+        "isDeleted": False,
+    }
+    if in_organizations:
+        migrate_where["AND"] = in_organizations
     count = await prisma.models.AgentPreset.prisma().update_many(
-        where={
-            "id": {"in": ids_to_migrate},
-            "userId": user_id,
-            "agentGraphVersion": {"lt": new_graph.version},
-            "isDeleted": False,
-        },
+        where=migrate_where,
         data={"agentGraphVersion": new_graph.version},
     )
     if count > 0:
