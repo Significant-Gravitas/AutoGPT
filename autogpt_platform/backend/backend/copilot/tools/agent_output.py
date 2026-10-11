@@ -34,7 +34,7 @@ from .models import (
     NoResultsResponse,
     ToolResponseBase,
 )
-from .run_trace import run_outside
+from .run_trace import node_trace, run_outside
 from .utils import fetch_graph_from_store_slug
 
 logger = logging.getLogger(__name__)
@@ -383,18 +383,7 @@ class AgentOutputTool(BaseTool):
         node_failures: list[NodeFailureSummary] = []
         if isinstance(execution, GraphExecutionWithNodes):
             node_failures = summarize_node_failures(execution.node_executions)
-            node_executions_data = [
-                {
-                    "node_id": ne.node_id,
-                    "block_id": ne.block_id,
-                    "status": ne.status.value,
-                    "input_data": ne.input_data,
-                    "output_data": dict(ne.output_data),
-                    "start_time": ne.start_time.isoformat() if ne.start_time else None,
-                    "end_time": ne.end_time.isoformat() if ne.end_time else None,
-                }
-                for ne in execution.node_executions
-            ]
+            node_executions_data = node_trace(execution.node_executions)
 
         execution_info = ExecutionOutputInfo(
             execution_id=execution.id,
@@ -455,7 +444,7 @@ class AgentOutputTool(BaseTool):
                 f" Showing latest of {len(available_executions)} matching executions."
             )
 
-        return AgentOutputResponse(
+        response = AgentOutputResponse(
             message=message,
             session_id=session_id,
             agent_name=agent.name,
@@ -465,15 +454,17 @@ class AgentOutputTool(BaseTool):
             execution=execution_info,
             available_executions=available_list,
             total_executions=len(available_executions) if available_executions else 1,
-        ).from_outside(
-            *run_outside(
-                graph,
-                node_executions_data,
-                execution_info.outputs,
-                execution_info.inputs_summary,
-                node_failures,
-            )
         )
+        outside = run_outside(
+            graph,
+            execution.graph_version,
+            node_executions_data,
+            execution_info.outputs,
+            execution_info.inputs_summary,
+            node_failures,
+        )
+        # Declaring nothing judges the whole response.
+        return response if outside is None else response.from_outside(*outside)
 
     async def _execute(
         self,

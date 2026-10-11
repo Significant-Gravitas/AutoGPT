@@ -1,103 +1,114 @@
-"""What of a graph run's result came from outside AutoGPT.
+"""A graph run's per-node trace, and what of it came from outside AutoGPT.
 
-A run's per-node trace repeats what the graph itself says: each node's static
-inputs, such as an LLM block's system prompt and prompt template, which an LLM
-block also echoes back in its ``prompt`` output. That text is the graph's, the
-same text ``find_library_agent(include_graph=true)`` returns unjudged, and for
-an agent AutoPilot just built it is AutoPilot's own. The content judge read it
-as a quoted prompt telling the reader to act and held the user's first run.
+A trace repeats each node's static inputs. An LLM block's system prompt and
+prompt template are the graph's own (for an agent AutoPilot just built,
+AutoPilot's), the same values ``find_library_agent(include_graph=true)``
+returns unjudged. The content judge read them as a quoted prompt telling the
+reader to act and held the user's first run.
 
-So a trace declares every block's output and every input a link or the run fed
-a node, each with the graph's own text cut out of it; what is left is whatever
-a block fetched, received or generated. The run's inputs are not the graph's:
-the model may have copied them from something it read, so they stay judged.
+Provenance decides, never text: a node input is left out of the judge's view
+only when the graph itself sets that pin, no link feeds it, and the value is
+the graph's own. Every block output, every link-fed input and every run input
+stays declared whole. Anything this cannot account for (no graph, another
+graph version, an unknown node, a malformed entry) declares nothing, so the
+whole result is judged.
 """
 
-import re
-from collections.abc import Iterable, Mapping
+import logging
+from collections.abc import Mapping, Sequence
 from typing import Any
 
-from backend.data.graph import Graph
+from backend.blocks import get_block
+from backend.blocks.llm import AIBlockBase
+from backend.data.dynamic_fields import extract_base_field_name
+from backend.data.execution import NodeExecutionResult
+from backend.data.graph import GraphModel
 
-# Shorter static strings (a model name, a pin's title) stay in: cut out of a
-# block's output, they would shred the page around them for the judge.
-_MIN_AUTHORED = 16
-# ``{{name}}`` (the platform's own form) or ``{name}`` (a format string).
-_PLACEHOLDER = re.compile(r"\{\{[^{}]*\}\}|\{[^{}]*\}")
+logger = logging.getLogger(__name__)
+
+# The LLM blocks' ``prompt`` pin repeats what was sent to the model: the node's
+# own inputs, which the trace already shows, and on a structured-output retry
+# the model's earlier answers. A dry run simulates it with another LLM. It is
+# left out of the trace rather than exempted from the judge.
+_ECHO_PIN = "prompt"
+
+
+def node_trace(node_executions: Sequence[NodeExecutionResult]) -> list[dict[str, Any]]:
+    """The per-node trace a model reads: what each node received and produced."""
+    return [
+        {
+            "node_id": ne.node_id,
+            "block_id": ne.block_id,
+            "status": ne.status.value,
+            "input_data": ne.input_data,
+            "output_data": _without_echo(ne.block_id, dict(ne.output_data)),
+            "start_time": ne.start_time.isoformat() if ne.start_time else None,
+            "end_time": ne.end_time.isoformat() if ne.end_time else None,
+        }
+        for ne in node_executions
+    ]
 
 
 def run_outside(
-    graph: Graph | None,
-    node_executions: list[dict[str, Any]] | None,
+    graph: GraphModel | None,
+    graph_version: int | None,
+    trace: list[dict[str, Any]] | None,
     *parts: Any,
-) -> tuple[Any, ...]:
-    """``parts`` and the trace, to declare with ``from_outside``, less the text
-    the graph wrote. Without the graph the trace is declared whole; a node it
-    does not have keeps every input."""
-    if graph is None:
-        return (*parts, node_executions)
-    nodes = [node for g in (graph, *graph.sub_graphs) for node in g.nodes]
-    defaults = {node.id: node.input_default for node in nodes}
-    authored = _authored([node.input_default for node in nodes])
-    trace = [
-        [
-            _unset_inputs(ne.get("input_data"), defaults.get(ne.get("node_id", ""))),
-            ne.get("output_data"),
-        ]
-        for ne in node_executions or ()
-    ]
-    return tuple(_cut(part, authored) for part in (*parts, trace))
-
-
-def _unset_inputs(inputs: Any, default: Mapping[str, Any] | None) -> Any:
-    """The inputs the graph does not set itself: a link or the run fed them."""
-    if default is None or not isinstance(inputs, Mapping):
-        return inputs
-    return {
-        key: value
-        for key, value in inputs.items()
-        if key not in default or default[key] != value
-    }
-
-
-def _authored(values: Iterable[Any]) -> re.Pattern[str] | None:
-    """Every long static string, and each long literal run of a template, as
-    one pattern, longest first so a whole prompt goes before a run of it."""
-    texts = {
-        piece
-        for text in _strings(values)
-        for piece in (text, *_PLACEHOLDER.split(text))
-        if len(piece.strip()) >= _MIN_AUTHORED
-    }
-    if not texts:
+) -> tuple[Any, ...] | None:
+    """What to declare with ``from_outside``: ``parts`` whole, and the trace
+    less the inputs the graph set itself. None declares nothing, so the whole
+    result is judged; it is the answer whenever the trace cannot be accounted
+    for against ``graph`` at ``graph_version``."""
+    if not trace:
+        return parts
+    try:
+        declared = _declared_trace(graph, graph_version, trace)
+    except Exception:
+        logger.warning("Run trace not accounted for; judged whole", exc_info=True)
         return None
-    ordered = sorted(texts, key=len, reverse=True)
-    return re.compile("|".join(re.escape(text) for text in ordered))
+    if declared is None:
+        logger.warning("Run trace not accounted for; judged whole")
+        return None
+    return (*parts, declared)
 
 
-def _strings(value: Any) -> Iterable[str]:
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, Mapping):
-        for child in value.values():
-            yield from _strings(child)
-    elif isinstance(value, (list, tuple)):
-        for child in value:
-            yield from _strings(child)
+def _declared_trace(
+    graph: GraphModel | None, graph_version: int | None, trace: list[dict[str, Any]]
+) -> list[Any] | None:
+    if graph is None or graph_version is None or graph.version != graph_version:
+        return None
+    nodes = {node.id: node for node in graph.nodes}
+    linked = {(link.sink_id, _pin(link.sink_name)) for link in graph.links}
+    declared: list[Any] = []
+    for entry in trace:
+        if not isinstance(entry, Mapping):
+            return None
+        node = nodes.get(str(entry.get("node_id")))
+        inputs, outputs = (entry.get("input_data"), entry.get("output_data"))
+        if (
+            node is None
+            or entry.get("block_id") != node.block_id
+            or not isinstance(inputs, Mapping)
+            or not isinstance(outputs, Mapping)
+        ):
+            return None
+        fed = {
+            key: value
+            for key, value in inputs.items()
+            if (node.id, _pin(key)) in linked
+            or key not in node.input_default
+            or node.input_default[key] != value
+        }
+        declared.append([fed, outputs])
+    return declared
 
 
-def _cut(value: Any, authored: re.Pattern[str] | None) -> Any:
-    """``value`` with every authored string cut out: a string it touches
-    becomes the pieces around it, each still a substring the judge can find."""
-    if authored is None:
-        return value
-    if isinstance(value, str):
-        pieces = authored.split(value)
-        if len(pieces) == 1:
-            return value
-        return [piece for piece in pieces if piece.strip()]
-    if isinstance(value, Mapping):
-        return {key: _cut(child, authored) for key, child in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_cut(child, authored) for child in value]
-    return value
+def _pin(name: str) -> str:
+    """The pin a link or input key belongs to: ``values_#_name`` is ``values``."""
+    return extract_base_field_name(name)
+
+
+def _without_echo(block_id: str, outputs: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(get_block(block_id), AIBlockBase):
+        outputs.pop(_ECHO_PIN, None)
+    return outputs

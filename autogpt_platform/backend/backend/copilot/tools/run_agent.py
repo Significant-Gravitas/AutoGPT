@@ -87,7 +87,7 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
-from .run_trace import run_outside
+from .run_trace import node_trace, run_outside
 from .utils import (
     build_missing_credentials_from_graph,
     extract_credentials_from_schema,
@@ -1116,6 +1116,7 @@ class RunAgentTool(BaseTool):
                 # without a follow-up view_agent_output call — to keep wet-run
                 # responses small.
                 node_executions_data = None
+                trace_version = None
                 node_failures: list[NodeFailureSummary] = []
                 try:
                     detailed = await execution_db().get_graph_execution(
@@ -1128,24 +1129,8 @@ class RunAgentTool(BaseTool):
                             detailed.node_executions
                         )
                         if dry_run:
-                            node_executions_data = [
-                                {
-                                    "node_id": ne.node_id,
-                                    "block_id": ne.block_id,
-                                    "status": ne.status.value,
-                                    "input_data": ne.input_data,
-                                    "output_data": dict(ne.output_data),
-                                    "start_time": (
-                                        ne.start_time.isoformat()
-                                        if ne.start_time
-                                        else None
-                                    ),
-                                    "end_time": (
-                                        ne.end_time.isoformat() if ne.end_time else None
-                                    ),
-                                }
-                                for ne in detailed.node_executions
-                            ]
+                            node_executions_data = node_trace(detailed.node_executions)
+                            trace_version = detailed.graph_version
                 except Exception:
                     logger.warning(
                         "run_agent: failed to load node executions for "
@@ -1168,7 +1153,7 @@ class RunAgentTool(BaseTool):
                         f"Agent '{library_agent.name}' completed successfully. "
                         f"View at {library_agent_link}."
                     )
-                return AgentOutputResponse(
+                response = AgentOutputResponse(
                     message=message,
                     session_id=session_id,
                     agent_name=library_agent.name,
@@ -1184,9 +1169,12 @@ class RunAgentTool(BaseTool):
                         node_executions=node_executions_data,
                         nodes_failed=node_failures or None,
                     ),
-                ).from_outside(
-                    *run_outside(graph, node_executions_data, outputs, node_failures)
                 )
+                outside = run_outside(
+                    graph, trace_version, node_executions_data, outputs, node_failures
+                )
+                # Declaring nothing judges the whole response.
+                return response if outside is None else response.from_outside(*outside)
             elif completed and completed.status == ExecutionStatus.FAILED:
                 error_detail = completed.stats.error if completed.stats else None
                 # Auto-share the failed run too — share-modal users may
