@@ -6,8 +6,8 @@ with replica count. Here one elected process refreshes the definitions and
 writes them to Redis; every other process reads that copy.
 
 Implements PostHog's own ``FlagDefinitionCacheProvider`` protocol, which the
-SDK calls only from its poller thread — never from a flag read, so no
-evaluation can block on Redis.
+SDK calls from its poller thread and from the load that starts it: at startup
+where ``initialize_posthog_flags`` runs, otherwise on the first flag read.
 """
 
 import json

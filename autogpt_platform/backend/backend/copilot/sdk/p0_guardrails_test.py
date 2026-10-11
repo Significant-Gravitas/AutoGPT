@@ -6,7 +6,10 @@ import pytest
 from pydantic import ValidationError
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.constants import is_transient_api_error
+from backend.copilot.constants import (
+    is_transient_api_error,
+    is_transient_assistant_error,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamCompactionProgress
 from backend.copilot.sdk.compaction import CompactionTracker
@@ -429,6 +432,35 @@ class TestIsTransientApiError:
     def test_case_insensitive(self):
         assert is_transient_api_error("SOCKET CONNECTION WAS CLOSED UNEXPECTEDLY")
         assert is_transient_api_error("econnreset")
+
+
+# The bundled CLI's (2.1.284) wording for API errors it gives up on.
+_CLI_529 = (
+    "API Error: 529 Overloaded. This is a server-side issue, usually temporary "
+    "— try again in a moment."
+)
+_CLI_AT_CAPACITY = (
+    "API Error: Repeated 529 Overloaded errors. The API is at capacity — this "
+    "is usually temporary. Try again in a moment."
+)
+
+
+class TestIsTransientAssistantError:
+    """An API error the CLI reports in an AssistantMessage is transient by its
+    category, whatever the CLI's current wording says."""
+
+    @pytest.mark.parametrize("content", [_CLI_529, _CLI_AT_CAPACITY, ""])
+    @pytest.mark.parametrize("category", ["server_error", "rate_limit"])
+    def test_retryable_categories(self, category: str, content: str):
+        assert is_transient_assistant_error(category, content)
+
+    @pytest.mark.parametrize(
+        "category",
+        ["authentication_failed", "billing_error", "invalid_request", "unknown"],
+    )
+    def test_other_categories_need_a_transient_text(self, category: str):
+        assert not is_transient_assistant_error(category, "Prompt is too long")
+        assert is_transient_assistant_error(category, "upstream status code 503")
 
 
 # ---------------------------------------------------------------------------

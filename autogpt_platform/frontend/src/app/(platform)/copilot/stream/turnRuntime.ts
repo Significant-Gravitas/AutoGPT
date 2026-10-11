@@ -137,10 +137,15 @@ interface Connection {
   turnId: string | null;
   closedByClient: boolean;
   syntheticError: string | null;
+  /** A send's own prompt segment, by key. */
+  prompt: string | null;
 }
 
 /** What the classification needs to know about a connection that is gone. */
-type Lost = Pick<Connection, "turnId" | "openedAt" | "syntheticError">;
+type Lost = Pick<
+  Connection,
+  "turnId" | "openedAt" | "syntheticError" | "prompt"
+>;
 
 type ConnectionEnd =
   | { kind: "closed" }
@@ -268,6 +273,7 @@ export class TurnRuntime {
       method: "POST",
       body: JSON.stringify(body),
       extraHeaders: { "Content-Type": "application/json" },
+      prompt: message.id,
     });
   }
 
@@ -417,7 +423,12 @@ export class TurnRuntime {
     kind: Connection["kind"],
     turnId: string | null,
     url: string,
-    init: { method?: string; body?: string; extraHeaders?: object } = {},
+    init: {
+      method?: string;
+      body?: string;
+      extraHeaders?: object;
+      prompt?: string;
+    } = {},
     asRotation = false,
   ) {
     const now = Date.now();
@@ -431,6 +442,7 @@ export class TurnRuntime {
       turnId,
       closedByClient: false,
       syntheticError: null,
+      prompt: init.prompt ?? null,
     };
     if (asRotation) this.rotating = conn;
     else {
@@ -646,6 +658,8 @@ export class TurnRuntime {
       if (this.disposed || this.stopped) return;
       await sleep(FINISH_PROBE_MS);
     }
+    // The view holds the prompt, so the send arrived; its rows say the rest.
+    if (this.lostSendLanded(lost.prompt)) return;
     if (end.kind === "failed" || lost.syntheticError) {
       this.error =
         end.kind === "failed" && end.error instanceof Error
@@ -653,6 +667,11 @@ export class TurnRuntime {
           : new Error(lost.syntheticError ?? "The connection closed early.");
       this.emitNow();
     }
+  }
+
+  private lostSendLanded(promptKey: string | null) {
+    const prompt = promptKey ? this.segmentByKey(promptKey) : null;
+    return prompt?.kind === "user" && prompt.sequence !== null;
   }
 
   // ── The turn's lifecycle ───────────────────────────────────────────────
@@ -788,6 +807,7 @@ export class TurnRuntime {
         turnId: seg.log.turnId,
         openedAt: Date.now(),
         syntheticError: null,
+        prompt: null,
       });
       return;
     }
@@ -822,6 +842,7 @@ export class TurnRuntime {
         turnId: seg.log.turnId,
         openedAt: Date.now(),
         syntheticError: null,
+        prompt: null,
       });
       return;
     }
@@ -1035,6 +1056,8 @@ export class TurnRuntime {
     this.unresolvedPost = null;
     if (unresolved && !this.runningTurn())
       void this.recoverUnknownTurn(unresolved.lost, unresolved.end);
+    // A send still waiting for its turn is otherwise given up only at the next tick.
+    else if (this.isPostPending()) this.dropIfSilent();
     else this.ensureConnected();
   }
 
@@ -1051,17 +1074,24 @@ export class TurnRuntime {
       this.tickTimer = null;
       return;
     }
-    if (!slot || document.visibilityState === "hidden") return;
-    const now = Date.now();
-    if (now - slot.lastFrameAt >= LIVENESS_MS) {
-      slot.closedByClient = true;
-      slot.controller.abort();
-      this.slot = null;
-      if (slot.turnId === null) this.findLostTurn(slot, { kind: "closed" });
-      else this.retry(slot);
-      return;
-    }
-    if (!this.rotating && now - slot.openedAt >= ROTATE_AFTER_MS) this.rotate();
+    if (!slot || this.dropIfSilent()) return;
+    if (document.visibilityState === "hidden") return;
+    if (!this.rotating && Date.now() - slot.openedAt >= ROTATE_AFTER_MS)
+      this.rotate();
+  }
+
+  // The slot is cleared before the recovery starts, so the tick and a wake
+  // never both recover one connection.
+  private dropIfSilent() {
+    const slot = this.slot;
+    if (!slot || document.visibilityState === "hidden") return false;
+    if (Date.now() - slot.lastFrameAt < LIVENESS_MS) return false;
+    slot.closedByClient = true;
+    slot.controller.abort();
+    this.slot = null;
+    if (slot.turnId === null) this.findLostTurn(slot, { kind: "closed" });
+    else this.retry(slot);
+    return true;
   }
 
   // Rebuilding from the DB view: no other trigger reconnects meanwhile, and
