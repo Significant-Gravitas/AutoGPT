@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import WebSocket
+from redis.exceptions import MovedError
 
 from backend.api.conn_manager import (
     WS_CLOSE_EVENT_STREAM_LOST,
@@ -279,8 +280,6 @@ async def test_subscription_pump_reports_redis_errors_as_lost() -> None:
 
 @pytest.mark.asyncio
 async def test_subscription_pump_reports_moved_errors_as_lost() -> None:
-    from redis.exceptions import MovedError
-
     async def _listen():
         raise MovedError("1234 127.0.0.1:7001")
         yield  # pragma: no cover — unreachable
