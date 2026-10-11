@@ -457,6 +457,17 @@ async def get_feature_flag_value(
     return value
 
 
+async def evaluate_experiment_variant(flag_key: str, user_id: str) -> str | None:
+    """The arm PostHog buckets *user_id* into for an experiment, or None.
+
+    Experiments live in PostHog whichever vendor answers feature flags.
+    """
+    user_context, _ = await _fetch_user_context_status(user_id)
+    return await posthog.evaluate_variant(
+        flag_key, user_id, _person_properties(user_context)
+    )
+
+
 async def _evaluate_flag_value(
     flag_key: str,
     user_id: str,

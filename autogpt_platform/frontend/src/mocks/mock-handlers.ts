@@ -14,6 +14,7 @@ import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credit
 import { getDefaultMock } from "@/app/api/__generated__/endpoints/default/default.msw";
 import { getEmailMock } from "@/app/api/__generated__/endpoints/email/email.msw";
 import { getExecutionsMock } from "@/app/api/__generated__/endpoints/executions/executions.msw";
+import { getGetExperimentsGetExperimentAssignmentMockHandler } from "@/app/api/__generated__/endpoints/experiments/experiments.msw";
 import { getExpertsMock } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getFilesMock } from "@/app/api/__generated__/endpoints/files/files.msw";
 import { getGraphsMock } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
@@ -59,6 +60,8 @@ export const mockHandlers = [
   ...getDefaultMock(),
   ...getEmailMock(),
   ...getExecutionsMock(),
+  // Nobody is enrolled by default, so every test sees the control experience.
+  getGetExperimentsGetExperimentAssignmentMockHandler(null),
   ...getExpertsMock(),
   ...getFilesMock(),
   ...getGraphsMock(),

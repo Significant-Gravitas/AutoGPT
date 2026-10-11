@@ -28,7 +28,6 @@ import { SubscriptionStep } from "../SubscriptionStep/SubscriptionStep";
 
 const posthog = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("@posthog/react", () => ({
-  useFeatureFlagVariantKey: () => undefined,
   usePostHog: () => posthog,
 }));
 

@@ -28,7 +28,6 @@ vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
 
 const posthog = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("@posthog/react", () => ({
-  useFeatureFlagVariantKey: () => undefined,
   usePostHog: () => posthog,
 }));
 
