@@ -10,6 +10,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import WebSocket
+from redis import Redis
 
 import backend.data.redis_client as redis_client
 from backend.api.conn_manager import (
@@ -477,50 +478,72 @@ async def _subscribe_through_proxy(
     return cm, ws, sent, chan, graph_id, exec_id, proxy
 
 
+def _shard_subscribers(upstream: tuple[str, int], channel: str) -> int:
+    """SSUBSCRIBE count on the owning shard itself, bypassing the proxy."""
+    node = Redis(host=upstream[0], port=upstream[1], password=redis_client.PASSWORD)
+    try:
+        _, count = node.execute_command("PUBSUB", "SHARDNUMSUB", channel)
+        return int(count)
+    finally:
+        node.close()
+
+
+def _spublish_on_shard(upstream: tuple[str, int], channel: str, payload: str) -> int:
+    node = Redis(host=upstream[0], port=upstream[1], password=redis_client.PASSWORD)
+    try:
+        return int(node.execute_command("SPUBLISH", channel, payload))
+    finally:
+        node.close()
+
+
 @pytest.mark.asyncio
-async def test_subscription_survives_a_dropped_redis_connection(
+async def test_subscribe_returns_only_once_redis_has_the_subscription(
     monkeypatch, shard_proxies
 ) -> None:
-    """When the connection to the shard drops and comes straight back,
-    redis-py reconnects on its own; the subscription must come back as an
-    SSUBSCRIBE so later SPUBLISHes still reach the socket."""
+    """The subscribe ack the client waits for before refetching must mean the
+    shard already holds the SSUBSCRIBE, or an event between the refetch and
+    the subscription would be lost."""
+    user_id = "user-conn-int-7"
+    cm, ws, sent, chan, graph_id, exec_id, proxy = await _subscribe_through_proxy(
+        monkeypatch, shard_proxies, user_id
+    )
+    try:
+        assert _shard_subscribers(proxy.upstream, chan) == 1
+    finally:
+        await cm.disconnect_socket(ws, user_id=user_id)
+
+
+@pytest.mark.asyncio
+async def test_an_event_lost_in_a_brief_redis_blip_never_goes_unnoticed(
+    monkeypatch, shard_proxies
+) -> None:
+    """A blip short enough for redis-py to reconnect by itself must still
+    close the socket: the one COMPLETED published while the connection was
+    down is gone, and only a client reconnect + refetch recovers it. A
+    silently resubscribed socket would show the run as running forever."""
     user_id = "user-conn-int-5"
     cm, ws, sent, chan, graph_id, exec_id, proxy = await _subscribe_through_proxy(
         monkeypatch, shard_proxies, user_id
     )
-    cluster = redis_client.get_redis()
-
-    async def publish_once_subscribed(marker: str) -> None:
-        """SPUBLISH returns its receiver count: retry until the shard has our
-        SSUBSCRIBE (it travels through the proxy, the publish does not)."""
-        payload = _node_event_payload(
-            user_id=user_id, graph_id=graph_id, graph_exec_id=exec_id, marker=marker
-        ).decode()
-        for _ in range(100):
-            if cluster.spublish(chan, payload):
-                return
-            await asyncio.sleep(0.1)
-        raise AssertionError(f"no SSUBSCRIBE on {chan} to deliver {marker!r} to")
-
+    completed = _graph_event_payload(
+        user_id=user_id, graph_id=graph_id, graph_exec_id=exec_id, marker="done"
+    ).decode()
     try:
-        await publish_once_subscribed("before")
-        assert await _wait_until(lambda: len(sent) == 1, timeout=5.0)
+        await proxy.stop()
+        assert await _wait_until(
+            lambda: _shard_subscribers(proxy.upstream, chan) == 0, timeout=5.0
+        ), "the shard never noticed the dropped subscriber"
+        # Published exactly once, with nobody subscribed: Redis drops it.
+        assert _spublish_on_shard(proxy.upstream, chan, completed) == 0
+        await proxy.start()
 
-        proxy.drop_connections()
-
-        # redis-py reconnects by itself; it must come back as a shard
-        # subscriber (a plain SUBSCRIBE never receives SPUBLISH). Publishes
-        # racing the reconnect are lost, so keep sending until one lands.
-        async def delivered_after_drop() -> bool:
-            for _ in range(50):
-                await publish_once_subscribed("after")
-                if await _wait_until(lambda: len(sent) > 1, timeout=0.2):
-                    return True
-            return False
-
-        assert await delivered_after_drop(), "no event delivered after reconnect"
-        assert json.loads(sent[-1])["data"]["input_data"]["in"] == "after"
-        ws.close.assert_not_awaited()
+        assert await _wait_until(
+            lambda: ws.close.await_count > 0, timeout=20.0, interval=0.1
+        ), "socket stayed open after silently losing an event"
+        ws.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason=WS_CLOSE_EVENT_STREAM_LOST_REASON
+        )
+        assert sent == []
     finally:
         await cm.disconnect_socket(ws, user_id=user_id)
 

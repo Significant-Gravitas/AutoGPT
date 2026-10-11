@@ -235,12 +235,14 @@ async def websocket_router(
     user_id = await authenticate_websocket(websocket)
     if not user_id:
         return
-    await manager.connect_socket(websocket, user_id=user_id)
 
-    # Track WebSocket connection
-    update_websocket_connections(user_id, 1)
-
+    connected = False
     try:
+        connected = await manager.connect_socket(websocket, user_id=user_id)
+        if not connected:
+            return
+        update_websocket_connections(user_id, 1)
+
         while True:
             data = await websocket.receive_text()
             try:
@@ -340,7 +342,8 @@ async def websocket_router(
         # Always release subscription pumps + Redis connections, regardless of how
         # the loop exited — otherwise non-WebSocketDisconnect failures leak both.
         await manager.disconnect_socket(websocket, user_id=user_id)
-        update_websocket_connections(user_id, -1)
+        if connected:
+            update_websocket_connections(user_id, -1)
 
 
 @app.get("/")

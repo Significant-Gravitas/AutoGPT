@@ -7,8 +7,10 @@ from fastapi import WebSocket
 from redis.exceptions import MovedError
 
 from backend.api.conn_manager import (
+    _MAX_CONCURRENT_STREAM_OPENS,
     WS_CLOSE_EVENT_STREAM_LOST,
     WS_CLOSE_EVENT_STREAM_LOST_REASON,
+    WS_CLOSE_TRY_AGAIN_LATER,
     ConnectionManager,
     _graph_execs_channel_key,
     _notification_bus_channel,
@@ -46,11 +48,52 @@ async def test_connect(
 ) -> None:
     # Stub the SSUBSCRIBE the test has no Redis for.
     with patch.object(
-        connection_manager, "_start_notification_subscription", AsyncMock()
+        connection_manager,
+        "_start_notification_subscription",
+        AsyncMock(return_value=True),
     ):
-        await connection_manager.connect_socket(mock_websocket, user_id="user-1")
+        assert await connection_manager.connect_socket(mock_websocket, user_id="user-1")
     assert mock_websocket in connection_manager.active_connections
     mock_websocket.accept.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_connect_refuses_the_handshake_when_the_stream_cannot_open(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    """No socket is established that can't deliver events: the handshake is
+    refused (try again later), so the client's backoff keeps growing instead
+    of resetting on an "open" socket that closes straight away."""
+    with patch.object(
+        connection_manager,
+        "_start_notification_subscription",
+        AsyncMock(return_value=False),
+    ):
+        assert not await connection_manager.connect_socket(
+            mock_websocket, user_id="user-1"
+        )
+    mock_websocket.accept.assert_not_called()
+    mock_websocket.close.assert_awaited_once_with(
+        code=WS_CLOSE_TRY_AGAIN_LATER, reason="Event stream unavailable"
+    )
+    assert mock_websocket not in connection_manager.active_connections
+
+
+@pytest.mark.asyncio
+async def test_connect_refuses_handshakes_beyond_the_admission_cap(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    start = AsyncMock(return_value=True)
+    connection_manager._opening = _MAX_CONCURRENT_STREAM_OPENS
+    with patch.object(connection_manager, "_start_notification_subscription", start):
+        assert not await connection_manager.connect_socket(
+            mock_websocket, user_id="user-1"
+        )
+    start.assert_not_awaited()
+    mock_websocket.accept.assert_not_called()
+    mock_websocket.close.assert_awaited_once_with(
+        code=WS_CLOSE_TRY_AGAIN_LATER, reason="Server busy"
+    )
 
 
 @pytest.mark.asyncio
@@ -163,7 +206,7 @@ async def _listen_forever():
 async def _run_pump_until_lost(listen, on_message=None) -> list[str]:
     """Start a subscription over ``listen`` and return the causes reported
     to ``on_lost`` once the pump has finished."""
-    fake_client, _ = _fake_redis(listen)
+    fake_client, fake_pubsub = _fake_redis(listen)
     lost: list[str] = []
 
     async def on_lost(cause: str) -> None:
@@ -171,8 +214,8 @@ async def _run_pump_until_lost(listen, on_message=None) -> list[str]:
 
     sub = _Subscription("{u/g}/exec/x")
     with patch(
-        "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
-        AsyncMock(return_value=fake_client),
+        "backend.api.conn_manager.redis.subscribe_sharded_async",
+        AsyncMock(return_value=(fake_client, fake_pubsub)),
     ):
         await sub.start(on_message or AsyncMock(), on_lost)
         assert sub._task is not None
@@ -182,19 +225,16 @@ async def _run_pump_until_lost(listen, on_message=None) -> list[str]:
 
 
 @pytest.mark.asyncio
-async def test_subscription_start_ssubscribes_through_shard_channels() -> None:
-    """start() must use PubSub.ssubscribe so redis-py tracks the channel as a
-    shard channel: its transparent reconnect then re-issues SSUBSCRIBE (a
-    plain SUBSCRIBE never receives SPUBLISH)."""
+async def test_subscription_start_opens_a_confirmed_shard_subscription() -> None:
+    """start() opens through subscribe_sharded_async (confirmed SSUBSCRIBE, no
+    silent reconnects); stop() unsubscribes and closes both handles."""
     fake_client, fake_pubsub = _fake_redis(_listen_forever)
+    subscribe = AsyncMock(return_value=(fake_client, fake_pubsub))
 
     sub = _Subscription("{u/g}/exec/x")
-    with patch(
-        "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
-        AsyncMock(return_value=fake_client),
-    ):
+    with patch("backend.api.conn_manager.redis.subscribe_sharded_async", subscribe):
         await sub.start(AsyncMock(), AsyncMock())
-        fake_pubsub.ssubscribe.assert_awaited_once_with("{u/g}/exec/x")
+        subscribe.assert_awaited_once_with("{u/g}/exec/x")
         await sub.stop()
     fake_pubsub.sunsubscribe.assert_awaited_once_with("{u/g}/exec/x")
     fake_pubsub.aclose.assert_awaited_once()
@@ -211,7 +251,7 @@ async def test_subscription_start_times_out_and_cleans_up() -> None:
 
     sub = _Subscription("{u/g}/exec/x")
     with (
-        patch("backend.api.conn_manager.redis.connect_sharded_pubsub_async", _hang),
+        patch("backend.api.conn_manager.redis.subscribe_sharded_async", _hang),
         patch("backend.api.conn_manager._SUBSCRIBE_OPEN_TIMEOUT_S", 0.05),
     ):
         with pytest.raises(asyncio.TimeoutError):
@@ -316,13 +356,13 @@ async def test_subscription_pump_reports_listen_end_and_crashes_as_lost() -> Non
 @pytest.mark.asyncio
 async def test_subscription_stop_does_not_report_lost() -> None:
     """A deliberate stop() cancels the pump without closing the socket."""
-    fake_client, _ = _fake_redis(_listen_forever)
+    fake_client, fake_pubsub = _fake_redis(_listen_forever)
     on_lost = AsyncMock()
 
     sub = _Subscription("{u/g}/exec/x")
     with patch(
-        "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
-        AsyncMock(return_value=fake_client),
+        "backend.api.conn_manager.redis.subscribe_sharded_async",
+        AsyncMock(return_value=(fake_client, fake_pubsub)),
     ):
         await sub.start(AsyncMock(), on_lost)
         await sub.stop()
@@ -348,8 +388,8 @@ async def test_subscription_stop_swallows_sunsubscribe_errors() -> None:
 
     sub = _Subscription("{u/g}/exec/x")
     with patch(
-        "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
-        AsyncMock(return_value=fake_client),
+        "backend.api.conn_manager.redis.subscribe_sharded_async",
+        AsyncMock(return_value=(fake_client, fake_pubsub)),
     ):
         await sub.start(AsyncMock(), AsyncMock())
         # Must not raise even if every teardown call blows up.
@@ -767,20 +807,17 @@ async def test_start_notification_subscription_stores_sub(
 async def test_start_notification_subscription_swallows_start_errors(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    """A failed SSUBSCRIBE must not crash connect; the socket is closed so the
-    client reconnects instead of waiting on notifications that never come."""
+    """A failed SSUBSCRIBE reports failure (connect_socket then refuses the
+    handshake) instead of raising."""
     fake_sub = MagicMock()
     fake_sub.start = AsyncMock(side_effect=RuntimeError("SSUBSCRIBE failed"))
     with patch("backend.api.conn_manager._Subscription", return_value=fake_sub):
-        await connection_manager._start_notification_subscription(
+        opened = await connection_manager._start_notification_subscription(
             mock_websocket, user_id="user-1"
         )
+    assert opened is False
     # On failure the sub must NOT be stored (bookkeeping clean).
     assert mock_websocket not in connection_manager._ws_notifications
-    # ...and the socket is closed rather than left open with no notifications.
-    mock_websocket.close.assert_awaited_once_with(
-        code=WS_CLOSE_EVENT_STREAM_LOST, reason=WS_CLOSE_EVENT_STREAM_LOST_REASON
-    )
 
 
 @pytest.mark.asyncio
@@ -899,7 +936,9 @@ async def test_connect_socket_starts_notification_subscription(
 ) -> None:
     """connect_socket must call _start_notification_subscription once."""
     with patch.object(
-        connection_manager, "_start_notification_subscription", AsyncMock()
+        connection_manager,
+        "_start_notification_subscription",
+        AsyncMock(return_value=True),
     ) as mock_start:
         await connection_manager.connect_socket(mock_websocket, user_id="user-1")
     mock_start.assert_awaited_once_with(mock_websocket, user_id="user-1")

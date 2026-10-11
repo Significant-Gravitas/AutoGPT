@@ -7,6 +7,7 @@ from weakref import ReferenceType, WeakKeyDictionary, ref
 from dotenv import load_dotenv
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
+from redis.asyncio.client import PubSub as AsyncPubSub
 from redis.asyncio.cluster import ClusterNode as AsyncClusterNode
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.asyncio.retry import Retry as AsyncRetry
@@ -319,3 +320,39 @@ async def connect_sharded_pubsub_async(channel: str) -> AsyncRedis:
             pass
         raise
     return c
+
+
+async def subscribe_sharded_async(channel: str) -> tuple[AsyncRedis, AsyncPubSub]:
+    """SSUBSCRIBE to ``channel`` on its owning shard, returning once Redis has
+    confirmed the subscription.
+
+    The connection never reconnects behind the caller's back. Pub/sub keeps no
+    history, so a silent reconnect would hide every event published while it
+    was down; instead any drop surfaces from ``listen()`` as an error, and the
+    caller resubscribes and refetches.
+    """
+    client = await connect_sharded_pubsub_async(channel)
+    pubsub = client.pubsub()
+    try:
+        await pubsub.ssubscribe(channel)
+        while True:
+            message = await pubsub.get_message(timeout=None)
+            if message and message["type"] == "ssubscribe":
+                break
+        if pubsub.connection is None:
+            raise RedisConnectionError(f"pubsub for {channel} has no connection")
+        # redis-py retries a failed read by reconnecting and resubscribing;
+        # with no retries the error is raised to the caller instead.
+        pubsub.connection.retry = AsyncRetry(NoBackoff(), 0)
+    except BaseException:
+        await _close_quietly(pubsub, client)
+        raise
+    return client, pubsub
+
+
+async def _close_quietly(pubsub: AsyncPubSub, client: AsyncRedis) -> None:
+    for closeable in (pubsub, client):
+        try:
+            await closeable.aclose()
+        except Exception:
+            pass

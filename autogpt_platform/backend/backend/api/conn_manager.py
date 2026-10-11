@@ -69,6 +69,11 @@ _SUBSCRIBE_OPEN_TIMEOUT_S = 15.0
 # client can fill that gap, by reconnecting, resubscribing and refetching.
 WS_CLOSE_EVENT_STREAM_LOST = 1011
 WS_CLOSE_EVENT_STREAM_LOST_REASON = "Event stream interrupted"
+# Handshakes are refused with "try again later" when a socket's event stream
+# can't open, or too many are opening at once (e.g. everyone reconnecting
+# after a Redis outage), so clients back off instead of piling in.
+WS_CLOSE_TRY_AGAIN_LATER = 1013
+_MAX_CONCURRENT_STREAM_OPENS = 64
 
 
 class _Subscription:
@@ -92,12 +97,11 @@ class _Subscription:
         self._task = asyncio.create_task(self._pump(on_message, on_lost))
 
     async def _open_pubsub(self) -> None:
-        self._client = await redis.connect_sharded_pubsub_async(self.full_channel)
-        self._pubsub = self._client.pubsub()
-        # ssubscribe() records the channel in ``shard_channels``, which keeps
-        # listen() running and makes redis-py's own reconnect re-issue
-        # SSUBSCRIBE (a SUBSCRIBE would never receive SPUBLISH).
-        await self._pubsub.ssubscribe(self.full_channel)
+        # Returns once Redis confirmed the SSUBSCRIBE, on a connection that
+        # never reconnects silently: any drop reaches the pump as an error.
+        self._client, self._pubsub = await redis.subscribe_sharded_async(
+            self.full_channel
+        )
 
     async def _close_pubsub_quietly(self) -> None:
         """Best-effort teardown — never raises."""
@@ -190,12 +194,41 @@ class ConnectionManager:
         self._ws_notifications: Dict[WebSocket, _Subscription] = {}
         # sockets already being closed because an event stream was lost
         self._closing: Set[WebSocket] = set()
+        # notification streams being opened for handshakes in progress
+        self._opening = 0
 
-    async def connect_socket(self, websocket: WebSocket, *, user_id: str):
+    async def connect_socket(self, websocket: WebSocket, *, user_id: str) -> bool:
+        """Accept the socket only once its notification stream is open, so a
+        client never sees a connection that can't deliver events. Returns
+        False when the handshake was refused."""
+        if self._opening >= _MAX_CONCURRENT_STREAM_OPENS:
+            await self._refuse(websocket, cause="busy", reason="Server busy")
+            return False
+        self._opening += 1
+        try:
+            opened = await self._start_notification_subscription(
+                websocket, user_id=user_id
+            )
+        finally:
+            self._opening -= 1
+        if not opened or websocket in self._closing:
+            await self._refuse(
+                websocket, cause="open_failed", reason="Event stream unavailable"
+            )
+            return False
         await websocket.accept()
         self.active_connections.add(websocket)
         self._ws_subs.setdefault(websocket, {})
-        await self._start_notification_subscription(websocket, user_id=user_id)
+        return True
+
+    async def _refuse(self, websocket: WebSocket, *, cause: str, reason: str) -> None:
+        record_websocket_event_stream_lost(cause)
+        logger.warning("Refusing WebSocket handshake: %s", reason)
+        try:
+            await websocket.close(code=WS_CLOSE_TRY_AGAIN_LATER, reason=reason)
+        except Exception as e:
+            if not _is_ws_close_race(e, websocket):
+                logger.warning("Failed to refuse WebSocket", exc_info=True)
 
     async def disconnect_socket(self, websocket: WebSocket, *, user_id: str):
         self.active_connections.discard(websocket)
@@ -347,7 +380,7 @@ class ConnectionManager:
 
     async def _start_notification_subscription(
         self, websocket: WebSocket, *, user_id: str
-    ) -> None:
+    ) -> bool:
         full_channel = _notification_bus_channel(user_id)
         sub = _Subscription(full_channel)
 
@@ -359,13 +392,13 @@ class ConnectionManager:
 
         try:
             await sub.start(on_message, on_lost)
-        except Exception:
-            logger.exception(
-                "Failed to open notification SSUBSCRIBE for user=%s", user_id
+        except Exception as e:
+            logger.warning(
+                "Failed to open notification SSUBSCRIBE for user=%s: %r", user_id, e
             )
-            await self.close_for_lost_stream(websocket, cause="open_failed")
-            return
+            return False
         self._ws_notifications[websocket] = sub
+        return True
 
     async def _forward_notification(
         self,
