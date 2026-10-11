@@ -12,7 +12,6 @@ import type { ScheduledChatNotice } from "./helpers";
 
 interface Props {
   notice: ScheduledChatNotice;
-  readOnly?: boolean;
 }
 
 const REASON_ICONS: Record<string, IconSvgElement> = {
@@ -21,9 +20,9 @@ const REASON_ICONS: Record<string, IconSvgElement> = {
   codex_access: PlugSocketIcon,
 };
 
-export function ScheduledChatNoticeCard({ notice, readOnly = false }: Props) {
+export function ScheduledChatNoticeCard({ notice }: Props) {
   const icon = REASON_ICONS[notice.reason] ?? Clock01Icon;
-  const showActions = !readOnly && notice.actions.length > 0;
+  const showActions = notice.actions.length > 0;
 
   return (
     <div

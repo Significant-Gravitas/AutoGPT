@@ -22,11 +22,4 @@ describe("ScheduledChatNoticeCard", () => {
       screen.getByRole("link", { name: "Upgrade" }).getAttribute("href"),
     ).toBe("/settings/billing");
   });
-
-  it("shows no buttons in a read-only shared chat", () => {
-    render(<ScheduledChatNoticeCard notice={NOTICE} readOnly />);
-
-    expect(screen.getByText(/didn't run/)).toBeDefined();
-    expect(screen.queryByRole("link", { name: "Upgrade" })).toBeNull();
-  });
 });

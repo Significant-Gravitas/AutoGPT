@@ -24,7 +24,9 @@ function toLinkAction(value: unknown): NoticeLinkAction | null {
   const href = asString(action.href);
   // In-app paths only: the card never sends anyone off the platform.
   if (action.kind !== "link" || !label || !href) return null;
+  // A backslash reads as a slash to the browser, so /\host leaves too.
   if (!href.startsWith("/") || href.startsWith("//")) return null;
+  if (href.includes("\\")) return null;
   return { kind: "link", label, href };
 }
 
