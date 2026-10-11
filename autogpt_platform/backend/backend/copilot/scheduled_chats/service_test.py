@@ -20,11 +20,13 @@ from backend.copilot.scheduled_chats.service import (
     record_scheduled_run,
     resume_scheduled_chat,
 )
+from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
 
 logger = logging.getLogger(__name__)
 
 _SERVICE = "backend.copilot.scheduled_chats.service"
+_JOBS = "backend.copilot.scheduled_chats.jobs"
 
 _DISCORD = RunFailure(
     key="connection:discord", kind="connection", provider="discord", tool="run_block"
@@ -39,8 +41,10 @@ def scheduler(mocker) -> MagicMock:
     client = MagicMock(
         pause_schedule=AsyncMock(return_value=True),
         resume_schedule=AsyncMock(return_value=True),
+        # Paused jobs drop out of this list, so empty means none fires.
+        get_execution_schedules=AsyncMock(return_value=[]),
     )
-    mocker.patch(f"{_SERVICE}.get_scheduler_client", return_value=client)
+    mocker.patch(f"{_JOBS}.get_scheduler_client", return_value=client)
     return client
 
 
@@ -210,12 +214,122 @@ async def test_a_schedule_that_could_not_be_paused_does_not_say_it_was(
     scheduler.pause_schedule.side_effect = RuntimeError("scheduler down")
     try:
         failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(4):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+
+        # Every run from the third tries the pause again.
+        assert scheduler.pause_schedule.await_count == 2
+        row = await ScheduledChatStreak.prisma().find_first(where={"userId": user_id})
+        assert row is not None and row.pausedAt is None
+        # The owner is still told, once, without being told it is paused.
+        assert [n.metadata["headline"] for n in await _notes(session_id)] == [
+            "“Discord monitor” can't use Discord"
+        ]
+    finally:
+        await _cleanup(user_id)
+
+
+async def _routine(user_id: str) -> ExpertRoutine:
+    return await ExpertRoutine.prisma().create(
+        data={
+            "userId": user_id,
+            "title": "Morning and noon sweep",
+            "prompt": "Check the inbox.",
+            "crons": ["30 8 * * *", "0 13 * * *"],
+            "asks": [],
+            "scheduleIds": ["job-a", "job-b"],
+        }
+    )
+
+
+def _routine_run(user_id: str, session_id: str, routine: ExpertRoutine, job: str):
+    return _run(
+        user_id,
+        session_id,
+        RunOutcome(failure=_DISCORD, whole_run=True),
+        schedule_key=routine.id,
+        schedule_id=job,
+        routine_id=routine.id,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_pause_that_fails_partway_puts_back_what_it_paused(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    async def pause(schedule_id: str, *, user_id: str) -> bool:
+        if schedule_id == "job-b":
+            raise RuntimeError("scheduler refused")
+        return True
+
+    scheduler.pause_schedule.side_effect = pause
+    user_id, session_id = await _owner()
+    try:
+        routine = await _routine(user_id)
+        for job in ("job-a", "job-b", "job-a"):
+            await record_scheduled_run(_routine_run(user_id, session_id, routine, job))
+
+        scheduler.resume_schedule.assert_awaited_once_with("job-a", user_id=user_id)
+        assert await list_paused_scheduled_chats(user_id) == []
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_run_that_fired_before_the_pause_changes_nothing(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """An every-minute chat can have its next run going when the third pauses
+    it. That run finishes after the pause, and must not undo it."""
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
         for _ in range(3):
             await record_scheduled_run(_run(user_id, session_id, failed))
 
+        for straggler in (failed, RunOutcome()):
+            await record_scheduled_run(_run(user_id, session_id, straggler))
+
+        assert len(await list_paused_scheduled_chats(user_id)) == 1
+        assert len(await _notes(session_id)) == 1
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_chat_resumed_some_other_way_starts_over(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        scheduler.get_execution_schedules.return_value = [MagicMock(id="sched-1")]
+
+        await record_scheduled_run(_run(user_id, session_id, RunOutcome()))
+
+        assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_note_that_could_not_be_posted_is_told_on_the_next_run(
+    server: SpinTestServer, scheduler: MagicMock, mocker
+):
+    post = mocker.patch(
+        f"{_SERVICE}.post_notice", side_effect=[RuntimeError("db"), True]
+    )
+    user_id, session_id = await _owner()
+    try:
+        failing = RunOutcome(failure=_TWITTER, whole_run=False)
+        for _ in range(4):
+            await record_scheduled_run(_run(user_id, session_id, failing))
+
+        assert post.await_count == 2
         row = await ScheduledChatStreak.prisma().find_first(where={"userId": user_id})
-        assert row is not None and row.pausedAt is None and row.notifiedAt is None
-        assert await _notes(session_id) == []
+        assert row is not None and row.notifiedAt is not None
     finally:
         await _cleanup(user_id)
 
@@ -259,5 +373,49 @@ async def test_a_resume_the_scheduler_refuses_keeps_the_chat_paused(
             await resume_scheduled_chat(user_id, "sched-1")
 
         assert len(await list_paused_scheduled_chats(user_id)) == 1
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_resume_that_fails_partway_pauses_the_rest_again(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    async def resume(schedule_id: str, *, user_id: str) -> bool:
+        if schedule_id == "job-b":
+            raise RuntimeError("scheduler refused")
+        return True
+
+    user_id, session_id = await _owner()
+    try:
+        routine = await _routine(user_id)
+        for job in ("job-a", "job-b", "job-a"):
+            await record_scheduled_run(_routine_run(user_id, session_id, routine, job))
+        scheduler.pause_schedule.reset_mock()
+        scheduler.resume_schedule.side_effect = resume
+
+        with pytest.raises(RuntimeError):
+            await resume_scheduled_chat(user_id, routine.id)
+
+        scheduler.pause_schedule.assert_awaited_once_with("job-a", user_id=user_id)
+        assert len(await list_paused_scheduled_chats(user_id)) == 1
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_job_deleted_since_the_pause_does_not_block_the_resume(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    user_id, session_id = await _owner()
+    try:
+        routine = await _routine(user_id)
+        for job in ("job-a", "job-b", "job-a"):
+            await record_scheduled_run(_routine_run(user_id, session_id, routine, job))
+        scheduler.resume_schedule.side_effect = [NotFoundError("gone"), True]
+
+        assert await resume_scheduled_chat(user_id, routine.id) is True
+
+        assert await list_paused_scheduled_chats(user_id) == []
     finally:
         await _cleanup(user_id)

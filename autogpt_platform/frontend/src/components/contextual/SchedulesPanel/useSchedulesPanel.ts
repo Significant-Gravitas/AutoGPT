@@ -52,8 +52,12 @@ export function useSchedulesPanel() {
     (a, b) => nextRunMs(a.item) - nextRunMs(b.item),
   );
 
-  const isLoading = copilotQuery.isLoading || graphQuery.isLoading;
-  const fetchError = copilotQuery.error ?? graphQuery.error;
+  const paused = pausedQuery.data ?? [];
+  const isLoading =
+    copilotQuery.isLoading || graphQuery.isLoading || pausedQuery.isLoading;
+  const fetchError =
+    copilotQuery.error ?? graphQuery.error ?? pausedQuery.error;
+  const hasContent = schedules.length > 0 || paused.length > 0;
 
   return {
     // Backwards-compat alias — ``followups`` was the only-copilot
@@ -61,12 +65,12 @@ export function useSchedulesPanel() {
     // reference it.
     followups: copilotQuery.data ?? [],
     schedules,
-    paused: pausedQuery.data ?? [],
+    paused,
     isLoading,
-    // The two sources are independent — only hard-fail once both have
-    // settled and there is nothing to show; a partial failure keeps the
-    // loaded list visible and surfaces a non-blocking warning instead.
-    error: !isLoading && schedules.length === 0 ? fetchError : null,
-    partialError: !isLoading && schedules.length > 0 ? fetchError : null,
+    // The sources are independent — only hard-fail once all have settled
+    // and there is nothing to show; a partial failure keeps the loaded
+    // lists visible and surfaces a non-blocking warning instead.
+    error: !isLoading && !hasContent ? fetchError : null,
+    partialError: !isLoading && hasContent ? fetchError : null,
   };
 }

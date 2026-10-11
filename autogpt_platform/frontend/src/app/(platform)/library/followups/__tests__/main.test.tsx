@@ -500,6 +500,49 @@ describe("FollowupsPage", () => {
     expect(screen.queryByTestId("schedules-partial-error")).toBeNull();
   });
 
+  test("a paused list that fails to load is an error, not the empty state", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      http.get(
+        "http://localhost:3000/api/proxy/api/schedules/followups/paused",
+        () => HttpResponse.error(),
+      ),
+    );
+
+    render(<FollowupsPage />);
+
+    expect(await screen.findByText(/scheduled items/i)).toBeDefined();
+    expect(screen.queryByTestId("followups-empty")).toBeNull();
+  });
+
+  test("a paused chat stays listed when the schedules fail to load", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
+        HttpResponse.error(),
+      ),
+      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+        HttpResponse.error(),
+      ),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "routine-1",
+          title: "Discord monitor",
+          session_id: "session-1",
+          reason: "chat_link",
+          provider: "discord",
+          summary: "Paused: can't post to Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+        },
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    expect(await screen.findByTestId("paused-chat-row")).toBeDefined();
+    expect(await screen.findByTestId("schedules-partial-error")).toBeDefined();
+  });
+
   test("lists a paused scheduled chat with why, and Resume resumes it", async () => {
     let resumedKey: string | null = null;
     server.use(

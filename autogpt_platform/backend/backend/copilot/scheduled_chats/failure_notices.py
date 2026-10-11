@@ -3,8 +3,9 @@
 Either it was paused, after three runs in a row failed outright the same way,
 or it is still running but the same step has failed three times in a row.
 Either way the note says what broke and offers the fix: reconnect the
-provider, link the chat platform, resume. Like every note here, it is for the
-owner and hidden from the model.
+provider, link the chat platform, resume. One that could not be paused says
+the same without that claim. Like every note here, it is for the owner and
+hidden from the model.
 """
 
 from backend.copilot.scheduled_chats.notices import (
@@ -37,39 +38,61 @@ def provider_name(provider: str | None) -> str:
 
 
 def paused_notice(
-    failure: RunFailure, *, title: str, failures: int, streak_id: str
+    failure: RunFailure,
+    *,
+    title: str,
+    failures: int,
+    streak_id: str,
+    paused: bool = True,
 ) -> ScheduledChatNotice:
+    """Three runs in a row failed outright the same way. *paused* is False
+    when the schedule could not be paused, so it is still firing."""
     name = provider_name(failure.provider)
     runs = f"Its last {failures} runs"
     if failure.kind == "connection":
-        headline = f"Paused: “{title}” can't use {name}"
-        body = (
-            f"{runs} failed because the {name} connection is missing or was "
-            "refused. Reconnect it and the chat starts again."
+        headline = f"“{title}” can't use {name}"
+        cause = (
+            f"{runs} failed because the {name} connection is missing or was " "refused."
         )
+        fix = "Reconnect it and the chat starts again." if paused else "Reconnect it."
     elif failure.kind == "chat_link":
-        headline = f"Paused: “{title}” can't post to {name}"
-        body = (
+        headline = f"“{title}” can't post to {name}"
+        cause = (
             f"{runs} couldn't post, because no {name} server or chat is linked "
-            "to your account. Link one, then resume."
+            "to your account."
         )
+        fix = "Link one, then resume." if paused else "Link one."
     elif failure.kind == "budget":
         limit = "step" if failure.key == "turn:max_turns_exhausted" else "spending"
-        headline = f"Paused: “{title}” keeps hitting its {limit} limit"
-        body = (
-            f"{runs} stopped at the {limit} limit one run may use, before "
-            "finishing. Resume it to try again, or give it a smaller job."
+        headline = f"“{title}” keeps hitting its {limit} limit"
+        cause = (
+            f"{runs} stopped at the {limit} limit one run may use, before finishing."
+        )
+        fix = (
+            "Resume it to try again, or give it a smaller job."
+            if paused
+            else "Give it a smaller job."
         )
     else:
-        headline = f"Paused: “{title}” keeps failing"
-        body = (
-            f"{runs} failed the same way. Open the chat to see the error, "
-            "then resume."
+        headline = f"“{title}” keeps failing"
+        cause = f"{runs} failed the same way."
+        fix = (
+            "Open the chat to see the error, then resume."
+            if paused
+            else "Open the chat to see the error."
+        )
+    if not paused:
+        return ScheduledChatNotice(
+            reason=failure.kind,
+            headline=headline,
+            body=f"{cause} {fix}",
+            actions=_fixes(failure),
+            window_key=f"failing:{streak_id}",
         )
     return ScheduledChatNotice(
         reason=failure.kind,
-        headline=headline,
-        body=body,
+        headline=f"Paused: {headline}",
+        body=f"{cause} {fix}",
         actions=[*_fixes(failure), NoticeResume()],
         window_key=f"paused:{streak_id}",
     )
