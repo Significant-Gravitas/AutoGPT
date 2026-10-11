@@ -64,14 +64,16 @@ class FakeStripe:
         self.lookups = 0
         self.frozen: stripe.Subscription | None = None
         self.release: asyncio.Event | None = None
+        self.held: asyncio.Task | None = None
         self.reached = asyncio.Event()
 
     def current(self) -> stripe.Subscription:
         return stripe.Subscription.construct_from(self.subscription, "test-key")
 
     def hold_reads(self) -> asyncio.Event:
-        """Answer lists from the subscription as it is now, once released:
-        a slow answer that arrives after a change made meanwhile."""
+        """Answer the next lookup from the subscription as it is now, once
+        released: a slow answer that arrives after a change made meanwhile.
+        Other lookups are answered at once."""
         self.frozen = self.current()
         self.release = asyncio.Event()
         return self.release
@@ -79,13 +81,19 @@ class FakeStripe:
     def stop_holding(self) -> None:
         self.frozen = None
         self.release = None
+        self.held = None
 
     async def list_async(self, *, customer: str, status: str, limit: int):
         if status == "active":
             # _get_active_subscription asks for "active" first on every lookup.
             self.lookups += 1
-        answer = self.frozen or self.current()
-        if self.release is not None:
+        # Stripe takes a moment to answer, so concurrent lookups overlap.
+        await asyncio.sleep(0.02)
+        if self.release is not None and self.held is None:
+            self.held = asyncio.current_task()
+        held = self.held is not None and self.held is asyncio.current_task()
+        answer = self.frozen if held and self.frozen else self.current()
+        if held and self.release is not None:
             self.reached.set()
             await asyncio.wait_for(self.release.wait(), WAIT)
         matches = (
@@ -255,7 +263,7 @@ async def test_a_read_in_flight_during_the_purchase_does_not_cache_the_trial(
     trial, fake_stripe, worker_b, redis_up
 ):
     """A page load whose Stripe answer predates the purchase, but arrives after
-    it, must not hold the trial's renewal date for the next reads."""
+    it, must neither be served to later reads nor overwrite the fresh entry."""
     release = fake_stripe.hold_reads()
     in_flight = asyncio.create_task(
         worker_b.get_active_subscription_period_end("user-1")
@@ -263,14 +271,66 @@ async def test_a_read_in_flight_during_the_purchase_does_not_cache_the_trial(
     await asyncio.wait_for(fake_stripe.reached.wait(), WAIT)
 
     await conversion.convert_cancel_pending_trial(trial, SubscriptionTier.PRO)
+    assert (
+        await worker_a.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
+    )
     release.set()
     assert await asyncio.wait_for(in_flight, WAIT) == TRIAL_END
     fake_stripe.stop_holding()
 
+    assert await _cached_period_end(redis_up, trial.customer_id) == PAID_PERIOD_END
     assert (
         await worker_b.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
     )
-    assert await _cached_period_end(redis_up, trial.customer_id) == PAID_PERIOD_END
+    assert fake_stripe.lookups == 2
+
+
+@pytest.mark.asyncio
+async def test_a_lookup_read_before_redis_lost_its_data_is_not_served(
+    trial, fake_stripe, worker_b, redis_up
+):
+    """Trial read → purchase → Redis restarts empty → the slow trial answer
+    arrives. With no token left, nothing may vouch for that answer."""
+    release = fake_stripe.hold_reads()
+    in_flight = asyncio.create_task(
+        worker_b.get_active_subscription_period_end("user-1")
+    )
+    await asyncio.wait_for(fake_stripe.reached.wait(), WAIT)
+    await conversion.convert_cancel_pending_trial(trial, SubscriptionTier.PRO)
+    for key in (
+        cache_a._version_key(trial.customer_id),
+        cache_a._lookup_key(trial.customer_id),
+    ):
+        await asyncio.wait_for(redis_up.delete(key), WAIT)
+
+    release.set()
+    assert await asyncio.wait_for(in_flight, WAIT) == TRIAL_END
+    fake_stripe.stop_holding()
+    assert not await asyncio.wait_for(
+        redis_up.get(cache_a._lookup_key(trial.customer_id)), WAIT
+    )
+
+    assert (
+        await worker_a.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
+    )
+    assert (
+        await worker_b.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
+    )
+    assert fake_stripe.lookups == 2
+
+
+@pytest.mark.asyncio
+async def test_concurrent_misses_on_a_worker_share_one_stripe_call(
+    fake_stripe, worker_b, redis_up
+):
+    ends = await asyncio.wait_for(
+        asyncio.gather(
+            *(worker_b.get_active_subscription_period_end("user-1") for _ in range(60))
+        ),
+        WAIT,
+    )
+    assert set(ends) == {TRIAL_END}
+    assert fake_stripe.lookups == 1
 
 
 @pytest.mark.asyncio
@@ -338,12 +398,21 @@ async def test_a_redis_outage_never_slows_or_blocks_billing(
     cache's deadline, and a charge still saves the paid plan."""
     with patch.object(cache_a, "get_redis_async", outage()):
         started = time.monotonic()
-        for _ in range(5):
-            assert (
-                await worker_a.get_active_subscription_period_end("user-1") == TRIAL_END
-            )
+        ends = await asyncio.wait_for(
+            asyncio.gather(
+                *(
+                    worker_a.get_active_subscription_period_end("user-1")
+                    for _ in range(60)
+                )
+            ),
+            WAIT,
+        )
+        for _ in range(100):
+            ends.append(await worker_a.get_active_subscription_period_end("user-1"))
+        assert set(ends) == {TRIAL_END}
         assert time.monotonic() - started < 1.5
-        assert fake_stripe.lookups == 5
+        # Stripe traffic stays bounded while Redis can't be used.
+        assert fake_stripe.lookups == 1
 
         started = time.monotonic()
         await asyncio.wait_for(
@@ -354,6 +423,7 @@ async def test_a_redis_outage_never_slows_or_blocks_billing(
         save_tier.assert_awaited_once()
         assert save_tier.await_args.args[0]["status"] == "active"
 
+        # The change this process made is not hidden by what it kept.
         assert (
             await worker_a.get_active_subscription_period_end("user-1")
             == PAID_PERIOD_END

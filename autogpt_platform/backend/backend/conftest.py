@@ -75,6 +75,8 @@ def isolated_subscription_lookup_cache(monkeypatch: pytest.MonkeyPatch):
         subscription_lookup_cache, "KEY_PREFIX", f"test:{uuid4().hex}:subscription"
     )
     monkeypatch.setattr(subscription_lookup_cache._backoff, "until", 0.0)
+    monkeypatch.setattr(subscription_lookup_cache, "_fallback", {})
+    monkeypatch.setattr(subscription_lookup_cache, "_in_flight", {})
 
 
 @pytest.fixture
