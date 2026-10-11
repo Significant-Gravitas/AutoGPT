@@ -36,6 +36,7 @@ from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.response_model import StreamStart
 
 _SVC = "backend.copilot.sdk.service"
+_SYSTEM_PROMPT = "backend.copilot.sdk.system_prompt"
 
 
 def _make_lock_mock():
@@ -247,7 +248,7 @@ class TestSdkComputerNoteWiring:
             hire_experts_enabled=False,
             expert_id=expert_id,
             extra_patches=[
-                (f"{_SVC}.get_sdk_supplement", dict(new=supplement)),
+                (f"{_SYSTEM_PROMPT}.get_sdk_supplement", dict(new=supplement)),
                 (
                     f"{_SVC}.build_expert_identity_suffix",
                     dict(new_callable=AsyncMock, return_value=""),
