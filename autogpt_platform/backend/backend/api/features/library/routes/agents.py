@@ -4,9 +4,9 @@ import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from fastapi.responses import Response
 
+import backend.api.features.library._get_many as get_many
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 
-from .. import _get_many as get_many
 from .. import db as library_db
 from .. import model as library_model
 
