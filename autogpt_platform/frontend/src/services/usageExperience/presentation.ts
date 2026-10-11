@@ -59,7 +59,8 @@ export function usagePresentation(experience: UsageExperience) {
         : tier === "BUSINESS"
           ? "Contact support"
           : "Contact us",
-    secondary: trialSpent ? "Back to my work" : "Wait for reset",
+    secondary:
+      trialSpent || !experience.resetsAt ? "Back to my work" : "Wait for reset",
     trialSpent,
   };
 }

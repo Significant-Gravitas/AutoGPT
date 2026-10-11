@@ -61,6 +61,7 @@ export function CopilotChatHost({
     sessionChatStatus,
     sessionSentFrom,
     sessionAutopilotMode,
+    chatLlmAuthProvider,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
@@ -91,6 +92,8 @@ export function CopilotChatHost({
           usageFailure={platformLimitFailure}
           onDismissUsage={dismissAfterProviderChange}
           usageRefresh={usageRefresh}
+          usage={usage}
+          chatAuthProvider={chatLlmAuthProvider}
           messages={messages}
           status={status}
           error={error}
@@ -135,6 +138,7 @@ export function CopilotChatHost({
         failure={platformLimitFailure}
         sessionId={sessionId}
         onDismiss={dismissRateLimit}
+        onSendNow={onSend}
       />
       <ProviderLimitDialog
         failure={providerLimit}

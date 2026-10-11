@@ -16,6 +16,8 @@ export interface Alternative {
  * connection a user is guaranteed to be able to fall back to. Anything else
  * that is selectable will do after that; the one thing excluded is the
  * connection that just refused the turn, which would fail again immediately.
+ * Out of AutoPilot budget, a chat continues on ChatGPT only: Microsoft 365
+ * Copilot is never offered to carry on a task.
  */
 export function alternativeConnection(
   offers: AIConnectionOffer[] | undefined,
@@ -27,6 +29,8 @@ export function alternativeConnection(
     (offer) =>
       offer.selectable &&
       !isTheOneThatFailed(offer, failure) &&
+      (failure.authProvider !== "platform" ||
+        offer.offer_id.split(":")[0] === "codex") &&
       (offer.auth_method === "deployment" || offer.credential_id !== null),
   );
   if (usable.length === 0) return null;

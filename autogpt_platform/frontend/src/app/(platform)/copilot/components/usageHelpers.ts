@@ -53,6 +53,13 @@ interface UsageLike {
   weekly?: UsageWindowLike | null;
 }
 
+/** Whether a chat on this connection spends the AutoPilot budget. ChatGPT and
+ *  Microsoft 365 Copilot turns are paid by the user's own subscription; any
+ *  other value, including one not loaded yet, counts as the platform. */
+export function spendsPlatformBudget(authProvider: string | null | undefined) {
+  return authProvider !== "codex" && authProvider !== "microsoft_365_copilot";
+}
+
 export function isUsageExhausted(usage: UsageLike | null | undefined): boolean {
   if (!usage) return false;
   const daily = usage.daily?.percent_used ?? 0;

@@ -6,6 +6,11 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { usagePresentation } from "@/services/usageExperience/presentation";
 import { ProviderContinuation } from "@/components/organisms/UsageExperience/ProviderContinuation";
+import { UsageMeters } from "@/components/organisms/UsageExperience/UsageMeters";
+import {
+  budgetOutTitle,
+  budgetResetSentence,
+} from "@/services/usageExperience/budget";
 import type { UsageNoticeContext } from "./useUsageLimitReachedCard";
 import { useUsageLimitReachedCard } from "./useUsageLimitReachedCard";
 
@@ -35,23 +40,34 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
             ? "One moment. Your work is saved."
             : state.isError
               ? "We couldn’t check your usage."
-              : copy.noticeTitle}
+              : state.wait
+                ? budgetOutTitle(state.wait.window)
+                : copy.noticeTitle}
         </Text>
         <Text variant="small" className="mt-2 !leading-5 !text-zinc-500">
           {state.isRefreshing
             ? "Refreshing your plan and usage…"
             : state.isError
               ? "Your work is saved. Try again to check your allowance."
-              : state.experience.inactiveTrialStatus
-                ? copy.description
-                : copy.trialSpent
-                  ? state.experience.freshProUsage
-                    ? "Continue with Pro. Your work stays right here, with fresh usage when your plan activates."
-                    : "Your trial allowance is used. Choose a plan to continue with your work."
-                  : copy.resetLabel
-                    ? `Your allowance refreshes ${copy.resetLabel}. Your work is saved.`
-                    : "Your chats, agents, and results are still here."}
+              : state.wait
+                ? budgetResetSentence(state.wait)
+                : state.experience.inactiveTrialStatus
+                  ? copy.description
+                  : copy.trialSpent
+                    ? state.experience.freshProUsage
+                      ? "Continue with Pro. Your work stays right here, with fresh usage when your plan activates."
+                      : "Your trial allowance is used. Choose a plan to continue with your work."
+                    : copy.resetLabel
+                      ? `Your allowance refreshes ${copy.resetLabel}. Your work is saved.`
+                      : "Your chats, agents, and results are still here."}
         </Text>
+        {state.wait && (
+          <UsageMeters
+            className="mt-4"
+            daily={state.usage?.daily}
+            weekly={state.usage?.weekly}
+          />
+        )}
       </div>
       {isOffer && (
         <div className="flex flex-wrap items-center justify-between gap-4 border-t border-purple-100 bg-gradient-to-r from-purple-50 to-blue-50 px-5 py-4">

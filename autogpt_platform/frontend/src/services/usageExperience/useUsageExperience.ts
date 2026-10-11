@@ -4,7 +4,13 @@ import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/cred
 import { useCopilotUsage } from "@/app/(platform)/copilot/components/UsageLimits/useCopilotUsage";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { getUsageBudget } from "./budget";
 import { getUsageExperience } from "./helpers";
+
+export type UsageSnapshot = Pick<
+  ReturnType<typeof useUsageExperience>,
+  "budget" | "usage" | "experience"
+>;
 
 export function useUsageExperience() {
   const usage = useCopilotUsage();
@@ -25,6 +31,7 @@ export function useUsageExperience() {
     experience.tier === "TRIAL" && (trial.isError || !trial.data);
   return {
     experience,
+    budget: getUsageBudget(usage.data),
     usage: usage.data,
     trial: trial.data,
     subscription: subscription.data,

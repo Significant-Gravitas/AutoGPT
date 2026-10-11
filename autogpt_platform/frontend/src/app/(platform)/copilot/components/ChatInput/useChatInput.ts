@@ -18,6 +18,8 @@ interface Args {
   canSendEmpty?: boolean;
   inputId?: string;
   draftKey?: string;
+  /** Names what failed in the toast, e.g. a scheduled send. */
+  failureTitle?: string;
 }
 
 export function useChatInput({
@@ -29,6 +31,7 @@ export function useChatInput({
   canSendEmpty = false,
   inputId = "chat-input",
   draftKey,
+  failureTitle = "Couldn't send message",
 }: Args) {
   const [value, setValue] = useChatDraft(draftKey);
   const [isSending, setIsSending] = useState(false);
@@ -92,7 +95,7 @@ export function useChatInput({
     } catch (error) {
       setValue((current) => restoreFailedDraft(current, message));
       toast({
-        title: "Couldn't send message",
+        title: failureTitle,
         description: describeSendFailure(
           error,
           "your message is back in the composer",

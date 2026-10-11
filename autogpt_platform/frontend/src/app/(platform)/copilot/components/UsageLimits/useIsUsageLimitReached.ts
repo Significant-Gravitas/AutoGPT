@@ -1,15 +1,10 @@
-import { useGetV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
+import { spendsPlatformBudget } from "../usageHelpers";
 
-export function useIsUsageLimitReached(sessionID?: string | null) {
+/** The connection the chat runs on decides: only a platform chat waits for
+ *  the AutoPilot budget. */
+export function useIsUsageLimitReached(authProvider?: string | null) {
   const state = useUsageExperience();
-  const session = useGetV2GetSession(sessionID ?? "", undefined, {
-    query: { enabled: !!sessionID },
-  });
-  const provider =
-    session.data?.status === 200
-      ? session.data.data.metadata?.llm_auth_provider
-      : null;
-  if (provider && provider !== "platform") return false;
+  if (!spendsPlatformBudget(authProvider)) return false;
   return state.experience.blocked || state.isError;
 }

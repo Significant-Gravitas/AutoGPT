@@ -103,6 +103,26 @@ describe("alternativeConnection", () => {
     expect(found).toBeNull();
   });
 
+  it("continues an out-of-budget platform chat on ChatGPT, never Microsoft 365 Copilot", () => {
+    const copilot = offer({
+      offer_id: "microsoft_365_copilot:cred-9",
+      provider_family: "microsoft",
+      auth_provider: "microsoft_365_copilot",
+      display_name: "Microsoft 365 Copilot",
+      auth_method: "oauth",
+      credential_id: "cred-9",
+      is_default: false,
+    });
+
+    expect(
+      alternativeConnection([offer(), copilot], limitOn("platform")),
+    ).toBeNull();
+    expect(
+      alternativeConnection([offer(), copilot, chatgpt()], limitOn("platform"))
+        ?.display_name,
+    ).toBe("ChatGPT");
+  });
+
   it("has nothing to offer when there are no other connections", () => {
     expect(alternativeConnection([], limitOn("codex", "cred-1"))).toBeNull();
     expect(

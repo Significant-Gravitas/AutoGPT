@@ -1,3 +1,4 @@
+import { getResetWait } from "@/services/usageExperience/budget";
 import { useUsageActions } from "@/services/usageExperience/useUsageActions";
 import type { ProviderFailure } from "../../../providerFailure";
 import { useProviderLimitDialog } from "../../ProviderLimitDialog/useProviderLimitDialog";
@@ -37,10 +38,12 @@ export function useUsageLimitReachedCard({
     sessionId: sessionID,
     onDismiss,
   });
+  const isError = state.isError || !!refresh?.failed || !!refresh?.checking;
   return {
     ...state,
     isLoading: state.isLoading && !refresh?.checking && !refresh?.failed,
-    isError: state.isError || !!refresh?.failed || !!refresh?.checking,
+    isError,
+    wait: isError ? null : getResetWait(state.budget),
     isRefreshing: !!refresh?.checking,
     retry: refresh?.refresh ?? state.retry,
     alternative: sessionID ? provider.alternative : null,
