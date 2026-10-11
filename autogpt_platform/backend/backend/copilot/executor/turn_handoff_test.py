@@ -31,6 +31,7 @@ from backend.copilot.executor.utils import CoPilotExecutionEntry, dispatch_turn
 from backend.copilot.gate import held
 from backend.copilot.gate.held_db_test import _answer, _hold, _new_session, _Post
 from backend.copilot.model import get_chat_session
+from backend.copilot.pending_messages import PendingMessage
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import as_str
@@ -56,13 +57,16 @@ async def test_cards_answered_during_a_turn_run_once_it_has_left_under_its_envel
     setup_test_user, test_user_id, gate_on, post_tool
 ):
     """Not a fresh root for the follow-up: the card runs under the tree of the
-    turn that held it."""
+    turn that held it, and its result keeps the card's copy for the chain row."""
     session = await _new_session(test_user_id)
+    delivered: list[PendingMessage] = []
 
     async def turn(entry: CoPilotExecutionEntry) -> None:
         chat = await get_chat_session(entry.session_id, entry.user_id)
         assert chat is not None
-        async for _status in held.resolve_answered(test_user_id, chat, _ignore):
+        async for _status in held.resolve_answered(
+            test_user_id, chat, delivered.append
+        ):
             pass
         if entry.message == "post it":
             review_id = await _hold(
@@ -84,6 +88,8 @@ async def test_cards_answered_during_a_turn_run_once_it_has_left_under_its_envel
     held_under, woken_under = (t.envelope for t in pod.turns)
     assert held_under is not None and woken_under is not None
     assert woken_under.tree_id == held_under.tree_id
+    [result] = delivered
+    assert result.metadata["held_call"]["arguments"] == {"text": "approved mid-turn"}
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -267,10 +273,6 @@ async def _chunks_until_finish(turn_id: str) -> list[dict[str, Any]]:
             break
         await asyncio.sleep(0.1)
     return chunks
-
-
-def _ignore(_result: object) -> None:
-    pass
 
 
 async def _never_runs(_entry: CoPilotExecutionEntry) -> None:
