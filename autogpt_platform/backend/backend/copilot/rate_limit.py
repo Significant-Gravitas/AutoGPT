@@ -781,11 +781,15 @@ async def check_rate_limit(
     # collapse semantics of :func:`get_global_rate_limits` and produced
     # the autopilot paywall bypass. Only an explicitly negative limit — the
     # self-hosted "no cap" sentinel — skips a window.
-    if not skip_daily and daily_cost_limit >= 0 and daily_used >= daily_cost_limit:
-        raise RateLimitExceeded("daily", _daily_reset_time(now=now))
-
+    #
+    # Weekly first: with both windows used up, the user is blocked until the
+    # one that refills last, and the weekly window never refills before the
+    # daily one (on Sundays they refill together).
     if weekly_cost_limit >= 0 and weekly_used >= weekly_cost_limit:
         raise RateLimitExceeded("weekly", _weekly_reset_time(now=now))
+
+    if not skip_daily and daily_cost_limit >= 0 and daily_used >= daily_cost_limit:
+        raise RateLimitExceeded("daily", _daily_reset_time(now=now))
 
 
 def _trial_uses_total_budget(
