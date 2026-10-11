@@ -34,10 +34,12 @@ export interface FakeConnection {
   silence(): void;
 }
 
-type Responder = (request: {
-  method: string;
-  url: URL;
-}) => "stream" | "network-error" | { status: number; body: unknown };
+type Responder = (request: { method: string; url: URL }) =>
+  | "stream"
+  | "network-error"
+  // An open response that never yields a byte: a page frozen before it read any.
+  | "silent"
+  | { status: number; body: unknown };
 
 /**
  * The backend as the runtime sees it, for one recorded turn: the turn's
@@ -77,6 +79,11 @@ export function fakeBackend(turn: RecordedTurn) {
     requests.push({ method, url });
     const answer = responder({ method, url });
     if (answer === "network-error") throw new TypeError("Failed to fetch");
+    if (answer === "silent")
+      return new Response(new ReadableStream<Uint8Array>(), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
     if (answer !== "stream") {
       return new Response(JSON.stringify(answer.body), {
         status: answer.status,
