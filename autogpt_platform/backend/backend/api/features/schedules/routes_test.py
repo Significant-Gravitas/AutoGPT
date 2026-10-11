@@ -245,6 +245,19 @@ def test_delete_schedule_maps_not_found_to_404(
     assert response.status_code == 404
 
 
+def test_update_schedule_rejects_an_empty_timezone(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An empty timezone is a bad value, not an omitted one: it must not be
+    silently ignored while the rest of the edit is saved."""
+    sched = _patch_scheduler(mocker, update_execution_schedule=AsyncMock())
+
+    response = client.patch("/schedules/sched-1", json={"timezone": ""})
+
+    assert response.status_code == 422
+    sched.update_execution_schedule.assert_not_awaited()
+
+
 def test_update_schedule_forwards_only_the_sent_fields(
     mocker: pytest_mock.MockFixture,
 ) -> None:

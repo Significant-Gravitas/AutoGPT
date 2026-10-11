@@ -29540,7 +29540,7 @@
             "title": "Credentials"
           },
           "timezone": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
             "title": "Timezone",
             "description": "Timezone to evaluate the cron in (e.g., 'America/New_York'). If not provided, the schedule keeps its current timezone."
           }
