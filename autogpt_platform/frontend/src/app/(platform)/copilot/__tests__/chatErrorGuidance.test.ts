@@ -51,21 +51,43 @@ describe("describeChatError", () => {
     expect(guidance.action).toBeNull();
   });
 
+  const REFUSED =
+    "The request was refused. Reload the page and try again; if it keeps happening, contact support.";
+  const NOTIFIED = "The system maintainer has been notified of the issue";
+
   it.each([
     [
-      "a 403",
-      new SendRefusedError('{"detail":"advanced_tier_not_entitled"}', 403),
+      "a 403 with the server's reason",
+      new SendRefusedError(
+        '{"detail":"advanced_tier_not_entitled"}',
+        403,
+        "advanced_tier_not_entitled",
+      ),
+      "advanced_tier_not_entitled",
     ],
-    ["a 422", new SendRefusedError('{"detail":"Message too long"}', 422)],
-    ["a 400", new SendRefusedError('{"detail":"Bad request"}', 400)],
+    [
+      "a 422 with the server's reason",
+      new SendRefusedError(
+        '{"detail":"Message too long"}',
+        422,
+        "Message too long",
+      ),
+      "Message too long",
+    ],
+    [
+      "a 400 with no reason",
+      new SendRefusedError("Couldn't reach the server (HTTP 400).", 400, null),
+      null,
+    ],
   ])(
-    "%s the app should never provoke says it is our bug, reported, and to reload",
-    (_state, error) => {
-      const guidance = describeChatError(error);
-      expect(guidance.title).toBe(
-        "Something went wrong on our side, and we've been notified. Reload the page and try again. If it keeps happening, contact support.",
-      );
-      expect(guidance.action).toBeNull();
+    "%s the app never provokes reads as a refusal, its reason, and that we were notified",
+    (_state, error, reason) => {
+      expect(describeChatError(error)).toEqual({
+        title: REFUSED,
+        action: null,
+        reason,
+        note: NOTIFIED,
+      });
     },
   );
 

@@ -2,6 +2,7 @@ import { CopilotAuthError } from "./helpers";
 import {
   ChatUnavailableError,
   isUnexpectedRefusal,
+  SendRefusedError,
 } from "./stream/turnRuntime";
 
 export type ChatErrorAction = "sign-in" | "new-chat";
@@ -10,6 +11,10 @@ export interface ChatErrorGuidance {
   /** What happened, and what will work next. */
   title: string;
   action: ChatErrorAction | null;
+  /** The server's reason, shown in place of the raw error. */
+  reason?: string | null;
+  /** A small muted line under the guidance. */
+  note?: string;
 }
 
 /** Guidance for a failed send or stream; it promises a resend only where one can succeed. */
@@ -44,8 +49,10 @@ export function describeChatError(error: Error): ChatErrorGuidance {
   if (status !== null && isUnexpectedRefusal(status))
     return {
       title:
-        "Something went wrong on our side, and we've been notified. Reload the page and try again. If it keeps happening, contact support.",
+        "The request was refused. Reload the page and try again; if it keeps happening, contact support.",
       action: null,
+      reason: error instanceof SendRefusedError ? error.reason : null,
+      note: "The system maintainer has been notified of the issue",
     };
   if (status !== null && status >= 500)
     return {

@@ -666,7 +666,7 @@ describe("refusals no retry can change", () => {
 
     expect(backend.requests.filter((r) => r.method === "GET")).toHaveLength(2);
     expect(snapshot().error).toEqual(
-      new SendRefusedError('{"detail":"Forbidden"}', 403),
+      new SendRefusedError('{"detail":"Forbidden"}', 403, "Forbidden"),
     );
     expect(snapshot().error).not.toBeInstanceOf(CopilotAuthError);
     expect(report).toHaveBeenCalledWith(
@@ -688,6 +688,13 @@ describe("refusals no retry can change", () => {
       status: 422,
       body: { detail: "Message too long" },
     });
+    expect(snapshot().error).toEqual(
+      new SendRefusedError(
+        '{"detail":"Message too long"}',
+        422,
+        "Message too long",
+      ),
+    );
   });
 
   it.each([401, 404, 429])(
