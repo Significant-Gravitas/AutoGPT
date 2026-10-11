@@ -1,7 +1,7 @@
 """The live spend figure the governor lands turns on."""
 
 import pytest
-from claude_agent_sdk import AssistantMessage, TextBlock
+from claude_agent_sdk import AssistantMessage, StreamEvent, TextBlock
 
 from backend.copilot.moonshot import rate_card_usd
 
@@ -106,3 +106,69 @@ def test_cli_price_ratio_covers_the_cli_pricing_kimi_like_sonnet():
     # Sonnet is $3/$15 to Kimi K2.x's $0.60/$2.80: the larger ratio, output,
     # is what keeps the backstop from firing before the real budget is spent.
     assert cli_price_ratio(KIMI) == pytest.approx(15 / 2.80, rel=0.05)
+
+
+def _start(call_id: str, *, prompt: int = 0, parent: str | None = None) -> StreamEvent:
+    return StreamEvent(
+        uuid="u",
+        session_id="s",
+        event={
+            "type": "message_start",
+            "message": {
+                "id": call_id,
+                "model": KIMI,
+                "usage": {"input_tokens": prompt, "output_tokens": 1},
+            },
+        },
+        parent_tool_use_id=parent,
+    )
+
+
+def _delta(output: int, *, parent: str | None = None) -> StreamEvent:
+    return StreamEvent(
+        uuid="u",
+        session_id="s",
+        event={"type": "message_delta", "usage": {"output_tokens": output}},
+        parent_tool_use_id=parent,
+    )
+
+
+def test_output_comes_from_the_stream_not_the_placeholder():
+    # As the CLI streams it: message_start and every assistant message carry
+    # the placeholder output count; message_delta carries the real one.
+    meter = UsageMeter()
+    meter.observe_stream(_start("m1", prompt=100))
+    meter.observe(_message("m1", prompt=100, output=1))
+    meter.observe(_message("m1", prompt=100, output=1))
+    meter.observe_stream(_delta(10_000))
+    assert meter.spent_usd == pytest.approx(_kimi_usd(100, 10_000))
+    assert meter.main_calls == 1
+
+
+def test_a_sub_agents_stream_is_kept_apart_from_the_main_agents():
+    meter = UsageMeter()
+    meter.observe_stream(_start("main-1", prompt=100))
+    meter.observe_stream(_start("sub-1", prompt=50, parent="tu-1"))
+    meter.observe_stream(_delta(2_000, parent="tu-1"))
+    meter.observe_stream(_delta(500))
+    assert meter.spent_usd == pytest.approx(_kimi_usd(100, 500) + _kimi_usd(50, 2_000))
+    assert meter.main_calls == 1
+    assert meter.last_main_call_usd == pytest.approx(_kimi_usd(100, 500))
+
+
+def test_a_delta_with_no_call_started_on_its_stream_is_ignored():
+    meter = UsageMeter()
+    meter.observe_stream(_delta(10_000))
+    meter.observe_stream(_start("main-1"))
+    meter.observe_stream(_delta(10_000, parent="tu-unknown"))
+    assert meter.spent_usd == pytest.approx(_kimi_usd(0, 1))
+
+
+def test_the_next_response_on_a_stream_gets_its_own_delta():
+    meter = UsageMeter()
+    meter.observe_stream(_start("m1"))
+    meter.observe_stream(_delta(300))
+    meter.observe_stream(_start("m2"))
+    meter.observe_stream(_delta(700))
+    assert meter.spent_usd == pytest.approx(_kimi_usd(0, 300) + _kimi_usd(0, 700))
+    assert meter.main_calls == 2
