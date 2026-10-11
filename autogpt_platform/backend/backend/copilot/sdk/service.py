@@ -252,6 +252,8 @@ from .tool_display import (
     stamp_tool_display_name,
     strip_display_token,
 )
+from .turn_summary import TurnSummaryCollector
+from .turn_summary_model import TurnUsage, upload_gate_reason
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -525,6 +527,8 @@ async def _consume_sdk_until_done(
             observed = getattr(sdk_msg, "model", None)
             if isinstance(observed, str) and observed:
                 state.observed_model = observed
+            if ctx.turn_summary is not None:
+                ctx.turn_summary.observe_assistant(sdk_msg)
 
         if loop_state.provider_refused:
             if isinstance(sdk_msg, ResultMessage):
@@ -1433,6 +1437,7 @@ class _StreamContext:
     tool_display: SDKToolDisplayBridge | None = None
     # Index in ``session.messages`` of the stream's first row, for checkpoints.
     turn_start: int = 0
+    turn_summary: TurnSummaryCollector | None = None
 
 
 # Per-retry token budgets for the no-transcript (use_resume=False) path.
@@ -3339,6 +3344,7 @@ async def _build_query_message(
     prior_messages: "list[ChatMessage] | None" = None,
     expect_compaction: bool = False,
     context_prefix: str = "",
+    turn_summary: TurnSummaryCollector | None = None,
 ) -> tuple[str, "CompactionStats | None"]:
     """Build the query message with appropriate context.
 
@@ -3474,6 +3480,10 @@ async def _build_query_message(
                     stats is not None,
                     len(gap_context),
                 )
+                if turn_summary is not None:
+                    turn_summary.note_history_rows(
+                        len(gap), compressed=stats is not None
+                    )
                 return (
                     f"{gap_context}\n\nNow, the user says:\n{current_message}",
                     compaction_stats,
@@ -3520,6 +3530,10 @@ async def _build_query_message(
                     stats is not None,
                     len(gap_context),
                 )
+                if turn_summary is not None:
+                    turn_summary.note_history_rows(
+                        len(gap), compressed=stats is not None
+                    )
                 return (
                     f"{gap_context}\n\nNow, the user says:\n{current_message}",
                     compaction_stats,
@@ -3591,6 +3605,10 @@ async def _build_query_message(
                 stats is not None,
                 len(history_context),
             )
+            if turn_summary is not None:
+                turn_summary.note_history_rows(
+                    len(source), compressed=stats is not None
+                )
             return (
                 f"{context_prefix}{history_context}"
                 f"\n\nNow, the user says:\n{current_message}",
@@ -4480,6 +4498,7 @@ class _RestoreResult:
     transcript_msg_count: int = 0
     baseline_download: "TranscriptDownload | None" = None
     context_messages: "list[ChatMessage] | None" = None
+    download_bytes: int | None = None
 
 
 async def _restore_cli_session_for_turn(
@@ -4515,6 +4534,8 @@ async def _restore_cli_session_for_turn(
             restore_err,
         )
         cli_restore = None
+    if cli_restore is not None:
+        result.download_bytes = len(cli_restore.content)
 
     # Only attempt --resume for SDK-written transcripts.
     # Baseline-written transcripts use TranscriptBuilder format (synthetic IDs,
@@ -4780,6 +4801,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # on the error-recovery turns whose routing we most want recorded.
     pre_turn_message_count = len(session.messages)
 
+    # Created before the strip below so the server's <voice_turn> prefix is
+    # still on the message it reads.
+    turn_summary = TurnSummaryCollector(
+        session_id, message=message, is_user_message=is_user_message
+    )
+
     # Strip any user-injected <user_context> tags on every turn.
     # Only the server-injected prefix on the first message is trusted.
     if message:
@@ -4868,6 +4895,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
     message_id = str(uuid.uuid4())
     stream_id = str(uuid.uuid4())
+    turn_summary.record_turn(
+        turn=turn,
+        message_id=message_id,
+        session=session,
+        permissions=permissions,
+        envelope=envelope,
+    )
     e2b_sandbox = None
     use_resume = False
     resume_file: str | None = None
@@ -4966,6 +5000,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             os.makedirs(sdk_cwd, exist_ok=True)
         except (ValueError, OSError) as e:
             logger.error("%s Invalid SDK cwd: %s", log_prefix, e)
+            turn_summary.note_error("sdk_cwd_error")
             yield StreamError(
                 errorText="Unable to initialize working directory.",
                 code="sdk_cwd_error",
@@ -5115,6 +5150,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         resume_file = _restore.resume_file
         transcript_msg_count = _restore.transcript_msg_count
         restore_context_messages = _restore.context_messages
+        turn_summary.note_download(_restore.download_bytes)
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
         if continued_entry is not None:
@@ -5476,6 +5512,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # original turn-starting send (no pending text yet).
 
         if not current_message.strip():
+            turn_summary.note_error("empty_prompt")
             yield StreamError(
                 errorText="Message cannot be empty.",
                 code="empty_prompt",
@@ -5611,6 +5648,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             prior_messages=restore_context_messages,
             expect_compaction=forecast.expected,
             context_prefix=resume_fallback_prefix or "",
+            turn_summary=turn_summary,
         )
 
         # Snapshot before the close persists its synthetic assistant+tool pair:
@@ -5655,6 +5693,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         query_message = _maybe_prepend_seen_capabilities(
             session, is_user_message, query_message
         )
+        turn_summary.record_query(
+            query_message,
+            use_resume=use_resume,
+            covered_rows=transcript_msg_count,
+            session_rows=len(session.messages),
+        )
 
         # When running without --resume and no prior transcript in storage,
         # seed the transcript builder from compressed DB messages so that
@@ -5692,6 +5736,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             codex_gateway=codex_gateway,
             tool_display=tool_display_bridge,
             turn_start=turn_start,
+            turn_summary=turn_summary,
         )
 
         # ---------------------------------------------------------------
@@ -5847,6 +5892,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     target_tokens=state.target_tokens,
                     expect_compaction=True,
                     context_prefix=resume_fallback_prefix or "",
+                    turn_summary=turn_summary,
                 )
                 if _retry_reduced_context(
                     reduced=ctx,
@@ -5874,6 +5920,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 state.query_message = _maybe_prepend_seen_capabilities(
                     session, is_user_message, state.query_message
                 )
+                turn_summary.record_query(
+                    state.query_message,
+                    use_resume=state.use_resume,
+                    covered_rows=state.transcript_msg_count,
+                    session_rows=len(session.messages),
+                    rebuilt=True,
+                )
                 prior_adapter = state.adapter
                 state.adapter = SDKResponseAdapter(
                     message_id=message_id,
@@ -5891,6 +5944,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 if prior_adapter.emitted_real_content_to_wire:
                     state.adapter.prior_attempt_emitted_visible_content = True
 
+            turn_summary.note_cli_launch()
             pre_attempt_msg_count = len(session.messages)
             # Snapshot transcript builder state — it maintains an
             # independent _entries list from session.messages, so rolling
@@ -6116,6 +6170,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     session_id=session_id,
                 )
             if failure is not None:
+                turn_summary.note_error(failure.code)
                 provider_failure = _provider_failure_for(stream_ctx)
                 cleanup_events: list[StreamBaseResponse] = []
                 if state is not None:
@@ -6634,7 +6689,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                             log_prefix=log_prefix,
                         )
                     )
+                turn_summary.note_upload(_cli_content)
             except Exception as cli_upload_err:
+                turn_summary.note_upload_failed()
                 logger.warning(
                     "%s CLI session upload failed in finally: %s",
                     log_prefix,
@@ -6647,6 +6704,35 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         except Exception:
             logger.warning("%s SDK cleanup failed", log_prefix, exc_info=True)
         finally:
+            # Nothing evaluated for this call may raise: it sits in front of
+            # the lock release. Hence ``model_construct`` (no validation).
+            turn_summary.finish(
+                error=turn_error,
+                session=session,
+                options=state.options if state is not None else None,
+                compaction=compaction,
+                transport="codex" if is_codex_transport else config.effective_transport,
+                model_requested=sdk_model,
+                model_answered=state.observed_model if state is not None else None,
+                e2b=e2b_sandbox is not None,
+                usage=TurnUsage.model_construct(
+                    input_tokens=turn_prompt_tokens,
+                    cache_read_tokens=turn_cache_read_tokens,
+                    cache_write_tokens=turn_cache_creation_tokens,
+                    output_tokens=turn_completion_tokens,
+                    cost_usd=turn_cost_usd,
+                ),
+                codex=is_codex_transport,
+                cost_reconcile=_use_openrouter_reconcile,
+                upload_gate=upload_gate_reason(
+                    resume_enabled=config.claude_agent_use_resume,
+                    user_id=user_id,
+                    started=bool(sdk_cwd) and state is not None,
+                    ended_with_stream_error=ended_with_stream_error,
+                ),
+                ended_with_stream_error=ended_with_stream_error,
+            )
+            turn_summary.emit(langfuse_trace_id)
             # Release stream lock to allow new streams for this session
             await lock.release()
 
