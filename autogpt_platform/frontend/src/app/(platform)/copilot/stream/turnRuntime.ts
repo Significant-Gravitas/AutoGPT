@@ -51,6 +51,7 @@ export const LIVENESS_MS = 30_000;
 /** The load balancer cuts an SSE at 30 minutes; rotate before it does. */
 export const ROTATE_AFTER_MS = 25 * 60_000;
 const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 16_000];
+const TOKEN_RETRY_MS = 1_000;
 const ANOMALY_RETRY_MS = 30_000;
 const INDICATOR_AFTER_FAILURES = 2;
 const CATCHING_UP_AFTER_MS = 2_000;
@@ -147,6 +148,8 @@ interface Connection {
   syntheticError: string | null;
   /** A send's own prompt segment, by key. */
   prompt: string | null;
+  /** Open the same request again; for a send that never left. */
+  reopen: () => Promise<void>;
 }
 
 /** What the classification needs to know about a connection that is gone. */
@@ -458,6 +461,7 @@ export class TurnRuntime {
       closedByClient: false,
       syntheticError: null,
       prompt: init.prompt ?? null,
+      reopen: () => this.open(kind, turnId, url, init, asRotation),
     };
     if (asRotation) this.rotating = conn;
     else {
@@ -566,7 +570,7 @@ export class TurnRuntime {
     const seg = conn.turnId ? this.turnFor(conn.turnId) : null;
     if (seg && (seg.ended || seg.stopped || seg.frozen)) return;
     if (end.kind === "denied") {
-      this.giveUp(end.error);
+      this.tokenFailed(conn, seg, end.error);
       return;
     }
     if (end.kind === "refused" && conn.kind === "post") {
@@ -686,6 +690,29 @@ export class TurnRuntime {
   private reportIfUnexpected(end: Extract<ConnectionEnd, { kind: "refused" }>) {
     if (!isUnexpectedRefusal(end.status)) return;
     this.deps.report("refused", { status: end.status, body: end.body });
+  }
+
+  // The token action answers "no token" for a sign-out and for a failed lookup
+  // alike, so only a second failure in a row means signed out.
+  private tokenFailed(
+    conn: Connection,
+    seg: TurnSegment | null,
+    error: CopilotAuthError,
+  ) {
+    if (seg) {
+      this.denied(seg, { kind: "refused", status: 401, body: null });
+      return;
+    }
+    this.denials += 1;
+    if (this.denials > 1) {
+      this.giveUp(error);
+      return;
+    }
+    this.clearRetry();
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      void conn.reopen();
+    }, TOKEN_RETRY_MS);
   }
 
   /** A refusal no retry can change: end the turn where it stands and say why. */

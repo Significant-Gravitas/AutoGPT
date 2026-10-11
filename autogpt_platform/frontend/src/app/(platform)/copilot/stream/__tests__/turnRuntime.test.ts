@@ -37,6 +37,7 @@ let backend: FakeBackend;
 let runtime: TurnRuntime;
 let toast: Mock<RuntimeDeps["toast"]>;
 let report: Mock<RuntimeDeps["report"]>;
+let tokenFailures = 0;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -44,9 +45,16 @@ beforeEach(() => {
   backend = fakeBackend(toolTurn);
   toast = vi.fn<RuntimeDeps["toast"]>();
   report = vi.fn<RuntimeDeps["report"]>();
+  tokenFailures = 0;
   runtime = new TurnRuntime("session-1", {
     baseUrl: () => "http://backend.test",
-    headers: async () => ({}),
+    headers: async () => {
+      if (tokenFailures > 0) {
+        tokenFailures -= 1;
+        throw new CopilotAuthError();
+      }
+      return {};
+    },
     fetch: backend.fetch,
     fetchSession: async () => backend.view(),
     toast,
@@ -603,7 +611,7 @@ describe("after a lost send, what the user is told follows the server", () => {
 });
 
 describe("refusals no retry can change", () => {
-  it("a send while signed out reports the sign-in error at once, without retrying", async () => {
+  it("a send while signed out reports the sign-in error after one retry, and stops", async () => {
     const onError = vi.fn();
     signOut(() => true, onError);
     void runtime.send({ text: PROMPT }, undefined);
@@ -613,6 +621,32 @@ describe("refusals no retry can change", () => {
     expect(onError).toHaveBeenCalledTimes(1);
     expect(snapshot().notice).toBeNull();
     expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("a send whose token fails once goes out a second later", async () => {
+    tokenFailsFirst(1);
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(500);
+    expect(backend.requests.filter((r) => r.method === "POST")).toHaveLength(0);
+
+    await advance(1_000);
+    backend.publish(FIRST_BLOCK_DONE);
+    await advance(100);
+    expect(backend.requests.filter((r) => r.method === "POST")).toHaveLength(1);
+    expect(snapshot().error).toBeNull();
+    expect(snapshot().phase).toBe("live");
+  });
+
+  it("a resume whose token fails once resumes", async () => {
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    tokenFailsFirst(1);
+    backend.connections[0].fail();
+    await advance(1_000);
+
+    expect(snapshot().error).toBeNull();
+    expect(backend.connections.at(-1)?.url.searchParams.get("turn")).toBe(
+      backend.turnId,
+    );
   });
 
   it("signed out mid-turn ends the turn with the sign-in error, without the connection toast", async () => {
@@ -1022,6 +1056,11 @@ function signOut(isSignedOut: () => boolean, onError = vi.fn()) {
   runtime.bind({ onError }, async () =>
     isSignedOut() ? null : backend.view(),
   );
+}
+
+// The token action fails the next `count` times, then hands out tokens again.
+function tokenFailsFirst(count: number) {
+  tokenFailures = count;
 }
 
 async function sendAndPublish(count: number) {
