@@ -109,3 +109,25 @@ async def test_send_rejects_empty_content_without_logging_in(mocker, content):
         await _run(SendDiscordMessageBlock(), content)
 
     client_cls.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_partial_send_reports_the_chunks_already_delivered(mocker):
+    channel = MagicMock()
+    channel.id = 987654321098765432
+    channel.send = AsyncMock(
+        side_effect=[
+            MagicMock(id=111),
+            discord.HTTPException(MagicMock(status=500, reason="Server Error"), "boom"),
+        ]
+    )
+    _patch_client(mocker, channel)
+
+    out = dict(await _run(SendDiscordMessageBlock(), "x" * 2500))
+
+    assert out["status"].startswith("Error sending message")
+    assert "earlier chunks were already sent" in out["status"]
+    assert out["message_id"] == "111"
+    assert out["channel_id"] == "987654321098765432"
+    assert channel.send.await_count == 2
+    _FakeClient.instances[0].close.assert_awaited_once()

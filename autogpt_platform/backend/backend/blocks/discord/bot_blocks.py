@@ -257,9 +257,10 @@ class SendDiscordMessageBlock(Block):
             # discord.py runs event handlers as tasks and only logs their
             # exceptions, so anything raised here never reaches client.start().
             # Always close the client, or start() runs until the block cap.
+            channel = None
+            last_message = None
             try:
                 print(f"Logged in as {client.user}")
-                channel = None
 
                 # Try to parse as channel ID first
                 try:
@@ -294,7 +295,6 @@ class SendDiscordMessageBlock(Block):
 
                 # Split message into chunks if it exceeds 2000 characters
                 chunks = self.chunk_message(message_content)
-                last_message = None
                 for chunk in chunks:
                     last_message = await channel.send(chunk)  # type: ignore
                 if last_message is None:
@@ -312,6 +312,13 @@ class SendDiscordMessageBlock(Block):
             except Exception as e:
                 result["status"] = f"Error sending message: {e}"
             finally:
+                if last_message is not None and channel is not None:
+                    # A later chunk failed after earlier ones were posted;
+                    # report what was delivered so the caller can see it.
+                    if result["status"] != "Message sent":
+                        result["status"] += " (earlier chunks were already sent)"
+                    result["message_id"] = str(last_message.id)
+                    result["channel_id"] = str(channel.id)
                 await client.close()
 
         await client.start(token)
