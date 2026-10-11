@@ -315,6 +315,14 @@ _FULL_UUID_RE = re.compile(
 _PARTIAL_UUID_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
 
 
+# The CLI's sub-agent tool under its new and old name.  The CLI drops the
+# tool when either name is disallowed, so a list that names one names both,
+# whether it allows or denies.
+_SUBAGENT_TOOL_ALIASES: dict[str, tuple[str, ...]] = {
+    "Agent": ("Task",),
+    "Task": ("Agent",),
+}
+
 # Tools that a blacklist entry must deny alongside the capability named.
 #
 # A blacklist is written against the tools that existed when it was written,
@@ -324,6 +332,7 @@ _PARTIAL_UUID_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
 # everything the bot has already said in them.
 _IMPLIED_DENIALS: dict[str, tuple[str, ...]] = {
     "post_to_chat_platform": ("edit_chat_platform_message",),
+    **_SUBAGENT_TOOL_ALIASES,
 }
 
 
@@ -337,14 +346,15 @@ def _with_implied_denials(denied: frozenset[str]) -> frozenset[str]:
 # Tools that a whitelist entry must allow alongside the capability named.
 #
 # The mirror of the above: a whitelist is also written against the tools that
-# existed when it was written, and the gates are the one case where the tool
-# that does the work was renamed out from under it. A saved list naming
+# existed when it was written, and for the gates the tool that does the work
+# was renamed out from under it. A saved list naming
 # ``run_block`` meant "you may run blocks", which now happens through
 # ``run_capability`` -- a name no existing list can contain. Without this the
 # gate stays open and the tool that opens it is never handed to the model.
 _IMPLIED_GRANTS: dict[str, tuple[str, ...]] = {
     BLOCK_GATE: ("run_capability",),
     MCP_GATE: ("run_capability",),
+    **_SUBAGENT_TOOL_ALIASES,
 }
 
 
@@ -676,10 +686,10 @@ def apply_tool_permissions(
     def to_sdk_names(short: str) -> list[str]:
         names: list[str] = []
         if short in BASELINE_ONLY_MCP_TOOLS:
-            # Baseline ships MCP versions of these (Task/TodoWrite) for
+            # Baseline ships an MCP version of TodoWrite for
             # model-flexibility parity, but SDK mode uses the CLI-native
-            # originals. Permissions target the CLI built-in here so
-            # ``base_allowed`` (which excludes the MCP wrappers) still
+            # original. Permissions target the CLI built-in here so
+            # ``base_allowed`` (which excludes the MCP wrapper) still
             # matches.
             names.append(short)
         elif short in TOOL_REGISTRY:

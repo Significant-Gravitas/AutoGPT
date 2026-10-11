@@ -14,13 +14,17 @@ import claude_agent_sdk
 import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, SystemMessage
 
+from backend.copilot.permissions import CopilotPermissions
+
 from .env import build_sdk_env
+from .service import _build_sdk_tool_options
 from .tool_adapter import (
+    SDK_SUBAGENT_TOOLS,
     get_copilot_tool_names,
-    get_sdk_builtin_tools,
-    get_sdk_declared_tools,
     get_sdk_disallowed_tools,
 )
+
+_EXTRA_BUILTINS = "backend.copilot.sdk.service.config.claude_agent_extra_builtin_tools"
 
 
 def _cli_path() -> str:
@@ -62,7 +66,8 @@ async def test_cli_offers_only_allowed_tools(use_e2b: bool, tmp_path: Path):
         timeout=60,
     )
     assert {"Task", "TodoWrite"} <= set(offered), offered
-    unclassified = sorted(set(offered) - set(allowed) - set(get_sdk_builtin_tools()))
+    # The sub-agent tool is known and deliberately left out of the allowed set.
+    unclassified = sorted(set(offered) - set(allowed) - set(SDK_SUBAGENT_TOOLS))
     assert not unclassified, (
         f"The bundled Claude CLI offers {unclassified}, which security_hooks "
         "denies and nothing classifies. Add each to SDK_DISALLOWED_TOOLS in "
@@ -71,26 +76,42 @@ async def test_cli_offers_only_allowed_tools(use_e2b: bool, tmp_path: Path):
 
 
 @pytest.mark.parametrize(
-    "use_e2b, extra_builtins, expected",
+    "use_e2b, extra_builtins, whitelist, expected",
     [
-        (False, [], {"Glob", "Grep", "TodoWrite"}),
-        (True, [], {"TodoWrite"}),
+        (False, [], None, {"Glob", "Grep", "TodoWrite"}),
+        (True, [], None, {"TodoWrite"}),
+        (True, [], ["web_fetch"], set()),
         # The init message names the sub-agent tool "Task"; the wire calls it "Agent".
-        (False, ["Agent"], {"Glob", "Grep", "TodoWrite", "Task"}),
-        (True, ["Agent"], {"TodoWrite", "Task"}),
+        (False, ["Agent"], None, {"Glob", "Grep", "TodoWrite", "Task"}),
+        (True, ["Agent"], None, {"TodoWrite", "Task"}),
+        # A whitelist naming either alias keeps the re-enabled tool declared.
+        (False, ["Agent"], ["Agent", "web_fetch", "TodoWrite"], {"TodoWrite", "Task"}),
+        (True, ["Agent"], ["Task", "web_fetch"], {"Task"}),
     ],
 )
 @pytest.mark.asyncio
 async def test_cli_declares_exactly_the_session_builtins(
-    use_e2b: bool, extra_builtins: list[str], expected: set[str], tmp_path: Path
+    use_e2b: bool,
+    extra_builtins: list[str],
+    whitelist: list[str] | None,
+    expected: set[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ):
-    allowed = get_copilot_tool_names(use_e2b=use_e2b, extra_builtins=extra_builtins)
-    disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+    monkeypatch.setattr(_EXTRA_BUILTINS, extra_builtins)
+    permissions = (
+        None
+        if whitelist is None
+        else CopilotPermissions(tools=whitelist, tools_exclude=False)
+    )
+    tool_options = _build_sdk_tool_options(
+        permissions, use_e2b=use_e2b, disabled_groups=[]
+    )
     offered = await asyncio.wait_for(
         _cli_offered_tools(
-            allowed,
-            disallowed,
-            get_sdk_declared_tools(allowed, disallowed),
+            tool_options["allowed_tools"],
+            tool_options["disallowed_tools"],
+            tool_options["tools"],
             tmp_path,
         ),
         timeout=60,
