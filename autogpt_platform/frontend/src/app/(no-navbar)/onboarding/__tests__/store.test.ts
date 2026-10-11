@@ -197,27 +197,27 @@ describe("useOnboardingWizardStore", () => {
 });
 
 describe("buildStepLayout", () => {
-  it("leads with the paywall and slots the hire step after the brain dump", () => {
+  it("places the paywall after personalization and hiring", () => {
     expect(
       buildStepLayout({ hasIntro: true, hasHire: true, hasPaywall: true }),
     ).toEqual({
-      subscription: 1,
-      team: 2,
-      autopilot: 3,
-      role: 4,
-      painPoints: 5,
-      hire: 6,
+      team: 1,
+      autopilot: 2,
+      role: 3,
+      painPoints: 4,
+      hire: 5,
+      subscription: 6,
       preparing: 7,
     });
   });
 
   it("leaves the hire step out when it is off", () => {
     expect(buildStepLayout({ hasIntro: true, hasPaywall: true })).toEqual({
-      subscription: 1,
-      team: 2,
-      autopilot: 3,
-      role: 4,
-      painPoints: 5,
+      team: 1,
+      autopilot: 2,
+      role: 3,
+      painPoints: 4,
+      subscription: 5,
       preparing: 6,
     });
   });
