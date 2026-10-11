@@ -139,6 +139,8 @@ export type SendInput =
 interface Connection {
   kind: "post" | "resume";
   controller: AbortController;
+  /** Open the same request again; for a send that never left. */
+  reopen: () => Promise<void>;
   openedAt: number;
   lastFrameAt: number;
   frames: number;
@@ -148,8 +150,6 @@ interface Connection {
   syntheticError: string | null;
   /** A send's own prompt segment, by key. */
   prompt: string | null;
-  /** Open the same request again; for a send that never left. */
-  reopen: () => Promise<void>;
 }
 
 /** What the classification needs to know about a connection that is gone. */
@@ -453,6 +453,7 @@ export class TurnRuntime {
     const conn: Connection = {
       kind,
       controller: new AbortController(),
+      reopen: () => this.open(kind, turnId, url, init, asRotation),
       openedAt: now,
       lastFrameAt: now,
       frames: 0,
@@ -461,7 +462,6 @@ export class TurnRuntime {
       closedByClient: false,
       syntheticError: null,
       prompt: init.prompt ?? null,
-      reopen: () => this.open(kind, turnId, url, init, asRotation),
     };
     if (asRotation) this.rotating = conn;
     else {
