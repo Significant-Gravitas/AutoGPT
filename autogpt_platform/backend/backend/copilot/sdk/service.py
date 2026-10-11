@@ -52,6 +52,7 @@ from backend.copilot.model_router import (
     resolve_codex_model_route,
     resolve_model_route,
 )
+from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.continuation import as_model_prompt
 from backend.copilot.feedback_db import RATEABLE_ROLES
@@ -6687,9 +6688,22 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # A paused turn doesn't continue either: it stopped because it ran out of
     # budget or reached its check-in, and the user picks it back up from the
     # Paused card. Anything queued meanwhile stays queued for that turn.
+    #
+    # Nor does a platform turn the allowance can no longer cover: nobody
+    # pressed send for the continuation, so nothing else would check it. The
+    # queued messages stay queued and a not-started pause takes their place.
     # -------------------------------------------------------------------------
     if not ended_with_stream_error and not (governor is not None and governor.landed):
-        _auto_pending_messages = await drain_pending_safe(session_id, log_prefix)
+        auto_continue = await gate_auto_continue(
+            session, user_id, platform_billed=not is_codex_transport
+        )
+        if auto_continue.pause is not None:
+            yield StreamTurnPaused(pause=auto_continue.pause.as_part())
+        _auto_pending_messages = (
+            await drain_pending_safe(session_id, log_prefix)
+            if auto_continue.proceed
+            else []
+        )
         if _auto_pending_messages:
             logger.info(
                 "%s Auto-continuing with %d pending message(s) queued after turn start",

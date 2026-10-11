@@ -1,0 +1,203 @@
+"""The executor checks the allowance of every platform turn it picks up.
+
+Whatever queued the turn -- the chat route, a schedule, the AutoPilot block, a
+sub-session, a chat bot -- a turn the allowance can't cover never runs: it
+ends as a not-started pause, live and on a marker row, without an error.
+"""
+
+import logging
+import threading
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from backend.copilot.executor.processor import (
+    RATE_LIMIT_UNAVAILABLE_CODE,
+    RATE_LIMIT_UNAVAILABLE_MESSAGE,
+    CoPilotProcessor,
+)
+from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
+from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.rate_limit import RateLimitUnavailable
+from backend.copilot.response_model import StreamStart, StreamTurnPaused
+from backend.copilot.turn_pause import TurnPause, pause_of
+
+_PROC = "backend.copilot.executor.processor"
+PAUSE = TurnPause(
+    reason="daily",
+    resets_at=datetime(2026, 10, 15, tzinfo=UTC),
+    checkpoint_saved=False,
+    started=False,
+)
+
+
+@pytest.fixture(autouse=True)
+def no_trial_attribution(mocker):
+    store = MagicMock()
+    store.get_usage_activation_state = AsyncMock(
+        side_effect=lambda user_id: SimpleNamespace(
+            user_id=user_id, generation=None, trial_id=None, ready=True
+        )
+    )
+    mocker.patch(
+        "backend.copilot.usage_activation.pro_activation_db", return_value=store
+    )
+
+
+class _Turn:
+    """Runs ``_execute_async`` with the registry, session store and engine
+    replaced, recording what the turn published and how it ended."""
+
+    def __init__(self, session: ChatSession) -> None:
+        self.session = session
+        self.publish = AsyncMock()
+        self.complete = AsyncMock()
+        self.save = AsyncMock()
+        self.engine = MagicMock(return_value=MagicMock())
+        self.stream = MagicMock(return_value=_EmptyStream())
+
+    async def run(self, entry: CoPilotExecutionEntry, refusal: AsyncMock) -> None:
+        with (
+            patch(f"{_PROC}.refusal_for", refusal),
+            patch(f"{_PROC}.stream_registry.publish_chunk", self.publish),
+            patch(f"{_PROC}.stream_registry.mark_session_completed", self.complete),
+            patch(f"{_PROC}.stream_registry.stream_and_publish", self.stream),
+            patch(f"{_PROC}.ChatConfig", return_value=MagicMock(test_mode=True)),
+            patch(f"{_PROC}.stream_chat_completion_dummy", self.engine),
+            patch(
+                "backend.copilot.model.get_chat_session",
+                AsyncMock(return_value=self.session),
+            ),
+            patch("backend.copilot.budget_gate.upsert_chat_session", self.save),
+        ):
+            await CoPilotProcessor()._execute_async(
+                entry,
+                threading.Event(),
+                MagicMock(),
+                CoPilotLogMetadata(logger=logging.getLogger("test-copilot")),
+            )
+
+    def published(self) -> list:
+        return [call.args[1] for call in self.publish.await_args_list]
+
+
+class _EmptyStream:
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        raise StopAsyncIteration
+
+    async def aclose(self) -> None:
+        return None
+
+
+def _entry(**update) -> CoPilotExecutionEntry:
+    entry = CoPilotExecutionEntry(
+        session_id="sess-1",
+        turn_id="turn-1",
+        user_id="user-1",
+        message="summarise my inbox",
+    )
+    return entry.model_copy(update=update)
+
+
+def _session(*messages: ChatMessage) -> ChatSession:
+    session = ChatSession.new("user-1", dry_run=False)
+    session.session_id = "sess-1"
+    session.messages = list(messages)
+    return session
+
+
+@pytest.mark.asyncio
+async def test_a_refused_turn_ends_paused_without_running():
+    turn = _Turn(_session(ChatMessage(role="assistant", content="Earlier.")))
+    refusal = AsyncMock(return_value=PAUSE)
+
+    await turn.run(_entry(), refusal)
+
+    refusal.assert_awaited_once_with("user-1")
+    turn.engine.assert_not_called()
+    turn.stream.assert_not_called()
+    paused = [c for c in turn.published() if isinstance(c, StreamTurnPaused)]
+    assert [c.pause for c in paused] == [PAUSE.as_part()]
+    assert any(isinstance(c, StreamStart) for c in turn.published())
+    for call in turn.publish.await_args_list:
+        assert call.args[0] == "turn-1"
+    # The chat keeps what was asked and why it didn't run.
+    asked, marker = turn.session.messages[-2:]
+    assert (asked.role, asked.content) == ("user", "summarise my inbox")
+    assert pause_of(marker) == PAUSE
+    turn.save.assert_awaited_once_with(turn.session)
+    turn.complete.assert_awaited_once_with(
+        "sess-1", error_message=None, error_code=None, turn_id="turn-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_message_the_route_already_saved_is_not_saved_twice():
+    turn = _Turn(_session(ChatMessage(role="user", content="summarise my inbox")))
+
+    await turn.run(_entry(), AsyncMock(return_value=PAUSE))
+
+    assert [m.content for m in turn.session.messages if m.role == "user"] == [
+        "summarise my inbox"
+    ]
+    assert pause_of(turn.session.messages[-1]) == PAUSE
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_allowance_fails_the_turn_closed():
+    turn = _Turn(_session())
+
+    await turn.run(_entry(), AsyncMock(side_effect=RateLimitUnavailable()))
+
+    turn.engine.assert_not_called()
+    turn.stream.assert_not_called()
+    assert not any(isinstance(c, StreamTurnPaused) for c in turn.published())
+    turn.complete.assert_awaited_once_with(
+        "sess-1",
+        error_message=RATE_LIMIT_UNAVAILABLE_MESSAGE,
+        error_code=RATE_LIMIT_UNAVAILABLE_CODE,
+        turn_id="turn-1",
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_turn_the_allowance_covers_runs():
+    turn = _Turn(_session())
+
+    await turn.run(_entry(), AsyncMock(return_value=None))
+
+    turn.engine.assert_called_once()
+    turn.stream.assert_called_once()
+    turn.save.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_turn_on_the_users_own_subscription_is_not_checked():
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        llm_auth_provider="microsoft_365_copilot",
+        llm_credential_id="cred-microsoft",
+    )
+    session.session_id = "sess-1"
+    turn = _Turn(session)
+    refusal = AsyncMock(return_value=PAUSE)
+    manager = MagicMock(acquire_lease=AsyncMock(side_effect=ValueError))
+
+    with patch(f"{_PROC}.IntegrationCredentialsManager", return_value=manager):
+        with pytest.raises(RuntimeError):
+            await turn.run(
+                _entry(
+                    llm_auth_provider="microsoft_365_copilot",
+                    llm_credential_id="cred-microsoft",
+                ),
+                refusal,
+            )
+
+    refusal.assert_not_awaited()
+    manager.acquire_lease.assert_awaited_once()

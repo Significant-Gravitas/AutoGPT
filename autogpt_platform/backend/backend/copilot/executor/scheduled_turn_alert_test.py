@@ -40,6 +40,15 @@ def mock_stream_publication(mocker):
     )
 
 
+@pytest.fixture(autouse=True)
+def allowance_admits_every_turn(mocker):
+    """The pickup budget gate has its own tests (processor_budget_gate_test)."""
+    mocker.patch(
+        "backend.copilot.executor.processor.refusal_for",
+        AsyncMock(return_value=None),
+    )
+
+
 def _entry(scheduled: ScheduledTurnOrigin | None) -> CoPilotExecutionEntry:
     return CoPilotExecutionEntry(
         session_id="sess-weekly-report",
