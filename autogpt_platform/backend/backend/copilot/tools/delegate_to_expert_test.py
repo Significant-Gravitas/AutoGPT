@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot.active_turns import delegated_turn_limit_message
 from backend.copilot.sdk.session_waiter import SessionResult
 
 from .delegate_to_expert import DelegateToExpertTool
@@ -923,6 +924,26 @@ class TestRefusedDelegationCleanup:
 
         assert isinstance(result, ErrorResponse)
         assert "inner-1" not in result.model_dump_json()
+
+    async def test_a_delegation_refused_at_the_reserve_says_to_wait(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        """The thread is discarded, but the model still learns the last slot is
+        the user's and to wait for a running task, as the other spawn tools say."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", AsyncMock()
+        )
+        mock_turn.return_value = ("rejected_concurrent_turn_cap", SessionResult())
+
+        result = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="draft the ops update",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert result.message == delegated_turn_limit_message()
 
     async def test_a_refused_resume_keeps_the_prior_thread(
         self, roster, mock_turn, mock_sessions, monkeypatch

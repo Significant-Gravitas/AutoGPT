@@ -20,11 +20,9 @@ Public API
   used by the queue layer (in-flight = running + queued) and the
   dispatcher's busy-session check.
 
-Cap admission is a *non-locked* count-then-update. Two concurrent
-submits from the same user can both pass the count and both update,
-leaving the user briefly one or two over the cap. This is the same
-trade-off the graph-execution credit rate-limit accepts on its
-``INCRBY`` path: the cap is a safeguard, not a budget.
+Cap admission counts and flips under one per-user database lock
+(``admit_chat_session_turn``), so concurrent submits fill exactly the free
+slots: none over the cap, and none refused while a slot is free.
 
 DB access goes through :func:`backend.data.db_accessors.chat_db` so
 the dispatcher works from both the HTTP server (Prisma directly) and
@@ -60,6 +58,12 @@ def get_inflight_turn_limit() -> int:
     return Settings().config.max_inflight_copilot_turns_per_user
 
 
+def get_delegated_turn_limit() -> int:
+    """Running cap for a turn another session started: one below the user's, so
+    sub-work never takes the last slot (at a cap of 1 there is none to keep)."""
+    return max(get_running_turn_limit() - 1, 1)
+
+
 def inflight_turn_limit_message(limit: int | None = None) -> str:
     """User-facing 429 detail when the in-flight cap is hit."""
     resolved = get_inflight_turn_limit() if limit is None else limit
@@ -79,6 +83,16 @@ def running_turn_limit_message(limit: int | None = None) -> str:
     return (
         f"You have {resolved} tasks already running. "
         "Please wait for one of them to finish before starting a new one."
+    )
+
+
+def delegated_turn_limit_message() -> str:
+    """What a spawn tool tells the model when its turn hit the delegated cap."""
+    return (
+        f"Sub-work may use {get_delegated_turn_limit()} of the user's "
+        f"{get_running_turn_limit()} task slots, and those are all taken (the "
+        "last slot is kept for the user's own messages). Wait for a running "
+        "task to finish before starting another."
     )
 
 
@@ -177,23 +191,15 @@ async def acquire_turn_slot(
     resolved_capacity = capacity if capacity is not None else get_running_turn_limit()
     db = chat_db()
 
-    # Try fresh admit: promote idle → running in one CAS-gated update.
-    if await db.update_chat_session_status(
+    admit = await db.admit_chat_session_turn(
         session_id=session_id,
-        expect_status=CHAT_STATUS_IDLE,
-        status=CHAT_STATUS_RUNNING,
         user_id=user_id,
-    ):
-        # Fresh admit: enforce the cap by counting AFTER the flip.
-        # Reading after-write is OK because over-admit just briefly
-        # exceeds the cap — the user gets one extra slot at most under
-        # burst, same trade-off as the prior count-then-update path.
-        if await count_running_turns(user_id) > resolved_capacity:
-            # Roll back our flip; the caller falls through to the queue.
-            await release_turn_slot(user_id, session_id)
-            raise ConcurrentTurnLimitError(
-                running_turn_limit_message(resolved_capacity)
-            )
+        expect_status=CHAT_STATUS_IDLE,
+        capacity=resolved_capacity,
+    )
+    if admit == "full":
+        raise ConcurrentTurnLimitError(running_turn_limit_message(resolved_capacity))
+    if admit == "admitted":
         handle.admitted = True
     else:
         # CAS failed: session was not idle.  Disambiguate by reading

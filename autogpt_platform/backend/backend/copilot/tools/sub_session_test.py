@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot import active_turns
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
@@ -1105,6 +1106,19 @@ class TestHollowResponseRepro:
 # actor parameter — response_from_outcome builds the message once instead of
 # relying on a post-hoc string substitution against its own wording.
 # ---------------------------------------------------------------------------
+
+
+def test_a_sub_refused_at_the_cap_is_told_the_last_slot_is_the_users(monkeypatch):
+    monkeypatch.setattr(active_turns, "get_running_turn_limit", lambda: 5)
+    r = response_from_outcome(
+        outcome="rejected_concurrent_turn_cap",
+        result=SessionResult(),
+        inner_session_id="inner-1",
+        parent_session_id="parent-1",
+        elapsed=1.0,
+    )
+    assert r.message is not None
+    assert "Sub-work may use 4 of the user's 5 task slots" in r.message
 
 
 class TestActorParameter:

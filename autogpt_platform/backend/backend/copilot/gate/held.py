@@ -208,6 +208,7 @@ async def wake(
     from backend.copilot.active_turns import (
         ConcurrentTurnLimitError,
         acquire_turn_slot,
+        get_delegated_turn_limit,
         get_inflight_turn_limit,
     )
     from backend.copilot.executor.utils import dispatch_turn
@@ -220,6 +221,7 @@ async def wake(
         is_users_own_chat,
         post_refusal,
         try_enqueue_turn,
+        wakes_sub_work,
     )
 
     try:
@@ -247,8 +249,11 @@ async def wake(
             return
         permissions = resolve_session_permissions(info)
         metadata = {_WAKE_KEY: True}
+        capacity = get_delegated_turn_limit() if wakes_sub_work(info) else None
         try:
-            async with acquire_turn_slot(user_id, session_id) as slot:
+            async with acquire_turn_slot(
+                user_id, session_id, capacity=capacity
+            ) as slot:
                 # Not admitted: a turn is already running, and its end wakes us.
                 if not slot.admitted:
                     return
