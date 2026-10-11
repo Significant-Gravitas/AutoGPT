@@ -1599,6 +1599,9 @@ async def append_expert_run_message(
                 message_id=message_id,
                 metadata=metadata,
             )
+    # The chat page reads the session through the Redis cache: drop a copy
+    # from before this post, or the post shows only once the copy expires.
+    await invalidate_session_cache(session_id)
     return session_id
 
 
@@ -1720,4 +1723,6 @@ async def append_plain_session_message(
             # lock without acquiring); one retry with a fresh sequence is
             # enough at this write volume.
             await write_with_fresh_sequence()
+    # Same as append_expert_run_message: drop a cached copy from before.
+    await invalidate_session_cache(session_id)
     return session_id
