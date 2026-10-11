@@ -29,6 +29,7 @@ def _execution(*, with_nodes: bool, outputs: dict, node_executions: list):
     execution = MagicMock(spec=spec)
     execution.id = "exec-1"
     execution.graph_version = 1
+    execution.nodes_input_masks = None
     execution.status = ExecutionStatus.COMPLETED
     execution.started_at = None
     execution.ended_at = None

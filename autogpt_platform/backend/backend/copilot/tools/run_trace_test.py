@@ -27,7 +27,7 @@ from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.tools.agent_output import AgentOutputTool
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.run_agent import RunAgentTool
-from backend.copilot.tools.run_trace import run_outside
+from backend.copilot.tools.run_trace import node_trace, run_outside
 from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionWithNodes,
@@ -418,18 +418,93 @@ async def test_a_trace_its_graph_cannot_account_for_is_judged_whole(
 )
 def test_a_malformed_trace_declares_nothing(trace):
     graph, _ = _haiku_run()
-    assert run_outside(graph, 1, trace, {"out": ["x"]}) is None
+    assert run_outside(graph, 1, None, trace, {"out": ["x"]}) is None
+
+
+@pytest.mark.parametrize("overrides", ["x", {"llm": "x"}, {"llm": ["sys_prompt"]}])
+def test_malformed_run_overrides_declare_nothing(overrides):
+    graph, run = _haiku_run()
+    trace = node_trace(run.node_executions)
+    assert run_outside(graph, 1, overrides, trace) is None
+
+
+def test_a_node_whose_block_is_unknown_declares_nothing():
+    graph, run = _haiku_run()
+    graph.nodes[1].block_id = run.node_executions[1].block_id = "no-such-block"
+    trace = node_trace(run.node_executions)
+    assert run_outside(graph, 1, None, trace) is None
 
 
 def test_a_failure_while_accounting_declares_nothing():
     graph = MagicMock(version=1)
     type(graph).nodes = property(lambda self: (_ for _ in ()).throw(KeyError("x")))
     trace = [{"node_id": "llm", "input_data": {}, "output_data": {}}]
-    assert run_outside(graph, 1, trace) is None
+    assert run_outside(graph, 1, None, trace) is None
 
 
 def test_without_a_trace_every_part_is_declared_whole():
-    assert run_outside(None, None, None, {"out": [_SYS_PROMPT]}, []) == (
+    assert run_outside(None, None, None, None, {"out": [_SYS_PROMPT]}, []) == (
         {"out": [_SYS_PROMPT]},
         [],
     )
+
+
+# What the run itself supplied is judged even when it equals the graph's value.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool", _TOOLS)
+@pytest.mark.parametrize("value", [_SYS_PROMPT, _INJECTION], ids=["equal", "other"])
+async def test_a_pin_the_run_overrides_is_judged(judge, tool, value):
+    """``nodes_input_masks`` sets the pin at run time: equal to the graph's
+    default or not, it is not the graph's own value."""
+    graph, run = _haiku_run()
+    run.nodes_input_masks = {"llm": {"sys_prompt": value}}
+    run.node_executions[1].input_data["sys_prompt"] = value
+
+    _, judged = await _call(judge, tool, graph, run)
+
+    assert value in judged
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool", _TOOLS)
+async def test_an_input_blocks_pins_are_judged_even_at_their_defaults(judge, tool):
+    """The run's own inputs land on input blocks, outside ``nodes_input_masks``."""
+    graph, run = _haiku_run()
+    graph.nodes[0].input_default["value"] = _INJECTION
+    run.node_executions[0].input_data["value"] = _INJECTION
+
+    _, judged = await _call(judge, tool, graph, run)
+
+    assert _INJECTION in judged
+
+
+# A trace that fails to build never skips the judge.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool", _TOOLS)
+async def test_a_block_lookup_that_fails_judges_the_whole_result(judge, tool):
+    graph, run = _haiku_run()
+    with patch(
+        "backend.copilot.tools.run_trace.get_block",
+        side_effect=RuntimeError("registry down"),
+    ):
+        output, judged = await _call(judge, tool, graph, run)
+
+    assert judged == output and "You are a haiku poet" in judged
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool", _TOOLS)
+async def test_a_trace_that_fails_to_build_judges_the_whole_result(judge, tool):
+    graph, run = _haiku_run()
+    module = "run_agent" if tool == "run_agent" else "agent_output"
+    with patch(
+        f"backend.copilot.tools.{module}.node_trace",
+        side_effect=RuntimeError("bad node"),
+    ):
+        output, judged = await _call(judge, tool, graph, run)
+
+    assert judged == output and "Morning fog begins to lift" in judged

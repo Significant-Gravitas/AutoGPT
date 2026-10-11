@@ -1116,7 +1116,10 @@ class RunAgentTool(BaseTool):
                 # without a follow-up view_agent_output call — to keep wet-run
                 # responses small.
                 node_executions_data = None
-                trace_version = None
+                trace_version = trace_overrides = None
+                # Anything failing here leaves the trace out, and the judge
+                # then reads the whole response.
+                trace_failed = False
                 node_failures: list[NodeFailureSummary] = []
                 try:
                     detailed = await execution_db().get_graph_execution(
@@ -1131,7 +1134,10 @@ class RunAgentTool(BaseTool):
                         if dry_run:
                             node_executions_data = node_trace(detailed.node_executions)
                             trace_version = detailed.graph_version
+                            trace_overrides = detailed.nodes_input_masks
                 except Exception:
+                    node_executions_data = None
+                    trace_failed = True
                     logger.warning(
                         "run_agent: failed to load node executions for "
                         "execution %s; returning summary only",
@@ -1170,8 +1176,17 @@ class RunAgentTool(BaseTool):
                         nodes_failed=node_failures or None,
                     ),
                 )
-                outside = run_outside(
-                    graph, trace_version, node_executions_data, outputs, node_failures
+                outside = (
+                    None
+                    if trace_failed
+                    else run_outside(
+                        graph,
+                        trace_version,
+                        trace_overrides,
+                        node_executions_data,
+                        outputs,
+                        node_failures,
+                    )
                 )
                 # Declaring nothing judges the whole response.
                 return response if outside is None else response.from_outside(*outside)

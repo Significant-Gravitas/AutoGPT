@@ -381,9 +381,19 @@ class AgentOutputTool(BaseTool):
 
         node_executions_data = None
         node_failures: list[NodeFailureSummary] = []
+        # A trace that fails to build is not shown; the judge then reads the
+        # whole response.
+        trace_failed = False
         if isinstance(execution, GraphExecutionWithNodes):
             node_failures = summarize_node_failures(execution.node_executions)
-            node_executions_data = node_trace(execution.node_executions)
+            try:
+                node_executions_data = node_trace(execution.node_executions)
+            except Exception:
+                logger.warning(
+                    f"Trace of execution {execution.id} not built; judged whole",
+                    exc_info=True,
+                )
+                trace_failed = True
 
         execution_info = ExecutionOutputInfo(
             execution_id=execution.id,
@@ -455,13 +465,18 @@ class AgentOutputTool(BaseTool):
             available_executions=available_list,
             total_executions=len(available_executions) if available_executions else 1,
         )
-        outside = run_outside(
-            graph,
-            execution.graph_version,
-            node_executions_data,
-            execution_info.outputs,
-            execution_info.inputs_summary,
-            node_failures,
+        outside = (
+            None
+            if trace_failed
+            else run_outside(
+                graph,
+                execution.graph_version,
+                execution.nodes_input_masks,
+                node_executions_data,
+                execution_info.outputs,
+                execution_info.inputs_summary,
+                node_failures,
+            )
         )
         # Declaring nothing judges the whole response.
         return response if outside is None else response.from_outside(*outside)
