@@ -9,6 +9,7 @@ import {
   formatNotificationTitle,
   getCopilotAuthHeaders,
   getSendSuppressionReason,
+  hasVisibleAssistantContent,
   parseSessionIDs,
   isEngineSwitchPart,
   resolveSessionDryRun,
@@ -53,6 +54,34 @@ describe("formatNotificationTitle", () => {
     expect(formatNotificationTitle(1)).toBe(
       `(1) New activity - ${ORIGINAL_TITLE}`,
     );
+  });
+});
+
+describe("hasVisibleAssistantContent", () => {
+  function assistant(parts: UIMessage["parts"]): UIMessage[] {
+    return [{ id: "a1", role: "assistant", parts }];
+  }
+
+  it("counts a Paused card, the only thing a turn refused before it ran shows", () => {
+    expect(
+      hasVisibleAssistantContent(
+        assistant([
+          { type: "data-status", data: { message: "Picking it up…" } },
+          { type: "data-turn-paused", data: { reason: "daily" } },
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not count bookkeeping alone", () => {
+    expect(
+      hasVisibleAssistantContent(
+        assistant([
+          { type: "step-start" },
+          { type: "data-status", data: { message: "Picking it up…" } },
+        ]),
+      ),
+    ).toBe(false);
   });
 });
 

@@ -11,6 +11,8 @@ interface Props {
   /** Defaults to "copilot" — the standalone page. */
   chatSurface?: CopilotChatSurface;
   getExecutionShareToken?: (executionId: string) => string | null | undefined;
+  sessionId?: string | null;
+  assistantName?: string;
   children: React.ReactNode;
 }
 
@@ -19,11 +21,20 @@ export function CopilotChatActionsProvider({
   onBackendTurn,
   chatSurface = "copilot",
   getExecutionShareToken,
+  sessionId,
+  assistantName,
   children,
 }: Props) {
   return (
     <CopilotChatActionsContext.Provider
-      value={{ onSend, onBackendTurn, chatSurface, getExecutionShareToken }}
+      value={{
+        onSend,
+        onBackendTurn,
+        chatSurface,
+        getExecutionShareToken,
+        sessionId,
+        assistantName,
+      }}
     >
       {children}
     </CopilotChatActionsContext.Provider>

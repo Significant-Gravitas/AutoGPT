@@ -23,6 +23,7 @@ export enum Key {
   COPILOT_MODE = "copilot-mode",
   COPILOT_MODEL = "copilot-model",
   COPILOT_COMPLETED_SESSIONS = "copilot-completed-sessions",
+  COPILOT_STOPPED_PAUSES = "copilot-stopped-pauses",
   PUSH_SUBSCRIPTION_REGISTERED = "push-subscription-registered",
   COPILOT_DRY_RUN = "copilot-dry-run",
   COPILOT_VOICE_SILENCE_TIMEOUT = "copilot-voice-silence-timeout",

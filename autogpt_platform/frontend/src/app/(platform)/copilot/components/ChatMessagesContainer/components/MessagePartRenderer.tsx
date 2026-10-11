@@ -27,6 +27,8 @@ import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import { CompactionCard } from "../../CompactionCard/CompactionCard";
 import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardingCard";
+import { TurnPausedCard } from "../../TurnPausedCard/TurnPausedCard";
+import { TURN_PAUSED_PART_TYPE } from "../../../turnPause";
 import {
   parseCompactionOutput,
   type CompactionPhase,
@@ -223,6 +225,14 @@ export function MessagePartRenderer({
         />
       );
     }
+    case TURN_PAUSED_PART_TYPE:
+      return (
+        <TurnPausedCard
+          key={key}
+          data={"data" in part ? part.data : undefined}
+          pauseKey={("id" in part && part.id) || key}
+        />
+      );
     case "tool-ask_question":
       return <AskQuestionTool key={key} part={part as ToolUIPart} />;
     case "tool-expert_onboarding":
