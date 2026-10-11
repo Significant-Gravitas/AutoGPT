@@ -20,7 +20,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
+import {
+  invalidateAllScheduleQueries,
+  reconcileAfterScheduleWriteError,
+} from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
@@ -60,6 +63,7 @@ export function ScheduleActionsDropdown({
 
       invalidateAllScheduleQueries(queryClient, agent.graph_id);
     } catch (error: unknown) {
+      reconcileAfterScheduleWriteError(queryClient, error, agent.graph_id);
       toast({
         title: "Failed to delete schedule",
         description:

@@ -10,8 +10,10 @@ import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { trackAgentRunGoal } from "@/services/analytics/activation-goals";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
-import { isSchedulerUnconfirmedError } from "@/services/schedules/scheduler-availability";
+import {
+  invalidateAllScheduleQueries,
+  reconcileAfterScheduleWriteError,
+} from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -45,10 +47,7 @@ export function useSelectedScheduleActions({
         invalidateAllScheduleQueries(queryClient, agent.graph_id);
       },
       onError: (error: unknown) => {
-        // The scheduler may have deleted it without confirming.
-        if (isSchedulerUnconfirmedError(error)) {
-          invalidateAllScheduleQueries(queryClient, agent.graph_id);
-        }
+        reconcileAfterScheduleWriteError(queryClient, error, agent.graph_id);
         toast({
           title: "Failed to delete schedule",
           description:

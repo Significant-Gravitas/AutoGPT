@@ -4,7 +4,11 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { trackScheduleCreatedGoal } from "@/services/analytics/activation-goals";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
-import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
+import {
+  invalidateAllScheduleQueries,
+  reconcileAfterScheduleWriteError,
+} from "@/services/schedules/invalidate-schedules";
+import { createSubmissionKeys } from "@/services/schedules/submission-keys";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useEffect, useState } from "react";
@@ -27,6 +31,7 @@ export function useCronSchedulerDialog({
   const [cronExpression, setCronExpression] = useState<string>("");
   const [scheduleName, setScheduleName] = useState<string>("");
   const [scheduleNameError, setScheduleNameError] = useState<string>("");
+  const [submissionKeys] = useState(createSubmissionKeys);
 
   const [{ flowID, flowVersion }] = useQueryStates({
     flowID: parseAsString,
@@ -49,14 +54,24 @@ export function useCronSchedulerDialog({
             });
             if (flowID) trackScheduleCreatedGoal({ id: flowID }, "builder");
             invalidateAllScheduleQueries(queryClient, flowID ?? undefined);
+            submissionKeys.reset();
           }
         },
         onError: (error) => {
+          // The scheduler may have created it without confirming; show it if so.
+          // A retry reuses the submission's key, so it can't add a second one.
+          reconcileAfterScheduleWriteError(
+            queryClient,
+            error,
+            flowID ?? undefined,
+          );
           toast({
             variant: "destructive",
             title: "Failed to create schedule",
             description:
-              (error.detail as string) ?? "An unexpected error occurred.",
+              error instanceof Error
+                ? error.message
+                : "An unexpected error occurred.",
           });
         },
       },
@@ -102,15 +117,16 @@ export function useCronSchedulerDialog({
       return;
     }
 
+    const data = {
+      name: scheduleName.trim(),
+      graph_version: flowID ? flowVersion : undefined,
+      cron: cronExpression,
+      inputs: inputs,
+      credentials: credentials,
+    };
     await createSchedule({
       graphId: flowID || "",
-      data: {
-        name: scheduleName.trim(),
-        graph_version: flowID ? flowVersion : undefined,
-        cron: cronExpression,
-        inputs: inputs,
-        credentials: credentials,
-      },
+      data: { ...data, schedule_id: submissionKeys.keyFor(data) },
     });
   }
 

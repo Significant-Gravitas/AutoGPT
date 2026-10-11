@@ -69,7 +69,7 @@ def get_interactive_scheduler_client() -> "SchedulerClient":
     The default client waits up to the 300s RPC timeout, even to connect, so a
     restarting scheduler held schedule pages until the 30s proxy gave up. This
     one gives up connecting after ``scheduler_connect_timeout_seconds`` and
-    waiting for an answer after ``schedule_write_timeout_seconds``.
+    waiting for an answer after ``scheduler_request_timeout_seconds``.
     """
     from backend.executor.scheduler import SchedulerClient
     from backend.util.service import get_service_client
@@ -78,7 +78,7 @@ def get_interactive_scheduler_client() -> "SchedulerClient":
     return get_service_client(
         SchedulerClient,
         call_timeout=httpx.Timeout(
-            settings.config.schedule_write_timeout_seconds,
+            settings.config.scheduler_request_timeout_seconds,
             connect=connect,
             pool=connect,
         ),

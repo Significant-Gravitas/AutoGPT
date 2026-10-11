@@ -614,13 +614,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ),
     )
 
-    schedule_write_timeout_seconds: float = Field(
-        default=20.0,
+    scheduler_request_timeout_seconds: float = Field(
+        default=25.0,
         gt=0,
         description=(
-            "How long a schedule request a user is waiting on (create, delete, "
-            "admin diagnostics) waits for the scheduler's answer before returning "
-            "503. Kept under the 30s Vercel proxy cut-off."
+            "How long a schedule page or change a user is waiting on (list, "
+            "create, edit, delete, admin diagnostics) waits for the scheduler "
+            "before answering 503. Just under the 30s Vercel proxy cut-off, so "
+            "it only replaces the proxy's 504; prod listings are slow (p50 15s)."
         ),
     )
 
@@ -631,16 +632,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "How long a schedule request a user is waiting on tries to reach the "
             "scheduler. A scheduler that is restarting refuses or drops the "
             "connection; this turns that into a fast 503 instead of a hang."
-        ),
-    )
-
-    scheduler_shutdown_grace_seconds: float = Field(
-        default=20.0,
-        gt=0,
-        description=(
-            "On SIGTERM, how long the scheduler waits for jobs it already started "
-            "before exiting. Jobs not yet started stay due in the jobstore and "
-            "run when the next scheduler starts."
         ),
     )
 

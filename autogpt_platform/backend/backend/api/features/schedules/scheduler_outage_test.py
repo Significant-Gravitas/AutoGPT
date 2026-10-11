@@ -31,8 +31,7 @@ from backend.usecases.sample import create_test_graph
 from backend.util import clients
 from backend.util.test import SpinTestServer
 
-_READ_TIMEOUT_S = 0.5
-_WRITE_TIMEOUT_S = 1.0
+_REQUEST_TIMEOUT_S = 1.0
 # Far below the 30s proxy cut-off and the 300s RPC default, generous for CI.
 _PROMPT_S = 4.0
 
@@ -64,10 +63,11 @@ def scheduler_client(
 ) -> Iterator[None]:
     monkeypatch.setattr(Scheduler, "get_host", classmethod(lambda cls: "127.0.0.1"))
     monkeypatch.setattr(Scheduler, "get_port", classmethod(lambda cls: scheduler_port))
-    for module in (clients, schedule_availability, diagnostics):
+    for module in (clients, schedule_availability):
         config = module.settings.config
-        monkeypatch.setattr(config, "schedule_read_timeout_seconds", _READ_TIMEOUT_S)
-        monkeypatch.setattr(config, "schedule_write_timeout_seconds", _WRITE_TIMEOUT_S)
+        monkeypatch.setattr(
+            config, "scheduler_request_timeout_seconds", _REQUEST_TIMEOUT_S
+        )
         monkeypatch.setattr(config, "scheduler_connect_timeout_seconds", 0.5)
     # The real factory, uncached, so each test gets a client for its own port.
     real_factory = inspect.unwrap(clients.get_interactive_scheduler_client)

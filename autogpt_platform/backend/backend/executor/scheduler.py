@@ -21,6 +21,7 @@ from apscheduler.events import (
     EVENT_JOB_MISSED,
 )
 from apscheduler.job import Job as JobObj
+from apscheduler.jobstores.base import ConflictingIdError
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -54,10 +55,6 @@ from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
-from backend.executor.scheduler_shutdown import (
-    DrainingBackgroundScheduler,
-    shutdown_scheduler,
-)
 from backend.monitoring import (
     flush_matured_alerts,
     report_block_error_rates,
@@ -2196,7 +2193,7 @@ class Scheduler(AppService):
         # unrestorable row rather than deleting it.
         self._execution_jobstore = self._persistent_jobstores[Jobstores.EXECUTION.value]
 
-        self.scheduler = DrainingBackgroundScheduler(
+        self.scheduler = BackgroundScheduler(
             executors={
                 "default": ThreadPoolExecutor(
                     max_workers=self.db_pool_size()
@@ -2433,12 +2430,9 @@ class Scheduler(AppService):
                 )
 
     def cleanup(self):
-        # By now the RPC server has stopped taking requests. Stop the scheduler
-        # before the event loop its jobs run on, and bound the wait so one stuck
-        # job can't hold the pod until it is killed.
         if self.scheduler:
             logger.info("⏳ Shutting down scheduler...")
-            shutdown_scheduler(self.scheduler, config.scheduler_shutdown_grace_seconds)
+            self.scheduler.shutdown(wait=True)
 
         global _event_loop
         if _event_loop:
@@ -2459,6 +2453,7 @@ class Scheduler(AppService):
         job_args: GraphExecutionJobArgs | CopilotTurnJobArgs,
         trigger,
         name: str | None,
+        replace_existing: bool = True,
     ) -> JobObj:
         """Register *job_args* with APScheduler.
 
@@ -2474,7 +2469,7 @@ class Scheduler(AppService):
             name=name,
             trigger=trigger,
             jobstore=Jobstores.EXECUTION.value,
-            replace_existing=True,
+            replace_existing=replace_existing,
             id=job_args.schedule_id,
         )
         # Index AFTER add_job: a pre-add row would race the read path's
@@ -2501,8 +2496,20 @@ class Scheduler(AppService):
         organization_id: Optional[str] = None,
         team_id: Optional[str] = None,
         expert_id: Optional[str] = None,
+        schedule_id: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
+        """Create a recurring agent schedule.
+
+        ``schedule_id`` is an idempotency key the caller mints once per
+        submission. When a create's answer is lost (the scheduler applied it,
+        then the caller timed out), retrying with the same key returns the
+        schedule that was made instead of adding a duplicate.
+        """
         name = normalize_schedule_name(name)
+        if schedule_id is not None:
+            replayed = self._replayed_graph_schedule(schedule_id, user_id)
+            if replayed is not None:
+                return replayed
 
         if expert_id is not None:
             organization_id, team_id = run_async(
@@ -2523,7 +2530,7 @@ class Scheduler(AppService):
 
         user_timezone = _resolve_timezone(user_timezone, user_id)
         job_args = GraphExecutionJobArgs(
-            schedule_id=str(uuid.uuid4()),
+            schedule_id=schedule_id or str(uuid.uuid4()),
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
@@ -2535,12 +2542,23 @@ class Scheduler(AppService):
             team_id=team_id,
             expert_id=expert_id,
         )
-        job = self._persist_schedule(
-            dispatch_func=execute_graph,
-            job_args=job_args,
-            trigger=_build_trigger(cron=cron, run_at=None, user_timezone=user_timezone),
-            name=name,
-        )
+        try:
+            job = self._persist_schedule(
+                dispatch_func=execute_graph,
+                job_args=job_args,
+                trigger=_build_trigger(
+                    cron=cron, run_at=None, user_timezone=user_timezone
+                ),
+                name=name,
+                # A caller-supplied key must never overwrite a schedule.
+                replace_existing=schedule_id is None,
+            )
+        except ConflictingIdError:
+            # A concurrent copy of the same submission got there first.
+            replayed = self._replayed_graph_schedule(job_args.schedule_id, user_id)
+            if replayed is None:
+                raise
+            return replayed
         logger.info(
             f"Added job {job.id} with cron schedule '{cron}' in timezone "
             f"{user_timezone}"
@@ -2549,6 +2567,19 @@ class Scheduler(AppService):
             job_args, job, title=name or "Scheduled agent run"
         )
         return GraphExecutionJobInfo.from_db(job_args, job)
+
+    def _replayed_graph_schedule(
+        self, schedule_id: str, user_id: str
+    ) -> GraphExecutionJobInfo | None:
+        """The schedule an earlier submission with this key created, if any."""
+        try:
+            _, info = self._authorized_job(schedule_id, user_id, action="create")
+        except NotFoundError:
+            return None
+        if not isinstance(info, GraphExecutionJobInfo):
+            raise NotAuthorizedError(f"Schedule #{schedule_id} is not an agent run")
+        logger.info(f"Create for schedule {schedule_id} replayed; returning it")
+        return info
 
     @expose
     def add_copilot_turn_schedule(

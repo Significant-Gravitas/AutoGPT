@@ -1,6 +1,10 @@
 "use client";
 
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  hasUnavailableScheduleInfo,
+  schedulerRecheckDelay,
+} from "@/services/schedules/scheduler-availability";
 import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 import {
   useGetV2ListLibraryFolders,
@@ -81,6 +85,16 @@ export function useLibraryAgentList({
     {
       query: {
         getNextPageParam: getPaginationNextPageNumber,
+        // Without the scheduler, agents load with schedule info "unknown";
+        // recheck until it answers so the Scheduled count fills back in.
+        refetchInterval: (query) => {
+          const loaded = query.state.data
+            ? unpaginate(query.state.data, "agents")
+            : [];
+          return hasUnavailableScheduleInfo(loaded)
+            ? schedulerRecheckDelay(query.state.dataUpdateCount)
+            : false;
+        },
       },
     },
   );

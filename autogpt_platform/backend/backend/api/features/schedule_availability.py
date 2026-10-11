@@ -44,7 +44,7 @@ class SchedulerUnavailableDetail(BaseModel):
 
 async def read_schedules(call: Awaitable[T], timeout: float | None = None) -> T:
     """Await a scheduler read, or raise a 503 within ``timeout`` seconds."""
-    bound = timeout or settings.config.schedule_read_timeout_seconds
+    bound = timeout or settings.config.scheduler_request_timeout_seconds
     try:
         return await asyncio.wait_for(call, timeout=bound)
     except (asyncio.TimeoutError, httpx.TransportError) as e:

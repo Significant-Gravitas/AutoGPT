@@ -3,6 +3,7 @@ import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 // Matches the backend's Retry-After on a scheduler 503.
 export const SCHEDULER_RECHECK_MS = 15_000;
+const SCHEDULER_RECHECK_MAX_MS = 120_000;
 
 type SchedulerErrorCode = "scheduler_unavailable" | "scheduler_unconfirmed";
 
@@ -32,12 +33,19 @@ export function hasUnavailableScheduleInfo(agents: LibraryAgent[]): boolean {
   return agents.some((agent) => agent.schedule_info_unavailable);
 }
 
-// Schedule queries recheck on the scheduler's own cadence until it answers
-// again, instead of stacking retries on it (see useSchedulerQueryOptions).
+// Schedule queries recheck until the scheduler answers again, backing off from
+// 15s to 2 min so an open tab doesn't poll a long outage every 15s.
 export function recheckWhileSchedulerUnavailable<TError>(query: {
-  state: { error: TError };
+  state: { error: TError; errorUpdateCount: number };
 }): number | false {
-  return isSchedulerUnavailableError(query.state.error)
-    ? SCHEDULER_RECHECK_MS
-    : false;
+  if (!isSchedulerUnavailableError(query.state.error)) return false;
+  return schedulerRecheckDelay(query.state.errorUpdateCount);
+}
+
+export function schedulerRecheckDelay(failures: number): number {
+  const doublings = Math.max(0, failures - 1);
+  return Math.min(
+    SCHEDULER_RECHECK_MS * 2 ** doublings,
+    SCHEDULER_RECHECK_MAX_MS,
+  );
 }
