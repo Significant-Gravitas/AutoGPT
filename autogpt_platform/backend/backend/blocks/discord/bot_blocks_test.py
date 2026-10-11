@@ -131,3 +131,23 @@ async def test_partial_send_reports_the_chunks_already_delivered(mocker):
     assert out["channel_id"] == "987654321098765432"
     assert channel.send.await_count == 2
     _FakeClient.instances[0].close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_later_chunk_still_closes_the_client(mocker):
+    channel = MagicMock()
+    channel.id = 987654321098765432
+    channel.send = AsyncMock(side_effect=[MagicMock(id=111), asyncio.CancelledError()])
+    _patch_client(mocker, channel)
+    block = SendDiscordMessageBlock()
+
+    result = await block.send_message(
+        token="t",
+        channel_name="987654321098765432",
+        server_name=None,
+        message_content="x" * 2500,
+    )
+
+    _FakeClient.instances[0].close.assert_awaited_once()
+    assert result["message_id"] == "111"
+    assert "earlier chunks were already sent" in result["status"]

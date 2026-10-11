@@ -312,14 +312,18 @@ class SendDiscordMessageBlock(Block):
             except Exception as e:
                 result["status"] = f"Error sending message: {e}"
             finally:
-                if last_message is not None and channel is not None:
-                    # A later chunk failed after earlier ones were posted;
-                    # report what was delivered so the caller can see it.
-                    if result["status"] != "Message sent":
-                        result["status"] += " (earlier chunks were already sent)"
-                    result["message_id"] = str(last_message.id)
-                    result["channel_id"] = str(channel.id)
-                await client.close()
+                try:
+                    if last_message is not None and channel is not None:
+                        # A later chunk failed after earlier ones were posted;
+                        # report what was delivered so the caller can see it.
+                        status = result.get("status", "Error sending message")
+                        if status != "Message sent":
+                            status += " (earlier chunks were already sent)"
+                        result["status"] = status
+                        result["message_id"] = str(last_message.id)
+                        result["channel_id"] = str(channel.id)
+                finally:
+                    await client.close()
 
         await client.start(token)
         return result
