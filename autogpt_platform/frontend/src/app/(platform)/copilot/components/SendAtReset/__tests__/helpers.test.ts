@@ -1,6 +1,11 @@
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { describe, expect, it } from "vitest";
-import { atResetRefusal, returnToDraft, scheduledSendLabel } from "../helpers";
+import {
+  atResetRefusal,
+  joinScheduled,
+  returnToDraft,
+  scheduledSendLabel,
+} from "../helpers";
 
 const NOW = new Date(2026, 9, 11, 20, 48); // Sunday 8:48 PM, local
 
@@ -43,5 +48,16 @@ describe("returnToDraft", () => {
     expect(returnToDraft("New thought", "Scheduled")).toBe(
       "Scheduled\n\nNew thought",
     );
+  });
+});
+
+describe("joinScheduled", () => {
+  it("adds a new message after the one waiting", () => {
+    expect(joinScheduled("first", "second")).toBe("first\n\nsecond");
+  });
+
+  it("is the message alone when nothing is waiting", () => {
+    expect(joinScheduled(null, "only")).toBe("only");
+    expect(joinScheduled(undefined, "only")).toBe("only");
   });
 });

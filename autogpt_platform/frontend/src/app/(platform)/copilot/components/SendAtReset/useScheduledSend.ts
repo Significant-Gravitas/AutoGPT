@@ -11,6 +11,7 @@ import { describeSendFailure } from "../ChatInput/helpers";
 import { useChatDraft } from "../ChatInput/useChatDraft";
 import {
   atResetRefusal,
+  joinScheduled,
   returnToDraft,
   SCHEDULE_FAILED_TITLE,
   sessionDraftKey,
@@ -33,13 +34,17 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
   );
   const scheduleSend = usePostV2ScheduleTurnAtBudgetReset();
   const cancelSend = useDeleteV2CancelTurnAtBudgetReset();
+  const pending = jobs?.find((job) => job.kind === "send") ?? null;
 
   async function schedule(message: string) {
     if (!sessionId) throw new Error("This chat isn’t ready yet");
+    // A chat sends one message at the reset, so a second one joins the
+    // message already waiting instead of replacing it.
+    const text = joinScheduled(pending?.message, message);
     try {
       const response = await scheduleSend.mutateAsync({
         sessionId,
-        data: { kind: "send", message },
+        data: { kind: "send", message: text },
       });
       if (response.status !== 200) return;
       const job = response.data;
@@ -51,7 +56,10 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
         queryKey: getGetV2GetCopilotUsageQueryKey(),
       });
       if (refusal === "not_out_of_budget" && onSendNow) {
-        return onSendNow(message);
+        // The budget is back: what was waiting goes now too, unless its
+        // job can't be cancelled, in which case it still goes at the reset.
+        const cancelled = !pending || (await unschedule());
+        return onSendNow(cancelled ? text : message);
       }
       throw new Error(
         refusal === "no_reset"
@@ -94,8 +102,6 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     writeJobs((all) => all.filter((job) => job.kind !== "send"));
     return true;
   }
-
-  const pending = jobs?.find((job) => job.kind === "send") ?? null;
 
   async function edit() {
     const message = pending?.message ?? "";

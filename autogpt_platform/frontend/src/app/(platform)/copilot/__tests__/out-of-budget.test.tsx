@@ -152,6 +152,30 @@ describe("Send at reset", () => {
     expect(composer().value).toBe("");
   });
 
+  it("adds a second message to the one already waiting instead of replacing it", async () => {
+    const atReset = fakeAtReset();
+    server.use(
+      ...budgetHandlers({ usage: weeklyExhausted() }),
+      ...atReset.handlers,
+    );
+    renderChat();
+    await scheduleDraft("Draft the launch post");
+    await screen.findByRole("status", { name: "Scheduled message" });
+
+    await scheduleDraft("Also the changelog");
+
+    await waitFor(() => expect(atReset.state.scheduled).toHaveLength(2));
+    expect(atReset.state.scheduled[1].body).toEqual({
+      kind: "send",
+      message: "Draft the launch post\n\nAlso the changelog",
+    });
+    const chip = await screen.findByRole("status", {
+      name: "Scheduled message",
+    });
+    expect(within(chip).getByText(/Also the changelog/)).toBeDefined();
+    expect(within(chip).getByText(/Draft the launch post/)).toBeDefined();
+  });
+
   it("still shows the scheduled message after a reload", async () => {
     const atReset = fakeAtReset();
     server.use(
