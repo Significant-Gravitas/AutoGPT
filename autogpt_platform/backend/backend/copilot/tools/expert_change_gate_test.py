@@ -21,6 +21,7 @@ from backend.copilot.gate import card_approval, held
 from backend.copilot.gate.card_approval import record_card_decisions
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.headline import Headline
+from backend.copilot.gate.review import review_payload
 from backend.copilot.model import (
     AutopilotMode,
     ChatMessage,
@@ -291,6 +292,8 @@ async def test_the_held_confirm_fixture_is_what_an_approved_hold_delivers(gate):
             status=ReviewStatus.APPROVED,
             session_id=session.session_id,
             reviewed_at=datetime.now(UTC),
+            # The card the gate stored; the late result carries its arguments.
+            payload=review_payload(call.tool_name, call.args),
         )
         reviews = SimpleNamespace(
             get_reviews_by_node_exec_ids=AsyncMock(return_value={review_id: approved})

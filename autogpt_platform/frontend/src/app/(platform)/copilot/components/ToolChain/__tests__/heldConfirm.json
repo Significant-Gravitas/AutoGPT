@@ -24,7 +24,18 @@
         "review_id": "copilot-node-gate-confirm_expert_change:3e0a034f1d6b732f",
         "tool_name": "confirm_expert_change",
         "tool_call_id": "call-2",
-        "outcome": "approved"
+        "outcome": "approved",
+        "arguments": {
+          "confirmation_id": "5f0c2a3e-7b1d-4c9e-8a6f-0d2b4e6c8a10"
+        },
+        "fields": [
+          {
+            "key": "confirmation_id",
+            "label": "Confirmation",
+            "format": null
+          }
+        ],
+        "clipped": []
       }
     }
   }
