@@ -97,6 +97,21 @@ async def test_a_window_that_allows_nothing_refuses_with_no_reset(allowance):
 
 
 @pytest.mark.asyncio
+async def test_an_ended_trial_is_refused_without_reading_its_stale_tier(allowance):
+    # get_global_rate_limits reports an ended trial as NO_TIER with no
+    # allowance while its usage state still says TRIAL; check_rate_limit's
+    # tier guard would call that unavailable and fail the turn with "try
+    # again in a moment" instead of saying it can't run.
+    limits, check = allowance
+    limits.return_value = (0, 0, SubscriptionTier.NO_TIER)
+    check.side_effect = RateLimitUnavailable("Subscription changed")
+    assert await refusal_for("u-1") == TurnPause(
+        reason="weekly", resets_at=None, checkpoint_saved=False, started=False
+    )
+    check.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_an_unreadable_allowance_is_raised_for_the_caller(allowance):
     _, check = allowance
     check.side_effect = RateLimitUnavailable()
