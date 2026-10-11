@@ -14,6 +14,7 @@ from prisma.enums import AgentExecutionStatus
 from prisma.models import AgentGraph, AgentGraphExecution, LibraryAgent, User
 from pydantic import BaseModel
 
+from backend.api.features.schedule_availability import read_schedules
 from backend.data.db import query_raw_with_schema
 from backend.data.execution import get_graph_executions, get_graph_executions_count
 from backend.data.rabbitmq import SyncRabbitMQ
@@ -24,9 +25,14 @@ from backend.executor.utils import (
     CancelExecutionEvent,
     create_execution_queue_config,
 )
-from backend.util.clients import get_async_execution_queue, get_scheduler_client
+from backend.util.clients import (
+    get_async_execution_queue,
+    get_interactive_scheduler_client,
+)
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+settings = Settings()
 
 
 # System job IDs (exclude from user schedule counts)
@@ -373,14 +379,17 @@ async def get_schedule_health_metrics() -> ScheduleHealthMetrics:
     Returns:
         ScheduleHealthMetrics with schedule health info
     """
-    scheduler = get_scheduler_client()
+    scheduler = get_interactive_scheduler_client()
 
     # Get all graph schedules — `_detect_orphaned_schedules` reads `graph_id`
     # / cron unconditionally, so a copilot-turn row would either crash or get
     # mis-counted as `validation_failed`. Copilot-turn schedules are
     # session-scoped (not orphan-prone in the same way) and surface in the
     # copilot UI, not in the platform health dashboard.
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(
+        scheduler.get_graph_execution_schedules(),
+        timeout=settings.config.schedule_write_timeout_seconds,
+    )
 
     # Filter user vs system schedules
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
@@ -643,11 +652,14 @@ async def get_all_schedules_details(
     Returns:
         List of ScheduleDetail objects
     """
-    scheduler = get_scheduler_client()
+    scheduler = get_interactive_scheduler_client()
 
     # Get all graph schedules — diagnostics only surfaces graph-kind schedules
     # (copilot-turn followups are session-scoped and shown in the copilot UI).
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(
+        scheduler.get_graph_execution_schedules(),
+        timeout=settings.config.schedule_write_timeout_seconds,
+    )
 
     # Filter to user schedules only
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
@@ -699,10 +711,13 @@ async def get_orphaned_schedules_details() -> List[OrphanedScheduleDetail]:
     Returns:
         List of OrphanedScheduleDetail objects
     """
-    scheduler = get_scheduler_client()
+    scheduler = get_interactive_scheduler_client()
 
     # Get all graph schedules — orphan detection is graph-specific.
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(
+        scheduler.get_graph_execution_schedules(),
+        timeout=settings.config.schedule_write_timeout_seconds,
+    )
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
 
     # Detect orphans with categorization
@@ -750,12 +765,15 @@ async def cleanup_orphaned_schedules_bulk(
         f"Admin user {admin_user_id} cleaning up {len(schedule_ids)} orphaned schedules"
     )
 
-    scheduler = get_scheduler_client()
+    scheduler = get_interactive_scheduler_client()
 
     # Fetch all graph schedules once to avoid N+1 queries — orphan cleanup
     # is graph-specific (copilot-turn schedules self-clean via
     # `_self_delete_copilot_turn_schedule`).
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(
+        scheduler.get_graph_execution_schedules(),
+        timeout=settings.config.schedule_write_timeout_seconds,
+    )
     schedule_map = {s.id: s for s in all_schedules}
 
     # Delete schedules in parallel

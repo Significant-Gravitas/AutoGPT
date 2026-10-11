@@ -4,6 +4,8 @@ Centralized service client helpers with thread caching.
 
 from typing import TYPE_CHECKING
 
+import httpx
+
 from backend.util.cache import cached, thread_cached
 from backend.util.settings import Settings
 
@@ -58,6 +60,29 @@ def get_scheduler_client() -> "SchedulerClient":
     from backend.util.service import get_service_client
 
     return get_service_client(SchedulerClient)
+
+
+@thread_cached
+def get_interactive_scheduler_client() -> "SchedulerClient":
+    """SchedulerClient for requests a user is waiting on.
+
+    The default client waits up to the 300s RPC timeout, even to connect, so a
+    restarting scheduler held schedule pages until the 30s proxy gave up. This
+    one gives up connecting after ``scheduler_connect_timeout_seconds`` and
+    waiting for an answer after ``schedule_write_timeout_seconds``.
+    """
+    from backend.executor.scheduler import SchedulerClient
+    from backend.util.service import get_service_client
+
+    connect = settings.config.scheduler_connect_timeout_seconds
+    return get_service_client(
+        SchedulerClient,
+        call_timeout=httpx.Timeout(
+            settings.config.schedule_write_timeout_seconds,
+            connect=connect,
+            pool=connect,
+        ),
+    )
 
 
 @thread_cached

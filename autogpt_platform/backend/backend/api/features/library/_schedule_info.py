@@ -3,6 +3,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from pydantic import BaseModel
+
 from backend.util.clients import get_scheduler_client
 from backend.util.settings import Settings
 
@@ -10,9 +12,20 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 
+class ScheduleInfo(BaseModel):
+    """Earliest next-run time per graph ID, and whether the scheduler answered.
+
+    ``available=False`` means the schedules are unknown, not absent: the
+    frontend must not read an empty map as "this user has no schedules".
+    """
+
+    next_runs: dict[str, str] = {}
+    available: bool = True
+
+
 async def _fetch_schedule_info(
     user_id: str, graph_id: Optional[str] = None
-) -> dict[str, str]:
+) -> ScheduleInfo:
     """Fetch a map of graph ID to earliest next-run time.
 
     When ``graph_id`` is provided, narrow the scheduler query to that graph.
@@ -38,17 +51,19 @@ async def _fetch_schedule_info(
             current = earliest.get(schedule.graph_id)
             if current is None or parsed < current[0]:
                 earliest[schedule.graph_id] = (parsed, schedule.next_run_time)
-        return {graph_id: iso for graph_id, (_, iso) in earliest.items()}
+        return ScheduleInfo(
+            next_runs={graph_id: iso for graph_id, (_, iso) in earliest.items()}
+        )
     except asyncio.TimeoutError:
         logger.warning(
             "Scheduler did not answer within "
             f"{settings.config.schedule_read_timeout_seconds}s; library agents "
-            "render without schedule info"
+            "render with schedule info marked unavailable"
         )
-        return {}
+        return ScheduleInfo(available=False)
     except Exception:
         logger.warning("Failed to fetch schedules for library agents", exc_info=True)
-        return {}
+        return ScheduleInfo(available=False)
 
 
 def _parse_iso_datetime(value: str) -> Optional[datetime]:

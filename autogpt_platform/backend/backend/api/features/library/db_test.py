@@ -16,6 +16,7 @@ from backend.util.exceptions import MissingConfigError, NotFoundError
 
 from . import db
 from . import model as library_model
+from ._schedule_info import ScheduleInfo
 
 
 @pytest.mark.parametrize("expert_id", [None, "expert-1"])
@@ -366,7 +367,7 @@ async def test_add_agent_to_library_reuses_existing_without_loading_graph(mocker
     )
     mocker.patch(
         "backend.api.features.library._add_to_library._fetch_schedule_info",
-        new=mocker.AsyncMock(return_value={}),
+        new=mocker.AsyncMock(return_value=ScheduleInfo()),
     )
     from_db = mocker.patch(
         "backend.api.features.library.model.LibraryAgent.from_db",
@@ -395,7 +396,7 @@ async def test_add_agent_to_library_reuses_existing_without_loading_graph(mocker
     }
     from_db.assert_called_once_with(
         restored,
-        schedule_info={},
+        schedule_info=ScheduleInfo(),
     )
 
 
@@ -948,7 +949,7 @@ async def test_list_trigger_agents_skips_get_library_agent_when_parent_graph_id_
     mock_prisma.return_value.find_many = mock_find_many
     mocker.patch(
         "backend.api.features.library.db._fetch_schedule_info",
-        new=mocker.AsyncMock(return_value={}),
+        new=mocker.AsyncMock(return_value=ScheduleInfo()),
     )
 
     result = await db.list_trigger_agents(
@@ -1029,7 +1030,9 @@ async def test_list_trigger_agents_propagates_schedule_info(mocker):
     mock_prisma = mocker.patch("prisma.models.LibraryAgent.prisma")
     mock_prisma.return_value.find_many = mocker.AsyncMock(return_value=[trigger_prisma])
 
-    schedule_info = {"trig-graph-id": "2026-05-01T08:00:00+00:00"}
+    schedule_info = ScheduleInfo(
+        next_runs={"trig-graph-id": "2026-05-01T08:00:00+00:00"}
+    )
     schedule_spy = mocker.patch(
         "backend.api.features.library.db._fetch_schedule_info",
         new=mocker.AsyncMock(return_value=schedule_info),

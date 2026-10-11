@@ -21,7 +21,7 @@ def test_blank_schedule_name_is_rejected_before_dispatch(name: str):
         patch.object(
             routes.graph_db, "get_graph", AsyncMock(return_value=None)
         ) as graph,
-        patch.object(routes, "get_scheduler_client") as scheduler,
+        patch.object(routes, "get_interactive_scheduler_client") as scheduler,
         TestClient(app) as client,
     ):
         response = client.post(

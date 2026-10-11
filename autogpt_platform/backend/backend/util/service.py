@@ -605,7 +605,7 @@ def _usable_adapter(annotation: Any) -> TypeAdapter | None:
 @conn_retry("AppService client", "Creating service client", max_retry=api_comm_retry)
 def get_service_client(
     service_client_type: Type[ASC],
-    call_timeout: int | None = api_call_timeout,
+    call_timeout: float | httpx.Timeout | None = api_call_timeout,
     request_retry: bool = False,
 ) -> ASC:
 
