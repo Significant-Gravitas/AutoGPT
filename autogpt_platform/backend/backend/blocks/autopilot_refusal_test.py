@@ -7,8 +7,9 @@ it the block falls through and renders an empty ``SessionResult`` as a
 successful turn, dropping the refusal.
 
 The executor can refuse a turn too, when the account is out of AutoPilot
-budget as it picks the turn up. That turn completes as a not-started pause, so
-the block has to read the pause to fail instead of returning an empty answer.
+budget as it picks the turn up. The waiter reports that as ``refused`` with
+the not-started pause, which the block turns into an out-of-budget error that
+skips recovery.
 """
 
 from datetime import UTC, datetime
@@ -81,15 +82,23 @@ async def _execute():
 
 
 def _completed(result: SessionResult):
+    return _waited("completed", result)
+
+
+def _refused_for_budget(pause: TurnPause):
+    return _waited("refused", SessionResult(refusal=pause.summary, pause=pause))
+
+
+def _waited(outcome: str, result: SessionResult):
     return patch(
         "backend.copilot.sdk.session_waiter.run_copilot_turn_via_queue",
-        new=AsyncMock(return_value=("completed", result)),
+        new=AsyncMock(return_value=(outcome, result)),
     )
 
 
 @pytest.mark.asyncio
 async def test_a_turn_refused_for_budget_fails_with_its_reset():
-    with _completed(SessionResult(pause=_OUT_OF_TODAY)):
+    with _refused_for_budget(_OUT_OF_TODAY):
         with pytest.raises(AutoPilotOutOfBudgetError) as raised:
             await _execute()
     assert str(raised.value) == "Out of AutoPilot budget until 2026-10-12 00:00 UTC."
@@ -98,7 +107,7 @@ async def test_a_turn_refused_for_budget_fails_with_its_reset():
 @pytest.mark.asyncio
 async def test_a_spent_trial_says_its_allowance_is_used_up():
     pause = TurnPause(reason="trial", checkpoint_saved=False, started=False)
-    with _completed(SessionResult(pause=pause)):
+    with _refused_for_budget(pause):
         with pytest.raises(AutoPilotOutOfBudgetError, match="trial allowance"):
             await _execute()
 
@@ -127,7 +136,7 @@ async def test_a_budget_refusal_reaches_the_graph_without_a_recovery_run():
 
     with (
         patch.object(block, "create_session", AsyncMock(return_value="sess-1")),
-        _completed(SessionResult(pause=_OUT_OF_TODAY)),
+        _refused_for_budget(_OUT_OF_TODAY),
         patch("backend.blocks.autopilot._enqueue_for_recovery", recovery),
     ):
         outputs = [

@@ -475,15 +475,14 @@ class AutoPilotBlock(Block):
                     f"{_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS}s — session "
                     f"{session_id}"
                 )
+            if outcome == "refused" and result.pause is not None:
+                # The executor refused the turn for want of budget.
+                raise AutoPilotOutOfBudgetError(result.pause)
             if outcome == "refused":
                 # Terminal, like the branches above: nothing ran, so the
                 # SessionResult carries only the refusal and its empty
                 # response_text would otherwise render as a successful turn.
                 raise RuntimeError(result.refusal or "AutoPilot turn was refused")
-            if result.pause is not None and not result.pause.started:
-                # Completed, but only as a not-started pause: the executor
-                # refused the turn for want of budget, so nothing ran either.
-                raise AutoPilotOutOfBudgetError(result.pause)
 
             # Build a lightweight conversation summary from the aggregated data.
             # When ``result.queued`` is True the prompt rode on an already-
