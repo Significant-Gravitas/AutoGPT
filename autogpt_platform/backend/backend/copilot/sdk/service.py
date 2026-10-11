@@ -4353,6 +4353,7 @@ async def _run_stream_attempt(
                 )
             yield response
 
+    hangup_pause: TurnPause | None = None
     if not acc.stream_completed and not loop_state.ended_with_stream_error:
         # User cancels raise ``asyncio.CancelledError`` upstream; reaching this
         # branch means the CLI hung up — per-query budget exhausted, max_turns,
@@ -4366,18 +4367,27 @@ async def _run_stream_attempt(
         state.adapter.end_open_blocks(closing_responses)
         for r in closing_responses:
             yield r
-        notice_block_id = str(uuid.uuid4())
-        yield StreamTextStart(id=notice_block_id)
-        yield StreamTextDelta(id=notice_block_id, delta=STREAM_INCOMPLETE_MARKER)
-        yield StreamTextEnd(id=notice_block_id)
-        ctx.session.messages.append(
-            ChatMessage(role="assistant", content=STREAM_INCOMPLETE_MARKER)
+        # While landing, the hangup ended the landing: still a pause.
+        hangup_pause = (
+            state.governor.hangup_pause() if state.governor is not None else None
         )
+        if hangup_pause is not None:
+            yield StreamTurnPaused(pause=hangup_pause.as_part())
+        else:
+            notice_block_id = str(uuid.uuid4())
+            yield StreamTextStart(id=notice_block_id)
+            yield StreamTextDelta(id=notice_block_id, delta=STREAM_INCOMPLETE_MARKER)
+            yield StreamTextEnd(id=notice_block_id)
+            ctx.session.messages.append(
+                ChatMessage(role="assistant", content=STREAM_INCOMPLETE_MARKER)
+            )
 
     if (
         acc.assistant_response.content or acc.assistant_response.tool_calls
     ) and not acc.has_appended_assistant:
         ctx.session.messages.append(acc.assistant_response)
+    if hangup_pause is not None:
+        append_pause_marker(ctx.session, hangup_pause)
 
     # SECRT-2333: persist a visible-marker ChatMessage when the turn ended
     # with ``ended_with_stream_error=True`` and no prior marker is on the
@@ -6678,7 +6688,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # budget or reached its check-in, and the user picks it back up from the
     # Paused card. Anything queued meanwhile stays queued for that turn.
     # -------------------------------------------------------------------------
-    if not ended_with_stream_error and not (governor is not None and governor.paused):
+    if not ended_with_stream_error and not (governor is not None and governor.landed):
         _auto_pending_messages = await drain_pending_safe(session_id, log_prefix)
         if _auto_pending_messages:
             logger.info(

@@ -102,6 +102,21 @@ class TurnGovernor:
             return None
         return self._pause(self.landing, checkpoint_saved=wrote_checkpoint)
 
+    def hangup_pause(self) -> TurnPause | None:
+        """The pause for a turn the CLI ended without a result while landing.
+
+        A hangup is otherwise a crash and keeps its own notice; once the tools
+        were being refused it is the landing that ended, so it still pauses.
+        """
+        if self.landing is None:
+            return None
+        return self._pause(self.landing, checkpoint_saved=False)
+
+    @property
+    def landed(self) -> bool:
+        """True once the turn started landing, whether or not it closed as a pause."""
+        return self.paused or self.landing is not None
+
     @property
     def cli_max_turns(self) -> int:
         return self.step_checkin + STEP_BACKSTOP_MARGIN
