@@ -136,6 +136,13 @@ class Flag(str, Enum):
     # launch is not reachable by URL with the shelf hidden. Fail-closed.
     SKILLS_HUB = "skills-hub"
 
+    # Mirror of the frontend `self-serve-account-deletion` flag. Gates
+    # deleting an account from Settings > Account and the paywall: the
+    # deletion and feedback routes 404 when off. Stays off until the data
+    # erasure routine (SECRT-2854) runs in production, since a closed
+    # account is only erased by it. Fail-closed (default False).
+    SELF_SERVE_ACCOUNT_DELETION = "self-serve-account-deletion"
+
     # Per-feature gate for the cascading-expiry helper
     # ``invalidate_entity_direct_neighbors`` (P0.3b). When on, the
     # dream pass may demote every ``:RELATES_TO`` edge directly
