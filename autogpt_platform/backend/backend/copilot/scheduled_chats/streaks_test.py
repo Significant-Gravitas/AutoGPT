@@ -45,6 +45,15 @@ def test_the_every_minute_monitor_pauses_on_its_third_run():
     assert final.failures == 3
 
 
+def test_a_monitor_that_cannot_post_to_discord_pauses_the_same_way():
+    """An unlinked chat platform is as fixable as a missing connection, and a
+    run that only repeats it from history counts the same."""
+    unlinked = RunFailure(key="chat_link:discord", kind="chat_link", provider="discord")
+    steps = _drive([_outright(unlinked), _IDLE, _IDLE])
+
+    assert [s.pause for s in steps] == [False, False, True]
+
+
 def test_the_twitter_briefing_is_told_once_and_keeps_running():
     """Twitter refused every morning, the briefing still went out: tell the
     owner on the third, never pause, never tell again."""
