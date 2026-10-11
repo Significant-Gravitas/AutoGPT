@@ -15,11 +15,7 @@ from mcp.types import CallToolRequest, CallToolRequestParams, ListToolsRequest
 from prisma.enums import APIKeyPermission
 from starlette.routing import Match
 
-from backend.api.external.v2.mcp_calls import (
-    TOOL_LIMITERS,
-    _starts_a_paid_run,
-    spends_platform_money,
-)
+from backend.api.external.v2.mcp_calls import TOOL_LIMITERS, _starts_a_paid_run
 from backend.api.external.v2.mcp_server import (
     EXTERNAL_USE_EXCLUSIONS,
     META_KEY_REQUIRED_SCOPES,
@@ -103,6 +99,8 @@ async def test_the_advertised_schema_names_required_arguments_and_nothing_extra(
     assert "preset_id" not in registered["run_agent"].inputSchema["properties"]
     # A blocking wait holds a request and an event-bus connection; poll instead.
     assert "wait_for_result" not in registered["run_agent"].inputSchema["properties"]
+    # A dry run runs models on the platform's key the allowance doesn't meter.
+    assert "dry_run" not in registered["run_agent"].inputSchema["properties"]
     assert "wait_if_running" not in (
         registered["view_agent_output"].inputSchema["properties"]
     )
@@ -286,6 +284,8 @@ async def test_a_call_without_the_right_credentials_reaches_the_client_as_an_err
     [
         # Presets have no v2 permission.
         ({"library_agent_id": "agent-1", "preset_id": "preset-1"}, "preset_id"),
+        # A dry run runs models on the platform's key the allowance doesn't meter.
+        ({"library_agent_id": "agent-1", "dry_run": True}, "dry_run"),
         # Not in the schema at all; the tool's own input model has the field.
         ({"library_agent_id": "agent-1", "save_as_preset": True}, "save_as_preset"),
         # The marker the approval gate passes to a tool it already approved.
@@ -400,50 +400,25 @@ async def test_a_tool_that_spends_platform_money_checks_the_allowance_first(
     assert refusal in result.content[0].text
 
 
-async def test_a_dry_run_checks_the_allowance_first(
-    mocker: pytest_mock.MockerFixture, no_tenancy_lookups: mock.AsyncMock
-):
-    """A dry run bills no credits, so no balance refuses it, but it simulates
-    every block with a model on the platform's key: past the allowance, or on
-    an unpaid account, it doesn't start."""
-    mocker.patch(
-        "backend.api.external.v2.mcp_server.get_access_token",
-        return_value=_token(*_tool_scopes("run_agent")),
-    )
-    mocker.patch.object(
-        TOOL_LIMITERS["run_agent"], "check", new_callable=mock.AsyncMock
-    )
-    mocker.patch(
-        "backend.api.external.v2.mcp_calls.is_user_paywalled",
-        new_callable=mock.AsyncMock,
-        return_value=True,
-    )
-    run = mocker.patch.object(type(TOOL_REGISTRY["run_agent"]), "_execute")
-
-    result = await _call("run_agent", {"library_agent_id": "agent-1", "dry_run": True})
-
-    run.assert_not_called()
-    assert result.isError
-    assert "needs an active subscription" in result.content[0].text
-
-
 @pytest.mark.parametrize(
-    "args, paid_run, spends",
+    "args, paid_run",
     [
-        ({"dry_run": True}, False, True),
-        ({}, True, False),
-        # Read as the tool's own model reads it: not a dry run here and a real
-        # run there.
-        ({"dry_run": "false"}, True, False),
-        ({"dry_run": "true"}, False, True),
-        ({"cron": "0 9 * * *"}, False, False),
+        ({}, True),
+        ({"cron": "0 9 * * *"}, False),
+        ({"schedule_name": "Daily"}, False),
+        # Read as the tool's own model reads them: a blank cron is no schedule
+        # to the tool, which starts a real run.
+        ({"cron": "  "}, True),
+        ({"schedule_name": " "}, True),
+        ({"dry_run": True}, False),
+        # Refused by the tool, so nothing starts.
+        ({"cron": ["0 9 * * *"]}, True),
     ],
 )
-def test_a_run_agent_call_is_a_paid_run_or_platform_spend_as_the_tool_reads_it(
-    args: dict[str, Any], paid_run: bool, spends: bool
+def test_a_run_agent_call_is_a_paid_run_as_the_tool_reads_it(
+    args: dict[str, Any], paid_run: bool
 ):
     assert _starts_a_paid_run(args) is paid_run
-    assert spends_platform_money(TOOL_REGISTRY["run_agent"], args) is spends
 
 
 async def test_a_tool_called_over_mcp_runs_without_waiting_for_an_approval(
