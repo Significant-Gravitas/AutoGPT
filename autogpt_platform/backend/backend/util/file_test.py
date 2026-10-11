@@ -15,6 +15,7 @@ from backend.util.file import (
     resolve_media_content,
     store_media_file,
 )
+from backend.util.request import HTTPClientError, HTTPServerError, http_status_error
 from backend.util.type import MediaFileType
 
 
@@ -334,6 +335,72 @@ class TestFileCloudIntegration:
                 await store_media_file(
                     file=MediaFileType(local_file),
                     execution_context=make_test_context(graph_exec_id=graph_exec_id),
+                    return_format="for_local_processing",
+                )
+
+
+# ---------------------------------------------------------------------------
+# store_media_file URL downloads
+# ---------------------------------------------------------------------------
+
+
+def _mock_requests(status: int, reason: str) -> MagicMock:
+    """Stand-in for the ``Requests`` class that answers every GET with
+    ``status``, raising on it only when built with ``raise_for_status=True``
+    (the default), like the real client."""
+    error = http_status_error(status, reason, b"<!DOCTYPE html>")
+    response = MagicMock(status=status, reason=reason, content=b"<!DOCTYPE html>")
+    response.raise_for_status.side_effect = error
+
+    def build(raise_for_status: bool = True) -> MagicMock:
+        client = MagicMock()
+        client.get = AsyncMock(
+            side_effect=error if raise_for_status else None, return_value=response
+        )
+        return client
+
+    return MagicMock(side_effect=build)
+
+
+class TestStoreMediaFileUrlErrors:
+    @pytest.fixture(autouse=True)
+    def _no_cloud_storage(self):
+        handler = MagicMock()
+        handler.is_cloud_path.return_value = False
+        with patch("backend.util.file.get_cloud_storage_handler", return_value=handler):
+            yield
+
+    @pytest.mark.asyncio
+    async def test_client_error_is_reported_as_bad_input(self):
+        """A URL the server rejects (#15340: Wikimedia thumbnail at a
+        non-standard width) is the caller's to fix, so it must be a ValueError
+        that blocks report as a handled error, not an unknown platform error."""
+        url = "https://upload.wikimedia.org/thumb/a/ab/Cat.jpg/333px-Cat.jpg"
+        reason = "Use thumbnail sizes listed on https://w.wiki/GHai"
+
+        with patch("backend.util.file.Requests", new=_mock_requests(400, reason)):
+            with pytest.raises(ValueError) as exc_info:
+                await store_media_file(
+                    file=MediaFileType(url),
+                    execution_context=make_test_context(),
+                    return_format="for_local_processing",
+                )
+
+        assert not isinstance(exc_info.value, HTTPClientError)
+        assert str(exc_info.value) == (
+            f"Could not download file from {url}: HTTP 400 ({reason})"
+        )
+
+    @pytest.mark.asyncio
+    async def test_server_error_keeps_its_exception(self):
+        with patch(
+            "backend.util.file.Requests",
+            new=_mock_requests(503, "Service Unavailable"),
+        ):
+            with pytest.raises(HTTPServerError):
+                await store_media_file(
+                    file=MediaFileType("https://example.com/image.png"),
+                    execution_context=make_test_context(),
                     return_format="for_local_processing",
                 )
 
