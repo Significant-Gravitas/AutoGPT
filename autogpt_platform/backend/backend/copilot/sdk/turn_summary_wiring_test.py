@@ -211,6 +211,25 @@ async def test_a_cancelled_turn_logs_one_summary(tmp_path, caplog):
     )
 
 
+@pytest.mark.asyncio
+async def test_a_turn_whose_cleanup_raises_still_logs_one_summary(tmp_path, caplog):
+    """The usage persist after the turn raises; the line still comes out, with
+    the turn's own outcome and tokens."""
+    persist = AsyncMock(side_effect=RuntimeError("usage store down"))
+
+    with caplog.at_level(logging.INFO, logger=_SUMMARY_LOGGER):
+        await _run_turn(
+            tmp_path,
+            lambda *a, **k: _client(_answer()),
+            extra_patches=[(f"{_SVC}.persist_and_record_usage", dict(new=persist))],
+        )
+
+    persist.assert_awaited_once()
+    [summary] = _summaries(caplog)
+    assert (summary["outcome"], summary["cli_launches"]) == ("ok", 1)
+    assert (summary["input_tokens"], summary["output_tokens"]) == (12, 7)
+
+
 # Every CLI launch of a turn (the first, a context-size retry, a building-mode
 # restart) must keep the first launch's hooks (the after-compaction re-send)
 # and route environment, send the live prompt, and leave a summary line that

@@ -6356,382 +6356,403 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         raise
     finally:
         turn_error = sys.exception()
-        tool_display_bridge.reset()
-        # Pending messages are drained atomically at the start of each
-        # turn (see drain_pending_messages call above), so there's
-        # nothing to clean up here — any message pushed after that
-        # point belongs to the next turn.
-
-        if codex_gateway is not None:
-            deferred_codex_cleanup_error = await _close_codex_gateway_for_finally(
-                codex_gateway,
-                log_prefix,
-            )
-
-            turn_cost_usd = None
-            codex_usage = _codex_gateway_usage(codex_gateway)
-            if codex_usage is not None:
-                turn_prompt_tokens = max(
-                    0, codex_usage.input_tokens - codex_usage.cached_input_tokens
-                )
-                turn_completion_tokens = codex_usage.output_tokens
-                turn_cache_read_tokens = codex_usage.cached_input_tokens
-                turn_cache_creation_tokens = 0
-
-        # --- Close OTEL context (with cost attributes) ---
-        # Captured before __exit__ so the reconcile task (launched below,
-        # after the span closes) can attach a backfill event to this turn's
-        # Langfuse trace.  Without it, Langfuse shows the rate-card estimate
-        # only — for non-Anthropic OpenRouter routes that's wildly wrong.
+        # The summary in the ``finally`` below reads these, so they are bound
+        # before any cleanup step can raise.
         langfuse_trace_id: str | None = None
-        if _otel_ctx is not None:
-            try:
-                span = otel_trace.get_current_span()
-                if span and span.is_recording():
-                    span.set_attribute("gen_ai.usage.prompt_tokens", turn_prompt_tokens)
-                    span.set_attribute(
-                        "gen_ai.usage.completion_tokens", turn_completion_tokens
-                    )
-                    span.set_attribute(
-                        "gen_ai.usage.cache_read_tokens", turn_cache_read_tokens
-                    )
-                    span.set_attribute(
-                        "gen_ai.usage.cache_creation_tokens",
-                        turn_cache_creation_tokens,
-                    )
-                    if turn_cost_usd is not None:
-                        span.set_attribute("gen_ai.usage.cost_usd", turn_cost_usd)
-            except Exception:
-                logger.debug("Failed to set OTEL cost attributes", exc_info=True)
-            try:
-                _otel_ctx.__exit__(*sys.exc_info())
-            except Exception:
-                logger.warning("OTEL context teardown failed", exc_info=True)
-        if _lf_span is not None:
-            # Capture from our Langfuse parent span before tearing it down;
-            # tracks the lifetime of ``_lf_span`` so the trace id is still
-            # available if ``_otel_ctx`` was never entered.
-            try:
-                langfuse_trace_id = get_client().get_current_trace_id()
-            except Exception:
-                logger.debug("Failed to capture Langfuse trace_id", exc_info=True)
-            try:
-                _lf_span.__exit__(*sys.exc_info())
-            except Exception:
-                logger.warning("Langfuse parent span teardown failed", exc_info=True)
+        _use_openrouter_reconcile = False
+        try:
+            tool_display_bridge.reset()
+            # Pending messages are drained atomically at the start of each
+            # turn (see drain_pending_messages call above), so there's
+            # nothing to clean up here — any message pushed after that
+            # point belongs to the next turn.
 
-        # --- Persist token usage to session + rate-limit counters ---
-        # Both must live in finally so they stay consistent even when an
-        # exception interrupts the try block after StreamUsage was yielded.
-        effective_model = sdk_model or config.thinking_standard_model
-        # ``state`` is populated lazily inside the retry loop; when the
-        # turn exits before the first attempt runs (e.g. very early
-        # validation error) it's still None, so ``generation_ids`` is
-        # empty by definition.
-        collected_gen_ids: list[str] = (
-            list(state.generation_ids) if state is not None else []
-        )
-        _use_openrouter_reconcile = bool(
-            not is_codex_transport
-            and config.openrouter_active
-            and config.sdk_reconcile_openrouter_cost
-            and collected_gen_ids
-        )
+            if codex_gateway is not None:
+                deferred_codex_cleanup_error = await _close_codex_gateway_for_finally(
+                    codex_gateway,
+                    log_prefix,
+                )
 
-        # CLI project dir — used by the reconcile task to sweep for
-        # compaction subagents' gen-IDs.  ``sdk_cwd`` is the per-session
-        # CLI working directory; the CLI encodes it into the project-dir
-        # name the same way ``encode_cwd_for_cli`` does, and writes
-        # the main transcript + any ``subagents/`` alongside it under
-        # ``~/.claude/projects/<encoded>/``.  Empty when sdk_cwd isn't
-        # set (shouldn't happen in practice for SDK turns).
-        cli_project_dir: str | None = None
-        if sdk_cwd:
-            cli_project_dir = os.path.join(
-                os.path.expanduser("~/.claude/projects"),
-                encode_cwd_for_cli(sdk_cwd),
+                turn_cost_usd = None
+                codex_usage = _codex_gateway_usage(codex_gateway)
+                if codex_usage is not None:
+                    turn_prompt_tokens = max(
+                        0, codex_usage.input_tokens - codex_usage.cached_input_tokens
+                    )
+                    turn_completion_tokens = codex_usage.output_tokens
+                    turn_cache_read_tokens = codex_usage.cached_input_tokens
+                    turn_cache_creation_tokens = 0
+
+            # --- Close OTEL context (with cost attributes) ---
+            # Captured before __exit__ so the reconcile task (launched below,
+            # after the span closes) can attach a backfill event to this turn's
+            # Langfuse trace.  Without it, Langfuse shows the rate-card estimate
+            # only — for non-Anthropic OpenRouter routes that's wildly wrong.
+            if _otel_ctx is not None:
+                try:
+                    span = otel_trace.get_current_span()
+                    if span and span.is_recording():
+                        span.set_attribute(
+                            "gen_ai.usage.prompt_tokens", turn_prompt_tokens
+                        )
+                        span.set_attribute(
+                            "gen_ai.usage.completion_tokens", turn_completion_tokens
+                        )
+                        span.set_attribute(
+                            "gen_ai.usage.cache_read_tokens", turn_cache_read_tokens
+                        )
+                        span.set_attribute(
+                            "gen_ai.usage.cache_creation_tokens",
+                            turn_cache_creation_tokens,
+                        )
+                        if turn_cost_usd is not None:
+                            span.set_attribute("gen_ai.usage.cost_usd", turn_cost_usd)
+                except Exception:
+                    logger.debug("Failed to set OTEL cost attributes", exc_info=True)
+                try:
+                    _otel_ctx.__exit__(*sys.exc_info())
+                except Exception:
+                    logger.warning("OTEL context teardown failed", exc_info=True)
+            if _lf_span is not None:
+                # Capture from our Langfuse parent span before tearing it down;
+                # tracks the lifetime of ``_lf_span`` so the trace id is still
+                # available if ``_otel_ctx`` was never entered.
+                try:
+                    langfuse_trace_id = get_client().get_current_trace_id()
+                except Exception:
+                    logger.debug("Failed to capture Langfuse trace_id", exc_info=True)
+                try:
+                    _lf_span.__exit__(*sys.exc_info())
+                except Exception:
+                    logger.warning(
+                        "Langfuse parent span teardown failed", exc_info=True
+                    )
+
+            # --- Persist token usage to session + rate-limit counters ---
+            # Both must live in finally so they stay consistent even when an
+            # exception interrupts the try block after StreamUsage was yielded.
+            effective_model = sdk_model or config.thinking_standard_model
+            # ``state`` is populated lazily inside the retry loop; when the
+            # turn exits before the first attempt runs (e.g. very early
+            # validation error) it's still None, so ``generation_ids`` is
+            # empty by definition.
+            collected_gen_ids: list[str] = (
+                list(state.generation_ids) if state is not None else []
+            )
+            _use_openrouter_reconcile = bool(
+                not is_codex_transport
+                and config.openrouter_active
+                and config.sdk_reconcile_openrouter_cost
+                and collected_gen_ids
             )
 
-        if is_codex_transport:
-            await persist_and_record_usage(
-                session=session,
-                user_id=user_id,
-                prompt_tokens=turn_prompt_tokens,
-                completion_tokens=turn_completion_tokens,
-                cache_read_tokens=turn_cache_read_tokens,
-                cache_creation_tokens=0,
-                log_prefix=log_prefix,
-                cost_usd=None,
-                model=effective_model,
-                provider="codex",
-                credential_id_override=(
-                    credential_lease.credentials.id if credential_lease else None
-                ),
-                extra_metadata={"billing_mode": "user_subscription"},
-                execution_path="codex_claude_sdk",
-            )
-        elif _use_openrouter_reconcile:
-            # Defer the single cost-and-rate-limit write to a background
-            # task that queries OpenRouter's authoritative
-            # ``/generation?id=`` for every round in this turn.  Covers
-            # all vendors:
-            #
-            # * Non-Anthropic (Kimi et al): the CLI's ``total_cost_usd``
-            #   is computed from a static Anthropic rate table that
-            #   doesn't know the model — silently over-bills by ~5x.
-            #   The reconcile replaces it with OpenRouter's real bill.
-            # * Anthropic via OpenRouter: the CLI's number matches
-            #   Anthropic's own rates penny-for-penny in the common
-            #   case, but the reconcile catches any rate change the
-            #   CLI binary hasn't picked up and any OpenRouter-side
-            #   divergence (cache-discount accounting, promo pricing).
-            #
-            # The task calls ``persist_and_record_usage`` exactly once
-            # per turn — same method as the sync path, so append-only
-            # cost-log + rate-limit counter update together.  The sync
-            # path below is skipped entirely when the reconcile fires,
-            # so no double-counting.  Kill-switch:
-            # ``CHAT_SDK_RECONCILE_OPENROUTER_COST=false``.
-            #
-            # Brief window (~0.5-2s) where the rate-limit counter is
-            # unaware of this turn — back-to-back turns in that window
-            # see a stale counter.
-            cost_reconcile_task = asyncio.create_task(
-                record_turn_cost_from_openrouter(
+            # CLI project dir — used by the reconcile task to sweep for
+            # compaction subagents' gen-IDs.  ``sdk_cwd`` is the per-session
+            # CLI working directory; the CLI encodes it into the project-dir
+            # name the same way ``encode_cwd_for_cli`` does, and writes
+            # the main transcript + any ``subagents/`` alongside it under
+            # ``~/.claude/projects/<encoded>/``.  Empty when sdk_cwd isn't
+            # set (shouldn't happen in practice for SDK turns).
+            cli_project_dir: str | None = None
+            if sdk_cwd:
+                cli_project_dir = os.path.join(
+                    os.path.expanduser("~/.claude/projects"),
+                    encode_cwd_for_cli(sdk_cwd),
+                )
+
+            if is_codex_transport:
+                await persist_and_record_usage(
                     session=session,
                     user_id=user_id,
+                    prompt_tokens=turn_prompt_tokens,
+                    completion_tokens=turn_completion_tokens,
+                    cache_read_tokens=turn_cache_read_tokens,
+                    cache_creation_tokens=0,
+                    log_prefix=log_prefix,
+                    cost_usd=None,
                     model=effective_model,
+                    provider="codex",
+                    credential_id_override=(
+                        credential_lease.credentials.id if credential_lease else None
+                    ),
+                    extra_metadata={"billing_mode": "user_subscription"},
+                    execution_path="codex_claude_sdk",
+                )
+            elif _use_openrouter_reconcile:
+                # Defer the single cost-and-rate-limit write to a background
+                # task that queries OpenRouter's authoritative
+                # ``/generation?id=`` for every round in this turn.  Covers
+                # all vendors:
+                #
+                # * Non-Anthropic (Kimi et al): the CLI's ``total_cost_usd``
+                #   is computed from a static Anthropic rate table that
+                #   doesn't know the model — silently over-bills by ~5x.
+                #   The reconcile replaces it with OpenRouter's real bill.
+                # * Anthropic via OpenRouter: the CLI's number matches
+                #   Anthropic's own rates penny-for-penny in the common
+                #   case, but the reconcile catches any rate change the
+                #   CLI binary hasn't picked up and any OpenRouter-side
+                #   divergence (cache-discount accounting, promo pricing).
+                #
+                # The task calls ``persist_and_record_usage`` exactly once
+                # per turn — same method as the sync path, so append-only
+                # cost-log + rate-limit counter update together.  The sync
+                # path below is skipped entirely when the reconcile fires,
+                # so no double-counting.  Kill-switch:
+                # ``CHAT_SDK_RECONCILE_OPENROUTER_COST=false``.
+                #
+                # Brief window (~0.5-2s) where the rate-limit counter is
+                # unaware of this turn — back-to-back turns in that window
+                # see a stale counter.
+                cost_reconcile_task = asyncio.create_task(
+                    record_turn_cost_from_openrouter(
+                        session=session,
+                        user_id=user_id,
+                        model=effective_model,
+                        prompt_tokens=turn_prompt_tokens,
+                        completion_tokens=turn_completion_tokens,
+                        cache_read_tokens=turn_cache_read_tokens,
+                        cache_creation_tokens=turn_cache_creation_tokens,
+                        generation_ids=collected_gen_ids,
+                        cli_project_dir=cli_project_dir,
+                        cli_session_id=session_id,
+                        turn_start_ts=turn_start_ts,
+                        fallback_cost_usd=turn_cost_usd,
+                        api_key=config.api_key,
+                        log_prefix=log_prefix,
+                        langfuse_trace_id=langfuse_trace_id,
+                    )
+                )
+                _background_tasks.add(cost_reconcile_task)
+                cost_reconcile_task.add_done_callback(_background_tasks.discard)
+            else:
+                # Reconcile disabled, OpenRouter inactive, or subscription
+                # path (no gen-IDs).  Record the SDK CLI's
+                # ``total_cost_usd`` synchronously: accurate for Anthropic
+                # (same rate card as billing); for non-Anthropic it's the
+                # rate-card estimate that ``_override_cost_for_non_anthropic``
+                # caps (still 1.5-2x off vs real OpenRouter bill, but much
+                # closer than the ~5x Sonnet-rate fallback).
+                await persist_and_record_usage(
+                    session=session,
+                    user_id=user_id,
                     prompt_tokens=turn_prompt_tokens,
                     completion_tokens=turn_completion_tokens,
                     cache_read_tokens=turn_cache_read_tokens,
                     cache_creation_tokens=turn_cache_creation_tokens,
-                    generation_ids=collected_gen_ids,
-                    cli_project_dir=cli_project_dir,
-                    cli_session_id=session_id,
-                    turn_start_ts=turn_start_ts,
-                    fallback_cost_usd=turn_cost_usd,
-                    api_key=config.api_key,
                     log_prefix=log_prefix,
-                    langfuse_trace_id=langfuse_trace_id,
+                    cost_usd=turn_cost_usd,
+                    model=effective_model,
+                    # ``provider`` labels the cost-analytics row; the cost
+                    # value still comes from the SDK-reported number.
+                    # Tracks the actual upstream so the row matches reality:
+                    # OpenRouter when ``openrouter_active``, Anthropic
+                    # otherwise.
+                    provider=(
+                        "open_router" if config.openrouter_active else "anthropic"
+                    ),
                 )
-            )
-            _background_tasks.add(cost_reconcile_task)
-            cost_reconcile_task.add_done_callback(_background_tasks.discard)
-        else:
-            # Reconcile disabled, OpenRouter inactive, or subscription
-            # path (no gen-IDs).  Record the SDK CLI's
-            # ``total_cost_usd`` synchronously: accurate for Anthropic
-            # (same rate card as billing); for non-Anthropic it's the
-            # rate-card estimate that ``_override_cost_for_non_anthropic``
-            # caps (still 1.5-2x off vs real OpenRouter bill, but much
-            # closer than the ~5x Sonnet-rate fallback).
-            await persist_and_record_usage(
-                session=session,
+
+            # --- Persist session messages ---
+            # This MUST run in finally to persist messages even when the generator
+            # is stopped early (e.g., user clicks stop, processor breaks stream loop).
+            # Without this, messages disappear after refresh because they were never
+            # saved to the database.
+            if session is not None:
+                # sdk_model (not effective_model): in subscription mode no
+                # model was requested — the CLI's default must not read as a
+                # fallback divergence against a fabricated "request".
+                _stamp_turn_messages(
+                    session.messages,
+                    start_index=pre_turn_message_count,
+                    requested_model=sdk_model,
+                    actual_model=state.observed_model if state is not None else None,
+                    routing_source=routing_source,
+                )
+                _stamp_turn_trace_id(
+                    session.messages,
+                    start_index=pre_turn_message_count,
+                    trace_id=langfuse_trace_id,
+                )
+                # What this turn ran on, recorded on the turn rather than read
+                # back off the session later, so a route change cannot rewrite it.
+                stamp_segment(
+                    session.messages,
+                    pre_turn_message_count,
+                    turn_segment,
+                )
+                try:
+                    await asyncio.shield(upsert_chat_session(session))
+                    logger.info(
+                        "%s Session persisted in finally with %d messages",
+                        log_prefix,
+                        len(session.messages),
+                    )
+                    if turn_start is not None and not (
+                        state is not None and _has_open_block(state.adapter)
+                    ):
+                        final_checkpoint = turn_checkpoint(session.messages, turn_start)
+                except Exception as persist_err:
+                    logger.error(
+                        "%s Failed to persist session in finally: %s",
+                        log_prefix,
+                        persist_err,
+                        exc_info=True,
+                    )
+
+            # --- Pause E2B sandbox to stop billing between turns ---
+            # Fire-and-forget: pausing is best-effort and must not block the
+            # response or the transcript upload.  The task is anchored to
+            # _background_tasks to prevent garbage collection.
+            # Use pause_sandbox_direct to skip the Redis lookup and reconnect
+            # round-trip — e2b_sandbox is the live object from this turn.
+            if e2b_sandbox is not None:
+                task = asyncio.create_task(
+                    pause_sandbox_direct(
+                        e2b_sandbox,
+                        session_id,
+                        expert_id=session.expert_id if session else None,
+                    )
+                )
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
+
+            # --- Graphiti: ingest conversation turn for temporal memory ---
+            if _graphiti_ingest_allowed(
+                expert_identity_validated=expert_identity_validated,
+                graphiti_enabled=graphiti_enabled,
                 user_id=user_id,
-                prompt_tokens=turn_prompt_tokens,
-                completion_tokens=turn_completion_tokens,
-                cache_read_tokens=turn_cache_read_tokens,
-                cache_creation_tokens=turn_cache_creation_tokens,
-                log_prefix=log_prefix,
-                cost_usd=turn_cost_usd,
-                model=effective_model,
-                # ``provider`` labels the cost-analytics row; the cost
-                # value still comes from the SDK-reported number.
-                # Tracks the actual upstream so the row matches reality:
-                # OpenRouter when ``openrouter_active``, Anthropic
-                # otherwise.
-                provider=("open_router" if config.openrouter_active else "anthropic"),
-            )
+                message=message,
+                is_user_message=is_user_message,
+            ):
+                # Extract last assistant message from THIS TURN only (not all
+                # session history) to avoid distilling stale content from prior
+                # turns when the current turn errors before producing output.
+                _this_turn_msgs = (
+                    session.messages[pre_attempt_msg_count:] if session else []
+                )
+                _assistant_msgs = [
+                    m.content or "" for m in _this_turn_msgs if m.role == "assistant"
+                ]
+                _last_assistant = _assistant_msgs[-1] if _assistant_msgs else ""
 
-        # --- Persist session messages ---
-        # This MUST run in finally to persist messages even when the generator
-        # is stopped early (e.g., user clicks stop, processor breaks stream loop).
-        # Without this, messages disappear after refresh because they were never
-        # saved to the database.
-        if session is not None:
-            # sdk_model (not effective_model): in subscription mode no
-            # model was requested — the CLI's default must not read as a
-            # fallback divergence against a fabricated "request".
-            _stamp_turn_messages(
-                session.messages,
-                start_index=pre_turn_message_count,
-                requested_model=sdk_model,
-                actual_model=state.observed_model if state is not None else None,
-                routing_source=routing_source,
-            )
-            _stamp_turn_trace_id(
-                session.messages,
-                start_index=pre_turn_message_count,
-                trace_id=langfuse_trace_id,
-            )
-            # What this turn ran on, recorded on the turn rather than read
-            # back off the session later, so a route change cannot rewrite it.
-            stamp_segment(
-                session.messages,
-                pre_turn_message_count,
-                turn_segment,
-            )
-            try:
-                await asyncio.shield(upsert_chat_session(session))
+                _ingest_task = asyncio.create_task(
+                    _enqueue_graphiti_turn(
+                        user_id,
+                        session,
+                        session_id,
+                        message,
+                        _last_assistant,
+                    )
+                )
+                _background_tasks.add(_ingest_task)
+                _ingest_task.add_done_callback(_background_tasks.discard)
+
+            # --- Upload CLI native session file for cross-pod --resume ---
+            # The CLI writes its native session JSONL after each turn completes.
+            # The companion .meta.json carries the message_count watermark and mode
+            # so the next turn can restore both --resume context and gap-fill state
+            # in a single GCS round-trip via download_transcript().
+            # asyncio.shield: if the outer finally-block coroutine is cancelled
+            # while awaiting shield, the CancelledError propagates (BaseException,
+            # not caught by `except Exception`) letting the caller handle
+            # cancellation, while the shielded inner coroutine continues running
+            # to completion so the upload is not lost.
+            #
+            # NOTE: upload is attempted regardless of state.use_resume — even when
+            # this turn ran without --resume (restore failed or first T2+ on a new
+            # pod), the T1 session file at the expected path may still be present
+            # and should be re-uploaded so the next turn can resume from it.
+            # read_cli_session_from_disk returns None when the file is absent, so
+            # this is always safe.
+            #
+            # Intentionally NOT gated on skip_transcript_upload: that flag is set
+            # when our custom JSONL transcript is dropped (transcript_lost=True on
+            # reduced-context retries) but the CLI's native session file is written
+            # independently.  Blocking CLI upload on transcript_lost would prevent
+            # T1 prompt-too-long retries from uploading their valid session file,
+            # breaking --resume on the next pod.  The ended_with_stream_error gate
+            # above already covers actual turn failures.
+            if (
+                config.claude_agent_use_resume
+                and user_id
+                and sdk_cwd
+                and session is not None
+                and state is not None
+                and not ended_with_stream_error
+            ):
                 logger.info(
-                    "%s Session persisted in finally with %d messages",
+                    "%s Attempting CLI session upload"
+                    " (use_resume=%s, has_history=%s, skip_transcript=%s)",
                     log_prefix,
-                    len(session.messages),
+                    state.use_resume,
+                    has_history,
+                    skip_transcript_upload,
                 )
-                if turn_start is not None and not (
-                    state is not None and _has_open_block(state.adapter)
-                ):
-                    final_checkpoint = turn_checkpoint(session.messages, turn_start)
-            except Exception as persist_err:
-                logger.error(
-                    "%s Failed to persist session in finally: %s",
-                    log_prefix,
-                    persist_err,
-                    exc_info=True,
-                )
-
-        # --- Pause E2B sandbox to stop billing between turns ---
-        # Fire-and-forget: pausing is best-effort and must not block the
-        # response or the transcript upload.  The task is anchored to
-        # _background_tasks to prevent garbage collection.
-        # Use pause_sandbox_direct to skip the Redis lookup and reconnect
-        # round-trip — e2b_sandbox is the live object from this turn.
-        if e2b_sandbox is not None:
-            task = asyncio.create_task(
-                pause_sandbox_direct(
-                    e2b_sandbox,
-                    session_id,
-                    expert_id=session.expert_id if session else None,
-                )
-            )
-            _background_tasks.add(task)
-            task.add_done_callback(_background_tasks.discard)
-
-        # --- Graphiti: ingest conversation turn for temporal memory ---
-        if _graphiti_ingest_allowed(
-            expert_identity_validated=expert_identity_validated,
-            graphiti_enabled=graphiti_enabled,
-            user_id=user_id,
-            message=message,
-            is_user_message=is_user_message,
-        ):
-            # Extract last assistant message from THIS TURN only (not all
-            # session history) to avoid distilling stale content from prior
-            # turns when the current turn errors before producing output.
-            _this_turn_msgs = (
-                session.messages[pre_attempt_msg_count:] if session else []
-            )
-            _assistant_msgs = [
-                m.content or "" for m in _this_turn_msgs if m.role == "assistant"
-            ]
-            _last_assistant = _assistant_msgs[-1] if _assistant_msgs else ""
-
-            _ingest_task = asyncio.create_task(
-                _enqueue_graphiti_turn(
-                    user_id,
-                    session,
-                    session_id,
-                    message,
-                    _last_assistant,
-                )
-            )
-            _background_tasks.add(_ingest_task)
-            _ingest_task.add_done_callback(_background_tasks.discard)
-
-        # --- Upload CLI native session file for cross-pod --resume ---
-        # The CLI writes its native session JSONL after each turn completes.
-        # The companion .meta.json carries the message_count watermark and mode
-        # so the next turn can restore both --resume context and gap-fill state
-        # in a single GCS round-trip via download_transcript().
-        # asyncio.shield: if the outer finally-block coroutine is cancelled
-        # while awaiting shield, the CancelledError propagates (BaseException,
-        # not caught by `except Exception`) letting the caller handle
-        # cancellation, while the shielded inner coroutine continues running
-        # to completion so the upload is not lost.
-        #
-        # NOTE: upload is attempted regardless of state.use_resume — even when
-        # this turn ran without --resume (restore failed or first T2+ on a new
-        # pod), the T1 session file at the expected path may still be present
-        # and should be re-uploaded so the next turn can resume from it.
-        # read_cli_session_from_disk returns None when the file is absent, so
-        # this is always safe.
-        #
-        # Intentionally NOT gated on skip_transcript_upload: that flag is set
-        # when our custom JSONL transcript is dropped (transcript_lost=True on
-        # reduced-context retries) but the CLI's native session file is written
-        # independently.  Blocking CLI upload on transcript_lost would prevent
-        # T1 prompt-too-long retries from uploading their valid session file,
-        # breaking --resume on the next pod.  The ended_with_stream_error gate
-        # above already covers actual turn failures.
-        if (
-            config.claude_agent_use_resume
-            and user_id
-            and sdk_cwd
-            and session is not None
-            and state is not None
-            and not ended_with_stream_error
-        ):
-            logger.info(
-                "%s Attempting CLI session upload"
-                " (use_resume=%s, has_history=%s, skip_transcript=%s)",
-                log_prefix,
-                state.use_resume,
-                has_history,
-                skip_transcript_upload,
-            )
-            try:
-                # Read the CLI's native session file from disk (written by the CLI
-                # after the turn), then upload the bytes to GCS.
-                _cli_content = read_cli_session_from_disk(
-                    sdk_cwd, session_id, log_prefix
-                )
-                if _cli_content:
-                    _cli_content = _strip_synthetic_reprompt_from_cli_jsonl(
-                        _cli_content
+                try:
+                    # Read the CLI's native session file from disk (written by the CLI
+                    # after the turn), then upload the bytes to GCS.
+                    _cli_content = read_cli_session_from_disk(
+                        sdk_cwd, session_id, log_prefix
                     )
-                    # Watermark = number of DB messages this transcript covers.
-                    # len(session.messages) is accurate: the CLI session file
-                    # was just written after the turn completed, so it covers
-                    # all messages through this turn.  Any gap from a prior
-                    # missed upload was already detected by detect_gap and
-                    # injected as context, so the model has the full history.
-                    #
-                    # Previously this used _final_tmsg_count + 2, which
-                    # under-counted for tool-use turns (delta = 2 + 2*N_tool_calls),
-                    # causing persistent spurious gap-fills on every subsequent turn.
-                    # That concern was addressed by the inflated-watermark fix
-                    # (using the GCS watermark as the anchor for gap detection),
-                    # which makes len(session.messages) safe to use here.
-                    #
-                    # Watermark = next uncovered DB sequence.
-                    _jsonl_covered = _transcript_watermark_after_turn(session.messages)
-                    await asyncio.shield(
-                        upload_transcript(
-                            user_id=user_id,
-                            session_id=session_id,
-                            content=_cli_content,
-                            message_count=_jsonl_covered,
-                            mode="sdk",
-                            log_prefix=log_prefix,
+                    if _cli_content:
+                        _cli_content = _strip_synthetic_reprompt_from_cli_jsonl(
+                            _cli_content
                         )
+                        # Watermark = number of DB messages this transcript covers.
+                        # len(session.messages) is accurate: the CLI session file
+                        # was just written after the turn completed, so it covers
+                        # all messages through this turn.  Any gap from a prior
+                        # missed upload was already detected by detect_gap and
+                        # injected as context, so the model has the full history.
+                        #
+                        # Previously this used _final_tmsg_count + 2, which
+                        # under-counted for tool-use turns (delta = 2 + 2*N_tool_calls),
+                        # causing persistent spurious gap-fills on every subsequent turn.
+                        # That concern was addressed by the inflated-watermark fix
+                        # (using the GCS watermark as the anchor for gap detection),
+                        # which makes len(session.messages) safe to use here.
+                        #
+                        # Watermark = next uncovered DB sequence.
+                        _jsonl_covered = _transcript_watermark_after_turn(
+                            session.messages
+                        )
+                        await asyncio.shield(
+                            upload_transcript(
+                                user_id=user_id,
+                                session_id=session_id,
+                                content=_cli_content,
+                                message_count=_jsonl_covered,
+                                mode="sdk",
+                                log_prefix=log_prefix,
+                            )
+                        )
+                    turn_summary.note_upload(_cli_content)
+                except Exception as cli_upload_err:
+                    turn_summary.note_upload_failed()
+                    logger.warning(
+                        "%s CLI session upload failed in finally: %s",
+                        log_prefix,
+                        cli_upload_err,
                     )
-                turn_summary.note_upload(_cli_content)
-            except Exception as cli_upload_err:
-                turn_summary.note_upload_failed()
-                logger.warning(
-                    "%s CLI session upload failed in finally: %s",
-                    log_prefix,
-                    cli_upload_err,
-                )
 
-        try:
-            if sdk_cwd:
-                await _cleanup_sdk_tool_results(sdk_cwd)
-        except Exception:
-            logger.warning("%s SDK cleanup failed", log_prefix, exc_info=True)
+            try:
+                if sdk_cwd:
+                    await _cleanup_sdk_tool_results(sdk_cwd)
+            except Exception:
+                logger.warning("%s SDK cleanup failed", log_prefix, exc_info=True)
+            finally:
+                # Release stream lock to allow new streams for this session
+                await lock.release()
+
+            _raise_deferred_codex_cleanup_error(
+                deferred_codex_cleanup_error,
+                turn_error,
+            )
         finally:
-            # Nothing evaluated for this call may raise: it sits in front of
-            # the lock release. Hence ``model_construct`` (no validation).
+            # Logged whatever the cleanup above did, also when a step of it
+            # raised. Nothing evaluated for this call may raise: it would
+            # replace the error in flight. Hence ``model_construct``.
             turn_summary.finish(
                 error=turn_error,
                 session=session,
@@ -6759,13 +6780,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 ended_with_stream_error=ended_with_stream_error,
             )
             turn_summary.emit(langfuse_trace_id)
-            # Release stream lock to allow new streams for this session
-            await lock.release()
-
-        _raise_deferred_codex_cleanup_error(
-            deferred_codex_cleanup_error,
-            turn_error,
-        )
 
     # Yielded here, not in ``finally``: an async generator cannot yield while
     # it is being closed, and a closed turn has nobody left to read it.
