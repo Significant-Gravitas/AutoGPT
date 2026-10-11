@@ -228,6 +228,8 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
         title: "Couldn't send message",
         error,
         recovery: "it is still in the thread, use Retry to send it again",
+        paywallRecovery:
+          "it is still in the thread, use Retry once you have a plan",
       }),
     );
   }

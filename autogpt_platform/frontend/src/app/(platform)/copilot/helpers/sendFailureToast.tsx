@@ -20,15 +20,23 @@ interface Args {
   error: unknown;
   /** Lowercase clause saying where the user's text went. */
   recovery: string;
+  /** Replaces `recovery` on the paywall toast when `recovery` tells the user
+   *  to retry, which can't succeed until they have a plan. */
+  paywallRecovery?: string;
 }
 
 /** The single toast for a send that failed. Every send path reports through
  *  here so one failure is one toast. */
-export function toastSendFailure({ title, error, recovery }: Args) {
+export function toastSendFailure({
+  title,
+  error,
+  recovery,
+  paywallRecovery = recovery,
+}: Args) {
   if (isPaywallError(error)) {
     toast({
       title: "Choose a plan to keep chatting",
-      description: `Sending needs an active plan — ${recovery}.`,
+      description: `Sending needs an active plan — ${paywallRecovery}.`,
       variant: "destructive",
       duration: PAYWALL_TOAST_DURATION_MS,
       replaceKey: PAYWALL_TOAST_KEY,
