@@ -2789,7 +2789,10 @@ class TestPR16Transfers:
         self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=pending)
 
         rejected = self._make_transfer_row(status="REJECTED")
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=rejected)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=rejected
+        )
 
         from backend.api.features.transfers.db import reject_transfer
 
@@ -2800,8 +2803,12 @@ class TestPR16Transfers:
         )
 
         assert result.status == "REJECTED"
-        update_data = self.mock_prisma.transferrequest.update.call_args.kwargs["data"]
-        assert update_data["status"] == "REJECTED"
+        call = self.mock_prisma.transferrequest.update_many.call_args.kwargs
+        assert call["data"] == {"status": "REJECTED"}
+        # Conditional, so it can't overwrite a transfer that just completed.
+        assert call["where"]["status"] == {
+            "not_in": ["COMPLETED", "REJECTED", "CANCELLED"]
+        }
 
     @pytest.mark.asyncio
     async def test_list_transfers_returns_both_directions(self):

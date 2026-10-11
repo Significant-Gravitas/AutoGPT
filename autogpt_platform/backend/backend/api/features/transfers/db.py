@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 _VALID_RESOURCE_TYPES = {"AgentGraph", "StoreListing"}
 _OPEN_STATUSES = ["PENDING", "SOURCE_APPROVED", "TARGET_APPROVED"]
-_TERMINAL_STATUSES = ["COMPLETED", "REJECTED"]
+_TERMINAL_STATUSES = ["COMPLETED", "REJECTED", "CANCELLED"]
 
 
 class _SourceNoLongerOwnsResource(Exception):
@@ -97,7 +97,7 @@ async def approve_transfer(
     if tr is None:
         raise NotFoundError(f"Transfer request {transfer_id} not found")
 
-    if tr.status in ("COMPLETED", "REJECTED"):
+    if tr.status in _TERMINAL_STATUSES:
         raise ValueError(f"Cannot approve a transfer with status '{tr.status}'")
 
     update_data: dict = {}
@@ -142,15 +142,22 @@ async def reject_transfer(
     if tr is None:
         raise NotFoundError(f"Transfer request {transfer_id} not found")
 
-    if tr.status in ("COMPLETED", "REJECTED"):
+    if tr.status in _TERMINAL_STATUSES:
         raise ValueError(f"Cannot reject a transfer with status '{tr.status}'")
 
     if org_id not in (tr.sourceOrganizationId, tr.targetOrganizationId):
         raise ValueError("Your active organization is not a party to this transfer")
 
-    updated = await prisma.transferrequest.update(
-        where={"id": transfer_id},
+    # Conditional, so a reject racing an execute can't flip a COMPLETED
+    # transfer (whose resource has already moved) to REJECTED.
+    rejected = await prisma.transferrequest.update_many(
+        where={"id": transfer_id, "status": {"not_in": _TERMINAL_STATUSES}},
         data={"status": "REJECTED"},
+    )
+    if rejected == 0:
+        raise ValueError("Transfer is no longer open")
+    updated = await prisma.transferrequest.find_unique_or_raise(
+        where={"id": transfer_id}
     )
     return TransferResponse.from_db(updated)
 
@@ -182,12 +189,11 @@ async def execute_transfer(
     if tr.status == "COMPLETED":
         raise ValueError("Transfer has already been executed")
 
-    if tr.status == "REJECTED":
-        raise ValueError("Cannot execute a rejected transfer")
+    if tr.status in _TERMINAL_STATUSES:
+        raise ValueError(f"Cannot execute a transfer with status '{tr.status}'")
 
     # Move, status claim, audit rows and competing-transfer cleanup commit
-    # together or not at all. Before, the move and COMPLETED were committed
-    # first, so an audit failure left a moved resource behind a 500 (#15267).
+    # together or not at all (#15267).
     try:
         async with transaction() as tx:
             # Ownership can change between create and execute: another
@@ -213,13 +219,19 @@ async def execute_transfer(
             if moved == 0:
                 raise _SourceNoLongerOwnsResource()
 
-            # Conditional claim: only one concurrent execute can complete it.
+            # Conditional claim: only one concurrent execute can complete it,
+            # and only while it is open and approved by both sides.
             claimed = await tx.transferrequest.update_many(
-                where={"id": transfer_id, "status": {"not_in": _TERMINAL_STATUSES}},
+                where={
+                    "id": transfer_id,
+                    "status": {"not_in": _TERMINAL_STATUSES},
+                    "sourceApprovedByUserId": {"not": None},
+                    "targetApprovedByUserId": {"not": None},
+                },
                 data={"status": "COMPLETED", "completedAt": datetime.now(timezone.utc)},
             )
             if claimed == 0:
-                raise ValueError("Transfer has already been executed or rejected")
+                raise ValueError("Transfer is no longer open for execution")
 
             await _create_audit_logs(transfer=tr, actor_user_id=user_id, db=tx)
 
@@ -241,10 +253,10 @@ async def execute_transfer(
         )
         if rejected == 0:
             # A concurrent execute of this same transfer won the move.
-            raise ValueError("Transfer has already been executed or rejected")
+            raise ValueError("Transfer is no longer open for execution")
         raise ValueError(
-            "Resource no longer belongs to the source organization; "
-            "the transfer has been rejected"
+            "Resource was deleted or no longer belongs to the source "
+            "organization; the transfer has been rejected"
         )
 
     updated = await prisma.transferrequest.find_unique_or_raise(

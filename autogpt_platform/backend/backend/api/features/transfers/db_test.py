@@ -5,7 +5,7 @@ was invisible to tests that mock ``prisma.auditlog.create``.
 """
 
 import asyncio
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -146,6 +146,60 @@ async def test_stale_transfer_cannot_move_graph_away_from_new_owner(transfer_wor
         await transfers_db.execute_transfer(t2, world["source_user"], world["org_a"])
     assert await _graph_orgs(world["graph_id"]) == {world["org_b"]}
     assert await _status(t2) == "REJECTED"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_deleted_graph_rejects_the_transfer(transfer_world):
+    world = transfer_world
+    t1 = await _approved_transfer(world, world["org_b"])
+    await AgentGraph.prisma().update_many(
+        where={"id": world["graph_id"]}, data={"isActive": False}
+    )
+
+    with pytest.raises(ValueError):
+        await transfers_db.execute_transfer(t1, world["source_user"], world["org_a"])
+
+    assert await _graph_orgs(world["graph_id"]) == {world["org_a"]}
+    assert await _status(t1) == "REJECTED"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cancelled_transfer_cannot_be_executed(transfer_world):
+    world = transfer_world
+    t1 = await _approved_transfer(world, world["org_b"])
+    await TransferRequest.prisma().update(
+        where={"id": t1}, data={"status": "CANCELLED"}
+    )
+
+    with pytest.raises(ValueError):
+        await transfers_db.execute_transfer(t1, world["source_user"], world["org_a"])
+
+    assert await _graph_orgs(world["graph_id"]) == {world["org_a"]}
+    assert await _status(t1) == "CANCELLED"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reject_racing_execute_cannot_undo_a_completed_transfer(
+    transfer_world,
+):
+    world = transfer_world
+    t1 = await _approved_transfer(world, world["org_b"])
+    # The reject read the transfer while it was still open...
+    stale = await TransferRequest.prisma().find_unique_or_raise(where={"id": t1})
+
+    # ...then the execute committed before the reject wrote.
+    await transfers_db.execute_transfer(t1, world["source_user"], world["org_a"])
+
+    with patch.object(
+        transfers_db.prisma.transferrequest,
+        "find_unique",
+        AsyncMock(return_value=stale),
+    ):
+        with pytest.raises(ValueError):
+            await transfers_db.reject_transfer(t1, world["target_user"], world["org_b"])
+
+    assert await _status(t1) == "COMPLETED"
+    assert await _graph_orgs(world["graph_id"]) == {world["org_b"]}
 
 
 @pytest.mark.asyncio(loop_scope="session")
