@@ -139,6 +139,36 @@ def test_from_db_execution_count_override_covers_success_rate():
     assert result.success_rate == 100.0
 
 
+def test_from_db_success_rate_uses_the_included_runs_not_the_full_count():
+    """The override reports every run, but only the latest few are loaded;
+    dividing their successes by the full count made 100 good runs read 1%."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    completed = prisma.models.AgentGraphExecution(
+        id="exec-1",
+        agentGraphId="g1",
+        agentGraphVersion=1,
+        userId="u1",
+        executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+        createdAt=now,
+        updatedAt=now,
+        isDeleted=False,
+        isShared=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+    )
+    failed = completed.model_copy(
+        update={
+            "id": "exec-2",
+            "executionStatus": prisma.enums.AgentExecutionStatus.FAILED,
+        }
+    )
+    agent = _make_library_agent(executions=[completed, failed])
+
+    result = library_model.LibraryAgent.from_db(agent, execution_count_override=100)
+
+    assert result.execution_count == 100
+    assert result.success_rate == 50.0
+
+
 @pytest.mark.asyncio
 async def test_agent_preset_from_db(test_user_id: str):
     # Create mock DB agent
