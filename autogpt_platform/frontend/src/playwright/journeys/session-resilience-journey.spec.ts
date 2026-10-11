@@ -72,20 +72,6 @@ async function expectStillSignedIn(page: Page, loginVisits: string[]) {
   expect(loginVisits, "the user was sent to the login page").toEqual([]);
 }
 
-// Hosted builds hold a fresh account behind the plan picker, which brings its
-// own "Log out" button and covers the account menu; self-hosted builds don't.
-async function logOut(page: Page) {
-  const paywallLogOut = page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Log out" });
-  if (await paywallLogOut.isVisible()) {
-    await paywallLogOut.click();
-    return;
-  }
-  await page.getByTestId("profile-popout-menu-trigger").click();
-  await page.getByRole("button", { name: "Log out" }).click();
-}
-
 async function nextSuccessfulSessionCheck(page: Page) {
   await page.waitForResponse(
     (response) => isSessionCheck(response.request()) && response.ok(),
@@ -111,7 +97,6 @@ async function openSecondTab(context: BrowserContext) {
 
 test("session resilience journey: network trouble never signs the user out", async ({
   page,
-  context,
   baseURL,
 }) => {
   test.setTimeout(120_000);
@@ -152,20 +137,22 @@ test("session resilience journey: network trouble never signs the user out", asy
 
   const loginVisits = recordLoginVisits(page);
 
-  await test.step("waking up offline keeps the session and recovers when the network returns", async () => {
-    let failedAttempts = 0;
-    const countFailure = (request: Request) => {
-      if (isSessionCheck(request)) failedAttempts += 1;
-    };
-    page.on("requestfailed", countFailure);
+  await test.step("a session check lost to a dropped connection keeps the session and recovers when the network returns", async () => {
+    // A laptop waking before its network is back: the check on refocus
+    // dies with "Failed to fetch" / "Load failed" (BUILDER-3J3).
+    let dropped = 0;
+    await page.route("**/*", (route) => {
+      if (!isSessionCheck(route.request())) return route.fallback();
+      dropped += 1;
+      return route.abort("internetdisconnected");
+    });
 
-    await context.setOffline(true);
-    await refocusUntil(page, () => failedAttempts > 0);
+    await refocusUntil(page, () => dropped > 0);
     const recovered = nextSuccessfulSessionCheck(page);
-    await context.setOffline(false);
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
     await expectStillSignedIn(page, loginVisits);
     await recovered;
-    page.off("requestfailed", countFailure);
   });
 
   await test.step("a 503 from the server keeps the session and is retried", async () => {
@@ -205,16 +192,17 @@ test("session resilience journey: network trouble never signs the user out", asy
       (window as unknown as { __beforeDeploy?: boolean }).__beforeDeploy = true;
     });
 
+    const reloaded = page.waitForEvent("load", { timeout: 20_000 });
     await refocusUntil(page, () => stale > 0);
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            (window as unknown as { __beforeDeploy?: boolean })
-              .__beforeDeploy ?? false,
-        ),
-      )
-      .toBe(false);
+    await reloaded;
+    const survivedReload = await page.evaluate(
+      () =>
+        (window as unknown as { __beforeDeploy?: boolean }).__beforeDeploy ??
+        false,
+    );
+    expect(survivedReload, "the page should reload onto the new deploy").toBe(
+      false,
+    );
     await page.unrouteAll({ behavior: "ignoreErrors" });
 
     await expectStillSignedIn(page, loginVisits);
@@ -255,8 +243,9 @@ test("session resilience journey: signing out in one tab signs out the others", 
   await signUpIntoLibrary(page, baseURL);
   const otherTab = await openSecondTab(context);
 
-  await logOut(page);
-  await expect(page).toHaveURL(/\/login/);
+  // The navbar's and the hosted plan picker's "Log out" both route here.
+  await page.goto("/logout");
+  await expect(page).toHaveURL(/\/login/, { timeout: 15_000 });
 
   await expect(otherTab).toHaveURL(/\/login\?next=%2Flibrary/, {
     timeout: 20_000,
