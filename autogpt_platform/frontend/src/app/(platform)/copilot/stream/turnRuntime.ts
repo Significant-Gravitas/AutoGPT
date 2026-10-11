@@ -655,11 +655,7 @@ export class TurnRuntime {
       this.error = new MessageTooLongError(refusalText(end), end.status);
     } else {
       this.reportIfUnexpected(end);
-      this.error = new SendRefusedError(
-        refusalText(end),
-        end.status,
-        refusalReason(end.body),
-      );
+      this.error = new SendRefusedError(refusalText(end), end.status);
     }
     this.emitNow();
     this.handlers.onError?.(this.error, null);
@@ -676,13 +672,7 @@ export class TurnRuntime {
     else if (end.status === 401) this.giveUp(new CopilotAuthError());
     else {
       this.reportIfUnexpected(end);
-      this.giveUp(
-        new SendRefusedError(
-          refusalText(end),
-          end.status,
-          refusalReason(end.body),
-        ),
-      );
+      this.giveUp(new SendRefusedError(refusalText(end), end.status));
     }
   }
 
@@ -1506,20 +1496,11 @@ export function isUnexpectedRefusal(status: number) {
 
 const EXPECTED_4XX = new Set([401, 404, 408, 409, 425, 429]);
 
-// The server's own words for a refusal: FastAPI's string `detail`, or a plain-text body.
-function refusalReason(body: unknown) {
-  if (typeof body === "string")
-    return body && !body.trimStart().startsWith("<") ? body : null;
-  const detail = (body as { detail?: unknown } | null)?.detail;
-  return typeof detail === "string" ? detail : null;
-}
-
 /** A send the server refused; its status says whether a resend can help. */
 export class SendRefusedError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly reason: string | null = null,
   ) {
     super(message);
     this.name = "SendRefusedError";

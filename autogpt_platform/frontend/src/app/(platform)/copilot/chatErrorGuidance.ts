@@ -3,7 +3,6 @@ import {
   ChatUnavailableError,
   isUnexpectedRefusal,
   MessageTooLongError,
-  SendRefusedError,
 } from "./stream/turnRuntime";
 
 export type ChatErrorAction = "sign-in" | "new-chat";
@@ -12,8 +11,6 @@ export interface ChatErrorGuidance {
   /** What happened, and what will work next. */
   title: string;
   action: ChatErrorAction | null;
-  /** The server's reason, shown in place of the raw error. */
-  reason?: string | null;
   /** A small muted line under the guidance. */
   note?: string;
 }
@@ -57,7 +54,6 @@ export function describeChatError(error: Error): ChatErrorGuidance {
       title:
         "The request was refused. Reload the page and try again; if it keeps happening, contact support.",
       action: null,
-      reason: error instanceof SendRefusedError ? error.reason : null,
       note: "The system maintainer has been notified of the issue",
     };
   if (status !== null && status >= 500)

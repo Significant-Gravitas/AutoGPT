@@ -40,45 +40,27 @@ describe("ChatErrorBanner", () => {
     ).toBe("/copilot");
   });
 
-  it("a refusal the app never provokes: the refusal, the server's reason, and the notified line", () => {
+  it("a refusal the app never provokes: the refusal, its response body folded away, and the notified line", () => {
     render(
       <ChatErrorBanner
         error={
-          new SendRefusedError(
-            '{"detail":"advanced_tier_not_entitled"}',
-            403,
-            "advanced_tier_not_entitled",
-          )
+          new SendRefusedError('{"detail":"advanced_tier_not_entitled"}', 403)
         }
       />,
     );
 
-    const lines = Array.from(
-      screen.getByTestId("chat-error-banner").querySelectorAll("p"),
-    ).map((p) => p.textContent);
-    expect(lines).toEqual([
+    const banner = screen.getByTestId("chat-error-banner");
+    const details = banner.querySelector("details");
+    expect(details?.open).toBe(false);
+    expect(details?.querySelector("summary")?.textContent).toBe(
       "The request was refused. Reload the page and try again; if it keeps happening, contact support.",
-      "advanced_tier_not_entitled",
-      "The system maintainer has been notified of the issue",
-    ]);
-  });
-
-  it("a refusal with no reason leaves the reason line out", () => {
-    render(
-      <ChatErrorBanner
-        error={
-          new SendRefusedError("Couldn't reach the server (HTTP 400).", 400)
-        }
-      />,
     );
-
-    const lines = Array.from(
-      screen.getByTestId("chat-error-banner").querySelectorAll("p"),
-    ).map((p) => p.textContent);
-    expect(lines).toEqual([
-      "The request was refused. Reload the page and try again; if it keeps happening, contact support.",
-      "The system maintainer has been notified of the issue",
-    ]);
+    expect(details?.querySelector("pre")?.textContent).toBe(
+      '{"detail":"advanced_tier_not_entitled"}',
+    );
+    expect(
+      Array.from(banner.querySelectorAll("p")).map((p) => p.textContent),
+    ).toEqual(["The system maintainer has been notified of the issue"]);
   });
 
   it("a dropped connection: says to send again, with no action", () => {
@@ -90,5 +72,10 @@ describe("ChatErrorBanner", () => {
       ),
     ).toBeDefined();
     expect(screen.queryByRole("link")).toBeNull();
+    expect(
+      screen.queryByText(
+        "The system maintainer has been notified of the issue",
+      ),
+    ).toBeNull();
   });
 });

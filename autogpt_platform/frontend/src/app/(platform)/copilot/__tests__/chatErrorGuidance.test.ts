@@ -71,35 +71,20 @@ describe("describeChatError", () => {
 
   it.each([
     [
-      "a 403 with the server's reason",
-      new SendRefusedError(
-        '{"detail":"advanced_tier_not_entitled"}',
-        403,
-        "advanced_tier_not_entitled",
-      ),
-      "advanced_tier_not_entitled",
+      "a 403",
+      new SendRefusedError('{"detail":"advanced_tier_not_entitled"}', 403),
     ],
+    ["a 422", new SendRefusedError('{"detail":"Message too long"}', 422)],
     [
-      "a 422 with the server's reason",
-      new SendRefusedError(
-        '{"detail":"Message too long"}',
-        422,
-        "Message too long",
-      ),
-      "Message too long",
-    ],
-    [
-      "a 400 with no reason",
-      new SendRefusedError("Couldn't reach the server (HTTP 400).", 400, null),
-      null,
+      "a 400 with a non-JSON body",
+      new SendRefusedError("Couldn't reach the server (HTTP 400).", 400),
     ],
   ])(
-    "%s the app never provokes reads as a refusal, its reason, and that we were notified",
-    (_state, error, reason) => {
+    "%s the app never provokes reads as a refusal we were notified of",
+    (_state, error) => {
       expect(describeChatError(error)).toEqual({
         title: REFUSED,
         action: null,
-        reason,
         note: NOTIFIED,
       });
     },

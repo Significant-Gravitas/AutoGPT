@@ -10,26 +10,19 @@ interface Props {
 }
 
 export function ChatErrorBanner({ error }: Props) {
-  const { title, action, reason, note } = describeChatError(error);
+  const { title, action, note } = describeChatError(error);
   return (
     <div
       data-testid="chat-error-banner"
       className="rounded-lg bg-red-50 p-4 text-sm text-red-700"
     >
-      {note ? (
-        <>
-          <p className="font-medium">{title}</p>
-          {reason ? <p className="mt-1 break-words">{reason}</p> : null}
-          <p className="mt-1 text-xs text-zinc-500">{note}</p>
-        </>
-      ) : (
-        <details>
-          <summary className="cursor-pointer font-medium">{title}</summary>
-          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
-            {error.message}
-          </pre>
-        </details>
-      )}
+      <details>
+        <summary className="cursor-pointer font-medium">{title}</summary>
+        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
+          {error.message}
+        </pre>
+      </details>
+      {note ? <p className="mt-1 text-xs text-zinc-500">{note}</p> : null}
       {action ? (
         <Button
           as="NextLink"
