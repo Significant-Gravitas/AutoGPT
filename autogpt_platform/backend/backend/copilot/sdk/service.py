@@ -484,8 +484,17 @@ async def _consume_sdk_until_done(
                 state.observed_model = observed
             # Live spend and step count: the governor lands the turn when
             # either nears its limit (see ``security_hooks`` PreToolUse).
+            # Metering must never fail the turn it meters; the CLI's own
+            # budget and turn limits still back it up.
             if state.governor is not None:
-                state.governor.observe(sdk_msg)
+                try:
+                    state.governor.observe(sdk_msg)
+                except Exception:
+                    logger.warning(
+                        "%s Turn governor could not meter a message",
+                        ctx.log_prefix,
+                        exc_info=True,
+                    )
 
         if loop_state.provider_refused:
             if isinstance(sdk_msg, ResultMessage):
@@ -1422,14 +1431,14 @@ class _RetryState:
     observed_model: str | None = None
     # The turn's spend and step governor. On ``_RetryState`` so its meter
     # keeps what earlier attempts spent, and so every rebuilt adapter can be
-    # handed the same one (see ``fresh_adapter``).
+    # handed the same one (see ``_fresh_adapter``).
     governor: TurnGovernor | None = None
 
-    def fresh_adapter(self, message_id: str, session_id: str) -> SDKResponseAdapter:
-        """Replace the adapter for a new attempt, keeping the turn's governor."""
-        self.adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
-        self.adapter.governor = self.governor
-        return self.adapter
+
+def _fresh_adapter(state: _RetryState, message_id: str, session_id: str) -> None:
+    """Replace the adapter for a new attempt, keeping the turn's governor."""
+    state.adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
+    state.adapter.governor = state.governor
 
 
 @dataclass
@@ -1848,7 +1857,7 @@ async def _apply_building_mode_restart(
     # the original message once more, which only surfaces in the
     # rare CLI-file-loss fallback path (cosmetic duplicate).
     prior_adapter = state.adapter
-    state.fresh_adapter(message_id, session_id)
+    _fresh_adapter(state, message_id, session_id)
     state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
     if prior_adapter.emitted_real_content_to_wire:
         state.adapter.prior_attempt_emitted_visible_content = True
@@ -2471,7 +2480,7 @@ async def _do_transient_backoff(
     """
     yield StreamStatus(message=f"Connection interrupted, retrying in {backoff}s…")
     await asyncio.sleep(backoff)
-    state.fresh_adapter(message_id, session_id)
+    _fresh_adapter(state, message_id, session_id)
     state.usage.reset()
 
 
@@ -4345,6 +4354,7 @@ async def _run_stream_attempt(
                 )
             yield response
 
+    hangup_pause: TurnPause | None = None
     if not acc.stream_completed and not loop_state.ended_with_stream_error:
         # User cancels raise ``asyncio.CancelledError`` upstream; reaching this
         # branch means the CLI hung up — per-query budget exhausted, max_turns,
@@ -4358,18 +4368,27 @@ async def _run_stream_attempt(
         state.adapter.end_open_blocks(closing_responses)
         for r in closing_responses:
             yield r
-        notice_block_id = str(uuid.uuid4())
-        yield StreamTextStart(id=notice_block_id)
-        yield StreamTextDelta(id=notice_block_id, delta=STREAM_INCOMPLETE_MARKER)
-        yield StreamTextEnd(id=notice_block_id)
-        ctx.session.messages.append(
-            ChatMessage(role="assistant", content=STREAM_INCOMPLETE_MARKER)
+        # While landing, the hangup ended the landing: still a pause.
+        hangup_pause = (
+            state.governor.hangup_pause() if state.governor is not None else None
         )
+        if hangup_pause is not None:
+            yield StreamTurnPaused(pause=hangup_pause.as_part())
+        else:
+            notice_block_id = str(uuid.uuid4())
+            yield StreamTextStart(id=notice_block_id)
+            yield StreamTextDelta(id=notice_block_id, delta=STREAM_INCOMPLETE_MARKER)
+            yield StreamTextEnd(id=notice_block_id)
+            ctx.session.messages.append(
+                ChatMessage(role="assistant", content=STREAM_INCOMPLETE_MARKER)
+            )
 
     if (
         acc.assistant_response.content or acc.assistant_response.tool_calls
     ) and not acc.has_appended_assistant:
         ctx.session.messages.append(acc.assistant_response)
+    if hangup_pause is not None:
+        append_pause_marker(ctx.session, hangup_pause)
 
     # SECRT-2333: persist a visible-marker ChatMessage when the turn ended
     # with ``ended_with_stream_error=True`` and no prior marker is on the
@@ -5866,7 +5885,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     session, is_user_message, state.query_message
                 )
                 prior_adapter = state.adapter
-                state.fresh_adapter(message_id, session_id)
+                _fresh_adapter(state, message_id, session_id)
                 # Carry the per-turn re-prompt cap forward so a transient
                 # retry mid-turn does not unlock another re-prompt round.
                 state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
@@ -6674,7 +6693,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # pressed send for the continuation, so nothing else would check it. The
     # queued messages stay queued and a not-started pause takes their place.
     # -------------------------------------------------------------------------
-    if not ended_with_stream_error and not (governor is not None and governor.paused):
+    if not ended_with_stream_error and not (governor is not None and governor.landed):
         auto_continue = await gate_auto_continue(
             session, user_id, platform_billed=not is_codex_transport
         )

@@ -121,6 +121,14 @@ def test_a_landed_turn_pauses_with_its_window_and_reset():
     assert governor.paused is True
 
 
+@pytest.mark.parametrize("subtype", ["error", "error_during_execution"])
+def test_a_genuine_error_while_landing_stays_an_error(subtype):
+    governor = _governor(meter=_Meter(spent=1.0))
+    governor.refusal()
+    assert governor.pause(subtype, wrote_checkpoint=True) is None
+    assert governor.paused is False
+
+
 def test_a_landed_turn_without_a_reply_says_so():
     governor = _governor(meter=_Meter(spent=1.0))
     governor.refusal()
@@ -151,6 +159,19 @@ def test_cli_budget_backstop_names_the_limiting_window(budget, reason):
     assert pause.reason == reason
     assert pause.checkpoint_saved is False
     assert pause.resets_at == (RESETS if reason == "weekly" else None)
+
+
+def test_a_cli_hangup_only_pauses_a_turn_that_was_landing():
+    running = _governor(meter=_Meter(spent=0.1, last=0.01))
+    assert running.hangup_pause() is None
+    assert running.landed is False
+
+    landing = _governor(meter=_Meter(spent=1.0))
+    landing.refusal()
+    assert landing.landed is True
+    pause = landing.hangup_pause()
+    assert pause == TurnPause(reason="daily", resets_at=RESETS, checkpoint_saved=False)
+    assert landing.paused is True
 
 
 def test_cli_max_turns_sits_past_the_checkin():

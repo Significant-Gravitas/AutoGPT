@@ -2152,6 +2152,55 @@ class TestStreamEndedWithoutResultMessage:
         contents = [m.content for m in ctx.session.messages]
         assert STREAM_ERROR_MARKER not in contents, contents
 
+    @pytest.mark.asyncio
+    async def test_a_hangup_while_landing_pauses_instead_of_the_notice(self):
+        """Once the governor is refusing tools, a CLI hangup ended the landing:
+        the turn pauses (no checkpoint claimed) rather than showing the
+        incomplete-turn notice, and a paused turn never auto-continues."""
+        from backend.copilot.constants import STREAM_INCOMPLETE_MARKER
+        from backend.copilot.response_model import StreamTurnPaused
+        from backend.copilot.sdk.governor import TurnGovernor
+        from backend.copilot.sdk.service import _run_stream_attempt
+        from backend.copilot.turn_budget import TurnBudget
+        from backend.copilot.turn_pause import pause_of
+
+        ctx = self._ctx()
+        state = self._state()
+        governor = TurnGovernor(
+            budget=TurnBudget(usd=0.0, limiting="weekly"), step_checkin=450
+        )
+        assert governor.refusal() is not None
+        state.governor = governor
+        state.adapter.governor = governor
+
+        async def empty_iter(_client, wake=None, tool_display_wake=None):
+            if False:
+                yield None  # pragma: no cover
+
+        fake_client = MagicMock()
+        fake_client.query = AsyncMock()
+        fake_sdk_client = MagicMock()
+        fake_sdk_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_sdk_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=fake_sdk_client,
+            ),
+            patch("backend.copilot.sdk.service._iter_sdk_messages", new=empty_iter),
+        ):
+            events = [ev async for ev in _run_stream_attempt(ctx, state)]
+
+        paused = [e for e in events if isinstance(e, StreamTurnPaused)]
+        assert len(paused) == 1
+        assert paused[0].pause["reason"] == "weekly"
+        assert paused[0].pause["checkpoint_saved"] is False
+        contents = [m.content for m in ctx.session.messages]
+        assert STREAM_INCOMPLETE_MARKER not in contents, contents
+        assert pause_of(ctx.session.messages[-1]) is not None
+        assert governor.landed is True
+
 
 class TestHiddenShortNamesForPermissions:
     """``_hidden_short_names_for_permissions`` is the pure function that
