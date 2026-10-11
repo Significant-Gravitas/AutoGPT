@@ -2,6 +2,8 @@
 
 iOS-first native app for Otto, your AI company and their conversations. This is an experiment, not a released mobile client. The full scope, card inventory and acceptance gates live in the [implementation plan](../../docs/engineering/native-mobile/implementation-plan.md).
 
+The next implementation spike uses SwiftUI under `apple/`, following the planned fallback after three React Native cold-build timeouts and an independent Opus assessment. The current `src/` client, native journeys and production-server harness are retained as reference during the port. Android will share the server contract and fixtures but needs its own UI. The commands and measurements below describe the React Native reference until the SwiftUI build gate is established.
+
 The app follows the [platform license](../LICENSE.md). The [Expo template notice](licenses/expo-template-LICENSE) preserves attribution for the generated starting template.
 
 ## Local development
