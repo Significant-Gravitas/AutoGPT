@@ -61,10 +61,12 @@ async def refusal_for(user_id: str | None) -> TurnPause | None:
             expected_tier=tier,
         )
     except RateLimitExceeded as exc:
+        # A trial's allowance doesn't refill; its end is not a reset. Nor
+        # does a window that allows nothing (no plan, or the trial is over).
+        limit = {"daily": daily, "weekly": weekly}.get(exc.window, 0)
         return TurnPause(
             reason=exc.window,
-            # A trial's allowance doesn't refill; its end is not a reset.
-            resets_at=None if exc.window == "trial" else exc.resets_at,
+            resets_at=exc.resets_at if limit > 0 else None,
             checkpoint_saved=False,
             started=False,
         )

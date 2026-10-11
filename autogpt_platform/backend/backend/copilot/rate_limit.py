@@ -435,8 +435,9 @@ class CoPilotUsagePublic(BaseModel):
     )
     resets_at: datetime | None = Field(
         default=None,
-        description="When the limiting window refills. Null when 'ok', and "
-        "for the trial allowance, which doesn't refill.",
+        description="When the limiting window refills. Null when 'ok', for "
+        "the trial allowance, and for a window that allows nothing (no plan), "
+        "none of which refill.",
     )
 
     @classmethod
@@ -512,6 +513,7 @@ def _reading(
         percent_used=public.percent_used,
         exhausted=window.used >= window.limit,
         resets_at=window.resets_at,
+        refills=window.limit > 0,
     )
 
 

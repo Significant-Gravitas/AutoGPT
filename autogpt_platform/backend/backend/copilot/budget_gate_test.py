@@ -85,6 +85,18 @@ async def test_a_spent_trial_refuses_the_turn_with_no_reset(allowance):
 
 
 @pytest.mark.asyncio
+async def test_a_window_that_allows_nothing_refuses_with_no_reset(allowance):
+    # No plan, or a trial that is over: zero limits never refill on their own,
+    # so the pause can't offer to pick the task up at the next reset.
+    limits, check = allowance
+    limits.return_value = (0, 0, SubscriptionTier.NO_TIER)
+    check.side_effect = RateLimitExceeded("weekly", WEEKLY_RESET)
+    pause = await refusal_for("u-1")
+    assert pause is not None
+    assert (pause.reason, pause.resets_at, pause.started) == ("weekly", None, False)
+
+
+@pytest.mark.asyncio
 async def test_an_unreadable_allowance_is_raised_for_the_caller(allowance):
     _, check = allowance
     check.side_effect = RateLimitUnavailable()

@@ -26,6 +26,9 @@ class WindowReading(BaseModel):
     percent_used: float
     exhausted: bool
     resets_at: datetime
+    # False for a window that allows nothing (no plan, or the trial is over):
+    # its reset brings no budget back.
+    refills: bool = True
 
 
 class UsageVerdict(BaseModel):
@@ -57,14 +60,17 @@ def usage_verdict(
     return UsageVerdict()
 
 
-def _refill_order(reading: WindowReading) -> tuple[datetime, bool]:
-    # The weekly window wins a tie: it is the larger of the two.
-    return reading.resets_at, reading.window == "weekly"
+def _refill_order(reading: WindowReading) -> tuple[bool, datetime, bool]:
+    # A window that never refills outlasts any reset; the weekly window wins
+    # a tie on time, being the larger of the two.
+    return not reading.refills, reading.resets_at, reading.window == "weekly"
 
 
 def _verdict(state: UsageState, reading: WindowReading, trial: bool) -> UsageVerdict:
     if trial and reading.window == "weekly":
         return UsageVerdict(state=state, limiting_window="trial")
     return UsageVerdict(
-        state=state, limiting_window=reading.window, resets_at=reading.resets_at
+        state=state,
+        limiting_window=reading.window,
+        resets_at=reading.resets_at if reading.refills else None,
     )

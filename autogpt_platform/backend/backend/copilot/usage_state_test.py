@@ -89,8 +89,15 @@ def test_a_tie_on_refill_time_goes_to_the_weekly_window():
 
 
 def test_a_zero_limit_is_exhausted_not_unlimited():
+    # No plan, or a trial that is over: the window's reset brings nothing
+    # back, so there is no reset to wait for.
     usage = _usage(0, 0, daily_limit=0, weekly_limit=0)
-    assert _verdict(usage) == ("exhausted", "weekly", WEEKLY_RESET)
+    assert _verdict(usage) == ("exhausted", "weekly", None)
+
+
+def test_a_window_that_allows_nothing_outlasts_one_that_refills():
+    usage = _usage(1_000_000, 0, weekly_limit=0)
+    assert _verdict(usage) == ("exhausted", "weekly", None)
 
 
 def test_uncapped_windows_are_ok():
