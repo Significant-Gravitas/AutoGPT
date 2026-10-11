@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
 
+import pytest
+
 from backend.copilot.constants import COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
+from backend.copilot.continuation import KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.turn_pause import (
     PAUSE_KEY,
@@ -58,3 +61,12 @@ def test_rows_without_a_valid_pause_read_as_none():
         metadata={PAUSE_KEY: {"reason": "not-a-reason"}},
     )
     assert pause_of(broken) is None
+
+
+@pytest.mark.parametrize("note", [KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE])
+def test_a_kickoff_note_is_not_a_marker(note):
+    # A continuation that pauses before writing anything still gets its
+    # pause row: the note it started from begins a turn, it doesn't end one.
+    session = _session(ChatMessage(role="assistant", content=note))
+    assert append_pause_marker(session, TurnPause(reason="daily")) is True
+    assert len(session.messages) == 2

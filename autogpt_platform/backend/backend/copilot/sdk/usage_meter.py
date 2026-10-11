@@ -5,19 +5,28 @@ the money runs out needs a running figure, so each model call the CLI
 streams is priced as it arrives, with the same rate cards the post-turn
 estimate uses.
 
-``AssistantMessage`` is the single source. It carries the call's id and
-usage for the main agent and for foreground sub-agents alike, and it repeats
-once per content block, so calls are keyed by id and each count is kept at
-its highest value. The figure runs slightly low -- a call's last block can
-predate its final output count, and compaction calls aren't reported --
-which the governor's reserve and the CLI backstop absorb. Billing still
-comes from the post-turn reconcile; this only decides when to land.
+Two sources, keyed by the call's id with each count kept at its highest
+value, since a call is reported several times:
+
+* ``AssistantMessage`` (once per content block, for the main agent and for
+  foreground sub-agents alike) has the id, the model and the input and cache
+  counts, but its ``output_tokens`` is only the placeholder from the start
+  of the response.
+* The raw stream (``StreamEvent``, with partial messages on, the default)
+  carries the real output count in each response's ``message_delta``, which
+  names no call: it belongs to the last ``message_start`` on the same
+  stream, the main agent's or a sub-agent's (by its parent tool call).
+
+With partial messages off, output reads as the placeholder and the figure
+runs low; the CLI backstop still bounds the turn. Compaction calls aren't
+reported either. Billing still comes from the post-turn reconcile; this
+only decides when to land.
 """
 
 from functools import cache
 from typing import Any
 
-from claude_agent_sdk import AssistantMessage
+from claude_agent_sdk import AssistantMessage, StreamEvent
 from pydantic import BaseModel
 
 from backend.copilot.anthropic_rate_card import compute_anthropic_cost_usd
@@ -63,27 +72,64 @@ class UsageMeter:
     def __init__(self) -> None:
         self._calls: dict[str, CallUsage] = {}
         self._priced: dict[str, float] = {}
+        self._spent = 0.0
         self._last_main_id: str | None = None
+        # The call each stream is generating, by parent tool call (None for
+        # the main agent): a ``message_delta`` doesn't say which it belongs to.
+        self._streaming: dict[str | None, str] = {}
 
     def observe(self, message: AssistantMessage) -> None:
-        call_id = message.message_id
-        if not call_id or not message.usage:
+        if not message.message_id or not message.usage:
             return
+        self._record(
+            message.message_id,
+            message.usage,
+            model=message.model,
+            main=message.parent_tool_use_id is None,
+        )
+
+    def observe_stream(self, event: StreamEvent) -> None:
+        data = event.event
+        stream = event.parent_tool_use_id
+        if data.get("type") == "message_start":
+            message = data.get("message")
+            if not isinstance(message, dict) or not message.get("id"):
+                return
+            self._streaming[stream] = message["id"]
+            self._record(
+                message["id"],
+                message.get("usage") or {},
+                model=message.get("model"),
+                main=stream is None,
+            )
+        elif data.get("type") == "message_delta":
+            call_id = self._streaming.get(stream)
+            usage = data.get("usage")
+            if call_id is not None and isinstance(usage, dict):
+                self._record(call_id, usage)
+
+    def _record(
+        self,
+        call_id: str,
+        usage: dict[str, Any],
+        *,
+        model: str | None = None,
+        main: bool = True,
+    ) -> None:
         call = self._calls.get(call_id)
         if call is None:
-            call = CallUsage(
-                model=message.model or None,
-                main=message.parent_tool_use_id is None,
-            )
+            call = CallUsage(model=model or None, main=main)
             self._calls[call_id] = call
-        call.merge(message.usage)
-        self._priced[call_id] = price_call_usd(call)
+        call.merge(usage)
+        priced = price_call_usd(call)
+        self._spent += priced - self._priced.get(call_id, 0.0)
+        self._priced[call_id] = priced
         if call.main:
             self._last_main_id = call_id
 
     @property
     def spent_usd(self) -> float:
-        return sum(self._priced.values())
+        return self._spent
 
     @property
     def main_calls(self) -> int:
