@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.api.features.store.exceptions import VirusScanError
 from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tools._test_data import make_session, setup_test_data
@@ -731,6 +732,34 @@ class TestWriteWorkspaceFileToolErrorHandling:
         )
         assert isinstance(result, ErrorResponse)
         assert "already exists" in result.message
+
+
+@pytest.mark.parametrize("external_caller", [True, False])
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_virus_scan_outage_tells_an_external_caller_no_internals(
+    external_caller: bool,
+):
+    """The scanner client's text can name its host; the chat keeps it, once."""
+    manager = AsyncMock()
+    manager.write_file = AsyncMock(
+        side_effect=VirusScanError(
+            "Virus scanning failed: connect to clamav.internal:3310 refused"
+        )
+    )
+    session = make_session("user-1")
+    session.external_caller = external_caller
+
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    ):
+        result = await WriteWorkspaceFileTool()._execute(
+            user_id="user-1", session=session, filename="a.txt", content="hi"
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.message.count("Virus scanning failed") == 1
+    assert ("clamav.internal" in result.message) is not external_caller
 
 
 class TestReadWorkspaceFileSdkToolResultRedirect:
