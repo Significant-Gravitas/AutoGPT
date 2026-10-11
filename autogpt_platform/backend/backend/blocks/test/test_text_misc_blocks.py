@@ -41,6 +41,10 @@ async def test_create_list_empty_input_still_yields_one_empty_list():
         ("café\\nbar", "café\nbar"),
         ("日本語\\n", "日本語\n"),
         ("👋\\tüber", "👋\tüber"),
+        ("\\日本", "\\日本"),
+        ("C:\\\\日本\\n", "C:\\日本\n"),
+        ("caf\\u00e9 \\U0001F44B \\x41", "café 👋 A"),
+        ("ends with \\", "ends with \\"),
         (
             'Hello\\nWorld!\\nThis is a \\"quoted\\" string.',
             'Hello\nWorld!\nThis is a "quoted" string.',
