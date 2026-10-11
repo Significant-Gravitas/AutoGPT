@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot import stream_registry
+from backend.copilot.constants import COMPACTION_TOOL_NAME
 from backend.copilot.executor.processor import CoPilotProcessor
 from backend.copilot.executor.scheduled_turn_alert import (
     UNCLASSIFIED,
@@ -116,6 +117,23 @@ def test_the_watch_sees_a_refused_connection_as_one_failing_step():
     assert outcome.failure is not None
     assert outcome.failure.key == "connection:twitter"
     assert not outcome.whole_run
+
+
+def test_a_compacted_history_is_not_work_done():
+    """The every-minute monitor has a long history, so its runs compact. A
+    run whose only other output is the failure still failed outright."""
+    watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
+    assert watch is not None
+    watch.observe(
+        StreamToolOutputAvailable(
+            toolCallId="compaction", toolName=COMPACTION_TOOL_NAME, output="done"
+        )
+    )
+    watch.observe(_twitter_refused())
+
+    outcome = watch.outcome(None)
+
+    assert outcome.failure is not None and outcome.whole_run
 
 
 def test_the_watch_counts_only_platform_tools_as_trying():

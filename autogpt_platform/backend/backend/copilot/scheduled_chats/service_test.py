@@ -426,6 +426,52 @@ async def test_a_resume_that_fails_partway_pauses_the_rest_again(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_resume_leaves_a_job_its_owner_paused_alone(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """The owner had paused the noon run; the streak paused the morning one.
+    Resume brings back the morning run only."""
+
+    async def pause(schedule_id: str, *, user_id: str) -> bool:
+        return schedule_id == "job-a"
+
+    scheduler.pause_schedule.side_effect = pause
+    user_id, session_id = await _owner()
+    try:
+        routine = await _routine(user_id)
+        for _ in range(3):
+            await record_scheduled_run(
+                _routine_run(user_id, session_id, routine, "job-a")
+            )
+        assert len(await list_paused_scheduled_chats(user_id)) == 1
+
+        assert await resume_scheduled_chat(user_id, routine.id) is True
+
+        scheduler.resume_schedule.assert_awaited_once_with("job-a", user_id=user_id)
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_chat_whose_jobs_its_owner_paused_is_not_called_paused(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    scheduler.pause_schedule.return_value = False
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+
+        assert await list_paused_scheduled_chats(user_id) == []
+        assert [n.metadata["headline"] for n in await _notes(session_id)] == [
+            "\u201cDiscord monitor\u201d can't use Discord"
+        ]
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_job_deleted_since_the_pause_does_not_block_the_resume(
     server: SpinTestServer, scheduler: MagicMock
 ):

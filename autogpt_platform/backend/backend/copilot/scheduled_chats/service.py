@@ -81,7 +81,9 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
     streak = step.streak
     schedule_ids, title = await _schedule_of(run)
     changed = await pause_jobs(run.user_id, schedule_ids) if step.pause else None
-    paused = changed is not None
+    # Only a pause that stopped something counts, and only what it
+    # stopped comes back on Resume.
+    paused = bool(changed)
     if step.pause and not paused:
         # Nothing was paused, so nothing may say it was. Each later run tries
         # again; meanwhile the owner is told once, without that claim.
@@ -91,7 +93,7 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
         row = await _save(
             run,
             streak,
-            schedule_ids,
+            changed or [],
             title,
             restarted=row is None or streak.failures == 1,
             told=told,
@@ -238,7 +240,7 @@ async def _schedule_of(run: ScheduledRun) -> tuple[list[str], str]:
 async def _save(
     run: ScheduledRun,
     streak: Streak,
-    schedule_ids: list[str],
+    paused_ids: list[str],
     title: str,
     *,
     restarted: bool,
@@ -249,7 +251,7 @@ async def _save(
     owner was told, once."""
     now = datetime.now(tz=timezone.utc)
     fields = {
-        "scheduleIds": schedule_ids,
+        "scheduleIds": paused_ids,
         "title": title,
         "sessionId": run.session_id,
         "failureKey": streak.failure.key,
