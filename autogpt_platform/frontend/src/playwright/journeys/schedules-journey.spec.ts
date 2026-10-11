@@ -36,7 +36,8 @@ test.describe("schedules journey", () => {
     await selectOption(page, createDialog.locator("#repeat"), "Weekly");
     await createDialog.getByRole("button", { name: "Weekdays" }).click();
     await createDialog.getByRole("button", { name: "Schedule" }).click();
-    await expect(createDialog).toBeHidden();
+    // Saving waits on the scheduler service, which is slow on a cold stack.
+    await expect(createDialog).toBeHidden({ timeout: 30_000 });
 
     const created = await onlySchedule(page, graphId);
     expect(created.cron).toBe("0 9 * * 1,2,3,4,5");
@@ -46,10 +47,10 @@ test.describe("schedules journey", () => {
 
     await page.getByRole("button", { name: "Edit schedule" }).first().click();
     const editDialog = page.getByRole("dialog", { name: "Edit Schedule" });
-    await editDialog.getByLabel("Name").fill("Evening report");
-    await editDialog.getByLabel("At").fill("18:30");
+    await editDialog.locator("#schedule-name").fill("Evening report");
+    await editDialog.locator("#schedule-time").fill("18:30");
     await editDialog.getByRole("button", { name: "Save" }).click();
-    await expect(editDialog).toBeHidden();
+    await expect(editDialog).toBeHidden({ timeout: 30_000 });
 
     await page.reload();
     await openSchedule(page, "Evening report");
@@ -122,19 +123,42 @@ function expectWeekdayAt(schedule: Schedule, hour: number, minute: number) {
   expect([Number(parts.hour), Number(parts.minute)]).toEqual([hour, minute]);
 }
 
+// Onboarding steps that dismiss the first-visit cards covering the Library.
+const COMPLETED_ONBOARDING_STEPS = [
+  "ONBOARDING_COMPLETE",
+  "AGENT_NEW_RUN",
+  "CAPABILITY_CARDS",
+  "AGENTS_TAB_INTRO",
+  "MARKETPLACE_TAB_INTRO",
+  "BUILD_TAB_INTRO",
+  "WORKFLOWS_MOVED",
+];
+
+// A brand-new user by default. Previews paywall fresh users, so there
+// PLAYWRIGHT_JOURNEY_EMAIL and PLAYWRIGHT_JOURNEY_PASSWORD sign in as an
+// existing subscribed account instead.
 async function signUpJourneyUser(page: Page) {
-  const id = `${Date.now()}-${randomBytes(3).toString("hex")}`;
-  const user = {
-    email: `journey-${id}@${journeyEmailDomain()}`,
-    password: `Journey-${randomBytes(12).toString("hex")}`,
-    name: `Journey ${id}`,
-  };
-  const signUp = await page.request.post("/api/auth/sign-up/email", {
-    headers: { Origin: appOrigin() },
-    data: user,
-  });
-  expect(signUp.ok(), `sign-up failed: ${signUp.status()}`).toBe(true);
-  for (const step of ["ONBOARDING_COMPLETE", "AGENT_NEW_RUN"]) {
+  const email = process.env.PLAYWRIGHT_JOURNEY_EMAIL;
+  const password = process.env.PLAYWRIGHT_JOURNEY_PASSWORD;
+  if (email && password) {
+    const signIn = await page.request.post("/api/auth/sign-in/email", {
+      headers: { Origin: appOrigin() },
+      data: { email, password },
+    });
+    expect(signIn.ok(), `sign-in failed: ${signIn.status()}`).toBe(true);
+  } else {
+    const id = `${Date.now()}-${randomBytes(3).toString("hex")}`;
+    const signUp = await page.request.post("/api/auth/sign-up/email", {
+      headers: { Origin: appOrigin() },
+      data: {
+        email: `journey-${id}@${journeyEmailDomain()}`,
+        password: `Journey-${randomBytes(12).toString("hex")}`,
+        name: `Journey ${id}`,
+      },
+    });
+    expect(signUp.ok(), `sign-up failed: ${signUp.status()}`).toBe(true);
+  }
+  for (const step of COMPLETED_ONBOARDING_STEPS) {
     const onboarding = await page.request.post(
       "/api/proxy/api/onboarding/step",
       { params: { step } },
