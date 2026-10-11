@@ -29,8 +29,13 @@ export function useRunLessOftenDialog({ scheduleKey, isOpen, onDone }: Args) {
 
   const { mutate, isPending } = useSetScheduledChatCadence({
     mutation: {
-      onSuccess: (res) => {
+      onSuccess: (res, { data }) => {
         const changed = okData(res);
+        // The choice in the owner's words: "Weekdays at 09:00" reads back as
+        // that, not as "5 times a week".
+        const chosen = cadence?.options.find(
+          (option) => option.cron === data.cron,
+        );
         queryClient.invalidateQueries({
           queryKey: getGetScheduledChatCadenceQueryKey(scheduleKey),
         });
@@ -38,11 +43,12 @@ export function useRunLessOftenDialog({ scheduleKey, isOpen, onDone }: Args) {
           queryKey: getGetHomeDashboardQueryKey(),
         });
         void invalidateAllScheduleQueries(queryClient);
+        const runs = chosen?.label ?? changed?.current;
         toast({
           title: "It runs less often now",
           description:
-            changed?.current != null
-              ? `“${changed.title}” now runs ${lowerFirst(changed.current)}.`
+            changed && runs
+              ? `“${changed.title}” now runs ${lowerFirst(runs)}.`
               : undefined,
         });
         setSelected(null);

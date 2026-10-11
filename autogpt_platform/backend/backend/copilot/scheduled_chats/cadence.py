@@ -119,13 +119,19 @@ def _fires(
     limit: int = _COUNT_CAP,
 ) -> list[datetime]:
     """Each cron's fires from *now* until *span* after it, at most *limit* of
-    each, soonest first, in *timezone*. One due right now counts."""
+    each, soonest first, in *timezone*. One due right now counts.
+
+    Whole seconds, croniter's own step: within the second a run fires, *now*
+    would otherwise count that run and the one a week on, eight days' worth.
+    The cadences offered when the dialog opened must still be offered when
+    the owner saves.
+    """
     try:
         zone = ZoneInfo(timezone)
     except (ZoneInfoNotFoundError, ValueError):
         zone = ZoneInfo("UTC")
     offset = now.astimezone(zone).utcoffset() or timedelta(0)
-    start = now.astimezone(fixed_offset(offset))
+    start = now.astimezone(fixed_offset(offset)).replace(microsecond=0)
     end = start + span
     fires: list[datetime] = []
     for cron in crons:
@@ -150,8 +156,9 @@ def _anchor_time(fires: list[datetime]) -> tuple[int, int]:
         daytime = [time for time in times if time >= (6, 0)]
         return (daytime or times)[0]
     # A routine that runs at most hourly keeps its minute, which was picked to
-    # spread the load; one that runs more often has no minute of its own.
-    minute = fires[0].minute if len(fires) <= _HOURLY else 0
+    # spread the load; one that runs more often has no minute of its own. The
+    # least of its minutes, so the next run does not decide.
+    minute = min(fire.minute for fire in fires) if len(fires) <= _HOURLY else 0
     return _MORNING_HOUR, minute
 
 

@@ -77,6 +77,37 @@ def test_each_rung_runs_as_often_as_it_says():
 @pytest.mark.parametrize(
     "now",
     [
+        _NOW.replace(minute=16, second=59, microsecond=999_999),
+        _NOW.replace(minute=17),
+        _NOW.replace(minute=17, microsecond=50_000),
+        _NOW.replace(minute=17, second=1),
+    ],
+    ids=["just-before-a-run", "on-a-run", "inside-its-second", "just-after"],
+)
+def test_the_offer_holds_through_the_second_a_run_fires(now):
+    """CI opened the dialog at 20:16:59 and saved at 20:17:00.05: counting from
+    a second before then caught the 20:17 run and the one a week on, so the
+    hour it offered was gone by the save."""
+    assert [rung.cron for rung in less_often(["17 * * * *"], _CHICAGO, now)] == [
+        "17 */4 * * *",
+        "17 9 * * *",
+        "17 9 * * mon-fri",
+        "17 9 * * mon",
+    ]
+
+
+def test_the_offer_does_not_depend_on_which_run_is_next():
+    # Its next run is 14:17 at 14:10, and 14:47 at 14:30.
+    early = less_often(["17,47 */2 * * *"], _CHICAGO, _NOW.replace(hour=14, minute=10))
+    late = less_often(["17,47 */2 * * *"], _CHICAGO, _NOW.replace(hour=14, minute=30))
+
+    assert [rung.cron for rung in early] == [rung.cron for rung in late]
+    assert early[0].cron == "17 */4 * * *"
+
+
+@pytest.mark.parametrize(
+    "now",
+    [
         datetime(2026, 10, 30, 13, 0, tzinfo=ZoneInfo(_CHICAGO)),
         datetime(2027, 3, 12, 13, 0, tzinfo=ZoneInfo(_CHICAGO)),
     ],

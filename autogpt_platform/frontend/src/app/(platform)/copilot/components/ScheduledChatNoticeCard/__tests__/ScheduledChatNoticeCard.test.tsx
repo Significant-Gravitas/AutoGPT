@@ -58,6 +58,7 @@ const CADENCE: ScheduledChatCadence = {
     { cron: "*/15 * * * *", label: "Every 15 minutes" },
     { cron: "0 * * * *", label: "Every hour" },
     { cron: "0 9 * * *", label: "Every day at 09:00" },
+    { cron: "0 9 * * mon-fri", label: "Weekdays at 09:00" },
   ],
 };
 
@@ -99,7 +100,7 @@ describe("ScheduledChatNoticeCard", () => {
       getGetScheduledChatCadenceMockHandler(CADENCE),
       getSetScheduledChatCadenceMockHandler(async ({ params, request }) => {
         posted = { key: params.scheduleKey, body: await request.json() };
-        return { ...CADENCE, current: "Every day at 09:00", options: [] };
+        return { ...CADENCE, current: "5 times a week", options: [] };
       }),
     );
     await openRunLessOften();
@@ -113,19 +114,20 @@ describe("ScheduledChatNoticeCard", () => {
       true,
     );
 
-    fireEvent.click(screen.getByRole("radio", { name: "Every day at 09:00" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Weekdays at 09:00" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
       expect(posted).toEqual({
         key: "routine-1",
-        body: { cron: "0 9 * * *" },
+        body: { cron: "0 9 * * mon-fri" },
       }),
     );
+    // The choice in the owner's words, not "5 times a week".
     await waitFor(() =>
       expect(toastMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          description: "“Discord monitor” now runs every day at 09:00.",
+          description: "“Discord monitor” now runs weekdays at 09:00.",
         }),
       ),
     );
