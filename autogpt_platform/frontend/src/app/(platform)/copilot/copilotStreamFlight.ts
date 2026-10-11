@@ -16,6 +16,8 @@ const SETTLE_TIMEOUT_MS = 5_000;
  */
 export type ResumeReason = "attach" | "replace";
 
+type StartMode = ResumeReason | "wait";
+
 /**
  * The chat's one live stream request, a send or a resume.
  *
@@ -103,22 +105,30 @@ export function trackStreamFetch(
 
 /**
  * Start a send or resume once no request is live and every start queued
- * before it has run, so two can never be live at once. A resume (`replace`)
- * ends the live request; a send waits for it to finish, outside the queue so
- * a resume replacing a dead stream is never stuck behind it. `start` may
- * return nothing to stand down. It gets the request's generation, which the
- * request must carry as `flightGeneration` in its SDK request metadata.
- * Resolves when the started request ends.
+ * before it has run, so two can never be live at once.
+ * - `replace` ends the live request first (a reconnect).
+ * - `attach` stands down if a healthy request is live by its turn, and
+ *   replaces a quiet one (a page-load or wake resume).
+ * - `wait` waits for the live request to finish, outside the queue so a
+ *   resume replacing a dead stream is never stuck behind it (a send).
+ * `ready` runs at the start's turn, before anything is aborted; false stands
+ * down. `start` gets the request's generation, which the request must carry
+ * as `flightGeneration` in its SDK request metadata. Resolves when the
+ * started request ends.
  */
 export async function startRequest<T>(
   flight: StreamFlight,
   start: (generation: number) => Promise<T> | undefined,
-  { replace }: { replace: boolean },
+  { mode, ready = () => true }: { mode: StartMode; ready?: () => boolean },
 ) {
   for (;;) {
-    if (!replace) await flight.request?.catch(() => {});
+    if (mode === "wait") await flight.request?.catch(() => {});
     const started = flight.queue.then(async () => {
-      if (!replace && flight.request) return { retry: true as const };
+      if (!ready()) return { request: undefined };
+      if (mode === "wait" && flight.request) return { retry: true as const };
+      if (mode === "attach" && hasHealthyStream(flight)) {
+        return { request: undefined };
+      }
       await endLiveRequest(flight);
       flight.abortController = new AbortController();
       const request = start(++flight.generation);

@@ -462,9 +462,6 @@ export function useCopilotStream({
     void startRequest(
       flight,
       (generation) => {
-        flight.resumeQueued = false;
-        if (!isMountedRef.current || isUserStoppingRef.current)
-          return undefined;
         if (sessionId) {
           markCopilotChatRuntimeHealthy(sessionId);
         }
@@ -473,7 +470,15 @@ export function useCopilotStream({
         trimReplayedTurn();
         return resumeStream({ metadata: { flightGeneration: generation } });
       },
-      { replace: true },
+      {
+        mode: reason,
+        // Checked before anything is aborted: a resume that stands down must
+        // leave the live request alone.
+        ready: () => {
+          flight.resumeQueued = false;
+          return isMountedRef.current && !isUserStoppingRef.current;
+        },
+      },
     );
   }
 
@@ -599,8 +604,6 @@ export function useCopilotStream({
     await startRequest(
       chatRuntime.flight,
       (generation) => {
-        // Stop pressed while the previous request was finishing.
-        if (isUserStoppingRef.current) return undefined;
         const [message, options] = args;
         return sdkSendMessage(message, {
           ...options,
@@ -610,7 +613,11 @@ export function useCopilotStream({
           },
         });
       },
-      { replace: false },
+      {
+        mode: "wait",
+        // Stop pressed while the previous request was finishing.
+        ready: () => !isUserStoppingRef.current,
+      },
     );
   }
 
