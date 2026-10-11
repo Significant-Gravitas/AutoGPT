@@ -140,6 +140,7 @@ describe("client request failures in Sentry", () => {
   it.each([
     [401, "signed out"],
     [402, "paywall"],
+    [403, "permission the user lacks"],
     [404, "deleted resource"],
     [499, "user abandoned the request"],
   ])("leaves only a breadcrumb for an expected %i (%s)", async (status) => {

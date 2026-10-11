@@ -53,10 +53,11 @@ interface OpenWindow {
 const openWindows = new Map<string, OpenWindow>();
 
 // Outcomes the app asks for and handles: a signed-out read of a gated resource,
-// the paywall, an absent or deleted resource, and a request the user abandoned
+// a permission the user lacks (re-auth, email verification, waitlist), the
+// paywall, an absent or deleted resource, and a request the user abandoned
 // (the proxy answers 499 when the browser hangs up). They leave a breadcrumb
 // for whatever error follows, but are not issues of their own.
-const EXPECTED_STATUSES = new Set([401, 402, 404, 499]);
+const EXPECTED_STATUSES = new Set([401, 402, 403, 404, 499]);
 
 // Long enough for a validation detail, short enough that an HTML error page
 // from a proxy does not ride along.
