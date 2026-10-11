@@ -12,19 +12,21 @@ from prisma.models import User
 from backend.data import credit
 
 
-@pytest.mark.asyncio
-async def test_a_failed_payment_on_a_held_change_cancels_nothing():
-    user = MagicMock(spec=User)
-    user.id = "user-1"
-    user.subscriptionTier = SubscriptionTier.TRIAL
-    invoice = {
+def _failed_invoice(billing_reason: str) -> dict:
+    return {
         "id": "in_held",
         "customer": "cus_1",
         "subscription": "sub_trial",
         "amount_due": 32000,
-        "billing_reason": "subscription_update",
+        "billing_reason": billing_reason,
     }
 
+
+@pytest.fixture
+def lapse():
+    user = MagicMock(spec=User)
+    user.id = "user-1"
+    user.subscriptionTier = SubscriptionTier.TRIAL
     with (
         patch(
             "backend.data.credit.User.prisma",
@@ -40,13 +42,33 @@ async def test_a_failed_payment_on_a_held_change_cancels_nothing():
             credit, "_cancel_customer_subscriptions", new_callable=AsyncMock
         ) as cancel,
         patch.object(credit, "set_subscription_tier", new_callable=AsyncMock) as tier,
+        patch.object(stripe.Invoice, "pay_async", new_callable=AsyncMock),
     ):
-        await credit.handle_subscription_payment_failure(invoice)
+        yield MagicMock(holds=holds, deduct=deduct, cancel=cancel, tier=tier)
 
-    holds.assert_awaited_once_with("sub_trial", "in_held")
-    deduct.assert_not_awaited()
-    cancel.assert_not_awaited()
-    tier.assert_not_awaited()
+
+@pytest.mark.asyncio
+async def test_a_failed_payment_on_a_held_change_cancels_nothing(lapse):
+    await credit.handle_subscription_payment_failure(
+        _failed_invoice("subscription_update")
+    )
+
+    lapse.holds.assert_awaited_once_with("sub_trial", "in_held")
+    lapse.deduct.assert_not_awaited()
+    lapse.cancel.assert_not_awaited()
+    lapse.tier.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_renewal_is_never_looked_up_as_a_held_change(lapse):
+    """A pending update waits on the invoice its own change made, so a renewal
+    goes straight to the balance without a Stripe lookup."""
+    await credit.handle_subscription_payment_failure(
+        _failed_invoice("subscription_cycle")
+    )
+
+    lapse.holds.assert_not_awaited()
+    lapse.deduct.assert_awaited_once()
 
 
 @pytest.mark.asyncio

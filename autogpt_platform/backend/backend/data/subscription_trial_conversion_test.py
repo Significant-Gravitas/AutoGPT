@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 import stripe
@@ -330,42 +330,69 @@ def _held(live: dict, **changes) -> stripe.Subscription:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tier,price_id,plan",
+    [
+        (PRO, None, {}),
+        (
+            SubscriptionTier.MAX,
+            "price_max",
+            {
+                "items": [{"id": "si_1", "price": "price_max"}],
+                "metadata": {
+                    "trial_conversion_price_id": "price_max",
+                    "trial_conversion_tier": "MAX",
+                },
+            },
+        ),
+    ],
+)
 async def test_a_bank_that_wants_to_confirm_gets_stripes_invoice_page(
-    pending_trial, live, boundaries
+    pending_trial, live, boundaries, tier, price_id, plan
 ):
     """The same change is held until its invoice is paid; meanwhile the trial
-    stays cancel-pending, so nothing is saved."""
+    stays cancel-pending, so nothing is saved. The hold names an API version
+    that takes metadata and cancel_at_period_end in a pending update."""
     boundaries.modify.side_effect = [_bank_wants_to_confirm(), _held(live)]
 
-    page = await conversion.convert_cancel_pending_trial(
-        pending_trial, SubscriptionTier.MAX, "price_max"
-    )
+    page = await conversion.convert_cancel_pending_trial(pending_trial, tier, price_id)
 
     assert page == "https://invoice.stripe.com/i/test_pay"
-    assert boundaries.modify.await_args_list[-1].kwargs == {
+    first, hold = boundaries.modify.await_args_list
+    assert "stripe_version" not in first.kwargs
+    assert hold.kwargs == {
         "cancel_at_period_end": False,
         "trial_end": "now",
-        "items": [{"id": "si_1", "price": "price_max"}],
-        "metadata": {
-            "trial_conversion_price_id": "price_max",
-            "trial_conversion_tier": "MAX",
-        },
+        **plan,
         "payment_behavior": "pending_if_incomplete",
         "expand": ["latest_invoice"],
+        "stripe_version": "2026-09-30.endive",
     }
     boundaries.sync.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_a_held_change_that_was_paid_at_once_is_saved(
+async def test_a_held_change_that_was_paid_at_once_is_read_back_and_saved(
     pending_trial, live, boundaries
 ):
-    paid = _held(live, status="active", pending_update=None)
-    boundaries.modify.side_effect = [_bank_wants_to_confirm(), paid]
+    """The hold's answer is in the newer API version's shape, so the plan is
+    read back in the SDK's own version before it is saved."""
+    boundaries.modify.side_effect = [
+        _bank_wants_to_confirm(),
+        _held(live, status="active", pending_update=None),
+    ]
+    active = stripe.Subscription.construct_from(
+        {**live, "status": "active", "cancel_at_period_end": False}, "test-key"
+    )
+    boundaries.retrieve.side_effect = [
+        stripe.Subscription.construct_from(live, "test-key"),
+        active,
+    ]
 
     assert await conversion.convert_cancel_pending_trial(pending_trial, PRO) is None
 
-    boundaries.sync.assert_awaited_once_with(dict(paid))
+    assert boundaries.retrieve.await_args_list[-1] == call(live["id"])
+    boundaries.sync.assert_awaited_once_with(dict(active))
 
 
 @pytest.mark.asyncio

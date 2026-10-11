@@ -43,6 +43,10 @@ CARD_NEEDED = (
     "Your saved card can't be charged. Update it under Payment method,"
     " then try again."
 )
+# A pending update takes metadata from 2026-05-27.dahlia and
+# cancel_at_period_end from 2026-09-30.endive. The SDK's own 2025-02-24.acacia
+# rejects both with pending_if_incomplete.
+PENDING_UPDATE_API_VERSION = "2026-09-30.endive"
 
 
 class TrialConversionRefused(Exception):
@@ -159,17 +163,23 @@ async def _confirm_with_bank(
 
     Stripe applies a pending update only once its invoice is paid, so the trial
     stays cancel-pending meanwhile; an unpaid one lapses by trial_end at the
-    latest, with its invoice voided.
+    latest, with its invoice voided. Only this call uses the newer API version,
+    and only its pending update and invoice page are read from the answer.
     """
     hold: stripe.Subscription.ModifyParams = {
         **changes,
         "payment_behavior": "pending_if_incomplete",
         "expand": ["latest_invoice"],
+        "stripe_version": PENDING_UPDATE_API_VERSION,
     }
     held = await stripe_call(stripe.Subscription.modify_async, subscription_id, **hold)
     answer = _HeldConversion.model_validate(held)
     if answer.pending_update is None:
-        await _save_conversion(trial, held)
+        # Paid at once: read the plan back in the version the sync parses.
+        converted = await stripe_call(
+            stripe.Subscription.retrieve_async, subscription_id
+        )
+        await _save_conversion(trial, converted)
         return None
     page = answer.latest_invoice.hosted_invoice_url if answer.latest_invoice else None
     if not page:

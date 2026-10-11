@@ -3217,7 +3217,13 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         )
         return
 
-    if sub_id and await _holds_pending_update(sub_id, invoice_id):
+    if (
+        sub_id
+        # A pending update waits on the invoice its own change made, never on
+        # a renewal, so the common failure skips the Stripe lookup.
+        and invoice.get("billing_reason") != "subscription_cycle"
+        and await _holds_pending_update(sub_id, invoice_id)
+    ):
         # Stripe applies a pending update only once its invoice is paid, and
         # voids the invoice when the update lapses: nothing has changed. A
         # trial converting early waits like this for the bank to confirm.

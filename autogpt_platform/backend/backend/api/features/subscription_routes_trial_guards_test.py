@@ -22,6 +22,7 @@ from backend.api.features.subscription_routes_trial_test import (
     _post_plan,
     _subscription_list,
 )
+from backend.data.subscription_trial_conversion import PENDING_UPDATE_API_VERSION
 
 pytest_plugins = ("backend.data.subscription_trial_fixtures",)
 
@@ -109,6 +110,7 @@ def test_update_subscription_tier_cancel_pending_trial_sca_waits_on_stripes_invo
         "trial_end": "now",
         "payment_behavior": "pending_if_incomplete",
         "expand": ["latest_invoice"],
+        "stripe_version": PENDING_UPDATE_API_VERSION,
     }
     trial_conversion.sync.assert_not_awaited()
     trial_conversion.checkout.assert_not_awaited()
