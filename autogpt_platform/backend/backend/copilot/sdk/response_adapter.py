@@ -82,8 +82,6 @@ class SDKResponseAdapter:
         self,
         message_id: str | None = None,
         session_id: str | None = None,
-        *,
-        render_reasoning_in_ui: bool = True,
     ):
         self.message_id = message_id or str(uuid.uuid4())
         self.session_id = session_id
@@ -93,7 +91,6 @@ class SDKResponseAdapter:
         self.reasoning_block_id = str(uuid.uuid4())
         self.has_started_reasoning = False
         self.has_ended_reasoning = True
-        self.render_reasoning_in_ui = render_reasoning_in_ui
         # Service layer forwards this from the prior adapter on a retry-recreate
         # so the empty-completion guard doesn't false-fire on a benign empty
         # trailing ResultMessage when the prior attempt already streamed content.
@@ -313,17 +310,6 @@ class SDKResponseAdapter:
                     # it live, extended_thinking turns that end
                     # thinking-only left the UI stuck on "Thought for Xs"
                     # with nothing rendered until a page refresh.
-                    #
-                    # When ``render_reasoning_in_ui=False`` the three
-                    # reasoning helpers below (and the append) no-op, so
-                    # the frontend sees a text-only stream AND no
-                    # ``ChatMessage(role='reasoning')`` row is persisted
-                    # (the row is only created by ``_dispatch_response``
-                    # when ``StreamReasoningStart`` arrives, which is
-                    # suppressed here).  Persistence of the thinking text
-                    # into the SDK transcript via
-                    # ``_format_sdk_content_blocks`` is unaffected — that
-                    # feeds ``--resume`` continuity, not the UI.
                     #
                     # Flush any pending coalesce buffer to the wire BEFORE
                     # computing the tail — otherwise a summary that
@@ -748,11 +734,7 @@ class SDKResponseAdapter:
 
         Each ``ThinkingBlock`` the SDK emits gets its own streaming block
         so the frontend can render a new ``Reasoning`` part per LLM turn
-        (rather than concatenating across the whole session).  Events
-        are emitted unconditionally — the caller filters them out of the
-        SSE wire when ``render_reasoning_in_ui=False`` but still feeds
-        them through ``_dispatch_response`` so the session transcript
-        keeps a ``role='reasoning'`` row.
+        (rather than concatenating across the whole session).
         """
         if not self.has_started_reasoning or self.has_ended_reasoning:
             if self.has_ended_reasoning:

@@ -11,6 +11,7 @@ import { useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { trackFunnel } from "@/services/experts/experts-analytics";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
@@ -28,6 +29,10 @@ import {
 import { useAutopilotModeStore } from "./autopilotModeStore";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import { latestExpertSessionParams } from "./expertSessionQuery";
+import {
+  compareShadowWithSession,
+  setStreamShadowRate,
+} from "./stream/turnShadow";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
@@ -170,6 +175,17 @@ export function useChatSession({
     !!sessionId && sessionQuery.data?.status === 200 && !sessionQuery.isFetching
       ? sessionQuery.data.data
       : null;
+
+  const streamShadowRate = useGetFlag(Flag.COPILOT_STREAM_SHADOW);
+  useEffect(() => {
+    setStreamShadowRate(streamShadowRate);
+  }, [streamShadowRate]);
+
+  useEffect(() => {
+    if (sessionId && freshSessionData) {
+      compareShadowWithSession(sessionId, freshSessionData);
+    }
+  }, [sessionId, freshSessionData]);
 
   // Expose active_stream info so the caller can trigger manual resume
   // after hydration completes (rather than relying on AI SDK's built-in
@@ -410,6 +426,8 @@ export function useChatSession({
   return {
     sessionId,
     setSessionId,
+    /** The session GET as last fetched; null while a fetch is in flight. */
+    sessionView: freshSessionData,
     sessionLlmAuthProvider,
     sessionLlmCredentialId,
     sessionExpertId,

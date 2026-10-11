@@ -19,13 +19,14 @@ from backend.data.notifications import (
     SubscriptionPlan,
     TrialUpdateData,
 )
-from backend.data.stripe_client import stripe_call
+from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_trial import TrialState
 from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import format_amount
 from backend.notifications.queue import queue_notification_async
 from backend.notifications.trial_audience import (
     join_paying_audience,
+    leave_trial_group,
     queue_trial_audience_change,
 )
 from backend.util.posthog_events import PostHogEvent
@@ -82,13 +83,16 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if not _notice_applies(trial, kind, current):
         return True
     user = await user_db().get_user_by_id(user_id)
+    if kind == "ended" and await _another_plan_is_live(trial, current):
+        await leave_trial_group(user)
+        return True
     data = trial_notice_data(trial, kind, user.name or "there")
     claim = trial_notice_key(trial, kind)
     data.notice_key = claim
     if not await claim_once(claim):
         return True
     try:
-        await queue_trial_audience_change(kind, user_id, user.email, current)
+        await queue_trial_audience_change(kind, user, current)
         result = await queue_notification_async(
             NotificationEventModel[TrialUpdateData](
                 user_id=user_id, type=NotificationType.TRIAL_UPDATE, data=data
@@ -100,7 +104,7 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
         await release_claim(claim)
         raise
     if kind == "converted":
-        await join_paying_audience(user_id, user.email)
+        await join_paying_audience(user)
     _track_billing_event(
         TRIAL_NOTICE_EVENTS[kind],
         user_id,
@@ -197,8 +201,17 @@ async def on_trial_subscription_updated(subscription: dict, previous: dict) -> b
     if not user_id:
         raise ValueError("Trial update has no user identity")
     trial = await credit_db().get_subscription_trial(user_id)
-    if trial is None or trial.converted_at is not None:
+    if trial is None:
         return False
+    if trial.converted_at is not None:
+        # A payload still trialing is a trial-era cancel or resume handled
+        # after the conversion. Subscribe now on a cancel-pending trial ends
+        # the trial and clears the cancellation in one update. The trial's own
+        # notices cover both; only later flips are paid news.
+        if subscription.get("status") == "trialing":
+            return True
+        was_trialing = previous.get("status") == "trialing"
+        return was_trialing and "cancel_at_period_end" in previous
     if "cancel_at_period_end" in previous:
         kind = "canceled" if trial.cancel_at_period_end else "resumed"
         await notify_trial(subscription, kind)
@@ -257,7 +270,12 @@ def _notice_applies(trial: TrialState, kind: TrialNoticeKind, current: dict) -> 
             and not current.get("cancel_at_period_end")
         )
     if kind == "canceled":
-        return in_trial and bool(current.get("cancel_at_period_end"))
+        # It promises access until trial_end, which only a verified card gives.
+        return (
+            in_trial
+            and trial.card_verified_at is not None
+            and bool(current.get("cancel_at_period_end"))
+        )
     if kind == "converted":
         return status == "active" and trial.converted_at is not None
     if kind == "payment_failed":
@@ -266,3 +284,20 @@ def _notice_applies(trial: TrialState, kind: TrialNoticeKind, current: dict) -> 
             and trial.converted_at is None
         )
     return status in ("canceled", "unpaid", "paused") and trial.converted_at is None
+
+
+async def _another_plan_is_live(trial: TrialState, current: dict) -> bool:
+    """A trial ended by buying another plan is not news, and its trial_canceled
+    status must not overwrite the new plan's. The person still leaves the
+    trial group."""
+    for status in ("active", "trialing"):
+        page = await stripe_call(
+            stripe.Subscription.list_async,
+            customer=trial.customer_id,
+            status=status,
+            limit=100,
+        )
+        async for other in stripe_list_items(page):
+            if other.id != current.get("id"):
+                return True
+    return False

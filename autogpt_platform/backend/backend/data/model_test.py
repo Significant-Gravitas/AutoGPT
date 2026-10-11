@@ -1,7 +1,10 @@
+from datetime import datetime, timezone
+
 import pytest
+from prisma.models import User as PrismaUser
 from pydantic import SecretStr
 
-from backend.data.model import HostScopedCredentials, NodeExecutionStats
+from backend.data.model import HostScopedCredentials, NodeExecutionStats, User
 
 
 class TestHostScopedCredentials:
@@ -247,3 +250,53 @@ class TestNodeExecutionStatsIadd:
         b = NodeExecutionStats()
         a += b
         assert a.provider_cost_type == "tokens"
+
+
+class TestUserFromDbConsent:
+    @staticmethod
+    def _row(**consent: datetime | str | None) -> PrismaUser:
+        now = datetime(2026, 10, 2, tzinfo=timezone.utc)
+        return PrismaUser.model_validate(
+            {
+                "id": "user-1",
+                "email": "user@example.com",
+                "emailVerified": True,
+                "createdAt": now,
+                "updatedAt": now,
+                "metadata": "{}",
+                "integrations": "",
+                "maxEmailsPerDay": 3,
+                "briefingFrequency": "WEEKLY",
+                "alertsEnabled": True,
+                "notifyOnStoreVerdict": True,
+                "timezone": "not-set",
+                "subscriptionTier": "NO_TIER",
+                **consent,
+            }
+        )
+
+    def test_maps_the_consent_fields(self):
+        accepted_at = datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc)
+        opted_out_at = datetime(2026, 10, 2, 12, 1, tzinfo=timezone.utc)
+
+        user = User.from_db(
+            self._row(
+                termsAcceptedAt=accepted_at,
+                termsVersion="2026-10",
+                marketingOptOutAt=opted_out_at,
+                marketingOptOutSource="signup",
+            )
+        )
+
+        assert user.terms_accepted_at == accepted_at
+        assert user.terms_version == "2026-10"
+        assert user.marketing_opt_out_at == opted_out_at
+        assert user.marketing_opt_out_source == "signup"
+
+    def test_an_account_without_consent_maps_to_none(self):
+        user = User.from_db(self._row())
+
+        assert user.terms_accepted_at is None
+        assert user.terms_version is None
+        assert user.marketing_opt_out_at is None
+        assert user.marketing_opt_out_source is None

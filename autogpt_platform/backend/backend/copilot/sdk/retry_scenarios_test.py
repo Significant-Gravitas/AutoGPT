@@ -34,14 +34,18 @@ from claude_agent_sdk import ResultMessage
 from backend.copilot.constants import COMPACTION_TOOL_NAME
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (
+    StreamCheckpoint,
     StreamCompactionProgress,
     StreamError,
+    StreamTextEnd,
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
 )
 from backend.copilot.sdk.compaction import CompactionStats
 from backend.copilot.sdk.service import _RestoreResult, stream_chat_completion_sdk
+from backend.copilot.stream_checkpoint import turn_checkpoint
+from backend.copilot.stream_drift.recording import saving_into
 from backend.copilot.transcript import (
     TranscriptDownload,
     _flatten_assistant_content,
@@ -2515,3 +2519,95 @@ class TestPreQueryCompactionRowTiming:
 
         opened, _closed = self._compaction_marks(timeline)
         assert opened == []
+
+
+class TestTurnEndCheckpoint:
+    """The turn-end persist in the engine's ``finally`` is followed by a
+    checkpoint only when it landed."""
+
+    async def test_the_turn_end_persist_is_followed_by_its_checkpoint(self):
+        saves: list[ChatSession] = []
+
+        events = await self._run(AsyncMock(side_effect=saving_into(saves)))
+
+        checkpoints = [e for e in events if isinstance(e, StreamCheckpoint)]
+        assert checkpoints == [turn_checkpoint(saves[-1].messages, self._TURN_START)]
+        assert checkpoints[0].rows == 1
+        last_text_end = max(
+            i for i, e in enumerate(events) if isinstance(e, StreamTextEnd)
+        )
+        assert events.index(checkpoints[0]) > last_text_end
+
+    async def test_a_failed_turn_end_persist_publishes_no_checkpoint(self):
+        events = await self._run(AsyncMock(side_effect=ConnectionError("db down")))
+
+        assert not any(isinstance(e, StreamCheckpoint) for e in events)
+
+    # A later turn: a first one runs setup that calls other services.
+    _HISTORY = [
+        ChatMessage(role="user", content="earlier"),
+        ChatMessage(role="assistant", content="earlier answer"),
+        ChatMessage(role="user", content="hello"),
+    ]
+    _TURN_START = len(_HISTORY)
+
+    async def _run(self, upsert: AsyncMock) -> list:
+        from claude_agent_sdk import AssistantMessage, SystemMessage, TextBlock
+
+        session = ChatSession(
+            session_id="test-session-id",
+            user_id="test-user",
+            title="Greeting",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            messages=[m.model_copy() for m in self._HISTORY],
+        )
+
+        async def _receive():
+            yield SystemMessage(subtype="init", data={})
+            yield AssistantMessage(content=[TextBlock(text="Hi there.")], model="t")
+            yield ResultMessage(
+                subtype="success",
+                result="Hi there.",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session-id",
+            )
+
+        client = MagicMock(receive_response=_receive, query=AsyncMock())
+        client_cm = AsyncMock()
+        client_cm.__aenter__.return_value = client
+        patches = [
+            (target, kwargs)
+            for target, kwargs in _make_sdk_patches(
+                session,
+                original_transcript=_build_transcript([("user", "hi")]),
+                compacted_transcript=None,
+                client_side_effect=lambda *a, **kw: client_cm,
+            )
+            if target != f"{_SVC}.upsert_chat_session"
+        ]
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch(f"{_SVC}.upsert_chat_session", new=upsert))
+            # The skill-drift notice reads the workspace over RPC.
+            stack.enter_context(
+                patch(
+                    f"{_SVC}._maybe_prepend_skills_update",
+                    new=AsyncMock(side_effect=lambda *args: args[-1]),
+                )
+            )
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+        return events

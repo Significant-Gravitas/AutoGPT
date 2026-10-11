@@ -54,8 +54,7 @@ export function PlatformChrome({ children }: Props) {
     </TopUpPromptProvider>
   );
 
-  // Logged-out marketplace visitors browse with the tour demo sidebar as an
-  // upsell — clicking a demo session takes them into /tour/chat.
+  // Logged-out marketplace visitors get public navigation and a trial CTA.
   if (showTourSidebar) {
     return (
       <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>

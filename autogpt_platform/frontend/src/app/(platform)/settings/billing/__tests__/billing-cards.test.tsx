@@ -1359,10 +1359,39 @@ describe("YourPlanCard begin_checkout", () => {
       expect(gtagCalls).toContainEqual([
         "event",
         "conversion",
-        { send_to: "AW-123/BC", value: 49, currency: "USD" },
+        {
+          send_to: "AW-123/BC",
+          value: 49,
+          currency: "USD",
+          event_callback: expect.any(Function),
+        },
       ]);
     });
-    expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test");
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
+  });
+
+  it("stays busy while the conversion goes out, so a second click starts no second checkout", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const location = stubLocation();
+    const hits = freeAccount("https://checkout.stripe.com/pay/cs_test");
+
+    render(<YourPlanCard />);
+    const upgrade = await screen.findByRole("button", { name: /get pro/i });
+    fireEvent.click(upgrade);
+    await waitFor(() =>
+      expect(gtagCalls.some((call) => call[1] === "conversion")).toBe(true),
+    );
+    expect(upgrade.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(upgrade);
+
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
+    expect(hits.post).toBe(1);
   });
 
   it("reports no begin_checkout when the tier changes in place", async () => {

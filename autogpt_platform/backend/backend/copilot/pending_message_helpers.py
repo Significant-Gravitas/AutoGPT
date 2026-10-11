@@ -29,6 +29,10 @@ from backend.copilot.pending_messages import (
     push_pending_message,
     push_pending_message_if_session_running,
 )
+from backend.copilot.response_model import (
+    StreamPendingDrained,
+    StreamPendingDrainedMessage,
+)
 from backend.copilot.stream_registry import get_session as get_active_session_meta
 from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.db_accessors import chat_db
@@ -552,3 +556,18 @@ async def persist_pending_as_user_rows(
         len(pending),
     )
     return True
+
+
+def drained_rows_entry(
+    pending: list[PendingMessage],
+    content_of: Callable[[PendingMessage], str] = lambda pm: pm.content,
+) -> StreamPendingDrained:
+    """The stream entry for the user rows ``persist_pending_as_user_rows``
+    landed: one message per row, with the row's own content."""
+    return StreamPendingDrained(
+        drainedCount=len(pending),
+        messages=[
+            StreamPendingDrainedMessage(id=pm.id, content=content_of(pm))
+            for pm in pending
+        ],
+    )

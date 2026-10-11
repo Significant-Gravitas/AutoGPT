@@ -13,7 +13,12 @@ vi.mock("@/components/ui/dot-distortion-shader", () => ({
   DotDistortionShader: () => null,
 }));
 
-import { configureCookiebot } from "@/tests/integrations/cookiebot";
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
+import { SidebarProvider } from "@/components/ui/sidebar";
 
 const { posthog } = vi.hoisted(() => ({
   posthog: { __loaded: true, is_capturing: () => true, capture: vi.fn() },
@@ -21,6 +26,7 @@ const { posthog } = vi.hoisted(() => ({
 vi.mock("posthog-js", () => ({ default: posthog }));
 
 import TourChatPage from "../page";
+import { TourSidebar } from "../components/TourSidebar/TourSidebar";
 import { DEFAULT_SCENARIO_ID } from "../script/tourScenarios";
 import { useTourStore } from "../tourStore";
 
@@ -57,6 +63,7 @@ async function pressEnterToSend() {
 describe("Tour DataFast tracking", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     // /tour sends DataFast events without consent, but only on the tour
     // itself and only when a consent banner is configured.
     configureCookiebot();
@@ -78,6 +85,7 @@ describe("Tour DataFast tracking", () => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
     vi.unstubAllEnvs();
+    removeCookiebot();
     window.history.pushState({}, "", "/");
   });
 
@@ -89,8 +97,12 @@ describe("Tour DataFast tracking", () => {
       ["tour_scenario_start", { scenario: DEFAULT_SCENARIO_ID }],
     ]);
 
-    // Switching scenario starts a new run but must not re-fire tour_start.
-    fireEvent.click(screen.getByRole("button", { name: "Daily brief" }));
+    await advanceThroughTurn();
+    await pressEnterToSend();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Watch another scenario/i }),
+    );
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -98,8 +110,67 @@ describe("Tour DataFast tracking", () => {
     expect(eventsNamed("tour_start")).toHaveLength(1);
     expect(eventsNamed("tour_scenario_start")).toHaveLength(2);
     expect(eventsNamed("tour_scenario_start")[1][1]).toEqual({
-      scenario: "daily-brief",
+      scenario: "support-queue",
     });
+  });
+
+  describe.each(["tour", "marketplace"] as const)("%s sidebar", (surface) => {
+    test.each([
+      {
+        mode: "CLOUD",
+        eyebrow: "Free trial",
+        name: "Start free trial",
+        label: "free-trial",
+      },
+      {
+        mode: "LOCAL",
+        eyebrow: "Get started",
+        name: "Create account",
+        label: "signup",
+      },
+    ])(
+      "$mode CTA describes its destination and tracks its surface",
+      ({ mode, eyebrow, name, label }) => {
+        vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", mode);
+        window.history.pushState(
+          {},
+          "",
+          surface === "tour" ? "/tour/chat" : "/marketplace",
+        );
+        installCookiebot({ statistics: true });
+        render(
+          <SidebarProvider>
+            <TourSidebar variant={surface} />
+          </SidebarProvider>,
+        );
+
+        expect(screen.getByText(eyebrow)).toBeDefined();
+        const signupCTA = screen.getByRole("link", { name });
+        expect(signupCTA.getAttribute("href")).toBe("/signup");
+        expect(signupCTA.getAttribute("target")).toBeNull();
+        if (mode === "LOCAL") {
+          expect(screen.queryByText(/free trial/i)).toBeNull();
+        }
+        fireEvent.click(signupCTA);
+        fireEvent.click(
+          screen.getByRole("link", { name: "Self-host instead" }),
+        );
+
+        const metadata = { placement: "sidebar-card", surface };
+        expect(eventsNamed("tour_cta_click")).toEqual([
+          ["tour_cta_click", { label, ...metadata }],
+          ["tour_cta_click", { label: "self-host", ...metadata }],
+        ]);
+        expect(posthog.capture).toHaveBeenCalledWith("tour_cta_clicked", {
+          label,
+          ...metadata,
+        });
+        expect(posthog.capture).toHaveBeenCalledWith("tour_cta_clicked", {
+          label: "self-host",
+          ...metadata,
+        });
+      },
+    );
   });
 
   test("fires tour_scenario_complete when the demo plays through", async () => {
