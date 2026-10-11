@@ -6,20 +6,6 @@ import { Tab, type Screen } from "./tab";
 // A case the runtime still gets wrong runs as `it.fails`; fixing it fails the
 // case here until its entry goes.
 const KNOWN_WRONG: Record<string, string> = {
-  S2: "a refusal's HTML page is shown raw (#15398)",
-  S10: "the retry notice outlives the recovery (#15398)",
-  S10h: "the retry notice outlives the recovery (#15398)",
-  S11: "a failed session read replaces the send's own failure (#15398)",
-  S11h: "a failed session read replaces the send's own failure (#15398)",
-  S12: "a turn another read attached does not count as the send landing (#15398)",
-  S12b: "a turn another read attached does not count as the send landing (#15398)",
-  S15: "no offline notice while a send waits (#15398)",
-  S17: "a missing token is retried as a lost connection (#15398)",
-  R1: "a 401 is retried as a lost connection (#15398)",
-  R2: "a 404 is retried as a lost connection (#15398)",
-  R3: "a missing token is retried as a lost connection (#15398)",
-  F2: "a failed send's error outlives a later turn (#15398)",
-  F3h: "an idle tab does not re-read its chat on return (#15398)",
   F1: "a server-started turn that registers after the probes is not followed",
   F3: "an idle visible tab is not told of a turn another device starts",
 };
