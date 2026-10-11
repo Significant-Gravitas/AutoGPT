@@ -2098,6 +2098,9 @@ class TestStreamChatCompletionRetryIntegration:
             f"--resume was set even though download_transcript returned None: "
             f"{captured_options}"
         )
+        # The declared built-ins come from the same lists the hook enforces,
+        # both empty here; without them the CLI declares every built-in it has.
+        assert captured_options["options"].tools == []
         assert any(isinstance(e, StreamStart) for e in events)
 
 
