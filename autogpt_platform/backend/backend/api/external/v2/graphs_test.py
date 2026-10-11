@@ -25,7 +25,13 @@ from .graphs import (
     set_active_version,
     update_graph,
 )
-from .models import GraphCreateRequest, GraphNode, GraphSetActiveVersionRequest
+from .library.agents import update_library_agent as patch_library_agent
+from .models import (
+    GraphCreateRequest,
+    GraphNode,
+    GraphSetActiveVersionRequest,
+    LibraryAgentUpdateRequest,
+)
 from .pagination import PageRequest
 from .tenancy import TenantContext
 
@@ -444,16 +450,57 @@ async def test_another_organizations_key_cannot_version_a_personal_graph(
     assert await _library_version(user_id, v1.id) == 2
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_library_agent_is_not_pointed_at_another_organizations_version(
+    server: SpinTestServer,
+) -> None:
+    """The web app saves a version in whichever organization is selected, so a
+    graph can span two. A library agent pointed at the other one's version
+    would run it, billed to the first."""
+    user_id = str(uuid4())
+    await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
+    personal_org, _ = await get_user_default_team(user_id)
+    assert personal_org
+    v1 = await _untagged_version(user_id, str(uuid4()), version=1)
+    [entry] = await library_db.create_library_agent(v1, user_id=user_id)
+    await _untagged_version(
+        user_id, v1.id, version=2, is_active=False, organization_id=str(uuid4())
+    )
+    await _untagged_version(user_id, v1.id, version=3, is_active=False)
+    personal = _AUTH.model_copy(
+        update={"user_id": user_id, "organization_id": personal_org}
+    )
+
+    with pytest.raises(NotAuthorizedError):
+        await patch_library_agent(
+            LibraryAgentUpdateRequest(graph_version=2), entry.id, auth=personal
+        )
+    assert await _library_version(user_id, v1.id) == 1
+
+    await patch_library_agent(
+        LibraryAgentUpdateRequest(graph_version=3), entry.id, auth=personal
+    )
+    assert await _library_version(user_id, v1.id) == 3
+
+
 async def _untagged_version(
-    user_id: str, graph_id: str, *, version: int, is_active: bool = True
+    user_id: str,
+    graph_id: str,
+    *,
+    version: int,
+    is_active: bool = True,
+    organization_id: str | None = None,
 ) -> graph_db.GraphModel:
-    """A version saved with no organization, as the app's chat saves them."""
+    """A version saved with no organization, as the app's chat saves them, or
+    in *organization_id*."""
     internal = _REQUEST.model_copy(update={"is_active": is_active}).to_internal(
         id=graph_id, version=version
     )
     graph = graph_db.make_graph_model(internal, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
-    return await graph_db.create_graph(graph, user_id=user_id)
+    return await graph_db.create_graph(
+        graph, user_id=user_id, organization_id=organization_id
+    )
 
 
 async def _library_version(user_id: str, graph_id: str) -> int:

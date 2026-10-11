@@ -37,7 +37,12 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_deactivate,
 )
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
+from backend.util.exceptions import (
+    InvalidInputError,
+    MissingConfigError,
+    NotAuthorizedError,
+    NotFoundError,
+)
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.product_analytics import track_listing_added_to_library
@@ -772,13 +777,15 @@ async def update_agent_version_in_library(
         organization_ids: Confine the change to entries tagged with these
             organizations (None for untagged ones), so that a call acting in
             one organization moves only its own entry and removes none of
-            another's.
+            another's, and onto none of the user's own versions outside them.
 
     Raises:
         DatabaseError: If there's an error with the update.
         NotFoundError: If no library agent is found for this user and agent.
         LibraryAgentInAnotherOrganizationError: If the target version is in
             the user's library in an organization outside ``organization_ids``.
+        NotAuthorizedError: If the target version is one of the user's own,
+            outside ``organization_ids``.
     """
     logger.debug(
         f"Updating agent version in library for user #{user_id}, "
@@ -798,6 +805,10 @@ async def update_agent_version_in_library(
             )
         ]
     async with transaction() as tx:
+        if organization_ids is not None:
+            await _assert_version_within(
+                tx, user_id, agent_graph_id, agent_graph_version, organization_ids
+            )
         library_agent = await prisma.models.LibraryAgent.prisma(tx).find_first_or_raise(
             where=entry
         )
@@ -991,6 +1002,32 @@ async def update_graph_in_library(
             )
 
     return created_graph, library_agent
+
+
+async def _assert_version_within(
+    tx: prisma.Prisma,
+    user_id: str,
+    graph_id: str,
+    version: int,
+    organization_ids: frozenset[str | None],
+) -> None:
+    """Refuse to point an entry at one of the user's own graph versions outside
+    *organization_ids*: running the entry runs that version, billed where the
+    entry is.
+
+    Another user's version is left to the run's own authorization, which takes
+    a marketplace agent's submitted versions only.
+    """
+    target = await prisma.models.AgentGraph.prisma(tx).find_unique(
+        where={"graphVersionId": {"id": graph_id, "version": version}}
+    )
+    if target is None:
+        raise NotFoundError(f"Graph #{graph_id} v{version} not found")
+    if target.userId == user_id and target.organizationId not in organization_ids:
+        raise NotAuthorizedError(
+            f"Version {version} of this agent is in another organization; "
+            "choose it with a credential for that organization"
+        )
 
 
 async def update_library_agent(

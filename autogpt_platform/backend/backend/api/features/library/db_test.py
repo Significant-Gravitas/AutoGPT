@@ -2309,6 +2309,13 @@ def library_rows(mocker):
     rows.delete_many = AsyncMock()
     rows.update = AsyncMock(return_value=MagicMock())
     mocker.patch("prisma.models.LibraryAgent.prisma", return_value=rows)
+    # The target version: the user's own, in org-a.
+    rows.versions = MagicMock(
+        find_unique=AsyncMock(
+            return_value=MagicMock(userId="test-user", organizationId="org-a")
+        )
+    )
+    mocker.patch("prisma.models.AgentGraph.prisma", return_value=rows.versions)
 
     @asynccontextmanager
     async def transaction():
@@ -2366,6 +2373,67 @@ async def test_another_organizations_entry_on_the_version_is_not_replaced(
         )
 
     library_rows.delete_many.assert_not_awaited()
+    library_rows.update.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "organization_id, organization_ids",
+    [
+        ("org-b", frozenset({"org-a"})),
+        # An untagged version is the personal org's.
+        (None, frozenset({"org-a"})),
+    ],
+)
+@pytest.mark.asyncio
+async def test_an_entry_is_not_pointed_at_the_users_version_outside_its_organizations(
+    library_rows, organization_id, organization_ids
+):
+    """Running the entry would run that version, billed where the entry is."""
+    library_rows.versions.find_unique.return_value = MagicMock(
+        userId="test-user", organizationId=organization_id
+    )
+
+    with pytest.raises(NotAuthorizedError):
+        await db.update_agent_version_in_library(
+            "test-user",
+            "graph-id",
+            2,
+            library_agent_id="entry-a",
+            organization_ids=organization_ids,
+        )
+
+    library_rows.find_first_or_raise.assert_not_awaited()
+    library_rows.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_entry_can_follow_another_users_version_as_before(library_rows):
+    """A marketplace agent's versions are the creator's; whether one may run is
+    the run's own check, which takes submitted versions only."""
+    library_rows.versions.find_unique.return_value = MagicMock(
+        userId="creator", organizationId="creators-org"
+    )
+
+    await db.update_agent_version_in_library(
+        "test-user",
+        "graph-id",
+        2,
+        library_agent_id="entry-a",
+        organization_ids=frozenset({"org-a"}),
+    )
+
+    library_rows.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_version_that_does_not_exist_is_not_found(library_rows):
+    library_rows.versions.find_unique.return_value = None
+
+    with pytest.raises(NotFoundError):
+        await db.update_agent_version_in_library(
+            "test-user", "graph-id", 9, organization_ids=frozenset({"org-a"})
+        )
+
     library_rows.update.assert_not_awaited()
 
 
