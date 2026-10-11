@@ -239,6 +239,7 @@ def _direct_anthropic_config() -> ChatConfig:
         use_openrouter=False,
         api_key=None,
         base_url=None,
+        direct_anthropic_api_key="sk-test-fake-key-not-real",
         thinking_standard_model="anthropic/claude-sonnet-4-6",
         thinking_advanced_model="anthropic/claude-opus-4-7",
         claude_agent_autocompact_pct_override=50,
