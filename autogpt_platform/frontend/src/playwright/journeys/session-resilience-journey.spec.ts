@@ -234,7 +234,7 @@ test("session resilience journey: a session the auth backend rejects still signs
   await expect(page).toHaveURL(/\/login\?next=%2Flibrary/);
 });
 
-test("session resilience journey: signing out in one tab signs out the others", async ({
+test("session resilience journey: signing out in one tab signs out the others, even when the server is slow", async ({
   page,
   context,
   baseURL,
@@ -243,9 +243,21 @@ test("session resilience journey: signing out in one tab signs out the others", 
   await signUpIntoLibrary(page, baseURL);
   const otherTab = await openSecondTab(context);
 
+  // A slow sign-out: if the other tab is told before the server has expired
+  // the cookies, its reload still sees the session and lands back in the app.
+  await page.route("**/logout", async (route) => {
+    if (
+      route.request().method() !== "POST" ||
+      !route.request().headers()["next-action"]
+    )
+      return route.fallback();
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    return route.continue();
+  });
+
   // The navbar's and the hosted plan picker's "Log out" both route here.
   await page.goto("/logout");
-  await expect(page).toHaveURL(/\/login/, { timeout: 15_000 });
+  await expect(page).toHaveURL(/\/login/, { timeout: 20_000 });
 
   await expect(otherTab).toHaveURL(/\/login\?next=%2Flibrary/, {
     timeout: 20_000,

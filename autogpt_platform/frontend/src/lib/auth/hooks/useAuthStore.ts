@@ -2,13 +2,18 @@
 
 import type BackendAPI from "@/lib/autogpt-server-api/client";
 import { resetAnalyticsIdentity } from "@/services/analytics/reset-identity";
+import {
+  clearImpersonationEverywhere,
+  ImpersonationState,
+  isImpersonationClearedEvent,
+} from "@/lib/impersonation";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
+import { reloadForNewDeployment } from "../deployment-reload";
 import {
   broadcastLogout,
   navigateWithFullLoad,
-  reloadForNewDeployment,
   setupSessionEventListeners,
   setWebSocketDisconnectIntent,
 } from "../helpers";
@@ -157,7 +162,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       set({ listenersCleanup: null });
     }
 
-    broadcastLogout();
+    // Drop any admin impersonation (sessionStorage + cookie, in every tab) so
+    // the next user signing in on this browser doesn't send X-Act-As-User-Id.
+    clearImpersonationEverywhere();
 
     // Clear React Query cache to prevent stale data from old user
     if (typeof window !== "undefined") {
@@ -172,7 +179,14 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       isUserLoading: false,
     });
 
-    await serverLogout(options);
+    try {
+      await serverLogout(options);
+    } finally {
+      // Other tabs reload onto /login when they hear this. Announce only once
+      // the server has expired the session cookies, or a reload can still
+      // see the old session and land straight back in the app.
+      broadcastLogout();
+    }
   }
 
   async function validateSessionInternal(
@@ -182,7 +196,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     const pathname = params?.path ?? get().currentPath;
 
     if (!router || !pathname) return true;
-    if (!params?.force && get().isValidating) return true;
+    // One check at a time, even a forced one: a retry or `online` event that
+    // lands mid-check would otherwise race it and act on a stale answer.
+    if (get().isValidating) return true;
 
     const now = Date.now();
     if (!params?.force && now - get().lastValidation < 2000) return true;
@@ -206,6 +222,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       cancelRetry();
 
       if (!result.isValid) {
+        clearImpersonationEverywhere();
         set({
           user: null,
           hasLoadedUser: false,
@@ -220,7 +237,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       }
 
       if (result.user && result.shouldUpdateUser) {
-        set({ user: result.user });
+        adoptUser(result.user);
       }
 
       if (result.user) {
@@ -277,7 +294,20 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     set({ retryTimer: null, retryAttempt: 0 });
   }
 
+  // An impersonation target belongs to the admin session that chose it. When
+  // this tab takes on a different account, the target must go with the old one.
+  function adoptUser(user: User): void {
+    const previous = get().user;
+    if (previous && previous.id !== user.id) clearImpersonationEverywhere();
+    set({ user });
+  }
+
   function handleStorageEventInternal(event: StorageEvent): void {
+    if (isImpersonationClearedEvent(event)) {
+      ImpersonationState.clear();
+      return;
+    }
+
     const result = handleStorageEventHelper({
       event,
       api: get().apiRef,
@@ -307,12 +337,10 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     const result = await refreshSessionHelper();
 
     if (result.user) {
-      set({
-        user: result.user,
-        hasLoadedUser: true,
-        isUserLoading: false,
-      });
+      adoptUser(result.user);
+      set({ hasLoadedUser: true, isUserLoading: false });
     } else if (result.error && !result.isUnavailable) {
+      clearImpersonationEverywhere();
       set({
         user: null,
         hasLoadedUser: false,

@@ -12,9 +12,17 @@ vi.mock("../../actions", () => ({
 vi.mock("../../helpers", () => ({
   broadcastLogout: vi.fn(),
   navigateWithFullLoad: vi.fn(),
-  reloadForNewDeployment: vi.fn(() => true),
   setWebSocketDisconnectIntent: vi.fn(),
   setupSessionEventListeners: vi.fn(() => ({ cleanup: vi.fn() })),
+}));
+vi.mock("../../deployment-reload", () => ({
+  reloadForNewDeployment: vi.fn(() => true),
+}));
+vi.mock("@/lib/react-query/queryClient", () => ({
+  getQueryClient: () => ({ clear: vi.fn() }),
+}));
+vi.mock("@/services/analytics/reset-identity", () => ({
+  resetAnalyticsIdentity: vi.fn(),
 }));
 vi.mock("../helpers", () => ({
   fetchUser: vi.fn(),
@@ -23,9 +31,11 @@ vi.mock("../helpers", () => ({
   validateSession: vi.fn(),
 }));
 
+import { IMPERSONATION_STORAGE_KEY } from "@/lib/constants";
+import { ImpersonationState } from "@/lib/impersonation";
+import { reloadForNewDeployment } from "../../deployment-reload";
 import {
   navigateWithFullLoad,
-  reloadForNewDeployment,
   setupSessionEventListeners,
 } from "../../helpers";
 import type { User } from "../../types";
@@ -261,6 +271,7 @@ describe("useAuthStore resilience", () => {
       isValidating: false,
       lastValidation: 0,
       routerRef: null,
+      apiRef: null,
       currentPath: "",
     });
     vi.clearAllMocks();
@@ -293,6 +304,35 @@ describe("useAuthStore resilience", () => {
     expect(vi.getTimerCount()).toBe(0);
     expect(useAuthStore.getState().user).toBe(user);
     expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it("doesn't start a second check when the network returns mid-check", async () => {
+    vi.mocked(fetchUser).mockResolvedValue({
+      user,
+      hasLoadedUser: true,
+      isUserLoading: false,
+    });
+    await useAuthStore.getState().initialize({
+      api: makeApi(),
+      router: makeRouter(),
+      path: "/library",
+    });
+    const [, , onOnline] = vi.mocked(setupSessionEventListeners).mock.calls[0];
+    let finish!: (
+      result: Awaited<ReturnType<typeof validateSessionHelper>>,
+    ) => void;
+    vi.mocked(validateSessionHelper).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+
+    const inFlight = useAuthStore.getState().validateSession({ force: true });
+    onOnline?.();
+    finish({ user, isValid: true, shouldUpdateUser: false });
+    await inFlight;
+
+    expect(validateSessionHelper).toHaveBeenCalledTimes(1);
   });
 
   it("sends the tab to login with a full page load when another tab signs out", async () => {
@@ -341,5 +381,18 @@ describe("useAuthStore resilience", () => {
     await useAuthStore.getState().refreshSession();
 
     expect(useAuthStore.getState().user).toBeNull();
+  });
+});
+
+describe("useAuthStore.logOut", () => {
+  it("clears admin impersonation so the next user doesn't act as someone else", async () => {
+    ImpersonationState.set("impersonated-user");
+    expect(ImpersonationState.get()).toBe("impersonated-user");
+
+    await useAuthStore.getState().logOut();
+
+    expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBeNull();
+    expect(document.cookie).not.toContain(`${IMPERSONATION_STORAGE_KEY}=`);
+    expect(ImpersonationState.get()).toBeNull();
   });
 });
