@@ -1393,8 +1393,8 @@ async def _add_graph_execution(
         admin_requeue: Admin recovery of a stuck execution. A row that is
             still QUEUED is republished as-is (QUEUED -> QUEUED is not a valid
             status transition, so the usual compare-and-set would always skip
-            the publish). If the publish is skipped anyway, raises
-            ``ExecutionNotRequeuedError`` instead of returning silently.
+            the publish). A row that has left QUEUED is not touched: raises
+            ``ExecutionNotRequeuedError`` instead of resuming it.
     Returns:
         GraphExecutionWithNodes: The execution entry.
     Raises:
@@ -1419,6 +1419,9 @@ async def _add_graph_execution(
             "A run is started by a schedule or a webhook, not both: "
             f"schedule #{schedule_id}, webhook #{webhook_id}"
         )
+
+    if admin_requeue and not graph_exec_id:
+        raise ValueError("admin_requeue needs the graph_exec_id to republish")
 
     if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run agents.")
@@ -1453,6 +1456,16 @@ async def _add_graph_execution(
 
         if not graph_exec:
             raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+
+        # Admin recovery only republishes a row that is still QUEUED. The
+        # admin selected it as QUEUED, but by now it may have been picked up,
+        # stopped, or parked for review; the generic resume below would move a
+        # TERMINATED or REVIEW row back to QUEUED and run it again.
+        if admin_requeue and graph_exec.status != ExecutionStatus.QUEUED:
+            raise ExecutionNotRequeuedError(
+                f"Execution #{graph_exec.id} was not requeued: it is "
+                f"{graph_exec.status}, not QUEUED"
+            )
 
         # A resume rebuilds its context from the graph settings, which would
         # drop the pause the chat that started this run asked for.
@@ -1717,12 +1730,14 @@ async def _add_graph_execution(
         # when update_tenancy=True with no organization_id, which would
         # fail the whole requeue — the exact case the admin fallback serves.
         persist_tenancy = expert_id is not None and organization_id is not None
-        if admin_requeue and graph_exec.status == ExecutionStatus.QUEUED:
-            # A stuck QUEUED row can't pass the QUEUED CAS below (QUEUED is
-            # not a valid source for QUEUED), so admin recovery used to skip
-            # the publish while reporting success (#15282). Publish directly;
-            # a duplicate delivery is deduped by the consumer's cluster lock
-            # and its status check.
+        if admin_requeue:
+            # The row was QUEUED when re-read above. It can't pass the QUEUED
+            # CAS below (QUEUED is not a valid source for QUEUED), so admin
+            # recovery used to skip the publish while reporting success
+            # (#15282). Publish directly: if the original message was not
+            # lost after all, the consumer takes a per-execution cluster lock
+            # and re-reads the status under it, so the second delivery is
+            # dropped or skipped instead of starting a second run.
             if persist_tenancy:
                 await edb.update_graph_execution_stats(
                     graph_exec_id=graph_exec.id,
@@ -1746,12 +1761,6 @@ async def _add_graph_execution(
                     f"Skipping queue publish for execution {graph_exec.id} - "
                     f"status update failed or execution already queued by another request"
                 )
-                if admin_requeue:
-                    current = updated_exec.status if updated_exec else graph_exec.status
-                    raise ExecutionNotRequeuedError(
-                        f"Execution #{graph_exec.id} was not requeued: it is "
-                        f"{current}, not QUEUED"
-                    )
                 return graph_exec
 
         graph_exec.status = ExecutionStatus.QUEUED
@@ -1765,9 +1774,6 @@ async def _add_graph_execution(
             exchange=GRAPH_EXECUTION_EXCHANGE,
         )
         logger.info(f"Published execution {graph_exec.id} to RabbitMQ queue")
-    except ExecutionNotRequeuedError:
-        # Nothing was changed; don't mark a live execution FAILED.
-        raise
     except BaseException as e:
         err = str(e) or type(e).__name__
         if not graph_exec:
