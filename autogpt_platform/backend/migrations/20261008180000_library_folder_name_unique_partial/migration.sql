@@ -8,23 +8,50 @@
 
 -- Rename any live root duplicates so the new root index can be created.
 -- Nested-folder duplicates can't exist under the old composite unique.
--- The suffix includes part of the row id, so it can't collide with an
--- existing live root like "Work (2)".
-WITH ranked AS (
-  SELECT
-    "id",
-    "name",
-    ROW_NUMBER() OVER (
-      PARTITION BY "userId", "name"
-      ORDER BY "createdAt", "id"
-    ) AS rn
-  FROM "LibraryFolder"
-  WHERE "parentId" IS NULL AND "isDeleted" = false
-)
-UPDATE "LibraryFolder" AS f
-SET "name" = f."name" || ' (' || ranked.rn || '-' || LEFT(f."id", 8) || ')'
-FROM ranked
-WHERE f."id" = ranked."id" AND ranked.rn > 1;
+-- The oldest row keeps its name; each later one takes the first free
+-- "<name> (n)" among that user's live roots, the same shape
+-- create_folder_with_unique_name produces. Probing the table before every
+-- rename means a pre-existing "Work (2)" can never collide with a renamed
+-- row, so CREATE UNIQUE INDEX below can't fail on the data this writes.
+DO $$
+DECLARE
+  dup RECORD;
+  candidate TEXT;
+  n INT;
+BEGIN
+  FOR dup IN
+    SELECT "id", "userId", "name", rn
+    FROM (
+      SELECT
+        "id",
+        "userId",
+        "name",
+        ROW_NUMBER() OVER (
+          PARTITION BY "userId", "name"
+          ORDER BY "createdAt", "id"
+        ) AS rn
+      FROM "LibraryFolder"
+      WHERE "parentId" IS NULL AND "isDeleted" = false
+    ) ranked
+    WHERE rn > 1
+    ORDER BY "userId", "name", rn
+  LOOP
+    n := dup.rn;
+    LOOP
+      candidate := dup."name" || ' (' || n || ')';
+      EXIT WHEN NOT EXISTS (
+        SELECT 1
+        FROM "LibraryFolder"
+        WHERE "userId" = dup."userId"
+          AND "parentId" IS NULL
+          AND "isDeleted" = false
+          AND "name" = candidate
+      );
+      n := n + 1;
+    END LOOP;
+    UPDATE "LibraryFolder" SET "name" = candidate WHERE "id" = dup."id";
+  END LOOP;
+END $$;
 
 DROP INDEX "LibraryFolder_userId_parentId_name_key";
 
