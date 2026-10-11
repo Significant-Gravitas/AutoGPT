@@ -20,7 +20,6 @@ const KNOWN_WRONG: Record<string, string> = {
   R3: "a missing token is retried as a lost connection (#15398)",
   F2: "a failed send's error outlives a later turn (#15398)",
   F3h: "an idle tab does not re-read its chat on return (#15398)",
-  M1: "a follow-up queued from a stale tab is drawn above the running turn (#15402)",
   F1: "a server-started turn that registers after the probes is not followed",
   F3: "an idle visible tab is not told of a turn another device starts",
 };

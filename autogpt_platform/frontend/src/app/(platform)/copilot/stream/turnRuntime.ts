@@ -314,7 +314,10 @@ export class TurnRuntime {
     this.emit();
   }
 
-  /** The backend refused the send before persisting it (a 429). */
+  /**
+   * Drop the prompt drawn at send that will not be its own turn: the backend
+   * refused it (a 429) or queued it behind the running turn.
+   */
   dropUnsentUserRow() {
     const last = this.segments[this.segments.length - 1];
     if (last?.kind !== "user" || last.origin !== "sent") return;
