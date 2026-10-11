@@ -53,10 +53,10 @@ interface OpenWindow {
 const openWindows = new Map<string, OpenWindow>();
 
 // Statuses the app asks for and handles: an unauthenticated read of a gated
-// resource, a permission the user does not have, an optional resource that is
-// absent. A 4xx that means the request itself was wrong (400, 422) and every
-// 5xx stay errors.
-const EXPECTED_STATUSES = new Set([401, 403, 404]);
+// resource, an account without a plan (the paywall), a permission the user
+// does not have, an optional resource that is absent. A 4xx that means the
+// request itself was wrong (400, 422) and every 5xx stay errors.
+const EXPECTED_STATUSES = new Set([401, 402, 403, 404]);
 
 function emit({
   status,

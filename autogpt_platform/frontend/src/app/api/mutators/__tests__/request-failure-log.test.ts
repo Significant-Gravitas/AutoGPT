@@ -91,11 +91,12 @@ describe("logClientRequestFailure", () => {
 
   it("warns rather than errors on the statuses the app asks for and handles", () => {
     logClientRequestFailure({ ...base, status: 401 });
+    logClientRequestFailure({ ...base, status: 402 });
     logClientRequestFailure({ ...base, status: 403 });
     logClientRequestFailure({ ...base, status: 404 });
 
     expect(console.error).not.toHaveBeenCalled();
-    expect(console.warn).toHaveBeenCalledTimes(3);
+    expect(console.warn).toHaveBeenCalledTimes(4);
   });
 
   it("keeps a malformed request an error", () => {

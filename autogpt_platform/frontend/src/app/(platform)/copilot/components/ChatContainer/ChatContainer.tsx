@@ -5,7 +5,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
@@ -44,7 +43,7 @@ import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
 import type { SentFrom } from "../../sentFrom";
 import type { AutopilotMode } from "../../autopilotModeStore";
 import { AutopilotModeSelector } from "../ChatInput/components/AutopilotModeSelector/AutopilotModeSelector";
-import { describeSendFailure } from "../ChatInput/helpers";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
 import {
   getKickoffAttemptToken,
@@ -272,8 +271,13 @@ export const ChatContainer = ({
     requestVoiceStart();
     try {
       await onCreateSession();
-    } catch {
+    } catch (error) {
       takeVoiceStart();
+      toastSendFailure({
+        title: "Could not start a new chat session",
+        error,
+        recovery: "voice mode did not start",
+      });
     }
   }
 
@@ -320,13 +324,10 @@ export const ChatContainer = ({
         );
       }
     } catch (error) {
-      toast({
+      toastSendFailure({
         title: "Couldn't retry message",
-        description: describeSendFailure(
-          error,
-          "your previous message is still in the chat",
-        ),
-        variant: "destructive",
+        error,
+        recovery: "your previous message is still in the chat",
       });
     } finally {
       isRetryingRef.current = false;
