@@ -23,6 +23,7 @@ vi.mock("../tokenDevtool/usageTap", () => ({
     createUsageCapturingFetch(sessionId),
 }));
 
+import { createStreamFlight } from "../copilotStreamFlight";
 import { createCopilotTransport } from "../copilotStreamTransport";
 import { buildKickoffMessage } from "../expertKickoff";
 
@@ -42,6 +43,7 @@ function makeRefs() {
   return {
     copilotModeRef: { current: undefined },
     copilotModelRef: { current: undefined },
+    flight: createStreamFlight(),
   };
 }
 

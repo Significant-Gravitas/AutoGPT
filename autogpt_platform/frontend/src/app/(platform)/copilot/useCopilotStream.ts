@@ -15,6 +15,12 @@ import {
   shouldReloadCopilotChatRuntime,
 } from "./copilotChatRegistry";
 import { handleStreamError } from "./copilotStreamErrorHandlers";
+import {
+  endLiveRequest,
+  hasHealthyStream,
+  trackRequest,
+  type ResumeReason,
+} from "./copilotStreamFlight";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import {
   clearKickoffPending,
@@ -151,9 +157,6 @@ export function useCopilotStream({
   // so every session-switch remounts and these refs reset naturally —
   // no cross-session bleed, no blanket "clearCoord" on the Zustand store.
   const hasResumedRef = useRef(false);
-  // The SDK does not abort a running resume, so a second replays the same turn
-  // into the same message. Reconnects bypass it: they replace a dead stream.
-  const openResumeRef = useRef<Promise<void> | null>(null);
   const hydrateCompletedRef = useRef(false);
   const pendingResumeRef = useRef<(() => void) | null>(null);
   // Synchronous flag read inside SDK callbacks — kept as a ref so callbacks
@@ -186,7 +189,7 @@ export function useCopilotStream({
   // capture these refs at init and read `.current` at fire time, so the
   // circular "useChat needs handleReconnect and useCopilotReconnect needs
   // resumeStream" is resolved by deferring both through refs.
-  const resumeStreamRef = useRef<() => void>(() => {});
+  const resumeStreamRef = useRef<(reason: ResumeReason) => void>(() => {});
   const handleReconnectRef = useRef<() => void>(() => {});
 
   const {
@@ -210,6 +213,7 @@ export function useCopilotStream({
 
   useEffect(() => {
     if (!chatRuntime) return;
+    const { flight } = chatRuntime;
 
     async function handleFinish({
       isDisconnect,
@@ -244,12 +248,13 @@ export function useCopilotStream({
           const result = await refetchSession();
           if (!isMountedRef.current) return;
           if (hasActiveBackendStream(result)) {
-            if (openResumeRef.current) return;
+            // Another path (the follow after an approval) already attached.
+            if (hasHealthyStream(flight)) return;
             if (getActiveBackendTurnId(result) === finishedTurnId) {
               handleReconnectRef.current();
             } else {
               hasResumedRef.current = true;
-              resumeStreamRef.current();
+              resumeStreamRef.current("attach");
             }
             return;
           }
@@ -446,11 +451,30 @@ export function useCopilotStream({
     }
   }
 
-  function resumeStreamFromStart() {
+  // At most one stream per chat: a resume first ends the live request and
+  // waits for the SDK to clean it up, or leaves a healthy one alone when it
+  // only means to attach. Resumes asked for while one is starting join it.
+  function resumeStreamFromStart(reason: ResumeReason) {
     if (!chatRuntime) return;
-    if (sessionId) {
-      markCopilotChatRuntimeHealthy(sessionId);
-    }
+    const { flight } = chatRuntime;
+    if (flight.starting) return;
+    if (reason === "attach" && hasHealthyStream(flight)) return;
+    flight.starting = (async () => {
+      await endLiveRequest(flight);
+      if (!isMountedRef.current || isUserStoppingRef.current) return;
+      if (sessionId) {
+        markCopilotChatRuntimeHealthy(sessionId);
+      }
+      // Whatever asked, the page-load resume must not run this turn again.
+      hasResumedRef.current = true;
+      trimReplayedTurn();
+      void trackRequest(flight, resumeStream());
+    })().finally(() => {
+      flight.starting = null;
+    });
+  }
+
+  function trimReplayedTurn() {
     setMessages((prev) => {
       // The GET-resume replays the active turn from its start as a fresh
       // assistant message, so any HYDRATED partial of that turn must be
@@ -493,11 +517,6 @@ export function useCopilotStream({
       }
       const last = prev[prev.length - 1];
       return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;
-    });
-    const resume = resumeStream();
-    openResumeRef.current = resume;
-    void resume.finally(() => {
-      if (openResumeRef.current === resume) openResumeRef.current = null;
     });
   }
   resumeStreamRef.current = resumeStreamFromStart;
@@ -571,7 +590,10 @@ export function useCopilotStream({
     if (isUserStopping) {
       setIsUserStopping(false);
     }
-    return sdkSendMessage(...args);
+    if (!chatRuntime) return sdkSendMessage(...args);
+    // A send beside a live request breaks both (see copilotStreamFlight).
+    await endLiveRequest(chatRuntime.flight);
+    return trackRequest(chatRuntime.flight, sdkSendMessage(...args));
   }
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams.
@@ -655,7 +677,11 @@ export function useCopilotStream({
 
   const stop = useCopilotStop({
     sessionId,
-    stopStream: sdkStopStream(sdkStop, setMessages),
+    stopStream: sdkStopStream(() => {
+      // `sdkStop` cannot end a resume: the SDK gives its fetch no signal.
+      chatRuntime?.flight.abortController?.abort();
+      return sdkStop();
+    }, setMessages),
     isUserStoppingRef,
     setIsUserStopping,
   });
@@ -668,6 +694,7 @@ export function useCopilotStream({
     sessionId,
     status,
     activityToken: streamActivityToken,
+    getLastStreamActivityAt: () => chatRuntime?.flight.lastActivityAt ?? 0,
     isReconnectScheduled,
     isUserStoppingRef,
     handleReconnectRef,
@@ -791,8 +818,7 @@ export function useCopilotStream({
       if (hasResumedRef.current) return;
       if (isUserStoppingRef.current) return;
       hasResumedRef.current = true;
-      if (openResumeRef.current) return;
-      resumeStreamRef.current();
+      resumeStreamRef.current("attach");
     }
 
     // Wait for hydration to complete before resuming to prevent the two

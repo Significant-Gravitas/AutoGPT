@@ -5,6 +5,7 @@ import type { ChatTransport, FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
 import { getAutopilotModeChoice } from "./autopilotModeStore";
+import { trackStreamFetch, type StreamFlight } from "./copilotStreamFlight";
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
@@ -25,6 +26,8 @@ interface CreateTransportArgs {
    * mid-session change is picked up on the next send.
    */
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
+  /** The session's live request, which every stream fetch reports to. */
+  flight: StreamFlight;
 }
 
 /**
@@ -59,6 +62,7 @@ class SmoothedCopilotChatTransport extends DefaultChatTransport<UIMessage> {
 export function createCopilotTransport({
   sessionId,
   copilotModelRef,
+  flight,
 }: CreateTransportArgs) {
   const baseUrl = `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`;
 
@@ -66,11 +70,14 @@ export function createCopilotTransport({
     api: baseUrl,
     // Tee the raw SSE into the stream converter's shadow, and in dev into the
     // token devtool, which reads the `: usage {...}` comments the SDK drops.
-    fetch: createShadowFetch(
-      sessionId,
-      isTokenDevtoolEnabled()
-        ? createUsageCapturingFetch(sessionId)
-        : undefined,
+    fetch: trackStreamFetch(
+      createShadowFetch(
+        sessionId,
+        isTokenDevtoolEnabled()
+          ? createUsageCapturingFetch(sessionId)
+          : undefined,
+      ),
+      flight,
     ),
     prepareSendMessagesRequest: async ({ messages }) => ({
       body: streamRequestBody(

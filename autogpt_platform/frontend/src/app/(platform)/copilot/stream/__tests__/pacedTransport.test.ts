@@ -4,6 +4,7 @@ import type { UIMessage } from "ai";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createStreamFlight } from "../../copilotStreamFlight";
 import { createCopilotTransport } from "../../copilotStreamTransport";
 import { getShadowLog, resetShadows, setStreamShadowRate } from "../turnShadow";
 
@@ -46,6 +47,7 @@ describe("a paced POST turn read through the shadow tee", () => {
         transport: createCopilotTransport({
           sessionId: "s1",
           copilotModelRef: { current: undefined },
+          flight: createStreamFlight(),
         }),
         onFinish: (args) => finishes.push(args),
         onError: (error) => errors.push(error),

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { ResumeReason } from "./copilotStreamFlight";
 import { hasActiveBackendStream } from "./helpers";
 
 /** Minimum time the page must have been hidden to trigger a wake re-sync. */
@@ -8,13 +9,15 @@ interface UseWakeResyncArgs {
   sessionIdRef: React.MutableRefObject<string | null>;
   isMountedRef: React.MutableRefObject<boolean>;
   refetchSession: () => Promise<{ data?: unknown }>;
-  resumeStreamRef: React.MutableRefObject<() => void>;
+  resumeStreamRef: React.MutableRefObject<(reason: ResumeReason) => void>;
 }
 
 /**
  * Re-sync the chat state when the page becomes visible after a long hidden
  * period (device sleep, tab backgrounded for a long time). If the backend
- * stream is still active, resume via `resumeStreamRef`; otherwise rely on
+ * stream is still active, attach via `resumeStreamRef`, which keeps a live
+ * stream that is still receiving bytes and replaces one that went quiet while
+ * the device slept; otherwise rely on
  * React Query's refetch to update `hydratedMessages`, which the hydration
  * effect merges in.
  *
@@ -50,8 +53,8 @@ export function useWakeResync({
         if (sessionIdRef.current !== sid) return;
 
         if (hasActiveBackendStream(result)) {
-          // Stream is still running — resume SSE to pick up live chunks.
-          resumeStreamRef.current();
+          // Stream is still running — make sure we are attached to it.
+          resumeStreamRef.current("attach");
         }
       } catch (err) {
         console.warn("[copilot] wake re-sync failed", err);

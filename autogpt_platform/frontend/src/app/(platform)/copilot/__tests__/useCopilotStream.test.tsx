@@ -365,8 +365,8 @@ describe("useCopilotStream — a turn the server chains onto the one that ended"
 
       // The 6 s restore watchdog reconnects past the resume that never streamed.
       await screen.findByText("Recovered.", undefined, { timeout: 12000 });
+      // The replaced stream was aborted, so its late end reaches no handler.
       stalled.release();
-      await waitForProbeToSettle();
       await new Promise((resolve) => setTimeout(resolve, 2500));
 
       expect(resumes).toBe(2);

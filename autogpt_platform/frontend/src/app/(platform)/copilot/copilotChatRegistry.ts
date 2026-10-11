@@ -2,6 +2,7 @@ import { Chat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { create } from "zustand";
 import { useConnectedProvidersStore } from "./connectedProvidersStore";
+import { createStreamFlight, type StreamFlight } from "./copilotStreamFlight";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import {
   createCopilotTransport,
@@ -12,6 +13,7 @@ import type { CopilotLlmModel } from "./store";
 interface CopilotChatRuntime {
   chat: Chat<UIMessage>;
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
+  flight: StreamFlight;
   onFinish?: (args: {
     isDisconnect?: boolean;
     isAbort?: boolean;
@@ -75,6 +77,7 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   const copilotModelRef: MutableValue<CopilotLlmModel | undefined> = {
     current: undefined,
   };
+  const flight = createStreamFlight();
   const callbacks: Pick<CopilotChatRuntime, "onFinish" | "onError" | "onData"> =
     {};
   const chat = new Chat<UIMessage>({
@@ -82,6 +85,7 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
     transport: createCopilotTransport({
       sessionId,
       copilotModelRef,
+      flight,
     }),
     onFinish: (args) => {
       if (args.isDisconnect) {
@@ -102,6 +106,7 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   const runtime = {
     chat,
     copilotModelRef,
+    flight,
     get onData() {
       return callbacks.onData;
     },
