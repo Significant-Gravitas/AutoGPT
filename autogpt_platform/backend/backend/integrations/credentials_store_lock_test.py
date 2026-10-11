@@ -69,19 +69,23 @@ async def test_a_waiter_that_takes_the_lock_during_a_release_still_releases_it(
 
     monkeypatch.setattr(Lock, "do_release", release_then_resume_late)
 
-    async def hold(seconds: float) -> None:
+    first_holds_lock = asyncio.Event()
+
+    async def hold(seconds: float, acquired: asyncio.Event | None = None) -> None:
         async with await store.locked_user_integrations(user_id):
+            if acquired:
+                acquired.set()
             await asyncio.sleep(seconds)
 
-    first = asyncio.create_task(hold(0.2))
-    await asyncio.sleep(0.05)
+    first = asyncio.create_task(hold(0.2, first_holds_lock))
+    await first_holds_lock.wait()
     # Takes the key while the first holder is still inside its release, and
     # is still holding it when that release finishes.
     second = asyncio.create_task(hold(0.5))
-    await asyncio.sleep(0.05)
-    third = asyncio.create_task(hold(0))
+    await asyncio.wait_for(asyncio.gather(first, second), timeout=_STALL)
 
-    await asyncio.wait_for(asyncio.gather(first, second, third), timeout=_STALL)
+    # The next request for this user must not wait out the lock's TTL.
+    await asyncio.wait_for(hold(0), timeout=_STALL)
 
 
 async def test_concurrent_holders_never_leave_the_lock_behind(
