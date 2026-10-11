@@ -1,4 +1,12 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 // Read once at load by `flag-backend`, so it has to be set before the imports below.
 const previousBackend = vi.hoisted(() => {
@@ -12,6 +20,13 @@ import type { FrontendFlagValues } from "@/app/api/__generated__/models/frontend
 import openapi from "@/app/api/openapi.json";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { server } from "@/mocks/mock-server";
+import { environment } from "@/services/environment";
+import {
+  answerCookiebot,
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -22,6 +37,11 @@ vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
 }));
 
 const HIRE_EXPERTS = "hire-experts";
+const VISITOR = "0b6c1f3e-visitor-0001";
+
+vi.mock("posthog-js", () => ({
+  default: { __loaded: true, get_distinct_id: () => VISITOR },
+}));
 
 beforeEach(() => {
   signIn("u-1");
@@ -93,6 +113,70 @@ describe("server backend", () => {
   });
 });
 
+describe("a signed-out visitor", () => {
+  beforeEach(() => {
+    useAuthStore.setState({ user: null, isUserLoading: false });
+    vi.spyOn(environment, "isPostHogEnabled").mockReturnValue("phc_test");
+    configureCookiebot();
+  });
+
+  afterEach(() => {
+    removeCookiebot();
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("who allowed analytics is read under their own PostHog id", async () => {
+    installCookiebot({ statistics: true });
+    const sent = recordVisitorIDs();
+
+    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+      wrapper: withQueryClient(),
+    });
+
+    await waitFor(() => expect(sent).toEqual([VISITOR]));
+  });
+
+  it.each([
+    ["declined", { statistics: false }],
+    ["has not answered", undefined],
+  ])("who %s sends no id", async (_, answer) => {
+    installCookiebot(answer);
+    const sent = recordVisitorIDs();
+
+    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+      wrapper: withQueryClient(),
+    });
+
+    await waitFor(() => expect(sent).toEqual([null]));
+  });
+
+  it("sends no id once signed in, consent or not", async () => {
+    installCookiebot({ statistics: true });
+    signIn("u-1");
+    const sent = recordVisitorIDs();
+
+    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+      wrapper: withQueryClient(),
+    });
+
+    await waitFor(() => expect(sent).toEqual([null]));
+  });
+
+  it("is read again under their id when they allow analytics", async () => {
+    installCookiebot();
+    const sent = recordVisitorIDs();
+    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+      wrapper: withQueryClient(),
+    });
+    await waitFor(() => expect(sent).toEqual([null]));
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    await waitFor(() => expect(sent).toEqual([null, VISITOR]));
+  });
+});
+
 describe("the frontend's flags are the set the endpoint serves", () => {
   it("keys the endpoint's flags by the same enum the frontend reads from", () => {
     const schemas = openapi.components.schemas;
@@ -110,6 +194,17 @@ describe("the frontend's flags are the set the endpoint serves", () => {
     );
   });
 });
+
+function recordVisitorIDs() {
+  const sent: Array<string | null> = [];
+  server.use(
+    getGetFeatureFlagsMockHandler(({ request }) => {
+      sent.push(new URL(request.url).searchParams.get("visitor_id"));
+      return { flags: {}, configured: true };
+    }),
+  );
+  return sent;
+}
 
 function serveFlags(response: FrontendFlagValues | (() => FrontendFlagValues)) {
   server.use(getGetFeatureFlagsMockHandler(response));

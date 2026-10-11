@@ -7864,6 +7864,20 @@
         "summary": "Get Feature Flags",
         "description": "The frontend's flags for the caller, evaluated as the backend's own reads are.",
         "operationId": "get_feature_flags",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "visitor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "A signed-out visitor's analytics id, sent only with their analytics consent; ignored for a signed-in caller or when malformed.",
+              "title": "Visitor Id"
+            },
+            "description": "A signed-out visitor's analytics id, sent only with their analytics consent; ignored for a signed-in caller or when malformed."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -7872,9 +7886,16 @@
                 "schema": { "$ref": "#/components/schemas/FrontendFlagValues" }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
-        },
-        "security": [{ "HTTPBearer": [] }]
+        }
       }
     },
     "/api/files/upload": {

@@ -23,6 +23,7 @@ from backend.util.feature_flag import (
     Flag,
     evaluate_feature_flag,
     feature_flag,
+    frontend,
     is_feature_enabled,
 )
 from backend.util.settings import AppEnvironment, Config, FeatureFlagBackend
@@ -259,6 +260,7 @@ class TestPostHogBackend:
             "email": "x@agpt.co",
             "email_domain": "agpt.co",
             "created_at": "2026-05-07T12:00:00+00:00",
+            "is_anonymous": False,
         }
 
     @pytest.mark.asyncio
@@ -291,8 +293,9 @@ class TestPostHogBackend:
         assert result == expected
 
     @pytest.mark.asyncio
-    async def test_an_anonymous_context_carries_no_person_properties(self, mocker):
-        """The `"system"`-keyed config flags have no user to describe."""
+    async def test_an_anonymous_context_carries_only_is_anonymous(self, mocker):
+        """The `"system"`-keyed config flags have no user to describe, and are not
+        the shared signed-out key either."""
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         client = stub_posthog(mocker, value=True, payload={"TIER": 1.5})
 
@@ -300,7 +303,34 @@ class TestPostHogBackend:
 
         args, kwargs = client.evaluate_flags.call_args
         assert args[0] == "system"
-        assert kwargs["person_properties"] is None
+        assert kwargs["person_properties"] == {"is_anonymous": False}
+
+    @pytest.mark.asyncio
+    async def test_a_split_on_is_anonymous_leaves_out_only_the_shared_signed_out_key(
+        self, mocker
+    ):
+        """A 20% rollout "where is_anonymous is not true" buckets consented
+        visitors by their own id and never the visitors nobody can measure."""
+        use_backend(mocker, FeatureFlagBackend.POSTHOG)
+        posthog_client = _posthog_with_a_split_on_is_anonymous()
+        mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
+        frontend._visitor_flags_cache.clear()
+        frontend._anonymous_flags.cache_clear()
+        try:
+            anonymous = await frontend.evaluate_frontend_flags(None)
+            visitors = [
+                await frontend.evaluate_frontend_flags(None, f"{i:08d}-visitor")
+                for i in range(200)
+            ]
+        finally:
+            frontend._visitor_flags_cache.clear()
+            frontend._anonymous_flags.cache_clear()
+            posthog_client.shutdown()
+
+        split = frontend.FrontendFlag.CHAT_SEARCH
+        share = sum(v.flags.get(split) is True for v in visitors) / len(visitors)
+        # One assertion, so a failure shows both halves.
+        assert (anonymous.flags.get(split), 0.1 < share < 0.3) == (False, True), share
 
     def test_lifecycle_starts_only_posthog(self, mocker):
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
@@ -1038,6 +1068,35 @@ def _posthog_with_an_employee_cohort() -> Posthog:
             ],
         }
     }
+    client._get_flags_decision = _no_remote_flags
+    return client
+
+
+def _posthog_with_a_split_on_is_anonymous() -> Posthog:
+    """A 20% rollout whose condition leaves out `is_anonymous: true`."""
+    client = Posthog("phc-test", secret_key="phx-test", enable_local_evaluation=False)
+    client.feature_flags = [
+        {
+            "id": 2,
+            "key": "chat-search",
+            "active": True,
+            "filters": {
+                "groups": [
+                    {
+                        "properties": [
+                            {
+                                "key": "is_anonymous",
+                                "type": "person",
+                                "operator": "is_not",
+                                "value": ["true"],
+                            }
+                        ],
+                        "rollout_percentage": 20,
+                    }
+                ]
+            },
+        }
+    ]
     client._get_flags_decision = _no_remote_flags
     return client
 

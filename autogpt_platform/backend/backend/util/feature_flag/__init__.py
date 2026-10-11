@@ -33,6 +33,9 @@ settings = Settings()
 P = ParamSpec("P")
 T = TypeVar("T")
 
+# The one key every signed-out caller without a consented analytics id is read as.
+ANONYMOUS_USER = "anonymous"
+
 _is_initialized = False
 _init_attempted = False
 
@@ -463,14 +466,18 @@ async def _evaluate_flag_value(
     default: Any = None,
     *,
     attributes: dict[str, str] | None = None,
+    anonymous: bool = False,
 ) -> tuple[Any, bool]:
     """``(value, evaluated)`` for one raw flag read, from the configured vendor.
 
     ``evaluated`` is False whenever *default* is standing in for an answer the
-    vendor could not give.
+    vendor could not give. ``anonymous`` buckets by *user_id* without ever
+    looking it up as a user, for an id the caller did not authenticate.
     """
     context = None
-    if attributes:
+    if anonymous:
+        context = (_anonymous_context(user_id), True)
+    elif attributes:
         # Layered once, so every vendor evaluates the same per-request facts.
         user_context, context_resolved = await _fetch_user_context_status(user_id)
         context = (_with_request_attributes(user_context, attributes), context_resolved)
@@ -673,14 +680,16 @@ def _person_properties(context: Context) -> dict[str, Any]:
     because PostHog targets flat properties. ``email`` is sent because the
     ported email rules and the ``ld:employee`` cohort match on it, and a rule
     on a property the read omits cannot be evaluated in-process.
+    ``is_anonymous`` is true only for the shared ``ANONYMOUS_USER`` key, so a
+    rollout can leave out the visitors nobody can measure.
     """
     if context.anonymous:
-        return {}
+        return {"is_anonymous": context.key == ANONYMOUS_USER}
     return {
         attribute: context.get(attribute)
         for attribute in ("role", "email", "email_domain", "created_at", "country")
         if context.get(attribute) is not None
-    }
+    } | {"is_anonymous": False}
 
 
 def _user_digest(user_id: str) -> str:
@@ -831,13 +840,17 @@ async def _evaluate_boolean_flag(
     flag_key: str,
     user_id: str,
     default: bool = False,
+    *,
+    anonymous: bool = False,
 ) -> tuple[bool, bool]:
     override = _env_flag_override(flag_key)
     if override is not None:
         logger.debug(f"Feature flag {flag_key} overridden by env: {override}")
         return override, True
 
-    result, evaluated = await _evaluate_flag_value(flag_key, user_id, default)
+    result, evaluated = await _evaluate_flag_value(
+        flag_key, user_id, default, anonymous=anonymous
+    )
 
     # If the result is already a boolean, return it
     if isinstance(result, bool):
@@ -964,7 +977,7 @@ def create_feature_flag_dependency(
         or None for anonymous access.
         """
         # For routes that don't require authentication, use anonymous context
-        check_user_id = user_id or "anonymous"
+        check_user_id = user_id or ANONYMOUS_USER
 
         # A local env override (per-flag FORCE_FLAG_*, or the FORCE_ALL_FLAGS
         # master switch) wins over whichever vendor is configured, and applies
