@@ -13,6 +13,7 @@ import { useForm } from "react-hook-form";
 import z from "zod";
 import { signup as signupAction } from "./actions";
 import { isTeamEmail } from "@/lib/auth/team-email";
+import { ImpersonationState } from "@/lib/impersonation";
 
 export function useSignupPage() {
   useCaptureMarketingPrompt();
@@ -77,6 +78,8 @@ export function useSignupPage() {
   async function handleProviderSignup(provider: LoginProvider) {
     setIsGoogleLoading(true);
     setIsSigningUp(true);
+    // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
+    ImpersonationState.clear();
 
     try {
       // Include next URL in OAuth flow if present
@@ -137,6 +140,7 @@ export function useSignupPage() {
     }
 
     setIsSigningUp(true);
+    ImpersonationState.clear();
 
     try {
       const result = await signupAction(

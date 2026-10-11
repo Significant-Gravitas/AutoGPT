@@ -9,7 +9,8 @@
 export const TEAM_EMAIL_DOMAIN = "agpt.co";
 
 export function isTeamEmail(email: string) {
-  const at = email.lastIndexOf("@");
+  const normalized = email.trim().toLowerCase();
+  const at = normalized.lastIndexOf("@");
   if (at === -1) return false;
-  return email.slice(at + 1).toLowerCase() === TEAM_EMAIL_DOMAIN;
+  return normalized.slice(at + 1) === TEAM_EMAIL_DOMAIN;
 }
