@@ -75,6 +75,30 @@ def test_each_rung_runs_as_often_as_it_says():
 
 
 @pytest.mark.parametrize(
+    "now",
+    [
+        datetime(2026, 10, 30, 13, 0, tzinfo=ZoneInfo(_CHICAGO)),
+        datetime(2027, 3, 12, 13, 0, tzinfo=ZoneInfo(_CHICAGO)),
+    ],
+    ids=["clocks-fall-back", "clocks-spring-forward"],
+)
+def test_the_week_the_clocks_change_reads_like_any_other(now):
+    """Counted on the zone's own clock, Chicago's fall-back Sunday has 01:17
+    twice and its spring-forward one none, so an hourly schedule was offered
+    "Every hour" and lost its minute."""
+    rungs = less_often(["17 * * * *"], _CHICAGO, now)
+
+    assert [rung.label for rung in rungs] == [
+        "Every 4 hours",
+        "Every day at 09:17",
+        "Weekdays at 09:17",
+        "Every Monday at 09:17",
+    ]
+    assert describe(["17 * * * *"], _CHICAGO, now) == "Every hour"
+    assert describe(["30 1 * * *"], _CHICAGO, now) == "Every day at 01:30"
+
+
+@pytest.mark.parametrize(
     ("crons", "words"),
     [
         (["* * * * *"], "Every minute"),

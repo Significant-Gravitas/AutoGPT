@@ -10,10 +10,15 @@ Crons are read as Unix cron, the way they are stored: the scheduler translates
 the day-of-week field when it builds an APScheduler trigger, so croniter sees
 the fire times the scheduler does. The cadences offered name their weekdays
 (``mon-fri``), which both read the same way.
+
+Fires are counted on the zone's clock as it stands now, at a fixed offset, so
+the week the clocks change has no hour twice or missing: an hourly schedule
+still runs 168 times a week, at the minute it always does.
 """
 
 from collections import Counter
 from datetime import datetime, timedelta
+from datetime import timezone as fixed_offset
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
@@ -119,7 +124,8 @@ def _fires(
         zone = ZoneInfo(timezone)
     except (ZoneInfoNotFoundError, ValueError):
         zone = ZoneInfo("UTC")
-    start = now.astimezone(zone)
+    offset = now.astimezone(zone).utcoffset() or timedelta(0)
+    start = now.astimezone(fixed_offset(offset))
     end = start + span
     fires: list[datetime] = []
     for cron in crons:

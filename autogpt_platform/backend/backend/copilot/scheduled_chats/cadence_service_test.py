@@ -124,7 +124,8 @@ async def test_an_hourly_routine_runs_daily_from_now_on(
         assert row is not None
         assert row.crons == ["17 9 * * *"] and row.scheduleIds == ["job-new"]
         # The new job is armed before the old one goes.
-        scheduler.add_copilot_turn_schedule.assert_awaited_once()
+        calls = [name for name, _, _ in scheduler.mock_calls]
+        assert calls == ["add_copilot_turn_schedule", "delete_schedule"]
         scheduler.delete_schedule.assert_awaited_once_with("job-old", user_id=user_id)
     finally:
         await _cleanup(user_id)
