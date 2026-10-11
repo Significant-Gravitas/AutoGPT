@@ -1,11 +1,12 @@
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from backend import conftest as fixtures
+from backend.util.exceptions import DatabaseError
 
 pytest_plugins = ["pytester"]
 
@@ -170,3 +171,10 @@ assert gc.get_freeze_count() > 0
         ],
         check=True,
     )
+
+
+async def test_a_fixture_user_is_retried_once_through_the_uncached_lookup():
+    create = AsyncMock(side_effect=[DatabaseError("Event loop is closed"), None])
+    with patch("backend.data.user.get_or_create_user_with_status", create):
+        await fixtures._create_user_with_loop_retry({"sub": "user"})
+    assert create.await_count == 2
