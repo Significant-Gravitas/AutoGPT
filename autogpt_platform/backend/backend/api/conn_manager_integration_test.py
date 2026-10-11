@@ -10,7 +10,6 @@ from uuid import uuid4
 
 import pytest
 from fastapi import WebSocket
-from redis import Redis
 
 import backend.data.redis_client as redis_client
 from backend.api.conn_manager import (
@@ -30,7 +29,13 @@ from backend.data.execution import (
     exec_channel,
     graph_all_channel,
 )
-from backend.util.testing import is_tcp_port_reachable
+from backend.util.testing import (
+    ShardProxy,
+    is_tcp_port_reachable,
+    shard_proxies_routed,
+    shard_subscribers,
+    spublish_on_shard,
+)
 
 
 def _has_live_cluster() -> bool:
@@ -382,84 +387,15 @@ async def test_slow_consumer_receives_all_events_without_loss(monkeypatch) -> No
         redis_client.disconnect()
 
 
-class _ShardProxy:
-    """TCP proxy in front of one real shard, so a test can cut the network
-    between the WS server and Redis without touching Redis itself."""
-
-    def __init__(self, upstream: tuple[str, int]) -> None:
-        self.upstream = upstream
-        self._server: asyncio.Server | None = None
-        self._writers: set[asyncio.StreamWriter] = set()
-        self.address: tuple[str, int] = ("127.0.0.1", 0)
-
-    async def start(self) -> None:
-        self._server = await asyncio.start_server(
-            self._handle, "127.0.0.1", self.address[1]
-        )
-        self.address = self._server.sockets[0].getsockname()[:2]
-
-    async def _handle(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ) -> None:
-        up_reader, up_writer = await asyncio.open_connection(*self.upstream)
-        self._writers.update((writer, up_writer))
-
-        async def pipe(src: asyncio.StreamReader, dst: asyncio.StreamWriter) -> None:
-            try:
-                while data := await src.read(65536):
-                    dst.write(data)
-                    await dst.drain()
-            except (ConnectionError, OSError):
-                pass
-            finally:
-                dst.close()
-
-        await asyncio.gather(pipe(reader, up_writer), pipe(up_reader, writer))
-
-    def drop_connections(self) -> None:
-        """Reset every proxied connection; new ones are still accepted."""
-        for w in self._writers:
-            w.transport.abort()
-        self._writers.clear()
-
-    async def stop(self) -> None:
-        """Refuse new connections and reset the open ones: the shard is gone."""
-        if self._server is not None:
-            self._server.close()
-            self.drop_connections()
-            await self._server.wait_closed()
-            self._server = None
-        self.drop_connections()
-
-
 @pytest.fixture
 async def shard_proxies(monkeypatch):
-    """Route every shard-pinned pubsub connection through a ``_ShardProxy``."""
-    redis_client.get_redis.cache_clear()
-    real_resolve = redis_client.resolve_shard_for_channel
-    proxies: dict[tuple[str, int], _ShardProxy] = {}
-
-    def _resolve(channel: str) -> tuple[str, int]:
-        upstream = real_resolve(channel)
-        return proxies[upstream].address
-
-    async def proxy_for(channel: str) -> _ShardProxy:
-        upstream = real_resolve(channel)
-        if upstream not in proxies:
-            proxies[upstream] = _ShardProxy(upstream)
-            await proxies[upstream].start()
-        return proxies[upstream]
-
-    monkeypatch.setattr(redis_client, "resolve_shard_for_channel", _resolve)
-    yield proxy_for
-    for proxy in proxies.values():
-        await proxy.stop()
-    redis_client.disconnect()
+    async with shard_proxies_routed(monkeypatch) as proxy_for:
+        yield proxy_for
 
 
 async def _subscribe_through_proxy(
     monkeypatch, shard_proxies, user_id: str
-) -> tuple[ConnectionManager, AsyncMock, list[str], str, str, str, _ShardProxy]:
+) -> tuple[ConnectionManager, AsyncMock, list[str], str, str, str, ShardProxy]:
     graph_id = f"graph-{uuid4().hex[:8]}"
     exec_id = f"exec-{uuid4().hex[:8]}"
 
@@ -478,24 +414,6 @@ async def _subscribe_through_proxy(
     return cm, ws, sent, chan, graph_id, exec_id, proxy
 
 
-def _shard_subscribers(upstream: tuple[str, int], channel: str) -> int:
-    """SSUBSCRIBE count on the owning shard itself, bypassing the proxy."""
-    node = Redis(host=upstream[0], port=upstream[1], password=redis_client.PASSWORD)
-    try:
-        _, count = node.execute_command("PUBSUB", "SHARDNUMSUB", channel)
-        return int(count)
-    finally:
-        node.close()
-
-
-def _spublish_on_shard(upstream: tuple[str, int], channel: str, payload: str) -> int:
-    node = Redis(host=upstream[0], port=upstream[1], password=redis_client.PASSWORD)
-    try:
-        return int(node.execute_command("SPUBLISH", channel, payload))
-    finally:
-        node.close()
-
-
 @pytest.mark.asyncio
 async def test_subscribe_returns_only_once_redis_has_the_subscription(
     monkeypatch, shard_proxies
@@ -508,7 +426,7 @@ async def test_subscribe_returns_only_once_redis_has_the_subscription(
         monkeypatch, shard_proxies, user_id
     )
     try:
-        assert _shard_subscribers(proxy.upstream, chan) == 1
+        assert shard_subscribers(proxy.upstream, chan) == 1
     finally:
         await cm.disconnect_socket(ws, user_id=user_id)
 
@@ -531,10 +449,10 @@ async def test_an_event_lost_in_a_brief_redis_blip_never_goes_unnoticed(
     try:
         await proxy.stop()
         assert await _wait_until(
-            lambda: _shard_subscribers(proxy.upstream, chan) == 0, timeout=5.0
+            lambda: shard_subscribers(proxy.upstream, chan) == 0, timeout=5.0
         ), "the shard never noticed the dropped subscriber"
         # Published exactly once, with nobody subscribed: Redis drops it.
-        assert _spublish_on_shard(proxy.upstream, chan, completed) == 0
+        assert spublish_on_shard(proxy.upstream, chan, completed) == 0
         await proxy.start()
 
         assert await _wait_until(

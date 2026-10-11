@@ -3,7 +3,6 @@ import logging
 from abc import ABC, abstractmethod
 from contextlib import aclosing
 from typing import (
-    TYPE_CHECKING,
     Any,
     AsyncGenerator,
     Generator,
@@ -20,9 +19,6 @@ from redis.exceptions import RedisError
 from backend.data import redis_client as redis
 from backend.util import json
 from backend.util.settings import Settings
-
-if TYPE_CHECKING:
-    from redis.asyncio import Redis as AsyncRedis
 
 logger = logging.getLogger(__name__)
 config = Settings().config
@@ -193,16 +189,17 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         # a plain AsyncRedis to that node. Both client and pubsub stay
         # generator-local — concurrent listen_events on the same instance
         # (e.g. the singleton _webhook_event_bus) must not share state.
+        # Confirmed SSUBSCRIBE on a connection that never reconnects silently:
+        # a drop surfaces below instead of quietly losing events.
         try:
-            client: "AsyncRedis" = await asyncio.wait_for(
-                redis.connect_sharded_pubsub_async(full_channel_name),
+            client, pubsub = await asyncio.wait_for(
+                redis.subscribe_sharded_async(full_channel_name),
                 _LISTEN_OPEN_TIMEOUT_S,
             )
         except (asyncio.TimeoutError, ConnectionError, OSError, RedisError) as e:
             raise EventStreamLostError(
                 f"could not subscribe to {full_channel_name}: {e!r}"
             ) from e
-        pubsub: AsyncPubSub = client.pubsub()
         try:
             async with aclosing(
                 self._listen_subscribed(pubsub, full_channel_name, channel_key)
@@ -225,12 +222,6 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         self, pubsub: AsyncPubSub, full_channel_name: str, channel_key: str
     ) -> AsyncGenerator[M, None]:
         try:
-            # ssubscribe() records the channel in ``shard_channels``, which
-            # keeps listen() running and makes redis-py's own reconnect
-            # re-issue SSUBSCRIBE (a SUBSCRIBE would never receive SPUBLISH).
-            await asyncio.wait_for(
-                pubsub.ssubscribe(full_channel_name), _LISTEN_OPEN_TIMEOUT_S
-            )
             async for message in pubsub.listen():
                 # Server-pushed sunsubscribe: the slot moved to another shard.
                 if message["type"] == "sunsubscribe":

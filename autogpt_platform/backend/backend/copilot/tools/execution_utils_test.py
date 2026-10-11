@@ -1,10 +1,25 @@
 """Tests for run-health helpers in execution_utils."""
 
+import asyncio
 from datetime import datetime, timezone
+from types import SimpleNamespace
+from typing import cast
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from backend.data.execution import ExecutionStatus, NodeExecutionResult
+import pytest
 
-from .execution_utils import build_run_health_warning, summarize_node_failures
+from backend.data.event_bus import EventStreamLostError
+from backend.data.execution import (
+    AsyncRedisExecutionEventBus,
+    ExecutionStatus,
+    NodeExecutionResult,
+)
+
+from .execution_utils import (
+    _subscribe_and_wait,
+    build_run_health_warning,
+    summarize_node_failures,
+)
 
 STORE_VALUE_BLOCK_ID = "1ff065e9-88e8-4358-9d82-8dc91f622ba9"
 
@@ -137,3 +152,47 @@ def test_many_failures_capped_detail_but_full_count():
     assert warning is not None
     assert "8 node(s) FAILED" in warning
     assert warning.count("boom") == 5
+
+
+class _LostThenSilentBus:
+    """listen_events loses its stream once, then waits quietly."""
+
+    def __init__(self) -> None:
+        self.listens = 0
+
+    async def listen_events(self, channel_key: str):
+        self.listens += 1
+        if self.listens == 1:
+            raise EventStreamLostError("connection dropped")
+        await asyncio.sleep(3600)
+        yield  # pragma: no cover — unreachable
+
+
+@pytest.mark.asyncio
+async def test_wait_checks_the_database_when_the_event_stream_is_lost():
+    """The COMPLETED event can be lost with the stream: the wait must find the
+    finished run in the database, not report it as missing."""
+    bus = _LostThenSilentBus()
+    finished = SimpleNamespace(status=ExecutionStatus.COMPLETED)
+    exec_db = MagicMock()
+    exec_db.get_graph_execution = AsyncMock(
+        side_effect=[SimpleNamespace(status=ExecutionStatus.RUNNING), finished]
+    )
+    tasks: list[asyncio.Task] = []
+
+    with patch("backend.copilot.tools.execution_utils._RESUBSCRIBE_DELAY", 0):
+        result = await asyncio.wait_for(
+            _subscribe_and_wait(
+                cast(AsyncRedisExecutionEventBus, bus),
+                "chan",
+                "user-1",
+                "exec-1",
+                exec_db,
+                tasks,
+            ),
+            timeout=5,
+        )
+
+    assert result is finished
+    for task in tasks:
+        task.cancel()
