@@ -18,14 +18,13 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock
 import pytest
 from redis.asyncio.lock import Lock
 
+from backend.data import redis_client
 from backend.integrations.credentials_store import IntegrationCredentialsStore
 
 
 def _has_live_cluster() -> bool:
     """Probe the socket, not ``redis_client.connect()``: this runs at collection
     time and that helper retries a dead host for ~45 minutes before giving up."""
-    from backend.data import redis_client
-
     try:
         socket.create_connection((redis_client.HOST, redis_client.PORT), 1).close()
     except OSError:
@@ -66,8 +65,6 @@ class _Holders:
 
 @pytest.fixture
 def store() -> IntegrationCredentialsStore:
-    from backend.data import redis_client
-
     redis_client._async_clients.clear()
     return IntegrationCredentialsStore()
 
