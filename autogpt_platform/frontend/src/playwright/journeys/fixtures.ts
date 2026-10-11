@@ -1,10 +1,8 @@
+import { PW_FLAG_OVERRIDES_STORAGE_KEY } from "../../services/feature-flags/pw-flag-overrides";
 import { expect, test as base } from "../coverage-fixture";
 import { type ExpectedResponse, watchForUnexpectedErrors } from "./guard";
 import hostedFlags from "./hosted-flags.json";
 import { type JourneyUser, provisionJourneyUser } from "./journey-user";
-
-// Read by the app's Playwright builds (services/feature-flags/pw-flag-overrides.ts).
-const PW_FLAG_OVERRIDES_STORAGE_KEY = "autogpt-pw-flag-overrides";
 
 interface JourneyOptions {
   /** API responses of 400 or more this journey provokes on purpose. */

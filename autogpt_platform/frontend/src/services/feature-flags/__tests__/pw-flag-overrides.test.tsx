@@ -49,6 +49,21 @@ describe("Playwright runtime flag overrides", () => {
     );
   });
 
+  it("keeps route gates waiting until hydration can read the overrides", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PW_TEST", "true");
+    const { Flag, useFlagStatus } = await loadFlags();
+    const { renderToString } = await import("react-dom/server");
+
+    let status: ReturnType<typeof useFlagStatus> | undefined;
+    function Probe() {
+      status = useFlagStatus(Flag.HIRE_EXPERTS);
+      return null;
+    }
+
+    renderToString(<Probe />);
+    expect(status).toMatchObject({ ready: false, answered: false });
+  });
+
   it("is ignored outside a Playwright build", async () => {
     vi.stubEnv("NEXT_PUBLIC_PW_TEST", "false");
     window.localStorage.setItem(

@@ -30,8 +30,10 @@ function readStoredOverrides() {
   }
 }
 
+// Outside a Playwright build both snapshots agree, so hydration doesn't
+// re-render every flag consumer for nothing.
 function readServerSnapshot() {
-  return null;
+  return isPwBuild() ? null : "";
 }
 
 /**
@@ -44,7 +46,7 @@ export function usePwFlagOverrides(): PwFlagOverrides | null {
     readStoredOverrides,
     readServerSnapshot,
   );
-  if (raw === null) return isPwBuild() ? null : NO_OVERRIDES;
+  if (raw === null) return null;
   return parseOverrides(raw);
 }
 
