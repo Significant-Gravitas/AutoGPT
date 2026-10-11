@@ -9,6 +9,7 @@ from backend.copilot.constants import (
     COPILOT_RETRYABLE_ERROR_PREFIX,
     STREAM_ERROR_MARKER,
 )
+from backend.copilot.continuation import KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE
 from backend.copilot.markers import (
     append_error_marker,
     has_trailing_marker,
@@ -91,6 +92,14 @@ class TestOneFailureIsOneCard:
     def test_a_user_row_never_blocks_the_marker(self) -> None:
         session = _session([ChatMessage(role="user", content="hi")])
         assert has_trailing_marker(session) is False
+
+    @pytest.mark.parametrize("note", [KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE])
+    def test_a_kickoff_note_never_blocks_the_marker(self, note: str) -> None:
+        # A continuation that fails before writing anything still leaves
+        # its error card: the note it started from isn't a marker.
+        session = _session([ChatMessage(role="assistant", content=note)])
+        assert has_trailing_marker(session) is False
+        assert append_error_marker(session, "boom", retryable=True) is True
 
 
 class TestRecognisingMarkers:

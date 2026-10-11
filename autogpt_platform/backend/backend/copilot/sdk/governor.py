@@ -13,7 +13,7 @@ didn't: ``max_budget_usd`` above the budget (in the CLI's price units) and
 ``max_turns`` a little past the check-in.
 """
 
-from claude_agent_sdk import AssistantMessage
+from claude_agent_sdk import AssistantMessage, Message, StreamEvent
 
 from backend.copilot.turn_budget import TurnBudget
 from backend.copilot.turn_pause import PauseReason, TurnPause
@@ -68,12 +68,21 @@ class TurnGovernor:
         self.step_checkin = step_checkin
         self.meter = UsageMeter()
         self.landing: PauseReason | None = None
+        # Set once a tool call was refused: from then on the turn is landing
+        # for real. A threshold crossed by the final answer, with no tool
+        # call after it, finished the task rather than pausing it.
+        self.refused = False
         # Set once the turn has closed as a pause: queued follow-ups then wait
         # for the user to pick the task back up instead of auto-continuing.
         self.paused = False
 
-    def observe(self, message: AssistantMessage) -> None:
-        self.meter.observe(message)
+    def observe(self, message: Message) -> None:
+        if isinstance(message, AssistantMessage):
+            self.meter.observe(message)
+        elif isinstance(message, StreamEvent):
+            self.meter.observe_stream(message)
+        else:
+            return
         self._update()
 
     def refusal(self) -> str | None:
@@ -81,6 +90,7 @@ class TurnGovernor:
         self._update()
         if self.landing is None:
             return None
+        self.refused = True
         if self.landing == "steps":
             return _STEPS_REFUSAL.format(steps=self.meter.main_calls)
         return _BUDGET_REFUSAL
@@ -90,15 +100,18 @@ class TurnGovernor:
 
         A backstop subtype means the CLI stopped the turn itself, before (or
         while) the agent wrote its checkpoint, so none is claimed. A genuine
-        error while landing stays an error: only a turn that ended normally
-        after its tools were refused is a pause.
+        error while landing stays an error, and a turn that ended normally
+        without a refused tool simply finished: only a turn that ended
+        normally after its tools were refused is a pause.
         """
         if result_subtype == "error_max_turns":
             return self._pause("steps", checkpoint_saved=False)
         if result_subtype == "error_max_budget_usd":
             reason = self.budget.limiting if self.budget is not None else "task"
             return self._pause(reason, checkpoint_saved=False)
-        if self.landing is None or result_subtype != "success":
+        if self.landing is None or not self.refused:
+            return None
+        if result_subtype != "success":
             return None
         return self._pause(self.landing, checkpoint_saved=wrote_checkpoint)
 
@@ -108,14 +121,14 @@ class TurnGovernor:
         A hangup is otherwise a crash and keeps its own notice; once the tools
         were being refused it is the landing that ended, so it still pauses.
         """
-        if self.landing is None:
+        if self.landing is None or not self.refused:
             return None
         return self._pause(self.landing, checkpoint_saved=False)
 
     @property
     def landed(self) -> bool:
-        """True once the turn started landing, whether or not it closed as a pause."""
-        return self.paused or self.landing is not None
+        """True once a tool was refused, whether or not it closed as a pause."""
+        return self.paused or self.refused
 
     @property
     def cli_max_turns(self) -> int:
@@ -125,7 +138,7 @@ class TurnGovernor:
         """The CLI's ``max_budget_usd``: the budget plus headroom, in CLI units."""
         if self.budget is None:
             return None
-        if self.budget.limiting == "trial":
+        if self.budget.hard_cap:
             return self.budget.usd * cli_price_ratio(model)
         headroom = max(_BACKSTOP_MIN_USD, _BACKSTOP_SHARE * self.budget.usd)
         cli_usd = (self.budget.usd + headroom) * cli_price_ratio(model)
