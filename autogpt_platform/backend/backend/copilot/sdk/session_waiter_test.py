@@ -235,8 +235,9 @@ async def test_idle_session_enqueues_normally():
 @pytest.mark.parametrize(
     "delegated_by, inflight, expected",
     [
-        # A sub-session's turn with four running may not take the fifth slot.
-        ("parent-session", 4, "rejected_concurrent_turn_cap"),
+        # A sub-session's turn with four running waits for a slot instead of
+        # taking the fifth.
+        ("parent-session", 4, "queued_for_slot"),
         # An AutoPilotBlock turn keeps the inflight cap...
         (None, 4, "completed"),
         # ...which still refuses at its number.
@@ -254,6 +255,8 @@ async def test_a_delegated_turn_leaves_the_users_last_slot_free(
         side_effect=lambda **kw: "full" if 4 >= kw["capacity"] else "admitted"
     )
     db.get_chat_session_status = AsyncMock(return_value="idle")
+    queued = MagicMock()
+    queued.get_chat_session_status = AsyncMock(return_value="queued")
 
     with (
         patch(
@@ -275,6 +278,8 @@ async def test_a_delegated_turn_leaves_the_users_last_slot_free(
             "backend.copilot.sdk.session_waiter.wait_for_session_result",
             new=AsyncMock(return_value=("completed", SessionResult())),
         ),
+        patch("backend.copilot.sdk.session_waiter.queue_spawned_turn"),
+        patch("backend.copilot.sdk.session_waiter.chat_db", return_value=queued),
     ):
         outcome, _ = await run_copilot_turn_via_queue(
             session_id="sess-sub",
@@ -360,6 +365,10 @@ async def test_in_flight_session_with_allow_queue_false_is_refused():
             "backend.copilot.sdk.session_waiter.queue_user_message",
             new=queue_message,
         ),
+        patch(
+            "backend.copilot.sdk.session_waiter.chat_db",
+            return_value=_status_db("running"),
+        ),
     ):
         outcome, result = await run_copilot_turn_via_queue(
             session_id="sess-busy",
@@ -374,6 +383,34 @@ async def test_in_flight_session_with_allow_queue_false_is_refused():
     assert outcome == "refused"
     assert result.refusal, "a refusal must carry a message the model can act on"
     queue_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_queued_session_with_allow_queue_false_is_refused():
+    """A session that already has a task waiting for a slot takes no second
+    one: its queued row is the one the promotion replays."""
+    scheduled = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.chat_db",
+            return_value=_status_db("queued"),
+        ),
+        patch("backend.copilot.sdk.session_waiter.schedule_turn", new=scheduled),
+    ):
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id="sess-waiting",
+            user_id="u1",
+            message="do the thing",
+            timeout=5,
+            tool_call_id="sub:parent",
+            tool_name="run_sub_session",
+            allow_queue=False,
+        )
+
+    assert outcome == "refused"
+    assert result.refusal
+    scheduled.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -403,3 +440,9 @@ async def test_a_tree_refusal_becomes_the_refused_outcome():
 
     assert outcome == "refused"
     assert result.refusal == "This task's tree has closed."
+
+
+def _status_db(status: str) -> MagicMock:
+    db = MagicMock()
+    db.get_chat_session_status = AsyncMock(return_value=status)
+    return db

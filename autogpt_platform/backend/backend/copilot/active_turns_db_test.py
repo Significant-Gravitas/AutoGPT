@@ -84,7 +84,7 @@ async def test_a_chat_fanning_out_six_sub_sessions_leaves_the_user_a_slot():
             async with acquire_turn_slot(user_id, chat.session_id) as slot:
                 assert slot.admitted
 
-        assert outcomes == ["running"] * 3 + ["rejected_concurrent_turn_cap"] * 3
+        assert outcomes == ["running"] * 3 + ["queued_for_slot"] * 3
     finally:
         await User.prisma().delete(where={"id": user_id})
 

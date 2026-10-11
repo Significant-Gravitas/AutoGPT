@@ -19,20 +19,28 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import ConcurrentTurnLimitError
-from backend.copilot.executor.utils import schedule_turn
-from backend.copilot.model import get_chat_session
+from backend.copilot.config import CopilotLlmAuthProvider
+from backend.copilot.executor.utils import queue_spawned_turn, schedule_turn
+from backend.copilot.model import (
+    CHAT_STATUS_QUEUED,
+    _get_session_lock,
+    get_chat_session,
+)
 from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_user_message,
 )
 from backend.copilot.response_model import StreamError, StreamFinish
 from backend.copilot.tree import SpawnRequest, TreeRefusal
+from backend.copilot.turn_queue import SessionNotIdle, queued_turn_refusal
+from backend.data.db_accessors import chat_db
 
 from .stream_accumulator import EventAccumulator, ToolCallEntry, process_event
 
@@ -47,9 +55,18 @@ SessionOutcome = Literal[
     "failed",
     "running",
     "queued",
+    # Waiting for one of the user's task slots; it starts on its own.
+    "queued_for_slot",
     "rejected_concurrent_turn_cap",
     "refused",
 ]
+
+# How often a waiter checks whether a queued turn has started.
+_QUEUE_POLL_SECONDS = 1.0
+_ALREADY_WAITING = (
+    "That session already has a task waiting to start, so this task cannot be "
+    "handed to it right now. Wait for it, or start a fresh one."
+)
 
 
 @dataclass
@@ -197,6 +214,10 @@ async def run_copilot_turn_via_queue(
     if session is None:
         raise RuntimeError("copilot_session_not_found")
 
+    if not allow_queue and (
+        await chat_db().get_chat_session_status(session_id) == CHAT_STATUS_QUEUED
+    ):
+        return "refused", SessionResult(refusal=_ALREADY_WAITING)
     if await is_turn_in_flight(session_id):
         if not allow_queue:
             return "refused", SessionResult(
@@ -242,6 +263,7 @@ async def run_copilot_turn_via_queue(
     # AutoPilotBlocks or a tool-loop firing run_sub_session could fan
     # out unbounded copilot turns past the user's cap.
     turn_id = str(uuid.uuid4())
+    delegated = session.metadata.delegated_by_session_id is not None
     try:
         await schedule_turn(
             session_id=session_id,
@@ -255,11 +277,25 @@ async def run_copilot_turn_via_queue(
             permissions=permissions,
             spawn=spawn,
             message_metadata=message_metadata,
-            delegated=session.metadata.delegated_by_session_id is not None,
+            delegated=delegated,
         )
     except TreeRefusal as refused:
         return "refused", SessionResult(refusal=refused.message)
     except ConcurrentTurnLimitError:
+        if delegated:
+            return await _queue_for_slot(
+                session_id=session_id,
+                user_id=user_id,
+                message=message,
+                timeout=timeout,
+                permissions=permissions,
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                spawn=spawn,
+                message_metadata=message_metadata,
+                llm_auth_provider=session.metadata.llm_auth_provider,
+                llm_credential_id=session.metadata.llm_credential_id,
+            )
         # Sub-Otto / run_sub_session caller is at the cap (this is
         # the graph-block / tool path, not the HTTP route). Use a
         # distinct ``rejected_concurrent_turn_cap`` outcome so callers
@@ -277,4 +313,73 @@ async def run_copilot_turn_via_queue(
         session_id=session_id,
         user_id=user_id,
         timeout=timeout,
+    )
+
+
+async def wait_for_queued_session(
+    *, session_id: str, user_id: str, timeout: float
+) -> tuple[SessionOutcome, SessionResult]:
+    """Wait for a queued turn to start, then for its result, all within
+    ``timeout``. A turn closed at promotion, or cancelled before it started,
+    comes back ``refused`` with the note that closed it."""
+    deadline = time.monotonic() + timeout
+    while await chat_db().get_chat_session_status(session_id) == CHAT_STATUS_QUEUED:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return "queued_for_slot", SessionResult(queued=True)
+        await asyncio.sleep(min(_QUEUE_POLL_SECONDS, remaining))
+    # A cancel or a refusal writes its note under this lock with the flip seen.
+    async with _get_session_lock(session_id):
+        session = await get_chat_session(session_id, user_id)
+    refusal = queued_turn_refusal(session) if session else None
+    if refusal is not None:
+        return "refused", SessionResult(refusal=refusal)
+    return await wait_for_session_result(
+        session_id=session_id,
+        user_id=user_id,
+        timeout=max(deadline - time.monotonic(), 0),
+    )
+
+
+async def _queue_for_slot(
+    *,
+    session_id: str,
+    user_id: str,
+    message: str,
+    timeout: float,
+    permissions: "CopilotPermissions | None",
+    tool_call_id: str,
+    tool_name: str,
+    spawn: SpawnRequest | None,
+    message_metadata: dict[str, Any] | None,
+    llm_auth_provider: CopilotLlmAuthProvider,
+    llm_credential_id: str | None,
+) -> tuple[SessionOutcome, SessionResult]:
+    """A spawn the reserve refused waits in the queue instead, up to the
+    inflight cap; past it the spawn is refused as before."""
+    try:
+        await queue_spawned_turn(
+            session_id=session_id,
+            user_id=user_id,
+            message=message,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
+            permissions=permissions,
+            spawn=spawn,
+            message_metadata=message_metadata,
+        )
+    except TreeRefusal as refused:
+        return "refused", SessionResult(refusal=refused.message)
+    except SessionNotIdle:
+        return "refused", SessionResult(refusal=_ALREADY_WAITING)
+    except ConcurrentTurnLimitError:
+        logger.warning(
+            f"[queue] session={session_id[:12]} user={user_id[:8]} rejected at the "
+            f"inflight cap (tool={tool_name})"
+        )
+        return "rejected_concurrent_turn_cap", SessionResult()
+    return await wait_for_queued_session(
+        session_id=session_id, user_id=user_id, timeout=timeout
     )
