@@ -8,7 +8,6 @@ import pytest
 import stripe
 from prisma.enums import SubscriptionTier
 
-from backend.data import credit_subscription_test
 from backend.data.credit import (
     _get_active_subscription_cached,
     get_pending_subscription_change,
@@ -16,10 +15,6 @@ from backend.data.credit import (
     sync_subscription_from_stripe,
 )
 from backend.data.credit_subscription_test import _clear_cache, _make_user
-
-_clear_active_subscription_cache = (
-    credit_subscription_test._clear_active_subscription_cache
-)
 
 
 @pytest.mark.asyncio

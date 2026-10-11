@@ -15,7 +15,6 @@ from backend.data.credit import (
     PAYMENT_FAILURE_CANCELLATION_COMMENT,
     UserCredit,
     _get_active_subscription_cached,
-    _get_versioned_active_subscription,
     _is_stripe_reconcilable,
     build_price_to_tier_map,
     cancel_stripe_subscription,
@@ -46,19 +45,6 @@ class _CacheClearable(Protocol):
 
 def _clear_cache(fn: _CacheClearable) -> None:
     fn.cache_clear()
-
-
-@pytest.fixture(autouse=True)
-def _clear_active_subscription_cache():
-    """Isolate the short-TTL active-subscription cache between tests.
-
-    ``get_user_billing_cycle`` / ``get_active_subscription_period_end`` /
-    ``get_proration_credit_cents`` share ``_get_active_subscription_cached``;
-    clear it so a subscription mocked in one test cannot leak into the next
-    through the cache.
-    """
-    _clear_cache(_get_versioned_active_subscription)
-    yield
 
 
 @pytest.fixture(autouse=True)

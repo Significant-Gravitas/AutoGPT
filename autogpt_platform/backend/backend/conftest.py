@@ -4,11 +4,13 @@ import os
 from contextlib import asynccontextmanager
 from multiprocessing import get_all_start_methods, get_context, set_forkserver_preload
 from threading import Thread
+from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
 
+from backend.data import subscription_lookup_cache
 from backend.util.logging import configure_logging
 
 load_dotenv()
@@ -62,6 +64,17 @@ def no_force_all_flags(monkeypatch: pytest.MonkeyPatch):
     flag-off test. Tests that want the switch on set it themselves."""
     monkeypatch.delenv("FORCE_ALL_FLAGS", raising=False)
     monkeypatch.delenv("NEXT_PUBLIC_FORCE_ALL_FLAGS", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def isolated_subscription_lookup_cache(monkeypatch: pytest.MonkeyPatch):
+    """The subscription lookup cache lives in Redis, which outlives a test and
+    is shared by parallel runs; give every test keys of its own, and a cache
+    that hasn't backed off after an earlier test's Redis failure."""
+    monkeypatch.setattr(
+        subscription_lookup_cache, "KEY_PREFIX", f"test:{uuid4().hex}:subscription"
+    )
+    monkeypatch.setattr(subscription_lookup_cache._backoff, "until", 0.0)
 
 
 @pytest.fixture

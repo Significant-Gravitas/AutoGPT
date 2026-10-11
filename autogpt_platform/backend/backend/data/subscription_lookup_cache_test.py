@@ -1,13 +1,15 @@
-"""The billing page's subscription lookup stays fresh across API workers.
+"""The billing page's subscription lookup stays fresh across API workers, and
+Redis trouble never slows or blocks a billing change.
 
-Each "worker" is its own copy of ``backend.data.credit``, with its own cache
-state, the way separate uvicorn processes or pods hold theirs; both share the
-real Redis of the test stack and one fake Stripe. A change made through one
-worker must be what the other reads next.
+Each "worker" is its own copy of ``backend.data.credit`` and of the lookup
+cache module, so it holds its own process-local state, the way separate
+uvicorn processes or pods do; both share the real Redis of the test stack and
+one fake Stripe.
 """
 
 import asyncio
 import importlib.util
+import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from types import ModuleType
@@ -18,24 +20,40 @@ import pytest
 import pytest_asyncio
 import stripe
 from prisma.enums import SubscriptionTier
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import RedisClusterException
 
 from backend.data import credit as worker_a
+from backend.data import subscription_lookup_cache as cache_a
 from backend.data import subscription_trial_conversion as conversion
+from backend.data.redis_client import get_redis_async
 from backend.data.subscription_trial import TrialState
 
 pytest_plugins = ("backend.data.subscription_trial_fixtures",)
 
 TRIAL_END = int((datetime.now(UTC) + timedelta(days=7)).timestamp())
 PAID_PERIOD_END = int((datetime.now(UTC) + timedelta(days=31)).timestamp())
+WAIT = 5  # seconds; no wait in these tests may hang the suite
 
 
-def _load_worker() -> ModuleType:
-    """A second, independently loaded copy of the credit module."""
-    spec = importlib.util.find_spec("backend.data.credit")
+def _load_copy(name: str) -> ModuleType:
+    spec = importlib.util.find_spec(name)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _load_worker() -> ModuleType:
+    """A second, independently loaded credit module with its own cache module."""
+    cache = _load_copy("backend.data.subscription_lookup_cache")
+    cache.KEY_PREFIX = cache_a.KEY_PREFIX
+    worker = _load_copy("backend.data.credit")
+    worker.read_active_subscription = cache.read_active_subscription
+    worker.invalidate_active_subscription_cache = (
+        cache.invalidate_active_subscription_cache
+    )
+    return worker
 
 
 class FakeStripe:
@@ -43,9 +61,13 @@ class FakeStripe:
 
     def __init__(self, subscription: dict):
         self.subscription = subscription
+        self.lookups = 0
         self.frozen: stripe.Subscription | None = None
         self.release: asyncio.Event | None = None
         self.reached = asyncio.Event()
+
+    def current(self) -> stripe.Subscription:
+        return stripe.Subscription.construct_from(self.subscription, "test-key")
 
     def hold_reads(self) -> asyncio.Event:
         """Answer lists from the subscription as it is now, once released:
@@ -58,14 +80,14 @@ class FakeStripe:
         self.frozen = None
         self.release = None
 
-    def current(self) -> stripe.Subscription:
-        return stripe.Subscription.construct_from(self.subscription, "test-key")
-
     async def list_async(self, *, customer: str, status: str, limit: int):
+        if status == "active":
+            # _get_active_subscription asks for "active" first on every lookup.
+            self.lookups += 1
         answer = self.frozen or self.current()
         if self.release is not None:
             self.reached.set()
-            await self.release.wait()
+            await asyncio.wait_for(self.release.wait(), WAIT)
         matches = (
             [answer]
             if customer == answer["customer"] and status == answer["status"]
@@ -122,8 +144,14 @@ def fake_stripe(trial: TrialState, subscription: dict) -> FakeStripe:
     )
 
 
+@pytest.fixture
+def save_tier() -> AsyncMock:
+    """Where the paid plan is saved to the user; the DB write isn't under test."""
+    return AsyncMock()
+
+
 @pytest_asyncio.fixture
-async def worker_b(trial: TrialState, fake_stripe: FakeStripe):
+async def worker_b(trial: TrialState, fake_stripe: FakeStripe, save_tier: AsyncMock):
     user = MagicMock(stripe_customer_id=trial.customer_id)
     lookup_user = AsyncMock(return_value=user)
     worker = _load_worker()
@@ -138,8 +166,7 @@ async def worker_b(trial: TrialState, fake_stripe: FakeStripe):
         patch.object(stripe.Subscription, "modify_async", fake_stripe.modify_async),
         patch.object(worker_a, "get_user_by_id", lookup_user),
         patch.object(worker, "get_user_by_id", lookup_user),
-        # The tier write and the analytics sync are not what's under test.
-        patch.object(worker_a, "_sync_subscription_tier_from_stripe", AsyncMock()),
+        patch.object(worker_a, "_sync_subscription_tier_from_stripe", save_tier),
         patch.object(worker_a, "schedule_posthog_lifecycle_sync", MagicMock()),
         patch.object(conversion, "subscription_checkout_lock", lock),
         patch.object(
@@ -153,24 +180,62 @@ async def worker_b(trial: TrialState, fake_stripe: FakeStripe):
         yield worker
 
 
+@pytest_asyncio.fixture
+async def redis_up():
+    """These tests prove what the cache does, so a Redis the cache can't use
+    must fail them, not let every lookup fall through to Stripe and pass."""
+    redis = await asyncio.wait_for(get_redis_async(), WAIT)
+    assert await asyncio.wait_for(redis.ping(), WAIT)
+    return redis
+
+
+async def _cached_period_end(redis, customer_id: str) -> int | None:
+    raw = await asyncio.wait_for(redis.get(cache_a._lookup_key(customer_id)), WAIT)
+    assert raw, "the lookup was not written to Redis"
+    entry = cache_a._CachedLookup.model_validate_json(raw)
+    assert entry.subscription is not None
+    return entry.subscription.current_period_end
+
+
+@pytest.mark.asyncio
+async def test_one_workers_lookup_serves_every_worker(
+    trial, fake_stripe, worker_b, redis_up
+):
+    assert await worker_b.get_active_subscription_period_end("user-1") == TRIAL_END
+    assert fake_stripe.lookups == 1
+    assert await _cached_period_end(redis_up, trial.customer_id) == TRIAL_END
+
+    assert await worker_b.get_active_subscription_period_end("user-1") == TRIAL_END
+    assert await worker_a.get_active_subscription_period_end("user-1") == TRIAL_END
+    assert fake_stripe.lookups == 1
+
+
 @pytest.mark.asyncio
 async def test_a_plan_bought_on_one_worker_shows_its_renewal_on_another(
-    trial, worker_b
+    trial, fake_stripe, worker_b, save_tier, redis_up
 ):
     """Trial → cancel → "Subscribe to Pro": the status read that follows the
     purchase lands on a worker that read the trial moments before."""
     assert await worker_b.get_active_subscription_period_end("user-1") == TRIAL_END
 
     await conversion.convert_cancel_pending_trial(trial, SubscriptionTier.PRO)
+    save_tier.assert_awaited_once()
 
     assert (
         await worker_b.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
     )
+    assert fake_stripe.lookups == 2
+    assert await _cached_period_end(redis_up, trial.customer_id) == PAID_PERIOD_END
+    # The refreshed lookup is shared again.
+    assert (
+        await worker_a.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
+    )
+    assert fake_stripe.lookups == 2
 
 
 @pytest.mark.asyncio
 async def test_a_webhook_on_one_worker_refreshes_the_lookup_on_another(
-    trial, fake_stripe, worker_b
+    trial, fake_stripe, worker_b, redis_up
 ):
     """A change made in Stripe (the dashboard, a renewal) reaches us only as a
     webhook, on whichever worker Stripe's request lands."""
@@ -182,11 +247,12 @@ async def test_a_webhook_on_one_worker_refreshes_the_lookup_on_another(
     assert (
         await worker_b.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
     )
+    assert fake_stripe.lookups == 2
 
 
 @pytest.mark.asyncio
 async def test_a_read_in_flight_during_the_purchase_does_not_cache_the_trial(
-    trial, fake_stripe, worker_b
+    trial, fake_stripe, worker_b, redis_up
 ):
     """A page load whose Stripe answer predates the purchase, but arrives after
     it, must not hold the trial's renewal date for the next reads."""
@@ -194,13 +260,101 @@ async def test_a_read_in_flight_during_the_purchase_does_not_cache_the_trial(
     in_flight = asyncio.create_task(
         worker_b.get_active_subscription_period_end("user-1")
     )
-    await fake_stripe.reached.wait()
+    await asyncio.wait_for(fake_stripe.reached.wait(), WAIT)
 
     await conversion.convert_cancel_pending_trial(trial, SubscriptionTier.PRO)
     release.set()
-    assert await in_flight == TRIAL_END
+    assert await asyncio.wait_for(in_flight, WAIT) == TRIAL_END
     fake_stripe.stop_holding()
 
     assert (
         await worker_b.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
     )
+    assert await _cached_period_end(redis_up, trial.customer_id) == PAID_PERIOD_END
+
+
+@pytest.mark.asyncio
+async def test_the_tier_is_saved_before_the_lookup_is_dropped(
+    fake_stripe, worker_b, save_tier
+):
+    """Saving the tier can change Stripe too (a rejected trial is canceled), so
+    the lookup is dropped only afterwards, and even when saving fails."""
+    calls: list[str] = []
+
+    async def failing_save(*args) -> None:
+        calls.append("save")
+        raise RuntimeError("the save failed")
+
+    async def invalidate(customer_id: str) -> None:
+        calls.append("invalidate")
+
+    save_tier.side_effect = failing_save
+    with patch.object(worker_a, "invalidate_active_subscription_cache", invalidate):
+        with pytest.raises(RuntimeError):
+            await worker_a.sync_subscription_from_stripe(fake_stripe.subscription)
+    assert calls == ["save", "invalidate"]
+
+
+class _HangingRedis:
+    async def mget(self, *args, **kwargs):
+        await asyncio.Event().wait()
+
+    async def set(self, *args, **kwargs):
+        await asyncio.Event().wait()
+
+
+async def _never_connects():
+    await asyncio.Event().wait()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "outage",
+    [
+        pytest.param(
+            lambda: AsyncMock(side_effect=_never_connects), id="connect-hangs"
+        ),
+        pytest.param(
+            lambda: AsyncMock(return_value=_HangingRedis()), id="command-hangs"
+        ),
+        pytest.param(
+            lambda: AsyncMock(side_effect=RedisConnectionError("refused")),
+            id="refused",
+        ),
+        pytest.param(
+            lambda: AsyncMock(
+                side_effect=RedisClusterException(
+                    "Cluster mode is not enabled on this node"
+                )
+            ),
+            id="standalone-redis",
+        ),
+    ],
+)
+async def test_a_redis_outage_never_slows_or_blocks_billing(
+    trial, fake_stripe, worker_b, save_tier, outage
+):
+    """With Redis hanging or unusable, lookups answer from Stripe within the
+    cache's deadline, and a charge still saves the paid plan."""
+    with patch.object(cache_a, "get_redis_async", outage()):
+        started = time.monotonic()
+        for _ in range(5):
+            assert (
+                await worker_a.get_active_subscription_period_end("user-1") == TRIAL_END
+            )
+        assert time.monotonic() - started < 1.5
+        assert fake_stripe.lookups == 5
+
+        started = time.monotonic()
+        await asyncio.wait_for(
+            conversion.convert_cancel_pending_trial(trial, SubscriptionTier.PRO),
+            WAIT,
+        )
+        assert time.monotonic() - started < 2
+        save_tier.assert_awaited_once()
+        assert save_tier.await_args.args[0]["status"] == "active"
+
+        assert (
+            await worker_a.get_active_subscription_period_end("user-1")
+            == PAID_PERIOD_END
+        )

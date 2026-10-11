@@ -43,11 +43,9 @@ from backend.data.subscription_checkout import (
     subscription_checkout_lock,
 )
 from backend.data.subscription_lookup_cache import (
-    SUBSCRIPTION_LOOKUP_TTL_SECONDS,
     ActiveSubscription,
-    get_subscription_lookup_version,
     invalidate_active_subscription_cache,
-    summarize_subscription,
+    read_active_subscription,
 )
 from backend.data.subscription_trial_stripe import reconcile_trial_subscription
 from backend.data.user import get_user_by_id, get_user_email_by_id
@@ -1858,29 +1856,17 @@ async def _get_active_subscription_cached(
     per request, and again on every page view. A brief cache collapses them
     into one lookup per customer per window.
 
-    The cache lives in Redis, keyed by the customer's lookup version, so a
-    subscription change (``invalidate_active_subscription_cache``) is seen by
-    every API worker on its next read rather than only by the one that made
-    it. Subscription mutation flows keep calling
-    :func:`_get_active_subscription` directly so they always act on fresh
-    Stripe state.
+    The cache lives in Redis and is versioned per customer, so a subscription
+    change (``invalidate_active_subscription_cache``) is seen by every API
+    worker on its next read rather than only by the one that made it. Redis
+    trouble falls through to Stripe within a short deadline (see
+    ``backend.data.subscription_lookup_cache``). Subscription mutation flows
+    keep calling :func:`_get_active_subscription` directly so they always act
+    on fresh Stripe state.
     """
-    version = await get_subscription_lookup_version(customer_id)
-    if version is None:
-        return summarize_subscription(await _get_active_subscription(customer_id))
-    return await _get_versioned_active_subscription(customer_id, version)
-
-
-@cached(
-    ttl_seconds=SUBSCRIPTION_LOOKUP_TTL_SECONDS,
-    maxsize=2048,
-    cache_none=True,
-    shared_cache=True,
-)
-async def _get_versioned_active_subscription(
-    customer_id: str, version: str
-) -> ActiveSubscription | None:
-    return summarize_subscription(await _get_active_subscription(customer_id))
+    return await read_active_subscription(
+        customer_id, lambda: _get_active_subscription(customer_id)
+    )
 
 
 async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
@@ -2807,13 +2793,17 @@ async def sync_subscription_from_stripe(
     otherwise fan out one Stripe call per trial; the daily lifecycle sweep
     covers those users.
 
-    The payload is Stripe's latest word on the subscription, so the cached
-    lookup the billing page reads is dropped on every worker first.
+    The payload is Stripe's latest word on the subscription, so afterwards
+    the cached lookup the billing page reads is dropped on every worker. Only
+    afterwards: saving the tier can change Stripe too (a rejected trial is
+    canceled), and a read in between would cache the state before that.
     """
     customer_id = stripe_subscription.get("customer")
-    if isinstance(customer_id, str) and customer_id:
-        await invalidate_active_subscription_cache(customer_id)
-    await _sync_subscription_tier_from_stripe(stripe_subscription)
+    try:
+        await _sync_subscription_tier_from_stripe(stripe_subscription)
+    finally:
+        if isinstance(customer_id, str) and customer_id:
+            await invalidate_active_subscription_cache(customer_id)
     if track_lifecycle:
         schedule_posthog_lifecycle_sync(
             stripe_customer_id=stripe_subscription.get("customer")
@@ -3397,6 +3387,11 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
     if not sub_id:
         # Non-subscription invoices (one-off invoices, etc.) — no credit grant.
         return
+    # A paid invoice can start a new period (a renewal, a plan's first
+    # charge). Nothing below changes Stripe, so dropping the billing page's
+    # cached lookup now is as good as after; it doesn't wait for the
+    # customer.subscription.updated webhook that usually follows.
+    await invalidate_active_subscription_cache(customer_id)
     user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
     if not user:
         logger.warning(

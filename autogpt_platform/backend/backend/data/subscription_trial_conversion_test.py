@@ -3,13 +3,11 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
-import pytest_asyncio
 import stripe
 from prisma.enums import SubscriptionTier
 
 from backend.data import credit
 from backend.data import subscription_trial_conversion as conversion
-from backend.data.subscription_lookup_cache import invalidate_active_subscription_cache
 from backend.data.subscription_trial import TrialState
 
 pytest_plugins = ("backend.data.subscription_trial_fixtures",)
@@ -493,17 +491,9 @@ async def test_ended_plans_do_not_block_the_conversion(pending_trial, live, boun
     boundaries.sync.assert_awaited_once_with(dict(boundaries.converted))
 
 
-@pytest_asyncio.fixture
-async def subscription_lookup():
-    """The short-lived active-subscription lookup the status route reads."""
-    await invalidate_active_subscription_cache("cus_1")
-    yield credit._get_active_subscription_cached
-    await invalidate_active_subscription_cache("cus_1")
-
-
 @pytest.mark.asyncio
 async def test_conversion_refreshes_the_cached_subscription_lookup(
-    pending_trial, live, boundaries, subscription_lookup
+    pending_trial, live, boundaries
 ):
     """The status returned right after shows the paid period, not the trial's."""
     trialing = stripe.Subscription.construct_from(live, "test-key")
@@ -512,11 +502,35 @@ async def test_conversion_refreshes_the_cached_subscription_lookup(
         "_get_active_subscription",
         AsyncMock(side_effect=[trialing, boundaries.converted]),
     ):
-        before = await subscription_lookup("cus_1")
+        before = await credit._get_active_subscription_cached("cus_1")
         assert before is not None and before.status == "trialing"
         await conversion.convert_cancel_pending_trial(pending_trial, PRO)
-        after = await subscription_lookup("cus_1")
+        after = await credit._get_active_subscription_cached("cus_1")
         assert after is not None and after.status == "active"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sync_fails", [False, True])
+async def test_the_paid_plan_is_saved_before_the_lookup_is_dropped(
+    pending_trial, boundaries, sync_fails
+):
+    """The charge has gone through: saving the plan comes first, and dropping
+    the cached lookup follows even when the save fails."""
+
+    async def failing_sync(*args, **kwargs):
+        boundaries.calls.append("sync")
+        raise RuntimeError("database down")
+
+    if sync_fails:
+        boundaries.sync.side_effect = failing_sync
+
+    async def invalidate(customer_id: str) -> None:
+        boundaries.calls.append(f"invalidate:{customer_id}")
+
+    with patch.object(conversion, "invalidate_active_subscription_cache", invalidate):
+        assert await conversion.convert_cancel_pending_trial(pending_trial, PRO) is None
+
+    assert boundaries.calls[-4:] == ["modify", "sync", "invalidate:cus_1", "unlock"]
 
 
 @pytest.mark.asyncio
