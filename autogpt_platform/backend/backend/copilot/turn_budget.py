@@ -46,6 +46,10 @@ class TurnBudget(BaseModel):
     # When the limiting window refills: daily and weekly only. A trial's
     # allowance never refills, and the task cap applies afresh per turn.
     resets_at: datetime | None = None
+    # Spend past ``usd`` is never allowed, whichever limit binds: a trial's
+    # allowance is real money with no plan behind it, so the CLI backstop
+    # sits exactly on the budget instead of above it.
+    hard_cap: bool = False
 
 
 async def resolve_turn_budget(user_id: str | None) -> TurnBudget:
@@ -68,15 +72,18 @@ async def resolve_turn_budget(user_id: str | None) -> TurnBudget:
         floor_usd=-1.0,
         expected_tier=tier,
     )
-    if tier == SubscriptionTier.TRIAL:
+    trial = tier == SubscriptionTier.TRIAL
+    if trial:
         # Raises when the trial has nothing left: no trial turn may start.
         remaining = resolve_trial_sdk_budget(task_cap, remaining)
     if remaining < 0 or not math.isfinite(remaining) or task_cap <= remaining:
-        return whole_task
+        return whole_task.model_copy(update={"hard_cap": trial})
     window, resets_at = await _limiting_window(
         user_id, daily_limit, weekly_limit, tier, remaining
     )
-    return TurnBudget(usd=remaining, limiting=window, resets_at=resets_at)
+    return TurnBudget(
+        usd=remaining, limiting=window, resets_at=resets_at, hard_cap=trial
+    )
 
 
 async def _limiting_window(

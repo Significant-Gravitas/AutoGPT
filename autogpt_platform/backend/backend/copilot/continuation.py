@@ -18,6 +18,11 @@ RESUMED_AT_RESET_NOTE = (
 )
 
 
+# Rows that start a turn rather than end one: not markers, so an error or
+# a pause after one still gets its own row.
+KICKOFF_NOTES = frozenset({KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE})
+
+
 def as_model_prompt(message: str) -> str:
     """The instruction a continuation note gives the model.
 

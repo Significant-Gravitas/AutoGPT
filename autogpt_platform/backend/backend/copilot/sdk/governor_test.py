@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
-from claude_agent_sdk import AssistantMessage, TextBlock
+from claude_agent_sdk import AssistantMessage, StreamEvent, TextBlock
 
 from backend.copilot.turn_budget import TurnBudget
 from backend.copilot.turn_pause import TurnPause
@@ -148,7 +148,7 @@ def test_cli_turn_backstop_is_a_step_pause_without_a_checkpoint():
     [
         (TurnBudget(usd=2.0, limiting="weekly", resets_at=RESETS), "weekly"),
         (TurnBudget(usd=10.0, limiting="task"), "task"),
-        (TurnBudget(usd=0.5, limiting="trial"), "trial"),
+        (TurnBudget(usd=0.5, limiting="trial", hard_cap=True), "trial"),
         (None, "task"),
     ],
 )
@@ -190,7 +190,7 @@ def test_paid_backstop_never_drops_below_what_the_cli_accepts():
 
 
 def test_trial_backstop_sits_exactly_on_the_allowance():
-    governor = _governor(TurnBudget(usd=0.05, limiting="trial"))
+    governor = _governor(TurnBudget(usd=0.05, limiting="trial", hard_cap=True))
     assert governor.cli_budget_usd("anthropic/claude-sonnet-5") == pytest.approx(0.05)
 
 
@@ -235,3 +235,64 @@ async def test_pre_tool_hook_lets_tools_run_below_the_limits():
         context={},
     )
     assert _deny_reason(dict(result)) is None
+
+
+def test_a_trial_limited_by_the_task_cap_gets_no_headroom():
+    # The task cap binds, but the money is the trial's: the backstop sits
+    # exactly on the budget, with no headroom and no CLI floor.
+    governor = _governor(TurnBudget(usd=10.0, limiting="task", hard_cap=True))
+    assert governor.cli_budget_usd("anthropic/claude-sonnet-5") == pytest.approx(10.0)
+    small = _governor(TurnBudget(usd=0.1, limiting="daily", hard_cap=True))
+    assert small.cli_budget_usd("anthropic/claude-sonnet-5") == pytest.approx(0.1)
+
+
+def test_a_threshold_crossed_by_the_final_answer_finishes_the_task():
+    # The answer that crosses the budget calls no tool after it: nothing was
+    # refused, so the task finished rather than paused.
+    governor = _governor(meter=_Meter(spent=1.0))
+    governor.observe(AssistantMessage(content=[TextBlock(text="All done")], model="m"))
+    assert governor.landing == "daily"
+    assert governor.pause("success", wrote_checkpoint=True) is None
+    assert governor.hangup_pause() is None
+    assert governor.landed is False
+
+
+def test_a_refused_tool_makes_the_turn_a_landing_one():
+    governor = _governor(meter=_Meter(spent=1.0))
+    assert governor.refusal() is not None
+    assert governor.landed is True
+
+
+def _stream(event: dict, parent: str | None = None) -> StreamEvent:
+    return StreamEvent(uuid="u", session_id="s", event=event, parent_tool_use_id=parent)
+
+
+def test_the_real_output_count_from_the_stream_lands_the_turn():
+    # The assistant message carries only the placeholder output count; the
+    # response's message_delta carries the real one, and that is what lands.
+    governor = TurnGovernor(
+        budget=TurnBudget(usd=0.1, limiting="daily", resets_at=RESETS), step_checkin=450
+    )
+    usage = {"input_tokens": 100, "output_tokens": 1}
+    governor.observe(
+        _stream(
+            {
+                "type": "message_start",
+                "message": {"id": "m1", "model": "claude-sonnet-4-5", "usage": usage},
+            }
+        )
+    )
+    governor.observe(
+        AssistantMessage(
+            content=[TextBlock(text="x")],
+            model="claude-sonnet-4-5",
+            usage=usage,
+            message_id="m1",
+        )
+    )
+    assert governor.refusal() is None
+    governor.observe(
+        _stream({"type": "message_delta", "usage": {"output_tokens": 10_000}})
+    )
+    assert governor.refusal() is not None
+    assert governor.landing == "daily"
