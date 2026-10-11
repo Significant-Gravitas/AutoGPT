@@ -11,8 +11,9 @@ keeps it out of everything the model reads (``hidden_rows``).
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel
 
@@ -74,12 +75,18 @@ class ScheduledChatNotice(BaseModel):
 
 
 def skip_notice(
-    refusal: TurnRefusal, *, title: str, now: datetime, run: SkippedRun
+    refusal: TurnRefusal,
+    *,
+    title: str,
+    now: datetime,
+    run: SkippedRun,
+    user_timezone: str | None = None,
 ) -> ScheduledChatNotice | None:
     """What to tell the owner about a run *refusal* stopped, or None when
-    there is nothing for them to do (an outage on our side)."""
+    there is nothing for them to do (an outage on our side). Times are in
+    *user_timezone*, the one the schedule was made in, else UTC."""
     if refusal.kind == "usage" and refusal.window in ("daily", "weekly"):
-        return _usage_notice(refusal, title=title, run=run)
+        return _usage_notice(refusal, title=title, run=run, user_timezone=user_timezone)
     if refusal.kind == "usage":
         return _plan_notice(
             title=title,
@@ -95,17 +102,18 @@ def skip_notice(
             window_key=f"no_plan:{_iso_week(now)}",
         )
     if refusal.kind == "codex_access":
+        # A one-shot is gone by now; only a repeating schedule comes back.
+        after = (
+            " Reconnect it in Settings and the chat runs again at its next time."
+            if run == "recurring"
+            else " Reconnect it in Settings, then ask for it again."
+        )
         return ScheduledChatNotice(
             reason="codex_access",
             headline="Skipped: your ChatGPT connection isn't available",
             body=(
-                f"“{title}” runs on your ChatGPT plan, which AutoPilot can't use "
-                "right now. Reconnect it in Settings."
-                + (
-                    " The chat runs again at its next time after that."
-                    if run == "recurring"
-                    else ""
-                )
+                f"“{title}” didn't run: it runs on your ChatGPT plan, which "
+                f"AutoPilot can't use right now.{after}"
             ),
             actions=[NoticeLink(label="Open settings", href=INTEGRATIONS_PATH)],
             window_key=f"codex_access:{_iso_week(now)}",
@@ -114,16 +122,25 @@ def skip_notice(
 
 
 def _usage_notice(
-    refusal: TurnRefusal, *, title: str, run: SkippedRun
+    refusal: TurnRefusal,
+    *,
+    title: str,
+    run: SkippedRun,
+    user_timezone: str | None,
 ) -> ScheduledChatNotice:
     daily = refusal.window == "daily"
     resets_at = refusal.resets_at
     if resets_at is None:
         when = "when the limit resets"
-    elif daily:
-        when = f"when the limit resets at {resets_at:%H:%M} UTC"
     else:
-        when = f"when the limit resets on {resets_at:%A} at {resets_at:%H:%M} UTC"
+        local = _in_timezone(resets_at, user_timezone)
+        clock = f"{local:%H:%M} {local.tzname()}"
+        # Monday 00:00 UTC is still Sunday for someone in Chicago.
+        when = (
+            f"when the limit resets at {clock}"
+            if daily
+            else f"when the limit resets on {local:%A} at {clock}"
+        )
     if run == "waits_for_reset":
         body = f"“{title}” will run {when}."
     elif run == "recurring":
@@ -233,3 +250,13 @@ async def post_notice(
 def _iso_week(now: datetime) -> str:
     year, week, _ = now.isocalendar()
     return f"{year}-W{week:02d}"
+
+
+def _in_timezone(when: datetime, user_timezone: str | None) -> datetime:
+    """*when* on the owner's clock, or UTC when their zone is unknown."""
+    if user_timezone:
+        try:
+            return when.astimezone(ZoneInfo(user_timezone))
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    return when.astimezone(timezone.utc)

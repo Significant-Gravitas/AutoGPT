@@ -752,7 +752,11 @@ async def _tell_owner_why_skipped(
         message=args.message,
     )
     notice = skip_notice(
-        refusal, title=title, now=datetime.now(tz=timezone.utc), run=run
+        refusal,
+        title=title,
+        now=datetime.now(tz=timezone.utc),
+        run=run,
+        user_timezone=args.user_timezone,
     )
     if notice is None:
         return
@@ -824,8 +828,9 @@ _MAX_RETRIES: dict[_RetryKind, int] = {
     "limits": _MAX_LIMITS_RETRIES,
     "usage": _MAX_USAGE_WAITS,
 }
-# How long a skipped run may spend telling its chat why.
-_NOTICE_TIMEOUT_SECONDS = 30
+# How long a skipped run may spend telling its chat why. It holds a pooled
+# scheduler worker meanwhile, and the skip itself has already happened.
+_NOTICE_TIMEOUT_SECONDS = 10
 
 
 async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
