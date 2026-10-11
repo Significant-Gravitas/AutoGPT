@@ -8,6 +8,7 @@ raises included — is set before it runs.
 """
 
 import contextlib
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -176,3 +177,50 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
     assert sent[0][-1] == {"role": "user", "content": _RESULT.content}
     # The uploaded transcript must carry it too, or the next turn loses it.
     assert persist.await_args.args[1] is not None
+
+
+@pytest.mark.asyncio
+async def test_the_card_copy_on_a_held_result_never_reaches_the_model():
+    """The result row carries the card's arguments for the chain row, up to the
+    card's clip; each engine's fold and history replay read the content alone."""
+    from backend.copilot.gate.held import HeldCall, _result_row
+    from backend.copilot.pending_message_helpers import (
+        combine_pending_with_current,
+        persist_pending_as_user_rows,
+    )
+    from backend.copilot.pending_messages import format_pending_as_user_message
+    from backend.copilot.sdk.service import _session_messages_to_transcript
+
+    marker = "card-copy-only-7f3a"
+    call = HeldCall(
+        review_id="r1", tool_name="post_to_chat_platform", tool_call_id="c1", args={}
+    )
+    row = _result_row(
+        call,
+        "posted",
+        "approved",
+        {"arguments": {"text": marker}, "fields": [{"key": "text", "label": marker}]},
+    )
+    assert marker in json.dumps(row.metadata)
+
+    session = ChatSession.new(user_id="u1", dry_run=False)
+
+    async def persisted(s, _prefix):
+        for i, message in enumerate(s.messages):
+            message.sequence = i
+        return s
+
+    with patch(
+        "backend.copilot.pending_message_helpers.persist_session_safe", persisted
+    ):
+        assert await persist_pending_as_user_rows(session, None, [row], log_prefix="")
+    assert session.messages[-1].metadata == row.metadata
+
+    model_inputs = [
+        format_pending_as_user_message(row)["content"],
+        combine_pending_with_current([row], "go on", request_arrival_at=0),
+        json.dumps(session.to_openai_messages()),
+        _session_messages_to_transcript(session.messages),
+    ]
+    assert all("posted" in text for text in model_inputs)
+    assert not [text for text in model_inputs if marker in text]

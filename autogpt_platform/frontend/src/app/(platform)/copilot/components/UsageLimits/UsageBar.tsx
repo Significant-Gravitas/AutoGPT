@@ -36,7 +36,7 @@ export function UsageBar({ label, percentUsed, resetsAt }: Props) {
           style={{ width: `${Math.max(percent > 0 ? 1 : 0, percent)}%` }}
         />
       </div>
-      <Text variant="small" className="text-neutral-400">
+      <Text variant="small" className="text-neutral-500">
         Resets {formatResetTime(resetsAt)}
       </Text>
     </div>
