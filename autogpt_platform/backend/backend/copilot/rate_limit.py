@@ -565,6 +565,14 @@ async def get_usage_status(
     """
     now = datetime.now(UTC)
     state = await get_ready_usage_state(user_id)
+    if daily_cost_limit == 0 and weekly_cost_limit == 0:
+        # No plan, or the trial is over: nothing can be spent, so the
+        # counters don't matter. Answered before the tier guard, which
+        # takes an ended trial's stale TRIAL state for a subscription
+        # change and would fail every usage read until the downgrade.
+        return _no_allowance_status(
+            now, tier, trial_ended=state.tier == SubscriptionTier.TRIAL
+        )
     if state.tier != tier:
         raise RateLimitUnavailable("Subscription changed while resolving usage limits")
     d_key, w_key = usage_keys(user_id, state.generation, now)
@@ -621,6 +629,18 @@ async def get_usage_status(
         reset_cost=0 if tier == SubscriptionTier.TRIAL else rate_limit_reset_cost,
         trial_spent=trial_spent,
         weekly_is_trial_allowance=weekly_is_trial_allowance,
+    )
+
+
+def _no_allowance_status(
+    now: datetime, tier: SubscriptionTier, *, trial_ended: bool
+) -> CoPilotUsageStatus:
+    return CoPilotUsageStatus(
+        daily=UsageWindow(used=0, limit=0, resets_at=_daily_reset_time(now=now)),
+        weekly=UsageWindow(used=0, limit=0, resets_at=_weekly_reset_time(now=now)),
+        tier=tier,
+        reset_cost=0,
+        trial_spent=trial_ended,
     )
 
 
