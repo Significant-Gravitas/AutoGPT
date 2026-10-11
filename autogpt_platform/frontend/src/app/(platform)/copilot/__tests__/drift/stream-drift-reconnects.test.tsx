@@ -77,8 +77,8 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
   });
 
   describe("stream drift — a second connection onto a live turn", () => {
-    // Both paths now open one connection. The AI SDK path still paints the
-    // first block twice: the replay after a cut re-draws it (as in W4).
+    // Both paths open one connection. The AI SDK path paints the first block
+    // twice: the replay after a cut re-draws it (as in W4).
     const runtimeOnly = path === "stream runtime" ? it : it.fails;
     runtimeOnly(
       "W1: two resumes inside the window open one connection and draw one bubble",
