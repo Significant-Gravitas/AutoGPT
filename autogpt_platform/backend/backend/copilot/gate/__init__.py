@@ -19,6 +19,7 @@ from typing import Any, Awaitable, Callable
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
 
+from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
 from backend.platform_linking.models import Platform
@@ -227,6 +228,7 @@ async def check_action(
         tool_call_id=tool_call_id,
         args=args,
         rule_key=rule_key,
+        envelope=get_current_envelope(),
     )
     return await _park(
         call, user_id, session, reason, reason_kind, subject, decided_by, spend_shown
