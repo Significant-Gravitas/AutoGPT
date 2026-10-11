@@ -3392,3 +3392,72 @@ async def test_resume_raw_masks_override_rebuilt_credentials(mocker: MockerFixtu
 
     assert entry.nodes_input_masks is not None
     assert entry.nodes_input_masks["github-node"]["credentials"] == {"id": "explicit"}
+
+
+@pytest.mark.asyncio
+async def test_a_subgraph_run_gets_its_own_identity_and_keeps_its_tree(
+    mocker: MockerFixture,
+):
+    """AgentExecutorBlock creates the child with the parent's context.
+
+    The child must run under its own execution, graph and version, so its
+    files and LLM tracking stay its own, while keeping the parent's tree so
+    the executor still skips it once the root is terminated.
+    """
+    from backend.data.execution import ExecutionContext, GraphExecutionEntry
+    from backend.executor.utils import add_graph_execution
+
+    child = _resumable_graph_exec(
+        id="child-exec",
+        graph_id="child-graph",
+        graph_version=2,
+        status=ExecutionStatus.QUEUED,
+    )
+    mocker.patch(
+        "backend.executor.utils.validate_and_construct_node_execution_input",
+        new=mocker.AsyncMock(return_value=(mocker.MagicMock(version=2), [], {}, set())),
+    )
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    mocker.patch(
+        "backend.executor.utils.is_user_paywalled",
+        new=mocker.AsyncMock(return_value=False),
+    )
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.create_graph_execution = mocker.AsyncMock(return_value=child)
+    mock_edb.update_graph_execution_stats = mocker.AsyncMock(return_value=child)
+    mocker.patch("backend.executor.utils.onboarding_db")
+    queue = mocker.AsyncMock()
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue",
+        new=mocker.AsyncMock(return_value=queue),
+    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus"
+    ).return_value = mocker.MagicMock(publish=mocker.AsyncMock())
+
+    await add_graph_execution(
+        graph_id="child-graph",
+        user_id="row-user",
+        execution_context=ExecutionContext(
+            graph_exec_id="parent-exec",
+            graph_id="parent-graph",
+            graph_version=7,
+            root_execution_id="root-exec",
+            parent_execution_id="parent-exec",
+        ),
+        organization_id="org-row",
+        team_id="team-row",
+    )
+
+    ctx = GraphExecutionEntry.model_validate_json(
+        queue.publish_message.call_args.kwargs["message"]
+    ).execution_context
+    assert (ctx.graph_exec_id, ctx.graph_id, ctx.graph_version) == (
+        "child-exec",
+        "child-graph",
+        2,
+    )
+    assert (ctx.root_execution_id, ctx.parent_execution_id) == (
+        "root-exec",
+        "parent-exec",
+    )
