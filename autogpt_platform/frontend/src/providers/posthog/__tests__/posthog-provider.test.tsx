@@ -62,7 +62,7 @@ describe("PostHogProvider", () => {
     expect(posthog.init).toHaveBeenCalledWith(
       "phc_test",
       expect.objectContaining({
-        api_host: "/relay",
+        api_host: "/relay/pnosthog",
         ui_host: "https://eu.posthog.com",
       }),
     );

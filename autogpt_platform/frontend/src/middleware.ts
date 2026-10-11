@@ -54,8 +54,8 @@ export const config = {
      *   itself via httpOnly cookies)
      * Feel free to modify this pattern to include more paths.
      *
-     * Keep the PostHog proxy path (/relay) matched: middleware is what
-     * forwards it to PostHog.
+     * Keep the PostHog proxy path (/relay/pnosthog) matched: middleware is
+     * what forwards it to PostHog.
      *
      * Note: /auth/authorize and /auth/integrations/* ARE protected and need
      * middleware to run for authentication checks.

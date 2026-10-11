@@ -1,9 +1,8 @@
 // Browser PostHog traffic goes through our own domain so blanket ad-block
-// lists for *.posthog.com don't drop consented visitors' events. The path is
-// deliberately neutral: names like /posthog, /analytics or /tracking are
-// blocklist targets themselves. Consent is unaffected: posthog-js sends
-// nothing until analytics is accepted, wherever it sends to.
-export const POSTHOG_PROXY_PATH = "/relay";
+// lists for *.posthog.com don't drop consented visitors' events. Consent is
+// unaffected: posthog-js sends nothing until analytics is accepted.
+// Misspelt on purpose: blocklist rules match the literal word "posthog".
+export const POSTHOG_PROXY_PATH = "/relay/pnosthog";
 
 const POSTHOG_CLOUD_HOST = /^https:\/\/(us|eu)(?:\.i)?\.posthog\.com\/?$/i;
 
