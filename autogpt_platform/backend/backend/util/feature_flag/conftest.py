@@ -9,7 +9,8 @@ def no_real_http(request, monkeypatch):
 
     A real PostHog client posts a `$feature_flag_called` event for every flag
     read; refusing it at `capture` also stops the uploads its background thread
-    would make after the test ends.
+    would make after the test ends. Yields the record, which the guard's own
+    tests clear.
     """
     sent: list[str] = []
 
@@ -24,7 +25,7 @@ def no_real_http(request, monkeypatch):
         urllib3.connectionpool.HTTPConnectionPool, "urlopen", refuse_request
     )
     monkeypatch.setattr(Posthog, "capture", refuse_event)
-    yield
+    yield sent
     if sent:
         pytest.fail(
             f"{request.node.nodeid} would have sent {sent} to the network. Mock "
