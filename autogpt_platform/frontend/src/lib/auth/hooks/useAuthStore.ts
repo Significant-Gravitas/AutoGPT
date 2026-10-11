@@ -287,13 +287,14 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       isUserLoading: false,
     });
 
-    const router = get().routerRef;
-    if (router) {
-      router.refresh();
-      if (result.redirectPath) {
-        router.push(result.redirectPath);
-      }
+    // Leave with a full page load. A client-side push from here cleared the
+    // user but left the tab on the protected page, and a reload also drops
+    // this tab's cached data for the account that just signed out.
+    if (result.redirectPath) {
+      window.location.assign(result.redirectPath);
+      return;
     }
+    get().routerRef?.refresh();
   }
 
   async function refreshSessionInternal() {

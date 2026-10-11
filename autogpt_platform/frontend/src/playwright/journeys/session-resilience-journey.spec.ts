@@ -49,13 +49,41 @@ async function refocusUntil(page: Page, attempted: () => boolean) {
   }).toPass({ intervals: [250, 500, 1000, 2000], timeout: 15_000 });
 }
 
-async function expectStillSignedIn(page: Page) {
+// Every trip to the login page, including one the login page bounces straight
+// back from because the cookie is still good: that bounce is the forced logout
+// users see, and it throws away whatever they had open.
+function recordLoginVisits(page: Page) {
+  const visits: string[] = [];
+  page.on("framenavigated", (frame) => {
+    if (
+      frame === page.mainFrame() &&
+      new URL(frame.url()).pathname === "/login"
+    )
+      visits.push(frame.url());
+  });
+  return visits;
+}
+
+// The account menu only renders for a signed-in user, so its trigger is the
+// app's own statement of who is logged in.
+async function expectStillSignedIn(page: Page, loginVisits: string[]) {
   await expect(page).toHaveURL(/\/library/);
-  const menu = page.getByTestId("profile-popout-menu-trigger");
-  await expect(menu).toBeVisible();
-  await menu.click();
-  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
-  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible();
+  expect(loginVisits, "the user was sent to the login page").toEqual([]);
+}
+
+// Hosted builds hold a fresh account behind the plan picker, which brings its
+// own "Log out" button and covers the account menu; self-hosted builds don't.
+async function logOut(page: Page) {
+  const paywallLogOut = page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Log out" });
+  if (await paywallLogOut.isVisible()) {
+    await paywallLogOut.click();
+    return;
+  }
+  await page.getByTestId("profile-popout-menu-trigger").click();
+  await page.getByRole("button", { name: "Log out" }).click();
 }
 
 async function nextSuccessfulSessionCheck(page: Page) {
@@ -102,19 +130,27 @@ test("session resilience journey: network trouble never signs the user out", asy
     const retried = page.waitForResponse(
       (response) =>
         response.url().includes("/api/onboarding/completed") && response.ok(),
-      { timeout: 20_000 },
+      { timeout: 15_000 },
     );
     await page.reload();
-    await retried;
 
+    // Soft, so a regression here still lets the session steps report too.
+    expect
+      .soft(
+        await retried.catch(() => null),
+        "the dropped onboarding request should be retried",
+      )
+      .not.toBeNull();
     expect(dropped).toBe(1);
-    await expect(page.getByText(ONBOARDING_ERROR)).toHaveCount(0);
-    expect(onboardingErrors).toEqual([]);
+    await expect.soft(page.getByText(ONBOARDING_ERROR)).toHaveCount(0);
+    expect.soft(onboardingErrors).toEqual([]);
     await page.unrouteAll({ behavior: "ignoreErrors" });
 
     await skipOnboardingIfPresent(page, "/library");
     await expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible();
   });
+
+  const loginVisits = recordLoginVisits(page);
 
   await test.step("waking up offline keeps the session and recovers when the network returns", async () => {
     let failedAttempts = 0;
@@ -127,10 +163,9 @@ test("session resilience journey: network trouble never signs the user out", asy
     await refocusUntil(page, () => failedAttempts > 0);
     const recovered = nextSuccessfulSessionCheck(page);
     await context.setOffline(false);
+    await expectStillSignedIn(page, loginVisits);
     await recovered;
     page.off("requestfailed", countFailure);
-
-    await expectStillSignedIn(page);
   });
 
   await test.step("a 503 from the server keeps the session and is retried", async () => {
@@ -148,9 +183,8 @@ test("session resilience journey: network trouble never signs the user out", asy
     await refocusUntil(page, () => unavailable > 0);
     const recovered = nextSuccessfulSessionCheck(page);
     await page.unrouteAll({ behavior: "ignoreErrors" });
+    await expectStillSignedIn(page, loginVisits);
     await recovered;
-
-    await expectStillSignedIn(page);
   });
 
   await test.step("a deploy landing while the tab is open reloads instead of signing out", async () => {
@@ -183,7 +217,7 @@ test("session resilience journey: network trouble never signs the user out", asy
       .toBe(false);
     await page.unrouteAll({ behavior: "ignoreErrors" });
 
-    await expectStillSignedIn(page);
+    await expectStillSignedIn(page, loginVisits);
   });
 });
 
@@ -221,11 +255,12 @@ test("session resilience journey: signing out in one tab signs out the others", 
   await signUpIntoLibrary(page, baseURL);
   const otherTab = await openSecondTab(context);
 
-  await page.getByTestId("profile-popout-menu-trigger").click();
-  await page.getByRole("button", { name: "Log out" }).click();
+  await logOut(page);
   await expect(page).toHaveURL(/\/login/);
 
-  await expect(otherTab).toHaveURL(/\/login\?next=%2Flibrary/);
+  await expect(otherTab).toHaveURL(/\/login\?next=%2Flibrary/, {
+    timeout: 20_000,
+  });
   await expect(
     otherTab.getByTestId("profile-popout-menu-trigger"),
   ).toBeHidden();
