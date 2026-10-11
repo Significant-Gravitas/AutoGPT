@@ -70,6 +70,7 @@ python-multipart = ">=0.0.22,<0.0.33"
 redis = "^8.1.0"
 regex = ">=2025.9.18,<2027.0.0"
 replicate = "^1.0.6"
+requests = "^2.32.5"
 sentry-sdk = {extras = ["anthropic", "fastapi", "openai", "sqlalchemy"], version = "^2.44.0"}
 slack-sdk = "^3.41.0"
 sqlalchemy = "^2.0.40"
@@ -121,7 +122,6 @@ pyright = "^1.1.407"
 pytest-cov = "^7.1.0"
 pytest-mock = "^3.15.1"
 pytest-watcher = "^0.6.3"
-requests = "^2.32.5"
 ruff = "^0.15.0"
 # NOTE: please insert new dependencies in their alphabetical location
 
@@ -155,6 +155,9 @@ brain-dump-eval = "backend.api.features.onboarding_dump.brain_dump_eval:main"
 expert-style-eval = "backend.copilot.eval.style.runner:main"
 oauth-tool = "backend.cli.oauth_tool:cli"
 publish-skills-catalog = "backend.cli.publish_skills_catalog:main"
+
+[tool.poetry.plugins."opentelemetry_otlp_credential_provider"]
+autogpt-copilot-traces = "backend.copilot.sdk.trace_export:create_trace_export_session"
 
 [tool.isort]
 profile = "black"

@@ -96,10 +96,24 @@ async def evaluate_flag(
 
 
 def initialize_posthog_flags() -> None:
-    """Build the flag client eagerly so its definition poller is warm."""
+    """Build the flag client and load its definitions before any read needs them."""
     global _shut_down
     _shut_down = False
-    get_flag_client()
+    client = get_flag_client()
+    if client is None or not client.enable_local_evaluation:
+        return
+
+    # The SDK otherwise makes this same call on the first flag read, which then
+    # waits for it; going through it keeps the shared cache deciding who fetches.
+    try:
+        client.load_feature_flags()
+    except Exception as e:
+        logger.warning(f"Loading PostHog flag definitions at startup failed: {e}")
+    if client.feature_flags is None:
+        logger.warning(
+            "PostHog flag definitions did not load at startup; the first flag read "
+            "will retry"
+        )
 
 
 def shutdown_posthog_flags() -> None:

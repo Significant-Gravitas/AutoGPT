@@ -53,6 +53,10 @@ const CATCHING_UP_AFTER_MS = 2_000;
 const TICK_MS = 5_000;
 const EMIT_THROTTLE_MS = 30;
 const FROZEN_POLL_MS = 10_000;
+const QUEUED_POLL_MS = 10_000;
+// The backend marks a queued turn running a moment before its stream exists;
+// past this, the stream is not coming.
+const QUEUE_START_GRACE_MS = 2 * 60_000;
 const FINISH_PROBE_MS = 500;
 // A server-started continuation (engine switch, approval wake) is dispatched
 // after the turn ends; its meta can lag the finish by a few seconds.
@@ -97,6 +101,7 @@ export interface RuntimeSnapshot {
 export interface SessionView {
   messages?: readonly unknown[] | null;
   has_more_messages?: boolean;
+  chat_status?: string | null;
   active_stream?: {
     turn_id: string;
     checkpoint?: TurnCheckpoint | null;
@@ -132,15 +137,25 @@ interface Connection {
   turnId: string | null;
   closedByClient: boolean;
   syntheticError: string | null;
+  /** A send's own prompt segment, by key. */
+  prompt: string | null;
 }
 
 /** What the classification needs to know about a connection that is gone. */
-type Lost = Pick<Connection, "turnId" | "openedAt" | "syntheticError">;
+type Lost = Pick<
+  Connection,
+  "turnId" | "openedAt" | "syntheticError" | "prompt"
+>;
 
 type ConnectionEnd =
   | { kind: "closed" }
   | { kind: "refused"; status: number; body: unknown }
   | { kind: "failed"; error: unknown };
+
+interface QueueWatch {
+  timer: ReturnType<typeof setTimeout> | null;
+  claimedAt: number | null;
+}
 
 interface TurnBookkeeping {
   verified: number;
@@ -178,6 +193,9 @@ export class TurnRuntime {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private frozenTimer: ReturnType<typeof setInterval> | null = null;
+  private queueWatch: QueueWatch | null = null;
+  // Stopped while queued: its turn is not followed until the queue lets go.
+  private queueDeclined = false;
   private emitTimer: ReturnType<typeof setTimeout> | null = null;
   private reveal = new TextReveal(
     () => this.segments,
@@ -243,6 +261,7 @@ export class TurnRuntime {
     if (this.isPostPending()) return;
     this.stopped = false;
     this.suppressAttach = false;
+    this.queueDeclined = false;
     this.error = null;
     this.providerFailure = null;
     const message = userMessage(`local:${uuidv4({})}`, input);
@@ -254,6 +273,7 @@ export class TurnRuntime {
       method: "POST",
       body: JSON.stringify(body),
       extraHeaders: { "Content-Type": "application/json" },
+      prompt: message.id,
     });
   }
 
@@ -264,6 +284,8 @@ export class TurnRuntime {
     this.clearRetry();
     this.stopped = true;
     this.suppressAttach = true;
+    this.queueDeclined = true;
+    this.endQueueWatch();
     this.notice = null;
     this.reveal.clear();
     if (running) {
@@ -324,6 +346,7 @@ export class TurnRuntime {
       this.ensureConnected();
     }
     if (!running && !this.isPostPending() && !active) this.settleTail(view);
+    this.followQueue(view);
     this.emitNow();
   }
 
@@ -356,6 +379,7 @@ export class TurnRuntime {
     this.abortConnections();
     this.clearRetry();
     this.reveal.dispose();
+    this.endQueueWatch();
     for (const timer of [this.tickTimer, this.frozenTimer]) {
       if (timer) clearInterval(timer);
     }
@@ -399,7 +423,12 @@ export class TurnRuntime {
     kind: Connection["kind"],
     turnId: string | null,
     url: string,
-    init: { method?: string; body?: string; extraHeaders?: object } = {},
+    init: {
+      method?: string;
+      body?: string;
+      extraHeaders?: object;
+      prompt?: string;
+    } = {},
     asRotation = false,
   ) {
     const now = Date.now();
@@ -413,6 +442,7 @@ export class TurnRuntime {
       turnId,
       closedByClient: false,
       syntheticError: null,
+      prompt: init.prompt ?? null,
     };
     if (asRotation) this.rotating = conn;
     else {
@@ -628,6 +658,8 @@ export class TurnRuntime {
       if (this.disposed || this.stopped) return;
       await sleep(FINISH_PROBE_MS);
     }
+    // The view holds the prompt, so the send arrived; its rows say the rest.
+    if (this.lostSendLanded(lost.prompt)) return;
     if (end.kind === "failed" || lost.syntheticError) {
       this.error =
         end.kind === "failed" && end.error instanceof Error
@@ -635,6 +667,11 @@ export class TurnRuntime {
           : new Error(lost.syntheticError ?? "The connection closed early.");
       this.emitNow();
     }
+  }
+
+  private lostSendLanded(promptKey: string | null) {
+    const prompt = promptKey ? this.segmentByKey(promptKey) : null;
+    return prompt?.kind === "user" && prompt.sequence !== null;
   }
 
   // ── The turn's lifecycle ───────────────────────────────────────────────
@@ -700,6 +737,53 @@ export class TurnRuntime {
     }
   }
 
+  // A turn queued behind the user's running cap starts when another of their
+  // turns ends, which nothing tells this tab; watch the view until it runs.
+  private followQueue(view: SessionView) {
+    const status = view.chat_status;
+    if (status !== "queued" && status !== "running") this.queueDeclined = false;
+    const queued = status === "queued" && !view.active_stream;
+    const claimed =
+      status === "running" && !view.active_stream && !!this.queueWatch;
+    if (this.queueDeclined || (!queued && !claimed)) {
+      this.endQueueWatch();
+      return;
+    }
+    const watch = this.queueWatch ?? this.startQueueWatch();
+    if (!claimed) {
+      watch.claimedAt = null;
+      return;
+    }
+    watch.claimedAt ??= Date.now();
+    const waited = Date.now() - watch.claimedAt;
+    if (waited < QUEUE_START_GRACE_MS) return;
+    this.deps.report("queue_start_stalled", { waitedMs: waited });
+    this.endQueueWatch();
+  }
+
+  private startQueueWatch() {
+    const watch: QueueWatch = { timer: null, claimedAt: null };
+    this.queueWatch = watch;
+    this.pollQueue(watch);
+    return watch;
+  }
+
+  // Scheduled after each read settles, so a slow read never overlaps the next.
+  private pollQueue(watch: QueueWatch) {
+    watch.timer = setTimeout(async () => {
+      watch.timer = null;
+      const view = await this.fetchView();
+      if (this.queueWatch !== watch || this.disposed) return;
+      if (view) this.observe(view);
+      if (this.queueWatch === watch) this.pollQueue(watch);
+    }, QUEUED_POLL_MS);
+  }
+
+  private endQueueWatch() {
+    if (this.queueWatch?.timer) clearTimeout(this.queueWatch.timer);
+    this.queueWatch = null;
+  }
+
   /**
    * Rebuild the turn from the DB rows at a checkpoint and tail the stream
    * from there: a trimmed stream, a protocol error, a digest mismatch. A
@@ -723,6 +807,7 @@ export class TurnRuntime {
         turnId: seg.log.turnId,
         openedAt: Date.now(),
         syntheticError: null,
+        prompt: null,
       });
       return;
     }
@@ -757,6 +842,7 @@ export class TurnRuntime {
         turnId: seg.log.turnId,
         openedAt: Date.now(),
         syntheticError: null,
+        prompt: null,
       });
       return;
     }
@@ -970,6 +1056,8 @@ export class TurnRuntime {
     this.unresolvedPost = null;
     if (unresolved && !this.runningTurn())
       void this.recoverUnknownTurn(unresolved.lost, unresolved.end);
+    // A send still waiting for its turn is otherwise given up only at the next tick.
+    else if (this.isPostPending()) this.dropIfSilent();
     else this.ensureConnected();
   }
 
@@ -986,17 +1074,24 @@ export class TurnRuntime {
       this.tickTimer = null;
       return;
     }
-    if (!slot || document.visibilityState === "hidden") return;
-    const now = Date.now();
-    if (now - slot.lastFrameAt >= LIVENESS_MS) {
-      slot.closedByClient = true;
-      slot.controller.abort();
-      this.slot = null;
-      if (slot.turnId === null) this.findLostTurn(slot, { kind: "closed" });
-      else this.retry(slot);
-      return;
-    }
-    if (!this.rotating && now - slot.openedAt >= ROTATE_AFTER_MS) this.rotate();
+    if (!slot || this.dropIfSilent()) return;
+    if (document.visibilityState === "hidden") return;
+    if (!this.rotating && Date.now() - slot.openedAt >= ROTATE_AFTER_MS)
+      this.rotate();
+  }
+
+  // The slot is cleared before the recovery starts, so the tick and a wake
+  // never both recover one connection.
+  private dropIfSilent() {
+    const slot = this.slot;
+    if (!slot || document.visibilityState === "hidden") return false;
+    if (Date.now() - slot.lastFrameAt < LIVENESS_MS) return false;
+    slot.closedByClient = true;
+    slot.controller.abort();
+    this.slot = null;
+    if (slot.turnId === null) this.findLostTurn(slot, { kind: "closed" });
+    else this.retry(slot);
+    return true;
   }
 
   // Rebuilding from the DB view: no other trigger reconnects meanwhile, and
