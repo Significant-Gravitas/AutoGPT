@@ -53,6 +53,7 @@ from backend.copilot.model_router import (
     resolve_model_route,
 )
 from backend.copilot.budget_signal import build_turn_budget_block
+from backend.copilot.continuation import as_model_prompt
 from backend.copilot.feedback_db import RATEABLE_ROLES
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.markers import append_error_marker
@@ -5481,6 +5482,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # On --resume, current_message may come from session history which was
         # already sanitized on the original turn; strip again as defence-in-depth.
         current_message = strip_user_context_tags(current_message)
+        if not is_user_message:
+            # A continuation note is stored as a system row; the model gets
+            # its instruction without the rendering marker.
+            current_message = as_model_prompt(current_message)
 
         # On the first turn inject user context into the message before building
         # the query so that _build_query_message sees the full prefixed content.

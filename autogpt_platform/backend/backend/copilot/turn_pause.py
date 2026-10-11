@@ -31,6 +31,14 @@ _SUMMARIES: dict[PauseReason, str] = {
     "steps": "Paused: checking in after a long run.",
 }
 
+_NOT_STARTED: dict[PauseReason, str] = {
+    "daily": "Not started: out of today's budget.",
+    "weekly": "Not started: out of this week's budget.",
+    "trial": "Not started: the trial allowance is used up.",
+    "task": "Not started.",
+    "steps": "Not started.",
+}
+
 
 class TurnPause(BaseModel):
     """What the Paused card needs to say and offer."""
@@ -43,12 +51,17 @@ class TurnPause(BaseModel):
     # False when a backstop stopped the turn before the agent could write
     # its own checkpoint, so the card mustn't claim it saved its progress.
     checkpoint_saved: bool = True
+    # False when the turn was refused before it ran at all (out of budget at
+    # the moment it was picked up), so there is nothing to pick back up from.
+    started: bool = True
 
     def as_part(self) -> dict[str, Any]:
         return self.model_dump(mode="json")
 
     @property
     def summary(self) -> str:
+        if not self.started:
+            return _NOT_STARTED[self.reason]
         return _SUMMARIES[self.reason]
 
 
