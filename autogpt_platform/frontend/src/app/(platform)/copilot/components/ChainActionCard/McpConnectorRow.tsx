@@ -78,6 +78,16 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
             <Icon icon={CheckmarkCircle02Icon} size={16} />
             Connected
           </span>
+        ) : request.grantable ? (
+          <Button
+            variant="primary"
+            size="small"
+            className="shrink-0"
+            disabled={request.granting || request.loading}
+            onClick={request.onGrant}
+          >
+            {request.granting ? "Granting…" : "Grant access"}
+          </Button>
         ) : (
           <Button
             variant="primary"

@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { expect, type Mock } from "vitest";
 import { resetCopilotChatRegistry } from "../../copilotChatRegistry";
 import { useCopilotStreamStore } from "../../copilotStreamStore";
+import { resetTurnRuntimes } from "../../stream/turnRuntime";
 import { renderHost } from "../sse-helpers";
 import {
   type BackendSim,
@@ -148,6 +149,7 @@ export function expectDrift(
 
 export function resetChatState() {
   resetCopilotChatRegistry();
+  resetTurnRuntimes();
   useCopilotStreamStore.getState().resetAll();
 }
 

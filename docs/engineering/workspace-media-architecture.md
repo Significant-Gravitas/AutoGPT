@@ -153,6 +153,9 @@ become the private one:
    the existing `MEDIA_GCS_BUCKET_NAME` bucket and `PUBLIC_SITE_MEDIA_BUCKET`
    set to the new one. Pointing `PRIVATE_USER_DATA_BUCKET` at a new bucket
    instead makes every existing workspace file and transcript unreadable.
+   Cloud startup rejects that unsafe partial migration. After every stored
+   bucket-qualified path has been migrated to a new private bucket, clear
+   `MEDIA_GCS_BUCKET_NAME` before selecting the new private bucket.
    Deploy the frontend first: once the backend has both names set, uploads
    return `/api/store/submissions/media/...`, which a frontend without the new
    rewrite answers with a 404.
@@ -184,6 +187,13 @@ members of an organization the owner belongs to, so a leaked URL is useless to
 anyone else. Published copies are never deleted automatically: when a listing
 is taken down or a creator changes their avatar, the old public copy stays in
 the public bucket until someone removes it by hand.
+
+Hosted private image uploads are limited to 4 MiB so the frontend proxy can
+buffer and deliver the complete authenticated response below Vercel's body
+limit. Private videos retain the general 50 MiB upload limit and are delivered
+in bounded range responses. An oversized object written before this limit is
+served only after the same authorization check, using a 60-second signed URL
+that bypasses the frontend proxy without granting bucket listing access.
 
 ---
 

@@ -2,12 +2,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 import pytest
+from google.auth.credentials import Signing
 from multidict import CIMultiDict, CIMultiDictProxy
 from yarl import URL
 
 from backend.util.gcs_utils import (
     download_range,
     download_with_fresh_session,
+    generate_iam_signed_url,
     parse_gcs_path,
 )
 
@@ -43,6 +45,58 @@ def test_parse_gcs_path_splits_bucket_and_blob():
 def test_parse_gcs_path_rejects_invalid_prefix():
     with pytest.raises(ValueError):
         parse_gcs_path("s3://my-bucket/file")
+
+
+@pytest.mark.asyncio
+async def test_generate_iam_signed_url_uses_adc_service_account(mocker):
+    credentials = MagicMock()
+    credentials.valid = False
+    credentials.service_account_email = "default"
+
+    def refresh(_request):
+        credentials.valid = True
+        credentials.service_account_email = "backend@example.iam.gserviceaccount.com"
+        credentials.token = "access-token"
+
+    credentials.refresh.side_effect = refresh
+    mocker.patch(
+        "backend.util.gcs_utils.google_auth_default",
+        return_value=(credentials, "project"),
+    )
+    client = MagicMock()
+    blob = client.bucket.return_value.blob.return_value
+    blob.generate_signed_url.return_value = "https://signed.example/object"
+
+    result = await generate_iam_signed_url(client, "bucket", "object", 60)
+
+    assert result == "https://signed.example/object"
+    credentials.refresh.assert_called_once()
+    assert blob.generate_signed_url.call_args.kwargs["service_account_email"] == (
+        "backend@example.iam.gserviceaccount.com"
+    )
+    assert blob.generate_signed_url.call_args.kwargs["access_token"] == "access-token"
+    assert blob.generate_signed_url.call_args.kwargs["version"] == "v4"
+    assert blob.generate_signed_url.call_args.kwargs["method"] == "GET"
+
+
+@pytest.mark.asyncio
+async def test_generate_iam_signed_url_uses_locally_signing_credentials(mocker):
+    credentials = MagicMock(spec=Signing)
+    mocker.patch(
+        "backend.util.gcs_utils.google_auth_default",
+        return_value=(credentials, "project"),
+    )
+    client = MagicMock()
+    blob = client.bucket.return_value.blob.return_value
+    blob.generate_signed_url.return_value = "https://signed.example/object"
+
+    result = await generate_iam_signed_url(client, "bucket", "object", 60)
+
+    assert result == "https://signed.example/object"
+    blob.generate_signed_url.assert_called_once()
+    assert blob.generate_signed_url.call_args.kwargs["credentials"] is credentials
+    assert "service_account_email" not in blob.generate_signed_url.call_args.kwargs
+    assert "access_token" not in blob.generate_signed_url.call_args.kwargs
 
 
 @pytest.mark.asyncio

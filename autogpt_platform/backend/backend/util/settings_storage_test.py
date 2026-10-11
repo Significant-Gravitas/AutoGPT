@@ -1,7 +1,6 @@
 import pytest
 
-import backend.util.settings as settings_module
-from backend.util.settings import Config
+from backend.util.settings import Config, _warn_single_bucket
 
 
 @pytest.fixture(autouse=True)
@@ -82,6 +81,11 @@ def test_each_explicit_bucket_keeps_the_other_legacy_fallback():
             "PRIVATE_USER_DATA_BUCKET": "private-data",
             "MEDIA_GCS_BUCKET_NAME": "legacy-media",
         },
+        {
+            "PUBLIC_SITE_MEDIA_BUCKET": "public-media",
+            "PRIVATE_USER_DATA_BUCKET": "private-data",
+            "MEDIA_GCS_BUCKET_NAME": "legacy-media",
+        },
     ],
 )
 def test_cloud_split_configuration_fails_closed(values):
@@ -89,22 +93,28 @@ def test_cloud_split_configuration_fails_closed(values):
         Config(_env_file=None, BEHAVE_AS="cloud", **values)
 
 
-def test_cloud_split_configuration_accepts_distinct_buckets():
+@pytest.mark.parametrize(
+    "legacy_bucket,private_bucket",
+    [("legacy-media", "legacy-media"), ("", "private-data")],
+)
+def test_cloud_split_configuration_accepts_safe_migration_states(
+    legacy_bucket, private_bucket
+):
     config = Config(
         _env_file=None,
         BEHAVE_AS="cloud",
         PUBLIC_SITE_MEDIA_BUCKET="public-media",
-        PRIVATE_USER_DATA_BUCKET="private-data",
-        MEDIA_GCS_BUCKET_NAME="legacy-media",
+        PRIVATE_USER_DATA_BUCKET=private_bucket,
+        MEDIA_GCS_BUCKET_NAME=legacy_bucket,
     )
 
     assert config.resolved_public_site_media_bucket == "public-media"
-    assert config.resolved_private_user_data_bucket == "private-data"
+    assert config.resolved_private_user_data_bucket == private_bucket
 
 
 @pytest.mark.parametrize("behave_as", ["cloud", "local"])
 def test_a_deployment_on_the_legacy_bucket_warns_once(caplog, behave_as):
-    settings_module._warn_single_bucket.cache_clear()
+    _warn_single_bucket.cache_clear()
 
     for _ in range(2):
         Config(

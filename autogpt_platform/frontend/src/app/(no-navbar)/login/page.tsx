@@ -5,15 +5,18 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
 import AuthFeedback from "@/components/auth/AuthFeedback";
+import { CheckYourInbox } from "@/components/auth/CheckYourInbox/CheckYourInbox";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
 import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout/AuthSplitLayout";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
+import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { environment } from "@/services/environment";
 import { useSearchParams } from "next/navigation";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { LoginMarketingPanel } from "./components/LoginMarketingPanel";
+import { EMAIL_VERIFICATION_NOTICE_COPY } from "./helpers";
 import { useLoginPage } from "./useLoginPage";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +32,9 @@ export default function LoginPage() {
     user,
     form,
     feedback,
+    nextUrl: safeNextUrl,
+    verificationEmail,
+    verificationNotice,
     isLoading,
     isGoogleLoading,
     isCloudEnv,
@@ -37,10 +43,24 @@ export default function LoginPage() {
     handleSubmit,
     handleProviderLogin,
     handleCloseNotAllowedModal,
+    handleBackToLogin,
   } = useLoginPage();
 
   if (isUserLoading || user) {
     return <LoadingLogin />;
+  }
+
+  if (verificationEmail) {
+    return (
+      <AuthSplitLayout marketing={<LoginMarketingPanel />}>
+        <CheckYourInbox
+          email={verificationEmail}
+          reason="login"
+          next={safeNextUrl}
+          onBack={handleBackToLogin}
+        />
+      </AuthSplitLayout>
+    );
   }
 
   return (
@@ -50,6 +70,14 @@ export default function LoginPage() {
           Log in to your account to continue
         </Text>
       </div>
+
+      {verificationNotice ? (
+        <Alert className="mb-6">
+          <AlertDescription>
+            {EMAIL_VERIFICATION_NOTICE_COPY[verificationNotice]}
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <Form {...form}>
         <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">

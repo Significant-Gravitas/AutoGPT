@@ -1,3 +1,8 @@
-# Supabase Docker
+# Retired Supabase stack
 
-This is a minimal Docker Compose setup for self-hosting Supabase. Follow the steps [here](https://supabase.com/docs/guides/hosting/docker) to get started.
+The platform uses PostgreSQL with pgvector and Better Auth. The bundled
+Supabase Compose stack has been removed.
+
+Existing database and storage directories remain ignored by Git. Follow the
+[upgrade instructions](../../../docs/platform/getting-started.md#upgrading-an-existing-supabase-based-installation)
+before moving or deleting historical data.

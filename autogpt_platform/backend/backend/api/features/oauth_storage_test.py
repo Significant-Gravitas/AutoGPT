@@ -37,6 +37,28 @@ async def test_logo_url_updates_before_previous_object_is_deleted():
 
 
 @pytest.mark.asyncio
+async def test_unchanged_logo_url_does_not_delete_current_object():
+    app = SimpleNamespace(id="app-123", owner_id="owner", logo_url="same-logo")
+    updated_app = SimpleNamespace(name="Test app")
+
+    with (
+        patch.object(oauth, "get_oauth_application_by_id", AsyncMock(return_value=app)),
+        patch.object(
+            oauth, "update_oauth_application", AsyncMock(return_value=updated_app)
+        ),
+        patch.object(
+            oauth, "_delete_app_current_logo_file", new_callable=AsyncMock
+        ) as delete,
+    ):
+        result = await oauth.update_app_logo(
+            "app-123", oauth.UpdateAppLogoRequest(logo_url="same-logo"), user_id="owner"
+        )
+
+    assert result is updated_app
+    delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_failed_logo_url_update_keeps_previous_object():
     app = SimpleNamespace(id="app-123", owner_id="owner", logo_url="old-logo")
 

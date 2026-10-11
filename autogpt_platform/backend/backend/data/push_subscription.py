@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from prisma.models import PushSubscription
 from pydantic import BaseModel
 
-from backend.util.request import validate_url_host
+from backend.util.request import parse_url, validate_url_host
 
 logger = logging.getLogger(__name__)
 
@@ -14,13 +14,17 @@ logger = logging.getLogger(__name__)
 # Hostnames of legitimate Web Push services.  Endpoints submitted by
 # clients must match one of these; everything else is rejected to prevent
 # the backend (which POSTs to the stored URL via pywebpush) from being
-# used as an SSRF primitive against internal infrastructure.  Covers Chrome/
-# Edge/Brave (FCM), Firefox (Autopush), and Safari/macOS (Apple Web Push).
+# used as an SSRF primitive against internal infrastructure.  Chrome uses FCM
+# (jmt17.google.com on pre-release channels), Firefox uses Autopush.
 _PUSH_SERVICE_HOSTNAMES: list[str] = [
     "fcm.googleapis.com",
+    "jmt17.google.com",
     "updates.push.services.mozilla.com",
-    "web.push.apple.com",
 ]
+
+# Edge on Windows (WNS) and Safari (Apple Web Push) issue endpoints on varying
+# subdomains of a domain the vendor owns, so any subdomain of these is accepted.
+_PUSH_SERVICE_DOMAIN_SUFFIXES = (".notify.windows.com", ".push.apple.com")
 
 # Cap on concurrent push subscriptions per user — one entry per device/browser
 # is typical, so this comfortably covers real usage while preventing an
@@ -41,8 +45,12 @@ async def validate_push_endpoint(endpoint: str) -> None:
     Called at subscribe time and again before dispatch (defense-in-depth against
     rows written before this check existed or via future codepaths).
     """
+    hostname = parse_url(endpoint).hostname or ""
+    vendor_subdomain = (
+        [hostname] if hostname.endswith(_PUSH_SERVICE_DOMAIN_SUFFIXES) else []
+    )
     parsed, is_trusted, _ = await validate_url_host(
-        endpoint, trusted_hostnames=_PUSH_SERVICE_HOSTNAMES
+        endpoint, trusted_hostnames=_PUSH_SERVICE_HOSTNAMES + vendor_subdomain
     )
     if parsed.scheme != "https":
         raise ValueError("Push endpoint must use https://")
