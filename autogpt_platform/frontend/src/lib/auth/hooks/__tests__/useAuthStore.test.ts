@@ -11,6 +11,7 @@ vi.mock("../../actions", () => ({
 }));
 vi.mock("../../helpers", () => ({
   broadcastLogout: vi.fn(),
+  navigateWithFullLoad: vi.fn(),
   reloadForNewDeployment: vi.fn(() => true),
   setWebSocketDisconnectIntent: vi.fn(),
   setupSessionEventListeners: vi.fn(() => ({ cleanup: vi.fn() })),
@@ -22,9 +23,18 @@ vi.mock("../helpers", () => ({
   validateSession: vi.fn(),
 }));
 
-import { reloadForNewDeployment } from "../../helpers";
+import {
+  navigateWithFullLoad,
+  reloadForNewDeployment,
+  setupSessionEventListeners,
+} from "../../helpers";
 import type { User } from "../../types";
-import { validateSession as validateSessionHelper } from "../helpers";
+import {
+  fetchUser,
+  handleStorageEvent,
+  refreshSession as refreshSessionHelper,
+  validateSession as validateSessionHelper,
+} from "../helpers";
 import { useAuthStore } from "../useAuthStore";
 
 function makeRouter() {
@@ -237,5 +247,99 @@ describe("useAuthStore.validateSession", () => {
     expect(reloadForNewDeployment).toHaveBeenCalled();
     expect(useAuthStore.getState().user).toBe(user);
     expect(router.push).not.toHaveBeenCalled();
+  });
+});
+
+describe("useAuthStore resilience", () => {
+  const user = { id: "user-1" } as User;
+
+  afterEach(() => {
+    useAuthStore.getState().cleanup();
+    useAuthStore.setState({
+      user: null,
+      hasLoadedUser: false,
+      isValidating: false,
+      lastValidation: 0,
+      routerRef: null,
+      currentPath: "",
+    });
+    vi.clearAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("stops retrying after the budget is spent and never stacks timers", async () => {
+    vi.useFakeTimers();
+    const router = makeRouter();
+    vi.mocked(validateSessionHelper).mockResolvedValue({
+      isValid: true,
+      shouldUpdateUser: false,
+      unavailable: "network",
+    });
+    useAuthStore.setState({
+      user,
+      hasLoadedUser: true,
+      routerRef: router,
+      currentPath: "/library",
+    });
+
+    await useAuthStore.getState().validateSession({ force: true });
+    await useAuthStore.getState().validateSession({ force: true });
+    expect(vi.getTimerCount()).toBe(1);
+
+    for (let i = 0; i < 10; i++) await vi.runOnlyPendingTimersAsync();
+
+    // The first check, the second forced one, then six retries.
+    expect(validateSessionHelper).toHaveBeenCalledTimes(8);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(useAuthStore.getState().user).toBe(user);
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it("sends the tab to login with a full page load when another tab signs out", async () => {
+    vi.mocked(fetchUser).mockResolvedValue({
+      user,
+      hasLoadedUser: true,
+      isUserLoading: false,
+    });
+    vi.mocked(handleStorageEvent).mockReturnValue({
+      shouldLogout: true,
+      redirectPath: "/login?next=%2Flibrary",
+    });
+    await useAuthStore.getState().initialize({
+      api: makeApi(),
+      router: makeRouter(),
+      path: "/library",
+    });
+    const [, onStorage] = vi.mocked(setupSessionEventListeners).mock.calls[0];
+
+    onStorage(new StorageEvent("storage", { key: "supabase-logout" }));
+
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(navigateWithFullLoad).toHaveBeenCalledWith("/login?next=%2Flibrary");
+  });
+
+  it("keeps the user when a session refresh can't reach the auth backend", async () => {
+    useAuthStore.setState({ user, hasLoadedUser: true });
+    vi.mocked(refreshSessionHelper).mockResolvedValue({
+      user: null,
+      error: "connection reset",
+      isUnavailable: true,
+    });
+
+    await useAuthStore.getState().refreshSession();
+
+    expect(useAuthStore.getState().user).toBe(user);
+  });
+
+  it("clears the user when a session refresh finds no session", async () => {
+    useAuthStore.setState({ user, hasLoadedUser: true });
+    vi.mocked(refreshSessionHelper).mockResolvedValue({
+      user: null,
+      error: "No active session",
+    });
+
+    await useAuthStore.getState().refreshSession();
+
+    expect(useAuthStore.getState().user).toBeNull();
   });
 });

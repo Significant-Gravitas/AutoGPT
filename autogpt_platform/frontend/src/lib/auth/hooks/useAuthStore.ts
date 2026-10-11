@@ -7,6 +7,7 @@ import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
 import {
   broadcastLogout,
+  navigateWithFullLoad,
   reloadForNewDeployment,
   setupSessionEventListeners,
   setWebSocketDisconnectIntent,
@@ -255,6 +256,8 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     if (reason === "deployment-skew" && reloadForNewDeployment()) return;
 
     const attempt = get().retryAttempt;
+    // Once the budget is spent, backoff stops; the next focus or `online`
+    // event restores it and tries again.
     if (get().retryTimer || attempt >= MAX_RETRY_ATTEMPTS) return;
 
     const delay = Math.min(
@@ -291,11 +294,10 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       isUserLoading: false,
     });
 
-    // Leave with a full page load. A client-side push from here cleared the
-    // user but left the tab on the protected page, and a reload also drops
-    // this tab's cached data for the account that just signed out.
+    // Full page load: navigates away from the protected page and drops this
+    // tab's cached data for the account that just signed out.
     if (result.redirectPath) {
-      window.location.assign(result.redirectPath);
+      navigateWithFullLoad(result.redirectPath);
       return;
     }
     get().routerRef?.refresh();

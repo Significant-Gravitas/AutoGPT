@@ -97,6 +97,10 @@ export function setupSessionEventListeners(
   };
 }
 
+export function navigateWithFullLoad(path: string): void {
+  window.location.assign(path);
+}
+
 const DEPLOYMENT_RELOAD_COOLDOWN_MS = 60_000;
 
 /**
