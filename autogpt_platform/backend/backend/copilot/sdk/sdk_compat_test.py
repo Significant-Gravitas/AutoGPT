@@ -134,6 +134,7 @@ def test_agent_options_accepts_all_our_fields():
     fields_we_use = [
         "system_prompt",
         "mcp_servers",
+        "tools",
         "allowed_tools",
         "disallowed_tools",
         "hooks",

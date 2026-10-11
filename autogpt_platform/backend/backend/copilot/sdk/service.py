@@ -21,7 +21,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired, TypedDict, cast
 
 if TYPE_CHECKING:
     from ..permissions import CopilotPermissions
@@ -2455,6 +2455,51 @@ def _raise_deferred_codex_cleanup_error(
     if turn_error is not None and turn_error is not cleanup_error:
         raise cleanup_error from turn_error
     raise cleanup_error
+
+
+class _SdkToolOptions(TypedDict):
+    tools: list[str]
+    allowed_tools: list[str]
+    disallowed_tools: list[str]
+
+
+def _build_sdk_tool_options(
+    permissions: CopilotPermissions | None,
+    *,
+    use_e2b: bool,
+    disabled_groups: list[ToolGroup],
+    denied_tools: frozenset[str] = frozenset(),
+) -> _SdkToolOptions:
+    """Build the three tool lists of a turn's :class:`ClaudeAgentOptions`.
+
+    They travel together so they cannot drift: ``allowed_tools`` is what the
+    PreToolUse hook enforces, and ``tools`` declares only the built-ins in it,
+    so a CLI upgrade's new built-ins never reach the model.  *denied_tools*
+    are short names of copilot tools taken out of ``allowed_tools``.
+    """
+    extra_builtins = config.claude_agent_extra_builtin_tools
+    if permissions is not None:
+        allowed, disallowed = apply_tool_permissions(
+            permissions,
+            use_e2b=use_e2b,
+            disabled_groups=disabled_groups,
+            extra_builtins=extra_builtins,
+        )
+    else:
+        allowed = get_copilot_tool_names(
+            use_e2b=use_e2b,
+            disabled_groups=disabled_groups,
+            extra_builtins=extra_builtins,
+        )
+        disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+
+    denied_mcp = {f"{MCP_TOOL_PREFIX}{name}" for name in denied_tools}
+    allowed = [name for name in allowed if name not in denied_mcp]
+    return _SdkToolOptions(
+        tools=get_sdk_declared_tools(allowed, disallowed),
+        allowed_tools=allowed,
+        disallowed_tools=disallowed,
+    )
 
 
 def _build_system_prompt_value(
@@ -5077,25 +5122,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
 
-        extra_builtins = config.claude_agent_extra_builtin_tools
-        if permissions is not None:
-            allowed, disallowed = apply_tool_permissions(
-                permissions,
-                use_e2b=use_e2b,
-                disabled_groups=disabled_tool_groups,
-                extra_builtins=extra_builtins,
-            )
-        else:
-            allowed = get_copilot_tool_names(
-                use_e2b=use_e2b,
-                disabled_groups=disabled_tool_groups,
-                extra_builtins=extra_builtins,
-            )
-            disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
-
-        if kickoff_hidden:
-            kickoff_hidden_mcp = {f"{MCP_TOOL_PREFIX}{n}" for n in kickoff_hidden}
-            allowed = [n for n in allowed if n not in kickoff_hidden_mcp]
+        tool_options = _build_sdk_tool_options(
+            permissions,
+            use_e2b=use_e2b,
+            disabled_groups=disabled_tool_groups,
+            denied_tools=kickoff_hidden,
+        )
 
         security_hooks = create_security_hooks(
             user_id,
@@ -5103,7 +5135,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             max_subtasks=config.claude_agent_max_subtasks,
             on_compact=compaction.on_compact,
             tool_display_bridge=tool_display_bridge,
-            allowed_tools=allowed,
+            allowed_tools=tool_options["allowed_tools"],
         )
 
         def _on_stderr(line: str) -> None:
@@ -5150,11 +5182,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # have a clean HOME, so this is a no-op there.
             setting_sources=[],
             extra_args={"strict-mcp-config": None},
-            # Declare only the built-ins the security hook lets through, so
-            # a CLI upgrade's new built-ins never reach the model.
-            tools=get_sdk_declared_tools(allowed, disallowed),
-            allowed_tools=allowed,
-            disallowed_tools=disallowed,
+            **tool_options,
             hooks=security_hooks,
             cwd=sdk_cwd,
             max_buffer_size=config.claude_agent_max_buffer_size,
