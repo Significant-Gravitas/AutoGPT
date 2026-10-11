@@ -21,10 +21,8 @@ import { useAgentPresetsQuery } from "../../../hooks/useAgentPresetsQuery";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  isSchedulerUnavailableError,
-  recheckWhileSchedulerUnavailable,
-} from "@/services/schedules/scheduler-availability";
+import { isSchedulerUnavailableError } from "@/services/schedules/scheduler-availability";
+import { useSchedulerQueryOptions } from "@/services/schedules/useSchedulerQueryOptions";
 import { parseAsString, useQueryStates } from "nuqs";
 
 function parseTab(
@@ -84,11 +82,12 @@ export function useSidebarRunsList({
     },
   );
 
+  const schedulerQueryOptions = useSchedulerQueryOptions();
   const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(graphId, {
     query: {
       enabled: !!graphId,
       select: okData,
-      refetchInterval: recheckWhileSchedulerUnavailable,
+      ...schedulerQueryOptions,
     },
   });
   // A restarting scheduler costs the Scheduled tab, not the whole sidebar.

@@ -5,10 +5,8 @@ import {
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { okData } from "@/app/api/helpers";
-import {
-  isSchedulerUnavailableError,
-  recheckWhileSchedulerUnavailable,
-} from "@/services/schedules/scheduler-availability";
+import { isSchedulerUnavailableError } from "@/services/schedules/scheduler-availability";
+import { useSchedulerQueryOptions } from "@/services/schedules/useSchedulerQueryOptions";
 
 export type ScheduleItem =
   | { kind: "copilot_turn"; item: CopilotTurnJobInfo }
@@ -21,12 +19,13 @@ function nextRunMs(item: { next_run_time?: string | null }): number {
 }
 
 export function useSchedulesPanel() {
+  const schedulerQueryOptions = useSchedulerQueryOptions();
   // Followups (copilot_turn) — the scheduled-message side of the
   // feature.  Stored via ``schedule_followup`` MCP tool.
   const copilotQuery = useListCopilotFollowupSchedules({
     query: {
       select: (res) => okData(res) ?? [],
-      refetchInterval: recheckWhileSchedulerUnavailable,
+      ...schedulerQueryOptions,
     },
   });
   // Graph schedules — recurring agent runs created via the agent
@@ -36,7 +35,7 @@ export function useSchedulesPanel() {
   const graphQuery = useGetV1ListExecutionSchedulesForAUser({
     query: {
       select: (res) => okData(res) ?? [],
-      refetchInterval: recheckWhileSchedulerUnavailable,
+      ...schedulerQueryOptions,
     },
   });
 

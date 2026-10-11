@@ -1,4 +1,3 @@
-import { retryUnlessSchedulerUnavailable } from "@/services/schedules/scheduler-availability";
 import { isServer, QueryClient } from "@tanstack/react-query";
 
 function makeQueryClient() {
@@ -7,10 +6,6 @@ function makeQueryClient() {
       queries: {
         // Added this because if staleTime is 0 (default), the data fetched on the server becomes stale immediately on the client, and it refetches again.
         staleTime: 60 * 1000,
-
-        // A scheduler 503 means it is restarting; schedule queries recheck on
-        // their own interval instead of stacking retries on it.
-        retry: retryUnlessSchedulerUnavailable,
 
         // Highlighting some important defaults to avoid confusion
         // Queries are stale by default → triggers background refetch

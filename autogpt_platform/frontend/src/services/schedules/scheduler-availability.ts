@@ -32,15 +32,8 @@ export function hasUnavailableScheduleInfo(agents: LibraryAgent[]): boolean {
   return agents.some((agent) => agent.schedule_info_unavailable);
 }
 
-// Don't stack retries on a scheduler that is restarting...
-export function retryUnlessSchedulerUnavailable<TError>(
-  failureCount: number,
-  error: TError,
-): boolean {
-  return !isSchedulerUnavailableError(error) && failureCount < 3;
-}
-
-// ...recheck on its own cadence until it answers again.
+// Schedule queries recheck on the scheduler's own cadence until it answers
+// again, instead of stacking retries on it (see useSchedulerQueryOptions).
 export function recheckWhileSchedulerUnavailable<TError>(query: {
   state: { error: TError };
 }): number | false {
