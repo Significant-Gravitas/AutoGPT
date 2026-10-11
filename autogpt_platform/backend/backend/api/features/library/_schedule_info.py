@@ -39,7 +39,7 @@ async def _fetch_schedule_info(
             if current is None or parsed < current[0]:
                 earliest[schedule.graph_id] = (parsed, schedule.next_run_time)
         return {graph_id: iso for graph_id, (_, iso) in earliest.items()}
-    except TimeoutError:
+    except asyncio.TimeoutError:
         logger.warning(
             "Scheduler did not answer within "
             f"{settings.config.schedule_read_timeout_seconds}s; library agents "
