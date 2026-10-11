@@ -62,6 +62,17 @@ def _clean_context():
 
 
 @pytest.fixture(autouse=True)
+def _no_experts():
+    """Expert entries are per user and read from the database; with
+    hire-experts off the layer is empty (``expert_capabilities_test`` covers it)."""
+    with patch(
+        "backend.copilot.tools.session_registry.is_feature_enabled",
+        AsyncMock(return_value=False),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def skills():
     """The session's skill list is per user and read through Redis and the
     workspace; stub it empty so no test here reaches either.  A test that

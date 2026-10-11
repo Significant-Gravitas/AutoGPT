@@ -24,7 +24,7 @@ import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "./helpers";
 const MOBILE_NAV_ICONS: Readonly<Record<string, IconType>> = {
   "/marketplace": IconType.Marketplace,
   "/build": IconType.Builder,
-  "/copilot": IconType.Chat,
+  "/home": IconType.Chat,
   "/library": IconType.Library,
   "/monitor": IconType.Library,
 };
@@ -59,7 +59,7 @@ export function Navbar() {
   // Files is reached via the icon in the CoPilot sidebar (gated by
   // ARTIFACTS_PAGE), not the top nav — it's an entry point, not a product.
   const actualLoggedInLinks = [
-    { name: "Home", href: "/copilot" },
+    { name: "Home", href: "/home" },
     { name: "Agents", href: "/library" },
     ...loggedInLinks,
   ];

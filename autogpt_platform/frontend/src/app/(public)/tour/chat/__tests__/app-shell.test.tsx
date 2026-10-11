@@ -66,6 +66,7 @@ async function pressEnterToSend() {
 describe("Tour chat app shell", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     // Both stores are module-level state — reset between tests.
     useTourStore.setState({
       activeScenarioId: DEFAULT_SCENARIO_ID,
@@ -80,47 +81,41 @@ describe("Tour chat app shell", () => {
   afterEach(() => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
-  test("renders the sidebar with scenarios as chat sessions and only Marketplace enabled", () => {
+  test("renders a free-trial sidebar without demo chats and only Marketplace enabled", () => {
     render(<TourChatPage />);
 
-    // Scenario pills are replaced by sidebar chat sessions.
     expect(document.querySelector("[aria-pressed]")).toBeNull();
-    expect(screen.getByText("Recent chats")).toBeDefined();
+    expect(screen.queryByText("Recent chats")).toBeNull();
+    expect(screen.queryByText("Try Otto")).toBeNull();
     for (const label of [
       "Daily brief",
       "Call prep",
       "Competitor watch",
       "Support queue",
     ]) {
-      expect(screen.getByRole("button", { name: label })).toBeDefined();
+      expect(screen.queryByRole("button", { name: label })).toBeNull();
     }
 
-    // The upsell card is always visible in the sidebar footer.
-    expect(screen.getByText(/Ready to build your own/i)).toBeDefined();
-    expect(screen.getByText(/Start with Pro for \$42\.50\/mo/i)).toBeDefined();
+    expect(screen.getByText("Your AI team starts here")).toBeDefined();
+    const trialCTA = screen.getByRole("link", { name: "Start free trial" });
+    expect(trialCTA.getAttribute("href")).toBe("/signup");
+    expect(trialCTA.getAttribute("target")).toBeNull();
+    expect(screen.queryByText(/Start with Pro/i)).toBeNull();
+    expect(screen.queryByText(/\$42\.50/)).toBeNull();
 
     // Marketplace is the only live navigation target.
     const marketplace = screen.getByRole("link", { name: "Marketplace" });
     expect(marketplace.getAttribute("href")).toBe("/marketplace");
+    expect(
+      screen.getByRole("link", { name: "AutoGPT" }).getAttribute("href"),
+    ).toBe("/marketplace");
     for (const label of ["New Task", "Search", "Agents", "Build", "Files"]) {
       const item = screen.getByRole("button", { name: label });
       expect(item.getAttribute("aria-disabled")).toBe("true");
     }
-  });
-
-  test("clicking a sidebar session switches the demo scenario", async () => {
-    render(<TourChatPage />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Daily brief" }));
-    // The switched-to scenario auto-plays its first turn — its prompt shows up
-    // as the auto-sent user message.
-    await advanceThroughTurn();
-
-    expect(
-      screen.getByText(/pull my unread emails and calendar/i),
-    ).toBeDefined();
   });
 
   test("finishing the demo opens the artifact panel with the mock markdown file", async () => {

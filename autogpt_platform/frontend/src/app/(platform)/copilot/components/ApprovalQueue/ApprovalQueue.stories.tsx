@@ -448,3 +448,5 @@ export const RealExecuteCodeStep = realStory("Execute Code Step");
 export const RealSendWebRequest = realStory("Send Web Request");
 export const RealPostToX = realStory("Post To X");
 export const RealWorkflow = realStory("Workflow");
+export const RealSandboxCommand = realStory("Sandbox Command");
+export const RealGmailNewsletter = realStory("Gmail Newsletter");

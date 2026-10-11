@@ -98,6 +98,17 @@ class TestCredentialsSurfacingGuardrails:
         assert "NEVER claim a card has appeared" in result
         assert "call the tool first" in result
 
+    def test_prompt_distinguishes_an_expert_grant_from_a_sign_in(self):
+        """An expert session's ``find_capability`` reports an account-owned
+        credential the expert lacks as ``needs_expert_grant``; the model must
+        ask for a grant, not send the user back through sign-in."""
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        step = result[result.index('`connected: "needs_expert_grant"`') :]
+        step = " ".join(step[: step.index("4. `review_required`")].split())
+        assert "Do NOT ask the user to sign in" in step
+        assert "Grant button" in step
+        assert "ask the user to grant access" in step
+
     def test_prompt_contains_rejection_rule(self):
         """This section collects rules from several PRs at once, so a merge
         that takes one side drops a rule silently."""

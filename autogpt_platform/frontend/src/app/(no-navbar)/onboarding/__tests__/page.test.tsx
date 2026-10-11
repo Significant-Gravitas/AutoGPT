@@ -532,12 +532,12 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     expect(submitOnboardingProfile).not.toHaveBeenCalled();
   });
 
-  it("redirects straight to /copilot when onboarding is already complete", async () => {
+  it("redirects straight to /home when onboarding is already complete", async () => {
     mockCompletedSteps = ["ONBOARDING_COMPLETE"];
     window.sessionStorage.setItem(STEP_STORAGE_KEY, "3");
     render(<OnboardingPage />);
     await waitFor(() => {
-      expect(routerReplace).toHaveBeenCalledWith("/copilot");
+      expect(routerReplace).toHaveBeenCalledWith("/home");
     });
     // The wizard never renders and the resume ceiling is cleared.
     expect(screen.queryByTestId("step-role")).toBeNull();
@@ -551,7 +551,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     render(<OnboardingPage />);
     fireEvent.click(await screen.findByTestId("step-preparing"));
     await waitFor(() => {
-      expect(routerReplace).toHaveBeenCalledWith("/copilot");
+      expect(routerReplace).toHaveBeenCalledWith("/home");
     });
     expect(completeOnboardingStep).toHaveBeenCalledWith({
       step: "ONBOARDING_COMPLETE",
@@ -572,7 +572,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     render(<OnboardingPage />);
     fireEvent.click(await screen.findByTestId("step-preparing"));
     await waitFor(() => {
-      expect(routerReplace).toHaveBeenCalledWith("/copilot");
+      expect(routerReplace).toHaveBeenCalledWith("/home");
     });
 
     expect(gtagCalls).toContainEqual([
@@ -589,7 +589,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
       "onboarding_complete=OC",
     );
     const gtagCalls = installGtagShim();
-    // All three attempts fail: the user still lands on the copilot, but the
+    // All three attempts fail: the user still lands on /home, but the
     // backend never recorded the milestone, so nothing converted.
     completeOnboardingStep.mockRejectedValue(new Error("500"));
     mockFlagValue = false;
@@ -599,7 +599,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     fireEvent.click(await screen.findByTestId("step-preparing"));
     await waitFor(
       () => {
-        expect(routerReplace).toHaveBeenCalledWith("/copilot");
+        expect(routerReplace).toHaveBeenCalledWith("/home");
       },
       { timeout: 5000 },
     );

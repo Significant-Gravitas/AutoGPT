@@ -228,7 +228,7 @@ describe("dual backend", () => {
 
     renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
 
-    expect(postHog.capture).toHaveBeenCalledWith("feature_flag_mismatch", {
+    expect(postHog.capture).toHaveBeenCalledWith("feature_flag_mismatched", {
       flag: HIRE_EXPERTS,
       launchdarkly: { value: true, resolved: true },
       posthog: { value: false, resolved: true },
@@ -281,7 +281,7 @@ describe("dual backend", () => {
 
     renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
 
-    expect(postHog.capture).toHaveBeenCalledWith("feature_flag_mismatch", {
+    expect(postHog.capture).toHaveBeenCalledWith("feature_flag_mismatched", {
       flag: HIRE_EXPERTS,
       launchdarkly: { value: true, resolved: true },
       posthog: { value: null, resolved: true },

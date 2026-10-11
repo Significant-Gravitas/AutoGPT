@@ -20,10 +20,12 @@ from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, Field
 from typing_extensions import Optional
 
+from backend.api.features.billing.client_country import ClientCountry
 from backend.api.features.billing.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
 from backend.copilot.rate_limit import get_tier_multipliers
+from backend.data import checkout_audience
 from backend.data.credit import (
     PendingChangeUnknown,
     UserCredit,
@@ -57,6 +59,7 @@ from backend.notifications.queue import queue_pass_work
 from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
 from backend.util.feature_flag import Flag, evaluate_feature_flag
+from backend.util.product_analytics import track_checkout_started
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -72,6 +75,10 @@ class SubscriptionTierRequest(BaseModel):
     success_url: str = ""
     cancel_url: str = ""
     billing_cycle: Literal["monthly", "yearly"] = "monthly"
+    surface: Optional[Literal["onboarding", "paywall_gate", "billing"]] = Field(
+        default=None,
+        description="Where the plan was picked; analytics only.",
+    )
 
 
 class SubscriptionStatusResponse(BaseModel):
@@ -345,6 +352,7 @@ async def update_subscription_tier(
     x_datafast_session_id: Annotated[
         str | None, Header(include_in_schema=False)
     ] = None,
+    country: ClientCountry = None,
 ) -> SubscriptionStatusResponse:
     # Pydantic validates tier is one of BASIC/PRO/MAX/BUSINESS via Literal type.
     tier = SubscriptionTier(request.tier)
@@ -639,7 +647,16 @@ async def update_subscription_tier(
                 "Please try again or contact support."
             ),
         )
+    await track_checkout_started(
+        user_id=user_id,
+        checkout_kind="subscription",
+        surface=request.surface,
+        subscription_tier=tier.value,
+        billing_cycle=request.billing_cycle,
+    )
 
+    if url:
+        checkout_audience.schedule_checkout_opened(user_id, ip_country=country)
     status = await get_subscription_status(user_id)
     status.url = url
     return status
@@ -825,6 +842,9 @@ async def stripe_webhook(request: Request):
             # both would double-send.
             if event_type == "checkout.session.completed":
                 await _notify_checkout_completed(data_object)
+                # The billing address is the strongest country signal, and
+                # it only exists once checkout completes. Never raises.
+                await checkout_audience.record_checkout_completed(data_object)
 
         if event_type in (
             "customer.subscription.created",
@@ -912,6 +932,12 @@ async def stripe_webhook(request: Request):
 async def manage_payment_method(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> dict[str, str]:
+) -> dict[str, str | None]:
+    """Return a Stripe billing-portal URL for the caller.
+
+    ``url`` is ``None`` when the user has no Stripe customer yet: this route is
+    requested on every Settings > Billing load, so it must never provision a
+    customer as a side effect (see ``create_billing_portal_session``).
+    """
     credit_model = await get_credit_model(user_id, ctx.org_id)
     return {"url": await credit_model.create_billing_portal_session(user_id)}

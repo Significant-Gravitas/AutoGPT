@@ -141,7 +141,12 @@ async def test_notice_uses_shared_notification_queue(trial, outcome):
             "user_db",
             return_value=MagicMock(
                 get_user_by_id=AsyncMock(
-                    return_value=SimpleNamespace(name="Sam", email="sam@example.com")
+                    return_value=SimpleNamespace(
+                        id="user-1",
+                        name="Sam",
+                        email="sam@example.com",
+                        marketing_opt_out_at=None,
+                    )
                 )
             ),
         ),
@@ -171,16 +176,17 @@ async def test_notice_uses_shared_notification_queue(trial, outcome):
         release.assert_not_awaited()
     assert track.call_count == int(outcome == "sent")
     if outcome == "sent":
-        assert track.call_args.args[0] == "subscription_trial_started"
+        assert track.call_args.args[0] == "trial_started"
 
 
-def test_every_trial_notice_kind_keeps_its_event_name():
-    """The names used to be built as f"subscription_trial_{kind}"; the lookup
-    must cover every kind and send exactly those strings."""
+def test_every_trial_notice_kind_has_the_analytics_plan_event_name():
+    """Every kind maps to the analytics plan's ``trial_*`` name; a failed
+    conversion charge is the plan's ``payment_failed``."""
     kinds = get_args(notices.TrialNoticeKind)
     assert set(notices.TRIAL_NOTICE_EVENTS) == set(kinds)
     for kind in kinds:
-        assert notices.TRIAL_NOTICE_EVENTS[kind].value == f"subscription_trial_{kind}"
+        expected = "payment_failed" if kind == "payment_failed" else f"trial_{kind}"
+        assert notices.TRIAL_NOTICE_EVENTS[kind].value == expected
 
 
 def test_canceled_trial_suppresses_late_ending_reminder(trial):

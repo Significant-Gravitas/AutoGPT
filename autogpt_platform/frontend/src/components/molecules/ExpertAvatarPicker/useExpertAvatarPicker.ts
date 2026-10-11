@@ -1,11 +1,14 @@
 import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
-import { uploadSubmissionMediaDirect } from "@/lib/direct-upload";
+import {
+  getFileSizeError,
+  SUBMISSION_MEDIA_MAX_SIZE_MB,
+  uploadSubmissionMediaDirect,
+} from "@/lib/direct-upload";
 import { useMutation } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { resolveExpertAvatarUrl } from "../ExpertAvatar/helpers";
 import {
   ACCEPTED_AVATAR_TYPES,
-  MAX_AVATAR_BYTES,
   defaultAvatarUrl,
   randomAvatarRequest,
 } from "./helpers";
@@ -50,11 +53,9 @@ export function useExpertAvatarPicker({
 
   async function uploadFile(file: File | undefined) {
     if (!file) return;
-    if (
-      !ACCEPTED_AVATAR_TYPES.split(",").includes(file.type) ||
-      file.size > MAX_AVATAR_BYTES
-    ) {
-      setUploadError("Choose a PNG, JPEG, or WEBP under 5MB.");
+    const sizeError = getFileSizeError(file, SUBMISSION_MEDIA_MAX_SIZE_MB);
+    if (!ACCEPTED_AVATAR_TYPES.split(",").includes(file.type) || sizeError) {
+      setUploadError(sizeError ?? "Choose a PNG, JPEG, or WEBP.");
       return;
     }
     setUploadError(null);

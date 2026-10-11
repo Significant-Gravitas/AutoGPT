@@ -207,7 +207,7 @@ export function useSendMessage({
     void dispatchRef
       .current(sessionId, send.text, send.files, parts, send.metadata)
       .catch((error: unknown) => {
-        recoverFailedFirstSend(send.text, parts, error);
+        recoverFailedDeferredSend(send.text, parts, error);
       });
   }, [sessionId]);
 
@@ -330,16 +330,18 @@ export function useSendMessage({
 }
 
 /**
- * Failure recovery for the first send of a new chat, which is dispatched from
- * an effect long after `onSend` returned.
+ * Failure recovery for a send whose caller can no longer observe it: the
+ * first send of a new chat (dispatched from an effect long after `onSend`
+ * returned) and a follow-up held until the local stream settled (see
+ * `useCopilotPage`), whose `onSend` resolves once the turn is dispatched.
  *
  * Everything goes through the stores because the `"new"`-keyed host that
- * started the send is already unmounted — its draft state and chips are gone.
- * The text comes back as the composer's initial prompt and the workspace
- * references as pending file parts; local `File` chips cannot be restored,
- * they only ever existed in that unmounted host.
+ * started a first send is already unmounted — its draft state and chips are
+ * gone. The text comes back as the composer's initial prompt and the
+ * workspace references as pending file parts; local `File` chips cannot be
+ * restored, they only ever existed in that unmounted host.
  */
-function recoverFailedFirstSend(
+export function recoverFailedDeferredSend(
   text: string,
   parts: StoredAttachmentPart[],
   error: unknown,

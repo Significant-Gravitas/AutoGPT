@@ -139,12 +139,12 @@ class RunSubSessionTool(BaseTool):
             return ErrorResponse(
                 message="prompt is required",
                 session_id=session.session_id,
-            )
+            ).from_outside()
         if user_id is None:
             return ErrorResponse(
                 message="Authentication required",
                 session_id=session.session_id,
-            )
+            ).from_outside()
 
         # Resolve the sub's ChatSession id — either resume an owned one or
         # create a fresh session that inherits the parent's dry_run so a
@@ -162,7 +162,7 @@ class RunSubSessionTool(BaseTool):
                         "run_sub_session call of yours."
                     ),
                     session_id=session.session_id,
-                )
+                ).from_outside()
             if owned.expert_id != session.expert_id:
                 return ErrorResponse(
                     message=(
@@ -171,7 +171,7 @@ class RunSubSessionTool(BaseTool):
                         "fresh sub for this assistant."
                     ),
                     session_id=session.session_id,
-                )
+                ).from_outside()
             # Only the session that opened a sub may steer it: same scope is
             # not enough, or any sibling — or the sub itself — could queue a
             # prompt into it under its envelope rather than their own.
@@ -193,7 +193,7 @@ class RunSubSessionTool(BaseTool):
                         "sub."
                     ),
                     session_id=session.session_id,
-                )
+                ).from_outside()
             # Subs are created as automations below, so only a sub may be
             # resumed as one. Otherwise this tool would run a model-authored
             # prompt inside an interactive session the caller happens to own,
@@ -214,7 +214,7 @@ class RunSubSessionTool(BaseTool):
                         "session."
                     ),
                     session_id=session.session_id,
-                )
+                ).from_outside()
             if (
                 owned.metadata.llm_auth_provider != session.metadata.llm_auth_provider
                 or owned.metadata.llm_credential_id
@@ -223,7 +223,7 @@ class RunSubSessionTool(BaseTool):
                 return ErrorResponse(
                     message="codex_session_route_mismatch",
                     session_id=session.session_id,
-                )
+                ).from_outside()
             inner_session_id = sub_session_param
             opened_here = False
         else:
@@ -297,7 +297,7 @@ class RunSubSessionTool(BaseTool):
             # handles — the same shape handoff_to_expert returns on refusal.
             return ErrorResponse(
                 message=outcome_response.message, session_id=session.session_id
-            )
+            ).from_outside()
         return outcome_response
 
 
@@ -510,7 +510,7 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
 
     if outcome == "running":
         return SubSessionStatusResponse(
@@ -526,7 +526,7 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
 
     if outcome == "refused":
         # The turn never started; the tree or the target said why.
@@ -538,7 +538,7 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
 
     if outcome == "rejected_concurrent_turn_cap":
         # No sub-session record / transcript exists yet — the per-user
@@ -553,7 +553,7 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
 
     if outcome == "failed":
         return SubSessionStatusResponse(
@@ -564,7 +564,7 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
 
     # completed — prefer the authoritative listing supplied by the caller;
     # fall back to mining the tool-call log when it's unavailable.
@@ -590,4 +590,4 @@ def response_from_outcome(
         sub_tool_call_count=len(result.tool_calls),
         sub_workspace_files=workspace_files or None,
         elapsed_seconds=round(elapsed, 2),
-    )
+    ).from_outside(result.response_text, workspace_files)

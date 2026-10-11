@@ -1,7 +1,8 @@
-"""Every account carries its status and dates into MailerLite, from signup on,
-and neither a MailerLite outage nor an address it refuses ever costs the
-signup or the billing email the update rides along with."""
+"""Customers carry their status and dates into MailerLite, and neither a
+MailerLite outage nor an address it refuses ever costs the checkout or the
+billing email the update rides along with. A signup alone queues nothing."""
 
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -54,13 +55,18 @@ def test_a_new_subscription_clears_the_last_ones_cancellation_and_end():
     }
 
 
+SIGNED = subscriber_fields.signed(datetime(2026, 9, 29, 10, 0, tzinfo=UTC))
+
+
 @pytest.mark.asyncio
-async def test_a_signup_queues_signed_with_the_account_creation_day(fields_on):
-    await subscriber_fields.queue_signup(
-        "user-1", EMAIL, datetime(2026, 9, 29, 10, 0, tzinfo=UTC)
+async def test_a_field_change_is_queued_without_any_mailerlite_settings(fields_on):
+    """It is queued from the API server, which never holds the MailerLite
+    token: the notification service decides whether it goes anywhere."""
+    await subscriber_fields.queue_fields(
+        "user-1", EMAIL, SIGNED, AudienceAction.CHECKOUT_OPENED
     )
     event = fields_on.await_args.args[0]
-    assert event.action is AudienceAction.SIGNUP
+    assert event.action is AudienceAction.CHECKOUT_OPENED
     assert event.fields == {
         SubscriberField.STATUS: SubscriptionStatus.SIGNED.value,
         SubscriberField.SIGNUP: "2026-09-29",
@@ -68,16 +74,8 @@ async def test_a_signup_queues_signed_with_the_account_creation_day(fields_on):
 
 
 @pytest.mark.asyncio
-async def test_a_signup_is_queued_without_any_mailerlite_settings(fields_on):
-    """Signup runs in the API server, which never holds the MailerLite token:
-    the notification service decides whether it goes anywhere."""
-    await subscriber_fields.queue_signup("user-1", EMAIL, datetime.now(UTC))
-    assert fields_on.await_args.args[0].fields[SubscriberField.STATUS] == "signed"
-
-
-@pytest.mark.asyncio
 async def test_a_reserved_domain_is_skipped_not_retried(fields_on):
-    await subscriber_fields.queue_signup("user-1", "sam@site.test", datetime.now(UTC))
+    await subscriber_fields.queue_fields("user-1", "sam@site.test", SIGNED)
     fields_on.assert_not_awaited()
 
 
@@ -93,7 +91,7 @@ async def test_a_queue_failure_is_reported_never_raised(
     monkeypatch, fields_on, failure
 ):
     monkeypatch.setattr(subscriber_fields, "queue_audience_change", failure)
-    await subscriber_fields.queue_signup("user-1", EMAIL, datetime.now(UTC))
+    await subscriber_fields.queue_fields("user-1", EMAIL, SIGNED)
     failure.assert_awaited_once()
 
 
@@ -118,45 +116,42 @@ def _prisma(existing):
     )
 
 
-async def _get_or_create(existing, queue_signup):
+async def _get_or_create(existing):
     prisma, created = _prisma(existing)
+    scheduled: list[asyncio.Task] = []
+    create_task = asyncio.create_task
+
+    def recording(coro, **kwargs):
+        task = create_task(coro, **kwargs)
+        scheduled.append(task)
+        return task
+
     with (
         patch.object(user_data, "prisma", prisma),
         patch.object(user_data, "_ensure_user_profile", AsyncMock()),
-        patch.object(user_data, "ensure_personal_org", AsyncMock()),
+        patch.object(user_data, "ensure_personal_org", AsyncMock(return_value=False)),
+        patch.object(user_data, "schedule_posthog_lifecycle_sync", MagicMock()),
         patch.object(user_data.User, "from_db", MagicMock()),
         patch.object(user_data, "UserCreationResult", MagicMock()),
-        patch.object(user_data, "queue_signup", queue_signup),
+        patch("asyncio.create_task", recording),
     ):
         await user_data.get_or_create_user_with_status(
             {"sub": "user-1", "email": EMAIL}
         )
-        # Let the background task run.
-        for task in list(user_data._signup_sync_tasks):
-            await task
+        # Whatever signup scheduled in the background runs before the patches
+        # go, so a MailerLite queue it reached would be seen.
+        await asyncio.gather(*scheduled, return_exceptions=True)
     return created
 
 
 @pytest.mark.asyncio
-async def test_a_new_account_is_queued_for_mailerlite():
-    queue_signup = AsyncMock()
-    created = await _get_or_create(None, queue_signup)
-    queue_signup.assert_awaited_once_with("user-1", EMAIL, created.createdAt)
-
-
-@pytest.mark.asyncio
-async def test_an_existing_account_is_not_queued_again():
-    queue_signup = AsyncMock()
-    await _get_or_create(SimpleNamespace(id="user-1", email=EMAIL), queue_signup)
-    queue_signup.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_signup_never_fails_because_the_sync_does():
-    def broken(*_):
-        raise RuntimeError("no event loop for you")
-
-    await _get_or_create(None, MagicMock(side_effect=broken))
+async def test_a_new_account_is_not_sent_to_mailerlite(fields_on):
+    """Only checkout openers belong in MailerLite: a signup alone queues
+    nothing, so it can never create a subscriber."""
+    await _get_or_create(None)
+    fields_on.assert_not_awaited()
+    for name in ("_sync_signup", "queue_signup", "queue_fields", "_signup_sync_tasks"):
+        assert not hasattr(user_data, name)
 
 
 # ── the MailerLite client ──────────────────────────────────────────────────
@@ -426,10 +421,11 @@ async def _consume(*events) -> None:
 
 
 async def _signup_event(fields_on):
-    await subscriber_fields.queue_signup(
-        "user-1", EMAIL, datetime(2026, 9, 29, 10, 0, tzinfo=UTC)
+    """A signup queued before signups stopped being sent, still in the queue
+    or replayed from the dead-letter queue."""
+    return subscriber_fields.audience_event(
+        AudienceAction.SIGNUP, EMAIL, "user-1", SIGNED
     )
-    return fields_on.await_args.args[0]
 
 
 def _checkout_event():
@@ -458,17 +454,18 @@ async def test_a_signup_synced_after_the_checkout_does_not_undo_it(
 
 
 @pytest.mark.asyncio
-async def test_a_signup_in_order_is_overtaken_by_the_checkout(
+async def test_a_stale_signup_never_creates_a_subscriber(
     mailerlite_configured, fields_on
 ):
-    mailerlite_configured.config.mailerlite_onboarding_group_id = "grp_tour"
+    """A signup still queued from before signups stopped being sent must not
+    bring someone who never opened checkout into MailerLite."""
     signup = await _signup_event(fields_on)
     ml = _FakeMailerLite()
+    ml.post = AsyncMock(side_effect=ml.post)
     with patch.object(mailerlite, "_client", return_value=ml):
         await _consume(signup)
-        assert ml.subscribers[EMAIL]["subscription_status"] == "signed"
-        await _consume(_checkout_event())
-    assert ml.subscribers[EMAIL]["subscription_status"] == "subscribed"
+    ml.post.assert_not_awaited()
+    assert EMAIL not in ml.subscribers
 
 
 @pytest.mark.asyncio

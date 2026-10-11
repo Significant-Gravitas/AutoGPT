@@ -97,7 +97,7 @@ export function useExpertWorkflowCard({ workflow, expertId }: Args) {
       ? `/build?flowID=${workflow.graph_id}`
       : null,
     chatPrompt,
-    chatHref: `/copilot?${expertId ? `expertId=${expertId}&` : ""}autosubmit=true#prompt=${encodeURIComponent(chatPrompt)}`,
+    chatHref: `/home?${expertId ? `expertId=${expertId}&` : ""}autosubmit=true#prompt=${encodeURIComponent(chatPrompt)}`,
     openRun,
     openTriggers,
   };

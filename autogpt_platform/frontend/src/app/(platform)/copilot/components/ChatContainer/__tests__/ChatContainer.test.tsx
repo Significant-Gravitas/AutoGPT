@@ -16,6 +16,12 @@ import { useCopilotUIStore } from "../../../store";
 
 const mockIsUsageLimitReached = vi.fn();
 const clipboardWrite = vi.fn(async (_text: string) => {});
+const toast = vi.hoisted(() => vi.fn());
+
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast,
+  useToast: () => ({ toast, dismiss: vi.fn() }),
+}));
 
 const ARTIFACT_A_ID = "11111111-0000-0000-0000-000000000000";
 const ARTIFACT_B_ID = "22222222-0000-0000-0000-000000000000";
@@ -326,6 +332,118 @@ describe("ChatContainer", () => {
 
     expect(onSend).toHaveBeenCalledTimes(1);
     expect(onSend.mock.calls[0][0]).toBe("Continue from where you left off.");
+  });
+
+  it.each([false, true])(
+    "shows an error when retrying fails (held call: %s)",
+    async (isHeldCall) => {
+      const failure = Promise.reject(new Error("Could not reach the server"));
+      void failure.catch(() => undefined);
+      const onSend = vi.fn((_message: string) => failure);
+      render(
+        <ChatContainer
+          {...baseProps}
+          error={new Error("The model returned an empty response.")}
+          onSend={onSend}
+          messages={[
+            {
+              id: "failed-request",
+              role: "user",
+              parts: [{ type: "text", text: "Try this request" }],
+              ...(isHeldCall
+                ? { metadata: { held_call: { review_id: "r1" } } }
+                : {}),
+            },
+          ]}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith({
+          title: "Couldn't retry message",
+          description:
+            "Could not reach the server — your previous message is still in the chat.",
+          variant: "destructive",
+        }),
+      );
+      expect(toast).toHaveBeenCalledTimes(1);
+      expect(onSend).toHaveBeenCalledTimes(1);
+      expect(onSend.mock.calls[0][0]).toBe(
+        isHeldCall ? "Continue from where you left off." : "Try this request",
+      );
+    },
+  );
+
+  it("shows an error when retrying throws before dispatch", async () => {
+    const onSend = vi.fn(() => {
+      throw new Error("Could not start the request");
+    });
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        messages={[
+          {
+            id: "failed-request",
+            role: "user",
+            parts: [{ type: "text", text: "Try this request" }],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: "Couldn't retry message",
+        description:
+          "Could not start the request — your previous message is still in the chat.",
+        variant: "destructive",
+      }),
+    );
+    expect(toast).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores repeated retry clicks until the attempt settles and allows retrying again after failure", async () => {
+    let rejectSend: (error: Error) => void = () => {};
+    const pendingSend = new Promise<void>((_resolve, reject) => {
+      rejectSend = reject;
+    });
+    const onSend = vi
+      .fn()
+      .mockReturnValueOnce(pendingSend)
+      .mockResolvedValue(undefined);
+    render(
+      <ChatContainer
+        {...baseProps}
+        error={new Error("The model returned an empty response.")}
+        onSend={onSend}
+        messages={[
+          {
+            id: "failed-request",
+            role: "user",
+            parts: [{ type: "text", text: "Try this request" }],
+          },
+        ]}
+      />,
+    );
+    const retryButton = screen.getByRole("button", { name: "Retry message" });
+
+    fireEvent.click(retryButton);
+    fireEvent.click(retryButton);
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    await act(async () => rejectSend(new Error("Could not reach the server")));
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(retryButton);
+
+    expect(onSend).toHaveBeenCalledTimes(2);
+    expect(onSend.mock.calls[1][0]).toBe("Try this request");
   });
 
   it("does not render the shared-chat notice for unshared chats", async () => {

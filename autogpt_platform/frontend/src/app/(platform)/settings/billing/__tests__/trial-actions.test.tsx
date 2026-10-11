@@ -6,6 +6,10 @@ import {
 import { TrialCard } from "@/components/organisms/TrialCard/TrialCard";
 import { server } from "@/mocks/mock-server";
 import {
+  installGtagShim,
+  removeGtagShim,
+} from "@/tests/integrations/gtag-shim";
+import {
   fireEvent,
   render,
   screen,
@@ -121,6 +125,134 @@ describe("trial billing actions", () => {
       });
     },
   );
+
+  it.each([
+    { offer: trialOffer, value: 20, currency: "USD" },
+    {
+      offer: {
+        ...trialOffer,
+        billing_cycle: "yearly" as const,
+        currency: "jpy",
+        unit_amount: 30000,
+      },
+      value: 30000,
+      currency: "JPY",
+    },
+  ])(
+    "reports begin_checkout at the offer's $value $currency before redirecting",
+    async ({ offer, value, currency }) => {
+      vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+      vi.stubEnv(
+        "NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS",
+        "begin_checkout=BC",
+      );
+      const gtagCalls = installGtagShim();
+      const assign = vi
+        .spyOn(window.location, "assign")
+        .mockImplementation(() => {});
+      server.use(
+        getGetTrialsGetTrialStatusMockHandler200(
+          trialResponse({ eligible: true, active: false, status: null, offer }),
+        ),
+        getPostTrialsStartTrialCheckoutMockHandler200({
+          url: "https://checkout.stripe.com/c/pay/test_trial",
+        }),
+      );
+      try {
+        render(<TrialCard />);
+        fireEvent.click(
+          await screen.findByRole("button", { name: /start 7-day trial/i }),
+        );
+        await waitFor(() =>
+          expect(assign).toHaveBeenCalledWith(
+            "https://checkout.stripe.com/c/pay/test_trial",
+          ),
+        );
+        expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([
+          [
+            "event",
+            "conversion",
+            {
+              send_to: "AW-123/BC",
+              value,
+              currency,
+              event_callback: expect.any(Function),
+            },
+          ],
+        ]);
+      } finally {
+        removeGtagShim();
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
+  it("stays busy while the conversion goes out, so a second click starts no second checkout", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const assign = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => {});
+    const checkout = vi.fn(() => ({
+      url: "https://checkout.stripe.com/c/pay/test_trial",
+    }));
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(
+        trialResponse({ eligible: true, active: false, status: null }),
+      ),
+      getPostTrialsStartTrialCheckoutMockHandler200(checkout),
+    );
+    try {
+      render(<TrialCard />);
+      const button = await screen.findByRole("button", {
+        name: /start 7-day trial/i,
+      });
+      fireEvent.click(button);
+      await waitFor(() =>
+        expect(gtagCalls.some((call) => call[1] === "conversion")).toBe(true),
+      );
+      expect(button.hasAttribute("disabled")).toBe(true);
+      fireEvent.click(button);
+      await waitFor(() => expect(assign).toHaveBeenCalledOnce());
+      expect(checkout).toHaveBeenCalledOnce();
+      expect(gtagCalls.filter((call) => call[1] === "conversion")).toHaveLength(
+        1,
+      );
+    } finally {
+      removeGtagShim();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("reports no begin_checkout when the trial checkout fails", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const assign = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => {});
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(
+        trialResponse({ eligible: true, active: false, status: null }),
+      ),
+      http.post("*/api/credits/trial", () =>
+        HttpResponse.json({ detail: "Stripe is unavailable" }, { status: 502 }),
+      ),
+    );
+    try {
+      render(<TrialCard />);
+      fireEvent.click(
+        await screen.findByRole("button", { name: /start 7-day trial/i }),
+      );
+      await screen.findByRole("alert");
+      expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
+      expect(assign).not.toHaveBeenCalled();
+    } finally {
+      removeGtagShim();
+      vi.unstubAllEnvs();
+    }
+  });
 
   it("refreshes an expired offer after checkout is rejected", async () => {
     let rejected = false;

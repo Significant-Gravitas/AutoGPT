@@ -129,6 +129,14 @@ model User {
 
   timezone String @default("not-set")
 
+  // Consent captured at signup. termsVersion names the terms and privacy
+  // policy text the account agreed to (frontend lib/legal.ts TERMS_VERSION).
+  // A set marketingOptOutAt keeps the account out of MailerLite entirely.
+  termsAcceptedAt       DateTime?
+  termsVersion          String?
+  marketingOptOutAt     DateTime?
+  marketingOptOutSource String? // "signup" | "email_unsubscribe" | "settings"
+
   // Default AutoPilot connection for chats the caller didn't route explicitly
   // (bot links, schedules, a fresh /copilot session). NULL means "automatic" —
   // the server picks, exactly as it did before this setting existed. The
@@ -1363,6 +1371,10 @@ model ExpertRoutine {
   // Seeded and shared rows always arrive false; only an owner binding this
   // routine to their connections sets it.
   grantsCredentials     Boolean   @default(false)
+  // {provider: {id, title}}: the account each turn uses where the owner has
+  // several for one provider, chosen in the chat that set the routine up. A
+  // pinned account that is gone fails the step instead of switching accounts.
+  credentialPins        Json?
   // Mirrors AgentPreset.deactivatedByExpertArchive: re-hire resumes exactly
   // what archiving paused, never one the owner had switched off themselves.
   pausedByExpertArchive Boolean   @default(false)

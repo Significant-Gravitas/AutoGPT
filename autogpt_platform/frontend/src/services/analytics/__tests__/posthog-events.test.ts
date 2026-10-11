@@ -7,6 +7,7 @@ import { PlannedPostHogEvent, PostHogEvent } from "../posthog-events";
 
 const LIVE_EVENT_NAMES = [
   "$pageview",
+  "billing_portal_opened",
   "brain_dump_canceled",
   "brain_dump_completed",
   "brain_dump_download",
@@ -23,47 +24,46 @@ const LIVE_EVENT_NAMES = [
   "capability_card_viewed",
   "capability_cards_completed",
   "capability_cards_skipped",
+  "checkout_abandoned",
   "credential_card_never_rendered",
   "credential_oauth_flow_timed_out",
   "credential_oauth_popup_blocked",
   "credential_proceed_stuck_after_connect",
   "credential_scope_shortfall_blocked_selection",
-  "experiment_exposed",
   "expert_profile_opened",
   "expert_recommendation_clicked",
   "expert_recommended",
   "expert_thread_created",
   "experts_section_viewed",
-  "feature_flag_mismatch",
-  "finalize_latency_ms",
+  "feature_flag_mismatched",
   "hire_flow_abandoned",
-  "hire_flow_completed",
   "hire_started",
   "hire_step_continued",
   "home_attention_actioned",
   "home_team_member_clicked",
   "home_viewed",
-  "intro_card_dismissed",
   "intro_followup_sent",
   "intro_path",
-  "intro_start_with_autopilot",
   "later_dump_completed",
-  "onboarding_expert_hired",
-  "raise_door_clicked",
-  "subscription_trial_checkout_started",
-  "subscription_trial_offer_viewed",
+  "marketing_opted_out",
+  "onboarding_step_viewed",
+  "paywall_viewed",
+  "plan_selected",
   "tab_intro_cta_clicked",
   "tab_intro_dismissed",
   "tab_intro_shown",
+  "tour_cta_clicked",
+  "tour_scenario_completed",
+  "tour_scenario_started",
+  "tour_started",
   "transcription_failed",
-  "voice_first_sound_latency_ms",
+  "trial_offer_viewed",
   "voice_mode_error",
   "voice_mode_permission_denied",
   "voice_mode_started",
   "voice_mode_stopped",
   "voice_mode_timed_out",
   "voice_recording_downloaded",
-  "voice_transcribe_latency_ms",
   "voice_transcribe_retried",
   "voice_turn_completed",
   "voice_turn_dropped",
@@ -71,16 +71,26 @@ const LIVE_EVENT_NAMES = [
   "welcome_dialog_closed",
 ];
 
-const PLANNED_EVENT_NAMES = [
-  "billing_portal_opened",
-  "checkout_abandoned",
-  "onboarding_step_viewed",
-  "paywall_viewed",
-  "plan_selected",
-  "tour_cta_clicked",
-  "tour_scenario_completed",
-  "tour_scenario_started",
-  "tour_started",
+const PLANNED_EVENT_NAMES: string[] = [];
+
+// No longer sent, or renamed (SECRT-2722). The names stay reserved: reusing one would
+// splice a different action onto the history PostHog already holds for it.
+const RETIRED_EVENT_NAMES = [
+  "experiment_exposed",
+  // Renamed to feature_flag_mismatched before it reached production.
+  "feature_flag_mismatch",
+  "finalize_latency_ms",
+  "hire_flow_completed",
+  "intro_card_dismissed",
+  "intro_start_with_autopilot",
+  "onboarding_expert_hired",
+  "raise_door_clicked",
+  // Folded into the backend's checkout_started{checkout_kind: trial}.
+  "subscription_trial_checkout_started",
+  // Renamed to the analytics plan's trial_offer_viewed.
+  "subscription_trial_offer_viewed",
+  "voice_first_sound_latency_ms",
+  "voice_transcribe_latency_ms",
 ];
 
 describe("PostHog event names", () => {
@@ -92,6 +102,14 @@ describe("PostHog event names", () => {
     expect(Object.values(PlannedPostHogEvent).sort()).toEqual(
       PLANNED_EVENT_NAMES,
     );
+  });
+
+  it("never reuses a retired name", () => {
+    const names = new Set<string>([
+      ...Object.values(PostHogEvent),
+      ...Object.values(PlannedPostHogEvent),
+    ]);
+    expect(RETIRED_EVENT_NAMES.filter((name) => names.has(name))).toEqual([]);
   });
 
   it("never lists a planned name as live", () => {

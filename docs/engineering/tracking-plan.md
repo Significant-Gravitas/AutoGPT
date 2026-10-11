@@ -1,0 +1,433 @@
+# PostHog Tracking Plan
+
+The single list of PostHog events: for every user action, one event name, one
+sender and one set of properties. [Activation Metrics & Experiments](activation-metrics.md)
+explains how PostHog fits next to the SQL views, Looker, LaunchDarkly and
+DataFast; this page is the event contract.
+
+Event names follow the product analytics plan, *Every Second Counts* (owner:
+Toran), section "What we will record". Where that plan names an event for an
+action, this list uses its name; [Differences from the analytics plan](#differences-from-the-analytics-plan)
+lists what is not aligned yet.
+
+In code the names live in two modules. Browser call sites may still pass a
+literal (`trackBrainDump("brain_dump_started")`), which is type-checked
+against these modules, and backend funnel `data_index` keys embed the name
+too (`briefing_generated:<id>`, `briefing_delivered:<id>`). A
+rename therefore has to search for the old string, not just edit the modules:
+
+| Sender | Module | Pin test |
+| --- | --- | --- |
+| Backend | `autogpt_platform/backend/backend/util/posthog_events.py` (`PostHogEvent`, `PlannedPostHogEvent`) | `posthog_events_test.py` |
+| Browser | `autogpt_platform/frontend/src/services/analytics/posthog-events.ts` (`PostHogEvent` and its groups, `PlannedPostHogEvent`) | `__tests__/posthog-events.test.ts` |
+
+## Rules
+
+### Naming
+
+- **Use the analytics plan's name.** When the plan names an event for an
+  action, that is the name, even if we used to send something else.
+- Otherwise the name is `object_action`, snake_case, action in the past
+  tense: `signup_completed`, `checkout_started`, `paywall_viewed`.
+- Chat (Autopilot) events start with `chat_`, never `copilot_`. The trial
+  lifecycle is `trial_*`.
+- **Rename once, then never again.** PostHog stores the raw string, so a
+  rename empties every insight, funnel and cohort built on the old name, and
+  past events cannot be backfilled. The live names that differed from the
+  plan were renamed together in SECRT-2722 (see [Renamed](#renamed)); the
+  pin tests reserve the old names and fail on any change to a live one.
+- Put a new name in `PlannedPostHogEvent` when it is agreed, and move it into
+  the live list in the change that starts sending it.
+
+### Who sends it
+
+- **Outcomes are sent by the backend**: something was created, charged, run,
+  hired or delivered. The backend sees every path (web, API, copilot, Slack,
+  Telegram, webhooks), cannot be blocked by an ad blocker, and is what the
+  `analytics.*` SQL views count.
+- **Interactions are sent by the browser**: views, clicks, dismissals and
+  client-side timings that the backend never sees.
+- One action has **one** event. Where two emitters describe the same action,
+  the backend event survives and the other stops being sent (see
+  [Removed](#removed)).
+
+### Base properties
+
+Every event must carry:
+
+| Property | Value |
+| --- | --- |
+| `environment` | `settings.config.app_env` on the backend (`local`, `dev`, `prod`), the matching app environment in the browser. |
+| `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser). |
+
+Every backend event goes through `capture()` in
+`backend/util/posthog_client.py`, which applies both last, so a caller cannot
+overwrite them. The browser registers them once as PostHog super properties
+(`src/services/analytics/posthog-base-properties.ts`), again after `reset()`
+at logout; a Vercel preview reports `environment: preview`.
+
+`source` is reserved for the emitter. The three events that used it for
+something else now use `hire_started.surface`,
+`expert_recommended.team_source` and `workflow_installed_on_expert.workflow_source`.
+
+### Identity
+
+- **`distinct_id` is the platform user id** for every backend event, the same
+  id the browser passes to `posthog.identify(user.id)`, so both halves land
+  on one person.
+- **Before login the browser uses the first-party anonymous id**
+  (`src/services/analytics/anonymous-id.ts`), passed to `posthog.init` as the
+  bootstrap `distinctID`. `identify` merges it into the user at login, and
+  `resetAnalyticsIdentity` mints a fresh one at logout.
+- **The browser waits for analytics consent** (Cookiebot,
+  `src/providers/posthog/posthog-consent.ts`). PostHog starts opted out:
+  without consent, browser events are dropped, `identify` is not called and
+  the anonymous id lasts only for the page load. Backend events do not
+  depend on it.
+- **No synthetic ids.** A backend event with no user is dropped
+  (`posthog_client.capture` does it for every emitter), since a made-up id
+  creates a person nobody can merge.
+- **No email or name in event properties.** Identify ids only. The email and
+  display name are person properties set by `identify` and nowhere else.
+  (`expert_hired.name` is the expert's display name, not a person's.)
+
+## What counts as a task
+
+The `analytics.*` views (`user_task_daily`, `user_lifecycle`,
+`retention_task_weekly`, `unit_economics_monthly`) define a task as a unit of
+work a person asked for now:
+
+- a top-level, non-dry-run agent run whose `triggerSource` is `manual` or
+  `api` (or NULL, for rows older than the column), expert workflow runs
+  included; **or**
+- a `user` message in an Autopilot or expert chat whose session origin is not
+  `automation` and whose kind is not `dream`.
+
+A run the copilot started (`triggerSource = copilot`) is **not** a second
+task: the chat turn that asked for it already counts. `agent_run_started` does fire
+for copilot-started runs (with `trigger: copilot`), because it measures
+human-initiated runs, not tasks. `user_lifecycle.agent_runs_human_total` is
+its SQL twin and includes copilot runs too.
+
+The same definition as a PostHog filter:
+
+```sql
+event IN ('agent_run_started', 'chat_message_sent')
+AND coalesce(properties.via, '') != 'copilot'
+```
+
+In the insight UI: events `agent_run_started` and `chat_message_sent`,
+filtered by `via` "is not" `copilot`. Chat turns carry no `via`, so
+the filter must keep events where it is unset. The emitters already leave
+out dry runs, sub-graph runs, schedule and webhook runs, and automation-origin
+turns.
+
+Automated work is measured separately: `schedule_fired` and `trigger_fired`.
+
+## Status legend
+
+| Status | Meaning |
+| --- | --- |
+| `live` | Sent today under this name. Keep it. |
+| `add` | Not sent yet; the name is in `PlannedPostHogEvent` until the change that starts sending it. |
+
+Events that are no longer sent are listed under [Removed](#removed), with
+what replaced them.
+
+## Acquisition
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `$pageview` | browser | live | `$current_url` | A route or query string changes (`PostHogPageViewTracker`). |
+| `tour_started` | browser | live | — | The public `/tour` page is opened (once per tab). |
+| `tour_scenario_started` | browser | live | `scenario` | A tour scenario starts playing. |
+| `tour_scenario_completed` | browser | live | `scenario` | A tour scenario reaches its end. |
+| `tour_cta_clicked` | browser | live | `label` (`free-trial`, `signup`, `pricing`, `another-scenario`, `self-host`, `share`), `placement` where the CTA has one, `surface` (`tour`, `marketplace`) on sidebar-card clicks | A tour or logged-out marketplace call to action is clicked. |
+| `marketing_opted_out` | browser | live | `surface` (`signup`) | Someone refuses marketing email in the app. `signup`: "opt out" is clicked in the legal line under the signup buttons (not "Undo"); nothing else is sent, since there is no user yet, so it only gives the opt-out rate. The refusal itself is stored on the user (`marketingOptOutAt`). |
+| `signup_completed` | backend | live | `signup_method` (the auth provider, e.g. `email`, `google`: from the user's first Better Auth account row, where `credential` is reported as `email`, else from a Supabase token's `app_metadata.provider`; omitted when neither has it) | The user row is created (`data/user.py`), whichever request creates it. |
+
+Sidebar CTA clicks retain the tour event names for compatibility. Filter
+`surface` to distinguish the marketplace from the tour; older sidebar events
+do not carry this property. For tour-only sidebar reports after deployment,
+require `surface = tour`. The signup CTA uses `free-trial` in cloud mode and
+`signup` on self-hosted installations, where creating an account starts no trial.
+
+The tour funnel also goes to DataFast (`tour_start`, `tour_scenario_start`,
+`tour_scenario_complete`, `tour_cta_click`); the PostHog events mirror it with
+the same properties and nothing identifying in them: `/tour` is public and
+pre-signup, so they land on the visitor's anonymous id. `/tour` sends the
+DataFast goals without consent (SECRT-2713), but the PostHog events wait for
+analytics consent like every browser event, so the two funnels count
+differently.
+
+## Onboarding and activation
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab, same keys as the DataFast `onboarding_<step>` goals). The paywall step reports `paywall_viewed` instead. |
+| `onboarding_completed` | backend | live | — | `ONBOARDING_COMPLETE` is first recorded for the user (`complete_onboarding_step`). |
+| `brain_dump_started` | browser | live | — | Recording starts. |
+| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
+| `brain_dump_canceled` | browser | live | — | Recording is cancelled. |
+| `brain_dump_skipped` | browser | live | — | The step is skipped. |
+| `brain_dump_recovery_shown` | browser | live | `parts` | A saved partial recording is offered back. |
+| `brain_dump_recovery_used` | browser | live | — | The saved recording is used. |
+| `brain_dump_retry` | browser | live | `attempt` | A failed finalize is retried. |
+| `brain_dump_restarted` | browser | live | — | Recording starts over. |
+| `brain_dump_download` | browser | live | — | The recording is downloaded after a failure. |
+| `brain_dump_permission_denied` | browser | live | — | Microphone permission is refused. |
+| `brain_dump_typed_fallback` | browser | live | `reason` | The user types instead of speaking. |
+| `transcription_failed` | browser | live | `error_code`, `finalize_latency_ms` | Finalize returns a failure. |
+| `welcome_dialog_closed` | browser | live | — | The first-landing welcome dialog closes. |
+| `capability_card_viewed` | browser | live | `card_index`, `deck` | A capability card is shown. |
+| `capability_cards_completed` | browser | live | `card_index`, `deck` | The deck is finished. |
+| `capability_cards_skipped` | browser | live | `card_index`, `deck` | The deck is skipped. |
+| `intro_path` | browser | live | `path` | The intro path (A/B) is chosen. |
+| `intro_followup_sent` | browser | live | `chars` | First message after the intro card. |
+| `later_dump_completed` | browser | live | — | A brain dump sent later from the composer. |
+| `expert_recommended` | browser | live | `template_id`, `position`, `team_source` | A recommended expert card is shown. |
+| `expert_recommendation_clicked` | browser | live | `template_id`, `position` | A recommended expert card is clicked. |
+| `hire_step_continued` | browser | live | `hired`, `recommended` | The hire step is left. |
+| `tab_intro_shown` | browser | live | `tab` | A tab intro card is shown. |
+| `tab_intro_cta_clicked` | browser | live | `tab`, `cta` | Its primary CTA is used. |
+| `tab_intro_dismissed` | browser | live | `tab` | It is dismissed any other way. |
+| `integration_connected` | backend | live | `provider`, `credential_type`, `method` | A credential is stored (OAuth, key, device code). |
+| `credential_oauth_started` | backend | live | `provider` | The backend issues an OAuth login URL (`GET /api/integrations/{provider}/login`). Not Codex. |
+| `credential_oauth_exchange_failed` | backend | live | `provider`, `status_code` (unset for an unexpected error), `failure_class` (`invalid_state`, `provider_unavailable`, `token_exchange`, `credential_merge`), `detail` (redacted, at most 200 characters) | `POST /api/integrations/{provider}/callback` returns an error, on any path. Not Codex. |
+| `credential_card_never_rendered` | browser | live | `provider`, `failure_class` | A provider is missing from the provider map. |
+| `credential_oauth_popup_blocked` | browser | live | `provider`, `failure_class` | Both the popup and the new tab were blocked. |
+| `credential_oauth_flow_timed_out` | browser | live | `provider`, `failure_class` | The OAuth flow timed out. |
+| `credential_scope_shortfall_blocked_selection` | browser | live | `provider`, `failure_class` | The granted scopes are narrower than required. |
+| `credential_proceed_stuck_after_connect` | browser | live | `provider`, `failure_class` | A connected credential never reached the card. |
+
+## Engagement
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `agent_run_started` | backend | live | `graph_id`, `graph_exec_id`, `via` (`manual`, `api`, `copilot`), `via_ref`, `preset_id`; an expert's workflow run adds `expert_id` and `kind: workflow_run` | A person starts an agent run. |
+| `chat_message_sent` | backend | live | `chat_session_id`, `origin` (`web`, or the bot platform the chat was opened from: `slack`, `discord`, ...), `kind: chat_turn`, `message_length`; `expert_id` in an expert chat | A person sends a message in an Autopilot or expert chat. |
+| `agent_run_finished` | backend | live | `status` (`completed`, `failed`), `graph_id`, `graph_exec_id`, `via`, `expert_id`, `cost_cents`, `duration_seconds`, `is_subgraph_run`; `failure_reason` when failed | A run reaches COMPLETED or FAILED (sub-graph and automated runs included). A top-level expert run is `expert_id` set and `is_subgraph_run` false. Deduplicated on `graph_exec_id`, so a requeue or resume that finishes the same run again sends no second event. |
+| `schedule_created` | backend | live | `schedule_id`, `target` (`agent`, `autopilot`, `expert`), `expert_id`, `cron`, `is_recurring`, `run_at`, `graph_id`, `chat_session_id` | Any schedule is registered, from any surface. |
+| `chat_tool_called` | backend | live | `chat_session_id`, `tool_name`, `tool_call_id` | The copilot calls a tool. |
+| `chat_outcome` | backend | live | `outcome_type` (`agent_run_success`, `schedule_created`), `chat_session_id`; `agent_run_success`: `graph_id`, `execution_id`, `library_agent_id`; `schedule_created`: `target` (`agent`: `graph_id`, `schedule_id`, `cron`, `library_agent_id`; `followup`: `schedule_id`, `target_chat_session_id`, `is_recurring`) | A moment of value in a chat: the copilot started a (non-dry) run or created a schedule for the user. `agent_run_started` / `schedule_created` still count the run or schedule itself. |
+| `chat_library_check_outcome` | backend | live | `chat_session_id`, `outcome`, `matches_count`, `top_score` | The create-agent library check ends. |
+| `voice_mode_started` | browser | live | `entry` | Voice mode is switched on. |
+| `voice_mode_stopped` | browser | live | `turns`, `state` | Switched off by the user. |
+| `voice_mode_timed_out` | browser | live | `turns`, `state` | Closed by the silence timeout. |
+| `voice_turn_sent` | browser | live | `turn_index`, `transcript_chars`, `transcribe_latency_ms` | A spoken turn is sent. |
+| `voice_turn_dropped` | browser | live | `reason` (`vad_misfire`, `transcribe_failed`, `filler_or_empty`, `interrupted`); `transcribe_latency_ms` with `filler_or_empty`; `turn_index` and `first_sound_latency_ms` (null when nothing played yet) with `interrupted` | A spoken turn is discarded, or with `interrupted` a sent turn's reply is cut off by switching voice mode off or leaving the page. A sent turn ends in exactly one of `voice_turn_completed` or this. |
+| `voice_turn_completed` | browser | live | `turn_index`, `first_sound_latency_ms` (null when nothing played) | The mic reopens after the reply. |
+| `voice_transcribe_retried` | browser | live | `turn_index` | A failed transcription is retried. |
+| `voice_recording_downloaded` | browser | live | `turn_index` | The audio is downloaded instead. |
+| `voice_mode_permission_denied` | browser | live | `stage` | Microphone permission is refused. |
+| `voice_mode_error` | browser | live | `stage` | The VAD, synthesis or send failed. |
+| `experts_section_viewed` | browser | live | — | The marketplace experts shelf renders with results. |
+| `expert_profile_opened` | browser | live | `template_id` | An expert profile page opens. |
+| `hire_started` | browser | live | `template_id`, `surface` (`onboarding`, `expert_page`) | A hire button is clicked. |
+| `hire_flow_abandoned` | browser | live | `template_id`, `stage` | The hire dialog is closed before hiring. |
+| `expert_hired` | backend | live | `expert_id`, `template_id`, `name`, `failed_preloads_count`, `surface` (`onboarding`, `expert_page`, `copilot`; unset for other API callers) | An expert is hired or an archived one revived, from any surface (`experts_db.hire_expert`). Sent once the hire's background setup settles (`_run_hire_setup`), so `failed_preloads_count` is known; a revival with nothing to set up sends it at once. An idempotent re-hire of an active expert does not fire. |
+| `hire_failed` | backend | live | `template_id`, `failed_preloads_count` | Hiring raised. |
+| `expert_thread_created` | browser | live | `expert_id` | A new expert chat is created. |
+| `writing_style_added` | backend | live | `expert_id` | A writing style is saved on an expert. |
+| `workflow_installed_on_expert` | backend | live | `expert_id`, `workflow_source` (`library`, `marketplace`), `library_agent_id` or `store_listing_version_id` | A workflow is attached to an expert. |
+| `home_viewed` | browser | live | — | The home dashboard renders with data. |
+| `home_attention_actioned` | browser | live | `kind`, `action` | A "needs you" item is approved or declined. |
+| `home_team_member_clicked` | browser | live | `expert_id` | A team member row is clicked. |
+| `listing_added_to_library` | backend | live | `store_listing_version_id`, `graph_id`, `library_agent_id` | A marketplace agent is added to the library for the first time. Only a user adding a listing counts (the library route and the add-to-library block). Restoring an entry the user already had does not, and neither does a system install: an add inside another write's transaction, an expert's hire preloads, or attaching a marketplace workflow to an expert (that is `workflow_installed_on_expert`). |
+| `listing_downloaded` | backend | live | `store_listing_version_id`, `graph_id` | A signed-in user downloads a marketplace agent file. Signed-out downloads have no user and are not sent. |
+
+## Monetization
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `paywall_viewed` | browser | live | `surface` (`onboarding`, `paywall_gate`, `billing`) | A paywall or plan picker is shown (once per tab per surface): the onboarding subscription step, the in-app paywall modal, the billing page's plan card. The pricing arm comes from PostHog's own `$feature/...` properties. |
+| `plan_selected` | browser | live | `subscription_tier` (`PRO`, `MAX`, `BUSINESS` for Team), `billing_cycle`, `surface`; `pricing_variant` on `onboarding`, only when PostHog has assigned an arm (omitted while flags load and for users outside the rollout, who are not in `control`) | A plan is picked: a plan card on either paywall, or Upgrade / Downgrade on the billing page. |
+| `billing_portal_opened` | browser | live | `surface` (`billing` for the plan card, `billing_payment_method` for the payment method card) | The Stripe billing portal is opened. |
+| `checkout_started` | backend | live | `checkout_kind` (`subscription`, `top_up`, `trial`), `subscription_tier`, `billing_cycle`, `surface` (sent by the client; unset for the low-credit top-up dialog and the legacy `/profile/credits` page), `$feature/<experiment>` for every recorded experiment arm | A Stripe Checkout session is created and its URL returned (subscription, credit top-up or trial card setup). A paid plan changed in place opens no Checkout and sends nothing. |
+| `checkout_abandoned` | browser | live | `checkout_kind`, `surface` | The user returns from Stripe Checkout without paying (the cancel URL: `subscription=cancelled`, `topup=cancel`, `trial=cancelled`, or the paywall modal's `paywall_checkout=cancelled` marker). Browser-sent: Stripe only reports the expiry a day later. A trial abandonment is sent once per tab per surface until the next trial checkout starts, so a refresh on the cancel URL does not count twice but a second real abandonment does. |
+| `trial_offer_viewed` | browser | live | `trial_offer_version`, `subscription_tier`, `trial_duration_days`, `surface` | A trial offer card is shown. |
+| `trial_started` | backend | live | `trial_id`, `trial_offer_version`, `subscription_tier`, `billing_cycle`, `trial_duration_days` | The trial starts. Like every trial lifecycle event, it is sent only when its notification email is queued. |
+| `trial_ending` | backend | live | as above | The reminder window opens. |
+| `trial_canceled` | backend | live | as above | The trial is set to cancel. |
+| `trial_resumed` | backend | live | as above | A cancelled trial is resumed. |
+| `payment_failed` | backend | live | as above | The conversion charge fails. |
+| `trial_converted` | backend | live | as above | The trial converts to paid. |
+| `trial_ended` | backend | live | as above | The trial ends without converting. |
+| `subscription_changed` | backend | live | `change_type: upgrade`, `previous_subscription_tier`, `subscription_tier`, `billing_cycle` | A paid tier upgrade takes effect. Downgrades and cancellations are not sent here yet. |
+| `payment_succeeded` | backend | live | `subscription_tier`, `billing_cycle`, `amount_cents` (the invoice's `amount_paid`), `currency` | A subscription invoice is paid. Deduplicated on the invoice id: Stripe delivers both `invoice.payment_succeeded` and `invoice_payment.paid` for one invoice, and redelivers either, so revenue is counted once. |
+| `topup_completed` | backend | live | `amount_credits`, `top_up_type`, `amount_cents` (the Checkout total or the auto top-up charge), `currency` | Credits are bought. |
+| `subscription_cancellation_scheduled` | backend | live | `subscription_tier` | A paid plan is set to cancel at period end. |
+| `subscription_ended` | backend | live | `subscription_tier`, `billing_cycle`, `reason` (Stripe `cancellation_details.reason`: `cancellation_requested`, `payment_failed`, `payment_disputed`; `payment_failed` too when our own payment-failure handler cancelled the subscription because the balance could not cover a failed renewal, which Stripe would stamp `cancellation_requested`) | A paid subscription ends (Stripe `customer.subscription.deleted`), once per subscription, alongside the ended email. A trial that ends unconverted is `trial_ended` instead. |
+| `subscription_tier_reconciled` | backend | live | `direction`, `previous_subscription_tier`, `subscription_tier`, `via` | Ops signal: Stripe and the stored tier disagreed. Not a user action; keep out of funnels. |
+
+The paywall funnel in PostHog is `paywall_viewed` → `plan_selected` →
+`checkout_started` → `payment_succeeded`, with `checkout_abandoned`
+as the way out. The onboarding paywall's DataFast goals (`paywall_view`,
+`paywall_checkout_cancelled`) keep firing alongside.
+
+Browser events captured before PostHog captures (a page's mount effect on a
+full page load, such as the return from Stripe, runs before `posthog.init`
+and before the consent opt-in) are held by
+`src/services/analytics/posthog-capture.ts` while the consent answer is
+unknown. With analytics granted (an earlier answer, or a region where
+Cookiebot consents on its own once `uc.js` loads) they are sent, with the
+time they happened, once PostHog is opted in. When analytics is declined,
+there is no consent manager, or the banner is asking, they are dropped: an
+answer given on the banner covers what happens after it, not what was held
+before it. The once-per-tab guards on `paywall_viewed`, `checkout_abandoned`,
+`onboarding_step_viewed` and `tour_started` are set only when the event is
+sent or dropped this way, not while it is held.
+
+## Retention
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `schedule_fired` | backend | live | `schedule_id`, `target`, `expert_id`, `graph_id`, `graph_exec_id` or `chat_session_id` | A schedule produces work. |
+| `trigger_fired` | backend | live | `webhook_id`, `graph_id`, `graph_exec_id`, `expert_id`, `preset_id`, `target` | A webhook produces a run. |
+| `briefing_generated` | backend | live | `run_count`, `decision_count`, `has_content` | A morning briefing is composed (or found empty). |
+| `briefing_delivered` | backend | live | `briefing_id` | It is posted to the user's thread. |
+| `briefing_opened` | browser | live | — | The briefing renders on home. Not the plan's `briefing_opened_in_chat`, which is opening it in the chat thread. |
+| `briefing_outcome_clicked` | browser | live | `status` | An outcome row in the briefing is clicked. |
+| `expert_fired` | backend | live | `expert_id` | An expert is fired. |
+
+Return visits are `$pageview`; account-level retention is computed in
+`retention_task_weekly` and `user_lifecycle`, not sent as events.
+
+## Experiments
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `$feature_flag_called` | browser (posthog-js) | live | set by PostHog | A PostHog flag is read (`useExperiment`). |
+| `feature_flag_mismatched` | browser | live | `flag`, `launchdarkly` (`value`, `resolved`), `posthog` (`value`, `resolved`) | Ops signal: with both flag vendors configured, LaunchDarkly and PostHog resolved a flag to different values (`useDualFlag`). Not a user action; keep out of funnels. |
+
+Arms are also stored in the database (`analytics.experiment_assignment`),
+so an experiment can be read in PostHog and Looker alike.
+
+## Person properties
+
+The backend keeps these on the person (distinct id = platform user id) with
+a `$set` event (`PostHogEvent.SET_PERSON_PROPERTIES`), sent from
+`backend/data/posthog_lifecycle_sync.py` after signup, tier changes and every
+Stripe subscription sync, and by a daily sweep at 04:15 UTC. The lifecycle
+events above mark the moment something happens; these properties hold the
+person's current state, so a cohort or breakdown can filter on them without
+replaying events.
+
+| Property | Value |
+| --- | --- |
+| `subscription_status` | `signed`, `in_trial`, `trial_canceled`, `subscribed`, `subscription_canceled` (set to cancel, active until the period ends), `payment_failed` (a renewal or the first charge after a trial failed; Stripe is retrying), `subscription_ended`. Worked out from the current user, trial and Stripe state, never from the last event received. |
+| `signup_at` | When the user row was created. |
+| `trial_started_at` | When the trial started. |
+| `subscription_started_at` | Start of the current or last paid subscription; for a converted trial, the conversion. |
+| `subscription_canceled_at` | When the subscription was canceled, while `subscription_canceled` or `subscription_ended`. |
+| `subscription_ended_at` | When the subscription ended, while `subscription_ended`. |
+
+Dates are ISO-8601 UTC strings of the lifecycle moment, not of the sync. A
+date that doesn't apply to the current status is `$unset`, never sent as
+null.
+
+## Removed
+
+No longer sent (SECRT-2722, SECRT-2723). The names stay reserved: the pin tests fail if
+one comes back, because reusing it would splice a different action onto the
+history PostHog already holds.
+
+| Event | Was sent by | Read instead |
+| --- | --- | --- |
+| `subscription_trial_checkout_started` | browser | `checkout_started` with `checkout_kind: trial`, sent by the backend once the trial's Checkout session exists; `surface` is the same `onboarding` / `billing`. `trial_offer_version` is dropped; `trial_started` carries it. |
+| `hire_completed` | backend | `expert_hired` (same hire; it now also skips idempotent re-hires). The DataFast `hire_completed` goal is unchanged. |
+| `hire_flow_completed` | browser | `expert_hired` with `surface: expert_page`. `elapsed_ms` is PostHog's time to convert from `hire_started`; `voice_picked` is dropped. |
+| `onboarding_expert_hired` | browser | `expert_hired` with `surface: onboarding`. The card `position` is on `expert_recommendation_clicked`. |
+| `copilot_message_sent` | backend | `chat_message_sent`, which carries `message_length`. |
+| `expert_run_completed` | backend | `agent_run_finished` with `expert_id` set and `is_subgraph_run: false`. |
+| `finalize_latency_ms` | browser | The `finalize_latency_ms` property on `brain_dump_completed` and `transcription_failed`. |
+| `voice_transcribe_latency_ms` | browser | The `transcribe_latency_ms` property on `voice_turn_sent` (and `voice_turn_dropped` with `reason: filler_or_empty`). |
+| `voice_first_sound_latency_ms` | browser | The `first_sound_latency_ms` property on `voice_turn_completed`, or on `voice_turn_dropped` with `reason: interrupted` for a reply that was cut off. |
+| `experiment_exposed` | browser | Nothing: `useLaunchDarklyExperiment` had no caller and was deleted. PostHog-bucketed experiments use `$feature_flag_called`. |
+| `copilot_trigger_setup` | backend | Nothing: never sent (no caller). |
+| `intro_card_dismissed`, `raise_door_clicked`, `intro_start_with_autopilot` | browser | Nothing: declared, never sent. |
+
+## Renamed
+
+Renamed once to the analytics plan's names (SECRT-2722). The old names are
+reserved like removed ones; an insight on the old name must be pointed at the
+new one.
+
+| Old name | New name | Filter to keep the old meaning |
+| --- | --- | --- |
+| `run_agent` | `agent_run_started` | `expert_id` is not set |
+| `run_expert` (`kind: workflow_run`) | `agent_run_started` | `expert_id` is set |
+| `run_autopilot` | `chat_message_sent` | `expert_id` is not set |
+| `run_expert` (`kind: chat_turn`) | `chat_message_sent` | `expert_id` is set |
+| `agent_run_completed` | `agent_run_finished` | `status = completed` |
+| `agent_run_failed` | `agent_run_finished` | `status = failed` |
+| `copilot_tool_called` | `chat_tool_called` | — |
+| `copilot_library_check_outcome` | `chat_library_check_outcome` | — |
+| `copilot_agent_run_success` | `chat_outcome` | `outcome_type = agent_run_success`. Dry runs no longer count; `graph_name` is dropped. |
+| `copilot_agent_scheduled` | `chat_outcome` | `outcome_type = schedule_created` and `target = agent`. `graph_name` and `schedule_name` are dropped. |
+| `copilot_followup_scheduled` | `chat_outcome` | `outcome_type = schedule_created` and `target = followup`. `chat_session_id` is now the chat that scheduled it; the destination is `target_chat_session_id`. |
+| `subscription_trial_offer_viewed` | `trial_offer_viewed` | — |
+| `subscription_trial_started` | `trial_started` | — |
+| `subscription_trial_ending` | `trial_ending` | — |
+| `subscription_trial_canceled` | `trial_canceled` | — |
+| `subscription_trial_resumed` | `trial_resumed` | — |
+| `subscription_trial_converted` | `trial_converted` | — |
+| `subscription_trial_ended` | `trial_ended` | — |
+| `subscription_trial_payment_failed` | `payment_failed` | — (only trial conversion charges send it today) |
+| `subscription_upgraded` | `subscription_changed` | `change_type = upgrade` |
+| `subscription_payment_success` | `payment_succeeded` | — |
+| `credit_topup_success` | `topup_completed` | — |
+| `subscription_tier_reconciliation_discrepancy` | `subscription_tier_reconciled` | — |
+| `feature_flag_mismatch` | `feature_flag_mismatched` | — (not in the analytics plan; renamed to the `object_action` past-tense form before it reached production) |
+
+### Renamed properties
+
+Renamed in the same release as the events, to the analytics plan's envelope,
+so filters and breakdowns break once. Values are unchanged unless noted.
+
+| Old property | New property | On |
+| --- | --- | --- |
+| `session_id` | `chat_session_id` | `chat_message_sent`, `chat_tool_called`, `chat_outcome`, `chat_library_check_outcome`, `schedule_created`, `schedule_fired` |
+| `target_session_id` | `target_chat_session_id` | `chat_outcome` (`target = followup`) |
+| `trigger` | `via` | `agent_run_started`, `agent_run_finished` |
+| `trigger_ref` | `via_ref` | `agent_run_started` |
+| `surface` (`chat`, or the bot platform) | `origin` (`web`, or the bot platform) | `chat_message_sent`. The plan's `origin` is the channel. |
+| `origin` (`interactive`) | removed | `chat_message_sent`. Automation turns are not sent, so it was always `interactive`. |
+
+## Differences from the analytics plan
+
+Left for follow-up changes, so this list and the plan can be compared line by
+line:
+
+- **Events the plan folds into others keep their names until that change.**
+  The brain-dump events (`brain_dump_*`, `transcription_failed`,
+  `later_dump_completed`) and the wizard's `intro_path` and
+  `hire_step_continued` become properties of `onboarding_step_viewed` /
+  `_completed` / `_skipped` / `_back`. Spoken turns (`voice_turn_sent`)
+  become `chat_message_sent` with `input_mode: voice`.
+- **`subscription_changed` covers upgrades only.** The plan also counts
+  cancellations and downgrades there; `subscription_cancellation_scheduled`
+  and `subscription_ended` stay separate events.
+- **`chat_outcome` has two outcome types.** Only `agent_run_success` and
+  `schedule_created` have an emitter. `agent_created`, `trigger_setup`,
+  `artifact_created`, `file_produced` and `answer_only` do not.
+- **Plan events we do not send yet** (`signup_started`, `chat_session_started`,
+  `chat_response_completed`, `chat_blocked`, `screen_viewed`,
+  `screen_engaged`, `milestone_reached`, the builder, library and email
+  families, ...) come with the plan's phases, not with this list.
+- **Events the plan has no name for keep their own**, e.g.
+  `integration_connected`, `schedule_created`, `hire_started`,
+  `billing_portal_opened`, `marketing_opted_out`, `tour_*`,
+  `tab_intro_*`, `voice_*` and `credential_*`. `briefing_opened` is the
+  briefing shown on home, a different action from the plan's
+  `briefing_opened_in_chat`.
+
+## Events not in the constants modules
+
+These are sent by PostHog or a third party, not by our code, and are listed
+so nobody adds a duplicate:
+
+- `$pageleave`, `$autocapture`, `$identify` and `$feature_flag_called`:
+  posthog-js (`capture_pageleave` and `autocapture` are on).
+- `$ai_generation`: OpenRouter's PostHog integration, for copilot title
+  generation (`posthogDistinctId` in `copilot/service.py`).

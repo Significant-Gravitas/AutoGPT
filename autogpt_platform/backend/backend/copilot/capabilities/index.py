@@ -166,11 +166,13 @@ class CapabilityIndex:
         fallback: list[SearchHit] = []
         if service_indices is not None:
             # A skill is not a service, but the one written for the named
-            # service is the best answer there is, so skills stay in.
+            # service is the best answer there is, so skills stay in; so do
+            # experts, since "someone to run my LinkedIn" names one.
             main = [
                 idx
                 for idx in rest
-                if idx in service_indices or self.entries[idx].kind == "skill"
+                if idx in service_indices
+                or self.entries[idx].kind in ("skill", "expert")
             ]
             others = [idx for idx in rest if idx not in main]
             fallback = _ranked(
@@ -224,6 +226,14 @@ class CapabilityIndex:
                     entry.kind == "skill"
                     and allowed_tools is not None
                     and SKILL_TOOL not in allowed_tools
+                ):
+                    continue
+                # An expert runs as the tool it dispatches to (hire or
+                # delegate), and is shown only where that tool may run.
+                if (
+                    entry.kind == "expert"
+                    and allowed_tools is not None
+                    and entry.implementations[0].ref not in allowed_tools
                 ):
                     continue
             allowed.add(idx)

@@ -1,0 +1,22 @@
+{"id": "1-0", "data": {"type": "data-status", "message": "Message received…"}}
+{"id": "2-0", "data": {"type": "data-status", "message": "Setting up your environment…"}}
+{"id": "3-0", "data": {"type": "start", "messageId": "00000000-0000-4000-8000-000000000001", "sessionId": "drift-session"}}
+{"id": "4-0", "data": {"type": "start-step"}}
+{"id": "5-0", "data": {"type": "tool-input-start", "toolCallId": "bash-1", "toolName": "bash_exec"}}
+{"id": "6-0", "data": {"type": "tool-input-available", "toolCallId": "bash-1", "toolName": "bash_exec", "input": {"command": "ls"}}}
+{"id": "7-0", "data": {"type": "tool-output-available", "toolCallId": "bash-1", "output": "a.md", "toolName": "bash_exec", "success": true}}
+{"id": "8-0", "data": {"type": "finish-step"}}
+{"id": "9-0", "data": {"type": "data-status", "message": "Analyzing result…"}}
+{"id": "10-0", "data": {"type": "start-step"}}
+{"id": "11-0", "data": {"type": "tool-input-start", "toolCallId": "bash-2", "toolName": "bash_exec"}}
+{"id": "12-0", "data": {"type": "tool-input-available", "toolCallId": "bash-2", "toolName": "bash_exec", "input": {"command": "wc a.md"}}}
+{"id": "13-0", "data": {"type": "tool-output-available", "toolCallId": "bash-2", "output": "3 a.md", "toolName": "bash_exec", "success": true}}
+{"id": "14-0", "data": {"type": "finish-step"}}
+{"id": "15-0", "data": {"type": "data-status", "message": "Analyzing result…"}}
+{"id": "16-0", "data": {"type": "start-step"}}
+{"id": "17-0", "data": {"type": "text-start", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "18-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000002", "delta": "One file, three lines."}}
+{"id": "19-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "20-0", "data": {"type": "finish-step"}}
+{"id": "21-0", "data": {"type": "data-checkpoint", "rows": 5, "sequence": 1, "digest": "3eb6f34443eff2670c7a01b27df87e04347fa85372f65fbff5dd5684eb693fe4"}}
+{"id": "22-0", "data": {"type": "finish"}}

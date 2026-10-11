@@ -11,6 +11,13 @@ This guide provides context for coding agents when updating the **autogpt_platfo
 
 See `docs/platform/getting-started.md` for setup instructions.
 
+## Documentation
+
+- `docs/home/`, `docs/platform/` and `docs/integrations/` are the public docs site (agpt.co/docs). Only pages written for people outside the team go there: people using, self-hosting or contributing to AutoGPT.
+- The team's working documents go in `docs/engineering/`, which is not on the docs site: analytics and tracking plans, rollout plans, runbooks, internal references, and design and architecture notes. It is still public, like the rest of the repository, so no secrets or confidential material.
+
+See `docs/AGENTS.md` before adding a document.
+
 ## Code style
 
 - Format Python code with `poetry run format`.
