@@ -222,6 +222,19 @@ _MAX_RANGE_CHARS = 1_000_000
 # serves the whole file.
 _MAX_EXTERNAL_RANGE_END = 1_000_000
 
+# The most text one External API ranged read returns: its base64 has to fit in
+# the 100,000 characters a tool result keeps, or the slice would come back cut.
+_MAX_EXTERNAL_RANGE_BYTES = 60_000
+
+
+def _fit_utf8(text: str, max_bytes: int) -> str:
+    """The longest start of *text* whose UTF-8 is at most *max_bytes* long."""
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    # A character cut in two is dropped whole.
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
+
 
 def _read_local_tool_result(
     path: str,
@@ -733,12 +746,22 @@ class ReadWorkspaceFileTool(BaseTool):
                             ),
                             session_id=session_id,
                         )
-                    end = min(end, _MAX_EXTERNAL_RANGE_END)
+                    # What fits in _MAX_EXTERNAL_RANGE_BYTES is at most that
+                    # many characters, so no byte past them is needed.
+                    end = min(
+                        end,
+                        _MAX_EXTERNAL_RANGE_END,
+                        char_offset + _MAX_EXTERNAL_RANGE_BYTES,
+                    )
                 raw = cached_content or await manager.read_file_head_by_id(
                     target_file_id, 4 * end
                 )
                 text = raw[: 4 * end].decode("utf-8", errors="replace")
                 slice_text = text[char_offset:end]
+                per_read = f"{_MAX_RANGE_CHARS:,} chars"
+                if session.external_caller:
+                    slice_text = _fit_utf8(slice_text, _MAX_EXTERNAL_RANGE_BYTES)
+                    per_read = f"{_MAX_EXTERNAL_RANGE_BYTES:,} bytes"
                 return WorkspaceFileContentResponse(
                     file_id=file_info.id,
                     name=file_info.name,
@@ -751,7 +774,7 @@ class ReadWorkspaceFileTool(BaseTool):
                         f"Read chars {char_offset}–"
                         f"{char_offset + len(slice_text)} "
                         f"of {file_info.name} ({file_info.size_bytes:,} bytes); "
-                        f"at most {_MAX_RANGE_CHARS:,} chars per read"
+                        f"at most {per_read} per read"
                     ),
                     session_id=session_id,
                 )

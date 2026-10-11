@@ -564,7 +564,15 @@ class BaseTool:
                 and user_id is not None
             )
             threshold = _DIGEST_THRESHOLD if digest else _LARGE_OUTPUT_THRESHOLD
-            if len(raw_output) > threshold and user_id and session.session_id:
+            # An External API client can't follow a preview to the copy it
+            # points at, so it gets the output itself, cut in the middle past
+            # _MAX_TOOL_OUTPUT_SIZE, and nothing is written to its workspace.
+            if (
+                len(raw_output) > threshold
+                and user_id
+                and session.session_id
+                and not session.external_caller
+            ):
                 raw_output = await _persist_and_summarize(
                     raw_output, user_id, session.session_id, tool_call_id, digest
                 )
