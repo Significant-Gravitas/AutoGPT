@@ -15,7 +15,7 @@ interface Props {
 
 const TILES: {
   label: string;
-  key: keyof FleetSummary;
+  key: Exclude<keyof FleetSummary, "schedulesUnavailable">;
   format?: (v: number) => string;
   filter: AgentStatusFilter;
   emoji: string;
@@ -71,7 +71,16 @@ export function StatsGrid({ summary, activeTab, onTabChange }: Props) {
     <div className="grid grid-cols-1 gap-3 min-[450px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
       {TILES.map((tile) => {
         const rawValue = summary[tile.key];
-        const value = tile.format ? tile.format(rawValue) : rawValue;
+        // Without the scheduler, a scheduled agent is indistinguishable from
+        // an idle one; show neither count rather than a wrong one.
+        const isUnknown =
+          summary.schedulesUnavailable &&
+          (tile.key === "scheduled" || tile.key === "idle");
+        const value = isUnknown
+          ? "—"
+          : tile.format
+            ? tile.format(rawValue)
+            : rawValue;
         const isActive = activeTab === tile.filter;
 
         return (
@@ -79,6 +88,9 @@ export function StatsGrid({ summary, activeTab, onTabChange }: Props) {
             key={tile.label}
             type="button"
             onClick={() => onTabChange(tile.filter)}
+            title={
+              isUnknown ? "Schedules are temporarily unavailable" : undefined
+            }
             className={cn(
               "flex min-w-0 flex-col gap-1 rounded-medium border p-3 text-left shadow-md transition-all hover:shadow-lg",
               isActive

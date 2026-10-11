@@ -8,6 +8,8 @@ import { EmptyMessage } from "./EmptyMessage";
 import { AgentStatusFilter } from "@/app/(platform)/library/types";
 import { useAgentStatusMap } from "@/app/(platform)/library/hooks/useAgentStatus";
 import { SitrepItem } from "@/app/(platform)/library/components/SitrepItem/SitrepItem";
+import { SchedulesUnavailableNotice } from "@/components/contextual/SchedulesUnavailableNotice/SchedulesUnavailableNotice";
+import { hasUnavailableScheduleInfo } from "@/services/schedules/scheduler-availability";
 
 interface Props {
   activeTab: AgentStatusFilter;
@@ -26,6 +28,13 @@ export function AgentListSection({ activeTab, agents }: Props) {
     return false;
   });
 
+  const schedulesUnknown =
+    (activeTab === "scheduled" || activeTab === "idle") &&
+    hasUnavailableScheduleInfo(agents);
+
+  if (schedulesUnknown && activeTab === "scheduled") {
+    return <SchedulesUnavailableNotice compact />;
+  }
   if (filtered.length === 0) return <EmptyMessage tab={activeTab} />;
 
   const status =
@@ -44,6 +53,9 @@ export function AgentListSection({ activeTab, agents }: Props) {
 
   return (
     <div>
+      {schedulesUnknown ? (
+        <SchedulesUnavailableNotice compact className="mb-3" />
+      ) : null}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {visible.map((agent) => (
           <SitrepItem

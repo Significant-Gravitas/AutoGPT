@@ -5,6 +5,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { SchedulesUnavailableNotice } from "@/components/contextual/SchedulesUnavailableNotice/SchedulesUnavailableNotice";
 import { InfiniteList } from "@/components/molecules/InfiniteList/InfiniteList";
 import {
   TabsLine,
@@ -61,6 +62,8 @@ export function SidebarRunsList({
     triggerAgents,
     runsCount,
     schedulesCount,
+    schedulesUnavailable,
+    retrySchedules,
     templatesCount,
     triggersCount,
     error,
@@ -132,7 +135,9 @@ export function SidebarRunsList({
             </TabsLineTrigger>
             <TabsLineTrigger value="scheduled">
               Scheduled{" "}
-              <span className="ml-3 inline-block">{schedulesCount}</span>
+              <span className="ml-3 inline-block">
+                {schedulesUnavailable ? "—" : schedulesCount}
+              </span>
             </TabsLineTrigger>
             {triggersCount > 0 && (
               <TabsLineTrigger value="triggers">
@@ -184,7 +189,12 @@ export function SidebarRunsList({
           )}
         >
           <div className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
-            {schedules.length > 0 ? (
+            {schedulesUnavailable ? (
+              <SchedulesUnavailableNotice
+                onRetry={retrySchedules}
+                className="w-full"
+              />
+            ) : schedules.length > 0 ? (
               schedules.map((s: GraphExecutionJobInfo) => (
                 <div className="w-[15rem] lg:w-full" key={s.id}>
                   <ScheduleListItem

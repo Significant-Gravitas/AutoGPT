@@ -6,6 +6,7 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
+import { hasUnavailableScheduleInfo } from "@/services/schedules/scheduler-availability";
 import type {
   AgentStatus,
   AgentHealth,
@@ -159,6 +160,7 @@ export function useFleetSummary(agents: LibraryAgent[]): FleetSummary {
       scheduled: 0,
       idle: 0,
       monthlySpend: 0,
+      schedulesUnavailable: hasUnavailableScheduleInfo(agents),
     };
 
     const activeGraphIds = new Set<string>();
