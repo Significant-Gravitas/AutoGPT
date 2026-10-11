@@ -20,6 +20,7 @@ from backend.copilot.sdk.compaction import CompactionTracker
 from backend.copilot.sdk.response_adapter import SDKResponseAdapter
 from backend.copilot.stream_checkpoint import turn_checkpoint
 from backend.copilot.tree import root_envelope
+from backend.copilot.turn_budget import TurnBudget
 
 
 def session_with_prompt(prompt: str) -> ChatSession:
@@ -187,7 +188,9 @@ async def sdk_service_turn(
         "_resolve_sdk_model": MagicMock(return_value=None),
         "set_execution_context": MagicMock(),
         "get_user_tier": AsyncMock(return_value=None),
-        "_resolve_dynamic_max_budget_usd": AsyncMock(return_value=100.0),
+        "resolve_turn_budget": AsyncMock(
+            return_value=TurnBudget(usd=100.0, limiting="task")
+        ),
         "drain_pending_safe": AsyncMock(
             side_effect=[[], queued_after_first] + [[]] * len(queries)
         ),

@@ -416,6 +416,36 @@ async def test_mark_session_completed_skip_error_publish_emits_no_stream_error()
 
 
 @pytest.mark.asyncio
+async def test_mark_session_completed_republishes_the_error_code():
+    """The executor re-publishes a turn's error here; without its code the
+    client can only match the message text, which is how a budget stop came
+    to open the "Daily usage limit reached" dialog."""
+    publish_mock = AsyncMock()
+    with (
+        patch.object(
+            stream_registry,
+            "get_redis_async",
+            new=AsyncMock(return_value=_FakeRedis({"status": "running"})),
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=publish_mock),
+    ):
+        await stream_registry.mark_session_completed(
+            "sess-1", error_message="The response stopped.", error_code="idle_timeout"
+        )
+    errors = [
+        call.args[1]
+        for call in publish_mock.call_args_list
+        if isinstance(call.args[1], stream_registry.StreamError)
+    ]
+    assert len(errors) == 1
+    assert errors[0].code == "idle_timeout"
+    assert errors[0].to_sse().count("[code:idle_timeout]") == 1
+
+
+@pytest.mark.asyncio
 async def test_mark_session_completed_skips_lock_release_when_already_completed():
     """CAS failure = someone else completed the session first; we must not
     delete their already-released lock, and we must NOT publish StreamFinish
