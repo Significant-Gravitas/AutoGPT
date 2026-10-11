@@ -12,7 +12,8 @@ import { useChatDraft } from "../ChatInput/useChatDraft";
 import {
   atResetRefusal,
   returnToDraft,
-  SCHEDULE_FAILED_TITLE,
+  sendAtResetFailureTitle,
+  SentNowError,
   sessionDraftKey,
 } from "./helpers";
 import { useAtResetJobs } from "./useAtResetJobs";
@@ -46,7 +47,7 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
       });
       if (response.status !== 200) return;
       const job = response.data;
-      writeJobs((all) => [...all.filter((j) => j.kind !== "send"), job]);
+      await writeJobs((all) => [...all.filter((j) => j.kind !== "send"), job]);
     } catch (error) {
       const refusal = atResetRefusal(error);
       if (!refusal) throw error;
@@ -54,7 +55,11 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
         queryKey: getGetV2GetCopilotUsageQueryKey(),
       });
       if (refusal === "not_out_of_budget" && onSendNow) {
-        return onSendNow(message);
+        try {
+          return await onSendNow(message);
+        } catch (sendError) {
+          throw new SentNowError(sendError);
+        }
       }
       throw new Error(
         refusal === "no_reset"
@@ -72,7 +77,7 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     } catch (error) {
       setDraft((current) => returnToDraft(current, message));
       toast({
-        title: SCHEDULE_FAILED_TITLE,
+        title: sendAtResetFailureTitle(error),
         description: describeSendFailure(
           error,
           "your message is back in the composer",
@@ -94,7 +99,7 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
       });
       return false;
     }
-    writeJobs((all) => all.filter((job) => job.kind !== "send"));
+    await writeJobs((all) => all.filter((job) => job.kind !== "send"));
     return true;
   }
 

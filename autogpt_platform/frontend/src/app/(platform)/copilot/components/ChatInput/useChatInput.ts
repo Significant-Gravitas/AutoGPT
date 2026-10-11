@@ -19,7 +19,7 @@ interface Args {
   inputId?: string;
   draftKey?: string;
   /** Names what failed in the toast, e.g. a scheduled send. */
-  failureTitle?: string;
+  failureTitle?: string | ((error: unknown) => string);
 }
 
 export function useChatInput({
@@ -95,7 +95,10 @@ export function useChatInput({
     } catch (error) {
       setValue((current) => restoreFailedDraft(current, message));
       toast({
-        title: failureTitle,
+        title:
+          typeof failureTitle === "function"
+            ? failureTitle(error)
+            : failureTitle,
         description: describeSendFailure(
           error,
           "your message is back in the composer",

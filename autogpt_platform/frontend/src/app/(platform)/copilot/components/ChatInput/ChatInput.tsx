@@ -47,7 +47,7 @@ import { useCopilotUIStore } from "../../store";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { TokenDevtoolBadge } from "../TokenDevtoolBadge/TokenDevtoolBadge";
 import {
-  SCHEDULE_FAILED_TITLE,
+  sendAtResetFailureTitle,
   SEND_AT_RESET_LABEL,
 } from "../SendAtReset/helpers";
 import {
@@ -221,7 +221,7 @@ export function ChatInput({
       canSendEmpty: hasAttachments && !atReset,
       inputId,
       draftKey,
-      failureTitle: atReset ? SCHEDULE_FAILED_TITLE : undefined,
+      failureTitle: atReset ? sendAtResetFailureTitle : undefined,
     });
 
   const integrations = useConnectedIntegrations(expertId);

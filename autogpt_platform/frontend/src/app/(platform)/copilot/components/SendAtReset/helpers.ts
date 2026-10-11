@@ -9,6 +9,22 @@ export const SCHEDULE_FAILED_TITLE = "Couldn’t schedule your message";
 export const SEND_AT_RESET_PLACEHOLDER =
   "Write now, and it sends when your budget resets…";
 
+/** Thrown when the budget turned out to be back, so the message went out
+ *  straight away instead, and that send failed. */
+export class SentNowError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : "");
+    this.name = "SentNowError";
+  }
+}
+
+/** What the toast calls a failed Send at reset: a send, if it went out now. */
+export function sendAtResetFailureTitle(error: unknown): string {
+  return error instanceof SentNowError
+    ? "Couldn't send message"
+    : SCHEDULE_FAILED_TITLE;
+}
+
 /** The input id of an open chat's composer. */
 export const SESSION_COMPOSER_ID = "chat-input-session";
 

@@ -22,9 +22,13 @@ export function useAtResetJobs(sessionId: string | null) {
     },
   });
 
-  function writeJobs(update: (jobs: AtResetTurn[]) => AtResetTurn[]) {
+  async function writeJobs(update: (jobs: AtResetTurn[]) => AtResetTurn[]) {
+    const queryKey = getGetV2ListTurnsAtBudgetResetQueryKey(sessionId ?? "");
+    // A read already on its way would land after this and put the old
+    // list back.
+    await queryClient.cancelQueries({ queryKey });
     queryClient.setQueryData<getV2ListTurnsAtBudgetResetResponse>(
-      getGetV2ListTurnsAtBudgetResetQueryKey(sessionId ?? ""),
+      queryKey,
       (old) => ({
         status: 200,
         headers: old?.headers ?? new Headers(),
