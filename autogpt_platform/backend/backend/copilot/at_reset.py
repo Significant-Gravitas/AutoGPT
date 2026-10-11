@@ -210,6 +210,11 @@ async def _budget_verdict(
             config.daily_cost_limit_microdollars,
             config.weekly_cost_limit_microdollars,
         )
+        if daily_limit == 0 and weekly_limit == 0:
+            # No plan, or the trial is over. Settled here: an ended
+            # trial's usage state still reads TRIAL, which the tier guard
+            # below reports as unavailable, so it would only be retried.
+            return FireVerdict(action="drop", why="its allowance never refills")
         await check_rate_limit(
             user_id=user_id,
             daily_cost_limit=daily_limit,
