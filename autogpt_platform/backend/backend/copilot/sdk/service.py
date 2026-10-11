@@ -1813,7 +1813,9 @@ async def _apply_building_mode_restart(
         if building_suffix
         else _BUILDING_MODE_UNAVAILABLE_CONTINUATION
     )
-    # Fresh adapter, same carry-over rules as a transient retry.
+    # Fresh adapter, carrying over the same flags as a transient retry. Unlike
+    # a transient retry, this relaunch keeps the CLI cost baseline: it is
+    # deliberate, so the interrupted run's spend is the user's.
     # NOTE: the transcript builder is NOT restored — its partial
     # entries are real; the relaunched run's `append_user` adds
     # the original message once more, which only surfaces in the
@@ -2442,7 +2444,10 @@ async def _do_transient_backoff(
 
     Yields a single :class:`StreamStatus` so the caller can forward it to
     the client, then sleeps for *backoff* seconds and resets ``state.adapter``.
-    Usage and the CLI cost baseline survive because the retry resumes the session.
+    Usage already reported survives the retry, but the CLI cost baseline does
+    not: the relaunch re-reads the total the resumed session restores, so
+    whatever the failed attempt spent without reporting a result is not
+    charged. The user pays for the attempt that succeeds, not for our failure.
 
     Extracted from both exception handlers in the retry loop to remove
     near-identical code duplication.
@@ -2453,6 +2458,7 @@ async def _do_transient_backoff(
         message_id=message_id,
         session_id=session_id,
     )
+    state.usage.cli_session_total_usd = None
 
 
 def _is_fallback_stderr(line: str) -> bool:
@@ -4169,8 +4175,11 @@ async def _run_stream_attempt(
     # CLI subprocess spawn + MCP init can take seconds on cold starts —
     # narrate it so the status doesn't sit on the context-prep message.
     yield StreamStatus(message="Starting the assistant…")
-    # An interruption can precede ResultMessage. Keep the baseline across
-    # resumed retries so the next result includes that unreported spend.
+    # An interruption can precede ResultMessage. A building-mode relaunch keeps
+    # the baseline, so its next result includes that unreported spend; a
+    # transient retry clears it first (see ``_do_transient_backoff``). The
+    # baseline is the total the CLI restores, and only ``--resume`` restores
+    # one: a launch with ``session_id`` starts at zero, so don't read its file.
     if state.usage.cli_session_total_usd is None:
         baseline = await asyncio.to_thread(
             read_cli_session_usage, ctx.sdk_cwd, state.options.resume, ctx.log_prefix
