@@ -20,7 +20,12 @@ from backend.copilot.scheduled_chats.failure_notices import (
     paused_notice,
     resumed_notice,
 )
-from backend.copilot.scheduled_chats.jobs import jobs_paused, pause_jobs, resume_jobs
+from backend.copilot.scheduled_chats.jobs import (
+    jobs_paused,
+    pause_jobs,
+    resume_jobs,
+    unpause,
+)
 from backend.copilot.scheduled_chats.notices import ScheduledChatNotice, post_notice
 from backend.copilot.scheduled_chats.outcomes import RunFailure, RunOutcome
 from backend.copilot.scheduled_chats.streaks import Streak, StreakStep, advance
@@ -75,20 +80,28 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
         return
     streak = step.streak
     schedule_ids, title = await _schedule_of(run)
-    paused = step.pause and await pause_jobs(run.user_id, schedule_ids)
+    changed = await pause_jobs(run.user_id, schedule_ids) if step.pause else None
+    paused = changed is not None
     if step.pause and not paused:
         # Nothing was paused, so nothing may say it was. Each later run tries
         # again; meanwhile the owner is told once, without that claim.
         streak = streak.model_copy(update={"paused": False})
     told = streak.notified and not (current is not None and current.notified)
-    row = await _save(
-        run,
-        streak,
-        schedule_ids,
-        title,
-        restarted=row is None or streak.failures == 1,
-        told=told,
-    )
+    try:
+        row = await _save(
+            run,
+            streak,
+            schedule_ids,
+            title,
+            restarted=row is None or streak.failures == 1,
+            told=told,
+        )
+    except Exception:
+        # A pause with no row behind it is never listed or resumed: the chat
+        # would stop without a word. Put the jobs back; the next run retries.
+        if changed:
+            await unpause(run.user_id, changed)
+        raise
     notice = _notice(step, streak, paused=paused, told=told, title=title, row=row)
     if notice is not None:
         await _tell(run, row, notice, told=told)

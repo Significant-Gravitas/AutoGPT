@@ -1,9 +1,10 @@
+import logging
 from typing import Annotated, Any
 
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
 from fastapi import APIRouter, Body, HTTPException, Path, Security
-from starlette.status import HTTP_404_NOT_FOUND
+from starlette.status import HTTP_404_NOT_FOUND, HTTP_503_SERVICE_UNAVAILABLE
 
 from backend.api.features.experts import experts_db
 from backend.api.features.schedule_visibility import visible_graph_schedules
@@ -23,6 +24,8 @@ from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
     get_user_timezone_or_utc,
 )
+
+logger = logging.getLogger(__name__)
 
 # This router mounts at /api and keeps the section's full paths: its five routes
 # span two prefixes (/schedules and /graphs/{graph_id}/schedules), so a prefixed
@@ -191,7 +194,17 @@ async def resume_scheduled_chat(
         ..., description="The routine's id, or the follow-up's schedule id"
     ),
 ) -> ResumeScheduledChatResponse:
-    if not await scheduled_chats.resume_scheduled_chat(user_id, schedule_key):
+    try:
+        resumed = await scheduled_chats.resume_scheduled_chat(user_id, schedule_key)
+    except Exception:
+        # The scheduler refused or the database blinked: the chat stays
+        # paused, so Resume can simply be tried again.
+        logger.exception("Could not resume scheduled chat %s", schedule_key)
+        raise HTTPException(
+            status_code=HTTP_503_SERVICE_UNAVAILABLE,
+            detail="This scheduled chat could not be resumed just now. Try again.",
+        )
+    if not resumed:
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND,
             detail="This scheduled chat is not paused.",

@@ -294,6 +294,19 @@ def test_resume_scheduled_chat_maps_nothing_paused_to_404(
     assert response.status_code == 404
 
 
+def test_a_resume_the_scheduler_refuses_can_be_tried_again(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.schedules.routes.scheduled_chats.resume_scheduled_chat",
+        AsyncMock(side_effect=RuntimeError("scheduler down")),
+    )
+
+    response = client.post("/schedules/followups/routine-1/resume")
+
+    assert response.status_code == 503
+
+
 def test_delete_schedule_maps_not_found_to_404(
     mocker: pytest_mock.MockFixture,
 ) -> None:
