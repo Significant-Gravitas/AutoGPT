@@ -31034,7 +31034,7 @@
           "url": {
             "type": "string",
             "title": "Url",
-            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
+            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade), or when a trial ending early needs the customer's bank to confirm its payment, on Stripe's invoice page. Empty string in all other branches — the client sends the customer to this URL when non-empty.",
             "default": ""
           }
         },

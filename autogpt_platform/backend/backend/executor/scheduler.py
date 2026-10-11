@@ -80,7 +80,6 @@ from backend.util.exceptions import (
     NotFoundError,
     UserPaywalledError,
 )
-from backend.util.feature_flag import initialize_feature_flags, shutdown_feature_flags
 from backend.util.logging import PrefixFilter
 from backend.util.retry import func_retry
 from backend.util.service import (
@@ -90,7 +89,7 @@ from backend.util.service import (
     endpoint_to_async,
     expose,
 )
-from backend.util.settings import AppEnvironment, Config
+from backend.util.settings import Config
 
 
 def _extract_schema_from_url(database_url) -> tuple[str, str]:
@@ -126,27 +125,6 @@ SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
 # legitimately take >5 min. Match the dream lock's 30 min TTL so the
 # future resolves before the lock expires under the dream pass.
 SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
-
-
-def _init_feature_flags_for_scheduler() -> None:
-    """Eagerly initialize the feature flag backend unless running LOCAL.
-
-    Mirrors ``rest_api.py``'s ``feature_flag_context``: the @expose flag
-    gates (e.g. ``add_nightly_batch_schedule``'s ``DREAM_PASS_ENABLED``
-    check) fail closed, so evaluating them against a lazily-initialized
-    client right after a pod restart would silently skip registrations
-    until the first lazy init completed. Skipped LOCAL, where no vendor is
-    configured and flags resolve to their mock defaults.
-    """
-    if config.app_env != AppEnvironment.LOCAL:
-        initialize_feature_flags()
-
-
-def _shutdown_feature_flags_for_scheduler() -> None:
-    """Reverse of ``_init_feature_flags_for_scheduler`` — only tears down the
-    client when it was actually initialized (non-LOCAL)."""
-    if config.app_env != AppEnvironment.LOCAL:
-        shutdown_feature_flags()
 
 
 # The Stripe tier sweep pages through every active subscription, so it needs a
@@ -2128,11 +2106,6 @@ class Scheduler(AppService):
     def run_service(self):
         load_dotenv()
 
-        # Eagerly initialize LaunchDarkly before any @expose flag gate can
-        # run (see the helper for why lazy init would skip registrations
-        # after a pod restart).
-        _init_feature_flags_for_scheduler()
-
         # Initialize the event loop for async jobs
         global _event_loop
         _event_loop = asyncio.new_event_loop()
@@ -2443,10 +2416,6 @@ class Scheduler(AppService):
         if _event_loop_thread:
             logger.info("⏳ Waiting for event loop thread to finish...")
             _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
-
-        # Reverse order of run_service: LD was initialized before the
-        # scheduler started, so close it after all jobs have drained.
-        _shutdown_feature_flags_for_scheduler()
 
         super().cleanup()
 
