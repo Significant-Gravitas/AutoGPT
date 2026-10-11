@@ -669,8 +669,37 @@ describe("refusals no retry can change", () => {
       new SendRefusedError('{"detail":"Forbidden"}', 403),
     );
     expect(snapshot().error).not.toBeInstanceOf(CopilotAuthError);
+    expect(report).toHaveBeenCalledWith(
+      "refused",
+      expect.objectContaining({ status: 403 }),
+    );
     expect(toast).not.toHaveBeenCalled();
   });
+
+  it("reports a send refused with a 4xx the app never provokes, with its status", async () => {
+    backend.respond(() => ({
+      status: 422,
+      body: { detail: "Message too long" },
+    }));
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(1_000);
+
+    expect(report).toHaveBeenCalledWith("refused", {
+      status: 422,
+      body: { detail: "Message too long" },
+    });
+  });
+
+  it.each([401, 404, 429])(
+    "does not report a send refused %i, which the user's state explains",
+    async (status) => {
+      backend.respond(() => ({ status, body: { detail: "refused" } }));
+      void runtime.send({ text: PROMPT }, undefined);
+      await advance(1_000);
+
+      expect(report).not.toHaveBeenCalled();
+    },
+  );
 
   it("a resume refused 404 ends the turn: the chat is gone", async () => {
     await sendAndPublish(FIRST_BLOCK_DONE);

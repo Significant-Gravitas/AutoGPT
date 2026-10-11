@@ -42,10 +42,6 @@ describe("describeChatError", () => {
       new SendRefusedError('{"detail":"usage limit reached"}', 429),
     ],
     [
-      "a validation refusal",
-      new SendRefusedError('{"detail":"Message too long"}', 422),
-    ],
-    [
       "a plan refusal",
       new SendRefusedError('{"detail":"advanced_tier_not_entitled"}', 403),
     ],
@@ -55,13 +51,23 @@ describe("describeChatError", () => {
     expect(guidance.action).toBeNull();
   });
 
-  it("a refusal for lack of access says so, without a resend or a sign-in", () => {
-    const guidance = describeChatError(
+  it.each([
+    [
+      "a 403",
       new SendRefusedError('{"detail":"advanced_tier_not_entitled"}', 403),
-    );
-    expect(guidance.title).toMatch(/don't have access/);
-    expect(guidance.action).toBeNull();
-  });
+    ],
+    ["a 422", new SendRefusedError('{"detail":"Message too long"}', 422)],
+    ["a 400", new SendRefusedError('{"detail":"Bad request"}', 400)],
+  ])(
+    "%s the app should never provoke says it is our bug, reported, and to reload",
+    (_state, error) => {
+      const guidance = describeChatError(error);
+      expect(guidance.title).toBe(
+        "Something went wrong on our side, and we've been notified. Reload the page and try again. If it keeps happening, contact support.",
+      );
+      expect(guidance.action).toBeNull();
+    },
+  );
 
   it.each([
     ["a dropped connection", new TypeError("Failed to fetch")],

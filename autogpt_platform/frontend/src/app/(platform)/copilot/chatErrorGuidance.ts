@@ -1,5 +1,8 @@
 import { CopilotAuthError } from "./helpers";
-import { ChatUnavailableError } from "./stream/turnRuntime";
+import {
+  ChatUnavailableError,
+  isUnexpectedRefusal,
+} from "./stream/turnRuntime";
 
 export type ChatErrorAction = "sign-in" | "new-chat";
 
@@ -32,26 +35,16 @@ export function describeChatError(error: Error): ChatErrorGuidance {
         "This conversation is too long to continue. Start a new chat to keep going.",
       action: "new-chat",
     };
-  if (status === 403)
-    return {
-      title:
-        "You don't have access to this, so sending it again won't help. The reason is below.",
-      action: null,
-    };
   if (status === 429 || /usage limit/i.test(error.message))
     return {
       title: "You've reached a usage limit, so this message wasn't sent.",
       action: null,
     };
-  if (
-    status !== null &&
-    status >= 400 &&
-    status < 500 &&
-    !RETRYABLE_4XX.has(status)
-  )
+  // The app only sends what the server accepts, so this is our bug.
+  if (status !== null && isUnexpectedRefusal(status))
     return {
       title:
-        "This message wasn't accepted, so sending it again won't help. The reason is below.",
+        "Something went wrong on our side, and we've been notified. Reload the page and try again. If it keeps happening, contact support.",
       action: null,
     };
   if (status !== null && status >= 500)
@@ -71,9 +64,6 @@ export function describeChatError(error: Error): ChatErrorGuidance {
     action: null,
   };
 }
-
-// A timeout, or a conflict with a turn still running, can pass on a resend.
-const RETRYABLE_4XX = new Set([408, 409, 425]);
 
 function statusOf(error: Error) {
   const status = (error as { status?: unknown }).status;

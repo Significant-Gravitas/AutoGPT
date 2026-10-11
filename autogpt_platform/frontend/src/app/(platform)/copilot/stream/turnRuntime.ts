@@ -647,6 +647,7 @@ export class TurnRuntime {
   }
 
   private refusedSend(end: Extract<ConnectionEnd, { kind: "refused" }>) {
+    this.reportIfUnexpected(end);
     this.error = new SendRefusedError(refusalText(end), end.status);
     this.emitNow();
     this.handlers.onError?.(this.error, null);
@@ -661,7 +662,16 @@ export class TurnRuntime {
     this.denials += 1;
     if (this.denials === 1) this.resume(seg);
     else if (end.status === 401) this.giveUp(new CopilotAuthError());
-    else this.giveUp(new SendRefusedError(refusalText(end), end.status));
+    else {
+      this.reportIfUnexpected(end);
+      this.giveUp(new SendRefusedError(refusalText(end), end.status));
+    }
+  }
+
+  // The banner tells the user we were notified of these.
+  private reportIfUnexpected(end: Extract<ConnectionEnd, { kind: "refused" }>) {
+    if (!isUnexpectedRefusal(end.status)) return;
+    this.deps.report("refused", { status: end.status, body: end.body });
   }
 
   /** A refusal no retry can change: end the turn where it stands and say why. */
@@ -1444,6 +1454,16 @@ function refusalText({ status, body }: { status: number; body: unknown }) {
   if (body && !body.trimStart().startsWith("<")) return body;
   return `Couldn't reach the server (HTTP ${status}).`;
 }
+
+/**
+ * A 4xx the app never provokes on purpose: not a sign-in (401), a gone chat
+ * (404), a usage limit (429), or a timeout or busy session a resend can pass.
+ */
+export function isUnexpectedRefusal(status: number) {
+  return status >= 400 && status < 500 && !EXPECTED_4XX.has(status);
+}
+
+const EXPECTED_4XX = new Set([401, 404, 408, 409, 425, 429]);
 
 /** A send the server refused; its status says whether a resend can help. */
 export class SendRefusedError extends Error {
