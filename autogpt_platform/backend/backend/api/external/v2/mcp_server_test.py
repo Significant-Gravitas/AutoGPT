@@ -547,6 +547,27 @@ async def test_a_run_on_a_zero_balance_is_refused_as_rest_refuses_it(
     assert "Insufficient balance" in result.content[0].text
 
 
+@pytest.mark.parametrize("tool_name", ["validate_agent_graph", "fix_agent_graph"])
+async def test_a_malformed_graph_is_refused_as_such_not_as_an_internal_error(
+    mocker: pytest_mock.MockerFixture,
+    no_tenancy_lookups: mock.AsyncMock,
+    tool_name: str,
+):
+    """The schema lets `agent_json` be a string, parsed only inside the tool;
+    a node that isn't an object reached the validator, whose crash text came
+    back to the client."""
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=_token(*_tool_scopes(tool_name)),
+    )
+
+    result = await _call(tool_name, {"agent_json": '{"nodes": [1], "links": []}'})
+
+    text = result.content[0].text
+    assert "must be a list of objects" in text
+    assert "attribute" not in text
+
+
 @pytest.mark.parametrize(
     "headers",
     [

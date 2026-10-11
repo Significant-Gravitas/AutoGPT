@@ -36,6 +36,14 @@ _CALLER_FACING_ERRORS = (
 )
 
 
+def _error_text(error: Exception, external_caller: bool) -> str:
+    """The exception's text, unless an External API client would see text
+    that wasn't written for it."""
+    if external_caller and not isinstance(error, _CALLER_FACING_ERRORS):
+        return "an internal error"
+    return str(error)
+
+
 async def fetch_library_agents(
     user_id: str | None,
     library_agent_ids: list[str],
@@ -141,7 +149,7 @@ async def fix_validate_and_save(
         return ErrorResponse(
             message="Failed to validate the agent. Please try again.",
             error="validation_exception",
-            details={"exception": str(e)},
+            details={"exception": _error_text(e, external_caller)},
             session_id=session_id,
         )
 
@@ -222,11 +230,7 @@ async def fix_validate_and_save(
         )
     except Exception as e:
         logger.error(f"Failed to save agent: {e}", exc_info=True)
-        detail = (
-            "an internal error"
-            if external_caller and not isinstance(e, _CALLER_FACING_ERRORS)
-            else str(e)
-        )
+        detail = _error_text(e, external_caller)
         return ErrorResponse(
             message=f"Failed to save the agent: {detail}",
             error="save_failed",

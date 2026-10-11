@@ -18,6 +18,7 @@ from .agent_json_input import (
     write_agent_json_to_workspace,
 )
 from .base import BaseTool
+from .external_scope import error_detail
 from .helpers import require_guide_read
 from .models import ErrorResponse, FixResultResponse, ToolResponseBase
 
@@ -127,7 +128,7 @@ class FixAgentGraphTool(BaseTool):
         except Exception as e:
             logger.error(f"Fixer error: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Auto-fix encountered an error: {str(e)}",
+                message=f"Auto-fix encountered an error: {error_detail(e, session)}",
                 error="fix_exception",
                 session_id=session_id,
             )
@@ -139,7 +140,9 @@ class FixAgentGraphTool(BaseTool):
             remaining_errors = validator.errors if not is_valid else []
         except Exception as e:
             logger.warning(f"Post-fix validation error: {e}", exc_info=True)
-            remaining_errors = [f"Post-fix validation failed: {str(e)}"]
+            remaining_errors = [
+                f"Post-fix validation failed: {error_detail(e, session)}"
+            ]
             is_valid = False
 
         if is_valid:

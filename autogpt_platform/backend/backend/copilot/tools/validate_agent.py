@@ -15,6 +15,7 @@ from .agent_json_input import (
     resolve_agent_json_or_error,
 )
 from .base import BaseTool
+from .external_scope import error_detail
 from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase, ValidationResultResponse
 
@@ -108,7 +109,7 @@ class ValidateAgentGraphTool(BaseTool):
         except Exception as e:
             logger.error(f"Validation error: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Validation encountered an error: {str(e)}",
+                message=f"Validation encountered an error: {error_detail(e, session)}",
                 error="validation_exception",
                 session_id=session_id,
             )

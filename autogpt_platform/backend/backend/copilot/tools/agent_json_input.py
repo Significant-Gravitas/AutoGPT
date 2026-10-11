@@ -147,7 +147,24 @@ async def resolve_agent_json_or_error(
         return None, ErrorResponse(
             message=missing_message, error=missing_error, session_id=session_id
         )
+    if shape_error := _shape_error(graph):
+        return None, ErrorResponse(
+            message=shape_error, error=invalid_error, session_id=session_id
+        )
     return graph, None
+
+
+def _shape_error(graph: dict[str, Any]) -> str | None:
+    """Why *graph* can't be read as nodes and links, or None.
+
+    Checked before the fixer and validator walk it, which assume objects and
+    would otherwise fail with an internal error.
+    """
+    for key in ("nodes", "links"):
+        items = graph.get(key, [])
+        if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
+            return f"The agent JSON's '{key}' must be a list of objects."
+    return None
 
 
 def _coerce_to_graph(value: Any) -> dict[str, Any] | None:
