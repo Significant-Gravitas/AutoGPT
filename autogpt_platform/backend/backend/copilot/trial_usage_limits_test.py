@@ -362,3 +362,26 @@ async def test_lifetime_trial_budget_remains_authoritative_without_redis(
     status = await rate_limit.get_usage_status(_USER, daily, weekly, tier=tier)
     assert status.weekly.used == spent
     assert status.weekly.resets_at == trial.ends_at
+
+
+@pytest.mark.asyncio
+async def test_an_ended_trial_reads_as_used_up_not_unavailable(
+    trial: TrialState, usage: dict[str, int]
+):
+    # The trial is over but the usage state still says TRIAL until the
+    # downgrade; get_global_rate_limits already reports NO_TIER with nothing
+    # to spend. The tier guard took that for a subscription change and failed
+    # every /usage read; there is nothing to count, so it answers directly.
+    trial.ends_at = _SUNDAY - timedelta(days=1)
+    daily, weekly, tier = await rate_limit.get_global_rate_limits(_USER, 1, 1)
+    assert (daily, weekly, tier) == (0, 0, rate_limit.SubscriptionTier.NO_TIER)
+
+    status = await rate_limit.get_usage_status(_USER, daily, weekly, tier=tier)
+    public = rate_limit.CoPilotUsagePublic.from_status(status)
+
+    assert status.trial_spent
+    assert (public.state, public.limiting_window, public.resets_at) == (
+        "exhausted",
+        "trial",
+        None,
+    )
