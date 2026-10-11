@@ -33,12 +33,20 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
   const { token, error } = await getWebSocketToken();
   if (error || !token) {
     console.warn("[Copilot] Failed to get auth token:", error);
-    throw new Error("Authentication failed — please sign in again.");
+    throw new CopilotAuthError();
   }
   return {
     Authorization: `Bearer ${token}`,
     ...getSystemHeaders(),
   };
+}
+
+/** The server answered and has no session token: signed out, not offline. */
+export class CopilotAuthError extends Error {
+  constructor() {
+    super("Authentication failed — please sign in again.");
+    this.name = "CopilotAuthError";
+  }
 }
 
 /**
