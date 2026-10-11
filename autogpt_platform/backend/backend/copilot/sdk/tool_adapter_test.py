@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -29,6 +30,7 @@ from .tool_adapter import (
     _make_truncating_wrapper,
     _strip_llm_fields,
     _text_from_mcp_result,
+    _warn_unknown_builtins,
     cap_late_tool_result,
     create_copilot_mcp_server,
     create_tool_handler,
@@ -900,6 +902,25 @@ class TestDeclaredBuiltinTools:
 
         assert _builtins(allowed) == _builtins(get_copilot_tool_names(use_e2b=use_e2b))
         assert "mcp__copilot__nope" not in allowed
+
+    def test_extra_builtin_that_is_no_cli_tool_is_logged_once_and_ignored(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        _warn_unknown_builtins.cache_clear()
+
+        with caplog.at_level(logging.WARNING):
+            allowed = get_copilot_tool_names(extra_builtins=["agent", "Bogus"])
+            get_copilot_tool_names(extra_builtins=["agent", "Bogus"])
+
+        assert not {"agent", "Bogus"} & set(allowed)
+        assert [
+            r.getMessage()
+            for r in caplog.records
+            if "claude_agent_extra_builtin_tools" in r.getMessage()
+        ] == [
+            "claude_agent_extra_builtin_tools: agent, Bogus is not a Claude Code "
+            "built-in tool; ignored"
+        ]
 
     def test_declared_tools_drop_mcp_and_disallowed_names(self):
         declared = get_sdk_declared_tools(

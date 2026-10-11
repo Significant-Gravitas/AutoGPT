@@ -458,7 +458,8 @@ class ChatConfig(BaseSettings):
         description="Claude Code built-in tools to allow and declare on the SDK "
         "path on top of the default set, for an operator or an eval arm, e.g. "
         "CHAT_CLAUDE_AGENT_EXTRA_BUILTIN_TOOLS='[\"Agent\"]'. Names on the SDK "
-        "disallowed list stay off.",
+        "disallowed list stay off; a name that is no Claude Code built-in is "
+        "logged once and ignored.",
     )
     claude_agent_use_resume: bool = Field(
         default=True,

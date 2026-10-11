@@ -5,6 +5,7 @@ into in-process MCP tools that can be used with the Claude Agent SDK.
 """
 
 import asyncio
+import functools
 import itertools
 import json
 import logging
@@ -1268,10 +1269,31 @@ def get_copilot_tool_names(
     blocked = set(get_sdk_disallowed_tools(use_e2b=use_e2b))
     extra = [
         name
-        for name in _with_subagent_alias(extra_builtins)
-        if name not in blocked and not name.startswith("mcp__")
+        for name in _with_subagent_alias(_known_builtins(extra_builtins))
+        if name not in blocked
     ]
     return list(dict.fromkeys([*names, *extra]))
+
+
+def _known_builtins(names: Iterable[str]) -> list[str]:
+    """*names* without those that are no Claude Code built-in, which the CLI
+    would ignore; they are logged once per process, so an operator's typo in
+    ``claude_agent_extra_builtin_tools`` shows up in the logs."""
+    known = set(get_sdk_builtin_tools())
+    names = list(names)
+    unknown = tuple(dict.fromkeys(name for name in names if name not in known))
+    if unknown:
+        _warn_unknown_builtins(unknown)
+    return [name for name in names if name in known]
+
+
+@functools.cache
+def _warn_unknown_builtins(unknown: tuple[str, ...]) -> None:
+    logger.warning(
+        "claude_agent_extra_builtin_tools: %s is not a Claude Code built-in "
+        "tool; ignored",
+        ", ".join(unknown),
+    )
 
 
 def get_sdk_declared_tools(
