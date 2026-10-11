@@ -354,14 +354,20 @@ class IntegrationCredentialsStore:
             await self._set_user_integration_creds(user_id, [*persisted, credentials])
 
     async def get_all_creds(self, user_id: str) -> list[Credentials]:
-        """Public entry point — acquires lock, then delegates."""
-        async with await self.locked_user_integrations(user_id):
-            return await self._get_all_creds_unlocked(user_id)
+        """Return all credentials for *user_id* without taking the lock.
+
+        A read needs no lock: the table is the source of truth, and every
+        writer does its read-modify-write under ``locked_user_integrations``.
+        Locking reads made a page load's several concurrent reads queue behind
+        each other and behind any write or token refresh for the same user.
+        """
+        return await self._get_all_creds_unlocked(user_id)
 
     async def _get_all_creds_unlocked(self, user_id: str) -> list[Credentials]:
         """Return all credentials for *user_id*.
 
-        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        Writers call this under ``locked_user_integrations(user_id)``, so the
+        list they write back can't miss a concurrent write.
         """
         all_credentials = await self._get_persisted_user_creds_unlocked(user_id)
 
