@@ -45,7 +45,7 @@ test.describe("run correctness journey", () => {
     });
     const before = await snapshotCredits(page);
 
-    const runID = await startRunFromLibrary(page, agent.seeRunsUrl);
+    const runID = await startRunFromLibrary(page, agent.url);
 
     await expect
       .poll(() => getRunStatus(page, agent.graphID, runID), {
@@ -55,7 +55,7 @@ test.describe("run correctness journey", () => {
       .toBe("COMPLETED");
     await assertRunOutputValue(page, outputName, "42");
 
-    await page.goto(agent.seeRunsUrl);
+    await page.goto(agent.url);
     await waitForAgentPageLoad(page, agentName);
     await expect(
       runListItem(page, runID),
@@ -95,7 +95,7 @@ test.describe("run correctness journey", () => {
       links: [link("match", "positive", "output", "value")],
     });
 
-    const runID = await startRunFromLibrary(page, agent.seeRunsUrl);
+    const runID = await startRunFromLibrary(page, agent.url);
 
     await expect
       .poll(() => getRunStatus(page, agent.graphID, runID), {
@@ -158,22 +158,21 @@ async function importAgent(page: Page, testInfo: TestInfo, graph: GraphSpec) {
       links: graph.links,
     }),
   );
-  const { importedAgent } = await importAgentFromFile(
-    page,
-    filePath,
-    graph.name,
-  );
-  const graphID = await getGraphID(page, importedAgent.id);
-  return { ...importedAgent, graphID };
+  await importAgentFromFile(page, filePath, graph.name);
+  return findLibraryAgent(page, graph.name);
 }
 
-async function getGraphID(page: Page, libraryAgentID: string) {
-  const response = await page.request.get(
-    `/api/proxy/api/library/agents/${libraryAgentID}`,
-  );
-  expect(response.ok(), `GET library agent: ${response.status()}`).toBe(true);
-  const body = (await response.json()) as { graph_id: string };
-  return body.graph_id;
+async function findLibraryAgent(page: Page, name: string) {
+  const response = await page.request.get("/api/proxy/api/library/agents", {
+    params: { search_term: name },
+  });
+  expect(response.ok(), `GET library agents: ${response.status()}`).toBe(true);
+  const body = (await response.json()) as {
+    agents: { id: string; graph_id: string; name: string }[];
+  };
+  const agent = body.agents.find((candidate) => candidate.name === name);
+  if (!agent) throw new Error(`library agent "${name}" should exist`);
+  return { graphID: agent.graph_id, url: `/library/agents/${agent.id}` };
 }
 
 async function startRunFromLibrary(page: Page, agentURL: string) {
