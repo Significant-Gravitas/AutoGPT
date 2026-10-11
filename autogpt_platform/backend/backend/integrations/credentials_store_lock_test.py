@@ -63,6 +63,22 @@ class _Holders:
                 self.inside -= 1
 
 
+async def _wait_for_event(event: asyncio.Event, what: str) -> None:
+    try:
+        await asyncio.wait_for(event.wait(), timeout=_STALL)
+    except TimeoutError:
+        pytest.fail(f"timed out after {_STALL}s waiting for {what}")
+
+
+async def _cancel(*tasks: asyncio.Task) -> None:
+    """Let finished tasks settle and cancel stuck ones, without hanging the shard."""
+    if pending := [task for task in tasks if not task.done()]:
+        _, stuck = await asyncio.wait(pending, timeout=_STALL)
+        for task in stuck:
+            task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+
 @pytest.fixture
 def store() -> IntegrationCredentialsStore:
     redis_client._async_clients.clear()
@@ -113,15 +129,22 @@ async def test_a_waiter_that_takes_the_lock_during_a_release_still_releases_it(
             await waiter_may_leave.wait()
 
     first_task = asyncio.create_task(first())
-    await first_holds_lock.wait()
-    waiter_task = asyncio.create_task(waiter())
-    first_may_leave.set()
+    tasks = [first_task]
+    try:
+        await _wait_for_event(first_holds_lock, "the first holder to take the lock")
+        waiter_task = asyncio.create_task(waiter())
+        tasks.append(waiter_task)
+        first_may_leave.set()
 
-    await asyncio.wait_for(waiter_holds_lock.wait(), timeout=_STALL)
-    releaser_may_resume.set()
-    await asyncio.wait_for(first_task, timeout=_STALL)
-    waiter_may_leave.set()
-    await asyncio.wait_for(waiter_task, timeout=_STALL)
+        await _wait_for_event(waiter_holds_lock, "the waiter to take the lock")
+        releaser_may_resume.set()
+        await asyncio.wait_for(first_task, timeout=_STALL)
+        waiter_may_leave.set()
+        await asyncio.wait_for(waiter_task, timeout=_STALL)
+    finally:
+        for event in (first_may_leave, releaser_may_resume, waiter_may_leave):
+            event.set()
+        await _cancel(*tasks)
 
     # The next request for this user must not wait out the lock's TTL.
     async with asyncio.timeout(_STALL):
@@ -186,7 +209,7 @@ async def test_a_holder_whose_ttl_ran_out_cannot_release_its_successor(
     async with mutex.locked(key):
         # The first holder overran the TTL; Redis dropped its key.
         await mutex.redis.delete(str(key))
-        successor = await mutex.acquire(key)
+        successor = await asyncio.wait_for(mutex.acquire(key), timeout=_STALL)
 
     still_owned = await successor.owned()
     if still_owned:
@@ -215,12 +238,12 @@ async def test_credential_reads_do_not_wait_for_a_writer(
             await finish_write.wait()
 
     writer = asyncio.create_task(slow_writer())
-    await writer_holds_lock.wait()
     try:
+        await _wait_for_event(writer_holds_lock, "the writer to take the lock")
         async with asyncio.timeout(1):
             await store.get_all_creds(user_id)
             await store.get_creds_by_provider(user_id, "github")
             await store.get_creds_by_id(user_id, "missing")
     finally:
         finish_write.set()
-        await writer
+        await _cancel(writer)
