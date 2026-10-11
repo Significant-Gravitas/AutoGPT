@@ -1,11 +1,17 @@
 import {
   getGetTrialsGetTrialStatusQueryKey,
+  type getTrialsGetTrialStatusResponse,
   useGetTrialsGetTrialStatus,
 } from "@/app/api/__generated__/endpoints/trials/trials";
+import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 
+type TrialRefetchInterval =
+  | number
+  | ((trial: TrialStatusResponse | undefined) => number | false);
+
 interface Options {
-  refetchInterval?: number;
+  refetchInterval?: TrialRefetchInterval;
 }
 
 export function useTrialStatus({ refetchInterval }: Options = {}) {
@@ -15,9 +21,15 @@ export function useTrialStatus({ refetchInterval }: Options = {}) {
       queryKey: [...getGetTrialsGetTrialStatusQueryKey(), userID],
       enabled: Boolean(userID),
       retry: false,
-      refetchInterval,
-      select: (response) =>
-        response.status === 200 ? response.data : undefined,
+      refetchInterval:
+        typeof refetchInterval === "function"
+          ? (query) => refetchInterval(readTrial(query.state.data))
+          : refetchInterval,
+      select: readTrial,
     },
   });
+}
+
+function readTrial(response: getTrialsGetTrialStatusResponse | undefined) {
+  return response?.status === 200 ? response.data : undefined;
 }
