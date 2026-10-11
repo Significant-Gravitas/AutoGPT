@@ -162,6 +162,7 @@ class TestAnUnknownBackendValue:
         assert Config().feature_flag_backend is FeatureFlagBackend.POSTHOG
 
 
+@pytest.mark.usefixtures("posthog_events_dropped")
 class TestPostHogBackend:
     @pytest.mark.asyncio
     async def test_an_enabled_flag_is_authoritative(self, mocker, user_context):
@@ -912,6 +913,7 @@ class TestSentryFlagContext:
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
 
 
+@pytest.mark.usefixtures("posthog_events_dropped")
 class TestTheCountryRuleInEveryBackend:
     """The trial's country targeting, through each vendor's real evaluator."""
 

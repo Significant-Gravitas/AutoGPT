@@ -425,6 +425,7 @@ class TestDefaultBackendIsUntouched:
         build.assert_not_called()
 
 
+@pytest.mark.usefixtures("posthog_events_dropped")
 class TestAgainstTheRealSDK:
     """The SDK's own poll, driven through the provider."""
 
