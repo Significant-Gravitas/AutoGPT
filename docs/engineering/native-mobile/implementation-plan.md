@@ -1,8 +1,8 @@
 # Native mobile implementation plan
 
-Status: reviewed implementation plan; server work started. Read the [feature map](feature-map.md) and [card catalog](card-catalog.md) first. Baseline: `81d43f2982fe406acb7648f19c131e491c365d64`, inspected on 2026-10-11. Tracked in [SECRT-2881](https://linear.app/autogpt/issue/SECRT-2881) and the [native mobile experiment project](https://linear.app/autogpt/project/native-autogpt-mobile-experiment-6f8cfe0b39e5).
+Status: server foundations validated in [PR 1](https://github.com/Significant-Gravitas/AutoGPT/pull/15384); [PR 2](https://github.com/Significant-Gravitas/AutoGPT/pull/15392) is moving to the planned SwiftUI feasibility spike after the React Native build gate failed. Read the [feature map](feature-map.md) and [card catalog](card-catalog.md) first. Inventory baseline: `81d43f2982fe406acb7648f19c131e491c365d64`, inspected on 2026-10-11. Tracked in [SECRT-2881](https://linear.app/autogpt/issue/SECRT-2881) and the [native mobile experiment project](https://linear.app/autogpt/project/native-autogpt-mobile-experiment-6f8cfe0b39e5).
 
-Fable supplied and reviewed the server and contract inventory; Opus supplied and reviewed the client, renderer and test-harness design. This plan incorporates both review rounds and the parent's independent checks. Backend implementation is starting with pending-message retry safety. No new native app, passing mobile CI lane, or provider setup is claimed by this document.
+Fable supplied and reviewed the server and contract inventory; Opus supplied and reviewed the client, renderer and test-harness design, then assessed the failed cold builds. The first React Native app passed local email sign-in, streamed chat and transcript restoration through the production server with a scripted external model. It has not passed mobile CI or the full native interaction gate. Provider setup and test readiness remain open.
 
 ## Product shape
 
@@ -14,9 +14,13 @@ No Build or Library page. A tool-created workflow still has a native summary, in
 
 ## Client architecture decision and feasibility gate
 
-The leading choice is **React Native with Expo and TypeScript**, using native navigation and controls, for an iOS app whose conversation logic and cards can carry forward to Android. This is provisional until the small build and interaction experiment below passes. SwiftUI with a later Android client is the fallback if native interaction quality or the build constraints fail. Neither choice uses the desktop product as a WebView.
+The iOS experiment now takes the planned **SwiftUI fallback**, subject to the same build and interaction gate before the full card surface is ported. Android follows as a separate client sharing the server contract, fixtures and acceptance journeys; its UI will need separate implementation, increasing follow-up work compared with React Native. The product scope stays the same. The desktop product is never embedded in a WebView.
 
-Use a locked stable SDK and its supported React Native version, no OTA updates, and the smallest necessary native-module set. The current [Expo compatibility matrix](https://docs.expo.dev/versions/latest/) lists SDK 57 with React Native 0.86 and Xcode 26.4 or newer. The local environment reports Xcode 27.0 and macOS 26.6.2. Package patch versions are chosen and locked during the spike, not inferred from this note. Node 24 follows the frontend tooling convention.
+**Evidence behind the change, 2026-10-11.** React Native 0.86.3/Expo 57 with the intended module set timed out before native tests in three cold runs: [ordinary Release on ARM](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/38163767681), [functional compiler settings on ARM](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/38165924664), and [the standard Intel runner](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/38167323587). The first run compiled without a booting simulator and still exhausted the budget. The next two overlapped simulator startup and made much less progress; the Intel run showed host load above 600 before any source compile, so it does not establish Intel compile throughput. Opus's comparison of matched progress projected a 15–17 minute ARM native build; that is an estimate from partial runs, not a completed measurement or proof that every optimization is exhausted. The local 4m46s result used fresh DerivedData but retained ExpoModulesJSI output inside node_modules, so it was not fully cold.
+
+The existing app, protocol implementation and native journeys remain reference material while the SwiftUI spike is evaluated. A controlled RN run with compilation before simulator boot may add diagnostic evidence; it does not relax the ten-minute acceptance gate or delay the SwiftUI spike. Expo's [third-party precompiled framework path](https://docs.expo.dev/guides/prebuilt-expo-modules/) is documented for EAS, so it is not the chosen dependency path for this free GitHub runner experiment.
+
+Use SwiftUI/UIKit and system frameworks: Foundation/URLSession for transport and SSE, Security for Keychain, AuthenticationServices for browser auth, StoreKit, UserNotifications, WebKit, AVKit and PDFKit or QuickLook. Link the intended frameworks during the spike. Add external packages only for a concrete unmet requirement, with their cost included in the cold measurement. Keep transport and state outside views and platform integrations behind small adapters. The local toolchain is Xcode 27; the standard free CI lane uses Xcode 26.6. Preserve the Maestro accessibility identifiers and production-server journey harness across the port.
 
 Start with iPhone and iOS 17 or newer, system light/dark appearance, Dynamic Type, VoiceOver, Reduce Motion, and native touch targets. Android implementation follows the working iOS slice; it is not a prerequisite for proving the iOS app. StoreKit, APNs, system auth, protected files and artifact isolation sit behind small platform adapters. Backend Redis is cluster-only; a macOS service harness must use that topology too.
 
@@ -26,49 +30,39 @@ Proceed if the iOS experience passes keyboard, scrolling, text selection, access
 
 ## The two PR layers
 
-| Layer | Contents | Review boundary |
-| --- | --- | --- |
+| Layer                              | Contents                                                                                                                                                                                                                     | Review boundary                                                                                                                                                                                                     |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | PR 1: native client server support | Engineering plan; discovery and complete wire contract; native auth/session support; retry-safe pending actions; connection editing and OAuth return; native push; subscription entitlement support; server E2E and fixtures | Based on `dev`. Additive APIs and migrations, web compatibility, user ownership, session revocation, provider event handling. Server-only auth files under `frontend/` belong here because Better Auth lives there. |
-| PR 2: native app | New `autogpt_platform/mobile/`; iOS app; shared TypeScript client/cards; platform adapters; native UI E2E, mobile CI and setup documentation | Based on PR 1. Product behavior, complete card/action coverage, native interaction, artifact isolation, lifecycle, accessibility and measured CI. Android platform work follows after iOS acceptance. |
+| PR 2: native app                   | `autogpt_platform/mobile/`; SwiftUI iOS app; native cards and platform adapters; shared contract fixtures, native UI E2E, mobile CI and setup documentation                                                                  | Based on PR 1. Product behavior, complete card/action coverage, native interaction, artifact isolation, lifecycle, accessibility and measured CI. Android client work follows after iOS acceptance.                 |
 
 Both remain experiment branches until validation and review. Use normal commits and bottom-up merges to carry PR 1 changes into PR 2; never rebase or force push. Opening or updating these PRs does not authorize merging or deploying them.
 
-Proposed app layout:
+App layout during the SwiftUI spike:
 
 ```text
 autogpt_platform/mobile/
   README.md
   AGENTS.md
-  app.config.ts
-  package.json
-  pnpm-lock.yaml
-  src/app/                 # server/sign-in, chats, company and focused sheets
-  src/features/chat/      # history, stream, composer, cards and actions
-  src/features/company/
-  src/features/connections/
-  src/features/artifacts/
-  src/features/subscription/
-  src/features/notifications/
-  src/api/                 # generated types and authenticated transport
-  src/design/              # repository colors, typography and native primitives
-  src/platform/            # Keychain, browser auth, purchases, push and files
-  modules/                 # local native modules only where necessary
+  apple/                   # SwiftUI project and Swift source
+    Sources/               # app, features, API, state and platform adapters
+  src/                     # RN/TypeScript reference during the spike
+  scripts/                 # build and native journey helpers
   e2e/                     # native journeys, protocol cases and provider adapters
 ```
 
-Business logic stays out of view components. Shared conversation logic is extracted or deliberately adapted from the existing TypeScript reducer and history converter without pulling Next.js or DOM code into the app. Web behavior is a reference to verify, not a reason to carry every desktop feature into mobile.
+Business logic stays out of view components. Port the existing conversation reducer, history conversion and SSE behavior against the same protocol fixtures. The Android client can reuse those contracts and fixtures. Web behavior is a reference to verify, not a reason to carry every desktop feature into mobile.
 
 ## Delivery slices and acceptance
 
-| Slice | Server work in PR 1 | App work in PR 2 | Evidence required before moving on |
-| --- | --- | --- | --- |
-| 0. Contract and feasibility | Complete schema/registry, compatibility fixtures, discovery contract, minimal deterministic service harness | Native shell and the interaction/build spike | Reconcile all 89 response labels, 90 model declarations and 25 stream labels with tool-name/raw-output variants; report cold/warm CI and disk measurements |
-| 1. Real sign-in and conversation | Existing Better Auth policies through a native session flow; Google handoff; explicit renewal/revocation; retry-safe message identity | Cloud/own-server selection, email/Google sign-in, Otto and expert conversation list, native streaming/composer, history and relaunch | Simulator journey through production auth/API/persistence; wrong account/server, expiry/revocation, interrupted stream, retry without duplicates; real provider login separately labeled |
-| 2. Requests and connections | Stable question/answer identity, persisted review authority, credential edit/rotation, bound connection OAuth handoff | Question/approval cards, edit/approve/decline, connection list/forms, HubSpot key editing and an OAuth provider's reconnect, resume originating action | Stale/two-device action, rejected key, cancelled OAuth, key rotation preserving references, cross-user denial, no duplicate continuation after relaunch |
-| 3. Complete tools and company | Fill any remaining structured action gaps; versioned targets for run/expert/schedule/file actions | Every catalog family, historical/raw fallback, native run/expert/schedule sheets and expert changes | Every known producer/variant is accounted for; render and invoke applicable actions; replayed completed cards cannot repeat effects; Build/Library are unnecessary |
-| 4. Artifacts | Authorized download/preview and any missing remote-desktop authorization contract | Native image/video/PDF/text/code/CSV viewers, share/export, isolated HTML/React viewer | Wrong-user/deleted/large/malformed files, untrusted links and content, background/account switch; no app token or privileged bridge in artifact execution |
-| 5. Subscription and notifications | Provider-aware effective entitlement, signed App Store verification/notifications, session-bound APNs registration and attention targets | Current plan, purchase/restore/manage, push permission and tap routing | Existing Stripe subscriber, duplicate/reordered/refunded transactions, account-bound restore, generic lock-screen payload, revoked session, stale/cold-start notification tap |
-| 6. Review and shared test | Address server findings and rerun affected E2E | Polish native core journeys and fix app findings | Mythos on the concrete high-risk design/diff, Daybreak Blue on implementation and E2E completeness; same simulator screenshots in chat and Linear; explicit remaining provider prerequisites |
+| Slice                             | Server work in PR 1                                                                                                                      | App work in PR 2                                                                                                                                       | Evidence required before moving on                                                                                                                                                           |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0. Contract and feasibility       | Complete schema/registry, compatibility fixtures, discovery contract, minimal deterministic service harness                              | Native shell and the interaction/build spike                                                                                                           | Reconcile all 89 response labels, 90 model declarations and 25 stream labels with tool-name/raw-output variants; report cold/warm CI and disk measurements                                   |
+| 1. Real sign-in and conversation  | Existing Better Auth policies through a native session flow; Google handoff; explicit renewal/revocation; retry-safe message identity    | Cloud/own-server selection, email/Google sign-in, Otto and expert conversation list, native streaming/composer, history and relaunch                   | Simulator journey through production auth/API/persistence; wrong account/server, expiry/revocation, interrupted stream, retry without duplicates; real provider login separately labeled     |
+| 2. Requests and connections       | Stable question/answer identity, persisted review authority, credential edit/rotation, bound connection OAuth handoff                    | Question/approval cards, edit/approve/decline, connection list/forms, HubSpot key editing and an OAuth provider's reconnect, resume originating action | Stale/two-device action, rejected key, cancelled OAuth, key rotation preserving references, cross-user denial, no duplicate continuation after relaunch                                      |
+| 3. Complete tools and company     | Fill any remaining structured action gaps; versioned targets for run/expert/schedule/file actions                                        | Every catalog family, historical/raw fallback, native run/expert/schedule sheets and expert changes                                                    | Every known producer/variant is accounted for; render and invoke applicable actions; replayed completed cards cannot repeat effects; Build/Library are unnecessary                           |
+| 4. Artifacts                      | Authorized download/preview and any missing remote-desktop authorization contract                                                        | Native image/video/PDF/text/code/CSV viewers, share/export, isolated HTML/React viewer                                                                 | Wrong-user/deleted/large/malformed files, untrusted links and content, background/account switch; no app token or privileged bridge in artifact execution                                    |
+| 5. Subscription and notifications | Provider-aware effective entitlement, signed App Store verification/notifications, session-bound APNs registration and attention targets | Current plan, purchase/restore/manage, push permission and tap routing                                                                                 | Existing Stripe subscriber, duplicate/reordered/refunded transactions, account-bound restore, generic lock-screen payload, revoked session, stale/cold-start notification tap                |
+| 6. Review and shared test         | Address server findings and rerun affected E2E                                                                                           | Polish native core journeys and fix app findings                                                                                                       | Mythos on the concrete high-risk design/diff, Daybreak Blue on implementation and E2E completeness; same simulator screenshots in chat and Linear; explicit remaining provider prerequisites |
 
 Slices can add commits to both PRs. A slice is complete only when its user journey and persistent effects work; static screens and fixture-only output are not proof of integration. The first Hark alert is sent once a useful, reviewed build is installed and ready for the user's shared simulator test. Planning completion does not trigger that alert.
 
