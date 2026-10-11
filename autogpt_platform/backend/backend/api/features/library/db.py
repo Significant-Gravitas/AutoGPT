@@ -874,10 +874,13 @@ async def update_graph_in_library(
     user_id: str,
     organization_id: str | None = None,
     team_id: str | None = None,
+    move_webhook_presets: bool = True,
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
     """Create a new version of an existing graph and update the library entry.
 
     ``organization_id``/``team_id`` tag the new version; None leaves it untagged.
+    ``move_webhook_presets`` False leaves the user's webhook presets on the
+    versions they run now.
     """
     existing_versions = await graph_db.get_graph_all_versions(graph.id, user_id)
     current_active_version = (
@@ -929,7 +932,7 @@ async def update_graph_in_library(
         # so the migration result is intentionally discarded here. Skipped
         # presets are surfaced on the interactive graph-activation endpoints
         # (update_graph / set_graph_active_version) instead.
-        if created_graph.webhook_input_node:
+        if move_webhook_presets and created_graph.webhook_input_node:
             await migrate_webhook_presets_to_new_version(
                 user_id=user_id,
                 new_graph=created_graph,

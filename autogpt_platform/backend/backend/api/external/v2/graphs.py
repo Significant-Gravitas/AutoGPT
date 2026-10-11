@@ -205,9 +205,7 @@ async def update_graph(
         )
         if current_active_version:
             await on_graph_deactivate(current_active_version, user_id=auth.user_id)
-        await library_db.migrate_webhook_presets_to_new_version(
-            user_id=auth.user_id, new_graph=new_graph_version
-        )
+        await _move_webhook_presets(new_graph_version, auth)
 
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
@@ -315,8 +313,6 @@ async def set_active_version(
             status.HTTP_404_NOT_FOUND,
             f"Graph #{graph_id} v{new_active_version} not found",
         )
-    # The owner's graph only: activating registers the version's webhooks
-    # with the caller's credentials, which a teammate's graph must not get.
     owned_by_caller(new_active_graph, auth, f"Graph #{graph_id}")
 
     current_active_graph = await graph_db.get_graph(
@@ -342,11 +338,7 @@ async def set_active_version(
     if current_active_graph and current_active_graph.version != new_active_version:
         await on_graph_deactivate(current_active_graph, user_id=auth.user_id)
 
-    # Keeps webhook URLs firing the active version. A preset it skips is only
-    # logged: unlike the internal route's, this response has no field for it.
-    await library_db.migrate_webhook_presets_to_new_version(
-        user_id=auth.user_id, new_graph=new_active_graph
-    )
+    await _move_webhook_presets(new_active_graph, auth)
 
 
 @graphs_router.patch(
@@ -492,3 +484,26 @@ async def get_marketplace_listing_for_graph(
             detail=f"No marketplace listing found for graph #{graph_id}",
         )
     return MarketplaceAgentDetails.from_internal(agent)
+
+
+async def _move_webhook_presets(
+    new_graph: graph_db.GraphModel, auth: TenantContext
+) -> None:
+    """Keep the user's webhook presets firing the active version, if the
+    credential may start runs.
+
+    A preset's webhook runs the version it is pinned to, with the credentials
+    stored on the preset, so moving it decides what the next delivery runs:
+    a start, which `WRITE_GRAPH` doesn't grant. Without `RUN_AGENT` the presets
+    stay on the version they run now. A preset the migration skips is only
+    logged: unlike the internal route's, this response has no field for it.
+    """
+    if APIKeyPermission.RUN_AGENT not in auth.scopes:
+        logger.info(
+            f"Not moving graph #{new_graph.id}'s webhook presets to "
+            f"v{new_graph.version}: the credential lacks RUN_AGENT"
+        )
+        return
+    await library_db.migrate_webhook_presets_to_new_version(
+        user_id=auth.user_id, new_graph=new_graph
+    )

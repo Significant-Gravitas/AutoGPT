@@ -609,6 +609,7 @@ async def save_agent_to_library(
     is_hidden: bool = False,
     organization_id: str | None = None,
     team_id: str | None = None,
+    move_webhook_presets: bool = True,
 ) -> tuple[Graph, "LibraryAgent"]:
     """Save agent to database and user's library.
 
@@ -620,6 +621,8 @@ async def save_agent_to_library(
         is_hidden: Whether the agent should be hidden from library listing
         organization_id, team_id: Tenancy for the new graph or version; None
             keeps the defaults
+        move_webhook_presets: On an update, move the agent's webhook presets
+            onto the new version
 
     Returns:
         Tuple of (created Graph, LibraryAgent)
@@ -628,7 +631,11 @@ async def save_agent_to_library(
     db = library_db()
     if is_update:
         return await db.update_graph_in_library(
-            graph, user_id, organization_id=organization_id, team_id=team_id
+            graph,
+            user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            move_webhook_presets=move_webhook_presets,
         )
     return await db.create_graph_in_library(
         graph,

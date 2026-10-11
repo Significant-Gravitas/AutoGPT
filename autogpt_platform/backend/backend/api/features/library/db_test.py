@@ -628,6 +628,63 @@ async def test_update_graph_in_library_allows_archived_library_agent(mocker):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("move", [True, False])
+async def test_update_graph_in_library_moves_webhook_presets_only_when_asked(
+    mocker, move: bool
+):
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        AsyncMock(return_value=("org-fallback", "team-fallback")),
+    )
+    graph_model = mocker.Mock(is_active=True)
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.get_graph_all_versions",
+        new=mocker.AsyncMock(return_value=[mocker.Mock(version=1, is_active=True)]),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.make_graph_model",
+        return_value=graph_model,
+    )
+    mocker.patch(
+        "backend.api.features.library.db.before_graph_activate",
+        new=mocker.AsyncMock(return_value=graph_model),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.create_graph",
+        new=mocker.AsyncMock(
+            return_value=mocker.Mock(
+                id="graph-id", version=2, is_active=True, webhook_input_node=object()
+            )
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent_by_graph_id",
+        new=mocker.AsyncMock(return_value=mocker.Mock()),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.update_agent_version_in_library",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.set_graph_active_version",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.on_graph_deactivate", new=mocker.AsyncMock()
+    )
+    migrate = mocker.patch(
+        "backend.api.features.library.db.migrate_webhook_presets_to_new_version",
+        new=mocker.AsyncMock(),
+    )
+
+    await db.update_graph_in_library(
+        mocker.Mock(id="graph-id"), "test-user", move_webhook_presets=move
+    )
+
+    assert migrate.await_count == (1 if move else 0)
+
+
+@pytest.mark.asyncio
 async def test_create_graph_in_library_tags_the_graph_and_entry_with_the_tenant(
     mocker,
 ):

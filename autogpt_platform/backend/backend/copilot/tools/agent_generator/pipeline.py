@@ -57,6 +57,7 @@ async def fix_validate_and_save(
     is_hidden: bool = False,
     organization_id: str | None = None,
     team_id: str | None = None,
+    move_webhook_presets: bool = True,
 ) -> ToolResponseBase:
     """Shared pipeline: auto-fix → validate → preview or save.
 
@@ -72,6 +73,8 @@ async def fix_validate_and_save(
         library_agents: Library agents for AgentExecutorBlock validation/fixing.
         organization_id, team_id: Tenancy for a new graph or version; None
             keeps the defaults.
+        move_webhook_presets: On an update, move the agent's webhook presets
+            onto the new version.
 
     Returns:
         An appropriate ToolResponseBase subclass.
@@ -184,6 +187,7 @@ async def fix_validate_and_save(
             is_hidden=is_hidden,
             organization_id=organization_id,
             team_id=team_id,
+            move_webhook_presets=move_webhook_presets,
         )
         return AgentSavedResponse(
             message=(

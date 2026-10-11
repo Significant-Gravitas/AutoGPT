@@ -32,6 +32,7 @@ _AUTH = TenantContext(
     type="api_key",
     organization_id="org-1",
 )
+_ALL_BUT_RUN_AGENT = [p for p in APIKeyPermission if p != APIKeyPermission.RUN_AGENT]
 _REQUEST = GraphCreateRequest(name="Agent", nodes=[], links=[])
 
 
@@ -50,6 +51,42 @@ def writes(mocker: pytest_mock.MockFixture) -> dict[str, AsyncMock]:
             "update_agent_version_in_library": "backend.api.features.library.db.update_agent_version_in_library",
         }.items()
     }
+
+
+@pytest.mark.parametrize(
+    "scopes, moves", [(list(APIKeyPermission), True), (_ALL_BUT_RUN_AGENT, False)]
+)
+async def test_activating_moves_webhook_presets_only_for_a_credential_that_may_run(
+    mocker: pytest_mock.MockFixture, scopes: list[APIKeyPermission], moves: bool
+) -> None:
+    graph = Mock(
+        user_id=_AUTH.user_id, organization_id="org-1", id="graph-1", version=2
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph", new_callable=AsyncMock, return_value=graph
+    )
+    mocker.patch(
+        "backend.api.external.v2.graphs.before_graph_activate",
+        new_callable=AsyncMock,
+        return_value=graph,
+    )
+    mocker.patch("backend.data.graph.set_graph_active_version", new_callable=AsyncMock)
+    mocker.patch(
+        "backend.api.features.library.db.update_agent_version_in_library",
+        new_callable=AsyncMock,
+    )
+    migrate = mocker.patch(
+        "backend.api.features.library.db.migrate_webhook_presets_to_new_version",
+        new_callable=AsyncMock,
+    )
+
+    await set_active_version(
+        "graph-1",
+        GraphSetActiveVersionRequest(active_graph_version=2),
+        auth=_AUTH.model_copy(update={"scopes": scopes}),
+    )
+
+    assert migrate.await_count == (1 if moves else 0)
 
 
 @pytest.mark.parametrize(
@@ -202,8 +239,7 @@ async def test_a_page_of_versions_resolves_only_its_own_sub_graphs(
     assert resolve.await_count == 2
 
 
-@pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize(
+_ACTIVATING_V2 = pytest.mark.parametrize(
     "activate_v2",
     [
         lambda graph_id, request, auth: update_graph(graph_id, request, auth=auth),
@@ -213,15 +249,39 @@ async def test_a_page_of_versions_resolves_only_its_own_sub_graphs(
     ],
     ids=["update", "set-active-version"],
 )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@_ACTIVATING_V2
 async def test_activating_a_version_moves_its_webhook_presets_onto_it(
     server: SpinTestServer, monkeypatch: pytest.MonkeyPatch, activate_v2
 ) -> None:
     """Left on v1, a preset's webhook URL keeps running the deactivated version."""
+    assert await _preset_version_once_v2_is_active(monkeypatch, activate_v2, _AUTH) == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@_ACTIVATING_V2
+async def test_a_credential_that_cannot_start_runs_leaves_webhook_presets_in_place(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch, activate_v2
+) -> None:
+    """Moving a preset decides what its next delivery runs, with the
+    credentials stored on it: a start, which WRITE_GRAPH alone doesn't grant."""
+    auth = _AUTH.model_copy(update={"scopes": _ALL_BUT_RUN_AGENT})
+
+    assert await _preset_version_once_v2_is_active(monkeypatch, activate_v2, auth) == 1
+
+
+async def _preset_version_once_v2_is_active(
+    monkeypatch: pytest.MonkeyPatch, activate_v2, auth: TenantContext
+) -> int:
+    """Pin a webhook preset to a triggered graph's v1, activate v2 with `auth`,
+    and read which version the preset runs."""
     # Trigger blocks are disabled without a platform URL, and CI sets none.
     monkeypatch.setattr(_base.app_config, "platform_base_url", "https://example.com")
     user_id = str(uuid4())
     await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
-    auth = _AUTH.model_copy(update={"user_id": user_id})
+    auth = auth.model_copy(update={"user_id": user_id})
     triggered = GraphCreateRequest(
         name="Triggered",
         nodes=[GraphNode(id="trigger", block_id=GenericWebhookTriggerBlock().id)],
@@ -254,10 +314,10 @@ async def test_activating_a_version_moves_its_webhook_presets_onto_it(
 
     await activate_v2(v1.id, triggered, auth)
 
-    moved = await prisma.models.AgentPreset.prisma().find_unique_or_raise(
+    preset = await prisma.models.AgentPreset.prisma().find_unique_or_raise(
         where={"id": preset.id}
     )
-    assert moved.agentGraphVersion == 2
+    return preset.agentGraphVersion
 
 
 async def _save_inactive_then_activate(

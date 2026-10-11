@@ -19,7 +19,7 @@ from .agent_json_input import (
 )
 from .base import BaseTool
 from .expert_scope import require_installed_workflow
-from .external_scope import external_tenancy
+from .external_scope import external_allows, external_tenancy
 from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase
 
@@ -206,6 +206,9 @@ class EditAgentTool(BaseTool):
             library_agents=library_agents,
             organization_id=organization_id,
             team_id=team_id,
+            # A webhook preset runs the version it is pinned to with its stored
+            # credentials, so moving it onto this one is a start.
+            move_webhook_presets=external_allows(session, APIKeyPermission.RUN_AGENT),
         )
 
 

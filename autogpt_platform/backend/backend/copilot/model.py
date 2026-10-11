@@ -19,6 +19,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     ChatCompletionMessageToolCallParam,
     Function,
 )
+from prisma.enums import APIKeyPermission
 from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
@@ -509,6 +510,13 @@ class ChatSession(ChatSessionInfo):
     agent-building guide, the library search before creating an agent) could
     never pass; the client is offered those same tools and decides itself
     when to call them. Never persisted."""
+
+    external_permissions: frozenset[APIKeyPermission] = Field(
+        default=frozenset(), exclude=True
+    )
+    """Runtime: the permissions of the External API credential behind an
+    external call, for a tool whose effects reach past the permissions it is
+    exposed with. Never persisted."""
 
     @classmethod
     def new(

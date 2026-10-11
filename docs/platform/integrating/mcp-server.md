@@ -191,7 +191,7 @@ Any other client that supports Streamable HTTP works the same way: point it at t
 | `view_agent_output` | Read the outputs of an agent's runs. | Read Run |
 | `get_agent_building_guide` | Return the guide the agent-building tools follow. | none |
 | `create_agent` | Validate, fix and save a new agent from graph JSON. | Write Graph, Write Library, Read Library |
-| `edit_agent` | Validate, fix and save a new version of an agent. | Write Graph, Write Library |
+| `edit_agent` | Validate, fix and save a new version of an agent. Its webhook triggers move onto it only if the credential also has Run Agent. | Write Graph, Write Library |
 | `customize_agent` | Adapt a marketplace agent and save it to your library. | Write Graph, Write Library |
 | `validate_agent_graph` | Check graph JSON for errors without saving it. | none |
 | `fix_agent_graph` | Repair common graph JSON mistakes without saving. | none |

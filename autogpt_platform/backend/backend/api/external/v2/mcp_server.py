@@ -443,6 +443,9 @@ def _create_tool_handler(
             team_id=access_token.team_id,
         )
         session.external_caller = True
+        session.external_permissions = frozenset(
+            APIKeyPermission(scope) for scope in access_token.scopes
+        )
 
         result = await _execute_tool_sync(tool, user_id, session, kwargs)
 

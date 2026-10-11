@@ -8,6 +8,8 @@ runs (`api/external/v2/mcp_tenancy.py`); these helpers filter what a tool
 lists or finds on its own, such as a search by name.
 """
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 
 
@@ -24,6 +26,15 @@ def external_tenancy(session: ChatSession) -> tuple[str | None, str | None]:
     if not session.external_caller:
         return None, None
     return session.organization_id, session.team_id
+
+
+def external_allows(session: ChatSession, permission: APIKeyPermission) -> bool:
+    """Whether the caller may do what ``permission`` grants.
+
+    Always in a chat; for an External API call, only if its credential holds
+    it. For a tool whose effects reach past the permissions it is exposed with.
+    """
+    return not session.external_caller or permission in session.external_permissions
 
 
 def error_detail(error: BaseException, session: ChatSession) -> str:

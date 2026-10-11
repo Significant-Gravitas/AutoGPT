@@ -146,6 +146,8 @@ The app shows each permission in title case (**Run Agent**); the API and OAuth u
 
 Two endpoints need two permissions at once: `POST /schedules` needs `WRITE_SCHEDULE` and `RUN_AGENT`, and sharing a run needs `READ_RUN` and `SHARE_RUN`.
 
+Activating a version, with `PUT /graphs/{graph_id}` or by setting the active version, moves the agent's webhook triggers onto it only if the credential also has `RUN_AGENT`: a trigger runs the version it is attached to, so moving it decides what its next event runs. Without `RUN_AGENT` the triggers keep running the version they were on.
+
 These need a valid credential but no particular permission: browsing the public marketplace (`GET /marketplace/agents`, `/marketplace/creators` and their detail pages) and `GET /search` over public content (marketplace agents, blocks, integrations and documentation). Searching your own content costs the matching permission: `content_types=LIBRARY_AGENT` needs `READ_LIBRARY`, and `WORKSPACE_FILE` needs `READ_FILES`.
 
 `EXECUTE_GRAPH` and `EXECUTE_BLOCK` belong to the deprecated v1 API. v2 does not use them; `RUN_AGENT` replaces `EXECUTE_GRAPH`.

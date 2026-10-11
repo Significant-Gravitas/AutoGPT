@@ -422,6 +422,7 @@ async def test_a_tool_called_over_mcp_runs_without_waiting_for_an_approval(
     assert isinstance(session, ChatSession)
     assert session.metadata.origin == "automation"
     assert session.external_caller
+    assert session.external_permissions == frozenset(_tool_scopes("delete_folder"))
     assert (session.organization_id, session.team_id) == ("org-1", "team-1")
     no_tenancy_lookups.assert_awaited_once_with(
         "delete_folder", {"folder_id": "folder-1"}, "user-1", "org-1"
