@@ -27,3 +27,11 @@ def test_add_store_agent_rpc_request_schema_is_constructible() -> None:
 def test_the_audience_consumer_can_read_the_opt_out() -> None:
     assert hasattr(DatabaseManager, "is_marketing_opted_out")
     assert hasattr(DatabaseManagerAsyncClient, "is_marketing_opted_out")
+
+
+def test_the_scheduler_can_post_a_note_into_a_chat() -> None:
+    """The scheduler has no Prisma of its own; a skipped run's note goes
+    through this RPC."""
+    assert hasattr(DatabaseManagerAsyncClient, "append_session_message")
+    manager = DatabaseManager()
+    manager._create_fastapi_endpoint(manager.append_session_message)
