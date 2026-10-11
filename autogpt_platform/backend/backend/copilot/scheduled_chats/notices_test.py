@@ -49,6 +49,63 @@ def test_a_weekly_limit_names_the_day_it_resets():
     assert "resets on Monday at 00:00 UTC" in notice.body
 
 
+def test_the_reset_is_on_the_owners_clock():
+    """The schedule's timezone is on the job: nobody should have to work out
+    what 00:00 UTC is where they live."""
+    notice = skip_notice(
+        _usage("daily"),
+        title="Briefing",
+        now=_NOW,
+        run="recurring",
+        user_timezone="America/Chicago",
+    )
+
+    assert notice is not None
+    assert notice.body.endswith("when the limit resets at 19:00 CDT.")
+    # The window it names is still the UTC one, so the dedupe is unchanged.
+    assert notice.resumes_at == _MIDNIGHT
+
+
+def test_a_weekly_reset_names_the_owners_day():
+    """Monday 00:00 UTC is Sunday evening in Chicago."""
+    notice = skip_notice(
+        _usage("weekly", _MONDAY),
+        title="Briefing",
+        now=_NOW,
+        run="recurring",
+        user_timezone="America/Chicago",
+    )
+
+    assert notice is not None
+    assert "resets on Sunday at 19:00 CDT" in notice.body
+
+
+def test_an_unknown_timezone_falls_back_to_utc():
+    notice = skip_notice(
+        _usage("daily"),
+        title="Briefing",
+        now=_NOW,
+        run="recurring",
+        user_timezone="Mars/Olympus_Mons",
+    )
+
+    assert notice is not None
+    assert notice.body.endswith("at 00:00 UTC.")
+
+
+def test_a_dropped_one_shot_on_a_lost_chatgpt_plan_says_it_did_not_run():
+    notice = skip_notice(
+        TurnRefusal(reason="lacks Codex entitlement", kind="codex_access"),
+        title="Check CI",
+        now=_NOW,
+        run="dropped",
+    )
+
+    assert notice is not None
+    assert notice.body.startswith("“Check CI” didn't run")
+    assert notice.body.endswith("then ask for it again.")
+
+
 def test_a_one_shot_that_waits_says_when_it_will_run():
     notice = skip_notice(
         _usage("daily"), title="Check CI", now=_NOW, run="waits_for_reset"
