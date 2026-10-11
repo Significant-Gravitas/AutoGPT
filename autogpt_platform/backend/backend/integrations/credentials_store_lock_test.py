@@ -9,8 +9,10 @@ timeout, and the copilot Playwright spec failed the same way in CI.
 """
 
 import asyncio
+import contextlib
 import socket
 import uuid
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
@@ -42,6 +44,26 @@ pytestmark = [
 _STALL = 5.0
 
 
+class _Holders:
+    """Holds the user's lock and records how many holders were ever inside at once."""
+
+    def __init__(self, store: IntegrationCredentialsStore, user_id: str):
+        self.store = store
+        self.user_id = user_id
+        self.inside = 0
+        self.most_inside = 0
+
+    @contextlib.asynccontextmanager
+    async def hold(self) -> AsyncIterator[None]:
+        async with await self.store.locked_user_integrations(self.user_id):
+            self.inside += 1
+            self.most_inside = max(self.most_inside, self.inside)
+            try:
+                yield
+            finally:
+                self.inside -= 1
+
+
 @pytest.fixture
 def store() -> IntegrationCredentialsStore:
     from backend.data import redis_client
@@ -55,53 +77,124 @@ def user_id() -> str:
     return f"lock-test-{uuid.uuid4()}"
 
 
+@pytest.fixture
+def holders(store: IntegrationCredentialsStore, user_id: str) -> _Holders:
+    return _Holders(store, user_id)
+
+
 async def test_a_waiter_that_takes_the_lock_during_a_release_still_releases_it(
-    store: IntegrationCredentialsStore, user_id: str, monkeypatch
+    holders: _Holders, monkeypatch
 ):
-    # Under load, the releasing coroutine resumes well after Redis has deleted
-    # the key. A waiter polling the key takes it in that gap. Hold the releaser
-    # there on purpose so the waiter always lands inside it.
+    # Under load, a releasing coroutine resumes well after Redis has deleted
+    # the key, and a waiter polling the key takes it in that gap. Park the
+    # first release there until the waiter holds the key.
+    waiter_holds_lock = asyncio.Event()
+    releaser_may_resume = asyncio.Event()
+    parked: list[Lock] = []
     do_release = Lock.do_release
 
-    async def release_then_resume_late(self: Lock, expected_token: bytes) -> None:
+    async def release_then_park_once(self: Lock, expected_token: bytes) -> None:
         await do_release(self, expected_token)
-        await asyncio.sleep(0.3)
+        if not parked:
+            parked.append(self)
+            await releaser_may_resume.wait()
 
-    monkeypatch.setattr(Lock, "do_release", release_then_resume_late)
+    monkeypatch.setattr(Lock, "do_release", release_then_park_once)
 
     first_holds_lock = asyncio.Event()
+    first_may_leave = asyncio.Event()
+    waiter_may_leave = asyncio.Event()
 
-    async def hold(seconds: float, acquired: asyncio.Event | None = None) -> None:
-        async with await store.locked_user_integrations(user_id):
-            if acquired:
-                acquired.set()
-            await asyncio.sleep(seconds)
+    async def first() -> None:
+        async with holders.hold():
+            first_holds_lock.set()
+            await first_may_leave.wait()
 
-    first = asyncio.create_task(hold(0.2, first_holds_lock))
+    async def waiter() -> None:
+        async with holders.hold():
+            waiter_holds_lock.set()
+            await waiter_may_leave.wait()
+
+    first_task = asyncio.create_task(first())
     await first_holds_lock.wait()
-    # Takes the key while the first holder is still inside its release, and
-    # is still holding it when that release finishes.
-    second = asyncio.create_task(hold(0.5))
-    await asyncio.wait_for(asyncio.gather(first, second), timeout=_STALL)
+    waiter_task = asyncio.create_task(waiter())
+    first_may_leave.set()
+
+    await asyncio.wait_for(waiter_holds_lock.wait(), timeout=_STALL)
+    releaser_may_resume.set()
+    await asyncio.wait_for(first_task, timeout=_STALL)
+    waiter_may_leave.set()
+    await asyncio.wait_for(waiter_task, timeout=_STALL)
 
     # The next request for this user must not wait out the lock's TTL.
-    await asyncio.wait_for(hold(0), timeout=_STALL)
+    async with asyncio.timeout(_STALL):
+        async with holders.hold():
+            pass
+    assert holders.most_inside == 1
 
 
-async def test_concurrent_holders_never_leave_the_lock_behind(
-    store: IntegrationCredentialsStore, user_id: str
-):
+async def test_concurrent_holders_never_leave_the_lock_behind(holders: _Holders):
     async def page_load_read() -> None:
         for _ in range(10):
-            async with await store.locked_user_integrations(user_id):
-                await asyncio.sleep(0.001)
+            async with holders.hold():
+                await asyncio.sleep(0)
 
-    await asyncio.wait_for(
-        asyncio.gather(*(page_load_read() for _ in range(6))), timeout=_STALL * 4
-    )
+    async with asyncio.timeout(_STALL * 4):
+        await asyncio.gather(*(page_load_read() for _ in range(6)))
     async with asyncio.timeout(_STALL):
-        async with await store.locked_user_integrations(user_id):
+        async with holders.hold():
             pass
+    assert holders.most_inside == 1
+
+
+async def test_cancelling_acquire_after_redis_grants_the_key_does_not_orphan_it(
+    store: IntegrationCredentialsStore, holders: _Holders, user_id: str, monkeypatch
+):
+    # Webhook setup wraps acquire() in wait_for and frees the key with
+    # release(key). Cancel the acquire the moment Redis has granted the key,
+    # while something else (e.g. release_all_locks at shutdown) holds the
+    # mutex's bookkeeping lock.
+    granted = asyncio.Event()
+    do_acquire = Lock.do_acquire
+
+    async def acquire_and_signal(self: Lock, token: bytes) -> bool:
+        acquired = await do_acquire(self, token)
+        if acquired:
+            granted.set()
+        return acquired
+
+    monkeypatch.setattr(Lock, "do_acquire", acquire_and_signal)
+    mutex = await store.locks()
+    key = (f"user:{user_id}", "integrations")
+
+    async with mutex.locks_lock:
+        acquiring = asyncio.create_task(mutex.acquire(key))
+        await asyncio.wait_for(granted.wait(), timeout=_STALL)
+        acquiring.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await acquiring
+        await mutex.release(key)
+
+    async with asyncio.timeout(_STALL):
+        async with holders.hold():
+            pass
+
+
+async def test_a_holder_whose_ttl_ran_out_cannot_release_its_successor(
+    store: IntegrationCredentialsStore, user_id: str
+):
+    mutex = await store.locks()
+    key = (f"user:{user_id}", "integrations")
+
+    async with mutex.locked(key):
+        # The first holder overran the TTL; Redis dropped its key.
+        await mutex.redis.delete(str(key))
+        successor = await mutex.acquire(key)
+
+    still_owned = await successor.owned()
+    if still_owned:
+        await successor.release()
+    assert still_owned, "the expired holder released its successor's lock"
 
 
 async def test_credential_reads_do_not_wait_for_a_writer(

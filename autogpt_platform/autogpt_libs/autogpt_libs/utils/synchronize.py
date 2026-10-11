@@ -17,16 +17,14 @@ class AsyncRedisKeyedMutex:
     This class provides a mutex that can be locked and unlocked by a specific key,
     using Redis as a distributed locking provider.
 
-    Every acquisition gets its own redis-py ``Lock``. A ``Lock`` keeps its owner
-    token on the object, and since redis-py 7 ``release()`` clears that token
-    only after the Redis round-trip. One ``Lock`` shared by every coroutine
-    waiting on a key let a finishing holder wipe the token of the waiter that
-    had just taken the key. That waiter then skipped its own release, leaving
-    the key held until its TTL ran out, and stalling every other request for
-    that key for up to ``timeout`` seconds.
+    Every acquisition must get its own redis-py ``Lock``. A ``Lock`` keeps its
+    owner token on the object, and ``release()`` clears it only after the Redis
+    round-trip, so a ``Lock`` shared between coroutines lets a releasing holder
+    wipe the token of the waiter that just took the key. That waiter can then
+    never release it, and the key stays held until its TTL.
 
-    It tracks the latest lock per key in an ExpiringDict, so that ``release``
-    and ``release_all_locks`` can find it, and so the dict can't leak memory.
+    The latest lock per key is kept in an ExpiringDict, so ``release`` and
+    ``release_all_locks`` can find it without leaking memory.
     """
 
     def __init__(self, redis: "AsyncRedisLike", timeout: int | None = 60):
@@ -50,8 +48,10 @@ class AsyncRedisKeyedMutex:
         """Acquires and returns a lock with the given key"""
         lock = self.redis.lock(str(key), self.timeout, thread_local=False)
         await lock.acquire()
-        async with self.locks_lock:
-            self.locks[key] = lock
+        # No await between taking the key and registering it: a caller that
+        # wraps this in wait_for and cleans up with release(key) must always
+        # find a lock it was cancelled after taking.
+        self.locks[key] = lock
         return lock
 
     async def release(self, key: Any):
