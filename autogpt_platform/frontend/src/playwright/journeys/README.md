@@ -73,6 +73,12 @@ PLAYWRIGHT_BASE_URL=https://autogpt-pr-<N>.vercel.app \
   pnpm exec playwright test --config playwright.journeys.config.ts
 ```
 
+- Journeys present a normal Chrome user agent (`user-agent.ts`; override with
+  `PLAYWRIGHT_USER_AGENT`). PostHog's edge returns no flags at all to a
+  `HeadlessChrome` user agent, so with the default headless one, dev and
+  previews would serve every flag off: no paywall, no experts, old layout.
+  A context you create with `browser.newContext()` doesn't inherit the
+  config, so pass it `userAgent: JOURNEY_USER_AGENT` yourself.
 - Users sign up as `journey-<id>@previews.agpt.co`, which the preview
   allowlist accepts. Override the domain with `PLAYWRIGHT_JOURNEY_EMAIL_DOMAIN`.
 - Previews serve real PostHog flags, so `enable-platform-payment` is on there

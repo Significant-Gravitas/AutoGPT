@@ -77,7 +77,7 @@ test.describe("run correctness journey", () => {
     ).toBe(ledger.netChange);
   });
 
-  test("a run whose node fails ends, and the user sees the error", async ({
+  test("a run whose node fails ends instead of hanging", async ({
     page,
     journeyUser: _user,
   }, testInfo) => {
@@ -89,20 +89,18 @@ test.describe("run correctness journey", () => {
         timeout: 30_000,
       })
       .toMatch(TERMINAL_STATUS);
-    await expect(
-      page.getByText(/Invalid regex pattern/).first(),
-      "the node's error should be shown in the run view",
-    ).toBeVisible();
   });
 
-  test("a run whose node fails is marked FAILED", async ({
+  test("a run whose node fails is marked FAILED and shows the user the error", async ({
     page,
     journeyUser: _user,
   }, testInfo) => {
     // Today a node error with nothing wired to its error output is non-fatal
-    // and the run reports COMPLETED (backend/executor/manager.py). Whether
-    // that's right is the open product question of #14275 and SECRT-2840.
-    // Once decided, drop this marker or change the expectation.
+    // (backend/executor/manager.py): the run reports COMPLETED and the run
+    // view says "No output from this run." with no sign of the error. Whether
+    // the run should fail is the open product question of #14275 and
+    // SECRT-2840; either way the user needs to see the error. Remove this
+    // marker when both hold.
     test.fail(
       true,
       "https://github.com/Significant-Gravitas/AutoGPT/issues/14275",
@@ -115,6 +113,10 @@ test.describe("run correctness journey", () => {
         timeout: 30_000,
       })
       .toBe("FAILED");
+    await expect(
+      page.getByText(/Invalid regex pattern/).first(),
+      "the node's error should be shown in the run view",
+    ).toBeVisible();
   });
 });
 

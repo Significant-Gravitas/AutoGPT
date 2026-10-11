@@ -41,6 +41,7 @@ export async function provisionJourneyUser(page: Page): Promise<JourneyUser> {
           name: existingEmail.split("@")[0],
         })
       : await signUp(page, newJourneyUser());
+  await finishAccountSetup(page);
   await completeOnboarding(page);
   return user;
 }
@@ -85,6 +86,16 @@ async function signIn(page: Page, user: JourneyUser) {
     `sign-in for ${user.email} failed: ${response.status()}`,
   ).toBe(true);
   return user;
+}
+
+// The app does this on a user's first page load; among other things it
+// creates their marketplace profile. Done here so a journey doesn't race it.
+async function finishAccountSetup(page: Page) {
+  const response = await page.request.post("/api/proxy/api/auth/user");
+  expect(
+    response.ok(),
+    `account setup failed: ${response.status()} ${await response.text()}`,
+  ).toBe(true);
 }
 
 async function completeOnboarding(page: Page) {
