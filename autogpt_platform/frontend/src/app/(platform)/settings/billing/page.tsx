@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { notFound, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Text } from "@/components/atoms/Text/Text";
+import { useBillingStatus } from "@/hooks/useIsBillingEnabled";
 import {
   TabsLine,
   TabsLineContent,
@@ -42,7 +43,14 @@ function resolveInitialTab(searchParams: URLSearchParams): BillingTab {
   return "subscription";
 }
 
-export default function SettingsBillingPage() {
+export default function SettingsBillingRoute() {
+  const { isBillingEnabled, isResolved } = useBillingStatus();
+  if (!isResolved) return null;
+  if (!isBillingEnabled) notFound();
+  return <SettingsBillingPage />;
+}
+
+function SettingsBillingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
