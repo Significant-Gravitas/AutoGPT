@@ -56,10 +56,12 @@ class TurnSummary(BaseModel):
     system_prompt_sha: str | None = None
     system_prompt_chars: int | None = None
     building_guide_in_prompt: bool | None = None
-    # tools
+    # tools: counts and hash over allowed_tools (what the hook lets through),
+    # then the built-ins the CLI declares to the model (options.tools)
     tools_allowed: int | None = None
     tools_builtin: int | None = None
     tools_sha: str | None = None
+    builtin_tools_declared: list[str] | None = None
     # context blocks on the query the last CLI launch was sent
     context_blocks: list[str] | None = None
     context_prefix_chars: int | None = None
@@ -199,6 +201,8 @@ def record_options(s: TurnSummary, options: ClaudeAgentOptions) -> None:
     s.tools_allowed = len(tools)
     s.tools_builtin = sum(1 for name in tools if not name.startswith("mcp__"))
     s.tools_sha = short_hash("\n".join(tools))
+    if isinstance(options.tools, list):
+        s.builtin_tools_declared = sorted(options.tools)
 
 
 def _system_prompt_text(

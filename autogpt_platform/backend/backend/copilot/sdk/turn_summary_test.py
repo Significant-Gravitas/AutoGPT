@@ -233,6 +233,28 @@ class TestCollector:
         assert (s.cost_usd, s.cost_source) == (0.5, "cli_reported")
         assert (s.outcome, s.error_class) == ("ok", None)
 
+    def test_finish_records_the_declared_built_ins_beside_the_allowed_count(self):
+        """``tools_builtin`` counts the built-ins the hook lets through; the
+        declared list is what the CLI shows the model, which can be fewer."""
+        allowed = ["mcp__copilot__a", "Read", "Write", "Edit", "Glob", "Grep"]
+        options = ClaudeAgentOptions(
+            allowed_tools=[*allowed, "TodoWrite"], tools=["TodoWrite", "Glob", "Grep"]
+        )
+        c = TurnSummaryCollector("s")
+
+        _finish(c, options=options)
+
+        s = c.summary
+        assert s.tools_builtin == 6
+        assert s.builtin_tools_declared == ["Glob", "Grep", "TodoWrite"]
+
+    def test_finish_omits_the_declared_built_ins_when_the_launch_set_none(self):
+        c = TurnSummaryCollector("s")
+
+        _finish(c, options=ClaudeAgentOptions(allowed_tools=["Read"]))
+
+        assert "builtin_tools_declared" not in c.summary.model_dump(exclude_none=True)
+
     @pytest.mark.parametrize("live", [True, False])
     @pytest.mark.parametrize(
         "cross_user_cache, mode", [(False, "replace"), (True, "preset_append")]

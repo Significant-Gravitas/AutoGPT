@@ -214,10 +214,13 @@ async def test_a_cancelled_turn_logs_one_summary(tmp_path, caplog):
 # Every CLI launch of a turn (the first, a context-size retry, a building-mode
 # restart) must keep the first launch's hooks (the after-compaction re-send)
 # and route environment, send the live prompt, and leave a summary line that
-# hashes and versions the prompt the last launch was given.
+# hashes and versions the prompt the last launch was given and lists the
+# built-ins it declared.
 
 _GUIDE = "\n\n<building_guide>GUIDE</building_guide>"
 _ROUTE_ENV = {"ANTHROPIC_BASE_URL": "https://openrouter.test/api"}
+_ALLOWED = ["mcp__copilot__find_capability", "Glob", "TodoWrite"]
+_DISALLOWED = ["Bash", "Glob"]
 _LIVE_PROMPT = {
     "claude_agent_live_system_prompt": True,
     "claude_agent_cross_user_prompt_cache": False,
@@ -231,8 +234,12 @@ def langfuse_prompt_v38(monkeypatch):
     )
 
 
-def _route_env_patch() -> list:
-    return [(f"{_SVC}.build_sdk_env", dict(return_value=dict(_ROUTE_ENV)))]
+def _launch_patches() -> list:
+    return [
+        (f"{_SVC}.build_sdk_env", dict(return_value=dict(_ROUTE_ENV))),
+        (f"{_SVC}.get_copilot_tool_names", dict(return_value=list(_ALLOWED))),
+        (f"{_SVC}.get_sdk_disallowed_tools", dict(return_value=list(_DISALLOWED))),
+    ]
 
 
 def _prompt_text(options: ClaudeAgentOptions) -> str:
@@ -242,12 +249,18 @@ def _prompt_text(options: ClaudeAgentOptions) -> str:
     return prompt["prompt"]
 
 
-def _assert_line_reads_the_prompt(summary: dict, options: ClaudeAgentOptions) -> None:
+def _assert_line_reads_the_launch(summary: dict, options: ClaudeAgentOptions) -> None:
     text = _prompt_text(options)
     assert summary["system_prompt_mode"] == "replace"
     assert summary["system_prompt_sha"] == short_hash(text)
     assert summary["system_prompt_chars"] == len(text)
     assert summary["prompt_version"] == 38
+    assert options.tools == ["TodoWrite"]
+    assert (options.allowed_tools, options.disallowed_tools) == (
+        _ALLOWED,
+        _DISALLOWED,
+    )
+    assert summary["builtin_tools_declared"] == ["TodoWrite"]
 
 
 @pytest.mark.asyncio
@@ -260,14 +273,14 @@ async def test_first_launch_line_reads_the_live_prompt(
         await _run_turn(
             tmp_path,
             factory,
-            extra_patches=_route_env_patch(),
+            extra_patches=_launch_patches(),
             config_overrides=_LIVE_PROMPT,
         )
 
     [summary] = _summaries(caplog)
     [launch] = options
     assert launch.env == _ROUTE_ENV
-    _assert_line_reads_the_prompt(summary, launch)
+    _assert_line_reads_the_launch(summary, launch)
 
 
 @pytest.mark.asyncio
@@ -285,7 +298,7 @@ async def test_context_size_retry_keeps_hooks_env_and_live_prompt(
         await _run_turn(
             tmp_path,
             factory,
-            extra_patches=_route_env_patch()
+            extra_patches=_launch_patches()
             + [
                 (
                     f"{_SVC}._rebuild_first_turn_prefix",
@@ -303,7 +316,7 @@ async def test_context_size_retry_keeps_hooks_env_and_live_prompt(
     assert retry.hooks is first.hooks
     assert retry.env == first.env == _ROUTE_ENV
     assert _prompt_text(retry) == _prompt_text(first)
-    _assert_line_reads_the_prompt(summary, retry)
+    _assert_line_reads_the_launch(summary, retry)
 
 
 @pytest.mark.asyncio
@@ -324,7 +337,7 @@ async def test_building_mode_restart_keeps_hooks_env_and_sends_the_guide(
             tmp_path,
             factory,
             session=session,
-            extra_patches=_route_env_patch()
+            extra_patches=_launch_patches()
             + [
                 (
                     f"{_SVC}.build_builder_system_prompt_suffix",
@@ -341,4 +354,4 @@ async def test_building_mode_restart_keeps_hooks_env_and_sends_the_guide(
     assert restart.hooks is first.hooks
     assert restart.env == first.env == _ROUTE_ENV
     assert _prompt_text(restart) == _prompt_text(first) + _GUIDE
-    _assert_line_reads_the_prompt(summary, restart)
+    _assert_line_reads_the_launch(summary, restart)
