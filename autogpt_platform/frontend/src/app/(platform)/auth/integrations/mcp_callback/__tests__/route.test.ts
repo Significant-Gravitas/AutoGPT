@@ -54,6 +54,33 @@ describe("MCP OAuth callback route", () => {
     expect(message.message).toContain("Missing parameters");
   });
 
+  it("echoes state and the provider error when sign-in is denied", async () => {
+    const response = await GET(
+      new Request(
+        `${origin}/auth/integrations/mcp_callback?error=access_denied&error_description=${encodeURIComponent("User denied access")}&state=xyz`,
+      ),
+    );
+
+    const message = embeddedMessage(await response.text());
+    expect(message.success).toBe(false);
+    // Without state the opener drops the message and waits out its timeout.
+    expect(message.state).toBe("xyz");
+    expect(message.message).toBe("access_denied: User denied access");
+  });
+
+  it("reports failure without state when the provider sends none", async () => {
+    const response = await GET(
+      new Request(
+        `${origin}/auth/integrations/mcp_callback?error=server_error`,
+      ),
+    );
+
+    const message = embeddedMessage(await response.text());
+    expect(message.success).toBe(false);
+    expect(message).not.toHaveProperty("state");
+    expect(message.message).toBe("server_error");
+  });
+
   it("escapes script-breaking characters in query values", async () => {
     const response = await GET(
       new Request(

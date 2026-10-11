@@ -23,12 +23,14 @@ from backend.copilot.integration_creds import (
     invalidate_user_provider_cache,
 )
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.integrations.creds_events import CredentialsChangedEvent
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     register_creds_changed_hook,
     unregister_creds_changed_hook,
 )
+from backend.util.cache import clear_thread_cache
 
 _USER = "user-integration-creds-test"
 _PROVIDER = "github"
@@ -436,6 +438,13 @@ class TestThreadSafetyLocks:
     """Bug reproduction: shared AsyncRedisKeyedMutex across threads caused
     'Future attached to a different loop' when copilot workers accessed
     credentials from different event loops."""
+
+    @pytest.fixture(autouse=True)
+    def drop_mock_backed_locks(self):
+        # Every store in a thread shares one cached mutex, so one built on the
+        # mock Redis below would serve every later test in this session.
+        yield
+        clear_thread_cache(IntegrationCredentialsStore.locks)
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_locks_returns_per_thread_instance(self):
