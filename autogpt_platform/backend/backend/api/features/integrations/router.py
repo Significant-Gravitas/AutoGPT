@@ -1118,7 +1118,6 @@ class AyrshareSSOResponse(BaseModel):
 
 @router.delete("/{provider}/credentials/{cred_id}")
 async def delete_credentials(
-    request: Request,
     provider: Annotated[
         ProviderName, Path(title="The provider to delete credentials for")
     ],
@@ -1154,34 +1153,63 @@ async def delete_credentials(
         )
 
     try:
-        await remove_all_webhooks_for_credentials(user_id, creds, force)
+        tokens_revoked = await delete_and_revoke_credentials(
+            user_id, creds, provider, force=force
+        )
     except NeedConfirmation as e:
         return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
 
-    tokens_revoked = None
-    if provider == ProviderName.CODEX:
-        tokens_revoked = await revoke_codex_credentials(creds_manager, user_id, cred_id)
-    else:
-        await creds_manager.delete(user_id, cred_id)
-
-    if isinstance(creds, OAuth2Credentials) and provider != ProviderName.CODEX:
-        if provider_matches(provider.value, ProviderName.MCP.value):
-            # MCP uses dynamic per-server OAuth — create handler from metadata
-            handler = create_mcp_oauth_handler(creds)
-        elif (
-            device_handler := DEVICE_HANDLERS_BY_NAME.get(provider_key(provider))
-        ) is not None:
-            # A device-code grant stores an OAuth2Credentials, so it reaches
-            # this branch too — but its handler lives in the other registry.
-            # Looking only in HANDLERS_BY_NAME raised "does not support OAuth"
-            # *after* the local delete had already run, leaving a live token
-            # at the provider with nothing left to revoke it with.
-            handler = device_handler()
-        else:
-            handler = _get_provider_oauth_handler(request, provider)
-        tokens_revoked = await handler.revoke_tokens(creds)
-
     return CredentialsDeletionResponse(revoked=tokens_revoked)
+
+
+async def delete_and_revoke_credentials(
+    user_id: str,
+    creds: Credentials,
+    provider: ProviderName,
+    *,
+    force: bool,
+) -> bool | None:
+    """Delete the user's credentials, then revoke their tokens at the provider.
+
+    Shared by the DELETE route and account deletion. The caller has already
+    checked that the credentials exist, belong to `user_id` and are neither
+    SDK-default, system nor AutoGPT-managed.
+
+    Returns whether the provider revoked the tokens, or `None` when there is
+    nothing to revoke (e.g. an API key).
+
+    Raises:
+        NeedConfirmation: webhooks linked to the credentials are still in use
+            and `force` is `False`. Nothing is deleted in that case.
+    """
+    await remove_all_webhooks_for_credentials(user_id, creds, force)
+
+    if provider == ProviderName.CODEX:
+        return await revoke_codex_credentials(creds_manager, user_id, creds.id)
+
+    await creds_manager.delete(user_id, creds.id)
+
+    if not isinstance(creds, OAuth2Credentials):
+        return None
+    return await _revocation_handler(creds, provider).revoke_tokens(creds)
+
+
+def _revocation_handler(
+    creds: OAuth2Credentials, provider: ProviderName
+) -> "BaseOAuthHandler | BaseDeviceAuthHandler":
+    if provider_matches(provider.value, ProviderName.MCP.value):
+        # MCP uses dynamic per-server OAuth — create handler from metadata
+        return create_mcp_oauth_handler(creds)
+    if (
+        device_handler := DEVICE_HANDLERS_BY_NAME.get(provider_key(provider))
+    ) is not None:
+        # A device-code grant stores an OAuth2Credentials, so it reaches
+        # this branch too — but its handler lives in the other registry.
+        # Looking only in HANDLERS_BY_NAME raised "does not support OAuth"
+        # *after* the local delete had already run, leaving a live token
+        # at the provider with nothing left to revoke it with.
+        return device_handler()
+    return _get_provider_oauth_handler(None, provider)
 
 
 # ------------------------- WEBHOOK STUFF -------------------------- #
@@ -1853,7 +1881,7 @@ async def _cleanup_orphaned_webhook_for_graph(
 
 
 def _get_provider_oauth_handler(
-    req: Request, provider_name: ProviderName
+    req: Request | None, provider_name: ProviderName
 ) -> "BaseOAuthHandler":
     # Ensure blocks are loaded so SDK providers are available
     try:
