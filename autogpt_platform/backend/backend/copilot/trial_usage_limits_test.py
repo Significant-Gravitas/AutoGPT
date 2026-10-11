@@ -278,6 +278,32 @@ async def test_legacy_trial_with_tighter_windows_retains_periodic_limits(
 
 
 @pytest.mark.asyncio
+async def test_legacy_trial_reports_a_spent_allowance_its_windows_dont_show(
+    trial: TrialState, usage: dict[str, int]
+):
+    trial.offer = trial.offer.model_copy(
+        update={"daily_cost_limit": 2_000_000, "weekly_cost_limit": 10_000_000}
+    )
+    trial.cost_microdollars = 20_000_000
+    usage[rate_limit._daily_key(_USER)] = 500_000
+    usage[rate_limit._weekly_key(_USER)] = 1_000_000
+    daily, weekly, tier = await rate_limit.get_global_rate_limits(_USER, 1, 1)
+
+    with pytest.raises(rate_limit.RateLimitExceeded) as exc:
+        await rate_limit.check_rate_limit(_USER, daily, weekly)
+    status = await rate_limit.get_usage_status(_USER, daily, weekly, tier=tier)
+    public = rate_limit.CoPilotUsagePublic.from_status(status)
+
+    assert exc.value.window == "trial"
+    assert status.trial_spent
+    assert (public.state, public.limiting_window, public.resets_at) == (
+        "exhausted",
+        "trial",
+        None,
+    )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("spent", [5_000_000, 20_000_000])
 async def test_lifetime_trial_budget_remains_authoritative_without_redis(
     trial: TrialState, usage: dict[str, int], mocker: MockerFixture, spent: int
