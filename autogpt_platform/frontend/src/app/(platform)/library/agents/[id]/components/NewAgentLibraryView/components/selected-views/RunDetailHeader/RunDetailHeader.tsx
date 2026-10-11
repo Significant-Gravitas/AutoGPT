@@ -6,6 +6,7 @@ import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
 import { FlaskConicalIcon, TimeScheduleIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 
 type Props = {
   agent: LibraryAgent;
@@ -16,6 +17,7 @@ type Props = {
 };
 
 export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
+  const isBillingEnabled = useIsBillingEnabled();
   return (
     <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
       <div className="flex w-full items-center justify-between">
@@ -84,7 +86,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                   </Text>
                 </>
               )}
-              {run.stats?.cost !== undefined && (
+              {isBillingEnabled && run.stats?.cost !== undefined && (
                 <>
                   <span className="mx-1 inline-block text-zinc-200">|</span>
                   <Text variant="small" className="text-zinc-500">

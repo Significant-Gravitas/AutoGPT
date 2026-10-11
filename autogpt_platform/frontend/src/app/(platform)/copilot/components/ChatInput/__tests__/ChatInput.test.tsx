@@ -15,10 +15,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatInput } from "../ChatInput";
 import { sdkStopStream, useCopilotStop } from "../../../useCopilotStop";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { ReportedSendError } from "@/app/(platform)/copilot/helpers/reportedSendError";
 
 const mockCancel =
   vi.fn<(sessionId: string) => Promise<{ status: number; data: unknown }>>();
+let mockTransports: unknown = undefined;
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
+  useGetV2ListChatTransports: () => ({ data: mockTransports }),
   postV2CancelSessionTask: (sessionId: string) => mockCancel(sessionId),
   // A lone platform connection whose tiers resolve to one model: the picker
   // presents nothing, which keeps these tests about the composer itself.
@@ -1338,3 +1341,72 @@ describe("ChatInput transcription failure", () => {
 function isShown(element: HTMLElement): boolean {
   return !element.closest(".hidden");
 }
+
+describe("ChatInput with no AI connection", () => {
+  afterEach(() => {
+    mockTransports = undefined;
+  });
+
+  function serverWithNoModel() {
+    mockTransports = {
+      status: 200,
+      data: {
+        transports: [
+          {
+            auth_provider: "platform",
+            available: false,
+            credential_id: null,
+          },
+        ],
+      },
+    };
+  }
+
+  it("says how to connect a model, with the server setup guide", () => {
+    serverWithNoModel();
+    render(<ChatInput onSend={vi.fn()} />);
+
+    const notice = screen.getByRole("status", { name: "No AI connection" });
+    expect(notice.textContent).toContain("No AI model is connected");
+    expect(
+      screen.getByRole("link", { name: /setup guide/i }).getAttribute("href"),
+    ).toContain("single-container.md#models-and-memory");
+  });
+
+  it("stays out of the way once a model can answer", () => {
+    mockTransports = {
+      status: 200,
+      data: {
+        transports: [
+          { auth_provider: "platform", available: true, credential_id: null },
+        ],
+      },
+    };
+    render(<ChatInput onSend={vi.fn()} />);
+
+    expect(screen.queryByRole("status", { name: "No AI connection" })).toBe(
+      null,
+    );
+  });
+
+  it("keeps the draft and adds no second toast for a failure already shown", async () => {
+    serverWithNoModel();
+    const onSend = vi
+      .fn()
+      .mockRejectedValue(new ReportedSendError("No AI connection is set up"));
+    render(<ChatInput onSend={onSend} />);
+
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "Hi there" } });
+    await act(async () => {
+      fireEvent.submit(textarea.closest("form")!);
+    });
+
+    expect(onSend).toHaveBeenCalledWith("Hi there", undefined, undefined);
+    await waitFor(() => expect(textarea.value).toBe("Hi there"));
+    expect(toast).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("status", { name: "No AI connection" }),
+    ).toBeDefined();
+  });
+});
