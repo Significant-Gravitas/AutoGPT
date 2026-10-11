@@ -39,24 +39,29 @@ class UsageVerdict(BaseModel):
 
 
 def usage_verdict(
-    readings: list[WindowReading], *, trial: bool, trial_spent: bool
+    readings: list[WindowReading],
+    *,
+    weekly_is_trial_allowance: bool,
+    trial_spent: bool,
 ) -> UsageVerdict:
     """The state of the account's allowance, from its capped windows.
 
     When several windows are used up, the one that refills last is the one
-    the account waits for. A trial's weekly window stands for its allowance,
-    so it is named as the trial, with no reset.
+    the account waits for. A weekly window that holds a trial's lifetime
+    allowance is named as the trial, with no reset; a trial with its own
+    daily and weekly caps keeps them, and they refill like anyone's.
     """
     if trial_spent:
         return UsageVerdict(state="exhausted", limiting_window="trial")
     exhausted = [reading for reading in readings if reading.exhausted]
     if exhausted:
-        return _verdict("exhausted", max(exhausted, key=_refill_order), trial)
+        limiting = max(exhausted, key=_refill_order)
+        return _verdict("exhausted", limiting, weekly_is_trial_allowance)
     if not readings:
         return UsageVerdict()
     tightest = max(readings, key=lambda r: (r.percent_used, _refill_order(r)))
     if tightest.percent_used >= LOW_PERCENT_USED:
-        return _verdict("low", tightest, trial)
+        return _verdict("low", tightest, weekly_is_trial_allowance)
     return UsageVerdict()
 
 
@@ -66,8 +71,10 @@ def _refill_order(reading: WindowReading) -> tuple[bool, datetime, bool]:
     return not reading.refills, reading.resets_at, reading.window == "weekly"
 
 
-def _verdict(state: UsageState, reading: WindowReading, trial: bool) -> UsageVerdict:
-    if trial and reading.window == "weekly":
+def _verdict(
+    state: UsageState, reading: WindowReading, weekly_is_trial_allowance: bool
+) -> UsageVerdict:
+    if weekly_is_trial_allowance and reading.window == "weekly":
         return UsageVerdict(state=state, limiting_window="trial")
     return UsageVerdict(
         state=state,

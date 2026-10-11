@@ -387,6 +387,9 @@ class CoPilotUsageStatus(BaseModel):
     # A lifetime trial already shows a spent allowance as a full weekly
     # window; a trial whose period caps are tighter than its allowance doesn't.
     trial_spent: bool = False
+    # The weekly window holds the trial's lifetime allowance rather than a
+    # weekly cap: it doesn't refill, and ``resets_at`` is the trial's end.
+    weekly_is_trial_allowance: bool = False
 
 
 class UsageWindowPublic(BaseModel):
@@ -486,7 +489,7 @@ class CoPilotUsagePublic(BaseModel):
         ]
         verdict = usage_verdict(
             readings,
-            trial=status.tier == SubscriptionTier.TRIAL,
+            weekly_is_trial_allowance=status.weekly_is_trial_allowance,
             trial_spent=status.trial_spent,
         )
         return cls(
@@ -588,6 +591,7 @@ async def get_usage_status(
 
     weekly_reset = _weekly_reset_time(now=now)
     trial_spent = False
+    weekly_is_trial_allowance = False
     if tier == SubscriptionTier.TRIAL:
         trial = await credit_db().get_subscription_trial(user_id)
         trial_spent = _trial_spent(trial)
@@ -600,6 +604,7 @@ async def get_usage_status(
             weekly_used = trial.cost_microdollars
             weekly_cost_limit = trial.offer.total_cost_limit
             weekly_reset = trial.ends_at or now
+            weekly_is_trial_allowance = True
 
     return CoPilotUsageStatus(
         daily=UsageWindow(
@@ -615,6 +620,7 @@ async def get_usage_status(
         tier=tier,
         reset_cost=0 if tier == SubscriptionTier.TRIAL else rate_limit_reset_cost,
         trial_spent=trial_spent,
+        weekly_is_trial_allowance=weekly_is_trial_allowance,
     )
 
 
