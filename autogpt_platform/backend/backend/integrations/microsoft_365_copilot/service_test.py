@@ -306,11 +306,7 @@ async def test_service_stamps_a_scheduled_prompt_row(mocker) -> None:
         service, "persist_and_record_usage", new=AsyncMock(return_value=4)
     )
     mocker.patch.object(service, "Microsoft365CopilotClient", _FakeClient)
-    mocker.patch.object(
-        service,
-        "get_user_by_id",
-        new=AsyncMock(return_value=SimpleNamespace(timezone="UTC")),
-    )
+    mocker.patch.object(service, "_get_timezone", new=AsyncMock(return_value="UTC"))
 
     async for _ in service.stream_chat_completion_microsoft_365(
         session_id="session-1",
