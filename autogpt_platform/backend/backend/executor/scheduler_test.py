@@ -8,10 +8,13 @@ from apscheduler.triggers.cron import CronTrigger
 
 from backend.api.model import CreateGraph
 from backend.data import db
+from backend.data.execution import get_graph_executions
 from backend.executor.scheduler import (
+    GraphExecutionJobArgs,
     Jobstores,
     Scheduler,
     _build_trigger,
+    _execute_graph,
     _normalize_cron_day_of_week,
 )
 from backend.usecases.sample import create_test_graph, create_test_user
@@ -145,6 +148,17 @@ async def test_update_schedule_changes_timing_and_inputs_in_place(
         )
         assert (next_run.hour, next_run.minute) == (18, 30)
         assert next_run.weekday() < 5
+
+        # Fire the stored job the way APScheduler does: the run it starts
+        # must carry the edited inputs and point back at this schedule.
+        await _execute_graph(
+            **stored.model_dump(include=set(GraphExecutionJobArgs.model_fields))
+        )
+        [fired] = await get_graph_executions(
+            graph_id=test_graph.id, user_id=test_user.id
+        )
+        assert fired.trigger_ref == schedule.id
+        assert fired.inputs == {"input": "changed"}
     finally:
         await scheduler.delete_schedule(schedule.id, user_id=test_user.id)
 
