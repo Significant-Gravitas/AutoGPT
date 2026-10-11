@@ -256,6 +256,50 @@ class TestMergedWithParent:
         assert not merged.is_block_allowed(BLOCK_ID, BLOCK_NAME)
 
 
+class TestMergeWithNoToolInCommon:
+    """A parent and a child with no tool in common leave the turn no tool but
+    the internal ``read_tool_result``."""
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    @pytest.mark.parametrize(
+        "parent, child",
+        [
+            pytest.param(
+                CopilotPermissions(tools=["Agent"], tools_exclude=True),
+                CopilotPermissions(tools=["Task"], tools_exclude=False),
+                id="parent-blacklists-Agent-child-whitelists-Task",
+            ),
+            pytest.param(
+                CopilotPermissions(tools=["Agent"], tools_exclude=False),
+                CopilotPermissions(tools=["Task"], tools_exclude=True),
+                id="parent-whitelists-Agent-child-blacklists-Task",
+            ),
+            pytest.param(
+                CopilotPermissions(tools=["web_fetch"], tools_exclude=False),
+                CopilotPermissions(tools=["get_platform_info"], tools_exclude=False),
+                id="disjoint-whitelists",
+            ),
+        ],
+    )
+    def test_allows_only_read_tool_result(
+        self, parent: CopilotPermissions, child: CopilotPermissions, use_e2b: bool
+    ) -> None:
+        merged = child.merged_with_parent(parent, ALL_TOOL_NAMES)
+
+        assert merged.effective_allowed_tools(ALL_TOOL_NAMES) == frozenset()
+        allowed, _ = apply_tool_permissions(merged, use_e2b=use_e2b)
+        assert allowed == ["mcp__copilot__read_tool_result"]
+
+    def test_survives_a_round_trip_through_storage(self) -> None:
+        parent = CopilotPermissions(tools=["web_fetch"], tools_exclude=False)
+        child = CopilotPermissions(tools=["get_platform_info"], tools_exclude=False)
+        merged = child.merged_with_parent(parent, ALL_TOOL_NAMES)
+
+        stored = CopilotPermissions.model_validate(merged.model_dump())
+
+        assert stored.effective_allowed_tools(ALL_TOOL_NAMES) == frozenset()
+
+
 # ---------------------------------------------------------------------------
 # CopilotPermissions.is_empty
 # ---------------------------------------------------------------------------

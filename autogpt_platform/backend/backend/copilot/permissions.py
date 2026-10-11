@@ -58,7 +58,8 @@ Recursion inheritance
 :meth:`CopilotPermissions.merged_with_parent` produces a new instance that
 is at most as permissive as the parent:
 
-- Tools: effective-allowed sets are intersected then stored as a whitelist.
+- Tools: effective-allowed sets are intersected then stored as a whitelist
+  (a blacklist of every tool when nothing is left).
 - Blocks: the parent is stored in ``_parent`` and consulted during every
   :meth:`is_block_allowed` call so both constraints must pass.
 """
@@ -482,16 +483,21 @@ class CopilotPermissions(BaseModel):
     ) -> CopilotPermissions:
         """Return a new instance that is at most as permissive as *parent*.
 
-        - Tools: intersection of effective-allowed sets, stored as a whitelist.
+        - Tools: intersection of effective-allowed sets, stored as a whitelist;
+          an empty intersection is stored as a blacklist of every tool, since
+          an empty whitelist means no filter.
         - Blocks: parent is stored internally; both constraints are applied
           during :meth:`is_block_allowed`.
         """
         merged_tools = self.effective_allowed_tools(
             all_tools
         ) & parent.effective_allowed_tools(all_tools)
+        tools, tools_exclude = (
+            (sorted(merged_tools), False) if merged_tools else (sorted(all_tools), True)
+        )
         result = CopilotPermissions(
-            tools=sorted(merged_tools),
-            tools_exclude=False,
+            tools=tools,
+            tools_exclude=tools_exclude,
             blocks=self.blocks,
             blocks_exclude=self.blocks_exclude,
         )
