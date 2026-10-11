@@ -14,14 +14,20 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+from claude_agent_sdk import (
+    AssistantMessage,
+    ClaudeAgentOptions,
+    ResultMessage,
+    TextBlock,
+)
 
+from backend.copilot import service as copilot_service
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.conftest import build_test_transcript
 from backend.copilot.sdk.retry_scenarios_test import _make_sdk_patches
 from backend.copilot.sdk.service import stream_chat_completion_sdk
-from backend.copilot.sdk.turn_summary_model import TURN_SUMMARY_MARKER
+from backend.copilot.sdk.turn_summary_model import TURN_SUMMARY_MARKER, short_hash
 
 _SVC = "backend.copilot.sdk.service"
 _SUMMARY_LOGGER = "backend.copilot.sdk.turn_summary"
@@ -85,8 +91,15 @@ def _answer() -> list:
     ]
 
 
-async def _run_turn(tmp_path: Path, client_factory) -> list:
-    session = _session()
+async def _run_turn(
+    tmp_path: Path,
+    client_factory,
+    *,
+    session: ChatSession | None = None,
+    extra_patches: list | None = None,
+    config_overrides: dict | None = None,
+) -> list:
+    session = session or _session()
     transcript = build_test_transcript(
         [("user", "earlier question"), ("assistant", "earlier answer")]
     )
@@ -106,10 +119,12 @@ async def _run_turn(tmp_path: Path, client_factory) -> list:
     ]
     events = []
     with contextlib.ExitStack() as stack:
-        for target, kwargs in patches:
+        for target, kwargs in patches + (extra_patches or []):
             stack.enter_context(patch(target, **kwargs))
         sdk_service.config.effective_transport = "direct_anthropic"
         sdk_service.config.openrouter_active = False
+        for name, value in (config_overrides or {}).items():
+            setattr(sdk_service.config, name, value)
         with contextlib.suppress(Exception, asyncio.CancelledError):
             async for event in stream_chat_completion_sdk(
                 session_id="test-session-id",
@@ -120,6 +135,18 @@ async def _run_turn(tmp_path: Path, client_factory) -> list:
             ):
                 events.append(event)
     return events
+
+
+def _launches(*scripts) -> tuple:
+    """A client factory that plays one script per CLI launch, and the options
+    each launch was given."""
+    options: list[ClaudeAgentOptions] = []
+
+    def factory(*args, **kwargs):
+        options.append(kwargs["options"])
+        return scripts[len(options) - 1]()
+
+    return factory, options
 
 
 def _summaries(caplog: pytest.LogCaptureFixture) -> list[dict]:
@@ -182,3 +209,136 @@ async def test_a_cancelled_turn_logs_one_summary(tmp_path, caplog):
         "cancelled",
         "CancelledError",
     )
+
+
+# Every CLI launch of a turn (the first, a context-size retry, a building-mode
+# restart) must keep the first launch's hooks (the after-compaction re-send)
+# and route environment, send the live prompt, and leave a summary line that
+# hashes and versions the prompt the last launch was given.
+
+_GUIDE = "\n\n<building_guide>GUIDE</building_guide>"
+_ROUTE_ENV = {"ANTHROPIC_BASE_URL": "https://openrouter.test/api"}
+_LIVE_PROMPT = {
+    "claude_agent_live_system_prompt": True,
+    "claude_agent_cross_user_prompt_cache": False,
+}
+
+
+@pytest.fixture
+def langfuse_prompt_v38(monkeypatch):
+    monkeypatch.setattr(
+        copilot_service, "_cached_prompt_identity", ("system prompt", 38)
+    )
+
+
+def _route_env_patch() -> list:
+    return [(f"{_SVC}.build_sdk_env", dict(return_value=dict(_ROUTE_ENV)))]
+
+
+def _prompt_text(options: ClaudeAgentOptions) -> str:
+    prompt = options.system_prompt
+    assert isinstance(prompt, dict) and prompt["type"] == "custom"
+    assert prompt.get("snapshot") is False
+    return prompt["prompt"]
+
+
+def _assert_line_reads_the_prompt(summary: dict, options: ClaudeAgentOptions) -> None:
+    text = _prompt_text(options)
+    assert summary["system_prompt_mode"] == "replace"
+    assert summary["system_prompt_sha"] == short_hash(text)
+    assert summary["system_prompt_chars"] == len(text)
+    assert summary["prompt_version"] == 38
+
+
+@pytest.mark.asyncio
+async def test_first_launch_line_reads_the_live_prompt(
+    tmp_path, caplog, langfuse_prompt_v38
+):
+    factory, options = _launches(lambda: _client(_answer()))
+
+    with caplog.at_level(logging.INFO, logger=_SUMMARY_LOGGER):
+        await _run_turn(
+            tmp_path,
+            factory,
+            extra_patches=_route_env_patch(),
+            config_overrides=_LIVE_PROMPT,
+        )
+
+    [summary] = _summaries(caplog)
+    [launch] = options
+    assert launch.env == _ROUTE_ENV
+    _assert_line_reads_the_prompt(summary, launch)
+
+
+@pytest.mark.asyncio
+async def test_context_size_retry_keeps_hooks_env_and_live_prompt(
+    tmp_path, caplog, langfuse_prompt_v38
+):
+    factory, options = _launches(
+        lambda: _client(
+            [], query_error=Exception("prompt is too long (context_length_exceeded)")
+        ),
+        lambda: _client(_answer()),
+    )
+
+    with caplog.at_level(logging.INFO, logger=_SUMMARY_LOGGER):
+        await _run_turn(
+            tmp_path,
+            factory,
+            extra_patches=_route_env_patch()
+            + [
+                (
+                    f"{_SVC}._rebuild_first_turn_prefix",
+                    dict(new_callable=AsyncMock, return_value=""),
+                )
+            ],
+            config_overrides=_LIVE_PROMPT,
+        )
+
+    [summary] = _summaries(caplog)
+    first, retry = options
+    assert (summary["cli_launches"], summary["retries"]) == (2, 1)
+    assert summary["context_rebuilds"] == 1
+    assert summary["query_path"].startswith("rebuilt_")
+    assert retry.hooks is first.hooks
+    assert retry.env == first.env == _ROUTE_ENV
+    assert _prompt_text(retry) == _prompt_text(first)
+    _assert_line_reads_the_prompt(summary, retry)
+
+
+@pytest.mark.asyncio
+async def test_building_mode_restart_keeps_hooks_env_and_sends_the_guide(
+    tmp_path, caplog, langfuse_prompt_v38
+):
+    session = _session()
+    session.building_mode_requested = True
+    factory, options = _launches(
+        lambda: _client(_answer()[:1]), lambda: _client(_answer())
+    )
+
+    async def _builder_suffix(_session, force=False):
+        return _GUIDE if force else ""
+
+    with caplog.at_level(logging.INFO, logger=_SUMMARY_LOGGER):
+        await _run_turn(
+            tmp_path,
+            factory,
+            session=session,
+            extra_patches=_route_env_patch()
+            + [
+                (
+                    f"{_SVC}.build_builder_system_prompt_suffix",
+                    dict(side_effect=_builder_suffix),
+                )
+            ],
+            config_overrides=_LIVE_PROMPT,
+        )
+
+    [summary] = _summaries(caplog)
+    first, restart = options
+    assert summary["cli_launches"] == 2
+    assert summary["building_guide_in_prompt"] is True
+    assert restart.hooks is first.hooks
+    assert restart.env == first.env == _ROUTE_ENV
+    assert _prompt_text(restart) == _prompt_text(first) + _GUIDE
+    _assert_line_reads_the_prompt(summary, restart)
