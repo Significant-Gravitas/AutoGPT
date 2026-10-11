@@ -201,6 +201,7 @@ export function useCopilotPage() {
     sessionAuthProvider: sessionLlmAuthProvider,
     sessionCredentialId: sessionLlmCredentialId,
     activeTurnStartMessageId,
+    activeTurnStartedAt: activeStreamStartedAt,
     hasActiveStream,
     refetchSession,
     // Sent whenever the picker can set it. The tier control is not behind

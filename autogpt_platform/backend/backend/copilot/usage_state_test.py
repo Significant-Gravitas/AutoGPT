@@ -25,6 +25,7 @@ def _usage(
     tier: SubscriptionTier = SubscriptionTier.PRO,
     weekly_reset: datetime = WEEKLY_RESET,
     trial_spent: bool = False,
+    weekly_is_trial_allowance: bool = False,
 ) -> CoPilotUsagePublic:
     return CoPilotUsagePublic.from_status(
         CoPilotUsageStatus(
@@ -36,6 +37,7 @@ def _usage(
             ),
             tier=tier,
             trial_spent=trial_spent,
+            weekly_is_trial_allowance=weekly_is_trial_allowance,
         )
     )
 
@@ -83,7 +85,10 @@ def test_a_tie_on_refill_time_goes_to_the_weekly_window():
         )
         for name in ("daily", "weekly")
     ]
-    assert usage_verdict(readings, trial=False, trial_spent=False) == UsageVerdict(
+    verdict = usage_verdict(
+        readings, weekly_is_trial_allowance=False, trial_spent=False
+    )
+    assert verdict == UsageVerdict(
         state="exhausted", limiting_window="weekly", resets_at=WEEKLY_RESET
     )
 
@@ -116,11 +121,30 @@ def test_a_meter_rounded_up_to_100_is_low_while_a_turn_can_still_start():
 def test_a_trials_weekly_window_is_its_allowance_without_a_reset():
     # A lifetime trial's allowance is folded into the weekly window, which
     # "resets" when the trial ends.
-    trial = SubscriptionTier.TRIAL
-    low = _usage(0, 4_500_000, tier=trial, weekly_reset=TRIAL_END)
-    assert _verdict(low) == ("low", "trial", None)
-    spent = _usage(0, 5_000_000, tier=trial, weekly_reset=TRIAL_END, trial_spent=True)
+    folded = {
+        "tier": SubscriptionTier.TRIAL,
+        "weekly_reset": TRIAL_END,
+        "weekly_is_trial_allowance": True,
+    }
+    assert _verdict(_usage(0, 4_500_000, **folded)) == ("low", "trial", None)
+    spent = _usage(0, 5_000_000, trial_spent=True, **folded)
     assert _verdict(spent) == ("exhausted", "trial", None)
+
+
+def test_a_trials_own_weekly_cap_refills_like_anyones():
+    # A trial whose period caps are tighter than its allowance keeps a real
+    # weekly window: it refills on Monday, and Send at reset can wait for it.
+    trial = SubscriptionTier.TRIAL
+    assert _verdict(_usage(0, 4_500_000, tier=trial)) == (
+        "low",
+        "weekly",
+        WEEKLY_RESET,
+    )
+    assert _verdict(_usage(0, 5_000_000, tier=trial)) == (
+        "exhausted",
+        "weekly",
+        WEEKLY_RESET,
+    )
 
 
 def test_a_spent_trial_allowance_is_exhausted_with_room_in_the_windows():
@@ -136,6 +160,12 @@ def test_a_trials_used_up_day_still_refills_at_midnight():
 
 
 def test_the_verdict_leaves_the_trial_meter_clamp_alone():
-    usage = _usage(0, 4_999_999, tier=SubscriptionTier.TRIAL)
+    usage = _usage(
+        0,
+        4_999_999,
+        tier=SubscriptionTier.TRIAL,
+        weekly_reset=TRIAL_END,
+        weekly_is_trial_allowance=True,
+    )
     assert usage.weekly is not None and usage.weekly.percent_used == 99.9
     assert _verdict(usage) == ("low", "trial", None)

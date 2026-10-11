@@ -278,6 +278,21 @@ async def test_an_unreadable_budget_tries_again(limits, chat_reads):
 
 
 @pytest.mark.asyncio
+async def test_an_account_with_no_allowance_drops_the_turn_when_it_fires(
+    limits, chat_reads
+):
+    # An ended trial reads as NO_TIER with no allowance while its usage
+    # state still says TRIAL: the tier guard would report that as
+    # unavailable, and the turn would be retried for an hour.
+    global_limits, _, gate = limits
+    global_limits.return_value = (0, 0, SubscriptionTier.NO_TIER)
+    gate.side_effect = RateLimitUnavailable("Subscription changed")
+    verdict = await fire_verdict("send", _chat(), SET_AT)
+    assert verdict.action == "drop"
+    gate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_spent_trial_drops_the_turn_when_it_fires(limits, chat_reads, trial):
     limits[2].side_effect = RateLimitExceeded("trial", SET_AT)
     trial.cost_microdollars = 10_000_000

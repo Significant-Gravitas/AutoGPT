@@ -53,6 +53,14 @@ async def refusal_for(user_id: str | None) -> TurnPause | None:
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
     )
+    if daily == 0 and weekly == 0:
+        # No plan, or the trial is over: nothing to spend, and nothing that
+        # refills. Settled here because an ended trial's usage state still
+        # reads TRIAL, which check_rate_limit's tier guard would take for a
+        # subscription change and report as unavailable.
+        return TurnPause(
+            reason="weekly", resets_at=None, checkpoint_saved=False, started=False
+        )
     try:
         await check_rate_limit(
             user_id=user_id,

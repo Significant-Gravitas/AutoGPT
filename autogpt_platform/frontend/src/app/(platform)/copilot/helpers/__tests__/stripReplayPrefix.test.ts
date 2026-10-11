@@ -180,6 +180,58 @@ describe("stripReplayPrefix", () => {
     expect(stripReplayPrefix([])).toEqual([]);
   });
 
+  it("drops the copy of the bubble before it that a resumed turn opens with, cards included", () => {
+    // `useChat` seeds a GET-resumed turn from the assistant message the list
+    // ends on, so the turn's message starts with all of that bubble's parts.
+    const paused = {
+      id: "a1",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "Halfway there.", state: "done" },
+        { type: "data-turn-paused", data: { reason: "steps", steps: 450 } },
+        { type: "text", text: "Keep going.", state: "done" },
+        { type: "data-status", data: { message: "Picking it back up…" } },
+      ],
+    } as UIMessage;
+    const continued = {
+      id: "a2",
+      role: "assistant",
+      parts: [
+        ...structuredClone(paused.parts),
+        { type: "step-start" },
+        { type: "text", text: "Back on it.", state: "streaming" },
+      ],
+    } as UIMessage;
+
+    const result = stripReplayPrefix([user("u1", "go"), paused, continued]);
+
+    expect(result.map((m) => m.id)).toEqual(["u1", "a1", "a2"]);
+    expect(result[1]).toBe(paused);
+    expect(result[2].parts).toEqual([
+      { type: "step-start" },
+      { type: "text", text: "Back on it.", state: "streaming" },
+    ]);
+  });
+
+  it("keeps a bubble that only resembles the one before it", () => {
+    const next = {
+      id: "a2",
+      role: "assistant",
+      parts: [
+        { type: "data-turn-paused", data: { reason: "task" } },
+        { type: "text", text: "Next.", state: "done" },
+      ],
+    } as UIMessage;
+
+    const result = stripReplayPrefix([
+      user("u1", "go"),
+      assistant("a1", "Saved."),
+      next,
+    ]);
+
+    expect(result[2]).toBe(next);
+  });
+
   it("handles the longest matching earlier assistant as the strip anchor", () => {
     // a3 matches a2's full text (which is longer than a1's). Should strip a2's
     // length, not a1's.

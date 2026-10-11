@@ -29,7 +29,7 @@ import { deduplicateMessages } from "../helpers";
  * cases we see.
  */
 export function stripReplayPrefix(raw: UIMessage[]): UIMessage[] {
-  const deduped = deduplicateMessages(raw);
+  const deduped = withoutSeededCopies(deduplicateMessages(raw));
   const texts = deduped.map(concatText);
   const out: UIMessage[] = [];
 
@@ -50,6 +50,44 @@ export function stripReplayPrefix(raw: UIMessage[]): UIMessage[] {
     if (trimmed !== null) out.push(trimmed);
   }
   return out;
+}
+
+/**
+ * Drop the copy a resumed turn's message opens with.
+ *
+ * On a GET-resume `useChat` seeds the replayed turn from the assistant
+ * message the list ends on, so that turn's message starts with every part of
+ * the bubble before it, cards and tool calls as well as text, ahead of its
+ * own. The text alone is caught below as a replay; the rest would draw a
+ * second time. Only an exact copy of the whole bubble right before it goes.
+ */
+function withoutSeededCopies(messages: UIMessage[]): UIMessage[] {
+  return messages.flatMap((message, i) => {
+    const previous = messages[i - 1];
+    if (message.role !== "assistant" || previous?.role !== "assistant") {
+      return [message];
+    }
+    const seeded = previous.parts;
+    if (seeded.length === 0 || seeded.length > message.parts.length) {
+      return [message];
+    }
+    const isSeeded = seeded.every(
+      (part, k) => partKey(part) === partKey(message.parts[k]),
+    );
+    if (!isSeeded) return [message];
+    const own = message.parts.slice(seeded.length);
+    return own.length > 0 ? [{ ...message, parts: own }] : [];
+  });
+}
+
+// Cheap identity for a part: never serialises a tool's output, which can be
+// large and this runs on every streamed delta.
+function partKey(part: UIMessage["parts"][number]): string {
+  if ("text" in part && typeof part.text === "string") {
+    return `${part.type}:${part.text}`;
+  }
+  if ("toolCallId" in part) return `${part.type}:${part.toolCallId}`;
+  return JSON.stringify(part);
 }
 
 function concatText(msg: UIMessage): string {
