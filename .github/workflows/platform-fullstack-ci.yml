@@ -180,9 +180,11 @@ jobs:
           # that writes the shared build caches.
           - suite: smoke
             config: playwright.config.ts
+            playwright_args: ""
             # Pinned inventory: 28 tests in 9 files; raise when adding E2E tests.
             min_tests: 28
             embeddings: true
+            seed: true
             hosted: false
             known_failures: false
           # Holistic *-journey.spec.ts flows on the hosted configuration:
@@ -191,8 +193,13 @@ jobs:
           # so the seed skips embeddings and finishes in ~30 s.
           - suite: journeys
             config: playwright.journeys.config.ts
-            min_tests: 3
+            # selfhost-journey asserts nothing hosted-only exists; it needs a
+            # self-hosted stack (TODO in src/playwright/journeys/README.md).
+            playwright_args: --project hosted
+            min_tests: 4
             embeddings: false
+            # Journeys sign up their own users and need no seeded data.
+            seed: false
             hosted: true
             # Journeys may pin a known bug with test.fail(); it must still fail.
             known_failures: true
@@ -214,6 +221,7 @@ jobs:
 
       - name: Set up tests - Cache E2E test data
         id: e2e-data-cache
+        if: matrix.seed
         uses: actions/cache@v5
         with:
           path: /tmp/e2e_test_data.sql
@@ -305,6 +313,8 @@ jobs:
       - name: Set up Platform - Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
+          # The runner is thrown away; removing the builder only costs ~30 s.
+          cleanup: false
           driver: docker-container
           driver-opts: |
             image=${{ env.BUILDKIT_IMAGE }}
@@ -446,7 +456,7 @@ jobs:
           NEXT_PUBLIC_PW_TEST: true
 
       - name: Set up tests - Create E2E test data
-        if: steps.e2e-data-cache.outputs.cache-hit != 'true'
+        if: matrix.seed && steps.e2e-data-cache.outputs.cache-hit != 'true'
         run: |
           echo "Creating E2E test data..."
           docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
@@ -470,6 +480,7 @@ jobs:
           echo "✅ Database dump created for caching ($(wc -l < /tmp/e2e_test_data.sql) lines)"
 
       - name: Set up tests - Verify seeded credentials with fresh encryption key
+        if: matrix.seed
         run: |
           docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
           docker compose -f ../docker-compose.resolved.yml exec -T rest_server \
@@ -494,7 +505,7 @@ jobs:
           docker cp "$FRONTEND_CONTAINER":/app/.next/static .next-static-coverage
 
       - name: Run Playwright E2E suite
-        run: pnpm exec playwright test --config ${{ matrix.config }} --retries=0 --trace=retain-on-failure
+        run: pnpm exec playwright test --config ${{ matrix.config }} ${{ matrix.playwright_args }} --retries=0 --trace=retain-on-failure
         env:
           PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/results.json
           PLAYWRIGHT_RETRIES: "0"
@@ -502,6 +513,9 @@ jobs:
           PLAYWRIGHT_WORKERS: "4"
           # Matches EXECUTION_COST_COUNT_THRESHOLD=1 from hosted_journeys_env.py.
           PLAYWRIGHT_JOURNEY_COST_PER_NODE: ${{ matrix.hosted && '1' || '' }}
+          # Payments are on in the hosted leg; journey users get a paid tier
+          # without Stripe (src/playwright/journeys/subscription-tier.ts).
+          PLAYWRIGHT_JOURNEY_TIER: ${{ matrix.hosted && 'PRO' || '' }}
 
       - name: Export Next.js build cache from BuildKit
         id: next-build-cache-export

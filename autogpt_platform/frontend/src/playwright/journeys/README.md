@@ -29,8 +29,12 @@ product does what the user expects.
     (see below). Override per journey with `test.use({ flagOverrides: {...} })`.
   - **`journeyUser`.** Ask for it to get a brand-new user who is signed in and
     has finished onboarding. With credits on, finishing onboarding grants the
-    onboarding credits, so the user can run agents. A journey never shares a
-    user with another one and never depends on CI's seeded accounts.
+    onboarding credits. With `PLAYWRIGHT_JOURNEY_TIER` set (CI: `PRO`), the
+    user also gets that plan without Stripe (`subscription-tier.ts` writes the
+    tier to the stack's database: a paid tier with no Stripe customer, the
+    same shape as an admin grant), so the hosted paywall lets them run agents.
+    A journey never shares a user with another one and never depends on CI's
+    seeded accounts.
 - **Make your own data.** Build or import the agents you need inside the
   journey. Name things uniquely (`Date.now()` suffix).
 - **Assert invariants, not DOM trivia.** Use web-first assertions
@@ -55,9 +59,10 @@ python ../.github/scripts/hosted_journeys_env.py >> backend/.env
 echo "CHAT_TEST_MODE=true" >> backend/.env
 NEXT_PUBLIC_PW_TEST=true docker compose up -d --build
 cd frontend
-PLAYWRIGHT_JOURNEY_COST_PER_NODE=1 pnpm exec playwright test --config playwright.journeys.config.ts
+PLAYWRIGHT_JOURNEY_COST_PER_NODE=1 PLAYWRIGHT_JOURNEY_TIER=PRO \
+  pnpm exec playwright test --config playwright.journeys.config.ts --project hosted
 # one journey, headed:
-pnpm exec playwright test --config playwright.journeys.config.ts run-correctness --headed
+pnpm exec playwright test --config playwright.journeys.config.ts --project hosted run-correctness --headed
 ```
 
 The frontend must be built with `NEXT_PUBLIC_PW_TEST=true`; only that build
@@ -65,6 +70,22 @@ reads the hosted flag values the fixtures hand it.
 `PLAYWRIGHT_JOURNEY_COST_PER_NODE` tells cost assertions what the stack bills
 per node execution: `1` with `EXECUTION_COST_COUNT_THRESHOLD=1`, otherwise
 leave it unset for `0`.
+
+The tier grant uses `DATABASE_URL` from `frontend/.env`; if your stack's
+Postgres isn't on `localhost:5432`, set `PLAYWRIGHT_JOURNEY_DATABASE_URL`.
+
+### Projects: `hosted` and `selfhost`
+
+`selfhost-journey.spec.ts` asserts that nothing hosted-only exists (no
+billing, paywall or third-party hosts), so it fails by design on the hosted
+configuration. The config runs it only in the `selfhost` project, against a
+self-hosted build (see the spec's header); every other journey is in
+`hosted`. CI's journeys leg runs `--project hosted`.
+
+**TODO:** a `journeys-selfhost` CI leg (compose stack with hosted flags off,
+no `CHAT_TEST_MODE`, since the spec expects "No AI connection") would run it
+on every PR. It's not added yet: it's a third runner per run, and its config
+needs settling first.
 
 ## Run against a preview (`!deploy`)
 
@@ -120,15 +141,15 @@ allows. Flag values live in `hosted-flags.json`, read by both sides:
 
 Differences from hosted that are still open:
 
-| Area               | Journeys leg                                                                                    | Hosted                                                            |
-| ------------------ | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Payments           | `enable-platform-payment` forced **off**, so fresh users aren't paywalled                       | On: NO_TIER users get a 402 until they subscribe or start a trial |
-| Node execution fee | 1 credit per node (`EXECUTION_COST_COUNT_THRESHOLD=1`), so a run's cost is visible              | 1 credit per 100 node executions                                  |
-| Copilot            | `CHAT_TEST_MODE` dummy reply; no real turn pipeline, tools or cost                              | Real models                                                       |
-| Flag source        | Fixed values from `hosted-flags.json`; JSON flags (model routing, tier limits) at code defaults | PostHog/LaunchDarkly with targeting                               |
-| `BEHAVE_AS`        | `LOCAL` on both sides; the frontend's is build time                                             | `CLOUD`                                                           |
-| Pods               | One `executor`, one `copilot_executor`                                                          | Many. Scaling needs the fixed host ports 8002/8008 removed first  |
-| Frontend runtime   | Next.js standalone server in Docker                                                             | Vercel (body size limits, edge routing)                           |
-| External services  | No Stripe, OAuth providers, Postmark or E2B; ClamAV, Redis, RabbitMQ and FalkorDB are real      | Real                                                              |
-| LLM keys           | None; blocks that need platform credentials fail                                                | Platform keys                                                     |
-| Origin             | `http://localhost:3000`                                                                         | HTTPS                                                             |
+| Area               | Journeys leg                                                                                                                        | Hosted                                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Payments           | `enable-platform-payment` **on**; journey users get a paid tier without Stripe, so checkout, trials and Stripe webhooks go untested | On, with Stripe: NO_TIER users get a 402 until they subscribe or start a trial |
+| Node execution fee | 1 credit per node (`EXECUTION_COST_COUNT_THRESHOLD=1`), so a run's cost is visible                                                  | 1 credit per 100 node executions                                               |
+| Copilot            | `CHAT_TEST_MODE` dummy reply; no real turn pipeline, tools or cost                                                                  | Real models                                                                    |
+| Flag source        | Fixed values from `hosted-flags.json`; JSON flags (model routing, tier limits) at code defaults                                     | PostHog/LaunchDarkly with targeting                                            |
+| `BEHAVE_AS`        | `LOCAL` on both sides; the frontend's is build time                                                                                 | `CLOUD`                                                                        |
+| Pods               | One `executor`, one `copilot_executor`                                                                                              | Many. Scaling needs the fixed host ports 8002/8008 removed first               |
+| Frontend runtime   | Next.js standalone server in Docker                                                                                                 | Vercel (body size limits, edge routing)                                        |
+| External services  | No Stripe, OAuth providers, Postmark or E2B; ClamAV, Redis, RabbitMQ and FalkorDB are real                                          | Real                                                                           |
+| LLM keys           | None; blocks that need platform credentials fail                                                                                    | Platform keys                                                                  |
+| Origin             | `http://localhost:3000`                                                                                                             | HTTPS                                                                          |

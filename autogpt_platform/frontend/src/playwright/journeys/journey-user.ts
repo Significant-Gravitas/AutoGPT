@@ -1,10 +1,12 @@
 import { randomBytes, randomInt } from "crypto";
 import { expect, type Page } from "@playwright/test";
+import { grantSubscriptionTier } from "./subscription-tier";
 
 export interface JourneyUser {
   email: string;
   password: string;
   name: string;
+  id?: string;
 }
 
 // Onboarding steps a journey user has already done. ONBOARDING_COMPLETE also
@@ -41,6 +43,8 @@ export async function provisionJourneyUser(page: Page): Promise<JourneyUser> {
           name: existingEmail.split("@")[0],
         })
       : await signUp(page, newJourneyUser());
+  // Before anything reads the tier: the backend caches it for minutes.
+  if (user.id) await grantSubscriptionTier(user.id);
   await finishAccountSetup(page);
   await completeOnboarding(page);
   return user;
@@ -73,7 +77,8 @@ async function signUp(page: Page, user: JourneyUser) {
     response.ok(),
     `sign-up for ${user.email} failed: ${response.status()} ${await response.text()}`,
   ).toBe(true);
-  return user;
+  const body = (await response.json()) as { user?: { id?: string } };
+  return { ...user, id: body.user?.id };
 }
 
 async function signIn(page: Page, user: JourneyUser) {
