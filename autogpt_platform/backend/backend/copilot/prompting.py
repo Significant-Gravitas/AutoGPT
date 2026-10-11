@@ -711,13 +711,22 @@ browser the user should watch or take over.
 """
 
 
+# The SDK path declares AutoPilot's tools as ``mcp__copilot__<name>``, while
+# the texts it shares with the baseline engine (these notes, the skills index,
+# tool results) write the short name, and the CLI refuses an undeclared name.
+_SDK_TOOL_NAMES_NOTE = """
+
+Every AutoPilot tool here is called by its full name, `mcp__copilot__<name>`: text that writes `run_capability(...)`, `find_capability(...)` or another AutoPilot tool by its short name means the `mcp__copilot__` tool of that name."""
+
+
 @cache
 def get_sdk_supplement(use_e2b: bool, expert_session: bool = False) -> str:
     """Get the supplement for SDK mode (Claude Agent SDK).
 
     SDK mode does NOT include tool documentation because Claude automatically
     receives tool schemas from the SDK. Only includes technical notes about
-    storage systems and execution environment.
+    storage systems and execution environment, and the full names the SDK
+    declares AutoPilot's tools under.
 
     The system prompt must be **identical across all sessions and users** to
     enable cross-session LLM prompt-cache hits (Anthropic caches on exact
@@ -737,11 +746,17 @@ def get_sdk_supplement(use_e2b: bool, expert_session: bool = False) -> str:
     """
     if not use_e2b:
         return (
-            _get_local_storage_supplement("/tmp/copilot-<session-id>")
+            _SDK_TOOL_NAMES_NOTE
+            + _get_local_storage_supplement("/tmp/copilot-<session-id>")
             + _USER_FOLLOW_UP_NOTE
         )
     computer = "" if expert_session else _COMPUTER_NOTE
-    return _get_cloud_sandbox_supplement() + computer + _USER_FOLLOW_UP_NOTE
+    return (
+        _SDK_TOOL_NAMES_NOTE
+        + _get_cloud_sandbox_supplement()
+        + computer
+        + _USER_FOLLOW_UP_NOTE
+    )
 
 
 # The one reply a chat-platform bot does not deliver. A message on Discord,

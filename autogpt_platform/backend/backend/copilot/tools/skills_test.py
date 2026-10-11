@@ -1168,6 +1168,21 @@ async def test_build_skills_context_anon_includes_directive():
 
 
 @pytest.mark.asyncio
+async def test_build_skills_context_names_run_capability_as_the_engine_declares_it():
+    """The model copies the directive's call, so it names ``run_capability``
+    the way the calling engine declares it: bare by default, and the SDK
+    path's ``mcp__copilot__`` name when that is passed in."""
+    bare = await build_skills_context(user_id=None)
+    declared = await build_skills_context(
+        user_id=None, run_capability_tool="mcp__copilot__run_capability"
+    )
+    call = '(id="tool:read_skill", input={"name": ...})`'
+    assert f"`run_capability{call}" in bare
+    assert "mcp__copilot__" not in bare
+    assert f"`mcp__copilot__run_capability{call}" in declared
+
+
+@pytest.mark.asyncio
 async def test_list_all_skills_user_skills_follow_defaults():
     """Default skills always lead — the model sees built-in agent-
     building guide before any user customisation."""

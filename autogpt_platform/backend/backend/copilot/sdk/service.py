@@ -6922,7 +6922,8 @@ async def _first_turn_context_blocks(
     ``env_ctx`` names the working directory; ``session_ctx`` lets the model
     answer "cancel that" / "what did I schedule" without a ``list_schedules``
     round-trip (it degrades to the bare session_id line on a scheduler RPC
-    hiccup); ``skills_ctx`` is the per-user skill index.  All three land in
+    hiccup); ``skills_ctx`` is the per-user skill index, which names the
+    declared ``mcp__copilot__run_capability`` the model calls.  All three land in
     the per-turn user message, after the cache breakpoint, so they do not bust
     the cross-session prefix cache.  A skill-index failure must not block the
     turn: it is logged and the index left empty.
@@ -6935,7 +6936,11 @@ async def _first_turn_context_blocks(
         )
     skills_ctx = ""
     try:
-        skills_ctx = await build_skills_context(user_id, expert_id=session.expert_id)
+        skills_ctx = await build_skills_context(
+            user_id,
+            expert_id=session.expert_id,
+            run_capability_tool=f"{MCP_TOOL_PREFIX}run_capability",
+        )
     except Exception:
         logger.exception("[skills] failed to build skills_ctx — proceeding without it")
     return env_ctx, session_ctx, skills_ctx

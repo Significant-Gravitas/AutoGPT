@@ -2313,7 +2313,10 @@ async def is_skills_feature_enabled(user_id: str | None) -> bool:
 
 
 async def build_skills_context(
-    user_id: str | None, expert_id: str | None = None
+    user_id: str | None,
+    expert_id: str | None = None,
+    *,
+    run_capability_tool: str = "run_capability",
 ) -> str:
     """Build the body of the ``<available_skills>`` block injected into
     the first user message.  Returns ``""`` if there are no skills to
@@ -2326,6 +2329,10 @@ async def build_skills_context(
 
     ``expert_id`` is the session's persisted expert attribution; the index
     then holds platform defaults plus that expert's own skills.
+
+    ``run_capability_tool`` is the name the calling engine declares
+    ``run_capability`` under, which the model copies into its call: the
+    SDK path declares ``mcp__copilot__run_capability``.
     """
     if not await is_skills_feature_enabled(user_id):
         return ""
@@ -2335,7 +2342,7 @@ async def build_skills_context(
         return ""
     return (
         "Skills are reusable procedures loaded with "
-        '`run_capability(id="tool:read_skill", input={"name": ...})`. '
+        f'`{run_capability_tool}(id="tool:read_skill", input={{"name": ...}})`. '
         "Match the user's request to a skill's triggers (substring or "
         "close paraphrase) and load the "
         "full body before acting; distill a new one with `tool:store_skill` "
