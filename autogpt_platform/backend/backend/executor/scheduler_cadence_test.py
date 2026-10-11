@@ -38,13 +38,18 @@ def _scheduler() -> Iterator[Scheduler]:
         aps.shutdown(wait=False)
 
 
-def _add(scheduler: Scheduler, *, routine_id: str | None = None) -> None:
+def _add(
+    scheduler: Scheduler,
+    *,
+    routine_id: str | None = None,
+    user_timezone: str | None = _CHICAGO,
+) -> None:
     args = CopilotTurnJobArgs(
         schedule_id="job-1",
         user_id="user-1",
         message="Check Discord for new messages.",
         cron="* * * * *",
-        user_timezone=_CHICAGO,
+        user_timezone=user_timezone,
         routine_id=routine_id,
     )
     scheduler.scheduler.add_job(
@@ -68,6 +73,19 @@ def test_a_follow_up_runs_on_its_new_cadence_under_the_same_id():
         next_run = job.next_run_time.astimezone(ZoneInfo(_CHICAGO))
         assert (next_run.hour, next_run.minute) == (9, 0)
         assert next_run.weekday() < 5
+
+
+def test_a_follow_up_saved_without_its_zone_keeps_the_triggers():
+    """Older follow-ups have no user_timezone; their trigger still has the
+    zone, and the dialog showed its times in it. 09:00 there, not UTC."""
+    with _scheduler() as scheduler:
+        _add(scheduler, user_timezone=None)
+
+        scheduler.update_copilot_turn_cron("job-1", "user-1", "0 9 * * *")
+
+        job = scheduler.scheduler.get_job("job-1", jobstore=_STORE)
+        next_run = job.next_run_time.astimezone(ZoneInfo(_CHICAGO))
+        assert (next_run.hour, next_run.minute) == (9, 0)
 
 
 def test_a_paused_follow_up_stays_paused():

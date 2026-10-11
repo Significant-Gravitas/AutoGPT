@@ -2899,10 +2899,10 @@ class Scheduler(AppService):
             raise NotFoundError(f"Job #{schedule_id} is not a repeating follow-up.")
         if info.routine_id is not None:
             raise NotFoundError(f"Job #{schedule_id} belongs to a routine.")
+        # The zone the dialog showed its times in: a follow-up saved before
+        # user_timezone existed keeps its zone on the trigger alone.
         trigger = _build_trigger(
-            cron=cron,
-            run_at=None,
-            user_timezone=_resolve_timezone(info.user_timezone, user_id),
+            cron=cron, run_at=None, user_timezone=info.user_timezone or info.timezone
         )
         args = CopilotTurnJobArgs.model_validate(job.kwargs).model_copy(
             update={"cron": cron}

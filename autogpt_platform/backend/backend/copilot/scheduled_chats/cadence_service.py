@@ -152,5 +152,6 @@ async def _follow_up_schedule(user_id: str, schedule_key: str) -> _Schedule:
         key=job.id,
         title=schedule_title(routine_title=None, message=job.message),
         crons=[job.cron],
+        # The scheduler puts the new cadence in this zone too.
         timezone=job.user_timezone or job.timezone,
     )
