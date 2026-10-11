@@ -1466,6 +1466,10 @@ async def _add_graph_execution(
                 f"Execution #{graph_exec.id} was not requeued: it is "
                 f"{graph_exec.status}, not QUEUED"
             )
+        if admin_requeue:
+            # Nothing passes the dry-run flag back in on a requeue; it lives
+            # on the row. Without it a stuck dry run would run for real.
+            dry_run = graph_exec.is_dry_run
 
         # A resume rebuilds its context from the graph settings, which would
         # drop the pause the chat that started this run asked for.
@@ -1721,6 +1725,7 @@ async def _add_graph_execution(
             nodes_to_skip=nodes_to_skip,
             execution_context=execution_context,
         )
+        graph_exec_entry.admin_requeue = admin_requeue
         logger.info(f"Queueing execution {graph_exec.id}")
 
         # Update execution status to QUEUED BEFORE publishing to prevent race condition

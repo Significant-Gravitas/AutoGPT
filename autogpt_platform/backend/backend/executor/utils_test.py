@@ -2233,6 +2233,7 @@ def _mock_add_graph_execution_requeue_path(
     graph_exec.id = "existing-execution"
     graph_exec.node_executions = []
     graph_exec.status = ExecutionStatus.QUEUED
+    graph_exec.is_dry_run = False
     graph_exec.graph_version = 1
     graph_exec.nodes_input_masks = {}
     graph_exec.expert_id = expert_id
@@ -3248,6 +3249,25 @@ async def test_admin_requeue_publishes_queued_execution_without_cas(
     queue.publish_message.assert_awaited_once()
     for call in execution_store.update_graph_execution_stats.await_args_list:
         assert call.kwargs.get("status") != ExecutionStatus.QUEUED
+
+
+@pytest.mark.asyncio
+async def test_admin_requeue_keeps_a_dry_run_dry(mocker: MockerFixture):
+    graph_exec, _, queue, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org-1", team_id="team-1"
+    )
+    graph_exec.is_dry_run = True
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+        bypass_paywall=True,
+        admin_requeue=True,
+    )
+
+    assert captured["execution_context"].dry_run is True
+    queue.publish_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio

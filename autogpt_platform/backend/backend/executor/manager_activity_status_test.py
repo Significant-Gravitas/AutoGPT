@@ -101,6 +101,39 @@ def test_failed_execution_is_not_continued():
     db_client.update_graph_execution_start_time.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "status",
+    [ExecutionStatus.RUNNING, ExecutionStatus.REVIEW, ExecutionStatus.INCOMPLETE],
+)
+def test_admin_requeue_message_only_starts_a_queued_run(status: ExecutionStatus):
+    """The original message of a run an admin requeued may not have been lost.
+    If that run already moved on (still running elsewhere after a lock expiry,
+    or parked for review), the admin's duplicate must not resume it."""
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+        admin_requeue=True,
+    )
+    db_client = MagicMock()
+    db_client.get_graph_execution_meta.return_value = SimpleNamespace(
+        status=status, stats=None
+    )
+    processor = ExecutionProcessor()
+    processor._on_graph_execution = MagicMock()
+
+    with (
+        patch("backend.executor.manager.get_db_client", return_value=db_client),
+        patch("backend.executor.manager.update_graph_execution_state") as update,
+    ):
+        processor.on_graph_execution(execution, threading.Event(), MagicMock())
+
+    processor._on_graph_execution.assert_not_called()
+    db_client.update_graph_execution_start_time.assert_not_called()
+    update.assert_not_called()
+
+
 def test_execution_credit_balance_uses_organization_aware_lookup():
     execution = GraphExecutionEntry(
         user_id="user-1",
