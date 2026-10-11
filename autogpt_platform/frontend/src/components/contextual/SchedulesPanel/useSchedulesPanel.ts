@@ -8,7 +8,6 @@ import { okData } from "@/app/api/helpers";
 import {
   isSchedulerUnavailableError,
   recheckWhileSchedulerUnavailable,
-  retryUnlessSchedulerUnavailable,
 } from "@/services/schedules/scheduler-availability";
 
 export type ScheduleItem =
@@ -27,7 +26,6 @@ export function useSchedulesPanel() {
   const copilotQuery = useListCopilotFollowupSchedules({
     query: {
       select: (res) => okData(res) ?? [],
-      retry: retryUnlessSchedulerUnavailable,
       refetchInterval: recheckWhileSchedulerUnavailable,
     },
   });
@@ -38,7 +36,6 @@ export function useSchedulesPanel() {
   const graphQuery = useGetV1ListExecutionSchedulesForAUser({
     query: {
       select: (res) => okData(res) ?? [],
-      retry: retryUnlessSchedulerUnavailable,
       refetchInterval: recheckWhileSchedulerUnavailable,
     },
   });

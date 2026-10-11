@@ -31,7 +31,10 @@ export function SchedulesUnavailableNotice({
         className="shrink-0 text-zinc-500"
       />
       <div className="flex min-w-0 flex-col gap-1">
-        <Text variant={compact ? "body-medium" : "h4"} className="text-zinc-800">
+        <Text
+          variant={compact ? "body-medium" : "h4"}
+          className="text-zinc-800"
+        >
           Schedules are temporarily unavailable
         </Text>
         <Text variant={compact ? "small" : "body"} className="!text-zinc-500">

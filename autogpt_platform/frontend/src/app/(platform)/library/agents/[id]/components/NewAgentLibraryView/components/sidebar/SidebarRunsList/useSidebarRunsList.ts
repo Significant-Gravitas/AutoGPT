@@ -24,7 +24,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   isSchedulerUnavailableError,
   recheckWhileSchedulerUnavailable,
-  retryUnlessSchedulerUnavailable,
 } from "@/services/schedules/scheduler-availability";
 import { parseAsString, useQueryStates } from "nuqs";
 
@@ -89,7 +88,6 @@ export function useSidebarRunsList({
     query: {
       enabled: !!graphId,
       select: okData,
-      retry: retryUnlessSchedulerUnavailable,
       refetchInterval: recheckWhileSchedulerUnavailable,
     },
   });

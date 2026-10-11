@@ -6,6 +6,7 @@ import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graph
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
+import { isSchedulerUnconfirmedError } from "@/services/schedules/scheduler-availability";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { validateSchedule } from "../../../../modals/ScheduleAgentModal/components/ModalScheduleSection/helpers";
@@ -57,6 +58,10 @@ export function useEditScheduleModal(
           setIsOpen(false);
         },
         onError: (error) => {
+          // The scheduler may have applied the edit without confirming it.
+          if (isSchedulerUnconfirmedError(error)) {
+            invalidateAllScheduleQueries(queryClient, graphId);
+          }
           toast({
             title: "Failed to update schedule",
             description:

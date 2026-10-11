@@ -323,6 +323,15 @@ describe("customMutator validation errors", () => {
     [{ detail: "Not allowed" }, "Not allowed"],
     [{ detail: { reason: "Invalid input" } }, '{"reason":"Invalid input"}'],
     [
+      {
+        detail: {
+          code: "scheduler_unavailable",
+          message: "Schedules are temporarily unavailable.",
+        },
+      },
+      "Schedules are temporarily unavailable.",
+    ],
+    [
       { detail: [{ reason: "Invalid input" }, null] },
       '{"reason":"Invalid input"}; null',
     ],
