@@ -60,6 +60,8 @@ const FROZEN_POLL_MS = 10_000;
 const QUEUED_POLL_MS = 10_000;
 // A tab away this long re-reads an idle chat on return, as the flag-off chat does.
 const WAKE_REREAD_MS = 30_000;
+// A phone often wakes before its network does.
+const REREAD_RETRY_MS = [2_000, 4_000, 8_000];
 // The backend marks a queued turn running a moment before its stream exists;
 // past this, the stream is not coming.
 const QUEUE_START_GRACE_MS = 2 * 60_000;
@@ -76,8 +78,6 @@ const RESYNC_REASONS = new Set([
   "closed block",
   "input changed",
 ]);
-
-const CHAT_GONE_MESSAGE = "This chat is no longer available.";
 
 export const ANOMALY_TOAST = {
   title: "Connection lost",
@@ -218,6 +218,7 @@ export class TurnRuntime {
   private boundFetchSession: (() => Promise<SessionView | null>) | null = null;
   private disposed = false;
   private hiddenAt: number | null = null;
+  private rereadTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     readonly sessionId: string,
@@ -395,7 +396,9 @@ export class TurnRuntime {
     for (const timer of [this.tickTimer, this.frozenTimer]) {
       if (timer) clearInterval(timer);
     }
-    if (this.emitTimer) clearTimeout(this.emitTimer);
+    for (const timer of [this.emitTimer, this.rereadTimer]) {
+      if (timer) clearTimeout(timer);
+    }
     if (typeof window !== "undefined") {
       document.removeEventListener("visibilitychange", this.onVisible);
       window.removeEventListener("pageshow", this.onVisible);
@@ -578,8 +581,8 @@ export class TurnRuntime {
       if (end.status === 409) void this.resync(seg.key, checkpointOf(end.body));
       else if (end.status === 410 || end.status === 204)
         void this.expire(seg.key);
-      else if (end.status === 401 || end.status === 403) this.denied(seg);
-      else if (end.status === 404) this.giveUp(new Error(CHAT_GONE_MESSAGE));
+      else if (end.status === 401 || end.status === 403) this.denied(seg, end);
+      else if (end.status === 404) this.giveUp(new ChatUnavailableError());
       else this.retry(conn);
       return;
     }
@@ -644,17 +647,21 @@ export class TurnRuntime {
   }
 
   private refusedSend(end: Extract<ConnectionEnd, { kind: "refused" }>) {
-    this.error = new Error(refusalText(end));
+    this.error = new SendRefusedError(refusalText(end), end.status);
     this.emitNow();
     this.handlers.onError?.(this.error, null);
   }
 
-  // The first refusal may be a token that expired in flight; a fresh one
-  // that is refused too means the user is signed out.
-  private denied(seg: TurnSegment) {
+  // The first refusal may be a token that expired in flight; refused again,
+  // a 401 means signed out and a 403 means no access.
+  private denied(
+    seg: TurnSegment,
+    end: Extract<ConnectionEnd, { kind: "refused" }>,
+  ) {
     this.denials += 1;
-    if (this.denials > 1) this.giveUp(new CopilotAuthError());
-    else this.resume(seg);
+    if (this.denials === 1) this.resume(seg);
+    else if (end.status === 401) this.giveUp(new CopilotAuthError());
+    else this.giveUp(new SendRefusedError(refusalText(end), end.status));
   }
 
   /** A refusal no retry can change: end the turn where it stands and say why. */
@@ -1135,9 +1142,21 @@ export class TurnRuntime {
   }
 
   // Another tab, device or the server may have moved an idle chat on meanwhile.
-  private async reread() {
+  private async reread(attempt = 0) {
+    if (this.rereadTimer) clearTimeout(this.rereadTimer);
+    this.rereadTimer = null;
     const view = await this.fetchView();
-    if (view && !this.disposed) this.observe(view);
+    if (this.disposed) return;
+    if (view) {
+      this.observe(view);
+      return;
+    }
+    const delay = REREAD_RETRY_MS[attempt];
+    if (delay === undefined) return;
+    this.rereadTimer = setTimeout(() => {
+      this.rereadTimer = null;
+      if (this.isIdle()) void this.reread(attempt + 1);
+    }, delay);
   }
 
   private ensureTicking() {
@@ -1423,7 +1442,26 @@ function str(value: unknown): string {
 function refusalText({ status, body }: { status: number; body: unknown }) {
   if (body !== null && typeof body !== "string") return JSON.stringify(body);
   if (body && !body.trimStart().startsWith("<")) return body;
-  return `Couldn't reach the server (HTTP ${status}). Please try again in a moment.`;
+  return `Couldn't reach the server (HTTP ${status}).`;
+}
+
+/** A send the server refused; its status says whether a resend can help. */
+export class SendRefusedError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "SendRefusedError";
+  }
+}
+
+/** The session the chat follows is gone. */
+export class ChatUnavailableError extends Error {
+  constructor() {
+    super("This chat is no longer available.");
+    this.name = "ChatUnavailableError";
+  }
 }
 
 function sleep(ms: number) {

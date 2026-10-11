@@ -13,8 +13,10 @@ import { CopilotAuthError } from "../../helpers";
 import { createTailRenderer } from "../renderTail";
 import {
   ANOMALY_TOAST,
+  ChatUnavailableError,
   LIVENESS_MS,
   ROTATE_AFTER_MS,
+  SendRefusedError,
   TurnRuntime,
   type RuntimeDeps,
   type RuntimeSnapshot,
@@ -606,9 +608,7 @@ describe("refusals no retry can change", () => {
     void runtime.send({ text: PROMPT }, undefined);
     await advance(120_000);
 
-    expect(snapshot().error?.message).toBe(
-      "Authentication failed — please sign in again.",
-    );
+    expect(snapshot().error).toBeInstanceOf(CopilotAuthError);
     expect(onError).toHaveBeenCalledTimes(1);
     expect(snapshot().notice).toBeNull();
     expect(toast).not.toHaveBeenCalled();
@@ -622,9 +622,7 @@ describe("refusals no retry can change", () => {
     backend.connections[0].fail();
     await advance(180_000);
 
-    expect(snapshot().error?.message).toBe(
-      "Authentication failed — please sign in again.",
-    );
+    expect(snapshot().error).toBeInstanceOf(CopilotAuthError);
     expect(snapshot().phase).toBe("failed");
     expect(snapshot().notice).toBeNull();
     expect(toast).not.toHaveBeenCalled();
@@ -637,9 +635,7 @@ describe("refusals no retry can change", () => {
     await advance(180_000);
 
     expect(backend.requests.filter((r) => r.method === "GET")).toHaveLength(2);
-    expect(snapshot().error?.message).toBe(
-      "Authentication failed — please sign in again.",
-    );
+    expect(snapshot().error).toBeInstanceOf(CopilotAuthError);
     expect(snapshot().phase).toBe("failed");
     expect(toast).not.toHaveBeenCalled();
   });
@@ -662,6 +658,20 @@ describe("refusals no retry can change", () => {
     expect(snapshot().error).toBeNull();
   });
 
+  it("a resume refused 403 twice ends with the refusal, not the sign-in error", async () => {
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    backend.respond(() => ({ status: 403, body: { detail: "Forbidden" } }));
+    backend.connections[0].fail();
+    await advance(180_000);
+
+    expect(backend.requests.filter((r) => r.method === "GET")).toHaveLength(2);
+    expect(snapshot().error).toEqual(
+      new SendRefusedError('{"detail":"Forbidden"}', 403),
+    );
+    expect(snapshot().error).not.toBeInstanceOf(CopilotAuthError);
+    expect(toast).not.toHaveBeenCalled();
+  });
+
   it("a resume refused 404 ends the turn: the chat is gone", async () => {
     await sendAndPublish(FIRST_BLOCK_DONE);
     backend.respond(() => ({ status: 404, body: { detail: "Not found" } }));
@@ -669,7 +679,7 @@ describe("refusals no retry can change", () => {
     await advance(180_000);
 
     expect(backend.requests.filter((r) => r.method === "GET")).toHaveLength(1);
-    expect(snapshot().error?.message).toBe("This chat is no longer available.");
+    expect(snapshot().error).toBeInstanceOf(ChatUnavailableError);
     expect(toast).not.toHaveBeenCalled();
   });
 
@@ -681,9 +691,10 @@ describe("refusals no retry can change", () => {
     void runtime.send({ text: PROMPT }, undefined);
     await advance(1_000);
 
-    expect(snapshot().error?.message).toBe(
-      "Couldn't reach the server (HTTP 502). Please try again in a moment.",
+    expect(snapshot().error).toEqual(
+      new SendRefusedError("Couldn't reach the server (HTTP 502).", 502),
     );
+    expect(snapshot().error).toBeInstanceOf(SendRefusedError);
   });
 });
 
@@ -701,6 +712,36 @@ describe("a return to the tab", () => {
       backend.turnId,
     );
     expect(snapshot().phase).toBe("live");
+  });
+
+  it("when the first read on return fails, reads again and follows the turn", async () => {
+    runtime.observe(backend.view());
+    setVisibility("hidden");
+    await advance(60_000);
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    let reads = 0;
+    runtime.bind({}, async () => (reads++ === 0 ? null : backend.view()));
+    setVisibility("visible");
+    await advance(3_000);
+
+    expect(reads).toBe(2);
+    expect(snapshot().phase).toBe("live");
+  });
+
+  it("stops re-reading after three failed retries", async () => {
+    runtime.observe(backend.view());
+    setVisibility("hidden");
+    await advance(60_000);
+    let reads = 0;
+    runtime.bind({}, async () => {
+      reads += 1;
+      return null;
+    });
+    setVisibility("visible");
+    await advance(120_000);
+
+    expect(reads).toBe(4);
   });
 
   it("within 30 s, reads nothing", async () => {
