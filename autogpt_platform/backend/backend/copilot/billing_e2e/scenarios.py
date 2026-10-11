@@ -70,9 +70,13 @@ _OPENROUTER = {
     "api_key": "sk-or-billing-e2e",
     "base_url": "{provider}/openrouter/api/v1",
 }
-# The CLI reads its key from ANTHROPIC_API_KEY; the platform only checks one
-# is configured.
-_DIRECT = {"use_openrouter": False, "api_key": "sk-ant-billing-e2e"}
+# The direct route hands the CLI ``direct_anthropic_api_key``; the fake
+# provider never checks it.
+_DIRECT = {
+    "use_openrouter": False,
+    "api_key": "sk-ant-billing-e2e",
+    "direct_anthropic_api_key": "sk-ant-billing-e2e",
+}
 
 _SDK_ANTHROPIC = Scenario(
     id="sdk-anthropic",
