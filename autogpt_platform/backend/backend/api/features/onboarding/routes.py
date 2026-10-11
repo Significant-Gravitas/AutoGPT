@@ -4,8 +4,15 @@ import pydantic
 from autogpt_libs.auth import get_user_id, requires_user
 from fastapi import APIRouter, HTTPException, Security
 
+from backend.api.features.onboarding_dump.rate_limit import (
+    enforce_personalization_budget,
+)
 from backend.api.features.store.model import StoreAgentDetails
-from backend.data.db_accessors import onboarding_audience_db, onboarding_role_db
+from backend.data.db_accessors import (
+    onboarding_audience_db,
+    onboarding_role_db,
+    understanding_db,
+)
 from backend.data.model import UserOnboarding
 from backend.data.onboarding import (
     FrontendOnboardingStep,
@@ -19,6 +26,7 @@ from backend.data.onboarding import (
     update_user_onboarding,
 )
 from backend.data.onboarding_role import OnboardingRole
+from backend.data.onboarding_wizard import OnboardingWizardConflict
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -46,11 +54,15 @@ async def get_onboarding(user_id: Annotated[str, Security(get_user_id)]):
     summary="Update onboarding state",
     tags=["onboarding"],
     response_model=UserOnboarding,
+    responses={409: {"description": "The wizard draft changed in another session"}},
 )
 async def update_onboarding(
     user_id: Annotated[str, Security(get_user_id)], data: UserOnboardingUpdate
 ):
-    return await update_user_onboarding(user_id, data)
+    try:
+        return await update_user_onboarding(user_id, data)
+    except OnboardingWizardConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post(
@@ -82,7 +94,9 @@ class OnboardingProfileRequest(pydantic.BaseModel):
 
     user_name: str = pydantic.Field(min_length=1, max_length=100)
     user_role: str = pydantic.Field(min_length=1, max_length=100)
-    pain_points: list[str] = pydantic.Field(default_factory=list, max_length=20)
+    pain_points: list[Annotated[str, pydantic.StringConstraints(max_length=2000)]] = (
+        pydantic.Field(default_factory=list, max_length=20)
+    )
 
 
 class OnboardingStatusResponse(pydantic.BaseModel):
@@ -126,6 +140,16 @@ async def submit_onboarding_profile(
     data: OnboardingProfileRequest,
     user_id: Annotated[str, Security(get_user_id)],
 ):
+    existing = await understanding_db().get_business_understanding(user_id)
+    if (
+        existing
+        and existing.user_name == data.user_name
+        and existing.user_role == data.user_role
+        and existing.pain_points == data.pain_points
+    ):
+        await _keep_role(user_id, data.user_role)
+        return {"status": "ok"}
+    await enforce_personalization_budget(user_id)
     formatted = format_onboarding_for_extraction(
         user_name=data.user_name,
         user_role=data.user_role,
@@ -144,11 +168,16 @@ async def submit_onboarding_profile(
         understanding_input.pain_points = data.pain_points
 
     await upsert_business_understanding(user_id, understanding_input)
+    await _keep_role(user_id, data.user_role)
 
-    # Kept apart from the understanding, whose copy AutoPilot rewrites.
-    role = OnboardingRole.from_answer(data.user_role)
+    return {"status": "ok"}
+
+
+async def _keep_role(user_id: str, answer: str) -> None:
+    """Keep the pick apart from the understanding, whose copy AutoPilot
+    rewrites, and send it to MailerLite and PostHog. An unchanged profile
+    keeps it too, so a retry repairs a write an earlier attempt lost."""
+    role = OnboardingRole.from_answer(answer)
     await onboarding_role_db().save_onboarding_role(user_id, role)
     await onboarding_audience_db().queue_onboarding_role(user_id, role)
     set_onboarding_role(user_id=user_id, role=role)
-
-    return {"status": "ok"}

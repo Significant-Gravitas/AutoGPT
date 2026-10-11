@@ -11,6 +11,7 @@ from backend.data.understanding import BusinessUnderstandingInput
 @pytest.mark.asyncio
 async def test_profile_routes_role_writes_through_rpc_without_prisma(mocker):
     rpc = MagicMock()
+    rpc.get_business_understanding = AsyncMock(return_value=None)
     rpc.save_onboarding_role = AsyncMock()
     rpc.queue_onboarding_role = AsyncMock()
     mocker.patch("backend.data.db.is_connected", return_value=False)
@@ -28,6 +29,7 @@ async def test_profile_routes_role_writes_through_rpc_without_prisma(mocker):
         new=AsyncMock(return_value=BusinessUnderstandingInput.model_construct()),
     )
     mocker.patch.object(routes, "upsert_business_understanding", new=AsyncMock())
+    mocker.patch.object(routes, "enforce_personalization_budget", new=AsyncMock())
     mocker.patch.object(routes, "set_onboarding_role")
 
     result = await routes.submit_onboarding_profile(
@@ -36,6 +38,7 @@ async def test_profile_routes_role_writes_through_rpc_without_prisma(mocker):
     )
 
     assert result == {"status": "ok"}
+    rpc.get_business_understanding.assert_awaited_once_with("authenticated-user")
     role = OnboardingRole(choice="Marketing")
     rpc.save_onboarding_role.assert_awaited_once_with("authenticated-user", role)
     rpc.queue_onboarding_role.assert_awaited_once_with("authenticated-user", role)

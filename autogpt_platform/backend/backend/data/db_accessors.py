@@ -164,6 +164,16 @@ def onboarding_audience_db():
     return get_database_manager_async_client()
 
 
+def onboarding_dump_db():
+    if db.is_connected():
+        from backend.api.features.onboarding_dump import db as _onboarding_dump_db
+
+        return _onboarding_dump_db
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
 def understanding_db():
     if db.is_connected():
         from backend.data import understanding as _understanding_db

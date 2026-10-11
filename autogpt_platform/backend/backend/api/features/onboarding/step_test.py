@@ -214,7 +214,7 @@ def test_update_onboarding_rejects_invalid_notified_step(mocker):
 async def test_update_user_onboarding_merges_notified_as_plain_strings(mocker):
     mocker.patch.object(
         onboarding_module,
-        "get_user_onboarding",
+        "ensure_user_onboarding",
         new_callable=AsyncMock,
         return_value=UserOnboarding.model_construct(notified=["WELCOME"]),
     )

@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from backend.api.features.onboarding_dump import db as onboarding_dump_module
 from backend.api.features.orgs import db as orgs_module
 from backend.data import bot_installs as bot_installs_module
 from backend.data import db_accessors, onboarding_audience, onboarding_role
@@ -57,6 +58,7 @@ def test_bot_installs_db_falls_back_to_database_manager_client():
             onboarding_audience,
             "queue_onboarding_role",
         ),
+        (db_accessors.onboarding_dump_db, onboarding_dump_module, "mark_failed"),
     ],
 )
 def test_onboarding_accessors_preserve_connected_and_rpc_paths(

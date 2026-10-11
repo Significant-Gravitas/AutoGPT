@@ -40,6 +40,7 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
+from backend.api.features.onboarding_dump import db as onboarding_dump_db
 from backend.api.features.orgs.db import (
     get_user_default_team,
     resolve_default_tenancy,
@@ -464,6 +465,7 @@ class DatabaseManager(AppService):
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = _(increment_onboarding_runs)
+    mark_failed = _(onboarding_dump_db.mark_failed)
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)
@@ -948,6 +950,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = d.increment_onboarding_runs
+    mark_failed = d.mark_failed
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = d.cleanup_expired_oauth_tokens
