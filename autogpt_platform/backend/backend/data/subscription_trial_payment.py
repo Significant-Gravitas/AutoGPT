@@ -46,6 +46,23 @@ async def get_customer_default_payment_method(customer_id: str) -> PaymentMethod
     return customer.invoice_settings.default_payment_method
 
 
+async def subscription_card_can_be_charged(subscription_id: str, now: datetime) -> bool:
+    """Whether the trial's saved card is one Stripe can charge, by the same
+    rule the reconcile grants trial access with."""
+    snapshot = SubscriptionSnapshot.model_validate(
+        await stripe_call(
+            stripe.Subscription.retrieve_async,
+            subscription_id,
+            expand=["default_payment_method", "latest_invoice"],
+        )
+    )
+    if snapshot.default_payment_method is None and snapshot.default_source is None:
+        snapshot.customer_default_payment_method = (
+            await get_customer_default_payment_method(snapshot.customer)
+        )
+    return snapshot.has_verified_card(now)
+
+
 class Invoice(BaseModel):
     id: str
     status: str | None = None
