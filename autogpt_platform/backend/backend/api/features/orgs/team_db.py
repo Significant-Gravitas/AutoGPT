@@ -292,11 +292,15 @@ async def _lock_team_admins(tx: Prisma, ws_id: str) -> None:
     Leave, remove and demote each count the remaining admins and then write.
     Without a shared lock two of them can both count two admins and both
     proceed, leaving none. Take it before reading the member row so the
-    count that follows sees every earlier writer's commit.
+    count that follows sees every earlier writer's commit. That relies on
+    READ COMMITTED, where each statement gets a fresh snapshot, so it is
+    pinned rather than left to the database default. It has to be the
+    transaction's first statement, so call this before any other query.
 
     execute_raw, not query_raw: pg_advisory_xact_lock returns void, which
     Prisma cannot deserialize as a result column.
     """
+    await tx.execute_raw("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
     await tx.execute_raw(
         "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
         f"team-admins:{ws_id}",

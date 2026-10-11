@@ -94,7 +94,8 @@ class _Store:
         self.locked: list[str] = []
 
     async def execute_raw(self, query, *args):
-        self.locked.append(args[0])
+        if "pg_advisory_xact_lock" in query:
+            self.locked.append(args[0])
         return 1
 
     async def _find_team(self, where):
