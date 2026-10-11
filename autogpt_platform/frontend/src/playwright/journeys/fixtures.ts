@@ -7,7 +7,7 @@ import { type JourneyUser, provisionJourneyUser } from "./journey-user";
 interface JourneyOptions {
   /** API responses of 400 or more this journey provokes on purpose. */
   expectedResponses: ExpectedResponse[];
-  /** Flag values the frontend serves; the hosted defaults unless overridden. */
+  /** Flag values to change from the hosted defaults; the rest are kept. */
   flagOverrides: Record<string, unknown>;
 }
 
@@ -19,7 +19,7 @@ interface JourneyFixtures {
 
 export const test = base.extend<JourneyOptions & JourneyFixtures>({
   expectedResponses: [[], { option: true }],
-  flagOverrides: [hostedFlags, { option: true }],
+  flagOverrides: [{}, { option: true }],
 
   journeyGuard: [
     async ({ context, expectedResponses, flagOverrides }, use) => {
@@ -33,7 +33,7 @@ export const test = base.extend<JourneyOptions & JourneyFixtures>({
         },
         {
           key: PW_FLAG_OVERRIDES_STORAGE_KEY,
-          value: JSON.stringify(flagOverrides),
+          value: JSON.stringify({ ...hostedFlags, ...flagOverrides }),
         },
       );
       const guard = watchForUnexpectedErrors(context, expectedResponses);

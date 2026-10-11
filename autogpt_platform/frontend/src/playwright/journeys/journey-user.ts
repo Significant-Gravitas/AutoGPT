@@ -90,7 +90,8 @@ async function signIn(page: Page, user: JourneyUser) {
     response.ok(),
     `sign-in for ${user.email} failed: ${response.status()}`,
   ).toBe(true);
-  return user;
+  const body = (await response.json()) as { user?: { id?: string } };
+  return { ...user, id: body.user?.id };
 }
 
 // The app does this on a user's first page load; among other things it

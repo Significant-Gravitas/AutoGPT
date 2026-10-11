@@ -26,7 +26,9 @@ product does what the user expects.
     catches one, that's a finding. Report it, or mark the journey
     `test.fail()` with a link to the issue.
   - **Hosted flags.** The frontend serves the values in `hosted-flags.json`
-    (see below). Override per journey with `test.use({ flagOverrides: {...} })`.
+    (see below). Change single flags per journey with
+    `test.use({ flagOverrides: { "<flag>": value } })`; the rest keep their
+    hosted values.
   - **`journeyUser`.** Ask for it to get a brand-new user who is signed in and
     has finished onboarding. With credits on, finishing onboarding grants the
     onboarding credits. With `PLAYWRIGHT_JOURNEY_TIER` set (CI: `PRO`), the
@@ -91,7 +93,7 @@ needs settling first.
 
 ```bash
 PLAYWRIGHT_BASE_URL=https://autogpt-pr-<N>.vercel.app \
-  pnpm exec playwright test --config playwright.journeys.config.ts
+  pnpm exec playwright test --config playwright.journeys.config.ts --project hosted
 ```
 
 - Journeys present a normal Chrome user agent (`user-agent.ts`; override with
@@ -123,6 +125,9 @@ PR but doesn't block merging. It becomes blocking once it has proven stable.
   tests; `.github/scripts/test_e2e_seed_cache_contract.py` pins it.
 - Reports and traces: artifacts `playwright-report-journeys` and
   `playwright-test-results-journeys`.
+- Check a new journey for flakiness before relying on it: dispatch the
+  workflow on your branch with `journeys_repeat_each`, e.g.
+  `gh workflow run platform-fullstack-ci.yml --ref <branch> -f journeys_repeat_each=10`.
 - Keep the leg's Playwright step under ~200 s at 4 workers. Past that, shard
   it into more legs with `--shard=i/N` rather than lengthening it.
 

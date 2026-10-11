@@ -38,6 +38,11 @@ on:
         required: false
         default: false
         type: boolean
+      journeys_repeat_each:
+        description: Run every journey this many times, to measure flakiness
+        required: false
+        default: 1
+        type: number
 
 concurrency:
   group: ${{ github.event_name == 'workflow_dispatch' && format('{0}-dispatch-{1}', github.workflow, github.run_id) || format('{0}-{1}', github.workflow, github.event_name == 'merge_group' && format('merge-queue-{0}', github.ref) || github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
@@ -505,7 +510,7 @@ jobs:
           docker cp "$FRONTEND_CONTAINER":/app/.next/static .next-static-coverage
 
       - name: Run Playwright E2E suite
-        run: pnpm exec playwright test --config ${{ matrix.config }} ${{ matrix.playwright_args }} --retries=0 --trace=retain-on-failure
+        run: pnpm exec playwright test --config ${{ matrix.config }} ${{ matrix.playwright_args }} ${{ matrix.suite == 'journeys' && format('--repeat-each={0}', inputs.journeys_repeat_each || 1) || '' }} --retries=0 --trace=retain-on-failure
         env:
           PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/results.json
           PLAYWRIGHT_RETRIES: "0"
