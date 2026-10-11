@@ -56,7 +56,9 @@ class Scenario(BaseModel):
     calls_per_turn: tuple[int, int, int] = (1, 2, 1)
     fault: PlannedFault | None = None
     # Whether the platform relaunches the turn after the fault, rather than
-    # its client retrying the one request.
+    # its client retrying the one request. The fault then ends the failed
+    # attempt, so every call after it is the retry's: the CLI's own retries
+    # must be off (``cli_max_retries=0``) for this to hold.
     fault_relaunches_turn: bool = False
     # CLAUDE_CODE_MAX_RETRIES for the CLI; None keeps its own default.
     cli_max_retries: int | None = None
