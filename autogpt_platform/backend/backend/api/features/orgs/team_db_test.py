@@ -4,11 +4,14 @@
 - #15264: adding an existing member is a 409 ConflictError, not a 500.
 - #15265: updating a non-member is a 404 NotFoundError, not StopIteration.
 
-Like the other org tests these run without a database: ``prisma`` is replaced
-by a small in-memory store that implements the TeamMember queries team_db
-uses, so the real guard logic runs against real-looking rows.
+Like the other org tests these run without a database: ``prisma`` (and the
+transaction it hands out) is replaced by a small in-memory store that
+implements the TeamMember queries team_db uses, so the real guard logic runs
+against real-looking rows. The admin-roster lock and the concurrent cases are
+covered against Postgres in ``backend/api/features/team_membership_db_test.py``.
 """
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -65,7 +68,7 @@ class _TeamMembers:
         self.add(data["userId"], is_admin=data.get("isAdmin", False))
         return self.rows[(data["teamId"], data["userId"])]
 
-    async def update(self, where, data):
+    async def update(self, where, data, include=None):
         row = self.rows.get(self._key(where))
         if row is None:
             return None  # prisma-client-py returns None for a missing row
@@ -88,6 +91,11 @@ class _Store:
         self.teammember = _TeamMembers()
         self.team = SimpleNamespace(find_unique=self._find_team)
         self.orgmember = SimpleNamespace(find_unique=self._find_org_member)
+        self.locked: list[str] = []
+
+    async def execute_raw(self, query, *args):
+        self.locked.append(args[0])
+        return 1
 
     async def _find_team(self, where):
         return SimpleNamespace(id=WS, orgId=ORG, isDefault=False)
@@ -99,7 +107,15 @@ class _Store:
 @pytest.fixture
 def store():
     fake = _Store()
-    with patch.object(team_db, "prisma", fake):
+
+    @asynccontextmanager
+    async def fake_transaction():
+        yield fake
+
+    with (
+        patch.object(team_db, "prisma", fake),
+        patch.object(team_db, "transaction", fake_transaction),
+    ):
         yield fake
 
 
@@ -155,6 +171,31 @@ async def test_remove_still_guards_last_admin(store):
         await team_db.remove_team_member(WS, "admin")
 
 
+@pytest.mark.asyncio
+async def test_admin_count_checks_run_under_the_team_admin_lock(store):
+    store.teammember.add("a1", is_admin=True)
+    store.teammember.add("a2", is_admin=True)
+    store.teammember.add("a3", is_admin=True)
+
+    await team_db.update_team_member(WS, "a1", False, None)
+    await team_db.remove_team_member(WS, "a2")
+    store.teammember.rows[(WS, "a1")].isAdmin = True
+    await team_db.leave_team(WS, "a3")
+
+    assert store.locked == [f"team-admins:{WS}"] * 3
+
+
+@pytest.mark.asyncio
+async def test_a_suspended_admin_does_not_count_and_is_not_guarded(store):
+    store.teammember.add("admin", is_admin=True)
+    store.teammember.add("gone", is_admin=True, status="SUSPENDED")
+
+    with pytest.raises(ValueError, match="last workspace admin"):
+        await team_db.leave_team(WS, "admin")
+    await team_db.remove_team_member(WS, "gone")
+    assert (WS, "gone") not in store.teammember.rows
+
+
 # --- #15264 ---------------------------------------------------------------
 
 
@@ -192,6 +233,16 @@ async def test_updating_non_member_is_not_found(store, flags):
 
     with pytest.raises(NotFoundError):
         await team_db.update_team_member(WS, "stranger", *flags)
+
+
+@pytest.mark.asyncio
+async def test_updating_a_non_active_member_is_not_found_and_writes_nothing(store):
+    store.teammember.add("admin", is_admin=True)
+    store.teammember.add("invited", status="INVITED")
+
+    with pytest.raises(NotFoundError):
+        await team_db.update_team_member(WS, "invited", True, None)
+    assert store.teammember.rows[(WS, "invited")].isAdmin is False
 
 
 @pytest.mark.asyncio
