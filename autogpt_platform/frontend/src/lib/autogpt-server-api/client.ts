@@ -1159,6 +1159,7 @@ export default class BackendAPI {
   disconnectWebSocket() {
     this.isIntentionallyDisconnected = true;
     this.wsWanted = false;
+    this.wsReconnectAttempts = 0;
     this._cancelWSReconnect();
     this._stopWSHeartbeat(); // Stop heartbeat when disconnecting
     if (

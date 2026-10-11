@@ -81,6 +81,7 @@ class _Subscription:
         self._pubsub: AsyncPubSub | None = None
         self._task: asyncio.Task | None = None
         self._lost = False
+        self._stopping = False
 
     async def start(self, on_message: MessageHandler, on_lost: LostHandler) -> None:
         try:
@@ -133,7 +134,8 @@ class _Subscription:
             logger.exception("Pubsub pump crashed for %s", self.full_channel)
             cause = "crashed"
         self._lost = True
-        await on_lost(cause)
+        if not self._stopping:
+            await on_lost(cause)
 
     async def _forward_until_lost(
         self, pubsub: AsyncPubSub, on_message: MessageHandler
@@ -156,6 +158,8 @@ class _Subscription:
         return "ended"
 
     async def stop(self) -> None:
+        # A deliberate stop never reports the stream as lost.
+        self._stopping = True
         if self._task is not None:
             self._task.cancel()
             try:
