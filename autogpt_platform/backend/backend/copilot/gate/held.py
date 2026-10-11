@@ -353,13 +353,14 @@ async def _resolve(
         outcome, output = await _run(user_id, session, call, tool)
     else:
         outcome, output = await _settled(user_id, session, call, row)
+    shown = _card_copy(row)
     try:
-        deliver(_result_row(call, cap(output), outcome))
+        deliver(_result_row(call, cap(output), outcome, shown))
     except Exception:
         # The outcome is known and may be a refusal; only the engine's cut
         # failed, so deliver it trimmed rather than let recovery guess.
         logger.warning(f"Could not cap held result {call.review_id}", exc_info=True)
-        deliver(_result_row(call, output[: _MAX_RESULT_CHARS // 2], outcome))
+        deliver(_result_row(call, output[: _MAX_RESULT_CHARS // 2], outcome, shown))
 
 
 async def _recover(
@@ -386,7 +387,12 @@ async def _recover(
     ]
 
 
-def _result_row(call: HeldCall, output: str, outcome: Outcome) -> PendingMessage:
+def _result_row(
+    call: HeldCall,
+    output: str,
+    outcome: Outcome,
+    shown: dict[str, Any] | None = None,
+) -> PendingMessage:
     return HeldResult(
         content=(
             f'<held_call_result tool="{call.tool_name}" '
@@ -400,9 +406,17 @@ def _result_row(call: HeldCall, output: str, outcome: Outcome) -> PendingMessage
                 "tool_call_id": call.tool_call_id,
                 # The chain row shows the answer without parsing the text.
                 "outcome": outcome,
+                **(shown or {}),
             }
         },
     )
+
+
+def _card_copy(card: "PendingHumanReviewModel | None") -> dict[str, Any]:
+    """The arguments as the card showed them, redacted and clipped by
+    ``review_payload``, for the chain row once the card itself is consumed."""
+    payload = card.payload if card and isinstance(card.payload, dict) else {}
+    return {k: payload[k] for k in ("arguments", "fields", "clipped") if k in payload}
 
 
 def _due(call: HeldCall, row: "PendingHumanReviewModel | None") -> "BaseTool | None":
