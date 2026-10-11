@@ -542,6 +542,89 @@ async def test_declined_in_place_trial_conversion_leaves_the_trial_alone():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("invoice_status", ["open", "void", "paid"])
+async def test_a_held_trial_conversion_covers_nothing(invoice_status: str):
+    """A conversion the bank must confirm is a pending update: Stripe applies
+    it only once its invoice is paid, and voids the invoice when it lapses.
+    The failure event can arrive before or after either, and none of them
+    is a lapsed plan to pay from the wallet or cut access for."""
+    with World(balance=50000) as world:
+        world.tier = SubscriptionTier.TRIAL
+        world.stripe.add_subscription("sub_trial", "trialing", latest_invoice="in_held")
+        world.stripe.subscriptions["sub_trial"].update(
+            cancel_at_period_end=True, pending_update={"expires_at": 1}
+        )
+        event = world.stripe.add_invoice(
+            "in_held", "sub_trial", status=invoice_status, amount_due=32000
+        )
+        event["billing_reason"] = "subscription_update"
+        await handle_subscription_payment_failure(event)
+
+    assert world.ledger.transactions == {}
+    assert world.stripe.paid_out_of_band == []
+    assert world.stripe.cancelled == []
+    assert world.stripe.voided == []
+    assert world.synced == []
+    assert world.tier == SubscriptionTier.TRIAL
+
+
+@pytest.mark.asyncio
+async def test_a_held_change_on_a_past_due_plan_is_neither_paid_nor_cancelled():
+    """Paying a pending update's invoice applies the change it holds, so the
+    wallet must not pay it even on a past-due plan, and the plan is not one
+    another plan replaced: only its renewal's own failure decides that."""
+    with World(balance=50000) as world:
+        world.stripe.add_subscription("sub_new", "active", price="price_max")
+        _renewal_failed(world, sub_id="sub_old", invoice_id="in_held")
+        world.stripe.subscriptions["sub_old"]["pending_update"] = {"expires_at": 1}
+        event = world.stripe.view("in_held")
+        event["billing_reason"] = "subscription_update"
+        await handle_subscription_payment_failure(event)
+
+    assert world.ledger.transactions == {}
+    assert world.stripe.paid_out_of_band == []
+    assert world.stripe.cancelled == []
+    assert world.stripe.voided == []
+    assert world.synced == []
+
+
+@pytest.mark.asyncio
+async def test_a_trial_converted_to_another_plan_loses_it_when_its_renewal_fails():
+    """A trial ended early on Max carries Max in its conversion metadata. Once
+    converted, the trial reconcile grants nothing more, so a failed renewal
+    cuts access like any plan's, and the card paying later restores Max."""
+    with World(balance=0) as world:
+        world.tier = SubscriptionTier.MAX
+        world.stripe.add_subscription(
+            "sub_trial", "past_due", latest_invoice="in_renewal", price="price_max"
+        )
+        world.stripe.subscriptions["sub_trial"]["metadata"] = {
+            "trial_enrollment_id": "t1",
+            "trial_conversion_price_id": "price_max",
+            "trial_conversion_tier": "MAX",
+        }
+        event = world.stripe.add_invoice("in_renewal", "sub_trial", amount_due=32000)
+        event["billing_reason"] = "subscription_cycle"
+
+        async def converted_trial(user_id: str, sub_id: str):
+            return dict(world.stripe.subscriptions[sub_id]), None
+
+        with patch(
+            "backend.data.credit.reconcile_trial_subscription",
+            side_effect=converted_trial,
+        ):
+            await handle_subscription_payment_failure(event)
+            assert world.tier == SubscriptionTier.NO_TIER
+            assert world.stripe.cancelled == []
+            assert world.stripe.invoices["in_renewal"]["status"] == "open"
+
+            world.stripe.card_pays("in_renewal")
+            await world.subscription_updated("sub_trial")
+
+    assert world.tier == SubscriptionTier.MAX
+
+
+@pytest.mark.asyncio
 async def test_started_wallet_payment_is_refunded_once_a_newer_plan_replaced_it():
     with World(balance=5000) as world:
         event = _renewal_failed(world, sub_id="sub_old", invoice_id="in_old")

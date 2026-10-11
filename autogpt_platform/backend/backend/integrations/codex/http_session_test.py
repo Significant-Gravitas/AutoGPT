@@ -8,10 +8,8 @@ from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.http_session import (
-    MAX_TOOL_ITERATIONS,
     CodexHttpSession,
     CodexTurnFailedError,
-    CodexTurnLimitError,
     _add_usage,
     _parse_arguments,
 )
@@ -274,12 +272,43 @@ async def test_a_tool_failure_is_returned_to_the_model_without_leaking_details()
 
 
 @pytest.mark.asyncio
-async def test_a_loop_that_never_converges_stops_instead_of_spending_quota() -> None:
-    turns = [_tool_turn("lookup", "{}") for _ in range(MAX_TOOL_ITERATIONS + 2)]
-    session, _ = _session(turns)
+async def test_a_long_tool_loop_runs_until_the_model_stops_calling_tools() -> None:
+    """Codex has no round cap of its own; whoever runs the tools bounds the loop.
 
-    with pytest.raises(CodexTurnLimitError):
-        await session.invoke(_request(), [TOOL], _echo_tool)
+    On the copilot path that is the Claude CLI, which counts every function
+    call as a turn against ``CHAT_AGENT_MAX_TURNS``.
+    """
+    rounds = 40
+    turns = [_tool_turn("lookup", "{}") for _ in range(rounds)]
+    session, client = _session([*turns, _text_turn("done")])
+    seen: list[CodexDynamicToolCall] = []
+
+    async def handler(call: CodexDynamicToolCall) -> CodexDynamicToolResult:
+        seen.append(call)
+        return CodexDynamicToolResult(content="tool output")
+
+    result = await session.invoke(_request(), [TOOL], handler)
+
+    assert result.final_response == "done"
+    assert len(seen) == rounds
+    assert len(client.responses.requests) == rounds + 1
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_tool_call_ends_the_turn_instead_of_reaching_the_model() -> (
+    None
+):
+    """The gateway cancels unanswered calls when the CLI stops at its turn
+    limit. With no round cap here, that cancellation is what ends the loop,
+    so it must not be reported to the model as an ordinary tool failure."""
+    session, client = _session([_tool_turn("lookup", "{}"), _text_turn("never")])
+
+    async def abandoned(_call: CodexDynamicToolCall) -> CodexDynamicToolResult:
+        raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        await session.invoke(_request(), [TOOL], abandoned)
+    assert len(client.responses.requests) == 1
 
 
 @pytest.mark.asyncio

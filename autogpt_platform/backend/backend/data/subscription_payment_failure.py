@@ -81,9 +81,18 @@ class FailedInvoice(BaseModel):
         )
 
     @property
+    def waits_on_pending_update(self) -> bool:
+        """Stripe applies a pending update only once its invoice is paid, and
+        voids that invoice when the update lapses, so a failed payment on it
+        changed nothing. A trial converting early waits like this for the
+        customer's bank to confirm."""
+        return self.is_latest and bool(self.subscription.get("pending_update"))
+
+    @property
     def is_unpaid(self) -> bool:
         return (
             self.is_latest
+            and not self.waits_on_pending_update
             and self.invoice.get("status") == "open"
             and self.subscription.get("status") in _UNPAID_STATUSES
         )
@@ -98,6 +107,8 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
       and its unpaid invoices voided, never paid: paying would reactivate
       it, and its update event would then cancel the newer plan as a
       duplicate. A wallet debit already started for it is refunded.
+    - An invoice a pending update waits on, or one Stripe has since paid or
+      voided, covers nothing: the change it holds applies only once paid.
     - A wallet payment already started for this invoice is finished first.
     - Balance covers it → debit the wallet and mark the invoice paid.
     - Otherwise → recompute the tier from that subscription, which is
@@ -130,7 +141,8 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         logger.info(
             f"Payment failure for invoice {failed.invoice_id} is stale: invoice"
             f" {failed.invoice.get('status')}, subscription {failed.sub_id}"
-            f" {failed.subscription.get('status')}, latest={failed.is_latest}"
+            f" {failed.subscription.get('status')}, latest={failed.is_latest},"
+            f" pending update={failed.waits_on_pending_update}"
         )
         return
     if failed.invoice.get("amount_due", 0) <= 0:

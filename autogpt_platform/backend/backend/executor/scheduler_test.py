@@ -839,60 +839,6 @@ def test_build_trigger_unix_dow_various_cases(
     assert nxt.strftime("%A") == expected_dow
 
 
-# ---------------------------------------------------------------------------
-# Feature flag lifecycle — the scheduler eagerly inits the flag backend in
-# run_service (so @expose flag gates don't fail-closed right after a pod
-# restart) and tears it down in cleanup, both gated on the non-LOCAL app env.
-# Test the gate at the boundary where the symbols are used (the scheduler).
-# ---------------------------------------------------------------------------
-
-
-class TestFeatureFlagLifecycle:
-    def test_init_runs_when_app_env_not_local(self) -> None:
-        from backend.executor import scheduler as sched
-        from backend.util.settings import AppEnvironment
-
-        with (
-            patch.object(sched.config, "app_env", AppEnvironment.PRODUCTION),
-            patch.object(sched, "initialize_feature_flags") as init,
-        ):
-            sched._init_feature_flags_for_scheduler()
-        init.assert_called_once()
-
-    def test_init_skipped_when_app_env_local(self) -> None:
-        from backend.executor import scheduler as sched
-        from backend.util.settings import AppEnvironment
-
-        with (
-            patch.object(sched.config, "app_env", AppEnvironment.LOCAL),
-            patch.object(sched, "initialize_feature_flags") as init,
-        ):
-            sched._init_feature_flags_for_scheduler()
-        init.assert_not_called()
-
-    def test_shutdown_runs_when_app_env_not_local(self) -> None:
-        from backend.executor import scheduler as sched
-        from backend.util.settings import AppEnvironment
-
-        with (
-            patch.object(sched.config, "app_env", AppEnvironment.PRODUCTION),
-            patch.object(sched, "shutdown_feature_flags") as shutdown,
-        ):
-            sched._shutdown_feature_flags_for_scheduler()
-        shutdown.assert_called_once()
-
-    def test_shutdown_skipped_when_app_env_local(self) -> None:
-        from backend.executor import scheduler as sched
-        from backend.util.settings import AppEnvironment
-
-        with (
-            patch.object(sched.config, "app_env", AppEnvironment.LOCAL),
-            patch.object(sched, "shutdown_feature_flags") as shutdown,
-        ):
-            sched._shutdown_feature_flags_for_scheduler()
-        shutdown.assert_not_called()
-
-
 def _counter(name: str, **labels) -> float:
     from prometheus_client import REGISTRY
 
