@@ -165,7 +165,7 @@ Two kinds of data belong to you rather than to an organization, so every key you
 
 Rows created before organizations existed carry no organization, and stay visible to their owner from every organization.
 
-Saving or activating a version of a graph needs every version of that graph to be in the key's organization; otherwise the request gets `403`. A graph version with no organization counts as your personal organization's here, so only a key in your personal organization can change such a graph. Activating a version moves only that organization's library entry and webhook triggers onto it.
+Saving or activating a version of a graph needs every version of that graph to be yours and in the key's organization; otherwise the request gets `403`. A graph version with no organization counts as your personal organization's here, so only a key in your personal organization can change such a graph. Activating a version moves only that organization's library entry and webhook triggers onto it.
 
 In an organization other than your personal one, reading the organization's balance, transactions and invoices (`GET /credits`, `/credits/transactions`, `/credits/invoices`) needs the owner or billing manager role, as it does in the app; other members get `403`.
 

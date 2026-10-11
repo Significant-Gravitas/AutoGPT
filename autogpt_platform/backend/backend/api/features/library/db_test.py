@@ -2394,8 +2394,8 @@ async def test_an_external_save_cannot_version_a_graph_outside_its_organization(
         new=AsyncMock(return_value=frozenset({"org-a"})),
     )
     mocker.patch(
-        "backend.data.graph.get_graph_organization_ids",
-        new=AsyncMock(return_value={None}),
+        "backend.data.graph.get_graph_version_owners",
+        new=AsyncMock(return_value={("test-user", None)}),
     )
     create = mocker.patch(
         "backend.api.features.library.db.graph_db.create_graph", new=AsyncMock()

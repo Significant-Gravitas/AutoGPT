@@ -525,7 +525,7 @@ async def _writable_organizations(
     graph_id: str, auth: TenantContext
 ) -> frozenset[str | None]:
     """The organizations a version saved or activated here may change rows in,
-    once the graph is checked to lie within them.
+    once every version of the graph is checked to be the caller's, within them.
 
     The version becomes the graph's active one and moves the library entry and
     webhook presets that follow it; on a graph that reaches another
@@ -534,5 +534,5 @@ async def _writable_organizations(
     organization_ids = await writable_organization_ids(
         auth.user_id, auth.organization_id
     )
-    await graph_db.assert_graph_within(graph_id, organization_ids)
+    await graph_db.assert_graph_within(graph_id, auth.user_id, organization_ids)
     return organization_ids

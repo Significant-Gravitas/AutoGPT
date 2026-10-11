@@ -916,9 +916,10 @@ async def update_graph_in_library(
     """Create a new version of an existing graph and update the library entry.
 
     ``organization_id``/``team_id`` tag the new version; None leaves it untagged.
-    A call acting in ``organization_id`` may only version a graph that lies
-    within the organizations it may change (``writable_organization_ids``),
-    and moves only their library entries and webhook presets.
+    A call acting in ``organization_id`` may only version a graph whose
+    versions are all the user's, within the organizations it may change
+    (``writable_organization_ids``), and moves only their library entries and
+    webhook presets.
     ``move_webhook_presets`` False leaves the user's webhook presets on the
     versions they run now.
     """
@@ -928,7 +929,7 @@ async def update_graph_in_library(
         else None
     )
     if organization_ids is not None:
-        await graph_db.assert_graph_within(graph.id, organization_ids)
+        await graph_db.assert_graph_within(graph.id, user_id, organization_ids)
 
     existing_versions = await graph_db.get_graph_all_versions(graph.id, user_id)
     current_active_version = (

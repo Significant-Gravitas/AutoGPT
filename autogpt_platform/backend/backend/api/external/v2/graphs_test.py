@@ -48,9 +48,9 @@ def graph_in_org_1(mocker: pytest_mock.MockFixture) -> AsyncMock:
         return_value=frozenset({"org-1"}),
     )
     return mocker.patch(
-        "backend.data.graph.get_graph_organization_ids",
+        "backend.data.graph.get_graph_version_owners",
         new_callable=AsyncMock,
-        return_value={"org-1"},
+        return_value={(_AUTH.user_id, "org-1")},
     )
 
 
@@ -126,16 +126,27 @@ async def test_activating_moves_webhook_presets_only_for_a_credential_that_may_r
     ],
     ids=["update", "set-active-version"],
 )
-async def test_a_graph_reaching_another_organization_is_not_changed(
+@pytest.mark.parametrize(
+    "other_version",
+    [
+        # An untagged version is the personal org's, and org-1 isn't that.
+        (_AUTH.user_id, None),
+        # A colleague's version would be deactivated with the caller's
+        # credentials, and stay active beside the new one.
+        ("user-2", "org-1"),
+    ],
+    ids=["another-organization", "a-colleagues-version"],
+)
+async def test_a_graph_with_a_version_beyond_the_caller_is_not_changed(
     mocker: pytest_mock.MockFixture,
     writes: dict[str, AsyncMock],
     graph_in_org_1: AsyncMock,
     change,
+    other_version: tuple[str, str | None],
 ) -> None:
     """Its new active version would move another organization's library entry
     and presets, and be the active version there too."""
-    # An untagged version is the personal org's, and org-1 isn't that.
-    graph_in_org_1.return_value = {"org-1", None}
+    graph_in_org_1.return_value = {(_AUTH.user_id, "org-1"), other_version}
     mocker.patch(
         "backend.data.graph.get_graph",
         new_callable=AsyncMock,
