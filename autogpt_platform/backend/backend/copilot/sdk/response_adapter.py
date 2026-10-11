@@ -530,6 +530,11 @@ class SDKResponseAdapter:
             # prompt rule (``_USER_FOLLOW_UP_NOTE``'s closing clause)
             # asks the model to always end with text, but we can't rely
             # on it for extended_thinking / edge cases.
+            #
+            # Only text the model wrote counts as a landing turn's checkpoint:
+            # a closing line filled in here is not one, even promoted from
+            # its thinking, so it is read before the fallback below.
+            wrote_checkpoint = self._text_since_last_tool_result
             if (
                 self._any_tool_results_seen
                 and not self._text_since_last_tool_result
@@ -581,8 +586,7 @@ class SDKResponseAdapter:
             self._finish_step(responses)
 
             landed = self._landed(
-                sdk_message.subtype,
-                wrote_checkpoint=self._text_since_last_tool_result,
+                sdk_message.subtype, wrote_checkpoint=wrote_checkpoint
             )
             if landed is not None:
                 responses.append(StreamTurnPaused(pause=landed.as_part()))
