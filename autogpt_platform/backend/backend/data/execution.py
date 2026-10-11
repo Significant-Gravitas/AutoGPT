@@ -1549,10 +1549,11 @@ class NodeExecutionEntry(BaseModel):
     # reconcile, leaving the delta computed against a different number).
     # Excluded from dumps — in-memory only, scoped to a single live execution.
     pre_flight_charge: Optional[int] = Field(default=None, exclude=True)
-    # Set when a REVIEW/RUNNING node is re-dispatched from a paused or crashed
-    # run. Those nodes were already pre-flight charged on the first dispatch;
-    # charging again orphans the first debit (#15272). Also exclude=True.
-    already_charged: bool = Field(default=False, exclude=True)
+    # The status a REVIEW/RUNNING row had when a resumed or redelivered run
+    # dispatched it again. Its first dispatch was already charged, so this
+    # one must not be (#15272), and the status says what is still billed:
+    # see `billing.redispatch_reconcile_baseline`. Also exclude=True.
+    redispatched_from: Optional[ExecutionStatus] = Field(default=None, exclude=True)
 
 
 class ExecutionQueue(Generic[T]):

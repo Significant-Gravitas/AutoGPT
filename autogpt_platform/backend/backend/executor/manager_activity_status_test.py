@@ -354,8 +354,9 @@ def _queued_node(node_exec_id: str, status: ExecutionStatus):
 
 def test_redispatched_review_and_running_nodes_are_not_charged_again():
     """#15272: on resume the executor re-queues REVIEW/RUNNING node execs.
-    They were charged on first dispatch; charging again orphans that debit
-    because reconciliation only settles against the latest charge."""
+    They were charged on first dispatch, so they are not charged again.
+    A TERMINATED row is: it was reconciled when it was interrupted, so a
+    re-dispatch is a new run."""
     execution = GraphExecutionEntry(
         user_id="user-1",
         graph_exec_id="exec-1",
@@ -367,6 +368,7 @@ def test_redispatched_review_and_running_nodes_are_not_charged_again():
     db_client.get_node_executions.return_value = [
         _queued_node("review", ExecutionStatus.REVIEW),
         _queued_node("running", ExecutionStatus.RUNNING),
+        _queued_node("terminated", ExecutionStatus.TERMINATED),
         _queued_node("queued", ExecutionStatus.QUEUED),
     ]
     db_client.has_pending_reviews_for_graph_exec.return_value = False
@@ -398,8 +400,10 @@ def test_redispatched_review_and_running_nodes_are_not_charged_again():
         ),
         patch("backend.executor.manager.billing.charge_usage", charge_usage),
         patch(
-            "backend.executor.manager.billing.resolve_block_cost",
-            return_value=(MagicMock(), 7, {}),
+            "backend.executor.manager.billing.redispatch_reconcile_baseline",
+            side_effect=lambda node_exec: {"review": 3, "running": 5}[
+                node_exec.node_exec_id
+            ],
         ),
         patch("backend.executor.manager.billing.handle_low_balance"),
         patch("backend.executor.manager.increment_execution_count", increment),
@@ -413,11 +417,13 @@ def test_redispatched_review_and_running_nodes_are_not_charged_again():
         )
 
     charged = [c.kwargs["node_exec"].node_exec_id for c in charge_usage.call_args_list]
-    assert charged == ["queued"]
-    assert increment.call_count == 1
+    assert charged == ["terminated", "queued"]
+    assert increment.call_count == 2
     by_id = {n.node_exec_id: n for n in dispatched}
-    assert set(by_id) == {"review", "running", "queued"}
-    # Reconciliation still settles the re-dispatched nodes against the
-    # amount that was billed on their first dispatch.
-    assert by_id["review"].pre_flight_charge == 7
-    assert by_id["running"].pre_flight_charge == 7
+    assert set(by_id) == {"review", "running", "terminated", "queued"}
+    # Reconciliation of a re-dispatched row settles against what its first
+    # dispatch left billed; charged rows settle against the new charge.
+    assert by_id["review"].pre_flight_charge == 3
+    assert by_id["running"].pre_flight_charge == 5
+    assert by_id["terminated"].pre_flight_charge == 7
+    assert by_id["queued"].pre_flight_charge == 7
