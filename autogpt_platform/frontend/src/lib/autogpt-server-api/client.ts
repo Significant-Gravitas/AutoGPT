@@ -991,23 +991,28 @@ export default class BackendAPI {
     data: WebsocketMessageTypeMap[M],
     channelSuffix: string,
   ): Promise<void> {
+    let waiter: SubscribeAckWaiter | undefined;
     const ack = new Promise<void>((resolve, reject) => {
-      const waiter: SubscribeAckWaiter = {
+      const pending: SubscribeAckWaiter = {
         method,
         channelSuffix,
         resolve,
         reject,
         timer: setTimeout(() => {
-          this._removeAckWaiter(waiter);
+          this._removeAckWaiter(pending);
           reject(new Error(`No confirmation for ${method} ${channelSuffix}`));
         }, WS_SUBSCRIBE_ACK_TIMEOUT_MS),
       };
-      this.wsAckWaiters.push(waiter);
+      waiter = pending;
+      this.wsAckWaiters.push(pending);
     });
+    // A close can reject it while the send is still in flight, before the
+    // caller holds it; callers still see the rejection through the return.
+    ack.catch(() => undefined);
     try {
       await this.sendWebSocketMessage(method, data);
     } catch (error) {
-      this._rejectAckWaiters(error);
+      if (waiter) this._removeAckWaiter(waiter);
       throw error;
     }
     return ack;
@@ -1377,7 +1382,8 @@ export default class BackendAPI {
 
 const WS_RECONNECT_BASE_DELAY_MS = 1_000;
 const WS_HEALTHY_AFTER_MS = 10_000;
-const WS_SUBSCRIBE_ACK_TIMEOUT_MS = 15_000;
+// Above the server's own bound on opening a stream (15 s) plus the lookup.
+const WS_SUBSCRIBE_ACK_TIMEOUT_MS = 25_000;
 
 /** The socket closed before the server confirmed a subscription; the next
  * connection resubscribes, so this needs no reporting. */

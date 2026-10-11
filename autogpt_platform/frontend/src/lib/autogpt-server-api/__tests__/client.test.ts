@@ -326,6 +326,39 @@ describe("BackendAPI WebSocket failure logging", () => {
     );
   });
 
+  it("a failed send fails only its own subscribe", async () => {
+    const socket = await connect();
+    socket.readyState = FakeWebSocket.OPEN;
+    socket.onopen!();
+    const api = apis.at(-1)!;
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+
+    const first = api.subscribeToGraphExecutions("graph-1" as GraphID);
+    await vi.waitFor(() => expect(socket.send).toHaveBeenCalledTimes(1), {
+      interval: 1,
+    });
+    socket.send.mockImplementationOnce(() => {
+      throw new Error("send failed");
+    });
+    await expect(
+      api.subscribeToGraphExecutions("graph-2" as GraphID),
+    ).rejects.toThrow("send failed");
+
+    // The first subscription's confirmation still lands.
+    socket.onmessage!({
+      data: JSON.stringify({
+        method: "subscribe_graph_executions",
+        success: true,
+        channel: "user-1|graph#graph-1|executions",
+      }),
+    } as MessageEvent);
+    await expect(first).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(0);
+    process.off("unhandledRejection", unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+  });
+
   it("keeps backing off when sockets open and drop straight away", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.spyOn(Math, "random").mockReturnValue(1);
