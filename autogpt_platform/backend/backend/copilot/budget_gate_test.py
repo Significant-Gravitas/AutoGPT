@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -32,6 +32,13 @@ def allowance():
         patch(f"{_MOD}.check_rate_limit", AsyncMock()) as check,
     ):
         yield limits, check
+
+
+def _usage_state(tier: SubscriptionTier):
+    return patch(
+        f"{_MOD}.get_ready_usage_state",
+        AsyncMock(return_value=MagicMock(tier=tier)),
+    )
 
 
 def _session() -> ChatSession:
@@ -91,7 +98,8 @@ async def test_a_window_that_allows_nothing_refuses_with_no_reset(allowance):
     limits, check = allowance
     limits.return_value = (0, 0, SubscriptionTier.NO_TIER)
     check.side_effect = RateLimitExceeded("weekly", WEEKLY_RESET)
-    pause = await refusal_for("u-1")
+    with _usage_state(SubscriptionTier.NO_TIER):
+        pause = await refusal_for("u-1")
     assert pause is not None
     assert (pause.reason, pause.resets_at, pause.started) == ("weekly", None, False)
 
@@ -105,8 +113,11 @@ async def test_an_ended_trial_is_refused_without_reading_its_stale_tier(allowanc
     limits, check = allowance
     limits.return_value = (0, 0, SubscriptionTier.NO_TIER)
     check.side_effect = RateLimitUnavailable("Subscription changed")
-    assert await refusal_for("u-1") == TurnPause(
-        reason="weekly", resets_at=None, checkpoint_saved=False, started=False
+    with _usage_state(SubscriptionTier.TRIAL):
+        pause = await refusal_for("u-1")
+    # Named as the trial, which is what ended: Upgrade, not a reset.
+    assert pause == TurnPause(
+        reason="trial", resets_at=None, checkpoint_saved=False, started=False
     )
     check.assert_not_awaited()
 
