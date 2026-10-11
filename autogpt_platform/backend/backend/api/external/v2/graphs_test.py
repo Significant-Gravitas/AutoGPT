@@ -207,8 +207,9 @@ async def test_a_refused_library_move_leaves_the_active_version_alone(
         )
 
     flip.assert_not_awaited()
-    # The webhooks its activation hooks registered are taken back.
-    deactivate.assert_awaited_once_with(graph, user_id=_AUTH.user_id)
+    # The activation hooks wrote nothing to undo, and the version may be the
+    # one already active: deactivating it would detach its live webhooks.
+    deactivate.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

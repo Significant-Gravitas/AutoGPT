@@ -14,9 +14,6 @@ from prisma.enums import APIKeyPermission
 from starlette import status
 
 from backend.api.features.library import db as library_db
-from backend.api.features.library.exceptions import (
-    LibraryAgentInAnotherOrganizationError,
-)
 from backend.api.features.store import db as store_db
 from backend.data import graph as graph_db
 from backend.data.tenancy import writable_organization_ids
@@ -336,18 +333,14 @@ async def set_active_version(
     )
     # Before the flag flips, as in update_graph: this can refuse (409), and
     # would leave the graph active on a version its library entry isn't on.
-    try:
-        await library_db.update_agent_version_in_library(
-            auth.user_id,
-            new_active_graph.id,
-            new_active_graph.version,
-            organization_ids=organization_ids,
-        )
-    except LibraryAgentInAnotherOrganizationError:
-        # The version stays inactive: take back the webhooks its activation
-        # hooks registered.
-        await on_graph_deactivate(new_active_graph, user_id=auth.user_id)
-        raise
+    # before_graph_activate wrote nothing outside the graph object, so a
+    # refusal here leaves nothing to undo.
+    await library_db.update_agent_version_in_library(
+        auth.user_id,
+        new_active_graph.id,
+        new_active_graph.version,
+        organization_ids=organization_ids,
+    )
     await graph_db.set_graph_active_version(
         graph_id=graph_id,
         version=new_active_version,
