@@ -19,6 +19,9 @@ from backend.api.features.library.exceptions import (
     FolderValidationError,
     LibraryAgentInAnotherOrganizationError,
 )
+from backend.api.features.store.store_listing_versions import (
+    installable_store_version_where,
+)
 from backend.data.db import get_database_schema, transaction
 from backend.data.execution import get_graph_execution
 from backend.data.expert_attribution import resolve_attributable_expert
@@ -1016,11 +1019,11 @@ async def _assert_target_version(
 
     Any of their own, within *organization_ids* when given: running the entry
     runs that version, billed where the entry is. Of another user's, a
-    marketplace agent's, only an approved one, as adding it to the library
-    grants: a version in the library that was ever submitted can be read, run
-    and forked, so pointing at a pending or rejected one would unlock it. A
-    refused version of another user's answers as a missing one does, so
-    neither shows which versions exist.
+    marketplace agent's, only one that adding it to the library would install
+    (the same predicate): a version in the library that was ever submitted can
+    be read, run and forked, so pointing at a pending or rejected one would
+    unlock it. A refused version of another user's answers as a missing one
+    does, so neither shows which versions exist.
     """
     not_found = NotFoundError(f"Graph #{graph_id} v{version} not found")
     target = await prisma.models.AgentGraph.prisma(tx).find_unique(
@@ -1029,7 +1032,14 @@ async def _assert_target_version(
     if target is None:
         raise not_found
     if target.userId != user_id:
-        if not await graph_db.is_graph_published_in_marketplace(graph_id, version):
+        installable = await prisma.models.StoreListingVersion.prisma(tx).find_first(
+            where={
+                "agentGraphId": graph_id,
+                "agentGraphVersion": version,
+                **installable_store_version_where(),
+            }
+        )
+        if installable is None:
             raise not_found
         return
     if organization_ids is not None and target.organizationId not in organization_ids:

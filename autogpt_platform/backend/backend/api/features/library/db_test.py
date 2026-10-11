@@ -10,6 +10,9 @@ import prisma.models
 import pytest
 
 from backend.api.features.experts import experts_db
+from backend.api.features.store.store_listing_versions import (
+    installable_store_version_where,
+)
 from backend.data.db import connect
 from backend.data.includes import library_agent_include
 from backend.util.exceptions import (
@@ -2316,6 +2319,9 @@ def library_rows(mocker):
         )
     )
     mocker.patch("prisma.models.AgentGraph.prisma", return_value=rows.versions)
+    # The marketplace version another user's target must have: none.
+    rows.listings = MagicMock(find_first=AsyncMock(return_value=None))
+    mocker.patch("prisma.models.StoreListingVersion.prisma", return_value=rows.listings)
 
     @asynccontextmanager
     async def transaction():
@@ -2408,18 +2414,14 @@ async def test_an_entry_is_not_pointed_at_the_users_version_outside_its_organiza
 
 @pytest.mark.parametrize("organization_ids", [None, frozenset({"org-a"})])
 @pytest.mark.asyncio
-async def test_a_marketplace_agent_follows_only_an_approved_version(
-    library_rows, mocker, organization_ids
+async def test_a_marketplace_agent_follows_only_a_version_it_could_be_installed_at(
+    library_rows, organization_ids
 ):
     """A version in the library that was ever submitted can be read, run and
     forked, so pointing a creator's agent at a pending or rejected one would
-    unlock it. Adding an agent grants an approved version, and so does this."""
+    unlock it. This takes what adding the agent takes, by the same predicate."""
     library_rows.versions.find_unique.return_value = MagicMock(
         userId="creator", organizationId="creators-org"
-    )
-    published = mocker.patch(
-        "backend.api.features.library.db.graph_db.is_graph_published_in_marketplace",
-        new=AsyncMock(return_value=False),
     )
 
     with pytest.raises(NotFoundError):
@@ -2432,7 +2434,7 @@ async def test_a_marketplace_agent_follows_only_an_approved_version(
         )
     library_rows.update.assert_not_awaited()
 
-    published.return_value = True
+    library_rows.listings.find_first.return_value = MagicMock()
     await db.update_agent_version_in_library(
         "test-user",
         "graph-id",
@@ -2441,7 +2443,11 @@ async def test_a_marketplace_agent_follows_only_an_approved_version(
         organization_ids=organization_ids,
     )
     library_rows.update.assert_awaited_once()
-    published.assert_awaited_with("graph-id", 2)
+    assert library_rows.listings.find_first.await_args.kwargs["where"] == {
+        "agentGraphId": "graph-id",
+        "agentGraphVersion": 2,
+        **installable_store_version_where(),
+    }
 
 
 @pytest.mark.asyncio
