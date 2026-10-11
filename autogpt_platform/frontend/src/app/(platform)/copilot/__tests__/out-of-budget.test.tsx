@@ -165,10 +165,14 @@ describe("Send at reset", () => {
     await scheduleDraft("Also the changelog");
 
     await waitFor(() => expect(atReset.state.scheduled).toHaveLength(2));
+    // The client posts what was written; the server joins it on.
     expect(atReset.state.scheduled[1].body).toEqual({
       kind: "send",
-      message: "Draft the launch post\n\nAlso the changelog",
+      message: "Also the changelog",
     });
+    expect(atReset.state.jobs[0].message).toBe(
+      "Draft the launch post\n\nAlso the changelog",
+    );
     const chip = await screen.findByRole("status", {
       name: "Scheduled message",
     });

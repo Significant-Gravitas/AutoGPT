@@ -160,10 +160,14 @@ export function fakeAtReset(jobs: AtResetTurn[] = []) {
         if (state.refusal) {
           return HttpResponse.json({ detail: state.refusal }, { status: 409 });
         }
+        // As the server does: a send joins the message already waiting.
+        const waiting = state.jobs.find((j) => j.kind === body.kind);
         const job = {
           kind: body.kind,
           run_at: MONDAY_107AM,
-          message: body.message,
+          message: waiting?.message
+            ? `${waiting.message}\n\n${body.message}`
+            : body.message,
         };
         state.jobs = [...state.jobs.filter((j) => j.kind !== body.kind), job];
         return HttpResponse.json(job);

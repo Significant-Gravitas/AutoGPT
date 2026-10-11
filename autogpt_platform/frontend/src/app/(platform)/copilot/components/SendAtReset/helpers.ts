@@ -40,11 +40,3 @@ export function returnToDraft(current: string, message: string) {
   if (!current.trim() || current === message) return message;
   return `${message}\n\n${current}`;
 }
-
-/** The message to schedule: a new one added to any already waiting. */
-export function joinScheduled(
-  waiting: string | null | undefined,
-  message: string,
-): string {
-  return waiting ? `${waiting}\n\n${message}` : message;
-}
