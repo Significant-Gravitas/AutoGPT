@@ -76,6 +76,16 @@ def trial_conversion(
             "user_id": TEST_USER_ID,
             "trial_enrollment_id": cancel_pending_trial.id,
         },
+        "items": {
+            "data": [
+                {
+                    "id": "si_1",
+                    "price": {"id": cancel_pending_trial.offer.price_id},
+                    "quantity": 1,
+                }
+            ],
+            "has_more": False,
+        },
     }
     converted = stripe.Subscription.construct_from(
         {**live, "status": "active", "cancel_at_period_end": False}, "test-key"

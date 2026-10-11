@@ -98,6 +98,7 @@ from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
     StreamFinishStep,
+    StreamFollowUpQueued,
     StreamHeartbeat,
     StreamStart,
     StreamStartStep,
@@ -1676,7 +1677,9 @@ def _ui_message_stream_headers() -> dict[str, str]:
     }
 
 
-def _empty_ui_message_stream_response() -> StreamingResponse:
+def _empty_ui_message_stream_response(
+    follow_up_queued: bool = False,
+) -> StreamingResponse:
     # Stable placeholder messageId for the empty queued-mid-turn stream.
     # Real turns generate per-message UUIDs via the executor; this stream
     # has no message to attach to, but the AI SDK parser still requires a
@@ -1692,6 +1695,8 @@ def _empty_ui_message_stream_response() -> StreamingResponse:
         # full empty pair so the contract stays correct.
         yield StreamStart(messageId=message_id).to_sse()
         yield StreamStartStep().to_sse()
+        if follow_up_queued:
+            yield StreamFollowUpQueued().to_sse()
         yield StreamFinishStep().to_sse()
         yield StreamFinish().to_sse()
         yield "data: [DONE]\n\n"
@@ -1868,7 +1873,7 @@ async def stream_chat_post(
                 folder_ids=request.folder_ids,
                 expert_id=session.expert_id,
             )
-            return _empty_ui_message_stream_response()
+            return _empty_ui_message_stream_response(follow_up_queued=True)
         except HTTPException as exc:
             if exc.status_code != 409:
                 raise
