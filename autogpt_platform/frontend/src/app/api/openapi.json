@@ -9800,6 +9800,56 @@
         }
       }
     },
+    "/api/library/agents/batch": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "Get Library Agents By Ids",
+        "description": "Get several library agents at once, as `GET /agents/{id}` would return each.",
+        "operationId": "getV2Get library agents by ids",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "maxItems": 50,
+              "description": "Library agent IDs; unknown or inaccessible ones are omitted",
+              "title": "Ids"
+            },
+            "description": "Library agent IDs; unknown or inaccessible ones are omitted"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/LibraryAgent" },
+                  "title": "Response Getv2Get Library Agents By Ids"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/library/agents/by-graph/{graph_id}": {
       "get": {
         "tags": ["v2", "library", "private"],
