@@ -1048,6 +1048,8 @@ def _remember_at_reset_cancel(job_id: str) -> None:
 def _cancelled_after_set(args: "CopilotTurnJobArgs") -> bool:
     """Whether the user cancelled this job after it was set: setting it
     again after a cancel makes a new job, set later than the cancel."""
+    if args.schedule_id is None:
+        return False
     with _at_reset_cancels_lock:
         cancelled_at = _at_reset_cancels.get(args.schedule_id)
     if cancelled_at is None:
