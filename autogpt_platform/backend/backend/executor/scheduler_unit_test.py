@@ -368,7 +368,9 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
     assert call_kwargs["organization_id"] == "org-sched"
     assert call_kwargs["team_id"] == "team-sched"
     # Marks the turn as scheduled so the executor alerts if it fails later.
-    assert call_kwargs["scheduled"] == ScheduledTurnOrigin(schedule_id="sched-1")
+    assert call_kwargs["scheduled"].model_copy(
+        update={"fired_at": None}
+    ) == ScheduledTurnOrigin(schedule_id="sched-1")
 
 
 @pytest.mark.asyncio
@@ -759,6 +761,27 @@ async def test_execute_copilot_turn_into_an_existing_session_is_not_a_user_turn(
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
     assert mock_schedule_turn.call_args.kwargs["is_user_message"] is False
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_records_when_the_schedule_fired():
+    """The prompt lands as an assistant row, so the fire time and job id on
+    the turn's origin are what later mark that row as a scheduled prompt."""
+    args = _args()
+    mock_schedule_turn = AsyncMock()
+    mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
+    before = datetime.now(timezone.utc)
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch("backend.executor.scheduler.get_chat_session", new=mock_get_session),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    origin = mock_schedule_turn.call_args.kwargs["scheduled"]
+    assert origin.schedule_id == "sched-1"
+    assert before <= origin.fired_at <= datetime.now(timezone.utc)
+    assert origin.prompt_origin().kind == "scheduled_followup"
 
 
 @pytest.mark.asyncio

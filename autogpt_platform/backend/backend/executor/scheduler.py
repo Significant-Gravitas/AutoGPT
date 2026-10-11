@@ -606,6 +606,7 @@ async def _execute_copilot_turn(**kwargs):
                 schedule_id=args.schedule_id,
                 routine_id=args.routine_id,
                 cron=args.cron,
+                fired_at=datetime.now(timezone.utc),
             ),
         )
         if routine is not None and routine.run_at is not None:

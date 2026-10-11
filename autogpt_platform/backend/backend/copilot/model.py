@@ -36,6 +36,12 @@ from backend.util.exceptions import (
 )
 
 from .config import ChatConfig, CopilotLlmAuthProvider
+from .prompt_origin import (
+    PromptOrigin,
+    is_redelivered_prompt,
+    split_prompt_origin,
+    with_prompt_origin,
+)
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -226,6 +232,13 @@ class ChatMessage(BaseModel):
     # from payloads like routing_source, and persisted the same way.
     langfuse_trace_id: str | None = Field(default=None, exclude=True)
 
+    # Set on a prompt row the platform wrote on the user's behalf (a
+    # scheduled turn). Stored inside the ``metadata`` column but excluded
+    # from payloads: see ``copilot/prompt_origin.py``. Like routing_source it
+    # is dropped by anything that serializes the row (the Redis session
+    # cache, a DatabaseManager RPC response); the DB row keeps it.
+    prompt_origin: PromptOrigin | None = Field(default=None, exclude=True)
+
     stamps_pending_save: bool = Field(default=False, exclude=True)
     """True when model/routing_source were stamped after this row was already
     persisted (mid-turn flush assigned its sequence before end-of-turn
@@ -271,6 +284,9 @@ class ChatMessage(BaseModel):
     @staticmethod
     def from_db(prisma_message: PrismaChatMessage) -> "ChatMessage":
         """Convert a Prisma ChatMessage to a Pydantic ChatMessage."""
+        metadata, prompt_origin = split_prompt_origin(
+            _parse_json_field(prisma_message.metadata)
+        )
         return ChatMessage(
             id=prisma_message.id,
             role=prisma_message.role,
@@ -284,7 +300,8 @@ class ChatMessage(BaseModel):
             duration_ms=prisma_message.durationMs,
             created_at=prisma_message.createdAt,
             session_id=prisma_message.sessionId,
-            metadata=_parse_json_field(prisma_message.metadata),
+            metadata=metadata,
+            prompt_origin=prompt_origin,
             model=prisma_message.model,
             # DB column is a plain string; the values are always ones we wrote
             # (this PR owns the column) and Pydantic re-validates on construct.
@@ -358,17 +375,32 @@ def maybe_append_user_message(
 
     The route handler already persists the user message before enqueueing,
     so we check trailing same-role messages to avoid re-appending when the
-    session cache is slightly stale.
+    session cache is slightly stale. A scheduled prompt, whose *metadata*
+    carries its origin, is checked by its fire instead (see
+    ``is_redelivered_prompt``), so every fire of a repeating prompt gets
+    its own row.
 
     Returns True if the message was appended, False if skipped.
     """
     if not message:
         return False
     role = "user" if is_user_message else "assistant"
-    if is_message_duplicate(session.messages, role, message):
+    row_metadata, prompt_origin = split_prompt_origin(metadata or None)
+    if prompt_origin is None:
+        duplicate = is_message_duplicate(session.messages, role, message)
+    else:
+        duplicate = is_redelivered_prompt(
+            session.messages, role, message, prompt_origin
+        )
+    if duplicate:
         return False
     session.messages.append(
-        ChatMessage(role=role, content=message, metadata=metadata or None)
+        ChatMessage(
+            role=role,
+            content=message,
+            metadata=row_metadata,
+            prompt_origin=prompt_origin,
+        )
     )
     return True
 
@@ -1168,7 +1200,7 @@ async def _save_session_to_db(
                     "llm_auth_provider": msg.llm_auth_provider,
                     "llm_credential_id": msg.llm_credential_id,
                     "langfuse_trace_id": msg.langfuse_trace_id,
-                    "metadata": msg.metadata,
+                    "metadata": with_prompt_origin(msg.metadata, msg.prompt_origin),
                 }
             )
         logger.info(

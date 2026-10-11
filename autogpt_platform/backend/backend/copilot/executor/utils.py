@@ -7,6 +7,7 @@
 """
 
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -24,6 +25,7 @@ from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_current_envelope
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.prompt_origin import PromptOrigin, with_prompt_origin
 from backend.copilot.tree import (
     SpawnRequest,
     TreeRefusal,
@@ -269,6 +271,18 @@ class ScheduledTurnOrigin(BaseModel):
     schedule_id: str | None = None
     routine_id: str | None = None
     cron: str | None = None
+    fired_at: datetime | None = None
+    """When the scheduler dispatched the turn. ``None`` for entries queued
+    before the field existed."""
+
+    def prompt_origin(self) -> PromptOrigin:
+        """The stamp the turn's prompt row carries."""
+        return PromptOrigin(
+            kind="scheduled_routine" if self.routine_id else "scheduled_followup",
+            schedule_id=self.schedule_id,
+            routine_id=self.routine_id,
+            fired_at=self.fired_at,
+        )
 
 
 class CoPilotExecutionEntry(BaseModel):
@@ -351,6 +365,13 @@ class CoPilotExecutionEntry(BaseModel):
     scheduled: ScheduledTurnOrigin | None = None
     """Set when the scheduler fired this turn. ``None`` for every other
     caller, and for entries queued before the field existed."""
+
+    def row_metadata(self) -> dict[str, Any] | None:
+        """Metadata for the prompt row the engine writes: ``message_metadata``,
+        plus the schedule's stamp when the scheduler fired this turn."""
+        if self.scheduled is None:
+            return self.message_metadata
+        return with_prompt_origin(self.message_metadata, self.scheduled.prompt_origin())
 
 
 class CancelCoPilotEvent(BaseModel):

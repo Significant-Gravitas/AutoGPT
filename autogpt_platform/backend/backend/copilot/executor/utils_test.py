@@ -1,6 +1,7 @@
 """Tests for CoPilot executor utils (queue config, message models, logging)."""
 
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,10 +16,12 @@ from backend.copilot.executor.utils import (
     CancelCoPilotEvent,
     CoPilotExecutionEntry,
     CoPilotLogMetadata,
+    ScheduledTurnOrigin,
     create_copilot_queue_config,
     declare_pod_cancel_queue,
 )
 from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.prompt_origin import PromptOrigin, split_prompt_origin
 from backend.copilot.prompting import VOICE_TURN_TAG
 from backend.copilot.tree import ALL_TOOL_NAMES, root_envelope
 
@@ -363,3 +366,49 @@ class TestNarrowPermissions:
         assert merged is not None
         assert merged.tools_exclude is False
         assert merged.effective_allowed_tools(ALL_TOOL_NAMES) == {"read_workspace_file"}
+
+
+def _scheduled_entry(**scheduled_fields) -> CoPilotExecutionEntry:
+    return CoPilotExecutionEntry(
+        session_id="sess-1",
+        user_id="user-1",
+        message="Check the inbox.",
+        is_user_message=False,
+        message_metadata={"from_session_id": "s-2"},
+        scheduled=ScheduledTurnOrigin(**scheduled_fields),
+    )
+
+
+def test_row_metadata_stamps_a_follow_up_prompt() -> None:
+    fired_at = datetime(2026, 10, 5, 9, 0, tzinfo=UTC)
+    entry = _scheduled_entry(schedule_id="job-1", fired_at=fired_at)
+
+    rest, origin = split_prompt_origin(entry.row_metadata())
+
+    assert rest == {"from_session_id": "s-2"}
+    assert origin == PromptOrigin(
+        kind="scheduled_followup", schedule_id="job-1", fired_at=fired_at
+    )
+    assert entry.message_metadata == {"from_session_id": "s-2"}
+
+
+def test_row_metadata_marks_a_routine_prompt() -> None:
+    entry = _scheduled_entry(schedule_id="job-1", routine_id="routine-1")
+
+    _, origin = split_prompt_origin(entry.row_metadata())
+
+    assert origin is not None
+    assert origin.kind == "scheduled_routine"
+    assert origin.routine_id == "routine-1"
+    assert origin.fired_at is None
+
+
+def test_row_metadata_leaves_unscheduled_turns_alone() -> None:
+    entry = CoPilotExecutionEntry(
+        session_id="sess-1",
+        user_id="user-1",
+        message="hi",
+        message_metadata={"from_session_id": "s-2"},
+    )
+
+    assert entry.row_metadata() is entry.message_metadata
