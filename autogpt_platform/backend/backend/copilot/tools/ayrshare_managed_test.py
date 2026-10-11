@@ -16,7 +16,7 @@ from backend.blocks.ayrshare.post_to_linkedin import PostToLinkedInBlock
 from backend.blocks.ayrshare.post_to_x import PostToXBlock
 from backend.copilot.context import _current_permissions, set_turn_unattended
 from backend.copilot.permissions import CopilotPermissions
-from backend.copilot.tools.ayrshare_managed import CONNECT_BUTTON
+from backend.copilot.tools.ayrshare_managed import CONNECT_BUTTON, GRANT_TO_EXPERT
 from backend.copilot.tools.connect_integration import ConnectIntegrationTool
 from backend.copilot.tools.helpers import execute_block, prepare_block_for_execution
 from backend.copilot.tools.models import (
@@ -435,3 +435,81 @@ class TestNoSSOLinkInChat:
             assert isinstance(result, SetupRequirementsResponse)
         assert_no_sso_link(result)
         sign.assert_not_awaited()
+
+
+EXPERT = "expert-ayrshare"
+
+
+async def _expert_block_without_credential():
+    return await _prepare(
+        PostToLinkedInBlock().id, session=make_session(USER, expert_id=EXPERT)
+    )
+
+
+async def _expert_connect():
+    return await ConnectIntegrationTool()._execute(
+        USER, make_session(USER, expert_id=EXPERT), provider="ayrshare"
+    )
+
+
+@contextmanager
+def expert_grants(allowed: list[str]) -> Iterator[None]:
+    """An expert whose grant list is *allowed*, on an account whose only
+    credential is the managed profile the copilot just provisioned."""
+    experts = MagicMock()
+    experts.expert_allowed_credential_ids = AsyncMock(return_value=allowed)
+    with (
+        patch("backend.copilot.tools.expert_scope.experts_db", return_value=experts),
+        patch.object(
+            IntegrationCredentialsStore,
+            "get_all_creds",
+            AsyncMock(return_value=[MANAGED]),
+        ),
+    ):
+        yield
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestExpertSession:
+    # An expert runs only with credentials it was granted, the managed one
+    # included, so the card must offer the grant or linking alone leaves the
+    # expert unable to post.
+    @pytest.mark.parametrize(
+        "answer", [_expert_block_without_credential, _expert_connect]
+    )
+    async def test_the_card_offers_the_profile_to_the_expert(self, answer):
+        with ayrshare_backend(), expert_grants([]):
+            result = await answer()
+
+        assert isinstance(result, SetupRequirementsResponse)
+        (entry,) = result.setup_info.user_readiness.missing_credentials.values()
+        assert entry["expert_grant"]["expert_id"] == EXPERT
+        assert [c["id"] for c in entry["expert_grant"]["credentials"]] == [MANAGED.id]
+        assert GRANT_TO_EXPERT in result.message
+        assert_no_sso_link(result)
+
+    @pytest.mark.parametrize(
+        "answer", [_expert_block_without_credential, _expert_connect]
+    )
+    async def test_an_expert_already_granted_is_not_asked_again(self, answer):
+        with ayrshare_backend(), expert_grants([MANAGED.id]):
+            result = await answer()
+
+        assert isinstance(result, SetupRequirementsResponse)
+        (entry,) = result.setup_info.user_readiness.missing_credentials.values()
+        assert entry["expert_grant"]["credentials"] == []
+        assert GRANT_TO_EXPERT not in result.message
+
+    async def test_unattended_says_to_grant_the_expert(self):
+        session = make_session(USER, expert_id=EXPERT)
+        set_turn_unattended(session, scheduled=True)
+        try:
+            with ayrshare_backend(), expert_grants([]):
+                result = await _prepare(PostToLinkedInBlock().id, session=session)
+        finally:
+            set_turn_unattended(session, scheduled=False)
+
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "ayrshare_accounts_not_linked"
+        assert "grant this expert access" in result.message
+        assert_no_sso_link(result)

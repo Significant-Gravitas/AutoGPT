@@ -23,7 +23,13 @@ from backend.copilot.tools.utils import build_missing_credentials_from_field_inf
 from backend.data.model import CredentialsFieldInfo, CredentialsType
 from backend.integrations.providers import ProviderName
 
-from .ayrshare_managed import AYRSHARE, ensure_profile, link_accounts_card, link_message
+from .ayrshare_managed import (
+    AYRSHARE,
+    ensure_profile,
+    link_accounts_card,
+    link_message,
+    with_expert_grants,
+)
 from .base import BaseTool
 from .expert_scope import annotate_expert_grants
 
@@ -193,7 +199,9 @@ class ConnectIntegrationTool(BaseTool):
                     error="dry_run",
                     session_id=session_id,
                 )
-            return await _connect_managed(user_id, provider, reason, session_id)
+            return await _connect_managed(
+                user_id, provider, reason, session_id, session.expert_id
+            )
         entry = SUPPORTED_PROVIDERS.get(provider)
         if not entry:
             supported = ", ".join(f"'{p}'" for p in _supported_providers())
@@ -279,7 +287,11 @@ class ConnectIntegrationTool(BaseTool):
 
 
 async def _connect_managed(
-    user_id: str, provider: str, reason: str, session_id: str | None
+    user_id: str,
+    provider: str,
+    reason: str,
+    session_id: str | None,
+    expert_id: str | None,
 ) -> ToolResponseBase:
     """The card for a provider AutoGPT holds the account for.
 
@@ -303,12 +315,13 @@ async def _connect_managed(
     )
     missing[field_key]["title"] = f"{display_name} Credentials"
     missing[field_key]["provider_name"] = display_name
+    missing, needs_grant = await with_expert_grants(user_id, expert_id, missing)
     lead = "To post to social networks, the user links their accounts once."
     return link_accounts_card(
         agent_id=f"connect_{provider}",
         agent_name=display_name,
         missing_credentials=missing,
-        message=link_message(f"{lead} {reason}".strip()),
+        message=link_message(f"{lead} {reason}".strip(), needs_grant=needs_grant),
         session_id=session_id,
         execution_modes=(),
     )

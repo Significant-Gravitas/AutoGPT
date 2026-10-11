@@ -290,7 +290,7 @@ async def _run_block(
         # networks are linked, so connecting shows the connect card.
         if managed and block is not None:
             return await ayrshare_connect_for_block(
-                user_id, block, block_id, session.session_id
+                user_id, block, block_id, session.session_id, session.expert_id
             )
         return CapabilityDetailsResponse(
             message=(

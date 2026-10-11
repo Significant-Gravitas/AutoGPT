@@ -612,7 +612,7 @@ async def execute_block(
     except BlockError as e:
         if is_ayrshare(get_block_provider(block)) and is_not_linked_error(e):
             return await ayrshare_not_linked_response(
-                user_id, block, block_id, e, session_id
+                user_id, block, block_id, e, session_id, expert_id
             )
         status_code = credential_rejection_status(e)
         if status_code is not None and matched_credentials:
@@ -1071,7 +1071,7 @@ async def prepare_block_for_execution(
         and not (dry_run or validate_only)
         and (
             managed := await provision_ayrshare_for_block(
-                user_id, block, block_id, session_id
+                user_id, block, block_id, session_id, session.expert_id
             )
         )
     ):

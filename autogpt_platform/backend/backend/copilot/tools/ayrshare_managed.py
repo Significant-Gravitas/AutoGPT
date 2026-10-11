@@ -27,7 +27,7 @@ from backend.integrations.managed_providers.ayrshare import (
     provision_profile,
 )
 
-from .expert_scope import provider_slug
+from .expert_scope import annotate_expert_grants, provider_slug
 from .models import (
     ErrorResponse,
     SetupInfo,
@@ -113,14 +113,38 @@ async def ensure_profile(user_id: str) -> ErrorResponse | None:
     return None
 
 
-def link_message(lead: str) -> str:
+GRANT_TO_EXPERT = (
+    "This expert has not been granted the user's posting profile yet, so also "
+    "ask them to grant it with the Grant button on the card."
+)
+
+
+def link_message(lead: str, *, needs_grant: bool = False) -> str:
+    grant = f"{GRANT_TO_EXPERT} " if needs_grant else ""
     return (
         f"{lead} Ask the user to link their social accounts with the "
         f"{CONNECT_BUTTON} button in the card, which opens Ayrshare's page. "
-        "Do not write a link to that page yourself. "
+        f"{grant}Do not write a link to that page yourself. "
         "Once they say they have linked them, run the step again. "
         f"{POST_COST} " + NO_API_KEY
     )
+
+
+async def with_expert_grants(
+    user_id: str, expert_id: str | None, entries: dict[str, dict[str, Any]]
+) -> tuple[dict[str, dict[str, Any]], bool]:
+    """The entries annotated with what the expert could be granted, and
+    whether it lacks the managed credential.
+
+    An expert only runs with credentials it was granted, and the managed one
+    is no exception, so linking networks alone would leave it unable to post.
+    Called after provisioning, so the profile is there to be granted.
+    """
+    annotated = await annotate_expert_grants(user_id, expert_id, entries)
+    needs_grant = any(
+        entry.get("expert_grant", {}).get("credentials") for entry in annotated.values()
+    )
+    return annotated, needs_grant
 
 
 def link_accounts_card(
@@ -159,7 +183,11 @@ def link_accounts_card(
 
 
 async def provision_for_block(
-    user_id: str, block: AnyBlockSchema, block_id: str, session_id: str | None
+    user_id: str,
+    block: AnyBlockSchema,
+    block_id: str,
+    session_id: str | None,
+    expert_id: str | None = None,
 ) -> ToolResponseBase | None:
     """Answer for an Ayrshare block that found no credential to run with.
 
@@ -178,6 +206,7 @@ async def provision_for_block(
         block,
         block_id,
         session_id,
+        expert_id,
         reason=reason,
         lead=(
             f"Block '{block.name}' posts through AutoGPT's managed Ayrshare "
@@ -187,7 +216,11 @@ async def provision_for_block(
 
 
 async def connect_for_block(
-    user_id: str, block: AnyBlockSchema, block_id: str, session_id: str | None
+    user_id: str,
+    block: AnyBlockSchema,
+    block_id: str,
+    session_id: str | None,
+    expert_id: str | None = None,
 ) -> ToolResponseBase:
     """Answer for an explicit connect on an Ayrshare block.
 
@@ -199,6 +232,7 @@ async def connect_for_block(
         block,
         block_id,
         session_id,
+        expert_id,
         reason="the user asked to connect their social accounts",
         lead=f"Block '{block.name}' posts through AutoGPT's managed Ayrshare account.",
     )
@@ -210,6 +244,7 @@ async def not_linked_response(
     block_id: str,
     exc: BaseException,
     session_id: str | None,
+    expert_id: str | None = None,
 ) -> ToolResponseBase:
     """Answer for a post Ayrshare refused because the network is not linked."""
     detail = sanitize_provider_message(str(exc))
@@ -218,6 +253,7 @@ async def not_linked_response(
         block,
         block_id,
         session_id,
+        expert_id,
         reason=f"the network is not linked to the user's posting profile ({detail})",
         lead=f"Block '{block.name}' did not post: Ayrshare said \"{detail}\".",
         outside=(detail,),
@@ -229,6 +265,7 @@ async def _block_link_answer(
     block: AnyBlockSchema,
     block_id: str,
     session_id: str | None,
+    expert_id: str | None,
     *,
     reason: str,
     lead: str,
@@ -238,21 +275,24 @@ async def _block_link_answer(
     if error is not None:
         error.session_id = session_id
         return error.from_outside()
+    entries, needs_grant = await with_expert_grants(
+        user_id, expert_id, _block_entries(block)
+    )
     if is_unattended_turn():
         return _unattended_link_error(
-            f"Block '{block.name}'", reason, session_id
+            f"Block '{block.name}'", reason, session_id, needs_grant=needs_grant
         ).from_outside(*outside)
     return link_accounts_card(
         agent_id=block_id,
         agent_name=block.name,
-        missing_credentials=_block_entries(block),
-        message=link_message(lead),
+        missing_credentials=entries,
+        message=link_message(lead, needs_grant=needs_grant),
         session_id=session_id,
     ).from_outside(*outside)
 
 
 def _unattended_link_error(
-    subject: str, reason: str, session_id: str | None
+    subject: str, reason: str, session_id: str | None, *, needs_grant: bool
 ) -> ErrorResponse:
     logger.warning(
         "Unattended copilot turn in session %s: %s skipped, %s",
@@ -266,8 +306,15 @@ def _unattended_link_error(
             "(it was scheduled), so say plainly in your reply that the post "
             "was skipped and that the user can link their social accounts by "
             "opening this chat (or the agent builder) and choosing "
-            f"{CONNECT_BUTTON}. Do not write a link to Ayrshare's page "
-            "yourself. " + NO_API_KEY
+            f"{CONNECT_BUTTON}"
+            + (
+                ", then grant this expert access to it on the expert's "
+                "Integrations page"
+                if needs_grant
+                else ""
+            )
+            + ". Do not write a link to Ayrshare's page yourself. "
+            + NO_API_KEY
         ),
         error="ayrshare_accounts_not_linked",
         session_id=session_id,
