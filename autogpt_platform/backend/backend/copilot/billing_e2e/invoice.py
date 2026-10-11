@@ -79,6 +79,8 @@ class Call(BaseModel):
     """One request the provider served."""
 
     turn: int
+    # The turn's model request it answered, numbered like PlannedFault.request.
+    request: int
     route: Route
     model: str
     usage: Usage
