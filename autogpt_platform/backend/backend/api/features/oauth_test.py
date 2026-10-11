@@ -31,6 +31,11 @@ from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.models import User as PrismaUser
 
 from backend.api.rest_api import app
+from backend.data.auth.oauth import (
+    InvalidGrantError,
+    consume_authorization_code,
+    create_authorization_code,
+)
 
 keysmith = APIKeySmith()
 
@@ -641,19 +646,11 @@ async def test_authorization_code_concurrent_redeem_succeeds_once(
     The check-then-write in consume_authorization_code let both callers read
     usedAt=NULL and both mint tokens. Runs against the real DB.
     """
-    from prisma.enums import APIKeyPermission as APIPermission
-
-    from backend.data.auth.oauth import (
-        InvalidGrantError,
-        consume_authorization_code,
-        create_authorization_code,
-    )
-
     for _ in range(20):
         code_info = await create_authorization_code(
             application_id=test_oauth_app["id"],
             user_id=test_user,
-            scopes=[APIPermission.EXECUTE_GRAPH],
+            scopes=[APIKeyPermission.EXECUTE_GRAPH],
             redirect_uri=test_oauth_app["redirect_uri"],
         )
         results = await asyncio.gather(
@@ -672,6 +669,56 @@ async def test_authorization_code_concurrent_redeem_succeeds_once(
         assert len(successes) == 1, results
         assert len(failures) == 1, results
         assert successes[0][0] == test_user
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_token_endpoint_concurrent_code_exchange_issues_one_token_pair(
+    client: httpx.AsyncClient,
+    test_user: str,
+    test_oauth_app: dict,
+):
+    """Concurrent POST /api/oauth/token with one code mints exactly one pair.
+
+    Drives the real token endpoint (client auth, PKCE, DB) rather than the data
+    layer, and checks the database: a lost race must not leave extra tokens.
+    """
+    from urllib.parse import parse_qs, urlparse
+
+    verifier, challenge = generate_pkce()
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
+            "client_id": test_oauth_app["client_id"],
+            "redirect_uri": test_oauth_app["redirect_uri"],
+            "scopes": ["EXECUTE_GRAPH"],
+            "state": "concurrent_exchange_test",
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
+        follow_redirects=False,
+    )
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
+    exchange = {
+        "grant_type": "authorization_code",
+        "code": auth_code,
+        "redirect_uri": test_oauth_app["redirect_uri"],
+        "client_id": test_oauth_app["client_id"],
+        "client_secret": test_oauth_app["client_secret"],
+        "code_verifier": verifier,
+    }
+
+    responses = await asyncio.gather(
+        *(client.post("/api/oauth/token", json=exchange) for _ in range(3))
+    )
+
+    statuses = sorted(r.status_code for r in responses)
+    assert statuses == [200, 400, 400], [r.text for r in responses]
+    app_tokens = {"applicationId": test_oauth_app["id"], "userId": test_user}
+    assert await PrismaOAuthAccessToken.prisma().count(where=app_tokens) == 1
+    assert await PrismaOAuthRefreshToken.prisma().count(where=app_tokens) == 1
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -878,6 +925,21 @@ async def test_token_authorization_code_pkce_failure(
 
     assert response.status_code == 400
     assert "pkce" in response.json()["detail"].lower()
+
+    # A failed verification must not consume the code: otherwise anyone who
+    # intercepts it could burn the legitimate client's grant.
+    retry = await client.post(
+        "/api/oauth/token",
+        json={
+            "grant_type": "authorization_code",
+            "code": auth_code,
+            "redirect_uri": test_oauth_app["redirect_uri"],
+            "client_id": test_oauth_app["client_id"],
+            "client_secret": test_oauth_app["client_secret"],
+            "code_verifier": verifier,
+        },
+    )
+    assert retry.status_code == 200
 
 
 # ============================================================================
