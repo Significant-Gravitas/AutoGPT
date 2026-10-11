@@ -117,3 +117,19 @@ def test_a_turn_that_did_not_land_finishes_normally():
     events = adapter.convert_message(_result("success"))
     assert isinstance(events[-1], StreamFinish)
     assert not any(isinstance(e, StreamTurnPaused) for e in events)
+
+
+def test_a_closing_line_filled_in_for_a_thinking_only_reply_is_not_a_checkpoint():
+    # The model answered the refused tools with thinking only, twice; the
+    # adapter shows a closing line (its thinking, or a placeholder) so the
+    # turn visibly ends. The model wrote no checkpoint, so the pause says so.
+    adapter = _adapter(landed=True)
+    adapter._last_thinking_content = "Maybe I should stop here."
+    adapter.thinking_only_reprompted = True
+    adapter._any_tool_results_seen = True
+    adapter._text_since_last_tool_result = False
+
+    events = adapter.convert_message(_result("success"))
+
+    assert any(isinstance(e, StreamTextDelta) for e in events)
+    assert _paused(events)["checkpoint_saved"] is False
