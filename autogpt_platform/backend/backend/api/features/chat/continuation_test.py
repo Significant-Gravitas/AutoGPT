@@ -1,5 +1,6 @@
 """Route tests for POST /sessions/{session_id}/continue (the Paused card's Keep going)."""
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
@@ -10,8 +11,12 @@ import pytest_mock
 
 from backend.api.features.chat import continuation as continuation_routes
 from backend.api.features.chat import routes as chat_routes
+from backend.copilot import model as chat_model
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.constants import COPILOT_SYSTEM_PREFIX
 from backend.copilot.continuation import KEEP_GOING_NOTE
+from backend.copilot.executor import utils as executor_utils
+from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 
 app = fastapi.FastAPI()
@@ -91,6 +96,8 @@ def test_keep_going_starts_a_continuation_turn(chat):
     kwargs = chat.schedule.await_args.kwargs
     assert kwargs["message"] == KEEP_GOING_NOTE
     assert kwargs["is_user_message"] is False
+    assert kwargs["require_fresh_slot"] is True
+    assert kwargs["dedupe_content"] is False
     assert kwargs["model"] == "standard"
     chat.paywall.assert_awaited_once()
     chat.check_rate_limit.assert_awaited_once()
@@ -148,8 +155,104 @@ def test_a_full_concurrency_cap_is_a_429(chat):
     assert client.post(URL).status_code == 429
 
 
-def test_a_duplicate_click_is_a_409(chat):
+def test_a_chat_taken_after_the_busy_check_is_a_409(chat):
     chat.schedule.return_value = None
 
     assert client.post(URL).status_code == 409
     chat.publish.assert_not_awaited()
+
+
+_PAUSE = f"{COPILOT_SYSTEM_PREFIX} Paused: checking in after a long run."
+
+
+@pytest.fixture
+def stored(mocker: pytest_mock.MockerFixture, chat: MagicMock) -> MagicMock:
+    """The real scheduler and row store behind the route, over rows in memory.
+
+    Mocked at the boundaries: the turn slot, the session lock, the queue and
+    the database.
+    """
+    mocker.patch.object(
+        continuation_routes,
+        "schedule_chat_turn",
+        new=executor_utils.schedule_chat_turn,
+    )
+    io = MagicMock()
+    io.slot = MagicMock(admitted=True)
+    io.session = ChatSession.new("test-user-id", dry_run=False)
+    io.session.messages = [
+        ChatMessage(role="user", content="Build the report"),
+        ChatMessage(role="assistant", content=_PAUSE),
+    ]
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield io.slot
+
+    @asynccontextmanager
+    async def session_lock(_session_id: str):
+        yield True
+
+    mocker.patch.object(executor_utils, "acquire_turn_slot", new=acquire)
+    io.dispatch = mocker.patch.object(executor_utils, "dispatch_turn", new=AsyncMock())
+    mocker.patch.object(chat_model, "_get_session_lock", new=session_lock)
+    mocker.patch.object(
+        chat_model, "get_chat_session", new=AsyncMock(return_value=io.session)
+    )
+    io.save = mocker.patch.object(chat_model, "_save_session_to_db", new=AsyncMock())
+    mocker.patch.object(
+        chat_model,
+        "chat_db",
+        return_value=MagicMock(get_next_sequence=AsyncMock(return_value=2)),
+    )
+    mocker.patch.object(chat_model, "cache_chat_session", new=AsyncMock())
+    return io
+
+
+def _notes(session: ChatSession) -> int:
+    return [m.content for m in session.messages].count(KEEP_GOING_NOTE)
+
+
+def test_a_chat_another_turn_holds_is_a_409_and_saves_nothing(stored):
+    # /stream and /continue both found the chat idle; /stream reserved it
+    # first, so this request only refreshed the slot.
+    stored.slot.admitted = False
+
+    assert client.post(URL).status_code == 409
+    assert _notes(stored.session) == 0
+    stored.save.assert_not_awaited()
+    stored.dispatch.assert_not_awaited()
+
+
+def test_a_double_click_starts_one_turn(stored):
+    first = client.post(URL)
+    stored.slot.admitted = False  # the first click's turn holds the chat now
+    second = client.post(URL)
+
+    assert (first.status_code, second.status_code) == (202, 409)
+    assert _notes(stored.session) == 1
+    stored.dispatch.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "rows_after_the_note",
+    [
+        pytest.param(["Two of three sections done.", _PAUSE], id="assistant-rows"),
+        pytest.param([], id="nothing"),
+    ],
+)
+def test_keep_going_again_after_a_continuation_left_no_user_row(
+    stored, rows_after_the_note: list[str]
+):
+    # The earlier note is still in the chat's trailing assistant run.
+    stored.session.messages += [
+        ChatMessage(role="assistant", content=KEEP_GOING_NOTE),
+        *(ChatMessage(role="assistant", content=row) for row in rows_after_the_note),
+    ]
+
+    response = client.post(URL)
+
+    assert response.status_code == 202
+    assert stored.session.messages[-1].content == KEEP_GOING_NOTE
+    assert _notes(stored.session) == 2
+    stored.dispatch.assert_awaited_once()
