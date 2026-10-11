@@ -3219,17 +3219,19 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
 
     if (
         sub_id
+        and invoice_id
         # A pending update waits on the invoice its own change made, never on
         # a renewal, so the common failure skips the Stripe lookup.
         and invoice.get("billing_reason") != "subscription_cycle"
-        and await _holds_pending_update(sub_id, invoice_id)
+        and await _nothing_left_to_cover(invoice_id)
     ):
         # Stripe applies a pending update only once its invoice is paid, and
         # voids the invoice when the update lapses: nothing has changed. A
         # trial converting early waits like this for the bank to confirm.
         logger.info(
-            "handle_subscription_payment_failure: invoice %s holds a pending"
-            " update on sub %s for user %s; nothing changed",
+            "handle_subscription_payment_failure: invoice %s on sub %s for user"
+            " %s waits on a pending update or is already settled; nothing to"
+            " cover",
             invoice_id,
             sub_id,
             user.id,
@@ -3311,10 +3313,16 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         await set_subscription_tier(user.id, SubscriptionTier.NO_TIER)
 
 
-async def _holds_pending_update(subscription_id: str, invoice_id: str) -> bool:
-    subscription = await stripe_call(
-        stripe.Subscription.retrieve_async, subscription_id
+async def _nothing_left_to_cover(invoice_id: str) -> bool:
+    """Whether a pending update still waits on this invoice, or Stripe has
+    settled it since: paid once the bank confirmed, or voided when the update
+    lapsed. The failure event can be delivered after either."""
+    invoice = await stripe_call(
+        stripe.Invoice.retrieve_async, invoice_id, expand=["subscription"]
     )
+    if invoice.get("status") in ("paid", "void"):
+        return True
+    subscription = invoice.get("subscription") or {}
     return bool(subscription.get("pending_update")) and (
         subscription.get("latest_invoice") == invoice_id
     )

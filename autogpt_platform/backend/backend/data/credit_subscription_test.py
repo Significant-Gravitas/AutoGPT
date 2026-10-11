@@ -65,7 +65,7 @@ def _no_pending_update():
     """The payment failures here are plans that lapsed, not a change Stripe
     holds until it's paid (see credit_pending_update_test.py)."""
     with patch(
-        "backend.data.credit._holds_pending_update",
+        "backend.data.credit._nothing_left_to_cover",
         AsyncMock(return_value=False),
     ):
         yield
