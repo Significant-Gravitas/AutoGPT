@@ -6,6 +6,7 @@ from fastapi.responses import Response
 
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 
+from .. import _get_many as get_many
 from .. import db as library_db
 from .. import model as library_model
 
@@ -100,6 +101,22 @@ async def list_favorite_library_agents(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/batch", summary="Get Library Agents By Ids")
+async def get_library_agents_by_ids(
+    ids: list[str] = Query(
+        ...,
+        min_length=1,
+        max_length=get_many.MAX_LIBRARY_AGENTS_PER_BATCH,
+        description="Library agent IDs; unknown or inaccessible ones are omitted",
+    ),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[library_model.LibraryAgent]:
+    """
+    Get several library agents at once, as `GET /agents/{id}` would return each.
+    """
+    return await get_many.get_library_agents_by_ids(ids=ids, user_id=user_id)
 
 
 @router.get("/{library_agent_id}", summary="Get Library Agent")
