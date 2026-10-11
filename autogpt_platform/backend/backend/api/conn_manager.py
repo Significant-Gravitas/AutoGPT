@@ -1,13 +1,12 @@
 import asyncio
 import json
 import logging
-import time
 from typing import Awaitable, Callable, Dict, Optional, Set
 
 from fastapi import WebSocket, WebSocketDisconnect
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.client import PubSub as AsyncPubSub
-from redis.exceptions import MovedError, RedisError, ResponseError
+from redis.exceptions import RedisError
 from starlette.websockets import WebSocketState
 
 from backend.api.model import WSMessage, WSMethod
@@ -20,6 +19,7 @@ from backend.data.execution import (
     graph_all_channel,
 )
 from backend.data.notification_bus import NotificationEvent
+from backend.monitoring.instrumentation import record_websocket_event_stream_lost
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -57,21 +57,18 @@ def _notification_bus_channel(user_id: str) -> str:
 
 
 MessageHandler = Callable[[Optional[bytes | str]], Awaitable[None]]
+# Called once with a short cause when a subscription's event stream ends.
+LostHandler = Callable[[str], Awaitable[None]]
 
+# Opening a shard-pinned SSUBSCRIBE retries for minutes while Redis is down;
+# give up sooner so the socket is closed and the client retries with backoff.
+_SUBSCRIBE_OPEN_TIMEOUT_S = 15.0
 
-def _is_moved_error(exc: BaseException) -> bool:
-    """A MOVED redirect — slot migration mid-stream; pump should reconnect."""
-    if isinstance(exc, MovedError):
-        return True
-    if isinstance(exc, ResponseError) and str(exc).startswith("MOVED "):
-        return True
-    return False
-
-
-# Reconnect tunables for shard-failover during pubsub.listen().
-_PUMP_RECONNECT_DEADLINE_S = 60.0
-_PUMP_RECONNECT_BACKOFF_INITIAL_S = 0.5
-_PUMP_RECONNECT_BACKOFF_MAX_S = 8.0
+# Close code for a socket whose event stream broke. Redis pub/sub keeps no
+# history, so events published while a stream is down are gone; only the
+# client can fill that gap, by reconnecting, resubscribing and refetching.
+WS_CLOSE_EVENT_STREAM_LOST = 1011
+WS_CLOSE_EVENT_STREAM_LOST_REASON = "Event stream interrupted"
 
 
 class _Subscription:
@@ -83,22 +80,27 @@ class _Subscription:
         self._client: AsyncRedis | None = None
         self._pubsub: AsyncPubSub | None = None
         self._task: asyncio.Task | None = None
+        self._lost = False
 
-    async def start(self, on_message: MessageHandler) -> None:
-        await self._open_pubsub()
-        self._task = asyncio.create_task(self._pump(on_message))
+    async def start(self, on_message: MessageHandler, on_lost: LostHandler) -> None:
+        try:
+            await asyncio.wait_for(self._open_pubsub(), _SUBSCRIBE_OPEN_TIMEOUT_S)
+        except BaseException:
+            await self._close_pubsub_quietly()
+            raise
+        self._task = asyncio.create_task(self._pump(on_message, on_lost))
 
     async def _open_pubsub(self) -> None:
-        """(Re)establish the sharded pubsub connection + SSUBSCRIBE."""
         self._client = await redis.connect_sharded_pubsub_async(self.full_channel)
         self._pubsub = self._client.pubsub()
-        await self._pubsub.execute_command("SSUBSCRIBE", self.full_channel)
-        # redis-py 6.x async PubSub.listen() exits when ``channels`` is
-        # empty; raw SSUBSCRIBE doesn't populate it, so do it ourselves.
-        self._pubsub.channels[self.full_channel] = None  # type: ignore[index]
+        # ssubscribe() records the channel in ``shard_channels``, which keeps
+        # listen() running and makes redis-py's own reconnect re-issue
+        # SSUBSCRIBE. A raw SSUBSCRIBE tracked in ``channels`` came back as a
+        # plain SUBSCRIBE, which never receives SPUBLISH.
+        await self._pubsub.ssubscribe(self.full_channel)
 
     async def _close_pubsub_quietly(self) -> None:
-        """Best-effort teardown before reconnect — never raises."""
+        """Best-effort teardown — never raises."""
         if self._pubsub is not None:
             try:
                 await self._pubsub.aclose()
@@ -112,81 +114,47 @@ class _Subscription:
                 pass
             self._client = None
 
-    async def _pump(self, on_message: MessageHandler) -> None:
-        if self._pubsub is None:
+    async def _pump(self, on_message: MessageHandler, on_lost: LostHandler) -> None:
+        pubsub = self._pubsub
+        if pubsub is None:
             return
-        backoff = _PUMP_RECONNECT_BACKOFF_INITIAL_S
-        deadline = time.monotonic() + _PUMP_RECONNECT_DEADLINE_S
-        while True:
-            pubsub = self._pubsub
-            if pubsub is None:
-                return
-            needs_reconnect = False
-            try:
-                async for message in pubsub.listen():
-                    msg_type = message.get("type")
-                    # Server-pushed sunsubscribe: slot ownership changed and
-                    # Redis revoked our SSUBSCRIBE without dropping the TCP.
-                    # Treat as a reconnect trigger so we re-resolve the shard.
-                    if msg_type == "sunsubscribe":
-                        needs_reconnect = True
-                        break
-                    if msg_type not in ("smessage", "message", "pmessage"):
-                        continue
-                    # Successful read resets the reconnect budget.
-                    backoff = _PUMP_RECONNECT_BACKOFF_INITIAL_S
-                    deadline = time.monotonic() + _PUMP_RECONNECT_DEADLINE_S
-                    try:
-                        await on_message(message.get("data"))
-                    except Exception:
-                        logger.exception(
-                            "Websocket message-handler failed for channel %s",
-                            self.full_channel,
-                        )
-                if not needs_reconnect:
-                    # listen() exited cleanly (channels emptied) — pump is done.
-                    return
-            except asyncio.CancelledError:
-                raise
-            except (ConnectionError, RedisError) as exc:
-                if isinstance(exc, ResponseError) and not _is_moved_error(exc):
-                    logger.exception(
-                        "Pubsub pump crashed on non-retryable ResponseError for %s",
-                        self.full_channel,
-                    )
-                    return
-                if time.monotonic() > deadline:
-                    logger.exception(
-                        "Pubsub pump giving up after reconnect deadline for %s",
-                        self.full_channel,
-                    )
-                    return
-                logger.warning(
-                    "Pubsub pump reconnecting for %s after %s: %s",
-                    self.full_channel,
-                    type(exc).__name__,
-                    exc,
-                )
-            except Exception:
-                logger.exception("Pubsub pump crashed for %s", self.full_channel)
-                return
+        try:
+            cause = await self._forward_until_lost(pubsub, on_message)
+        except asyncio.CancelledError:
+            raise
+        except (ConnectionError, OSError, RedisError) as exc:
+            logger.warning(
+                "Pubsub stream lost for %s: %s: %s",
+                self.full_channel,
+                type(exc).__name__,
+                exc,
+            )
+            cause = "redis_error"
+        except Exception:
+            logger.exception("Pubsub pump crashed for %s", self.full_channel)
+            cause = "crashed"
+        self._lost = True
+        await on_lost(cause)
 
-            # Either a retryable error was raised, or the server pushed a
-            # sunsubscribe — close the stale pubsub and reopen against the
-            # (possibly migrated) shard.
-            await self._close_pubsub_quietly()
-            await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, _PUMP_RECONNECT_BACKOFF_MAX_S)
-            try:
-                await self._open_pubsub()
-            except (ConnectionError, RedisError) as reopen_exc:
-                logger.warning(
-                    "Pubsub pump reopen failed for %s: %s",
-                    self.full_channel,
-                    reopen_exc,
-                )
-                # Loop again — deadline check will eventually exit.
+    async def _forward_until_lost(
+        self, pubsub: AsyncPubSub, on_message: MessageHandler
+    ) -> str:
+        async for message in pubsub.listen():
+            msg_type = message.get("type")
+            # Server-pushed sunsubscribe: the slot moved to another shard and
+            # Redis revoked our SSUBSCRIBE without dropping the connection.
+            if msg_type == "sunsubscribe":
+                return "revoked"
+            if msg_type not in ("smessage", "message", "pmessage"):
                 continue
+            try:
+                await on_message(message.get("data"))
+            except Exception:
+                logger.exception(
+                    "Websocket message-handler failed for channel %s",
+                    self.full_channel,
+                )
+        return "ended"
 
     async def stop(self) -> None:
         if self._task is not None:
@@ -196,24 +164,16 @@ class _Subscription:
             except (asyncio.CancelledError, Exception):
                 pass
             self._task = None
-        if self._pubsub is not None:
+        # A lost stream's connection is already gone; SUNSUBSCRIBE would only
+        # set off redis-py's reconnect retries.
+        if self._pubsub is not None and not self._lost:
             try:
-                await self._pubsub.execute_command("SUNSUBSCRIBE", self.full_channel)
+                await self._pubsub.sunsubscribe(self.full_channel)
             except Exception:
                 logger.warning(
                     "SUNSUBSCRIBE failed for %s", self.full_channel, exc_info=True
                 )
-            try:
-                await self._pubsub.aclose()
-            except Exception:
-                pass
-            self._pubsub = None
-        if self._client is not None:
-            try:
-                await self._client.aclose()
-            except Exception:
-                pass
-            self._client = None
+        await self._close_pubsub_quietly()
 
 
 class ConnectionManager:
@@ -225,6 +185,8 @@ class ConnectionManager:
         self._ws_subs: Dict[WebSocket, Dict[str, _Subscription]] = {}
         # websocket → notification subscription
         self._ws_notifications: Dict[WebSocket, _Subscription] = {}
+        # sockets already being closed because an event stream was lost
+        self._closing: Set[WebSocket] = set()
 
     async def connect_socket(self, websocket: WebSocket, *, user_id: str):
         await websocket.accept()
@@ -234,6 +196,7 @@ class ConnectionManager:
 
     async def disconnect_socket(self, websocket: WebSocket, *, user_id: str):
         self.active_connections.discard(websocket)
+        self._closing.discard(websocket)
         # Stop SSUBSCRIBE pumps before dropping bookkeeping to avoid leaks.
         subs = self._ws_subs.pop(websocket, {})
         for sub in subs.values():
@@ -285,7 +248,6 @@ class ConnectionManager:
     async def _open_subscription(
         self, websocket: WebSocket, channel_key: str, full_channel: str
     ) -> None:
-        self.subscriptions.setdefault(channel_key, set()).add(websocket)
         per_ws = self._ws_subs.setdefault(websocket, {})
         if channel_key in per_ws:
             return
@@ -294,8 +256,34 @@ class ConnectionManager:
         async def on_message(data: Optional[bytes | str]) -> None:
             await self._forward_exec_event(websocket, channel_key, data)
 
-        await sub.start(on_message)
+        async def on_lost(cause: str) -> None:
+            await self.close_for_lost_stream(websocket, cause=cause)
+
+        await sub.start(on_message, on_lost)
         per_ws[channel_key] = sub
+        self.subscriptions.setdefault(channel_key, set()).add(websocket)
+
+    async def close_for_lost_stream(self, websocket: WebSocket, *, cause: str) -> None:
+        """Close a socket that can no longer receive events, so the client
+        reconnects, resubscribes and refetches what it missed. Never keep a
+        socket open (its heartbeats still answered) with a dead event stream."""
+        if websocket in self._closing:
+            return
+        self._closing.add(websocket)
+        record_websocket_event_stream_lost(cause)
+        logger.warning(
+            "Closing WebSocket after its event stream was lost (%s); "
+            "the client will reconnect and resubscribe",
+            cause,
+        )
+        try:
+            await websocket.close(
+                code=WS_CLOSE_EVENT_STREAM_LOST,
+                reason=WS_CLOSE_EVENT_STREAM_LOST_REASON,
+            )
+        except Exception as e:
+            if not _is_ws_close_race(e, websocket):
+                logger.warning("Failed to close WebSocket", exc_info=True)
 
     async def _close_subscription(
         self, websocket: WebSocket, channel_key: str
@@ -363,12 +351,16 @@ class ConnectionManager:
         async def on_message(data: Optional[bytes | str]) -> None:
             await self._forward_notification(websocket, user_id, data)
 
+        async def on_lost(cause: str) -> None:
+            await self.close_for_lost_stream(websocket, cause=cause)
+
         try:
-            await sub.start(on_message)
+            await sub.start(on_message, on_lost)
         except Exception:
             logger.exception(
                 "Failed to open notification SSUBSCRIBE for user=%s", user_id
             )
+            await self.close_for_lost_stream(websocket, cause="open_failed")
             return
         self._ws_notifications[websocket] = sub
 

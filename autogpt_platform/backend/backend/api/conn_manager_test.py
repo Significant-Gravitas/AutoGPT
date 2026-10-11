@@ -6,6 +6,8 @@ import pytest
 from fastapi import WebSocket
 
 from backend.api.conn_manager import (
+    WS_CLOSE_EVENT_STREAM_LOST,
+    WS_CLOSE_EVENT_STREAM_LOST_REASON,
     ConnectionManager,
     _graph_execs_channel_key,
     _notification_bus_channel,
@@ -138,41 +140,82 @@ def test_graph_execs_channel_key_shape() -> None:
 # ---------- _Subscription lifecycle ----------
 
 
-@pytest.mark.asyncio
-async def test_subscription_start_issues_ssubscribe_and_primes_channels_map() -> None:
-    """start() must SSUBSCRIBE and prime pubsub.channels — redis-py 6.x
-    `listen()` exits immediately if `channels` is empty."""
+def _fake_redis(listen) -> tuple[MagicMock, MagicMock]:
+    """A shard-pinned client whose pubsub iterates ``listen()``."""
     fake_pubsub = MagicMock()
-    fake_pubsub.execute_command = AsyncMock()
-    fake_pubsub.channels = {}
-
-    async def _listen():
-        # Block so the pump doesn't exit immediately.
-        await asyncio.sleep(10)
-        if False:
-            yield
-
-    fake_pubsub.listen = _listen
-
+    fake_pubsub.ssubscribe = AsyncMock()
+    fake_pubsub.sunsubscribe = AsyncMock()
+    fake_pubsub.aclose = AsyncMock()
+    fake_pubsub.listen = listen
     fake_client = MagicMock()
     fake_client.pubsub = MagicMock(return_value=fake_pubsub)
+    fake_client.aclose = AsyncMock()
+    return fake_client, fake_pubsub
+
+
+async def _listen_forever():
+    await asyncio.sleep(10)
+    if False:
+        yield
+
+
+async def _run_pump_until_lost(listen, on_message=None) -> list[str]:
+    """Start a subscription over ``listen`` and return the causes reported
+    to ``on_lost`` once the pump has finished."""
+    fake_client, _ = _fake_redis(listen)
+    lost: list[str] = []
+
+    async def on_lost(cause: str) -> None:
+        lost.append(cause)
 
     sub = _Subscription("{u/g}/exec/x")
     with patch(
         "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
         AsyncMock(return_value=fake_client),
     ):
-        await sub.start(AsyncMock())
-        # SSUBSCRIBE was issued against the full channel.
-        fake_pubsub.execute_command.assert_awaited_with("SSUBSCRIBE", "{u/g}/exec/x")
-        # channels map primed so listen() doesn't early-exit.
-        assert "{u/g}/exec/x" in fake_pubsub.channels
-        # stop() must tear everything down cleanly.
-        fake_pubsub.aclose = AsyncMock()
-        fake_client.aclose = AsyncMock()
+        await sub.start(on_message or AsyncMock(), on_lost)
+        assert sub._task is not None
+        await asyncio.wait_for(sub._task, timeout=2.0)
         await sub.stop()
-        fake_pubsub.aclose.assert_awaited_once()
-        fake_client.aclose.assert_awaited_once()
+    return lost
+
+
+@pytest.mark.asyncio
+async def test_subscription_start_ssubscribes_through_shard_channels() -> None:
+    """start() must use PubSub.ssubscribe so redis-py tracks the channel as a
+    shard channel: its transparent reconnect then re-issues SSUBSCRIBE (a
+    plain SUBSCRIBE never receives SPUBLISH)."""
+    fake_client, fake_pubsub = _fake_redis(_listen_forever)
+
+    sub = _Subscription("{u/g}/exec/x")
+    with patch(
+        "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
+        AsyncMock(return_value=fake_client),
+    ):
+        await sub.start(AsyncMock(), AsyncMock())
+        fake_pubsub.ssubscribe.assert_awaited_once_with("{u/g}/exec/x")
+        await sub.stop()
+    fake_pubsub.sunsubscribe.assert_awaited_once_with("{u/g}/exec/x")
+    fake_pubsub.aclose.assert_awaited_once()
+    fake_client.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_subscription_start_times_out_and_cleans_up() -> None:
+    """Opening the stream retries for minutes while Redis is down; start()
+    must give up after the open timeout instead of hanging the socket."""
+
+    async def _hang(_channel: str):
+        await asyncio.sleep(10)
+
+    sub = _Subscription("{u/g}/exec/x")
+    with (
+        patch("backend.api.conn_manager.redis.connect_sharded_pubsub_async", _hang),
+        patch("backend.api.conn_manager._SUBSCRIBE_OPEN_TIMEOUT_S", 0.05),
+    ):
+        with pytest.raises(asyncio.TimeoutError):
+            await sub.start(AsyncMock(), AsyncMock())
+    assert sub._task is None
 
 
 @pytest.mark.asyncio
@@ -187,10 +230,6 @@ async def test_subscription_pump_ignores_non_message_types_and_forwards_smessage
     None
 ):
     """_pump() must skip subscribe confirmations and forward ``smessage`` payloads."""
-    fake_pubsub = MagicMock()
-    fake_pubsub.execute_command = AsyncMock()
-    fake_pubsub.channels = {}
-    fake_pubsub.aclose = AsyncMock()
 
     async def _listen():
         yield {"type": "ssubscribe", "data": 1}
@@ -198,44 +237,22 @@ async def test_subscription_pump_ignores_non_message_types_and_forwards_smessage
         yield {"type": "psubscribe", "data": 1}
         yield {"type": "smessage", "data": b'{"payload":"two"}'}
 
-    fake_pubsub.listen = _listen
-    fake_client = MagicMock()
-    fake_client.pubsub = MagicMock(return_value=fake_pubsub)
-    fake_client.aclose = AsyncMock()
-
     received: list = []
 
     async def on_message(data) -> None:
         received.append(data)
 
-    sub = _Subscription("{u/g}/exec/x")
-    with patch(
-        "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
-        AsyncMock(return_value=fake_client),
-    ):
-        await sub.start(on_message)
-        await asyncio.sleep(0.05)  # let pump drain
-        await sub.stop()
-
+    await _run_pump_until_lost(_listen, on_message)
     assert received == [b'{"payload":"one"}', b'{"payload":"two"}']
 
 
 @pytest.mark.asyncio
 async def test_subscription_pump_swallows_handler_exceptions() -> None:
     """A raising handler must not crash the pump — next message still delivers."""
-    fake_pubsub = MagicMock()
-    fake_pubsub.execute_command = AsyncMock()
-    fake_pubsub.channels = {}
-    fake_pubsub.aclose = AsyncMock()
 
     async def _listen():
         yield {"type": "smessage", "data": b"boom"}
         yield {"type": "smessage", "data": b"ok"}
-
-    fake_pubsub.listen = _listen
-    fake_client = MagicMock()
-    fake_client.pubsub = MagicMock(return_value=fake_pubsub)
-    fake_client.aclose = AsyncMock()
 
     calls: list = []
 
@@ -244,76 +261,90 @@ async def test_subscription_pump_swallows_handler_exceptions() -> None:
         if data == b"boom":
             raise RuntimeError("handler failed")
 
-    sub = _Subscription("{u/g}/exec/x")
-    with patch(
-        "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
-        AsyncMock(return_value=fake_client),
-    ):
-        await sub.start(on_message)
-        await asyncio.sleep(0.05)
-        await sub.stop()
-
+    await _run_pump_until_lost(_listen, on_message)
     assert calls == [b"boom", b"ok"]
 
 
 @pytest.mark.asyncio
-async def test_subscription_pump_logs_and_exits_on_listen_crash() -> None:
-    """A `pubsub.listen()` crash must log + exit cleanly, not propagate."""
-    fake_pubsub = MagicMock()
-    fake_pubsub.execute_command = AsyncMock()
-    fake_pubsub.channels = {}
-    fake_pubsub.aclose = AsyncMock()
+async def test_subscription_pump_reports_redis_errors_as_lost() -> None:
+    """A dropped shard connection must be reported, not swallowed: the socket
+    owner closes the WebSocket so the client reconnects and resyncs."""
 
     async def _listen():
+        raise ConnectionError("Connection refused")
+        yield  # pragma: no cover — unreachable
+
+    assert await _run_pump_until_lost(_listen) == ["redis_error"]
+
+
+@pytest.mark.asyncio
+async def test_subscription_pump_reports_moved_errors_as_lost() -> None:
+    from redis.exceptions import MovedError
+
+    async def _listen():
+        raise MovedError("1234 127.0.0.1:7001")
+        yield  # pragma: no cover — unreachable
+
+    assert await _run_pump_until_lost(_listen) == ["redis_error"]
+
+
+@pytest.mark.asyncio
+async def test_subscription_pump_reports_server_sunsubscribe_as_lost() -> None:
+    """A server-pushed sunsubscribe (slot moved) ends delivery on this shard."""
+
+    async def _listen():
+        yield {"type": "sunsubscribe", "data": 0}
+        yield {"type": "smessage", "data": b"never forwarded"}
+
+    on_message = AsyncMock()
+    assert await _run_pump_until_lost(_listen, on_message) == ["revoked"]
+    on_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_subscription_pump_reports_listen_end_and_crashes_as_lost() -> None:
+    async def _ends():
+        yield {"type": "ssubscribe", "data": 1}
+
+    async def _crashes():
         raise RuntimeError("listen() exploded")
         yield  # pragma: no cover — unreachable
 
-    fake_pubsub.listen = _listen
+    assert await _run_pump_until_lost(_ends) == ["ended"]
+    assert await _run_pump_until_lost(_crashes) == ["crashed"]
 
-    fake_client = MagicMock()
-    fake_client.pubsub = MagicMock(return_value=fake_pubsub)
-    fake_client.aclose = AsyncMock()
+
+@pytest.mark.asyncio
+async def test_subscription_stop_does_not_report_lost() -> None:
+    """A deliberate stop() cancels the pump without closing the socket."""
+    fake_client, _ = _fake_redis(_listen_forever)
+    on_lost = AsyncMock()
 
     sub = _Subscription("{u/g}/exec/x")
     with patch(
         "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
         AsyncMock(return_value=fake_client),
     ):
-        await sub.start(AsyncMock())
-        # Let the pump actually crash + log.
-        if sub._task is not None:
-            await sub._task
-        # stop() is still safe to run.
+        await sub.start(AsyncMock(), on_lost)
         await sub.stop()
+    on_lost.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_subscription_pump_noop_when_pubsub_missing() -> None:
     """Defensive: _pump returns fast if _pubsub was cleared before scheduling."""
     sub = _Subscription("{u/g}/exec/x")
-    # Directly invoke _pump with no pubsub — must not raise.
-    await sub._pump(AsyncMock())
+    on_lost = AsyncMock()
+    await sub._pump(AsyncMock(), on_lost)
+    on_lost.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_subscription_stop_swallows_sunsubscribe_errors() -> None:
     """A broken cluster must not break graceful teardown."""
-    fake_pubsub = MagicMock()
-
-    async def _listen():
-        await asyncio.sleep(10)
-        if False:
-            yield
-
-    fake_pubsub.execute_command = AsyncMock(
-        side_effect=[None, RuntimeError("SUNSUB broke")]
-    )
-    fake_pubsub.channels = {}
-    fake_pubsub.listen = _listen
+    fake_client, fake_pubsub = _fake_redis(_listen_forever)
+    fake_pubsub.sunsubscribe = AsyncMock(side_effect=RuntimeError("SUNSUB broke"))
     fake_pubsub.aclose = AsyncMock(side_effect=RuntimeError("close broke"))
-
-    fake_client = MagicMock()
-    fake_client.pubsub = MagicMock(return_value=fake_pubsub)
     fake_client.aclose = AsyncMock(side_effect=RuntimeError("client close broke"))
 
     sub = _Subscription("{u/g}/exec/x")
@@ -321,262 +352,71 @@ async def test_subscription_stop_swallows_sunsubscribe_errors() -> None:
         "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
         AsyncMock(return_value=fake_client),
     ):
-        await sub.start(AsyncMock())
+        await sub.start(AsyncMock(), AsyncMock())
         # Must not raise even if every teardown call blows up.
         await sub.stop()
 
 
-@pytest.mark.asyncio
-async def test_subscription_pump_reconnects_on_connection_error() -> None:
-    """A shard-failover ConnectionError mid-listen must trigger reopen + resubscribe."""
-    # First pubsub: listen() raises ConnectionError on iteration.
-    pubsub_a = MagicMock()
-    pubsub_a.execute_command = AsyncMock()
-    pubsub_a.channels = {}
-    pubsub_a.aclose = AsyncMock()
-
-    async def _listen_a():
-        raise ConnectionError("Connection refused")
-        yield  # pragma: no cover — unreachable
-
-    pubsub_a.listen = _listen_a
-
-    # Second pubsub: listen() yields a real message after reconnect.
-    pubsub_b = MagicMock()
-    pubsub_b.execute_command = AsyncMock()
-    pubsub_b.channels = {}
-    pubsub_b.aclose = AsyncMock()
-
-    async def _listen_b():
-        yield {"type": "smessage", "data": b'{"payload":"after-reconnect"}'}
-
-    pubsub_b.listen = _listen_b
-
-    client_a = MagicMock()
-    client_a.pubsub = MagicMock(return_value=pubsub_a)
-    client_a.aclose = AsyncMock()
-
-    client_b = MagicMock()
-    client_b.pubsub = MagicMock(return_value=pubsub_b)
-    client_b.aclose = AsyncMock()
-
-    received: list = []
-
-    async def on_message(data) -> None:
-        received.append(data)
-
-    sub = _Subscription("{u/g}/exec/x")
-    # Drive backoff to ~zero so the test runs fast.
-    with (
-        patch(
-            "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
-            AsyncMock(side_effect=[client_a, client_b]),
-        ),
-        patch("backend.api.conn_manager._PUMP_RECONNECT_BACKOFF_INITIAL_S", 0.001),
-        patch("backend.api.conn_manager._PUMP_RECONNECT_BACKOFF_MAX_S", 0.001),
-    ):
-        await sub.start(on_message)
-        # Give the pump enough event-loop turns to fail, reconnect, deliver.
-        for _ in range(50):
-            await asyncio.sleep(0.01)
-            if received:
-                break
-        await sub.stop()
-
-    assert received == [b'{"payload":"after-reconnect"}']
-    # Both pubsubs got an SSUBSCRIBE — the reconnect re-issued the command.
-    pubsub_a.execute_command.assert_any_await("SSUBSCRIBE", "{u/g}/exec/x")
-    pubsub_b.execute_command.assert_any_await("SSUBSCRIBE", "{u/g}/exec/x")
+# ---------- ConnectionManager closes sockets whose stream was lost ----------
 
 
 @pytest.mark.asyncio
-async def test_subscription_pump_reconnects_on_moved_error() -> None:
-    """A mid-stream cluster slot migration must trigger reopen + resubscribe."""
-    from redis.exceptions import MovedError
+async def test_lost_stream_closes_socket_once(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    """Every subscription on a socket can die together (one shard down);
+    the socket is closed once, with the code the client reconnects on."""
+    await connection_manager.close_for_lost_stream(mock_websocket, cause="redis_error")
+    await connection_manager.close_for_lost_stream(mock_websocket, cause="revoked")
 
-    # First pubsub: listen() raises MovedError on iteration (slot migrated).
-    pubsub_a = MagicMock()
-    pubsub_a.execute_command = AsyncMock()
-    pubsub_a.channels = {}
-    pubsub_a.aclose = AsyncMock()
-
-    async def _listen_a():
-        raise MovedError("12182 127.0.0.1:7001")
-        yield  # pragma: no cover — unreachable
-
-    pubsub_a.listen = _listen_a
-
-    # Second pubsub: listen() yields a real message after reconnect.
-    pubsub_b = MagicMock()
-    pubsub_b.execute_command = AsyncMock()
-    pubsub_b.channels = {}
-    pubsub_b.aclose = AsyncMock()
-
-    async def _listen_b():
-        yield {"type": "smessage", "data": b'{"payload":"after-moved"}'}
-
-    pubsub_b.listen = _listen_b
-
-    client_a = MagicMock()
-    client_a.pubsub = MagicMock(return_value=pubsub_a)
-    client_a.aclose = AsyncMock()
-
-    client_b = MagicMock()
-    client_b.pubsub = MagicMock(return_value=pubsub_b)
-    client_b.aclose = AsyncMock()
-
-    received: list = []
-
-    async def on_message(data) -> None:
-        received.append(data)
-
-    sub = _Subscription("{u/g}/exec/x")
-
-    snapshot: dict = {}
-
-    async def on_message_snap(data) -> None:
-        snapshot["client"] = sub._client
-        snapshot["pubsub"] = sub._pubsub
-        received.append(data)
-
-    connect_mock = AsyncMock(side_effect=[client_a, client_b])
-    with (
-        patch(
-            "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
-            connect_mock,
-        ),
-        patch("backend.api.conn_manager._PUMP_RECONNECT_BACKOFF_INITIAL_S", 0.001),
-        patch("backend.api.conn_manager._PUMP_RECONNECT_BACKOFF_MAX_S", 0.001),
-    ):
-        await sub.start(on_message_snap)
-        for _ in range(50):
-            await asyncio.sleep(0.01)
-            if received:
-                break
-        await sub.stop()
-
-    # (a) reconnect happened — connect_sharded_pubsub_async called twice
-    assert connect_mock.await_count == 2
-    # (b) post-reconnect message reached the handler
-    assert received == [b'{"payload":"after-moved"}']
-    # (c) both pubsubs got SSUBSCRIBE — the second one re-resolved the shard
-    pubsub_a.execute_command.assert_any_await("SSUBSCRIBE", "{u/g}/exec/x")
-    pubsub_b.execute_command.assert_any_await("SSUBSCRIBE", "{u/g}/exec/x")
-    # subscription's _client / _pubsub pointed to the new connection at delivery time
-    assert snapshot["client"] is client_b
-    assert snapshot["pubsub"] is pubsub_b
-    # The pump must have closed the stale pubsub before reopening.
-    pubsub_a.aclose.assert_awaited()
+    mock_websocket.close.assert_awaited_once_with(
+        code=WS_CLOSE_EVENT_STREAM_LOST, reason=WS_CLOSE_EVENT_STREAM_LOST_REASON
+    )
 
 
 @pytest.mark.asyncio
-async def test_subscription_pump_handles_server_sunsubscribe() -> None:
-    """A server-pushed sunsubscribe (slot ownership change) must trigger reopen."""
-    # First pubsub: listen() yields one server-side sunsubscribe, then closes.
-    pubsub_a = MagicMock()
-    pubsub_a.execute_command = AsyncMock()
-    pubsub_a.channels = {}
-    pubsub_a.aclose = AsyncMock()
+async def test_exec_subscription_loss_closes_its_socket(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    captured: dict = {}
 
-    async def _listen_a():
-        yield {"type": "sunsubscribe", "channel": b"{u/g}/exec/x", "data": 0}
+    def _factory(full_channel: str) -> MagicMock:
+        sub = MagicMock()
 
-    pubsub_a.listen = _listen_a
+        async def _start(on_message, on_lost) -> None:
+            captured["on_lost"] = on_lost
 
-    # Second pubsub: listen() yields a real smessage after reconnect.
-    pubsub_b = MagicMock()
-    pubsub_b.execute_command = AsyncMock()
-    pubsub_b.channels = {}
-    pubsub_b.aclose = AsyncMock()
+        sub.start = _start
+        sub.stop = AsyncMock()
+        return sub
 
-    async def _listen_b():
-        yield {"type": "smessage", "data": b'{"payload":"after-sunsub"}'}
+    with patch("backend.api.conn_manager._Subscription", side_effect=_factory):
+        await connection_manager.subscribe_graph_execs(
+            user_id="user-1", graph_id="graph-1", websocket=mock_websocket
+        )
 
-    pubsub_b.listen = _listen_b
-
-    client_a = MagicMock()
-    client_a.pubsub = MagicMock(return_value=pubsub_a)
-    client_a.aclose = AsyncMock()
-    client_b = MagicMock()
-    client_b.pubsub = MagicMock(return_value=pubsub_b)
-    client_b.aclose = AsyncMock()
-
-    received: list = []
-
-    async def on_message(data) -> None:
-        received.append(data)
-
-    sub = _Subscription("{u/g}/exec/x")
-
-    snapshot: dict = {}
-
-    async def on_message_snap(data) -> None:
-        snapshot["client"] = sub._client
-        snapshot["pubsub"] = sub._pubsub
-        received.append(data)
-
-    connect_mock = AsyncMock(side_effect=[client_a, client_b])
-    with (
-        patch(
-            "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
-            connect_mock,
-        ),
-        patch("backend.api.conn_manager._PUMP_RECONNECT_BACKOFF_INITIAL_S", 0.001),
-        patch("backend.api.conn_manager._PUMP_RECONNECT_BACKOFF_MAX_S", 0.001),
-    ):
-        await sub.start(on_message_snap)
-        for _ in range(50):
-            await asyncio.sleep(0.01)
-            if received:
-                break
-        await sub.stop()
-
-    # (a) reconnect happened
-    assert connect_mock.await_count == 2
-    # (b) post-reconnect smessage reached the handler
-    assert received == [b'{"payload":"after-sunsub"}']
-    # (c) the new connection re-issued SSUBSCRIBE for the channel
-    pubsub_b.execute_command.assert_any_await("SSUBSCRIBE", "{u/g}/exec/x")
-    # subscription's _client / _pubsub pointed to the new connection at delivery time
-    assert snapshot["client"] is client_b
-    assert snapshot["pubsub"] is pubsub_b
-    # The stale pubsub got closed before reopen.
-    pubsub_a.aclose.assert_awaited()
+    await captured["on_lost"]("redis_error")
+    mock_websocket.close.assert_awaited_once_with(
+        code=WS_CLOSE_EVENT_STREAM_LOST, reason=WS_CLOSE_EVENT_STREAM_LOST_REASON
+    )
 
 
 @pytest.mark.asyncio
-async def test_subscription_pump_gives_up_after_reconnect_deadline() -> None:
-    """If reconnects keep failing past the deadline, the pump must exit (not loop forever)."""
-    # Every listen() raises; every reopen also raises ConnectionError.
-    pubsub = MagicMock()
-    pubsub.execute_command = AsyncMock()
-    pubsub.channels = {}
-    pubsub.aclose = AsyncMock()
+async def test_failed_exec_subscribe_leaves_no_bookkeeping(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    """A subscribe whose stream never opened must not look subscribed."""
+    fake_sub = MagicMock()
+    fake_sub.start = AsyncMock(side_effect=asyncio.TimeoutError())
 
-    async def _listen():
-        raise ConnectionError("boom")
-        yield  # pragma: no cover
+    with patch("backend.api.conn_manager._Subscription", return_value=fake_sub):
+        with pytest.raises(asyncio.TimeoutError):
+            await connection_manager.subscribe_graph_execs(
+                user_id="user-1", graph_id="graph-1", websocket=mock_websocket
+            )
 
-    pubsub.listen = _listen
-
-    client = MagicMock()
-    client.pubsub = MagicMock(return_value=pubsub)
-    client.aclose = AsyncMock()
-
-    sub = _Subscription("{u/g}/exec/x")
-    with (
-        patch(
-            "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
-            AsyncMock(return_value=client),
-        ),
-        # Force the deadline to trip on the very first retry.
-        patch("backend.api.conn_manager._PUMP_RECONNECT_DEADLINE_S", 0.0),
-        patch("backend.api.conn_manager._PUMP_RECONNECT_BACKOFF_INITIAL_S", 0.0),
-    ):
-        await sub.start(AsyncMock())
-        if sub._task is not None:
-            await asyncio.wait_for(sub._task, timeout=2.0)
-        await sub.stop()
+    assert connection_manager.subscriptions == {}
+    assert connection_manager._ws_subs.get(mock_websocket, {}) == {}
 
 
 # ---------- ConnectionManager subscribe reuse / missing-meta handling ----------
@@ -928,7 +768,8 @@ async def test_start_notification_subscription_stores_sub(
 async def test_start_notification_subscription_swallows_start_errors(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    """A failed SSUBSCRIBE must not crash connect — the WS stays usable."""
+    """A failed SSUBSCRIBE must not crash connect; the socket is closed so the
+    client reconnects instead of waiting on notifications that never come."""
     fake_sub = MagicMock()
     fake_sub.start = AsyncMock(side_effect=RuntimeError("SSUBSCRIBE failed"))
     with patch("backend.api.conn_manager._Subscription", return_value=fake_sub):
@@ -937,6 +778,10 @@ async def test_start_notification_subscription_swallows_start_errors(
         )
     # On failure the sub must NOT be stored (bookkeeping clean).
     assert mock_websocket not in connection_manager._ws_notifications
+    # ...and the socket is closed rather than left open with no notifications.
+    mock_websocket.close.assert_awaited_once_with(
+        code=WS_CLOSE_EVENT_STREAM_LOST, reason=WS_CLOSE_EVENT_STREAM_LOST_REASON
+    )
 
 
 @pytest.mark.asyncio

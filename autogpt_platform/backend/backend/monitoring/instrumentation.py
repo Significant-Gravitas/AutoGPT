@@ -58,6 +58,15 @@ WEBSOCKET_CONNECTIONS = Gauge(
     # Removed user_id label - track total only to prevent cardinality explosion
 )
 
+# A socket whose Redis event stream broke is closed so the client reconnects
+# and resyncs; a rising rate here means users are being bounced by Redis
+# trouble rather than their own networks.
+WEBSOCKET_EVENT_STREAMS_LOST = Counter(
+    "autogpt_websocket_event_streams_lost_total",
+    "WebSocket connections closed because their Redis event stream was lost",
+    labelnames=["cause"],
+)
+
 SCHEDULER_JOBS = Gauge(
     "autogpt_scheduler_jobs",
     "Current number of scheduled jobs",
@@ -287,6 +296,10 @@ def update_websocket_connections(user_id: str, delta: int):
         WEBSOCKET_CONNECTIONS.inc(delta)
     else:
         WEBSOCKET_CONNECTIONS.dec(abs(delta))
+
+
+def record_websocket_event_stream_lost(cause: str):
+    WEBSOCKET_EVENT_STREAMS_LOST.labels(cause=cause).inc()
 
 
 def record_stripe_request(resource: str, method: str, outcome: str, duration: float):

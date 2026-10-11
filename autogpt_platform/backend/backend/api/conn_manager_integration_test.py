@@ -13,6 +13,8 @@ from fastapi import WebSocket
 
 import backend.data.redis_client as redis_client
 from backend.api.conn_manager import (
+    WS_CLOSE_EVENT_STREAM_LOST,
+    WS_CLOSE_EVENT_STREAM_LOST_REASON,
     ConnectionManager,
     _graph_execs_channel_key,
     event_bus_channel,
@@ -377,3 +379,171 @@ async def test_slow_consumer_receives_all_events_without_loss(monkeypatch) -> No
     finally:
         await cm.disconnect_socket(ws, user_id=user_id)
         redis_client.disconnect()
+
+
+class _ShardProxy:
+    """TCP proxy in front of one real shard, so a test can cut the network
+    between the WS server and Redis without touching Redis itself."""
+
+    def __init__(self, upstream: tuple[str, int]) -> None:
+        self.upstream = upstream
+        self._server: asyncio.Server | None = None
+        self._writers: set[asyncio.StreamWriter] = set()
+        self.address: tuple[str, int] = ("127.0.0.1", 0)
+
+    async def start(self) -> None:
+        self._server = await asyncio.start_server(
+            self._handle, "127.0.0.1", self.address[1]
+        )
+        self.address = self._server.sockets[0].getsockname()[:2]
+
+    async def _handle(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        up_reader, up_writer = await asyncio.open_connection(*self.upstream)
+        self._writers.update((writer, up_writer))
+
+        async def pipe(src: asyncio.StreamReader, dst: asyncio.StreamWriter) -> None:
+            try:
+                while data := await src.read(65536):
+                    dst.write(data)
+                    await dst.drain()
+            except (ConnectionError, OSError):
+                pass
+            finally:
+                dst.close()
+
+        await asyncio.gather(pipe(reader, up_writer), pipe(up_reader, writer))
+
+    def drop_connections(self) -> None:
+        """Reset every proxied connection; new ones are still accepted."""
+        for w in self._writers:
+            w.transport.abort()
+        self._writers.clear()
+
+    async def stop(self) -> None:
+        """Refuse new connections and reset the open ones: the shard is gone."""
+        if self._server is not None:
+            self._server.close()
+            self.drop_connections()
+            await self._server.wait_closed()
+            self._server = None
+        self.drop_connections()
+
+
+@pytest.fixture
+async def shard_proxies(monkeypatch):
+    """Route every shard-pinned pubsub connection through a ``_ShardProxy``."""
+    redis_client.get_redis.cache_clear()
+    real_resolve = redis_client.resolve_shard_for_channel
+    proxies: dict[tuple[str, int], _ShardProxy] = {}
+
+    def _resolve(channel: str) -> tuple[str, int]:
+        upstream = real_resolve(channel)
+        return proxies[upstream].address
+
+    async def proxy_for(channel: str) -> _ShardProxy:
+        upstream = real_resolve(channel)
+        if upstream not in proxies:
+            proxies[upstream] = _ShardProxy(upstream)
+            await proxies[upstream].start()
+        return proxies[upstream]
+
+    monkeypatch.setattr(redis_client, "resolve_shard_for_channel", _resolve)
+    yield proxy_for
+    for proxy in proxies.values():
+        await proxy.stop()
+    redis_client.disconnect()
+
+
+async def _subscribe_through_proxy(
+    monkeypatch, shard_proxies, user_id: str
+) -> tuple[ConnectionManager, AsyncMock, list[str], str, str, str, _ShardProxy]:
+    graph_id = f"graph-{uuid4().hex[:8]}"
+    exec_id = f"exec-{uuid4().hex[:8]}"
+
+    async def _fake_meta(_uid, gex_id):
+        return _meta(user_id, graph_id, gex_id)
+
+    monkeypatch.setattr("backend.api.conn_manager.get_graph_execution_meta", _fake_meta)
+    chan = event_bus_channel(exec_channel(user_id, graph_id, exec_id))
+    proxy = await shard_proxies(chan)
+
+    cm = ConnectionManager()
+    ws: AsyncMock = AsyncMock(spec=WebSocket)
+    sent: list[str] = []
+    ws.send_text = AsyncMock(side_effect=lambda m: sent.append(m))
+    await cm.subscribe_graph_exec(user_id=user_id, graph_exec_id=exec_id, websocket=ws)
+    return cm, ws, sent, chan, graph_id, exec_id, proxy
+
+
+@pytest.mark.asyncio
+async def test_subscription_survives_a_dropped_redis_connection(
+    monkeypatch, shard_proxies
+) -> None:
+    """When the connection to the shard drops and comes straight back,
+    redis-py reconnects on its own; the subscription must come back as an
+    SSUBSCRIBE so later SPUBLISHes still reach the socket."""
+    user_id = "user-conn-int-5"
+    cm, ws, sent, chan, graph_id, exec_id, proxy = await _subscribe_through_proxy(
+        monkeypatch, shard_proxies, user_id
+    )
+    cluster = redis_client.get_redis()
+
+    async def publish_once_subscribed(marker: str) -> None:
+        """SPUBLISH returns its receiver count: retry until the shard has our
+        SSUBSCRIBE (it travels through the proxy, the publish does not)."""
+        payload = _node_event_payload(
+            user_id=user_id, graph_id=graph_id, graph_exec_id=exec_id, marker=marker
+        ).decode()
+        for _ in range(100):
+            if cluster.spublish(chan, payload):
+                return
+            await asyncio.sleep(0.1)
+        raise AssertionError(f"no SSUBSCRIBE on {chan} to deliver {marker!r} to")
+
+    try:
+        await publish_once_subscribed("before")
+        assert await _wait_until(lambda: len(sent) == 1, timeout=5.0)
+
+        proxy.drop_connections()
+
+        # redis-py reconnects by itself; it must come back as a shard
+        # subscriber (a plain SUBSCRIBE never receives SPUBLISH). Publishes
+        # racing the reconnect are lost, so keep sending until one lands.
+        async def delivered_after_drop() -> bool:
+            for _ in range(50):
+                await publish_once_subscribed("after")
+                if await _wait_until(lambda: len(sent) > 1, timeout=0.2):
+                    return True
+            return False
+
+        assert await delivered_after_drop(), "no event delivered after reconnect"
+        assert json.loads(sent[-1])["data"]["input_data"]["in"] == "after"
+        ws.close.assert_not_awaited()
+    finally:
+        await cm.disconnect_socket(ws, user_id=user_id)
+
+
+@pytest.mark.asyncio
+async def test_socket_is_closed_when_its_shard_stays_unreachable(
+    monkeypatch, shard_proxies
+) -> None:
+    """When the shard stays unreachable, the server must close the socket so
+    the client reconnects and resubscribes, instead of answering heartbeats on
+    a socket that will never receive another event."""
+    user_id = "user-conn-int-6"
+    cm, ws, sent, chan, graph_id, exec_id, proxy = await _subscribe_through_proxy(
+        monkeypatch, shard_proxies, user_id
+    )
+    try:
+        await proxy.stop()
+
+        assert await _wait_until(
+            lambda: ws.close.await_count > 0, timeout=30.0, interval=0.1
+        ), "socket was left open with a dead event stream"
+        ws.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason=WS_CLOSE_EVENT_STREAM_LOST_REASON
+        )
+    finally:
+        await cm.disconnect_socket(ws, user_id=user_id)
