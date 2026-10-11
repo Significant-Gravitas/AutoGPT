@@ -16,14 +16,17 @@ on the way in and :func:`with_prompt_origin` folds it back for the insert.
 Being excluded, the field is also dropped by the Redis session cache and by
 DatabaseManager RPC responses, so today it is readable only from the column
 itself or from ``ChatMessage.from_db`` in a process with a direct Prisma
-connection.
+connection. :func:`is_redelivered_prompt` is written for both cases.
 """
 
 import logging
 from datetime import datetime
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ValidationError
+
+if TYPE_CHECKING:
+    from backend.copilot.model import ChatMessage
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +44,46 @@ class PromptOrigin(BaseModel):
     routine_id: str | None = None
     fired_at: datetime | None = None
     """When the scheduler dispatched the turn (UTC)."""
+
+    def fire_key(self) -> tuple[str | None, datetime] | None:
+        """What tells this fire apart from the schedule's other fires.
+
+        ``None`` when the stamp has no fire time (an entry queued before the
+        field existed), since such fires cannot be told apart.
+        """
+        if self.fired_at is None:
+            return None
+        return self.schedule_id, self.fired_at
+
+
+def is_redelivered_prompt(
+    messages: list["ChatMessage"], role: str, content: str, origin: PromptOrigin
+) -> bool:
+    """Whether the prompt row of the fire stamped *origin* is already written.
+
+    A schedule repeats its prompt on every fire, and in an existing session
+    that prompt is assistant-role like the replies around it, so the trailing
+    same-role check unstamped messages get would swallow a later fire whenever
+    an earlier fire's prompt sits in that run. A stamped prompt is a duplicate
+    only when a loaded row carries the same fire, or else when the last row
+    has the same role and content: that is what a redelivery of the fire
+    looks like where the rows' stamps cannot be read, which in the executor
+    is every row it did not append itself. A last row whose own stamp names
+    another fire is that fire's prompt, not this one's.
+    """
+    key = origin.fire_key()
+    if key is not None and any(
+        m.prompt_origin is not None and m.prompt_origin.fire_key() == key
+        for m in messages
+    ):
+        return True
+    if not messages:
+        return False
+    last = messages[-1]
+    if last.role != role or last.content != content:
+        return False
+    last_key = last.prompt_origin.fire_key() if last.prompt_origin else None
+    return key is None or last_key is None
 
 
 def with_prompt_origin(

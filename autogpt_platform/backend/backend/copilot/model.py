@@ -36,7 +36,12 @@ from backend.util.exceptions import (
 )
 
 from .config import ChatConfig, CopilotLlmAuthProvider
-from .prompt_origin import PromptOrigin, split_prompt_origin, with_prompt_origin
+from .prompt_origin import (
+    PromptOrigin,
+    is_redelivered_prompt,
+    split_prompt_origin,
+    with_prompt_origin,
+)
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -370,16 +375,25 @@ def maybe_append_user_message(
 
     The route handler already persists the user message before enqueueing,
     so we check trailing same-role messages to avoid re-appending when the
-    session cache is slightly stale.
+    session cache is slightly stale. A scheduled prompt, whose *metadata*
+    carries its origin, is checked by its fire instead (see
+    ``is_redelivered_prompt``), so every fire of a repeating prompt gets
+    its own row.
 
     Returns True if the message was appended, False if skipped.
     """
     if not message:
         return False
     role = "user" if is_user_message else "assistant"
-    if is_message_duplicate(session.messages, role, message):
-        return False
     row_metadata, prompt_origin = split_prompt_origin(metadata or None)
+    if prompt_origin is None:
+        duplicate = is_message_duplicate(session.messages, role, message)
+    else:
+        duplicate = is_redelivered_prompt(
+            session.messages, role, message, prompt_origin
+        )
+    if duplicate:
+        return False
     session.messages.append(
         ChatMessage(
             role=role,

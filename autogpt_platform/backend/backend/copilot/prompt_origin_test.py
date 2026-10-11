@@ -156,6 +156,110 @@ def test_appended_row_without_stamp_is_unchanged():
     assert row.metadata == {"from_session_id": "s-2"}
 
 
+# ---- repeat fires get their own row; a redelivered fire does not ------------
+
+NEXT_FIRE = ORIGIN.model_copy(
+    update={"fired_at": datetime(2026, 10, 6, 9, 0, tzinfo=UTC)}
+)
+
+
+def _thread_after_a_fire(previous_fire: PromptOrigin | None) -> ChatSession:
+    """A chat a routine fires into, after one fire's prompt and its reply.
+
+    The previous prompt's stamp is ``None`` where it cannot be read, as on
+    every row the executor loads from the Redis cache or over RPC.
+    """
+    session = _session()
+    session.messages = [
+        ChatMessage(role="user", content="Watch my inbox every morning."),
+        ChatMessage(role="assistant", content="Will do."),
+        ChatMessage(
+            role="assistant", content="Check the inbox.", prompt_origin=previous_fire
+        ),
+        ChatMessage(role="assistant", content="Nothing new."),
+    ]
+    return session
+
+
+def _fire(session: ChatSession, origin: PromptOrigin) -> bool:
+    return maybe_append_user_message(
+        session, "Check the inbox.", False, with_prompt_origin(None, origin)
+    )
+
+
+@pytest.mark.parametrize(
+    "previous_fire", [None, ORIGIN], ids=["stamp-not-read", "stamp-read"]
+)
+def test_a_repeat_fire_appends_its_own_stamped_row(previous_fire):
+    session = _thread_after_a_fire(previous_fire)
+
+    assert _fire(session, NEXT_FIRE) is True
+
+    assert len(session.messages) == 5
+    row = session.messages[-1]
+    assert (row.role, row.content) == ("assistant", "Check the inbox.")
+    assert row.prompt_origin == NEXT_FIRE
+    assert row.metadata is None
+
+
+def test_unstamped_messages_keep_the_trailing_same_role_check():
+    session = _thread_after_a_fire(None)
+
+    assert maybe_append_user_message(session, "Check the inbox.", False) is False
+    assert len(session.messages) == 4
+
+
+@pytest.mark.parametrize(
+    "stored_stamp", [None, NEXT_FIRE], ids=["stamp-not-read", "stamp-read"]
+)
+def test_a_redelivered_fire_does_not_append_a_second_row(stored_stamp):
+    session = _thread_after_a_fire(ORIGIN)
+    session.messages.append(
+        ChatMessage(
+            role="assistant", content="Check the inbox.", prompt_origin=stored_stamp
+        )
+    )
+
+    assert _fire(session, NEXT_FIRE) is False
+    assert len(session.messages) == 5
+
+
+def test_a_readable_stamp_finds_a_redelivered_fire_behind_its_reply():
+    session = _thread_after_a_fire(ORIGIN)
+    session.messages += [
+        ChatMessage(
+            role="assistant", content="Check the inbox.", prompt_origin=NEXT_FIRE
+        ),
+        ChatMessage(role="reasoning", content="Look at the unread folder."),
+        ChatMessage(
+            role="assistant",
+            content="",
+            tool_calls=[{"id": "call-1", "type": "function", "function": {}}],
+        ),
+        ChatMessage(role="tool", content="0 unread", tool_call_id="call-1"),
+        ChatMessage(role="assistant", content="Still nothing new."),
+    ]
+
+    assert _fire(session, NEXT_FIRE) is False
+    assert len(session.messages) == 9
+
+
+def test_a_last_row_stamped_with_another_fire_is_not_a_redelivery():
+    session = _thread_after_a_fire(ORIGIN)
+    session.messages.pop()
+
+    assert _fire(session, NEXT_FIRE) is True
+    assert session.messages[-1].prompt_origin == NEXT_FIRE
+
+
+def test_stamps_without_a_fire_time_are_not_matched_to_each_other():
+    queued_before_fired_at = ORIGIN.model_copy(update={"fired_at": None})
+    session = _thread_after_a_fire(queued_before_fired_at)
+
+    assert _fire(session, queued_before_fired_at) is True
+    assert len(session.messages) == 5
+
+
 # ---- persistence: the insert folds the stamp back into the metadata column ---
 
 
