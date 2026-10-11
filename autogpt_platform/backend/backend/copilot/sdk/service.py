@@ -603,7 +603,7 @@ async def _consume_sdk_until_done(
             # a user-friendly error text and use the retryable error
             # prefix so the frontend shows a retry button. The error
             # field carries the CLI's category; the content its text.
-            if is_transient_assistant_error(error_text, error_preview):
+            if is_transient_assistant_error(category=error_text, content=error_preview):
                 logger.warning(
                     "%s Transient Anthropic API error detected, "
                     "suppressing raw error text",
