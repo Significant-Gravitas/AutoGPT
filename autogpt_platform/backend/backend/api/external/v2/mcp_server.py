@@ -45,6 +45,7 @@ from backend.api.external.v2.mcp_calls import (
 )
 from backend.api.external.v2.mcp_tenancy import check_ids_in_tenant
 from backend.api.external.v2.tenancy import resolve_credential_tenancy
+from backend.copilot.context import set_turn_unattended
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.tool_adapter import _execute_tool_sync
 from backend.copilot.tools import TOOL_REGISTRY
@@ -446,6 +447,9 @@ def _create_tool_handler(
         session.external_permissions = frozenset(
             APIKeyPermission(scope) for scope in access_token.scopes
         )
+        # Tools read the turn, not the origin: without this a missing credential
+        # comes back as a setup card, and an ambiguous one as a question.
+        set_turn_unattended(session, scheduled=False)
 
         result = await _execute_tool_sync(tool, user_id, session, kwargs)
 

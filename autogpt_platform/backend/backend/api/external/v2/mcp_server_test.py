@@ -1,5 +1,6 @@
 """Keep the MCP tool surface deliberate: every Copilot tool is classified."""
 
+import json
 from types import SimpleNamespace
 from typing import Any
 from unittest import mock
@@ -34,6 +35,7 @@ from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import CARD_HINTS
 from backend.copilot.tools.models import ErrorResponse
+from backend.util.exceptions import GraphValidationError
 
 
 def _token(*scopes: APIKeyPermission) -> TenantedAccessToken:
@@ -462,6 +464,51 @@ async def test_a_tool_called_over_mcp_runs_without_waiting_for_an_approval(
     no_tenancy_lookups.assert_awaited_once_with(
         "delete_folder", {"folder_id": "folder-1"}, "user-1", "org-1"
     )
+
+
+async def test_a_missing_credential_comes_back_as_an_error_not_a_setup_card(
+    mocker: pytest_mock.MockerFixture, no_tenancy_lookups: mock.AsyncMock
+):
+    """Nobody can answer a setup card an MCP call puts to the user, so a run
+    whose credentials have gone must fail naming what to connect."""
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=_token(*_tool_scopes("run_agent")),
+    )
+    mocker.patch.object(
+        TOOL_LIMITERS["run_agent"], "check", new_callable=mock.AsyncMock
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_calls.get_credit_model",
+        new_callable=mock.AsyncMock,
+        return_value=mock.Mock(get_credits=mock.AsyncMock(return_value=100)),
+    )
+    mocker.patch(
+        "backend.copilot.tools.run_agent.build_missing_credentials_from_graph",
+        return_value={"credentials": {"provider": "firecrawl"}},
+    )
+    graph = mock.MagicMock(id="graph-1", version=1, input_schema={})
+    graph.name = "Daily Scraper"
+
+    async def credentials_gone(self, user_id, session, **kwargs):
+        return await self._handle_graph_validation_race(
+            error=GraphValidationError(
+                message="Graph is invalid",
+                node_errors={"node": {"credentials": "These credentials are required"}},
+            ),
+            graph=graph,
+            user_id=user_id,
+            session_id=session.session_id,
+            action_verb="running",
+        )
+
+    mocker.patch.object(type(TOOL_REGISTRY["run_agent"]), "_execute", credentials_gone)
+
+    result = await _call("run_agent", {"library_agent_id": "agent-1"})
+
+    reply = json.loads(result.content[0].text)
+    assert reply["type"] == "error"
+    assert "firecrawl" in reply["message"]
 
 
 async def test_a_tool_is_held_to_the_cap_of_the_rest_route_it_mirrors(
