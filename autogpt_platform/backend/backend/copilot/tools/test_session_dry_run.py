@@ -78,10 +78,6 @@ class TestRunBlockToolSessionDryRun:
                 "backend.copilot.tools.run_block.prepare_block_for_execution"
             ) as mock_prep,
             patch("backend.copilot.tools.run_block.execute_block") as mock_exec,
-            patch(
-                "backend.copilot.tools.run_block.get_current_permissions",
-                return_value=None,
-            ),
         ):
             # Set up prepare_block_for_execution to return a mock prep
             mock_prep_result = MagicMock()
@@ -123,10 +119,6 @@ class TestRunBlockToolSessionDryRun:
                 "backend.copilot.tools.run_block.prepare_block_for_execution"
             ) as mock_prep,
             patch("backend.copilot.tools.run_block.execute_block") as mock_exec,
-            patch(
-                "backend.copilot.tools.run_block.get_current_permissions",
-                return_value=None,
-            ),
             patch("backend.copilot.tools.run_block.check_hitl_review") as mock_hitl,
         ):
             mock_prep_result = MagicMock()
