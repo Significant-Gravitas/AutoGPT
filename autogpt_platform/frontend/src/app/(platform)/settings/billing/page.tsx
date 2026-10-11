@@ -16,6 +16,7 @@ import {
   getGetSubscriptionStatusQueryKey,
   usePatchV1FulfillCheckoutSession,
 } from "@/app/api/__generated__/endpoints/credits/credits";
+import { getGetTrialsGetTrialStatusQueryKey } from "@/app/api/__generated__/endpoints/trials/trials";
 
 import {
   trackCheckoutAbandoned,
@@ -53,6 +54,10 @@ export default function SettingsBillingPage() {
   const handledSubscriptionRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<BillingTab>(() =>
     resolveInitialTab(searchParams),
+  );
+  // Read once: the redirect handler below drops the query string.
+  const [isPlanCheckoutReturn] = useState(
+    () => subscriptionStatus === "success",
   );
 
   function handleTabChange(value: string) {
@@ -110,6 +115,9 @@ export default function SettingsBillingPage() {
         queryClient.invalidateQueries({
           queryKey: getGetSubscriptionStatusQueryKey(),
         });
+        queryClient.invalidateQueries({
+          queryKey: getGetTrialsGetTrialStatusQueryKey(),
+        });
       } else if (subscriptionStatus === "cancelled") {
         trackCheckoutAbandoned({
           checkout_kind: "subscription",
@@ -149,7 +157,7 @@ export default function SettingsBillingPage() {
         </TabsLineList>
 
         <TabsLineContent value="subscription">
-          <SubscriptionTab />
+          <SubscriptionTab isPlanCheckoutReturn={isPlanCheckoutReturn} />
         </TabsLineContent>
 
         <TabsLineContent value="automation-credits">
