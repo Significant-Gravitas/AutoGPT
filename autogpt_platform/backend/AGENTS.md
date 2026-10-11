@@ -216,7 +216,7 @@ yield "image_url", result_url
 
 ## Workspace & Media Files
 
-**Read [Workspace & Media Architecture](../../docs/platform/workspace-media-architecture.md) when:**
+**Read [Workspace & Media Architecture](../../docs/engineering/workspace-media-architecture.md) when:**
 - Working on CoPilot file upload/download features
 - Building blocks that handle `MediaFileType` inputs/outputs
 - Modifying `WorkspaceManager` or `store_media_file()`

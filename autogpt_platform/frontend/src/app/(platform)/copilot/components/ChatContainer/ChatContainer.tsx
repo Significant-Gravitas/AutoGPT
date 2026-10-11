@@ -5,6 +5,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
@@ -22,6 +23,7 @@ import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
+import { useShareChatExpert } from "../ContextPanel/useShareChatExpert";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SessionNotFound } from "./components/SessionNotFound";
 import { SharedChatNotice } from "./components/SharedChatNotice";
@@ -42,6 +44,7 @@ import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
 import type { SentFrom } from "../../sentFrom";
 import type { AutopilotMode } from "../../autopilotModeStore";
 import { AutopilotModeSelector } from "../ChatInput/components/AutopilotModeSelector/AutopilotModeSelector";
+import { describeSendFailure } from "../ChatInput/helpers";
 import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
 import {
   getKickoffAttemptToken,
@@ -196,6 +199,11 @@ export const ChatContainer = ({
     ? expertIdentity
     : null;
   const isExpertArchived = archivedExpertIdentity !== null;
+  const chatExpert =
+    !isResolvingExpertIdentity && expertIdentity && !expertIdentity.isArchived
+      ? { id: expertIdentity.id, name: expertIdentity.name }
+      : null;
+  useShareChatExpert(chatExpert);
   const isSendLocked = isExpertArchived || !!isResolvingExpertIdentity;
   // NO_OP is module-level so a locked composer keeps a stable function identity
   // across renders — otherwise every consumer of `guardedOnSend` (the actions
@@ -270,42 +278,58 @@ export const ChatContainer = ({
   }
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
-  const handleRetry = useCallback(() => {
-    const lastRow = [...messages].reverse().find((m) => m.role === "user");
-    // A turn an answered card started failed after the call ran: resuming it
-    // must not re-send the request that led to the call.
-    if (lastRow && isHeldCallRow(lastRow)) {
-      guardedOnSend(CONTINUE_AFTER_HELD_CALL);
-      return;
-    }
-    const lastUserMsg = lastRow;
-    const lastText = lastUserMsg?.parts
-      .filter(
-        (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
-      )
-      .map((p) => p.text)
-      .join("");
-    if (lastText) {
-      const kickoffExpertId = lastUserMsg
-        ? getKickoffExpertId(lastUserMsg)
-        : null;
-      const kickoffAttemptToken = lastUserMsg
-        ? getKickoffAttemptToken(lastUserMsg)
-        : null;
-      guardedOnSend(
-        kickoffExpertId ? stripLegacyKickoffMarker(lastText) : lastText,
-        undefined,
-        undefined,
-        kickoffExpertId
-          ? {
-              kind: "expert_kickoff",
-              expertId: kickoffExpertId,
-              ...(kickoffAttemptToken
-                ? { attemptToken: kickoffAttemptToken }
-                : {}),
-            }
-          : undefined,
-      );
+  const isRetryingRef = useRef(false);
+  const handleRetry = useCallback(async () => {
+    if (isRetryingRef.current) return;
+    isRetryingRef.current = true;
+    try {
+      const lastRow = [...messages].reverse().find((m) => m.role === "user");
+      // A turn an answered card started failed after the call ran: resuming it
+      // must not re-send the request that led to the call.
+      if (lastRow && isHeldCallRow(lastRow)) {
+        await guardedOnSend(CONTINUE_AFTER_HELD_CALL);
+        return;
+      }
+      const lastUserMsg = lastRow;
+      const lastText = lastUserMsg?.parts
+        .filter(
+          (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
+        )
+        .map((p) => p.text)
+        .join("");
+      if (lastText) {
+        const kickoffExpertId = lastUserMsg
+          ? getKickoffExpertId(lastUserMsg)
+          : null;
+        const kickoffAttemptToken = lastUserMsg
+          ? getKickoffAttemptToken(lastUserMsg)
+          : null;
+        await guardedOnSend(
+          kickoffExpertId ? stripLegacyKickoffMarker(lastText) : lastText,
+          undefined,
+          undefined,
+          kickoffExpertId
+            ? {
+                kind: "expert_kickoff",
+                expertId: kickoffExpertId,
+                ...(kickoffAttemptToken
+                  ? { attemptToken: kickoffAttemptToken }
+                  : {}),
+              }
+            : undefined,
+        );
+      }
+    } catch (error) {
+      toast({
+        title: "Couldn't retry message",
+        description: describeSendFailure(
+          error,
+          "your previous message is still in the chat",
+        ),
+        variant: "destructive",
+      });
+    } finally {
+      isRetryingRef.current = false;
     }
   }, [guardedOnSend, messages]);
 
@@ -327,11 +351,7 @@ export const ChatContainer = ({
                 <div className="absolute right-0 top-0 z-30">
                   <ContextPanelToggle
                     sessionId={sessionId}
-                    expert={
-                      expertIdentity && !expertIdentity.isArchived
-                        ? { id: expertIdentity.id, name: expertIdentity.name }
-                        : null
-                    }
+                    expert={chatExpert}
                   />
                 </div>
                 <NewChatOnboarding

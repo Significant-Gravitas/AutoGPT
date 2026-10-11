@@ -65,6 +65,7 @@ from .e2b_file_tools import (
     WRITE_TOOL_DESCRIPTION,
     WRITE_TOOL_NAME,
     WRITE_TOOL_SCHEMA,
+    DeclaredResult,
     bridge_and_annotate,
     get_edit_tool_handler,
     get_read_tool_handler,
@@ -473,7 +474,7 @@ def _build_input_schema(base_tool: BaseTool) -> dict[str, Any]:
     """
     return {
         "type": "object",
-        "properties": base_tool.parameters.get("properties", {}),
+        "properties": base_tool.model_parameters.get("properties", {}),
     }
 
 
@@ -865,7 +866,15 @@ def _make_truncating_wrapper(
         # Registry tools were judged inside ``BaseTool.execute`` on this cap.
         if session is not None and name not in TOOL_REGISTRY:
             truncated = await screen_non_registry_read(
-                name, original_args, user_id, session, truncated
+                name,
+                original_args,
+                user_id,
+                session,
+                truncated,
+                outside=(
+                    result.outside if isinstance(result, DeclaredResult) else None
+                ),
+                full=result,
             )
 
         if truncated.get("isError"):

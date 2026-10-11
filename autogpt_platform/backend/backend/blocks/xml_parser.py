@@ -10,6 +10,10 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 
+MAX_XML_SIZE = 10 * 1024 * 1024
+MAX_XML_TAG_LENGTH = 4_096
+MAX_XML_DEPTH = 256
+
 
 class XMLParserBlock(Block):
     class Input(BlockSchemaInput):
@@ -64,16 +68,65 @@ class XMLParserBlock(Block):
         if not root_seen:
             raise ValueError("XML must include a root element.")
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # Security fix: Add size limits to prevent XML bomb attacks
-        MAX_XML_SIZE = 10 * 1024 * 1024  # 10MB limit for XML input
+    @staticmethod
+    def _validate_tokenizer_input(xml: str) -> None:
+        """Reject malformed or deeply nested tags in one linear pass.
 
+        gravitasml's tokenizer searches to the end of the remaining input for
+        every unmatched ``<``. Ensuring every opener has one nearby closing
+        ``>`` prevents that quadratic path before the tokenizer runs.
+        """
+        position = 0
+        depth = 0
+        while True:
+            tag_start = xml.find("<", position)
+            if tag_start == -1:
+                return
+
+            if xml.startswith("<!--", tag_start):
+                comment_end = xml.find("-->", tag_start + 4)
+                if comment_end == -1:
+                    raise ValueError("Unclosed XML comment.")
+                position = comment_end + 3
+                continue
+
+            tag_end = xml.find(">", tag_start + 1)
+            if tag_end == -1:
+                raise ValueError("Unclosed tag delimiter in XML input.")
+            if xml.find("<", tag_start + 1, tag_end) != -1:
+                raise ValueError("Nested '<' delimiter in XML tag.")
+
+            tag = xml[tag_start + 1 : tag_end].strip()
+            if not tag:
+                raise ValueError("Empty XML tag.")
+            if len(tag) > MAX_XML_TAG_LENGTH:
+                raise ValueError(
+                    f"XML tag exceeds the {MAX_XML_TAG_LENGTH} character limit."
+                )
+            if tag.startswith(("!", "?")):
+                raise ValueError("XML declarations and directives are not supported.")
+
+            if tag.startswith("/"):
+                depth -= 1
+                if depth < 0:
+                    raise ValueError("Unexpected closing tag in XML input.")
+            elif not tag.endswith("/"):
+                depth += 1
+                if depth > MAX_XML_DEPTH:
+                    raise ValueError(
+                        f"XML nesting exceeds the maximum depth of {MAX_XML_DEPTH}."
+                    )
+
+            position = tag_end + 1
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         if len(input_data.input_xml) > MAX_XML_SIZE:
             raise ValueError(
                 f"XML too large: {len(input_data.input_xml)} bytes > {MAX_XML_SIZE} bytes"
             )
 
         try:
+            self._validate_tokenizer_input(input_data.input_xml)
             tokens = list(tokenize(input_data.input_xml))
             self._validate_tokens(tokens)
 
@@ -87,3 +140,7 @@ class XMLParserBlock(Block):
             # BlockExecutionError (expected user-caused failure) instead of
             # BlockUnknownError (unexpected platform error that alerts Sentry).
             raise ValueError(f"Error in input xml syntax: {syn_e}") from syn_e
+        except RecursionError as recursion_error:
+            raise ValueError(
+                f"XML nesting exceeds the supported parser depth of {MAX_XML_DEPTH}."
+            ) from recursion_error

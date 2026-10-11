@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.executor import utils
 from backend.copilot.executor.utils import (
     COPILOT_CANCEL_EXCHANGE,
@@ -112,6 +113,30 @@ class TestCoPilotExecutionEntry:
         json_str = entry.model_dump_json()
         restored = CoPilotExecutionEntry.model_validate_json(json_str)
         assert restored == entry
+
+    def test_unattended_survives_the_queue_and_defaults_to_watched(self):
+        entry = CoPilotExecutionEntry(
+            session_id="s1", user_id="u1", message="hi", unattended=True
+        )
+        restored = CoPilotExecutionEntry.model_validate_json(entry.model_dump_json())
+        assert restored.unattended is True
+        # A message queued by a worker without the field is a watched turn.
+        legacy = CoPilotExecutionEntry.model_validate_json(
+            '{"session_id": "s1", "user_id": "u1", "message": "hi"}'
+        )
+        assert legacy.unattended is False
+
+    def test_credential_pins_survive_the_queue_and_default_to_none(self):
+        pin = CredentialPin(id="exa-new", title="Work key")
+        entry = CoPilotExecutionEntry(
+            session_id="s1", user_id="u1", message="hi", credential_pins={"exa": pin}
+        )
+        restored = CoPilotExecutionEntry.model_validate_json(entry.model_dump_json())
+        assert restored.credential_pins == {"exa": pin}
+        legacy = CoPilotExecutionEntry.model_validate_json(
+            '{"session_id": "s1", "user_id": "u1", "message": "hi"}'
+        )
+        assert legacy.credential_pins == {}
 
 
 class TestCancelCoPilotEvent:
@@ -242,6 +267,42 @@ async def test_schedule_chat_turn_leaves_a_typed_message_alone() -> None:
 
     assert append.await_args.args[1].content == "what did I run yesterday"
     assert dispatch.await_args.kwargs["message"] == "what did I run yesterday"
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_tracks_the_session_channel() -> None:
+    # A web message in a session opened from Discord still counts as Discord,
+    # the same as the engines report it for turns they save themselves.
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    tracked = MagicMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch("backend.copilot.model.append_and_save_message", new=AsyncMock()),
+        patch("backend.copilot.tracking.track_user_message", new=tracked),
+        patch.object(utils, "dispatch_turn", new=AsyncMock()),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="hello",
+            expert_id="expert-1",
+            session_origin="interactive",
+            session_source_platform="discord",
+        )
+
+    tracked.assert_called_once_with(
+        user_id="u1",
+        session_id="s1",
+        message_length=5,
+        expert_id="expert-1",
+        origin="interactive",
+        source_platform="discord",
+    )
 
 
 @pytest.mark.asyncio

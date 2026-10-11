@@ -2,6 +2,7 @@
 // The config you add here will be used whenever a users loads a page in their browser.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
+import { isNextRSCNavigationFallback } from "@/lib/sentry-filters";
 import { setupSessionReplay } from "@/lib/session-replay";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
@@ -23,6 +24,12 @@ Sentry.init({
     // Sentry SDK internal issue on some mobile browsers
     /Error invoking postEvent: Method not found/,
   ],
+
+  // Next's handled RSC fetch fallback reaches us only through console capture
+  // and falls back to a full navigation, so it is noise (BUILDER-3QB).
+  beforeSend(event) {
+    return isNextRSCNavigationFallback(event) ? null : event;
+  },
 
   // Add optional integrations for additional features
   integrations: [

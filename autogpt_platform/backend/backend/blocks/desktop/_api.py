@@ -23,6 +23,7 @@ from backend.util.e2b_network import (
     create_sandbox,
     kill_sandbox,
 )
+from backend.util.sandbox_login import LoginChainChanged, run_internal, take_baseline
 
 DESKTOP_TEMPLATE = "desktop"
 HOME_PATH = "/home/user"
@@ -122,6 +123,7 @@ class DesktopSession:
         )
         session = cls(sandbox)
         try:
+            await take_baseline(sandbox)
             await session.ensure_display(width, height)
             # WORKSPACE_PATH always exists (blocks default their cwd to it),
             # mounted or not; mounted paths get their mkdir as well.
@@ -157,6 +159,7 @@ class DesktopSession:
         sandbox = await connect_sandbox(
             AsyncSandbox, sandbox_id, owner, api_key=api_key, timeout=timeout_seconds
         )
+        await take_baseline(sandbox, only_if_missing=True)
         return cls(sandbox)
 
     async def start_stream(
@@ -205,7 +208,8 @@ class DesktopSession:
                     f"x11vnc did not start: {await self._tail(_X11VNC_ERROR_LOG)}"
                 ) from exc
             try:
-                await self.sandbox.commands.run(
+                await run_internal(
+                    self.sandbox,
                     f"cd /opt/noVNC/utils && ./novnc_proxy --vnc localhost:{VNC_PORT} "
                     f"--listen {STREAM_PORT} --web /opt/noVNC > {_NOVNC_LOG} 2>&1",
                     background=True,
@@ -262,8 +266,13 @@ class DesktopSession:
         timeout: int = 60,
         user: Optional[str] = None,
     ):
-        return await self.sandbox.commands.run(
-            command, cwd=cwd, timeout=timeout, envs={"DISPLAY": DISPLAY}, user=user
+        return await run_internal(
+            self.sandbox,
+            command,
+            cwd=cwd,
+            timeout=timeout,
+            envs={"DISPLAY": DISPLAY},
+            user=user,
         )
 
     async def is_workspace_mounted(self) -> bool:
@@ -316,14 +325,17 @@ class DesktopSession:
         # Xvfb logs afterwards (Chrome opening a second window is enough)
         # kills it with SIGPIPE and every X client with it.
         if not await self._check(f"xdpyinfo -display {DISPLAY}"):
-            await self.sandbox.commands.run(
+            await run_internal(
+                self.sandbox,
                 f"Xvfb {DISPLAY} -ac -screen 0 {width}x{height}x24 -retro -dpi 96 "
                 "-nolisten tcp -nolisten unix > /tmp/xvfb.log 2>&1",
                 background=True,
             )
             await self._wait_for(f"xdpyinfo -display {DISPLAY}")
-        await self.sandbox.commands.run(
+        await run_internal(
+            self.sandbox,
             "startxfce4 > /tmp/xfce.log 2>&1",
+            keep_home=True,
             background=True,
             envs={"DISPLAY": DISPLAY},
         )
@@ -333,8 +345,11 @@ class DesktopSession:
 
     async def _check(self, command: str) -> bool:
         try:
-            await self.sandbox.commands.run(command)
+            await run_internal(self.sandbox, command)
             return True
+        except LoginChainChanged:
+            # A refusal, not "not ready yet": waiting would only end in a timeout.
+            raise
         except Exception:
             return False
 

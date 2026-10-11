@@ -164,6 +164,35 @@ async def test_get_workspace_pages_sessions_up_to_the_limit():
     assert [c["offset"] for c in calls] == [1, 4]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "workspace, expected",
+    [
+        ({"id": "ws_1", "state": "ready"}, ""),
+        ({"id": "ws_1", "state": "ready", "branch": "dev"}, "dev"),
+        ({"id": "ws_1", "state": "ready", "baseBranch": "dev"}, "dev"),
+    ],
+)
+async def test_get_workspace_reports_base_branch_only_when_the_api_does(
+    workspace: dict, expected: str
+):
+    client = mock.Mock()
+    client.get_workspace = mock.AsyncMock(return_value=workspace)
+    client.workspace_status = mock.AsyncMock(return_value={"status": "ready"})
+    client.get_preview = mock.AsyncMock(return_value={})
+    client.workspace_sessions = mock.AsyncMock(
+        return_value={"data": [], "offset": 0, "hasMore": False}
+    )
+    block = ConductorGetWorkspaceBlock()
+    with mock.patch(
+        "backend.blocks.conductor.get_workspace.ConductorClient", return_value=client
+    ):
+        outputs = await collect(
+            block, {"credentials": TEST_CREDENTIALS_INPUT, "workspace_id": "ws_1"}
+        )
+    assert outputs["base_branch"] == expected
+
+
 # --- list workspaces (R1-07) --------------------------------------------------
 
 

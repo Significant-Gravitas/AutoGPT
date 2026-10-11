@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 settings = Settings()
 
-# Without the personal key every read is a remote /flags call; on the default
+# Without the secret key every read is a remote /flags call; on the default
 # executor a burst of those starves every other `asyncio.to_thread` caller.
 FLAG_READ_WORKERS = 8
 _read_executor = ThreadPoolExecutor(
@@ -124,7 +124,7 @@ def get_flag_client() -> Posthog | None:
     """The flag client singleton, or None when PostHog is unconfigured.
 
     Separate from ``copilot.tracking``'s analytics client because only this
-    one carries the personal API key that enables local evaluation, and
+    one carries the secret key that enables local evaluation, and
     shutting one down must not silence the other.
     """
     global _client, _init_attempted
@@ -144,22 +144,22 @@ def _build_client() -> Posthog | None:
         logger.warning("PostHog API key not configured; flag reads will not resolve")
         return None
 
-    personal_api_key = settings.secrets.posthog_personal_api_key
+    secret_key = settings.secrets.posthog_secret_key
     # One shared refresher, so the definitions bill stops scaling with replica
     # count. Without a provider the SDK polls PostHog once per process.
-    definition_cache = get_flag_definition_cache() if personal_api_key else None
+    definition_cache = get_flag_definition_cache() if secret_key else None
     _client = Posthog(
         settings.secrets.posthog_api_key,
         host=settings.secrets.posthog_host,
-        personal_api_key=personal_api_key or None,
-        enable_local_evaluation=bool(personal_api_key),
+        secret_key=secret_key or None,
+        enable_local_evaluation=bool(secret_key),
         poll_interval=refresh_interval_seconds(),
         flag_definition_cache_provider=definition_cache,
     )
     _init_attempted = True
     logger.info(
         "PostHog feature flag client initialized "
-        f"(local evaluation: {'on' if personal_api_key else 'off'}, "
+        f"(local evaluation: {'on' if secret_key else 'off'}, "
         f"definition cache: {type(definition_cache).__name__ if definition_cache else 'off'})"
     )
     return _client

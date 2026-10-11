@@ -93,7 +93,7 @@ export function IntegrationsToggle({ expert, className }: Props) {
               <TooltipTrigger asChild>
                 <span className="flex size-6 items-center justify-center rounded-full bg-white ring-2 ring-white smooth-shadow-ring-sm">
                   <IntegrationLogo
-                    provider={service.id}
+                    provider={service.icon}
                     alt={service.name}
                     size={14}
                   />

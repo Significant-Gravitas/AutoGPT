@@ -7,8 +7,6 @@ import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
-  AnalyticsDetails,
-  AnalyticsMetrics,
   APIKey,
   APIKeyCredentials,
   APIKeyPermission,
@@ -456,14 +454,6 @@ export default class BackendAPI {
    */
   async pingWebhook(webhook_id: string): Promise<boolean> {
     return this._request("POST", `/integrations/webhooks/${webhook_id}/ping`);
-  }
-
-  logMetric(metric: AnalyticsMetrics) {
-    return this._request("POST", "/analytics/log_raw_metric", metric);
-  }
-
-  logAnalytic(analytic: AnalyticsDetails) {
-    return this._request("POST", "/analytics/log_raw_analytics", analytic);
   }
 
   async uploadFile(

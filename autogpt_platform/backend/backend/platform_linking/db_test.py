@@ -28,6 +28,7 @@ from .db import (
     fetch_workspace_artifact,
     get_link_token_info,
     get_link_token_status,
+    mask_email,
     refresh_server_link_name,
     resolve_server_link,
     resolve_user_link,
@@ -76,6 +77,39 @@ class TestResolve:
         assert result.linked is True
 
     @pytest.mark.asyncio
+    async def test_user_linked_with_account_hint_masks_the_email(self):
+        with patch("backend.platform_linking.db.PlatformUserLink") as mock_user_link:
+            find = AsyncMock(
+                return_value=MagicMock(
+                    userId="u-xyz", User=MagicMock(email="bently@agpt.co")
+                )
+            )
+            mock_user_link.prisma.return_value.find_unique = find
+            result = await resolve_user_link("TELEGRAM", "pu1", include_account=True)
+        assert result.linked is True
+        assert result.account_hint == "b***@agpt.co"
+        assert find.await_args.kwargs["include"] == {"User": True}
+
+    @pytest.mark.asyncio
+    async def test_user_linked_without_include_skips_the_account(self):
+        with patch("backend.platform_linking.db.PlatformUserLink") as mock_user_link:
+            mock_user_link.prisma.return_value.find_unique = AsyncMock(
+                return_value=MagicMock(userId="u-xyz")
+            )
+            result = await resolve_user_link("TELEGRAM", "pu1")
+        assert result.account_hint is None
+
+    @pytest.mark.asyncio
+    async def test_user_unlinked_with_account_hint(self):
+        with patch("backend.platform_linking.db.PlatformUserLink") as mock_user_link:
+            mock_user_link.prisma.return_value.find_unique = AsyncMock(
+                return_value=None
+            )
+            result = await resolve_user_link("TELEGRAM", "pu1", include_account=True)
+        assert result.linked is False
+        assert result.account_hint is None
+
+    @pytest.mark.asyncio
     async def test_user_unlinked(self):
         with patch("backend.platform_linking.db.PlatformUserLink") as mock_user_link:
             mock_user_link.prisma.return_value.find_unique = AsyncMock(
@@ -83,6 +117,23 @@ class TestResolve:
             )
             result = await resolve_user_link("DISCORD", "pu1")
         assert result.linked is False
+
+
+@pytest.mark.parametrize(
+    "email, expected",
+    [
+        ("bently@agpt.co", "b***@agpt.co"),
+        ("a@x.io", "a***@x.io"),
+        ("first.last@sub.example.com", "f***@sub.example.com"),
+        (None, None),
+        ("", None),
+        ("no-at-sign", None),
+        ("@agpt.co", None),
+        ("user@", None),
+    ],
+)
+def test_mask_email(email, expected):
+    assert mask_email(email) == expected
 
 
 # ── Token creation ───────────────────────────────────────────────────

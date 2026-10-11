@@ -10,7 +10,7 @@ from backend.copilot.constants import is_transient_api_error
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamCompactionProgress
 from backend.copilot.sdk.compaction import CompactionTracker
-from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES
+from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES, _TokenUsage
 
 
 def _make_config(**overrides) -> ChatConfig:
@@ -730,15 +730,10 @@ class TestDoTransientBackoff:
         mock_sleep.assert_called_once_with(7)
 
     async def test_replaces_adapter_with_new_instance(self):
-        """state.adapter is replaced with a new SDKResponseAdapter after yield,
-        and ``render_reasoning_in_ui`` is threaded from the SDK service config
-        (not hardcoded) so ``CHAT_RENDER_REASONING_IN_UI=false`` at runtime
-        flips the reconstruction consistently with the rest of the path."""
+        """state.adapter is replaced with a new SDKResponseAdapter after yield."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
         from backend.copilot.sdk.service import _do_transient_backoff
-
-        cfg = _make_config(render_reasoning_in_ui=False)
 
         original_adapter = MagicMock()
         state = MagicMock()
@@ -747,7 +742,6 @@ class TestDoTransientBackoff:
 
         with (
             patch("asyncio.sleep", new=AsyncMock()),
-            patch(f"{_SVC}.config", cfg),
             patch("backend.copilot.sdk.service.SDKResponseAdapter") as mock_cls,
         ):
             new_adapter = MagicMock()
@@ -755,27 +749,39 @@ class TestDoTransientBackoff:
             async for _ in _do_transient_backoff(3, state, "msg-1", "sess-1"):
                 pass
 
-        mock_cls.assert_called_once_with(
-            message_id="msg-1",
-            session_id="sess-1",
-            render_reasoning_in_ui=False,
-        )
+        mock_cls.assert_called_once_with(message_id="msg-1", session_id="sess-1")
         assert state.adapter is new_adapter
 
-    async def test_resets_usage_after_yield(self):
-        """state.usage.reset() is called so the next attempt starts with clean counters."""
+    async def test_preserves_usage_after_yield(self):
+        """A resumed retry must retain both reported spend and its CLI baseline."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
         from backend.copilot.sdk.service import _do_transient_backoff
 
         state = MagicMock()
-        state.usage = MagicMock()
+        state.usage = _TokenUsage(
+            prompt_tokens=100,
+            completion_tokens=10,
+            cache_read_tokens=20,
+            cache_creation_tokens=30,
+            cost_usd=0.02,
+            cli_cost_usd=0.1,
+            cli_session_total_usd=1.1,
+        )
 
         with patch("asyncio.sleep", new=AsyncMock()):
             async for _ in _do_transient_backoff(2, state, "msg-id", "sess-id"):
                 pass
 
-        state.usage.reset.assert_called_once()
+        assert state.usage == _TokenUsage(
+            prompt_tokens=100,
+            completion_tokens=10,
+            cache_read_tokens=20,
+            cache_creation_tokens=30,
+            cost_usd=0.02,
+            cli_cost_usd=0.1,
+            cli_session_total_usd=1.1,
+        )
 
 
 # ---------------------------------------------------------------------------

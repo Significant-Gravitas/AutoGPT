@@ -11,9 +11,14 @@ from datetime import datetime, timedelta, timezone
 
 import aiohttp
 from gcloud.aio import storage as async_gcs_storage
+from google.auth import default as google_auth_default
+from google.auth.credentials import Signing
+from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.cloud import storage as gcs_storage
 
 logger = logging.getLogger(__name__)
+
+CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 
 
 def parse_gcs_path(path: str) -> tuple[str, str]:
@@ -162,3 +167,50 @@ async def generate_signed_url(
         expiration=datetime.now(timezone.utc) + timedelta(seconds=expires_in),
         method="GET",
     )
+
+
+async def generate_iam_signed_url(
+    sync_client: gcs_storage.Client,
+    bucket_name: str,
+    blob_name: str,
+    expires_in: int,
+) -> str:
+    """Generate a signed URL with ADC, using IAM signBlob when needed."""
+    bucket = sync_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+
+    def generate() -> str:
+        credentials, _ = google_auth_default(scopes=[CLOUD_PLATFORM_SCOPE])
+        expiration = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+        if isinstance(credentials, Signing):
+            return blob.generate_signed_url(
+                version="v4",
+                expiration=expiration,
+                method="GET",
+                credentials=credentials,
+            )
+
+        service_account_email = getattr(credentials, "service_account_email", None)
+        if (
+            not getattr(credentials, "valid", False)
+            or not service_account_email
+            or service_account_email == "default"
+        ):
+            credentials.refresh(GoogleAuthRequest())
+            service_account_email = getattr(credentials, "service_account_email", None)
+        access_token = getattr(credentials, "token", None)
+        if not isinstance(service_account_email, str) or not isinstance(
+            access_token, str
+        ):
+            raise AttributeError(
+                "Application Default Credentials do not identify a signing service account"
+            )
+        return blob.generate_signed_url(
+            version="v4",
+            expiration=expiration,
+            method="GET",
+            service_account_email=service_account_email,
+            access_token=access_token,
+        )
+
+    return await asyncio.to_thread(generate)

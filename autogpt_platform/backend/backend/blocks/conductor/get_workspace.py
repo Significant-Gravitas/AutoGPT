@@ -73,6 +73,12 @@ class ConductorGetWorkspaceBlock(Block):
             description="session_offset to request the next page of sessions"
         )
         deep_link: str = SchemaField(description="Link that opens the workspace")
+        base_branch: str = SchemaField(
+            description="Branch the workspace was created from, when Conductor "
+            "reports it. The API currently omits it, so this is empty; keep the "
+            "base_branch output of Create Workspace instead. Verify it matches "
+            "the PR target before opening a PR."
+        )
 
     def __init__(self):
         super().__init__(
@@ -99,6 +105,7 @@ class ConductorGetWorkspaceBlock(Block):
                 ("sessions_has_more", False),
                 ("next_session_offset", 1),
                 ("deep_link", "conductor://workspace/ws_1"),
+                ("base_branch", ""),
             ],
             test_mock={
                 "_fetch": lambda *args, **kwargs: {
@@ -181,6 +188,14 @@ class ConductorGetWorkspaceBlock(Block):
         )
         yield "next_session_offset", input_data.session_offset + len(sessions)
         yield "deep_link", str(workspace.get("deepLink") or "")
+        yield "base_branch", _base_branch(workspace)
+
+
+def _base_branch(workspace: dict[str, Any]) -> str:
+    """GET /workspaces/{id} does not return the branch a workspace was cut
+    from today; read it under the names it is likely to appear as so the
+    output fills in once Conductor adds it."""
+    return str(workspace.get("baseBranch") or workspace.get("branch") or "")
 
 
 async def _list_sessions(

@@ -11,8 +11,9 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from prisma.enums import NotificationType
+from prisma.enums import NotificationType, SubscriptionTier
 
+from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
 from backend.data.notifications import (
     AudienceAction,
     NotificationResult,
@@ -20,10 +21,11 @@ from backend.data.notifications import (
     SubscriptionPlan,
     SubscriptionStatus,
 )
-from backend.notifications import lifecycle, subscriber_fields
+from backend.notifications import lifecycle, lifecycle_plan, subscriber_fields
 from backend.notifications.lifecycle_plan import card_from_invoice
 
 CUSTOMER = "cus_1"
+OPTED_OUT = datetime(2026, 10, 2, tzinfo=timezone.utc)
 PLAN_PATCH = "backend.notifications.lifecycle.plan_from_subscription"
 INVOICE_PLAN_PATCH = "backend.notifications.lifecycle.plan_from_invoice"
 
@@ -31,11 +33,13 @@ INVOICE_PLAN_PATCH = "backend.notifications.lifecycle.plan_from_invoice"
 class _User:
     """Shaped like `BillingEmailRecipient`, which is what the RPC returns."""
 
-    def __init__(self, welcome_sent_at=None):
+    def __init__(self, welcome_sent_at=None, opted_out_at=None, timezone=None):
         self.id = "user-1"
         self.email = "sam@example.com"
         self.name = "Sam Carter"
         self.welcome_email_sent_at = welcome_sent_at
+        self.marketing_opt_out_at = opted_out_at
+        self.timezone = timezone
 
 
 def _subscription(**over) -> dict:
@@ -114,6 +118,15 @@ def _context(user, claim=True, audience_ok=True):
                 return_value=NotificationResult(success=audience_ok, message="test")
             ),
         ),
+        patch(
+            "backend.notifications.lifecycle.tier_and_cycle_from_subscription",
+            AsyncMock(return_value=("PRO", "monthly")),
+        ),
+        patch("backend.notifications.lifecycle.track_subscription_ended"),
+        patch(
+            "backend.notifications.lifecycle.is_feature_enabled",
+            AsyncMock(return_value=False),
+        ),
     ]
 
 
@@ -122,7 +135,12 @@ async def _run(coro_factory, user, claim=True, audience_ok=True):
     started = [p.start() for p in patches]
     try:
         await coro_factory()
-        return {"notify": started[4], "audience": started[5], "claim": started[3]}
+        return {
+            "notify": started[4],
+            "audience": started[5],
+            "claim": started[3],
+            "ended": started[7],
+        }
     finally:
         for p in patches:
             p.stop()
@@ -305,6 +323,93 @@ async def test_the_ended_email_branches_on_which_road_they_took():
         _User(),
     )
     assert calls["notify"].await_args.args[0].data.due_to_payment is False
+
+
+@pytest.mark.asyncio
+async def test_a_subscription_end_is_sent_to_analytics_once():
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(
+            _subscription(cancellation_details={"reason": "payment_failed"})
+        ),
+        _User(),
+    )
+    calls["ended"].assert_called_once_with(
+        user_id="user-1",
+        subscription_tier="PRO",
+        billing_cycle="monthly",
+        reason="payment_failed",
+    )
+
+    # A Stripe replay finds the claim spent: no second churn.
+    replay = await _run(
+        lambda: lifecycle.on_subscription_deleted(_subscription()),
+        _User(),
+        claim=False,
+    )
+    replay["ended"].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_our_own_cancel_after_a_failed_renewal_is_involuntary_churn():
+    # Stripe stamps any API cancel "cancellation_requested"; the comment
+    # handle_subscription_payment_failure leaves is what tells them apart.
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(
+            _subscription(
+                cancellation_details={
+                    "reason": "cancellation_requested",
+                    "comment": PAYMENT_FAILURE_CANCELLATION_COMMENT,
+                }
+            )
+        ),
+        _User(),
+    )
+    calls["ended"].assert_called_once_with(
+        user_id="user-1",
+        subscription_tier="PRO",
+        billing_cycle="monthly",
+        reason="payment_failed",
+    )
+    assert calls["notify"].await_args.args[0].data.due_to_payment is True
+
+
+@pytest.mark.asyncio
+async def test_a_failed_ended_email_sends_no_analytics_event():
+    patches = _context(_User())
+    started = [p.start() for p in patches]
+    started[4].return_value = NotificationResult(success=False, message="down")
+    with patch("backend.notifications.lifecycle.release_claim", AsyncMock()):
+        try:
+            with pytest.raises(RuntimeError):
+                await lifecycle.on_subscription_deleted(_subscription())
+            started[7].assert_not_called()
+        finally:
+            for p in patches:
+                p.stop()
+
+
+@pytest.mark.asyncio
+async def test_tier_and_cycle_come_from_the_subscription_price():
+    with patch.object(
+        lifecycle_plan,
+        "build_price_to_tier_map",
+        AsyncMock(return_value={"price_1": SubscriptionTier.MAX}),
+    ):
+        yearly = _subscription()
+        yearly["items"]["data"][0]["price"]["recurring"] = {"interval": "year"}
+        assert await lifecycle_plan.tier_and_cycle_from_subscription(yearly) == (
+            "MAX",
+            "yearly",
+        )
+
+    with patch.object(
+        lifecycle_plan,
+        "build_price_to_tier_map",
+        AsyncMock(side_effect=RuntimeError("LD down")),
+    ):
+        assert await lifecycle_plan.tier_and_cycle_from_subscription(
+            _subscription()
+        ) == (None, "monthly")
 
 
 def test_the_platform_does_not_listen_for_trials():
@@ -552,3 +657,160 @@ async def test_an_ended_subscription_sets_stripes_end_date_on_the_churn(fields_o
         SubscriberField.STATUS: SubscriptionStatus.SUBSCRIPTION_ENDED.value,
         SubscriberField.SUBSCRIPTION_ENDED: _day(1789200000),
     }
+
+
+@pytest.mark.parametrize(
+    "enabled,error",
+    [
+        (False, None),
+        (True, None),
+        (False, RuntimeError("Flag lookup failed for sam@example.com")),
+    ],
+)
+async def test_welcome_matches_the_recipients_expert_access(enabled, error, caplog):
+    patches = _context(_User())
+    patches.append(
+        patch.object(lifecycle, "_claim_welcome", AsyncMock(return_value=True))
+    )
+    for item in patches:
+        item.start()
+    try:
+        with patch.object(
+            lifecycle,
+            "is_feature_enabled",
+            AsyncMock(return_value=enabled, side_effect=error),
+        ) as flag, patch.object(lifecycle, "_release_welcome", AsyncMock()) as released:
+            await lifecycle.on_checkout_completed(
+                {"customer": CUSTOMER}, _subscription()
+            )
+            event = lifecycle.queue_notification_async.call_args.args[0]
+            assert event.data.experts_enabled is enabled
+            flag.assert_awaited_once_with(lifecycle.Flag.HIRE_EXPERTS, "user-1")
+            released.assert_not_awaited()
+            lifecycle.queue_audience_change.assert_awaited_once()
+            if error:
+                assert "Could not check Expert access" in caplog.text
+                assert "sam@example.com" not in caplog.text
+                assert "user-1" not in caplog.text
+    finally:
+        for item in reversed(patches):
+            item.stop()
+
+
+# ── opted out of marketing ─────────────────────────────────────────────────
+#
+# Every billing email still goes out; MailerLite never hears of them.
+
+
+@pytest.mark.asyncio
+async def test_an_opted_out_first_subscription_is_welcomed_but_not_enrolled():
+    user = _User(welcome_sent_at=None, opted_out_at=OPTED_OUT)
+    with patch(
+        "backend.notifications.lifecycle._claim_welcome",
+        AsyncMock(return_value=True),
+    ) as claimed:
+        calls = await _run(
+            lambda: lifecycle.on_checkout_completed(
+                {"customer": CUSTOMER}, _subscription()
+            ),
+            user,
+        )
+    claimed.assert_awaited_once_with(user)
+    queued = calls["notify"].await_args.args[0]
+    assert queued.type is NotificationType.SUBSCRIPTION_WELCOME
+    calls["audience"].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_an_opted_out_returning_customer_is_not_added_to_the_changelog():
+    user = _User(
+        welcome_sent_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        opted_out_at=OPTED_OUT,
+    )
+    calls = await _run(
+        lambda: lifecycle.on_checkout_completed(
+            {"customer": CUSTOMER}, _subscription()
+        ),
+        user,
+    )
+    calls["notify"].assert_not_awaited()
+    calls["audience"].assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "subscription, previous, sent",
+    [
+        (
+            _subscription(cancel_at_period_end=True, canceled_at=1789100000),
+            {"cancel_at_period_end": False},
+            NotificationType.SUBSCRIPTION_CANCELLED,
+        ),
+        (
+            _subscription(cancel_at_period_end=False),
+            {"cancel_at_period_end": True, "canceled_at": 1789100000},
+            NotificationType.SUBSCRIPTION_RESUMED,
+        ),
+    ],
+    ids=["cancelled", "resumed"],
+)
+async def test_an_opted_out_cancel_or_resume_emails_but_writes_no_fields(
+    fields_on, subscription, previous, sent
+):
+    calls = await _run(
+        lambda: lifecycle.on_subscription_updated(subscription, previous),
+        _User(opted_out_at=OPTED_OUT),
+    )
+    assert calls["notify"].await_args.args[0].type is sent
+    fields_on.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_an_opted_out_churn_emails_but_leaves_mailerlite_alone():
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(_subscription()),
+        _User(opted_out_at=OPTED_OUT),
+    )
+    queued = calls["notify"].await_args.args[0]
+    assert queued.type is NotificationType.SUBSCRIPTION_ENDED
+    calls["audience"].assert_not_called()
+
+
+# ── placed in Iran or Russia ───────────────────────────────────────────────
+#
+# Every billing email still goes out; MailerLite never hears of them.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("welcomed", [False, True], ids=["first", "returning"])
+async def test_a_checkout_billed_to_russia_is_welcomed_but_not_enrolled(welcomed):
+    user = _User(
+        welcome_sent_at=datetime(2026, 1, 1, tzinfo=timezone.utc) if welcomed else None
+    )
+    session = {
+        "customer": CUSTOMER,
+        "customer_details": {"address": {"country": "RU"}},
+    }
+    with patch(
+        "backend.notifications.lifecycle._claim_welcome",
+        AsyncMock(return_value=True),
+    ):
+        calls = await _run(
+            lambda: lifecycle.on_checkout_completed(session, _subscription()),
+            user,
+        )
+    if not welcomed:
+        queued = calls["notify"].await_args.args[0]
+        assert queued.type is NotificationType.SUBSCRIPTION_WELCOME
+    calls["audience"].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_churn_in_tehran_emails_but_leaves_mailerlite_alone():
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(_subscription()),
+        _User(timezone="Asia/Tehran"),
+    )
+    queued = calls["notify"].await_args.args[0]
+    assert queued.type is NotificationType.SUBSCRIPTION_ENDED
+    calls["audience"].assert_not_called()

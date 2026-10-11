@@ -1,8 +1,9 @@
 """One door for every E2B box: where its egress is pinned.
 
 Every ``AsyncSandbox.create`` and ``.connect`` in the backend goes through
-``create_sandbox`` / ``connect_sandbox`` here; ``e2b_network_test`` fails on
-any that does not.  That is the chokepoint at which a box's network is set:
+``create_sandbox`` / ``connect_sandbox`` here, and a reattach to a running
+command through ``reattach_command``; ``e2b_network_test`` fails on any that
+does not.  That is the chokepoint at which a box's network is set:
 the credential swap proxy (SECRT-2651) that every box will egress through,
 so that the model never holds a real credential and nothing dials out
 around the proxy.
@@ -40,7 +41,7 @@ import logging
 import secrets
 from typing import Any, Literal, Optional, TypeVar, cast
 
-from e2b import AsyncSandbox
+from e2b import AsyncCommandHandle, AsyncSandbox
 from e2b.sandbox.sandbox_api import (
     SandboxEgressProxyOpts,
     SandboxNetworkOpts,
@@ -213,6 +214,21 @@ async def connect_sandbox(
         "[E2B] Reconnected %.12s for %s, egress re-pinned", sandbox_id, owner.label
     )
     return sandbox
+
+
+async def reattach_command(
+    sandbox: AsyncSandbox, pid: int, **kwargs: Any
+) -> AsyncCommandHandle:
+    """Reattach to a process still running on a box the caller already holds.
+
+    Not a box connect: it opens one more stream to the box's own process
+    service, like ``commands.run`` does, on a box that ``create_sandbox`` or
+    ``connect_sandbox`` has already pinned.  It creates nothing and changes no
+    network: the box keeps the egress that create or connect pinned, and
+    there is no credential to rotate.  Every other keyword goes to
+    ``commands.connect``.
+    """
+    return await sandbox.commands.connect(pid, **kwargs)
 
 
 async def kill_sandbox(sandbox: AsyncSandbox) -> None:
