@@ -208,6 +208,7 @@ class AgentOutputTool(BaseTool):
         library_agent_id: str | None,
         store_slug: str | None,
         tenant: str | None = None,
+        external_caller: bool = False,
     ) -> tuple[LibraryAgent | None, str | None]:
         """
         Resolve agent from provided identifiers.
@@ -264,7 +265,10 @@ class AgentOutputTool(BaseTool):
                 return response.agents[0], None
             except Exception as e:
                 logger.error(f"Error searching library agents: {e}")
-                return None, f"Error searching for agent: {e}"
+                # AutoPilot's model reads the text to recover; an External
+                # API client gets none, as `error_detail` gives it none.
+                detail = "an internal error" if external_caller else str(e)
+                return None, f"Error searching for agent: {detail}"
 
         return (
             None,
@@ -557,6 +561,7 @@ class AgentOutputTool(BaseTool):
             library_agent_id=input_data.library_agent_id or None,
             store_slug=input_data.store_slug or None,
             tenant=tenant,
+            external_caller=session.external_caller,
         )
 
         if error or not agent:

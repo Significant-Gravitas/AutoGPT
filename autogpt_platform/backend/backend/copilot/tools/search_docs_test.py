@@ -45,3 +45,22 @@ async def test_search_result_doc_url_shape(mocker):
 
     assert result.results, getattr(result, "message", result)
     assert result.results[0].doc_url == f"{DOCS_BASE_URL}/platform/block-sdk-guide"
+
+
+@pytest.mark.parametrize("external_caller", [True, False])
+@pytest.mark.asyncio
+async def test_a_failed_search_tells_an_external_caller_no_internals(
+    mocker, external_caller
+):
+    db = MagicMock()
+    db.unified_hybrid_search = AsyncMock(
+        side_effect=RuntimeError("embeddings at http://10.0.0.7:8080 refused")
+    )
+    mocker.patch("backend.copilot.tools.search_docs.search", return_value=db)
+    session = MagicMock(session_id="sess-1", external_caller=external_caller)
+
+    result = await SearchDocsTool()._execute(
+        user_id="user-1", session=session, query="blocks"
+    )
+
+    assert ("10.0.0.7" in result.message) is not external_caller

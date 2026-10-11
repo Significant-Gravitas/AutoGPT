@@ -1117,7 +1117,11 @@ class WriteWorkspaceFileTool(BaseTool):
             return ErrorResponse(message=str(e), session_id=session_id)
         except VirusScanError as e:
             logger.error(f"Virus scan infrastructure error: {e}", exc_info=True)
-            return ErrorResponse(message=str(e), session_id=session_id)
+            # Wraps the scanner client's text, which can name its host.
+            return ErrorResponse(
+                message=f"Virus scan failed: {error_detail(e, session)}",
+                session_id=session_id,
+            )
         except WorkspaceAccessDeniedError as e:
             return ErrorResponse(
                 message=str(e), error="access_denied", session_id=session_id

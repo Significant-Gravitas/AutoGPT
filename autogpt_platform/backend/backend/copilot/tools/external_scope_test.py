@@ -218,6 +218,30 @@ async def test_run_outputs_of_an_agent_in_another_organization_are_not_found():
     assert error == "Library agent 'agent-1' not found"
 
 
+@pytest.mark.parametrize("external_caller", [True, False])
+async def test_a_failed_agent_name_search_tells_an_external_caller_no_internals(
+    external_caller: bool,
+):
+    lib = MagicMock()
+    lib.list_library_agents = AsyncMock(
+        side_effect=RuntimeError('relation "LibraryAgent" does not exist')
+    )
+
+    with patch("backend.copilot.tools.agent_output.library_db", return_value=lib):
+        agent, error = await AgentOutputTool()._resolve_agent(
+            user_id=USER,
+            agent_name="Mailer",
+            library_agent_id=None,
+            store_slug=None,
+            tenant="org-1" if external_caller else None,
+            external_caller=external_caller,
+        )
+
+    assert agent is None
+    assert error is not None
+    assert ("LibraryAgent" in error) is not external_caller
+
+
 @pytest.mark.parametrize(
     "session, organization_id, in_scope",
     [

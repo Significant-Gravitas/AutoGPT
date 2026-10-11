@@ -11,6 +11,7 @@ from backend.data.db_accessors import search
 from backend.util.docs import make_doc_url
 
 from .base import BaseTool
+from .external_scope import error_detail
 from .models import (
     DocSearchResult,
     DocSearchResultsResponse,
@@ -194,7 +195,7 @@ class SearchDocsTool(BaseTool):
         except Exception as e:
             logger.error(f"Documentation search failed: {e}")
             return ErrorResponse(
-                message=f"Failed to search documentation: {str(e)}",
+                message=f"Failed to search documentation: {error_detail(e, session)}",
                 error="search_failed",
                 session_id=session_id,
             )
