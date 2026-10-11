@@ -9,19 +9,10 @@ take sequences but never reach the CLI, and the loaded window of a long
 session does not start at sequence 0.
 """
 
-from backend.copilot.constants import (
-    COPILOT_ERROR_PREFIX,
-    COPILOT_RETRYABLE_ERROR_PREFIX,
-    COPILOT_SYSTEM_PREFIX,
-)
+from backend.copilot.constants import COPILOT_SYSTEM_PREFIX
+from backend.copilot.markers import is_error_marker
 from backend.copilot.model import ChatMessage
 from backend.copilot.sdk.compaction import filter_compaction_messages
-
-_MARKER_PREFIXES = (
-    COPILOT_ERROR_PREFIX,
-    COPILOT_RETRYABLE_ERROR_PREFIX,
-    COPILOT_SYSTEM_PREFIX,
-)
 
 
 def row_sequences(prior: list[ChatMessage]) -> list[int]:
@@ -70,10 +61,13 @@ def missing_range(prior: list[ChatMessage], watermark: int) -> tuple[int, int] |
 
 
 def is_marker_row(message: ChatMessage) -> bool:
-    """True for an error or system marker: UI state the model never said."""
-    if message.role != "assistant" or not message.content:
-        return False
-    return message.content.startswith(_MARKER_PREFIXES)
+    """True for an error marker or a system notice (stopped, incomplete,
+    errored): UI state the model never said."""
+    return is_error_marker(message) or bool(
+        message.role == "assistant"
+        and message.content
+        and message.content.startswith(COPILOT_SYSTEM_PREFIX)
+    )
 
 
 def sendable_gap(rows: list[ChatMessage]) -> list[ChatMessage]:
