@@ -132,3 +132,19 @@ async def test_a_cost_summary_takes_a_time_without_an_offset_as_utc(
     assert summary.await_args.kwargs["since"] == datetime(
         2026, 10, 1, tzinfo=timezone.utc
     )
+
+
+async def test_a_cost_summary_counts_only_this_organizations_runs(
+    mocker: pytest_mock.MockFixture,
+):
+    """`GET /runs` hides another organization's runs; their costs, graph ids
+    and names must not come back here either."""
+    summary = mocker.patch(
+        "backend.api.external.v2.credits.get_user_cost_summary",
+        new_callable=AsyncMock,
+    )
+    mocker.patch("backend.api.external.v2.credits.AutomationCostSummary.from_internal")
+
+    await get_cost_summary(since=None, until=None, top_runs_limit=10, auth=_AUTH)
+
+    assert summary.await_args.kwargs["organization_id"] == "org-1"

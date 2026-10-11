@@ -278,6 +278,7 @@ async def get_cost_summary(
         since=since,
         until=until,
         top_runs_limit=top_runs_limit,
+        organization_id=auth.organization_id,
     )
     return AutomationCostSummary.from_internal(summary)
 
