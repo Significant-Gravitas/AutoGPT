@@ -16,7 +16,8 @@ on the way in and :func:`with_prompt_origin` folds it back for the insert.
 Being excluded, the field is also dropped by the Redis session cache and by
 DatabaseManager RPC responses, so today it is readable only from the column
 itself or from ``ChatMessage.from_db`` in a process with a direct Prisma
-connection. :func:`is_redelivered_prompt` is written for both cases.
+connection. :func:`is_redelivered_prompt` therefore matches a fire by its
+stamp where one can be read and by the last row's text where none can.
 """
 
 import logging
