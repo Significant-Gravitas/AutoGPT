@@ -27,6 +27,7 @@ from backend.api.external.v2.mcp_server import (
     create_mcp_server,
     protected_resource_metadata,
 )
+from backend.api.external.v2.rate_limit import file_upload_limiter
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import RateLimitUnavailable
@@ -459,6 +460,68 @@ async def test_a_tool_is_held_to_the_cap_of_the_rest_route_it_mirrors(
     run.assert_not_called()
     assert result.isError
     assert "Rate limit exceeded" in result.content[0].text
+
+
+@pytest.mark.parametrize(
+    "tool_name, arguments",
+    [
+        ("fix_agent_graph", {"agent_json": {"nodes": []}, "write_to": "fixed.json"}),
+        ("find_library_agent", {"query": "mail", "write_graph_to": "graph.json"}),
+    ],
+)
+async def test_an_argument_that_writes_a_file_is_held_to_the_upload_cap(
+    mocker: pytest_mock.MockerFixture,
+    no_tenancy_lookups: mock.AsyncMock,
+    tool_name: str,
+    arguments: dict[str, Any],
+):
+    """REST caps uploads at 20 per 5 minutes; writing the file through a tool
+    argument must not be a way round it."""
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=_token(*_tool_scopes(tool_name), APIKeyPermission.WRITE_FILES),
+    )
+    for limiter in TOOL_LIMITERS.values():
+        mocker.patch.object(limiter, "check", new_callable=mock.AsyncMock)
+    mocker.patch.object(
+        file_upload_limiter,
+        "check",
+        new_callable=mock.AsyncMock,
+        side_effect=HTTPException(status_code=429, detail="Rate limit exceeded"),
+    )
+    run = mocker.patch.object(type(TOOL_REGISTRY[tool_name]), "_execute")
+
+    result = await _call(tool_name, arguments)
+
+    run.assert_not_called()
+    assert result.isError
+    assert "Rate limit exceeded" in result.content[0].text
+
+
+async def test_a_call_that_writes_no_file_is_not_charged_an_upload(
+    mocker: pytest_mock.MockerFixture, no_tenancy_lookups: mock.AsyncMock
+):
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=_token(*_tool_scopes("find_library_agent")),
+    )
+    search = mocker.patch.object(
+        TOOL_LIMITERS["find_library_agent"], "check", new_callable=mock.AsyncMock
+    )
+    upload = mocker.patch.object(
+        file_upload_limiter, "check", new_callable=mock.AsyncMock
+    )
+    mocker.patch.object(
+        type(TOOL_REGISTRY["find_library_agent"]),
+        "_execute",
+        new_callable=mock.AsyncMock,
+        return_value=ErrorResponse(message="No agents found"),
+    )
+
+    await _call("find_library_agent", {"query": "mail"})
+
+    search.assert_awaited_once()
+    upload.assert_not_awaited()
 
 
 async def test_a_run_on_a_zero_balance_is_refused_as_rest_refuses_it(

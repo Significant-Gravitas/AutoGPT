@@ -11,6 +11,7 @@ from typing import Any, Sequence
 
 from fastapi import HTTPException
 from mcp.server.fastmcp.exceptions import ToolError
+from prisma.enums import APIKeyPermission
 
 from backend.api.utils.rate_limit import RateLimiter
 from backend.copilot.config import ChatConfig
@@ -91,8 +92,8 @@ TOOL_LIMITERS: dict[str, RateLimiter] = {
 async def check_tool_limits(
     tool: BaseTool, args: dict[str, Any], user_id: str, organization_id: str
 ) -> None:
-    """The per-endpoint cap, and for a real run, the zero-balance refusal."""
-    if limiter := TOOL_LIMITERS.get(tool.name):
+    """The per-endpoint caps, and for a real run, the zero-balance refusal."""
+    for limiter in _tool_limiters(tool, args):
         try:
             await limiter.check(user_id)
         except HTTPException as exc:
@@ -108,6 +109,15 @@ async def check_tool_limits(
             raise ToolError(
                 "Insufficient balance to run the agent. Please top up your account."
             )
+
+
+def _tool_limiters(tool: BaseTool, args: dict[str, Any]) -> list[RateLimiter]:
+    """The tool's own cap, plus the upload cap when an argument has it write a
+    workspace file, as `write_to` does: the write the upload route caps."""
+    limiters = [TOOL_LIMITERS[tool.name]] if tool.name in TOOL_LIMITERS else []
+    if APIKeyPermission.WRITE_FILES in tool.external_permissions(args):
+        limiters.append(file_upload_limiter)
+    return list(dict.fromkeys(limiters))
 
 
 def _starts_a_paid_run(args: dict[str, Any]) -> bool:
