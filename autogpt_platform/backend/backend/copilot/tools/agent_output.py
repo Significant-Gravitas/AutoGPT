@@ -134,13 +134,14 @@ async def _trace_graph(
             include_subgraphs=True,
         )
     except Exception:
-        graph = None
         logger.warning(
-            f"Graph of execution {execution.id} failed to load", exc_info=True
+            f"Graph of execution {execution.id} failed to load; trace judged whole",
+            exc_info=True,
         )
+        return None
     if graph is None:
         logger.warning(
-            f"Graph of execution {execution.id} not loaded; trace judged whole"
+            f"Graph of execution {execution.id} not found; trace judged whole"
         )
     return graph
 
