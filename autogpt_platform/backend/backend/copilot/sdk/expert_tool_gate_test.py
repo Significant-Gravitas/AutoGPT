@@ -147,6 +147,7 @@ def _make_patches(*, hire_experts_enabled: bool):
                 use_e2b_sandbox=False,
                 claude_agent_max_transient_retries=1,
                 agent_max_turns=1000,
+                sdk_step_checkin=1000,
                 claude_agent_max_budget_usd=100.0,
                 claude_agent_max_thinking_tokens=0,
                 claude_agent_thinking_effort=None,

@@ -102,6 +102,13 @@ def test_landed_turn_with_no_reply_pauses_rather_than_reporting_empty():
     assert pause["checkpoint_saved"] is False
 
 
+def test_an_error_while_landing_is_still_reported_as_an_error():
+    adapter = _adapter(landed=True)
+    events = adapter.convert_message(_result("error"))
+    assert any(isinstance(e, StreamError) for e in events)
+    assert not any(isinstance(e, StreamTurnPaused) for e in events)
+
+
 def test_a_turn_that_did_not_land_finishes_normally():
     adapter = _adapter(landed=False)
     adapter.convert_message(

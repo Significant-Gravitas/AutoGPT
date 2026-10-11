@@ -1068,6 +1068,7 @@ def _make_sdk_patches(
                 use_e2b_sandbox=False,
                 claude_agent_max_transient_retries=1,
                 agent_max_turns=1000,
+                sdk_step_checkin=1000,
                 claude_agent_max_budget_usd=100.0,
                 claude_agent_max_thinking_tokens=0,
                 claude_agent_autocompact_pct_override=0,
