@@ -23,6 +23,7 @@ const KNOWN_WRONG: Record<string, string> = {
   F1: "a server-started turn that registers after the probes is not followed",
   F3: "an idle visible tab is not told of a turn another device starts",
 };
+const CASES = new Set<string>();
 
 const P1 = "What does example.com say?";
 const P2 = "And what about example.org?";
@@ -53,6 +54,10 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
   setVisibility("visible");
+});
+
+it("every KNOWN_WRONG id names a case", () => {
+  expect(Object.keys(KNOWN_WRONG).filter((id) => !CASES.has(id))).toEqual([]);
 });
 
 describe("a send", () => {
@@ -644,6 +649,7 @@ describe("the page lifecycle", () => {
 });
 
 function cell(id: string, title: string, run: () => Promise<void>) {
+  CASES.add(id);
   const wrong = KNOWN_WRONG[id];
   if (wrong) it.fails(`${id}: ${title} (known wrong: ${wrong})`, run);
   else it(`${id}: ${title}`, run);
