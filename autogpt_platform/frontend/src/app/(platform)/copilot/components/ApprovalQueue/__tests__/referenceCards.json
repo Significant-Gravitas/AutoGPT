@@ -18,7 +18,8 @@
         "fields": [
           {
             "key": "folder_id",
-            "label": "Folder"
+            "label": "Folder",
+            "format": null
           }
         ],
         "references": [
@@ -114,41 +115,16 @@
         "fields": [
           {
             "key": "agent_ids",
-            "label": "Agents"
+            "label": "Agents",
+            "format": null
           },
           {
             "key": "folder_id",
-            "label": "Folder"
+            "label": "Folder",
+            "format": null
           }
         ],
         "references": [
-          {
-            "key": "folder_id",
-            "entity": "library_folder",
-            "id": "f-archive",
-            "name": "Archive",
-            "href": "/library?folder=f-archive",
-            "kind": "Library folder",
-            "description": null,
-            "meta": [
-              {
-                "text": "4 agents",
-                "cron": null,
-                "label": null,
-                "at": null
-              },
-              {
-                "text": "1 subfolder",
-                "cron": null,
-                "label": null,
-                "at": null
-              }
-            ],
-            "avatar_url": null,
-            "avatar_color": null,
-            "skills": [],
-            "summary": "4 agents · 1 subfolder"
-          },
           {
             "key": "agent_ids",
             "entity": "library_agent",
@@ -294,11 +270,38 @@
             "avatar_color": null,
             "skills": [],
             "summary": "Version 3 · In Mornings · Never run"
+          },
+          {
+            "key": "folder_id",
+            "entity": "library_folder",
+            "id": "f-archive",
+            "name": "Archive",
+            "href": "/library?folder=f-archive",
+            "kind": "Library folder",
+            "description": null,
+            "meta": [
+              {
+                "text": "4 agents",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "1 subfolder",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
+            "summary": "4 agents · 1 subfolder"
           }
         ],
         "reference_totals": {
-          "folder_id": 1,
-          "agent_ids": 7
+          "agent_ids": 7,
+          "folder_id": 1
         },
         "tool_call_id": "call-move_agents_to_folder",
         "turn": 1,
@@ -346,7 +349,8 @@
         "fields": [
           {
             "key": "schedule_id",
-            "label": "Schedule"
+            "label": "Schedule",
+            "format": null
           }
         ],
         "references": [
@@ -434,11 +438,13 @@
         "fields": [
           {
             "key": "template_id",
-            "label": "Template"
+            "label": "Template",
+            "format": null
           },
           {
             "key": "name",
-            "label": "Name"
+            "label": "Name",
+            "format": null
           }
         ],
         "references": [
@@ -519,11 +525,13 @@
         "fields": [
           {
             "key": "session_id",
-            "label": "Session"
+            "label": "Chat",
+            "format": null
           },
           {
             "key": "message",
-            "label": "Message"
+            "label": "Message",
+            "format": null
           }
         ],
         "references": [
@@ -605,14 +613,37 @@
         "fields": [
           {
             "key": "expert_id",
-            "label": "Expert"
+            "label": "Expert",
+            "format": null
           },
           {
             "key": "credential_id",
-            "label": "Credential"
+            "label": "Credential",
+            "format": null
           }
         ],
         "references": [
+          {
+            "key": "expert_id",
+            "entity": "expert",
+            "id": "exp-ada",
+            "name": "Ada",
+            "href": "/team/exp-ada",
+            "kind": "Expert",
+            "description": null,
+            "meta": [
+              {
+                "text": "Bookkeeper",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": "#0ea5e9",
+            "skills": [],
+            "summary": "Bookkeeper"
+          },
           {
             "key": "credential_id",
             "entity": "credential",
@@ -639,27 +670,6 @@
             "avatar_color": null,
             "skills": [],
             "summary": "github · api key"
-          },
-          {
-            "key": "expert_id",
-            "entity": "expert",
-            "id": "exp-ada",
-            "name": "Ada",
-            "href": "/team/exp-ada",
-            "kind": "Expert",
-            "description": null,
-            "meta": [
-              {
-                "text": "Bookkeeper",
-                "cron": null,
-                "label": null,
-                "at": null
-              }
-            ],
-            "avatar_url": null,
-            "avatar_color": "#0ea5e9",
-            "skills": [],
-            "summary": "Bookkeeper"
           }
         ],
         "reference_totals": {
@@ -712,7 +722,8 @@
         "fields": [
           {
             "key": "agent_id",
-            "label": "Agent"
+            "label": "Agent",
+            "format": null
           }
         ],
         "references": [
@@ -799,7 +810,8 @@
         "fields": [
           {
             "key": "preset_id",
-            "label": "Preset"
+            "label": "Preset",
+            "format": null
           }
         ],
         "references": [
@@ -874,7 +886,8 @@
         "fields": [
           {
             "key": "preset_id",
-            "label": "Preset"
+            "label": "Preset",
+            "format": null
           }
         ],
         "references": [
@@ -949,7 +962,8 @@
         "fields": [
           {
             "key": "routine_id",
-            "label": "Routine"
+            "label": "Routine",
+            "format": null
           }
         ],
         "references": [
@@ -1025,11 +1039,13 @@
         "fields": [
           {
             "key": "store_listing_version_id",
-            "label": "Store listing version"
+            "label": "Marketplace agent",
+            "format": null
           },
           {
             "key": "expert_id",
-            "label": "Expert"
+            "label": "Expert",
+            "format": null
           }
         ],
         "references": [
@@ -1089,8 +1105,8 @@
           }
         ],
         "reference_totals": {
-          "expert_id": 1,
-          "store_listing_version_id": 1
+          "store_listing_version_id": 1,
+          "expert_id": 1
         },
         "tool_call_id": "call-install_expert_workflow",
         "turn": 1,
@@ -1138,7 +1154,8 @@
         "fields": [
           {
             "key": "workflow_id",
-            "label": "Workflow"
+            "label": "Workflow",
+            "format": null
           }
         ],
         "references": [
@@ -1206,7 +1223,8 @@
         "fields": [
           {
             "key": "confirmation_id",
-            "label": "Confirmation"
+            "label": "Confirmation",
+            "format": null
           }
         ],
         "references": [
@@ -1288,11 +1306,13 @@
         "fields": [
           {
             "key": "file_id",
-            "label": "File"
+            "label": "File",
+            "format": null
           },
           {
             "key": "path",
-            "label": "Path"
+            "label": "Path",
+            "format": null
           }
         ],
         "references": [
@@ -1385,7 +1405,8 @@
         "fields": [
           {
             "key": "preset_id",
-            "label": "Preset"
+            "label": "Preset",
+            "format": null
           }
         ],
         "references": [
@@ -1430,6 +1451,246 @@
         "spend": null
       },
       "instructions": "delete_preset",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Follow-up in two days",
+    "review": {
+      "node_exec_id": "copilot-node-gate-schedule_followup:7552e2303308fb3d",
+      "node_id": "copilot-node-gate-schedule_followup",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "schedule_followup",
+        "arguments": {
+          "message": "Check that Ada finished the partner dossiers.",
+          "delay_seconds": 183420,
+          "session_id": "s-q3"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "message",
+            "label": "Message",
+            "format": null
+          },
+          {
+            "key": "delay_seconds",
+            "label": "Runs in",
+            "format": "seconds"
+          },
+          {
+            "key": "session_id",
+            "label": "Lands in",
+            "format": null
+          }
+        ],
+        "references": [
+          {
+            "key": "session_id",
+            "entity": "chat_session",
+            "id": "s-q3",
+            "name": "Q3 planning",
+            "href": "/copilot?sessionId=s-q3",
+            "kind": "Chat",
+            "description": null,
+            "meta": [
+              {
+                "text": "Started 2026-09-24",
+                "cron": null,
+                "label": "Started",
+                "at": "2026-09-24T14:05:00+00:00"
+              },
+              {
+                "text": "Last active 2026-09-24",
+                "cron": null,
+                "label": "Last active",
+                "at": "2026-09-24T14:05:00+00:00"
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
+            "summary": "Started 2026-09-24 · Last active 2026-09-24"
+          }
+        ],
+        "reference_totals": {
+          "session_id": 1
+        },
+        "tool_call_id": "call-schedule_followup",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "schedule_followup",
+          "name": "Schedule a follow-up",
+          "effect": "platform",
+          "irreversible": false,
+          "block_id": null
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "decided_by": null,
+        "chat_rules_allowed": ["allow", "judge"],
+        "headline": {
+          "ask": "Schedule a follow-up",
+          "object": null,
+          "object_key": null
+        },
+        "spend": null
+      },
+      "instructions": "schedule_followup",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Weekly follow-up",
+    "review": {
+      "node_exec_id": "copilot-node-gate-schedule_followup:f9f30c88b7447210",
+      "node_id": "copilot-node-gate-schedule_followup",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "schedule_followup",
+        "arguments": {
+          "message": "Review the sales pipeline.",
+          "cron": "0 9 * * 1"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "message",
+            "label": "Message",
+            "format": null
+          },
+          {
+            "key": "cron",
+            "label": "Repeats",
+            "format": "cron"
+          }
+        ],
+        "references": [],
+        "reference_totals": {},
+        "tool_call_id": "call-schedule_followup",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "schedule_followup",
+          "name": "Schedule a follow-up",
+          "effect": "platform",
+          "irreversible": false,
+          "block_id": null
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "decided_by": null,
+        "chat_rules_allowed": ["allow", "judge"],
+        "headline": {
+          "ask": "Schedule a follow-up",
+          "object": null,
+          "object_key": null
+        },
+        "spend": null
+      },
+      "instructions": "schedule_followup",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Delegate and wait",
+    "review": {
+      "node_exec_id": "copilot-node-gate-delegate_to_expert:ca2d42d7eff7f9bf",
+      "node_id": "copilot-node-gate-delegate_to_expert",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "delegate_to_expert",
+        "arguments": {
+          "expert_id": "exp-ada",
+          "prompt": "Backfill the partner dossiers for the three new accounts.",
+          "wait_for_result": 180
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "expert_id",
+            "label": "Expert",
+            "format": null
+          },
+          {
+            "key": "prompt",
+            "label": "Task",
+            "format": null
+          },
+          {
+            "key": "wait_for_result",
+            "label": "Waits up to",
+            "format": "seconds"
+          }
+        ],
+        "references": [
+          {
+            "key": "expert_id",
+            "entity": "expert_or_name",
+            "id": "exp-ada",
+            "name": "Ada",
+            "href": "/team/exp-ada",
+            "kind": "Expert",
+            "description": null,
+            "meta": [
+              {
+                "text": "Bookkeeper",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": "#0ea5e9",
+            "skills": [],
+            "summary": "Bookkeeper"
+          }
+        ],
+        "reference_totals": {
+          "expert_id": 1
+        },
+        "tool_call_id": "call-delegate_to_expert",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "delegate_to_expert",
+          "name": "Hand a task to a teammate",
+          "effect": "platform",
+          "irreversible": false,
+          "block_id": null
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "decided_by": null,
+        "chat_rules_allowed": ["allow", "judge"],
+        "headline": {
+          "ask": "Hand a task to a teammate",
+          "object": "Ada",
+          "object_key": "expert_id"
+        },
+        "spend": null
+      },
+      "instructions": "delegate_to_expert",
       "editable": false,
       "status": "WAITING"
     }
