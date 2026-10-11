@@ -71,6 +71,8 @@ export const ImpersonationCookie = {
   },
 };
 
+const IMPERSONATION_OWNER_STORAGE_KEY = `${IMPERSONATION_STORAGE_KEY}-owner`;
+
 /**
  * SessionStorage utility functions
  */
@@ -110,6 +112,7 @@ export const ImpersonationSession = {
 
     try {
       sessionStorage.removeItem(IMPERSONATION_STORAGE_KEY);
+      sessionStorage.removeItem(IMPERSONATION_OWNER_STORAGE_KEY);
     } catch (error) {
       console.error(
         "Failed to clear impersonation from sessionStorage:",
@@ -148,9 +151,16 @@ export const ImpersonationState = {
   /**
    * Set impersonation user ID in both sessionStorage and cookie
    */
-  set(userId: string): void {
+  set(userId: string, ownerId?: string): void {
     ImpersonationSession.set(userId);
     ImpersonationCookie.set(userId);
+    if (ownerId) {
+      try {
+        sessionStorage.setItem(IMPERSONATION_OWNER_STORAGE_KEY, ownerId);
+      } catch (error) {
+        console.error("Failed to record the impersonating admin:", error);
+      }
+    }
   },
 
   /**
@@ -182,6 +192,25 @@ export function clearImpersonationEverywhere(): void {
 
 export function isImpersonationClearedEvent(event: StorageEvent): boolean {
   return event.key === Key.IMPERSONATION_CLEARED;
+}
+
+/**
+ * Whether this tab's impersonation target may be used while `user` is signed
+ * in: only an admin can impersonate, and only the admin who chose the target
+ * (when this tab knows who that was).
+ */
+export function isImpersonationUsableBy(user: {
+  id: string;
+  role?: string;
+}): boolean {
+  if (user.role !== "admin") return false;
+  if (!environment.isClientSide()) return true;
+  try {
+    const owner = sessionStorage.getItem(IMPERSONATION_OWNER_STORAGE_KEY);
+    return owner === null || owner === user.id;
+  } catch {
+    return true;
+  }
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   clearImpersonationEverywhere,
   ImpersonationState,
   isImpersonationClearedEvent,
+  isImpersonationUsableBy,
 } from "@/lib/impersonation";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
@@ -88,23 +89,22 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
         // This handles the case where hasLoadedUser might be stale after logout/login
         if (!get().hasLoadedUser || !get().user) {
           set({ isUserLoading: true });
-          const result = await fetchUser();
+          const { user, ...result } = await fetchUser();
           set(result);
+          if (user) adoptUser(user);
+          else set({ user: null });
 
           // If fetchUser didn't return a user, validate the session to ensure we have the latest state
           // This handles race conditions after login where cookies might not be immediately available
-          if (!result.user) {
+          if (!user) {
             const validationResult = await validateSessionHelper({
               path: params.path,
               currentUser: null,
             });
 
             if (validationResult.user && validationResult.isValid) {
-              set({
-                user: validationResult.user,
-                hasLoadedUser: true,
-                isUserLoading: false,
-              });
+              adoptUser(validationResult.user);
+              set({ hasLoadedUser: true, isUserLoading: false });
             }
           }
         } else {
@@ -232,10 +232,18 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
   }
 
   // An impersonation target belongs to the admin session that chose it. When
-  // this tab takes on a different account, the target must go with the old one.
+  // this tab takes on a different account, or one that may not use it, the
+  // target goes. That includes a tab starting from an empty store, which can
+  // hold a target from a session that ended while it wasn't listening.
   function adoptUser(user: User): void {
     const previous = get().user;
-    if (previous && previous.id !== user.id) clearImpersonationEverywhere();
+    const switchedAccount = previous !== null && previous.id !== user.id;
+    if (
+      (switchedAccount || !isImpersonationUsableBy(user)) &&
+      ImpersonationState.get()
+    ) {
+      clearImpersonationEverywhere();
+    }
     set({ user });
   }
 

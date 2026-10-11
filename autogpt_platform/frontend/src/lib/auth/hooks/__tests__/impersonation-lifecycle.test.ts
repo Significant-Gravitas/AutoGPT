@@ -28,8 +28,21 @@ vi.mock("@/services/analytics/reset-identity", () => ({
 import { useAuthStore } from "../useAuthStore";
 
 const ACT_AS = "X-Act-As-User-Id";
-const admin = { id: "admin-1", email: "admin@example.com" } as User;
-const otherUser = { id: "user-c", email: "c@example.com" } as User;
+const admin = {
+  id: "admin-1",
+  email: "admin@example.com",
+  role: "admin",
+} as User;
+const otherAdmin = {
+  id: "admin-2",
+  email: "admin2@example.com",
+  role: "admin",
+} as User;
+const otherUser = {
+  id: "user-c",
+  email: "c@example.com",
+  role: "authenticated",
+} as User;
 
 function makeRouter() {
   return {
@@ -163,5 +176,31 @@ describe("admin impersonation follows the session that chose it", () => {
 
     expect(getSystemHeaders()).toEqual({});
     expect(localStorage.getItem("impersonation-cleared")).not.toBeNull();
+  });
+
+  describe("when a tab starts with no user, e.g. after a reload", () => {
+    it("keeps the target for the admin who chose it", async () => {
+      ImpersonationState.set("user-a", admin.id);
+
+      await signInTab(admin);
+
+      expect(getSystemHeaders()).toEqual({ [ACT_AS]: "user-a" });
+    });
+
+    it("drops it for an account that can't impersonate", async () => {
+      ImpersonationSession.set("user-a");
+
+      await signInTab(otherUser);
+
+      expect(getSystemHeaders()).toEqual({});
+    });
+
+    it("drops it for a different admin", async () => {
+      ImpersonationState.set("user-a", admin.id);
+
+      await signInTab(otherAdmin);
+
+      expect(getSystemHeaders()).toEqual({});
+    });
   });
 });
