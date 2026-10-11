@@ -15,6 +15,7 @@ from backend.data.credit import (
     PAYMENT_FAILURE_CANCELLATION_COMMENT,
     UserCredit,
     _get_active_subscription_cached,
+    _get_versioned_active_subscription,
     _is_stripe_reconcilable,
     build_price_to_tier_map,
     cancel_stripe_subscription,
@@ -56,7 +57,7 @@ def _clear_active_subscription_cache():
     clear it so a subscription mocked in one test cannot leak into the next
     through the cache.
     """
-    _clear_cache(_get_active_subscription_cached)
+    _clear_cache(_get_versioned_active_subscription)
     yield
 
 
@@ -982,7 +983,8 @@ async def test_active_subscription_lookup_is_cached_within_window():
     ) as raw:
         first = await _get_active_subscription_cached("cus_cache")
         second = await _get_active_subscription_cached("cus_cache")
-    assert first is second is mock_sub
+    assert first == second
+    assert first is not None and first.status == "active"
     raw.assert_awaited_once()
 
 

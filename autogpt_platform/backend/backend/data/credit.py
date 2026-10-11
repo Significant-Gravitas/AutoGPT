@@ -42,6 +42,13 @@ from backend.data.subscription_checkout import (
     expire_other_subscription_checkouts,
     subscription_checkout_lock,
 )
+from backend.data.subscription_lookup_cache import (
+    SUBSCRIPTION_LOOKUP_TTL_SECONDS,
+    ActiveSubscription,
+    get_subscription_lookup_version,
+    invalidate_active_subscription_cache,
+    summarize_subscription,
+)
 from backend.data.subscription_trial_stripe import reconcile_trial_subscription
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.queue import queue_notification_async
@@ -1629,6 +1636,23 @@ async def _cancel_customer_subscriptions(
     # filter at a time (no OR), and we explicitly want to skip canceled/incomplete/
     # past_due subs rather than filter them out client-side via status="all".
     seen_ids: set[str] = set()
+    try:
+        await _cancel_listed_subscriptions(
+            customer_id, seen_ids, exclude_sub_id, at_period_end, cancellation_comment
+        )
+    finally:
+        if seen_ids:
+            await invalidate_active_subscription_cache(customer_id)
+    return len(seen_ids)
+
+
+async def _cancel_listed_subscriptions(
+    customer_id: str,
+    seen_ids: set[str],
+    exclude_sub_id: str | None,
+    at_period_end: bool,
+    cancellation_comment: str | None,
+) -> None:
     for status in ("active", "trialing"):
         subscriptions = await stripe_call(
             stripe.Subscription.list_async,
@@ -1676,7 +1700,6 @@ async def _cancel_customer_subscriptions(
                     sub_id,
                     **_cancel_params(cancellation_comment, trial=False),
                 )
-    return len(seen_ids)
 
 
 def _cancel_params(
@@ -1759,10 +1782,12 @@ async def get_proration_credit_cents(user_id: str, monthly_cost_cents: int) -> i
         # Proration only applies to a paid, active subscription — a trialing
         # sub has no paid time to prorate. Matches the previous active-only
         # query (status="active") while sharing the cached lookup.
-        if sub is None or sub.get("status") != "active":
+        if sub is None or sub.status != "active":
             return 0
-        period_start: int = sub["current_period_start"]
-        period_end: int = sub["current_period_end"]
+        period_start = sub.current_period_start
+        period_end = sub.current_period_end
+        if period_start is None or period_end is None:
+            return 0
         now = int(time.time())
         total_seconds = period_end - period_start
         remaining_seconds = max(period_end - now, 0)
@@ -1820,10 +1845,9 @@ async def _get_active_subscription(customer_id: str) -> stripe.Subscription | No
     return None
 
 
-@cached(ttl_seconds=15, maxsize=2048, cache_none=True)
 async def _get_active_subscription_cached(
     customer_id: str,
-) -> stripe.Subscription | None:
+) -> ActiveSubscription | None:
     """Short-TTL per-customer cache over :func:`_get_active_subscription`.
 
     ``get_subscription_status`` resolves the active subscription up to three
@@ -1834,20 +1858,29 @@ async def _get_active_subscription_cached(
     per request, and again on every page view. A brief cache collapses them
     into one lookup per customer per window.
 
-    Read-only display helpers use this. Subscription mutation flows keep calling
-    :func:`_get_active_subscription` directly so they always act on fresh Stripe
-    state; the 15-second window here only affects display fields (billing cycle,
-    next-invoice date, proration estimate), which the frontend re-fetches and
-    which self-correct well inside the tolerances already used elsewhere (the
-    pending-change lookup is cached for 30s).
+    The cache lives in Redis, keyed by the customer's lookup version, so a
+    subscription change (``invalidate_active_subscription_cache``) is seen by
+    every API worker on its next read rather than only by the one that made
+    it. Subscription mutation flows keep calling
+    :func:`_get_active_subscription` directly so they always act on fresh
+    Stripe state.
     """
-    return await _get_active_subscription(customer_id)
+    version = await get_subscription_lookup_version(customer_id)
+    if version is None:
+        return summarize_subscription(await _get_active_subscription(customer_id))
+    return await _get_versioned_active_subscription(customer_id, version)
 
 
-def invalidate_active_subscription_cache(customer_id: str) -> None:
-    """Drop the cached lookup after changing the subscription in Stripe, so the
-    status returned right after shows the new period instead of the old one."""
-    _get_active_subscription_cached.cache_delete(customer_id)
+@cached(
+    ttl_seconds=SUBSCRIPTION_LOOKUP_TTL_SECONDS,
+    maxsize=2048,
+    cache_none=True,
+    shared_cache=True,
+)
+async def _get_versioned_active_subscription(
+    customer_id: str, version: str
+) -> ActiveSubscription | None:
+    return summarize_subscription(await _get_active_subscription(customer_id))
 
 
 async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
@@ -1870,15 +1903,9 @@ async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
             "get_user_billing_cycle: Stripe lookup failed for user %s", user_id
         )
         return None
-    if sub is None:
+    if sub is None or not sub.price_id:
         return None
-    items = sub["items"].data
-    if not items:
-        return None
-    price = items[0].price
-    current_price_id = price if isinstance(price, str) else price.id
-    if not current_price_id:
-        return None
+    current_price_id = sub.price_id
 
     priceable = (
         SubscriptionTier.BASIC,
@@ -1920,8 +1947,7 @@ async def get_active_subscription_period_end(user_id: str) -> int | None:
         return None
     if sub is None:
         return None
-    period_end = sub.current_period_end
-    return int(period_end) if period_end else None
+    return sub.current_period_end or None
 
 
 # Substrings Stripe uses in InvalidRequestError messages when the schedule is
@@ -2248,6 +2274,7 @@ async def modify_stripe_subscription_for_tier(
         return True
     finally:
         get_pending_subscription_change.cache_delete(user_id)
+        await invalidate_active_subscription_cache(user.stripe_customer_id)
 
 
 async def release_pending_subscription_schedule(user_id: str) -> bool:
@@ -2317,6 +2344,7 @@ async def release_pending_subscription_schedule(user_id: str) -> bool:
     finally:
         if did_anything:
             get_pending_subscription_change.cache_delete(user_id)
+            await invalidate_active_subscription_cache(user.stripe_customer_id)
     return did_anything
 
 
@@ -2778,7 +2806,13 @@ async def sync_subscription_from_stripe(
     ``track_lifecycle=False`` is for the periodic tier sweep, which would
     otherwise fan out one Stripe call per trial; the daily lifecycle sweep
     covers those users.
+
+    The payload is Stripe's latest word on the subscription, so the cached
+    lookup the billing page reads is dropped on every worker first.
     """
+    customer_id = stripe_subscription.get("customer")
+    if isinstance(customer_id, str) and customer_id:
+        await invalidate_active_subscription_cache(customer_id)
     await _sync_subscription_tier_from_stripe(stripe_subscription)
     if track_lifecycle:
         schedule_posthog_lifecycle_sync(

@@ -3,11 +3,13 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+import pytest_asyncio
 import stripe
 from prisma.enums import SubscriptionTier
 
 from backend.data import credit
 from backend.data import subscription_trial_conversion as conversion
+from backend.data.subscription_lookup_cache import invalidate_active_subscription_cache
 from backend.data.subscription_trial import TrialState
 
 pytest_plugins = ("backend.data.subscription_trial_fixtures",)
@@ -491,13 +493,12 @@ async def test_ended_plans_do_not_block_the_conversion(pending_trial, live, boun
     boundaries.sync.assert_awaited_once_with(dict(boundaries.converted))
 
 
-@pytest.fixture
-def subscription_lookup():
+@pytest_asyncio.fixture
+async def subscription_lookup():
     """The short-lived active-subscription lookup the status route reads."""
-    lookup = credit._get_active_subscription_cached
-    lookup.cache_delete("cus_1")
-    yield lookup
-    lookup.cache_delete("cus_1")
+    await invalidate_active_subscription_cache("cus_1")
+    yield credit._get_active_subscription_cached
+    await invalidate_active_subscription_cache("cus_1")
 
 
 @pytest.mark.asyncio
@@ -511,9 +512,11 @@ async def test_conversion_refreshes_the_cached_subscription_lookup(
         "_get_active_subscription",
         AsyncMock(side_effect=[trialing, boundaries.converted]),
     ):
-        assert await subscription_lookup("cus_1") is trialing
+        before = await subscription_lookup("cus_1")
+        assert before is not None and before.status == "trialing"
         await conversion.convert_cancel_pending_trial(pending_trial, PRO)
-        assert await subscription_lookup("cus_1") is boundaries.converted
+        after = await subscription_lookup("cus_1")
+        assert after is not None and after.status == "active"
 
 
 @pytest.mark.asyncio
