@@ -658,11 +658,23 @@
   "api/features/billing/subscriptions/routes.py::<module> -> backend.data.subscription_trial_billing.sync_trials_for_billing_event": [
     "import"
   ],
+  "api/features/billing/subscriptions/routes.py::<module> -> backend.data.subscription_trial_conversion.convert_cancel_pending_trial": [
+    "import"
+  ],
+  "api/features/billing/subscriptions/routes.py::<module> -> backend.data.subscription_trial_conversion.get_cancel_pending_trial": [
+    "import"
+  ],
   "api/features/billing/subscriptions/routes.py::<module> -> backend.data.user.get_user_by_id": [
     "import"
   ],
   "api/features/billing/subscriptions/routes.py::<module> -> backend.util.product_analytics.track_checkout_started": [
     "import"
+  ],
+  "api/features/billing/subscriptions/routes.py::_convert_trial -> backend.api.features.billing.subscriptions.routes.get_subscription_status": [
+    "e9d8aad389f1b38a4f47d04ab9865b965d7c92bef18c4b2aa3e9e575efa77c69"
+  ],
+  "api/features/billing/subscriptions/routes.py::_convert_trial -> backend.data.subscription_trial_conversion.convert_cancel_pending_trial": [
+    "25e1edc91dfdad474576d27e8ae5a5d63504346173745b261801c2c005e4eb4a"
   ],
   "api/features/billing/subscriptions/routes.py::get_subscription_status -> backend.data.credit.get_active_subscription_period_end": [
     "096064b1a88322690de79695cc0cd072cce6aa56d8d00fd07c8cbdb0b233a602"
@@ -715,6 +727,9 @@
   "api/features/billing/subscriptions/routes.py::stripe_webhook -> backend.data.subscription_trial_billing.sync_trials_for_billing_event": [
     "30693bfaedadd7db71678272f73fa1c6d4b121cfaa521ce4a03afcf3c85e0463"
   ],
+  "api/features/billing/subscriptions/routes.py::update_subscription_tier -> backend.api.features.billing.subscriptions.routes._convert_trial": [
+    "43f20e80dd0b76635cd9db57d0ff5a5bc32354d5ca9195a9089092da202439e4"
+  ],
   "api/features/billing/subscriptions/routes.py::update_subscription_tier -> backend.api.features.billing.subscriptions.routes.get_subscription_status": [
     "e9d8aad389f1b38a4f47d04ab9865b965d7c92bef18c4b2aa3e9e575efa77c69",
     "e9d8aad389f1b38a4f47d04ab9865b965d7c92bef18c4b2aa3e9e575efa77c69",
@@ -746,6 +761,9 @@
   "api/features/billing/subscriptions/routes.py::update_subscription_tier -> backend.data.credit.set_subscription_tier": [
     "197ffc1066a3967ce156ba1937ffd342087771b61fb90e070d70a8dc65d05284",
     "197ffc1066a3967ce156ba1937ffd342087771b61fb90e070d70a8dc65d05284"
+  ],
+  "api/features/billing/subscriptions/routes.py::update_subscription_tier -> backend.data.subscription_trial_conversion.get_cancel_pending_trial": [
+    "25443fa83c623361fd904cd5acad96d0641de241336726e4bedd459b06f8d77d"
   ],
   "api/features/billing/subscriptions/routes.py::update_subscription_tier -> backend.data.user.get_user_by_id": [
     "68bbd9745d7caf08c2cc7007e617ad70bb3340787fbba7e37932f13e3b4a6cd4"
@@ -2350,13 +2368,16 @@
   "api/features/subscription_trial_routes.py::<module> -> backend.data.checkout_audience.schedule_checkout_opened": [
     "import"
   ],
-  "api/features/subscription_trial_routes.py::<module> -> backend.data.credit.sync_subscription_from_stripe": [
-    "import"
-  ],
   "api/features/subscription_trial_routes.py::<module> -> backend.data.subscription_trial.get_subscription_trial": [
     "import"
   ],
   "api/features/subscription_trial_routes.py::<module> -> backend.data.subscription_trial.has_received_onboarding_credit": [
+    "import"
+  ],
+  "api/features/subscription_trial_routes.py::<module> -> backend.data.subscription_trial_cancel.resume_trial_subscription": [
+    "import"
+  ],
+  "api/features/subscription_trial_routes.py::<module> -> backend.data.subscription_trial_cancel.schedule_trial_cancellation": [
     "import"
   ],
   "api/features/subscription_trial_routes.py::<module> -> backend.data.subscription_trial_capacity.trial_seat_available": [
@@ -2383,11 +2404,11 @@
   "api/features/subscription_trial_routes.py::cancel_trial -> backend.api.features.subscription_trial_routes.get_trial_status": [
     "6586ae8fe96e4f4d3869fe7ce02449867f96b540d76b79c5c5b6c888623afd23"
   ],
-  "api/features/subscription_trial_routes.py::cancel_trial -> backend.data.credit.sync_subscription_from_stripe": [
-    "2804d2cd9c2bd38bf782c5537d7ead27c3fab35739df63666f4e16c37e57e612"
-  ],
   "api/features/subscription_trial_routes.py::cancel_trial -> backend.data.subscription_trial.get_subscription_trial": [
     "4d60132498ae0c7ba8b1e79cec04998bd32fd4fc971d0d87f13212f7d1073d3b"
+  ],
+  "api/features/subscription_trial_routes.py::cancel_trial -> backend.data.subscription_trial_cancel.schedule_trial_cancellation": [
+    "651862817eece47a0a5893eeabae7b3d2efaf8030351621571d96954cfe1dcda"
   ],
   "api/features/subscription_trial_routes.py::confirm_trial -> backend.api.features.subscription_trial_routes.get_trial_status": [
     "6586ae8fe96e4f4d3869fe7ce02449867f96b540d76b79c5c5b6c888623afd23"
@@ -2408,6 +2429,15 @@
   ],
   "api/features/subscription_trial_routes.py::get_trial_status -> backend.data.user.get_user_by_id": [
     "68bbd9745d7caf08c2cc7007e617ad70bb3340787fbba7e37932f13e3b4a6cd4"
+  ],
+  "api/features/subscription_trial_routes.py::resume_trial -> backend.api.features.subscription_trial_routes.get_trial_status": [
+    "6586ae8fe96e4f4d3869fe7ce02449867f96b540d76b79c5c5b6c888623afd23"
+  ],
+  "api/features/subscription_trial_routes.py::resume_trial -> backend.data.subscription_trial.get_subscription_trial": [
+    "4d60132498ae0c7ba8b1e79cec04998bd32fd4fc971d0d87f13212f7d1073d3b"
+  ],
+  "api/features/subscription_trial_routes.py::resume_trial -> backend.data.subscription_trial_cancel.resume_trial_subscription": [
+    "fd72b2d4bb4acd5d8fdfb2f14750fc7f543e695b6e6ae3b3b6392f906ae640d0"
   ],
   "api/features/subscription_trial_routes.py::start_trial_checkout -> backend.api.features.subscription_trial_routes._track_trial_checkout_started": [
     "4c70cb0f68b4c513445e50986a45584a63befacefb26b17f23b830f15341b76a"

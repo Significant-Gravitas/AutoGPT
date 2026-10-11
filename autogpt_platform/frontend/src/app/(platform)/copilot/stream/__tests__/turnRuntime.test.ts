@@ -300,6 +300,68 @@ describe("recovery", () => {
     expect(textsOf(render())).toEqual([PROMPT, FIRST_TEXT]);
   });
 
+  it("a send cut while hidden whose turn finished meanwhile shows the answer, not an error", async () => {
+    backend.respond(({ method }) =>
+      method === "POST" ? "network-error" : "stream",
+    );
+    setVisibility("hidden");
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(60_000);
+
+    // The backend ran the turn to its end while the tab slept.
+    backend.beginRunning();
+    backend.publish();
+    setVisibility("visible");
+    await advance(10_000);
+    expect(snapshot().error).toBeNull();
+    expect(textsOf(render()).join("")).toBe(
+      `${PROMPT}${FIRST_TEXT}${SECOND_TEXT}`,
+    );
+  });
+
+  it("a send silent while the tab slept is given up on return, not at the next tick", async () => {
+    backend.respond(({ method }) => (method === "POST" ? "silent" : "stream"));
+    setVisibility("hidden");
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(60_000);
+    backend.beginRunning();
+    backend.publish();
+
+    const views = vi.spyOn(backend, "view");
+    setVisibility("visible");
+    await advance(0);
+    expect(views).toHaveBeenCalledTimes(1);
+    expect(textsOf(render()).join("")).toBe(
+      `${PROMPT}${FIRST_TEXT}${SECOND_TEXT}`,
+    );
+  });
+
+  it("a send that never reached the server still reports the failure", async () => {
+    backend.respond(({ method }) =>
+      method === "POST" ? "network-error" : "stream",
+    );
+    setVisibility("hidden");
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(60_000);
+    setVisibility("visible");
+    await advance(10_000);
+    expect(snapshot().error?.message).toBe("Failed to fetch");
+  });
+
+  it("a send lost while a later send lands still reports its own failure", async () => {
+    backend.respond(({ method }) =>
+      method === "POST" ? "network-error" : "stream",
+    );
+    void runtime.send({ text: "Did this one arrive?" }, undefined);
+    await advance(0);
+
+    // The user sends again while the lost one is being looked for.
+    backend.respond(() => "stream");
+    await sendAndPublish(toolTurn.sse.length);
+    await advance(10_000);
+    expect(snapshot().error?.message).toBe("Failed to fetch");
+  });
+
   it("a lost resend of the same prompt takes no earlier prompt's row", async () => {
     await sendAndPublish(toolTurn.sse.length);
     await advance(2_000);
@@ -314,6 +376,96 @@ describe("recovery", () => {
       `${FIRST_TEXT}${SECOND_TEXT}`,
       PROMPT,
     ]);
+  });
+
+  it("a send the backend queued behind the running cap is followed into its turn", async () => {
+    backend.queueNextTurn();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+    expect(snapshot().phase).toBe("idle");
+
+    // Another of the user's turns ends, and the backend starts this one.
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    await advance(15_000);
+    expect(backend.connections.at(-1)?.url.searchParams.get("turn")).toBe(
+      backend.turnId,
+    );
+    expect(snapshot().phase).toBe("live");
+    expect(textsOf(render())).toEqual([PROMPT, FIRST_TEXT]);
+  });
+
+  it("a queued turn marked running before its stream exists is still followed into it", async () => {
+    backend.queueNextTurn();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+    backend.claimQueued();
+    await advance(30_000);
+
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    await advance(15_000);
+    expect(snapshot().phase).toBe("live");
+    expect(textsOf(render())).toEqual([PROMPT, FIRST_TEXT]);
+  });
+
+  it("gives up on a claimed queued turn whose stream never appears, and reports it", async () => {
+    backend.queueNextTurn();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+    backend.claimQueued();
+    await advance(3 * 60_000);
+
+    expect(report).toHaveBeenCalledWith(
+      "queue_start_stalled",
+      expect.anything(),
+    );
+    const views = vi.spyOn(backend, "view");
+    await advance(60_000);
+    expect(views).not.toHaveBeenCalled();
+  });
+
+  it("does not follow a queued turn the user stopped", async () => {
+    backend.queueNextTurn();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+    runtime.stop();
+    // The page's own refetch still shows the session queued.
+    const queuedView = backend.view();
+    runtime.observe(queuedView);
+
+    const views = vi.spyOn(backend, "view");
+    await advance(60_000);
+    expect(views).not.toHaveBeenCalled();
+  });
+
+  it("reads a queued session one request at a time", async () => {
+    backend.queueNextTurn();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+    let inFlight = 0;
+    let most = 0;
+    runtime.bind({}, async () => {
+      most = Math.max(most, ++inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 25_000));
+      inFlight -= 1;
+      return backend.view();
+    });
+
+    await advance(120_000);
+    expect(most).toBe(1);
+  });
+
+  it("stops reading the session once its queued turn is cancelled", async () => {
+    backend.queueNextTurn();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+    backend.cancelQueued();
+    await advance(10_000);
+
+    const views = vi.spyOn(backend, "view");
+    await advance(60_000);
+    expect(views).not.toHaveBeenCalled();
   });
 });
 

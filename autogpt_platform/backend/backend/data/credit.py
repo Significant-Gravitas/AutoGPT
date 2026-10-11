@@ -1844,6 +1844,12 @@ async def _get_active_subscription_cached(
     return await _get_active_subscription(customer_id)
 
 
+def invalidate_active_subscription_cache(customer_id: str) -> None:
+    """Drop the cached lookup after changing the subscription in Stripe, so the
+    status returned right after shows the new period instead of the old one."""
+    _get_active_subscription_cached.cache_delete(customer_id)
+
+
 async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
     """Return the billing cycle ("monthly"/"yearly") of the user's active sub.
 
@@ -2386,6 +2392,11 @@ async def get_pending_subscription_change(
 
     sub = await _get_active_subscription(user.stripe_customer_id)
     if sub is None:
+        return None
+    if sub.get("status") == "trialing" and (sub.get("metadata") or {}).get(
+        "trial_enrollment_id"
+    ):
+        # A cancel-pending trial is not a paid plan with a downgrade queued.
         return None
     period_end = sub.current_period_end
     if not isinstance(period_end, int):
@@ -3186,11 +3197,43 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
     sub_id = _invoice_subscription_id(invoice)
     invoice_id: str = invoice.get("id", "")
 
+    if invoice.get("billing_reason") == "subscription_create":
+        # A new plan's first payment failed inside Checkout, which lets the
+        # customer retry; no plan lapsed.
+        logger.info(
+            "handle_subscription_payment_failure: first payment of new sub %s"
+            " failed for user %s; leaving it to Checkout",
+            sub_id,
+            user.id,
+        )
+        return
+
     if amount_due <= 0:
         logger.info(
             "handle_subscription_payment_failure: amount_due=%d for user %s;"
             " nothing to deduct",
             amount_due,
+            user.id,
+        )
+        return
+
+    if (
+        sub_id
+        and invoice_id
+        # A pending update waits on the invoice its own change made, never on
+        # a renewal, so the common failure skips the Stripe lookup.
+        and invoice.get("billing_reason") != "subscription_cycle"
+        and await _nothing_left_to_cover(invoice_id)
+    ):
+        # Stripe applies a pending update only once its invoice is paid, and
+        # voids the invoice when the update lapses: nothing has changed. A
+        # trial converting early waits like this for the bank to confirm.
+        logger.info(
+            "handle_subscription_payment_failure: invoice %s on sub %s for user"
+            " %s waits on a pending update or is already settled; nothing to"
+            " cover",
+            invoice_id,
+            sub_id,
             user.id,
         )
         return
@@ -3268,6 +3311,21 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
             )
             return
         await set_subscription_tier(user.id, SubscriptionTier.NO_TIER)
+
+
+async def _nothing_left_to_cover(invoice_id: str) -> bool:
+    """Whether a pending update still waits on this invoice, or Stripe has
+    settled it since: paid once the bank confirmed, or voided when the update
+    lapsed. The failure event can be delivered after either."""
+    invoice = await stripe_call(
+        stripe.Invoice.retrieve_async, invoice_id, expand=["subscription"]
+    )
+    if invoice.get("status") in ("paid", "void"):
+        return True
+    subscription = invoice.get("subscription") or {}
+    return bool(subscription.get("pending_update")) and (
+        subscription.get("latest_invoice") == invoice_id
+    )
 
 
 async def handle_subscription_payment_success(invoice: dict) -> None:

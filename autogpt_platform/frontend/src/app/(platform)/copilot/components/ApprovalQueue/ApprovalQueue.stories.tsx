@@ -199,6 +199,18 @@ export const UnresolvedId: Story = {
   args: queueOf([referenceCard("Unresolved id")]),
 };
 
+export const FollowUpInTwoDays: Story = {
+  args: queueOf([referenceCard("Follow-up in two days")]),
+};
+
+export const WeeklyFollowUp: Story = {
+  args: queueOf([referenceCard("Weekly follow-up")]),
+};
+
+export const DelegateAndWait: Story = {
+  args: queueOf([referenceCard("Delegate and wait")]),
+};
+
 export const FiveWaiting: Story = {
   args: queueOf([
     heldReview({

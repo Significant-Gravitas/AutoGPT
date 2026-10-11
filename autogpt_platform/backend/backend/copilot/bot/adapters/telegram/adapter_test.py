@@ -161,6 +161,35 @@ class TestDispatch:
         assert seen == []
 
     @pytest.mark.asyncio
+    async def test_private_start_sends_the_link_account_button(self):
+        # The full path a user takes from the Bots page: t.me/<bot>?start=connect
+        # makes Telegram post "/start connect" from the private chat.
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        a._api.resolve_user = AsyncMock(return_value=MagicMock(linked=False))
+        a._api.create_user_link_token = AsyncMock(
+            return_value=MagicMock(link_url="https://platform.example/link/tok")
+        )
+        update = _dm(
+            "/start connect",
+            entities=[{"type": "bot_command", "offset": 0, "length": 6}],
+        )
+        await a._dispatch_update(update)
+
+        assert seen == []  # never reaches the chat pipeline
+        a._api.create_user_link_token.assert_awaited_once_with(
+            platform="telegram", platform_user_id="42", platform_username="bently"
+        )
+        assert a._client.call.call_args.args == ("sendMessage",)
+        sent = a._client.call.call_args.kwargs
+        assert sent["chat_id"] == "42"
+        button = sent["reply_markup"]["inline_keyboard"][0][0]
+        assert button["text"] == "Link Account"
+        # login_url, so the /link page can verify who tapped it.
+        assert button["login_url"] == {"url": "https://platform.example/link/tok"}
+
+    @pytest.mark.asyncio
     async def test_command_handler_error_is_contained(self):
         # _dispatch_update runs as a fire-and-forget task — a raising command
         # handler must be caught and logged, not left to asyncio's deferred

@@ -9,6 +9,7 @@ from backend.api.features.experts import experts_db
 from backend.api.features.experts import routine_jobs as experts_routine_jobs
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.experts import spend_approval as experts_spend_approval
+from backend.api.features.library._get_many import get_library_agents_by_ids
 from backend.api.features.library.db import (
     add_store_agent_to_library,
     bulk_move_agents_to_folder,
@@ -440,6 +441,7 @@ class DatabaseManager(AppService):
     create_graph_in_library = _(create_graph_in_library)
     create_library_agent = _(create_library_agent)
     get_library_agent = _(get_library_agent)
+    get_library_agents_by_ids = _(get_library_agents_by_ids)
     get_library_agent_by_graph_id = _(get_library_agent_by_graph_id)
     update_library_agent = _(update_library_agent)
     update_graph_in_library = _(update_graph_in_library)
@@ -689,6 +691,7 @@ class DatabaseManager(AppService):
     count_chat_sessions_by_status = _(chat_db.count_chat_sessions_by_status)
     list_chat_sessions_by_status = _(chat_db.list_chat_sessions_by_status)
     update_chat_session_status = _(chat_db.update_chat_session_status)
+    admit_chat_session_turn = _(chat_db.admit_chat_session_turn)
     get_chat_session_status = _(chat_db.get_chat_session_status)
     get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
 
@@ -924,6 +927,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     create_graph_in_library = d.create_graph_in_library
     create_library_agent = d.create_library_agent
     get_library_agent = d.get_library_agent
+    get_library_agents_by_ids = d.get_library_agents_by_ids
     get_library_agent_by_graph_id = d.get_library_agent_by_graph_id
     update_library_agent = d.update_library_agent
     update_graph_in_library = d.update_graph_in_library
@@ -1126,6 +1130,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     count_chat_sessions_by_status = d.count_chat_sessions_by_status
     list_chat_sessions_by_status = d.list_chat_sessions_by_status
     update_chat_session_status = d.update_chat_session_status
+    admit_chat_session_turn = d.admit_chat_session_turn
     get_chat_session_status = d.get_chat_session_status
     get_latest_user_message_in_session = d.get_latest_user_message_in_session
     add_chat_message = d.add_chat_message

@@ -6148,6 +6148,31 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/credits/trial/resume": {
+      "post": {
+        "tags": ["trials"],
+        "summary": "Resume Trial",
+        "operationId": "postTrialsResumeTrial",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrialStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "No live cancel-pending trial to resume, another plan is active, or the trial is already being updated"
+          },
+          "502": { "description": "Stripe update temporarily unavailable" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/credits/{transaction_key}/refund": {
       "post": {
         "tags": ["v1", "credits"],
@@ -9758,6 +9783,56 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/agents/batch": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "Get Library Agents By Ids",
+        "description": "Get several library agents at once, as `GET /agents/{id}` would return each.",
+        "operationId": "getV2Get library agents by ids",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "maxItems": 50,
+              "description": "Library agent IDs; unknown or inaccessible ones are omitted",
+              "title": "Ids"
+            },
+            "description": "Library agent IDs; unknown or inaccessible ones are omitted"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/LibraryAgent" },
+                  "title": "Response Getv2Get Library Agents By Ids"
+                }
               }
             }
           },
@@ -18845,6 +18920,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Add Bot Url"
           },
+          "dm_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dm Url"
+          },
           "dm_link": {
             "anyOf": [
               { "$ref": "#/components/schemas/PlatformUserLinkInfo" },
@@ -19918,6 +19997,16 @@
             "title": "Expert Lookup Retry Count",
             "default": 0
           },
+          "plan_lookup_retry_count": {
+            "type": "integer",
+            "title": "Plan Lookup Retry Count",
+            "default": 0
+          },
+          "limits_retry_count": {
+            "type": "integer",
+            "title": "Limits Retry Count",
+            "default": 0
+          },
           "user_timezone": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Timezone"
@@ -19937,6 +20026,10 @@
           "routine_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Routine Id"
+          },
+          "routine_schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Routine Schedule Id"
           },
           "credential_pins": {
             "additionalProperties": {
@@ -30991,7 +31084,7 @@
           "url": {
             "type": "string",
             "title": "Url",
-            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
+            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade), or when a trial ending early needs the customer's bank to confirm its payment, on Stripe's invoice page. Empty string in all other branches — the client sends the customer to this URL when non-empty.",
             "default": ""
           }
         },

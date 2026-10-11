@@ -86,6 +86,7 @@ async def test_message_session_ownership_check_routes_through_database_manager(
         "get_business_understanding",
         "get_user_subscription_tier",
         "mark_failed",
+        "get_library_agents_by_ids",
     ],
 )
 def test_routed_rpc_request_schemas_are_constructible(method: str):

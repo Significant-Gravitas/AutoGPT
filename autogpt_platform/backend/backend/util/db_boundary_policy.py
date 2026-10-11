@@ -13,6 +13,7 @@ DATABASE_IMPLEMENTATIONS = frozenset(
         "backend.api.features.experts.seed",
         "backend.api.features.experts.spend_approval",
         "backend.api.features.library._add_to_library",
+        "backend.api.features.library._get_many",
         "backend.api.features.search.content_handlers",
         "backend.api.features.search.embeddings",
         "backend.api.features.search.hybrid_search",

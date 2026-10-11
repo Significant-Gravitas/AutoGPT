@@ -66,6 +66,16 @@ def library_db():
     return library_db
 
 
+def library_batch_db():
+    if db.is_connected():
+        from backend.api.features.library import _get_many
+
+        return _get_many
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
 def store_db():
     if db.is_connected():
         from backend.api.features.store import db as _store_db
