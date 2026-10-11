@@ -221,6 +221,7 @@ class ConfirmExpertSoulUpdateTool(BaseTool):
                 "confirmation_id": {
                     "type": "string",
                     "description": "The confirmation_id returned by update_expert_soul.",
+                    "entity": "soul_change",
                 },
             },
             "required": ["confirmation_id"],
