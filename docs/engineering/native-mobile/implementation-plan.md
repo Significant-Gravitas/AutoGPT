@@ -1,0 +1,117 @@
+# Native mobile implementation plan
+
+Status: reviewed implementation plan; server work started. Read the [feature map](feature-map.md) and [card catalog](card-catalog.md) first. Baseline: `81d43f2982fe406acb7648f19c131e491c365d64`, inspected on 2026-10-11. Tracked in [SECRT-2881](https://linear.app/autogpt/issue/SECRT-2881) and the [native mobile experiment project](https://linear.app/autogpt/project/native-autogpt-mobile-experiment-6f8cfe0b39e5).
+
+Fable supplied and reviewed the server and contract inventory; Opus supplied and reviewed the client, renderer and test-harness design. This plan incorporates both review rounds and the parent's independent checks. Backend implementation is starting with pending-message retry safety. No new native app, passing mobile CI lane, or provider setup is claimed by this document.
+
+## Product shape
+
+Two primary destinations: **Chats** and **Company**. Chats opens with existing conversations and a clear way to talk to Otto or an expert. Company shows Otto, hired experts, their status, and a Message action. Requests appear in the relevant conversation and in a Needs you filter/badge; they do not require another management product. Connections, subscription, notifications, and server selection are focused sheets or screens reached from those destinations and the account menu.
+
+The first useful journey is: choose Cloud or an own server, sign in, open Otto, send a task, answer a question or connect a service, see its result, background the app, and return to the same persisted conversation. Selecting an expert opens that expert's real conversation. This journey must work with native navigation, timeline, composer and cards before the app is described as ready to test.
+
+No Build or Library page. A tool-created workflow still has a native summary, inputs, run status, outputs, and supported action sheet. Expert proposal, approval, schedule and connection cards remain actionable even though full web management pages are excluded. External documentation may open in the system browser; an external web page does not count as implementing an in-scope card action.
+
+## Client architecture decision and feasibility gate
+
+The leading choice is **React Native with Expo and TypeScript**, using native navigation and controls, for an iOS app whose conversation logic and cards can carry forward to Android. This is provisional until the small build and interaction experiment below passes. SwiftUI with a later Android client is the fallback if native interaction quality or the build constraints fail. Neither choice uses the desktop product as a WebView.
+
+Use a locked stable SDK and its supported React Native version, no OTA updates, and the smallest necessary native-module set. The current [Expo compatibility matrix](https://docs.expo.dev/versions/latest/) lists SDK 57 with React Native 0.86 and Xcode 26.4 or newer. The local environment reports Xcode 27.0 and macOS 26.6.2. Package patch versions are chosen and locked during the spike, not inferred from this note. Node 24 follows the frontend tooling convention.
+
+Start with iPhone and iOS 17 or newer, system light/dark appearance, Dynamic Type, VoiceOver, Reduce Motion, and native touch targets. Android implementation follows the working iOS slice; it is not a prerequisite for proving the iOS app. StoreKit, APNs, system auth, protected files and artifact isolation sit behind small platform adapters. Backend Redis is cluster-only; a macOS service harness must use that topology too.
+
+The spike contains native navigation, a long streamed conversation, the keyboard/composer, one question, one editable connection form, and an isolated artifact viewer. Include the intended native modules so the measured build represents the app's needs. Run it in the shared iOS simulator and on one standard free macOS CI runner. Measure one cold and one warm build/test run first. Record dependency installation, native build, simulator boot, app launch and test durations separately, plus peak disk usage. Check current headroom before heavy work; the 16 GB host initially had about 8 GB free disk, but that changes. Do not install Android locally or run concurrent heavy builds.
+
+Proceed if the iOS experience passes keyboard, scrolling, text selection, accessibility and lifecycle checks, and the new CI critical path is below ten minutes with cold-cache evidence. Investigate a failed budget once with concrete measurements before replacing the framework. A timeout, a warm-only result, or an estimate is not a passing measurement. If a measurement fails, report it and revise the plan before building the entire card surface.
+
+## The two PR layers
+
+| Layer | Contents | Review boundary |
+| --- | --- | --- |
+| PR 1: native client server support | Engineering plan; discovery and complete wire contract; native auth/session support; retry-safe pending actions; connection editing and OAuth return; native push; subscription entitlement support; server E2E and fixtures | Based on `dev`. Additive APIs and migrations, web compatibility, user ownership, session revocation, provider event handling. Server-only auth files under `frontend/` belong here because Better Auth lives there. |
+| PR 2: native app | New `autogpt_platform/mobile/`; iOS app; shared TypeScript client/cards; platform adapters; native UI E2E, mobile CI and setup documentation | Based on PR 1. Product behavior, complete card/action coverage, native interaction, artifact isolation, lifecycle, accessibility and measured CI. Android platform work follows after iOS acceptance. |
+
+Both remain experiment branches until validation and review. Use normal commits and bottom-up merges to carry PR 1 changes into PR 2; never rebase or force push. Opening or updating these PRs does not authorize merging or deploying them.
+
+Proposed app layout:
+
+```text
+autogpt_platform/mobile/
+  README.md
+  AGENTS.md
+  app.config.ts
+  package.json
+  pnpm-lock.yaml
+  src/app/                 # server/sign-in, chats, company and focused sheets
+  src/features/chat/      # history, stream, composer, cards and actions
+  src/features/company/
+  src/features/connections/
+  src/features/artifacts/
+  src/features/subscription/
+  src/features/notifications/
+  src/api/                 # generated types and authenticated transport
+  src/design/              # repository colors, typography and native primitives
+  src/platform/            # Keychain, browser auth, purchases, push and files
+  modules/                 # local native modules only where necessary
+  e2e/                     # native journeys, protocol cases and provider adapters
+```
+
+Business logic stays out of view components. Shared conversation logic is extracted or deliberately adapted from the existing TypeScript reducer and history converter without pulling Next.js or DOM code into the app. Web behavior is a reference to verify, not a reason to carry every desktop feature into mobile.
+
+## Delivery slices and acceptance
+
+| Slice | Server work in PR 1 | App work in PR 2 | Evidence required before moving on |
+| --- | --- | --- | --- |
+| 0. Contract and feasibility | Complete schema/registry, compatibility fixtures, discovery contract, minimal deterministic service harness | Native shell and the interaction/build spike | Reconcile all 89 response labels, 90 model declarations and 25 stream labels with tool-name/raw-output variants; report cold/warm CI and disk measurements |
+| 1. Real sign-in and conversation | Existing Better Auth policies through a native session flow; Google handoff; explicit renewal/revocation; retry-safe message identity | Cloud/own-server selection, email/Google sign-in, Otto and expert conversation list, native streaming/composer, history and relaunch | Simulator journey through production auth/API/persistence; wrong account/server, expiry/revocation, interrupted stream, retry without duplicates; real provider login separately labeled |
+| 2. Requests and connections | Stable question/answer identity, persisted review authority, credential edit/rotation, bound connection OAuth handoff | Question/approval cards, edit/approve/decline, connection list/forms, HubSpot key editing and an OAuth provider's reconnect, resume originating action | Stale/two-device action, rejected key, cancelled OAuth, key rotation preserving references, cross-user denial, no duplicate continuation after relaunch |
+| 3. Complete tools and company | Fill any remaining structured action gaps; versioned targets for run/expert/schedule/file actions | Every catalog family, historical/raw fallback, native run/expert/schedule sheets and expert changes | Every known producer/variant is accounted for; render and invoke applicable actions; replayed completed cards cannot repeat effects; Build/Library are unnecessary |
+| 4. Artifacts | Authorized download/preview and any missing remote-desktop authorization contract | Native image/video/PDF/text/code/CSV viewers, share/export, isolated HTML/React viewer | Wrong-user/deleted/large/malformed files, untrusted links and content, background/account switch; no app token or privileged bridge in artifact execution |
+| 5. Subscription and notifications | Provider-aware effective entitlement, signed App Store verification/notifications, session-bound APNs registration and attention targets | Current plan, purchase/restore/manage, push permission and tap routing | Existing Stripe subscriber, duplicate/reordered/refunded transactions, account-bound restore, generic lock-screen payload, revoked session, stale/cold-start notification tap |
+| 6. Review and shared test | Address server findings and rerun affected E2E | Polish native core journeys and fix app findings | Mythos on the concrete high-risk design/diff, Daybreak Blue on implementation and E2E completeness; same simulator screenshots in chat and Linear; explicit remaining provider prerequisites |
+
+Slices can add commits to both PRs. A slice is complete only when its user journey and persistent effects work; static screens and fixture-only output are not proof of integration. The first Hark alert is sent once a useful, reviewed build is installed and ready for the user's shared simulator test. Planning completion does not trigger that alert.
+
+## Server and data decisions
+
+**Discovery and server identity.** Discover auth/API origins and supported features from the selected trusted deployment. Default to HTTPS, with a narrowly scoped loopback development exception. Validate redirects and service origins before attaching credentials. Partition Keychain entries, transcripts, pending OAuth and notification registration by deployment and account; switching servers cannot carry old requests or tokens into the new one. Older deployments show a clear compatibility error rather than empty chats.
+
+**Authentication.** Reuse Better Auth and its existing identity/session store, email verification, signup/provisioning, team-login and ban policies. Native email input is a real app form. Google uses the system authentication browser with fresh state and PKCE, a bounded one-use exchange, account binding and an allowlisted callback. Keep credentials out of callback URLs and logs. Persist the mobile session securely, support renewal, and make revocation authoritative. Reuse the retired experiment's reviewed security logic selectively; its cookie/WebView UI is not the new client architecture.
+
+**Conversation contract.** Keep the existing bearer-authenticated SSE and cursor-resume protocol. Cover the 409 checkpoint and 410 expired-stream paths, persisted history, comments and terminal frames. Complete the schema export without pretending broad enum defaults form a safe discriminated union: duplicate discriminators require variant/tool context. Inventory legacy and raw SDK outputs too. Registry changes must add corresponding compatibility cases and native presentation/action coverage.
+
+**Actions and retries.** Bind authoritative approvals to persisted server records and ownership. Give pending messages and structured answers stable identities and explicit stale-state behavior. Both the pending endpoint and the stream endpoint's in-flight diversion currently lose the client's message identity. Preserve it through queue admission, drain and persisted history; a Redis-list-only check is insufficient after a drain. Map conflicting review decisions to an explicit conflict response. Use a shared, tested continuation builder where current actions are ordinary chat prompts; first trace any text parsing before claiming exact wording is a wire requirement. Never automatically send an old card's continuation when loading history. New structured APIs remain compatible with the web client.
+
+**Connection editing.** An existing credential keeps its identity and references when renamed or rotated. Secret values are write-only in edit forms; omitted fields stay unchanged, and empty secret input is rejected. Reconnect and scope upgrades bind to the original account/provider/credential. Authorization and expert grants are rechecked server-side. Host-scoped credentials cannot change their destination through an edit. The baseline MCP reconnect path replaces credentials with a new ID; change that to preserve grants and pins. Destructive removal remains an explicit separate action. General credential editing is an identified API gap. HubSpot currently uses API-key credentials in this repository; pair that acceptance case with a separate OAuth integration.
+
+**Artifacts.** Fetch through the authorized transport, then hand only the required content to its viewer. HTML/React content uses an isolated nonpersistent web context without app cookies, bearer tokens, a native bridge, file access or permission grants. Bundle renderer dependencies. Validate navigation and cap content/resource size; safe artifact rendering can differ from the permissive web implementation. Opening a supported artifact must not require the full website.
+
+**Entitlements.** Record provider provenance and reconcile valid Stripe/App Store grants into one effective tier. Avoid independent last-writer setters. Verify signed transactions and server notifications, validate product/bundle/environment, bind original transactions to an authenticated service account, and handle retries, event order, renewals, refunds and restores. Show the current subscription source and its management route; do not offer a second subscription to an already entitled user. Self-hosted servers advertise their own purchase capability.
+
+**Notifications.** Preserve authoritative session-bound subscriptions and cascade revocation from the retired experiment. A device identifier supplements that binding. Push contains a generic summary and validated identifiers, not conversation text. Tapping reloads the server's current state after account/server validation and cannot itself approve an action. Permission denial and provider configuration errors have recoverable native states.
+
+## E2E and CI design
+
+Use three clearly labeled forms of evidence:
+
+1. **Native integration journeys:** installed iOS app through production auth handlers, API, and isolated persistence. Substitute deterministic adapters only at external model/provider boundaries. The local shared simulator must run these core journeys before test readiness.
+2. **Native UI and contract journeys:** deterministic protocol fixtures exercise all card variants, malformed/historical outputs, interruption, stale state and accessibility. Contract checks compare fixtures to the actual server schema and action behavior. These are valuable PR gates, but are not described as a real-provider or full-server test.
+3. **Provider validation:** real Google and HubSpot return flows, APNs delivery and App Store sandbox transactions. Run when the corresponding external setup exists; record evidence and any remaining gap separately.
+
+Target a focused native integration smoke on PRs, alongside sharded native UI/contract coverage, with the broader live suite sharded in the merge queue. Evaluate native PostgreSQL 15 with pgvector, three Redis cluster nodes, RabbitMQ, REST, DatabaseManager and the copilot executor on macOS. Serve the existing production Better Auth instance through a small Node harness. The absence of Docker on a runner does not prevent this architecture. Keep scheduler, graph-executor and other services off the chat smoke's critical path unless its scenario needs them.
+
+Make model output deterministic through the existing `CHAT_USE_LOCAL` / `CHAT_BASE_URL` OpenAI-compatible boundary and `backend/copilot/stream_drift/scripted.py`. The real tools, queue, persistence and stream still run. Do not add a production test-mode bypass that simply inserts expected cards. Keep upload tests with disabled scanning explicitly separate from virus-scanning validation. A minimal seed replaces the full marketplace seeder.
+
+Do not make Android the first implementation solely to obtain Linux/Docker coverage. If measured service setup cannot meet the budget, document the split-lane limitation and retain an explicit full iOS integration gate; do not silently rename fixture replay as integration. The proposed cold/warm runtime budgets are estimates until measured. The iOS 17 deployment target also needs explicit runtime validation when that simulator or a suitable device is available.
+
+Run new workflows on standard free `macos`/`ubuntu` runners only. Pin a compatible Xcode image, build once and test without rebuilding, run independent setup in parallel, use safe lockfile/toolchain-keyed caches, and shard journeys before extending runtime. Borrow the repository's changed-path filtering, seed snapshots and cache-writer boundaries. Validate no skipped/empty test report can pass. Upload failing screenshots, logs and timings without secrets. Measure the workflow critical path including its dependencies, not just the test command; keep it below ten minutes rather than extending a timeout.
+
+## Provisioning and release boundary
+
+There is no existing Apple signing/APNs key or Firebase setup supplied for this experiment. Document bundle IDs, entitlements, callback registration, Google provider configuration, APNs key/team/topic and StoreKit product/server-notification setup without committing secrets. Firebase is for the Android follow-up. A simulator launch or locally injected notification is not proof of real APNs delivery; StoreKit local fixtures are not proof of sandbox settlement.
+
+Google/email are the experiment's login choices. Apple/ChatGPT sign-in remain later work. Before App Store distribution, resolve applicable alternative-login, subscription/storefront, account-deletion and privacy requirements; see the official references in the feature map. Signing, submission, release and deployment require their own completed prerequisites and are not implied by opening the two experiment PRs.
+
+## Progress reporting
+
+Keep the Linear project and SECRT-2881 current with slice status, commit/PR links, exact validation evidence and real screenshots. Distinguish planned, implemented, simulator-verified, provider-verified and release-ready. Share the same actual screenshots with the user and Linear. Hark is connected through Executor and reserved for the agreed test-ready alert.
