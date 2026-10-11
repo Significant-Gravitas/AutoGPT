@@ -33,6 +33,8 @@ def _make_config(**overrides) -> ChatConfig:
         # Aux key satisfies ``_validate_aux_client_for_direct_main`` —
         # these tests target SDK behavior, not the aux check.
         "aux_api_key": "or-aux-key",
+        "direct_anthropic_api_key": "sk-ant-direct-key",
+        "claude_agent_omit_attribution_header": False,
     }
     defaults.update(overrides)
     return ChatConfig(**defaults)
@@ -75,6 +77,87 @@ class TestBuildSdkEnvSubscription:
             with pytest.raises(RuntimeError, match="CLI not found"):
                 build_sdk_env()
 
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_inherited_base_url_is_blanked(self, mock_validate):
+        """The CLI sends the OAuth bearer to any base URL, so a parent
+        ``ANTHROPIC_BASE_URL`` must be overridden, not inherited."""
+        cfg = _make_config(use_claude_code_subscription=True)
+        with (
+            patch("backend.copilot.sdk.env.config", cfg),
+            patch.dict(
+                "backend.copilot.sdk.env.os.environ",
+                {"ANTHROPIC_BASE_URL": "https://remote-gateway.example.com"},
+                clear=True,
+            ),
+        ):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        assert result["ANTHROPIC_BASE_URL"] == ""
+
+    @pytest.mark.parametrize(
+        "base_url",
+        [
+            "https://remote-gateway.example.com",
+            "https://api.anthropic.com",
+            "http://gw.localhost:8080",
+            "http://localtest.me:8080",
+            "http://127.0.0.1.nip.io:8080",
+            "https://127.0.0.1:8443",
+        ],
+    )
+    def test_refuses_non_loopback_base_url(self, base_url):
+        cfg = _make_config(use_claude_code_subscription=True)
+        with (
+            patch("backend.copilot.sdk.env.config", cfg),
+            patch("backend.copilot.sdk.env.validate_subscription"),
+            patch(
+                "backend.copilot.sdk.env.subscription_env",
+                return_value={"ANTHROPIC_BASE_URL": base_url},
+            ),
+        ):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            with pytest.raises(ValueError, match="loopback HTTP URL"):
+                build_sdk_env()
+
+    @pytest.mark.parametrize(
+        "base_url", ["http://127.0.0.1:8099", "http://localhost:8099", "http://[::1]:1"]
+    )
+    def test_allows_loopback_base_url(self, base_url):
+        cfg = _make_config(use_claude_code_subscription=True)
+        with (
+            patch("backend.copilot.sdk.env.config", cfg),
+            patch("backend.copilot.sdk.env.validate_subscription"),
+            patch(
+                "backend.copilot.sdk.env.subscription_env",
+                return_value={"ANTHROPIC_BASE_URL": base_url},
+            ),
+        ):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        assert result["ANTHROPIC_BASE_URL"] == base_url
+
+    def test_absent_base_url_is_checked_against_the_parent_env(self):
+        cfg = _make_config(use_claude_code_subscription=True)
+        with (
+            patch("backend.copilot.sdk.env.config", cfg),
+            patch("backend.copilot.sdk.env.validate_subscription"),
+            patch("backend.copilot.sdk.env.subscription_env", return_value={}),
+            patch.dict(
+                "backend.copilot.sdk.env.os.environ",
+                {"ANTHROPIC_BASE_URL": "https://remote-gateway.example.com"},
+                clear=True,
+            ),
+        ):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            with pytest.raises(ValueError, match="loopback HTTP URL"):
+                build_sdk_env()
+
 
 # ---------------------------------------------------------------------------
 # Mode 2 — Direct Anthropic (no OpenRouter)
@@ -82,22 +165,28 @@ class TestBuildSdkEnvSubscription:
 
 
 class TestBuildSdkEnvDirectAnthropic:
-    """When OpenRouter is inactive, no ANTHROPIC_* overrides (inherit parent env)."""
+    """When OpenRouter is inactive, the CLI gets the deployment's Anthropic key
+    explicitly and talks to api.anthropic.com, whatever the parent env holds."""
 
-    def test_no_anthropic_key_overrides_when_openrouter_inactive(self):
+    def _assert_direct_shape(self, result: dict[str, str]) -> None:
+        assert result["ANTHROPIC_API_KEY"] == "sk-ant-direct-key"
+        assert result["ANTHROPIC_AUTH_TOKEN"] == ""
+        assert result["ANTHROPIC_BASE_URL"] == ""
+        assert result["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+        assert result["CLAUDE_CODE_REFRESH_TOKEN"] == ""
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+
+    def test_explicit_key_when_openrouter_inactive(self):
         cfg = _make_config(use_openrouter=False)
         with patch("backend.copilot.sdk.env.config", cfg):
             from backend.copilot.sdk.env import build_sdk_env
 
             result = build_sdk_env()
 
-        assert "ANTHROPIC_API_KEY" not in result
-        assert "ANTHROPIC_AUTH_TOKEN" not in result
-        assert "ANTHROPIC_BASE_URL" not in result
-        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
-        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+        self._assert_direct_shape(result)
 
-    def test_no_anthropic_key_overrides_when_openrouter_flag_true_but_no_key(self):
+    def test_explicit_key_when_openrouter_flag_true_but_no_key(self):
         """OpenRouter flag is True but no api_key => openrouter_active is False."""
         cfg = _make_config(use_openrouter=True, base_url="https://openrouter.ai/api/v1")
         # Force api_key to None after construction (field_validator may pick up env vars)
@@ -108,11 +197,43 @@ class TestBuildSdkEnvDirectAnthropic:
 
             result = build_sdk_env()
 
-        assert "ANTHROPIC_API_KEY" not in result
-        assert "ANTHROPIC_AUTH_TOKEN" not in result
-        assert "ANTHROPIC_BASE_URL" not in result
-        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
-        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+        self._assert_direct_shape(result)
+
+    def test_overrides_inherited_credentials_and_base_url(self):
+        """A parent env pointing elsewhere, or holding another credential,
+        must not reach the CLI: the explicit values win the SDK's merge."""
+        cfg = _make_config(use_openrouter=False)
+        parent = {
+            "ANTHROPIC_BASE_URL": "https://remote-gateway.example.com",
+            "ANTHROPIC_AUTH_TOKEN": "inherited-token",
+            "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-inherited",
+        }
+        with (
+            patch("backend.copilot.sdk.env.config", cfg),
+            patch.dict("backend.copilot.sdk.env.os.environ", parent, clear=True),
+        ):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        merged = {**parent, **result}
+        assert merged["ANTHROPIC_BASE_URL"] == ""
+        assert merged["ANTHROPIC_AUTH_TOKEN"] == ""
+        assert merged["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+        assert merged["ANTHROPIC_API_KEY"] == "sk-ant-direct-key"
+
+    def test_refuses_without_an_anthropic_key(self):
+        """With no key the CLI would fall back to a ``claude login``
+        credentials file on the host, so the route refuses to start."""
+        cfg = _make_config(use_openrouter=False)
+        object.__setattr__(cfg, "direct_anthropic_api_key", None)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            with pytest.raises(
+                RuntimeError, match="direct-Anthropic route has no API key"
+            ):
+                build_sdk_env()
 
 
 # ---------------------------------------------------------------------------
@@ -142,12 +263,36 @@ class TestBuildSdkEnvOpenRouter:
         assert result["ANTHROPIC_BASE_URL"] == "https://openrouter.ai/api"
         assert result["ANTHROPIC_AUTH_TOKEN"] == "sk-or-test-key"
         assert result["ANTHROPIC_API_KEY"] == ""
+        assert result["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+        assert result["CLAUDE_CODE_REFRESH_TOKEN"] == ""
         # SDK 0.1.58: Accept-Encoding: identity is always injected
         assert "ANTHROPIC_CUSTOM_HEADERS" in result
         assert "Accept-Encoding: identity" in result["ANTHROPIC_CUSTOM_HEADERS"]
         # OpenRouter compat: env var must always be present
         assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
         assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+
+    def test_inherited_oauth_token_never_reaches_the_cli(self):
+        """On a box that also holds a Claude login, the OpenRouter key is the
+        credential on the wire: the explicit auth token wins over a
+        credentials file, and the OAuth env vars are blanked."""
+        cfg = self._openrouter_config()
+        parent = {
+            "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-inherited",
+            "CLAUDE_CODE_REFRESH_TOKEN": "inherited-refresh",
+        }
+        with (
+            patch("backend.copilot.sdk.env.config", cfg),
+            patch.dict("backend.copilot.sdk.env.os.environ", parent, clear=True),
+        ):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        merged = {**parent, **result}
+        assert merged["ANTHROPIC_AUTH_TOKEN"] == "sk-or-test-key"
+        assert merged["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+        assert merged["CLAUDE_CODE_REFRESH_TOKEN"] == ""
 
     def test_strips_trailing_v1(self):
         """The /v1 suffix is stripped from the base URL."""
@@ -621,6 +766,33 @@ class TestBuildSdkEnvCodexGateway:
                     codex_gateway_url="https://example.com",
                     codex_gateway_token="must-not-leak",
                 )
+
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_codex_on_a_subscription_deployment_uses_the_gateway_token(
+        self, mock_validate
+    ):
+        """A Codex turn on a subscription box authenticates with the gateway
+        token, which the CLI prefers over a credentials file; the Claude
+        OAuth env vars are blanked."""
+        cfg = _make_config(use_claude_code_subscription=True)
+        parent = {"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-inherited"}
+        with (
+            patch("backend.copilot.sdk.env.config", cfg),
+            patch.dict("backend.copilot.sdk.env.os.environ", parent, clear=True),
+        ):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(
+                codex_gateway_url="http://127.0.0.1:43210",
+                codex_gateway_token="loopback-capability",
+            )
+
+        merged = {**parent, **result}
+        assert merged["ANTHROPIC_AUTH_TOKEN"] == "loopback-capability"
+        assert merged["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:43210"
+        assert merged["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+        assert merged["CLAUDE_CODE_REFRESH_TOKEN"] == ""
+        mock_validate.assert_not_called()
 
 
 class TestAutocompactPctSonnet5Scaling:

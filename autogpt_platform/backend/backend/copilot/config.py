@@ -17,8 +17,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.llm.providers import ProviderLiteral
+from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
+settings = Settings()
 
 
 def _host_matches(base_url: str | None, suffix: str) -> bool:
@@ -336,8 +338,8 @@ class ChatConfig(BaseSettings):
     direct_anthropic_api_key: str | None = Field(
         default=None,
         description="Anthropic API key for direct mode (use_openrouter=False). "
-        "Used by the baseline OpenAI-compat client when pointed at "
-        "api.anthropic.com. Falls back to ANTHROPIC_API_KEY env var.",
+        "Used by the SDK CLI and by the baseline OpenAI-compat client when "
+        "pointed at api.anthropic.com. Falls back to ANTHROPIC_API_KEY env var.",
     )
 
     # Session TTL Configuration - 12 hours
@@ -708,7 +710,18 @@ class ChatConfig(BaseSettings):
     )
     use_claude_code_subscription: bool = Field(
         default=False,
-        description="For personal/dev use: use Claude Code CLI subscription auth instead of API keys. Requires `claude login` on the host. Only works with SDK mode.",
+        description="For personal/dev use: use Claude Code CLI subscription auth instead of API keys. Requires `claude login` on the host. Only works with SDK mode. Self-hosted only: refused at config load when BEHAVE_AS=cloud.",
+    )
+    claude_agent_omit_attribution_header: bool = Field(
+        default=False,
+        description="Drop the SDK CLI's billing-header system block (sets "
+        "``CLAUDE_CODE_ATTRIBUTION_HEADER=0``) on launches that do not talk "
+        "to Anthropic first-party: OpenRouter (the copilot's and the "
+        "orchestrator block's) and the Codex gateway. That block is the "
+        "first system block, ``x-anthropic-billing-header: cc_version=...; "
+        "cc_entrypoint=...``, and carries per-session values, so removing it "
+        "keeps the system prefix identical across sessions. Direct-Anthropic "
+        "and subscription launches always keep it.",
     )
     local_request_timeout_s: float = Field(
         default=1800.0,
@@ -817,7 +830,7 @@ class ChatConfig(BaseSettings):
         3. ``openrouter`` — ``openrouter_active`` (use_openrouter +
            api_key + a valid base_url).
         4. ``direct_anthropic`` — fallback (CLI talks to api.anthropic.com
-           with ``ANTHROPIC_API_KEY`` from the parent env).
+           with ``direct_anthropic_api_key``, passed explicitly).
 
         For per-transport *behaviour* (vendor constraints, SDK availability,
         api_key fallback chain, …) read ``self.transport`` instead of
@@ -1021,9 +1034,10 @@ class ChatConfig(BaseSettings):
         ``OPENAI_API_KEY``) runs in the model_validator so it can consult
         the resolved transport via ``self.transport.api_key_fallback_envs``
         — see ``_apply_transport_api_key_fallback``. Note: ``ANTHROPIC_API_KEY``
-        is intentionally *never* in any fallback chain, because the SDK CLI
-        reads it directly from the parent env — pairing it with an OpenRouter
-        base_url at the chat layer would cause auth failures.
+        is intentionally *never* in any fallback chain: it is the
+        direct-Anthropic key (``direct_anthropic_api_key``), and pairing it
+        with an OpenRouter base_url at the chat layer would cause auth
+        failures.
         """
         if not v:
             v = os.getenv("CHAT_API_KEY")
@@ -1121,6 +1135,24 @@ class ChatConfig(BaseSettings):
                     "Check file permissions."
                 )
         return v
+
+    @model_validator(mode="after")
+    def _refuse_claude_subscription_on_cloud(self) -> "ChatConfig":
+        """A Claude subscription stays on a self-hosted deployment.
+
+        The subscription route carries one person's Claude OAuth token for
+        every user of the deployment, so the hosted platform must never run
+        it.  Failing at load keeps a stray env var from turning it on.
+        """
+        if not self.use_claude_code_subscription:
+            return self
+        if settings.config.behave_as != BehaveAs.CLOUD:
+            return self
+        raise ValueError(
+            "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true is not allowed when "
+            "BEHAVE_AS=cloud: a Claude subscription may only be used on a "
+            "self-hosted deployment."
+        )
 
     @model_validator(mode="after")
     def _validate_local_transport_requirements(self) -> "ChatConfig":

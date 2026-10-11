@@ -1,19 +1,27 @@
 """SDK environment variable builder — importable without circular deps.
 
-Extracted from ``service.py`` so that ``backend.blocks.orchestrator``
-can reuse the same subscription / OpenRouter / direct-Anthropic logic
-without pulling in the full copilot service module (which would create a
-circular import through ``executor`` → ``credit`` → ``block_cost_config``).
+Kept out of ``service.py`` so that ``backend.blocks.orchestrator`` can take
+its launch credentials from here (``build_user_key_sdk_env``) without
+pulling in the full copilot service module (which would create a circular
+import through ``executor`` → ``credit`` → ``block_cost_config``).
 """
 
 from __future__ import annotations
 
 import os
 import re
-from urllib.parse import urlparse
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.moonshot import is_moonshot_model, moonshot_context_window
+from backend.copilot.sdk.route_credentials import (
+    CLAUDE_OAUTH_BLANK,
+    attribution_header_env,
+    direct_anthropic_env,
+    openrouter_user_key_env,
+    require_local_oauth_base_url,
+    require_loopback_http,
+    subscription_env,
+)
 from backend.copilot.sdk.subscription import validate_subscription
 
 # ChatConfig is stateless (reads env vars) — a separate instance is fine.
@@ -40,6 +48,25 @@ def _loopback_no_proxy_value() -> str:
     return ",".join(entries)
 
 
+def build_user_key_sdk_env(provider: str, api_key: str) -> dict[str, str]:
+    """Credentials for a CLI launch on a user's own API key.
+
+    The orchestrator block's launch: ``open_router`` goes through the
+    deployment's OpenRouter base URL (per-credential base URLs are not
+    supported), any other provider is a direct Anthropic key.  No Claude
+    OAuth variable or parent base URL survives.
+    """
+    if provider != "open_router":
+        return direct_anthropic_env(api_key)
+    base = (config.base_url or "https://openrouter.ai/api").rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    return {
+        **openrouter_user_key_env(base, api_key),
+        **attribution_header_env(config.claude_agent_omit_attribution_header),
+    }
+
+
 def build_sdk_env(
     session_id: str | None = None,
     user_id: str | None = None,
@@ -53,10 +80,14 @@ def build_sdk_env(
     Four modes (checked in order):
     1. **Codex gateway** — request-scoped loopback Anthropic compatibility.
     2. **Subscription** — clears all keys; CLI uses ``claude login`` auth.
-    3. **Direct Anthropic** — subprocess inherits ``ANTHROPIC_API_KEY``
-       from the parent environment (no overrides needed).
+       Self-hosted only; its base URL may only be empty or loopback.
+    3. **Direct Anthropic** — ``direct_anthropic_api_key`` passed
+       explicitly, against api.anthropic.com.
     4. **OpenRouter** (default) — overrides base URL and auth token to
        route through the proxy, with Langfuse trace headers.
+
+    Every mode but subscription blanks the Claude OAuth variables and sets
+    its own base URL and a non-empty key (``sdk/route_credentials.py``).
 
     All modes receive workspace isolation (``CLAUDE_CODE_TMPDIR``) and
     security hardening env vars to prevent .claude.md loading, prompt
@@ -74,13 +105,7 @@ def build_sdk_env(
     if codex_gateway_token is not None and not codex_gateway_token:
         raise ValueError("Codex gateway token must not be empty")
     if codex_gateway_url is not None:
-        parsed_gateway = urlparse(codex_gateway_url)
-        if parsed_gateway.scheme != "http" or parsed_gateway.hostname not in {
-            "127.0.0.1",
-            "::1",
-            "localhost",
-        }:
-            raise ValueError("Codex gateway must use a loopback HTTP URL")
+        require_loopback_http(codex_gateway_url, "Codex gateway")
 
     # A connected Codex account is a request-scoped auth transport.  It must
     # win over the deployment-wide profile, including ``local``: the loopback
@@ -92,10 +117,10 @@ def build_sdk_env(
             "ANTHROPIC_BASE_URL": codex_gateway_url.rstrip("/"),
             "ANTHROPIC_AUTH_TOKEN": codex_gateway_token,
             "ANTHROPIC_API_KEY": "",
-            "CLAUDE_CODE_OAUTH_TOKEN": "",
-            "CLAUDE_CODE_REFRESH_TOKEN": "",
+            **CLAUDE_OAUTH_BLANK,
             "NO_PROXY": no_proxy,
             "no_proxy": no_proxy,
+            **attribution_header_env(config.claude_agent_omit_attribution_header),
         }
 
     # Transports that don't run the SDK at all (currently: ``local`` —
@@ -114,20 +139,11 @@ def build_sdk_env(
     # --- Mode 1: Claude Code subscription auth ---
     elif config.use_claude_code_subscription:
         validate_subscription()
-        env = {
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_AUTH_TOKEN": "",
-            "ANTHROPIC_BASE_URL": "",
-        }
+        env = subscription_env()
 
     # --- Mode 2: Direct Anthropic (no proxy hop) ---
     elif not config.openrouter_active:
-        # Clear OAuth tokens so CLI uses ANTHROPIC_API_KEY from parent env
-        # rather than subscription auth if the container has those tokens set.
-        env = {
-            "CLAUDE_CODE_OAUTH_TOKEN": "",
-            "CLAUDE_CODE_REFRESH_TOKEN": "",
-        }
+        env = direct_anthropic_env(config.direct_anthropic_api_key)
 
     # --- Mode 3: OpenRouter proxy ---
     else:
@@ -138,8 +154,8 @@ def build_sdk_env(
             "ANTHROPIC_BASE_URL": base,
             "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
             "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
-            "CLAUDE_CODE_OAUTH_TOKEN": "",  # prevent OAuth override of ANTHROPIC_AUTH_TOKEN
-            "CLAUDE_CODE_REFRESH_TOKEN": "",  # prevent token refresh via subscription
+            **CLAUDE_OAUTH_BLANK,
+            **attribution_header_env(config.claude_agent_omit_attribution_header),
         }
 
         # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
@@ -174,10 +190,11 @@ def build_sdk_env(
     # also stops the CLI from moving long tool calls to the background.
     env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
     # Strip Anthropic-specific beta headers that OpenRouter rejects.
-    # NOTE: this disables ALL experimental betas including
-    # context-management-2025-06-27.  This is intentional: OpenRouter
-    # compatibility takes priority, and Anthropic direct mode ignores this
-    # flag harmlessly (those betas are not enabled there either by default).
+    # NOTE: this disables ALL experimental betas, on every mode.  Against
+    # Anthropic itself (direct and subscription) it also drops the
+    # thinking-token-count, context-management-2025-06-27 and
+    # prompt-caching-scope beta headers and the ``context_management`` body
+    # field the CLI would otherwise send there.
     env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
 
     # Pin the CLI's perceived context window explicitly.  This env var is the
@@ -216,6 +233,9 @@ def build_sdk_env(
     env["ANTHROPIC_CUSTOM_HEADERS"] = (
         f"{existing}\n{accept_encoding}" if existing else accept_encoding
     )
+
+    if config.use_claude_code_subscription:
+        require_local_oauth_base_url(env)
 
     return env
 
