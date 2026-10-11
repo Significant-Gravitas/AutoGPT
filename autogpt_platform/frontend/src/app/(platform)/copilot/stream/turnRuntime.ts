@@ -279,6 +279,7 @@ export class TurnRuntime {
     this.suppressAttach = false;
     this.queueDeclined = false;
     this.error = null;
+    this.denials = 0;
     this.providerFailure = null;
     const message = userMessage(`local:${uuidv4({})}`, input);
     this.claimTail(this.nextSequence());
@@ -809,6 +810,7 @@ export class TurnRuntime {
     );
     this.segments.push(seg);
     this.error = null;
+    this.denials = 0;
     this.resume(seg);
   }
 

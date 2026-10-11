@@ -649,6 +649,39 @@ describe("refusals no retry can change", () => {
     );
   });
 
+  it("a send stopped while its token retry waits leaves the next send its own retry", async () => {
+    tokenFailsFirst(1);
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(500);
+    runtime.stop();
+
+    tokenFailsFirst(1);
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(1_500);
+    backend.publish(FIRST_BLOCK_DONE);
+    await advance(100);
+    expect(snapshot().error).toBeNull();
+    expect(backend.requests.filter((r) => r.method === "POST")).toHaveLength(1);
+  });
+
+  it("a turn attached after a stopped token retry gets its own retry", async () => {
+    tokenFailsFirst(1);
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(500);
+    runtime.stop();
+    runtime.observe(backend.view());
+
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    tokenFailsFirst(1);
+    runtime.observe(backend.view());
+    await advance(1_000);
+    expect(snapshot().error).toBeNull();
+    expect(backend.connections.at(-1)?.url.searchParams.get("turn")).toBe(
+      backend.turnId,
+    );
+  });
+
   it("signed out mid-turn ends the turn with the sign-in error, without the connection toast", async () => {
     let signedOut = false;
     signOut(() => signedOut);
