@@ -97,6 +97,8 @@ export default function OnboardingProvider({
 
   const api = useBackendAPI();
   const pathname = usePathname();
+  const latestPathname = useRef(pathname);
+  const [initRetry, setInitRetry] = useState(0);
   const searchParams = useSearchParams();
   const router = useRouter();
   const { isLoggedIn } = useAuth();
@@ -164,6 +166,10 @@ export default function OnboardingProvider({
   }, [isLoggedIn, isOnAuthRoute]);
 
   useEffect(() => {
+    latestPathname.current = pathname;
+  }, [pathname]);
+
+  useEffect(() => {
     // Prevent multiple initializations. Skipped routes don't mark
     // hasInitialized, so init re-runs on the next pathname change.
     if (
@@ -223,6 +229,9 @@ export default function OnboardingProvider({
         if (isAbortError(error) || isNetworkError(error)) {
           console.warn("Onboarding initialization deferred:", error);
           hasInitialized.current = false;
+          // A route change that landed while this was in flight was skipped
+          // by the guard above, so run again for it now.
+          if (latestPathname.current !== pathname) setInitRetry((n) => n + 1);
           return;
         }
 
@@ -248,6 +257,7 @@ export default function OnboardingProvider({
     pathname,
     isOnPublicTour,
     isOnPasswordResetRoute,
+    initRetry,
   ]);
 
   const handleOnboardingNotification = useCallback(

@@ -235,12 +235,16 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     }
   }
 
+  // Focus and `online` are fresh chances to reach the backend, so each one
+  // restores the full retry budget for whatever it runs into.
   function handleVisibilityChange(): void {
     if (document.visibilityState !== "visible") return;
+    set({ retryAttempt: 0 });
     void validateSessionInternal();
   }
 
   function handleOnline(): void {
+    cancelRetry();
     void validateSessionInternal({ force: true });
   }
 
