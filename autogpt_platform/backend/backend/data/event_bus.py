@@ -2,14 +2,7 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 from contextlib import aclosing
-from typing import (
-    Any,
-    AsyncGenerator,
-    Generator,
-    Generic,
-    Optional,
-    TypeVar,
-)
+from typing import Any, AsyncGenerator, Generator, Generic, Optional, TypeVar
 
 from pydantic import BaseModel
 from redis.asyncio.client import PubSub as AsyncPubSub
