@@ -1056,6 +1056,8 @@ export class TurnRuntime {
     this.unresolvedPost = null;
     if (unresolved && !this.runningTurn())
       void this.recoverUnknownTurn(unresolved.lost, unresolved.end);
+    // A send still waiting for its turn is otherwise given up only at the next tick.
+    else if (this.isPostPending()) this.dropIfSilent();
     else this.ensureConnected();
   }
 
@@ -1072,17 +1074,24 @@ export class TurnRuntime {
       this.tickTimer = null;
       return;
     }
-    if (!slot || document.visibilityState === "hidden") return;
-    const now = Date.now();
-    if (now - slot.lastFrameAt >= LIVENESS_MS) {
-      slot.closedByClient = true;
-      slot.controller.abort();
-      this.slot = null;
-      if (slot.turnId === null) this.findLostTurn(slot, { kind: "closed" });
-      else this.retry(slot);
-      return;
-    }
-    if (!this.rotating && now - slot.openedAt >= ROTATE_AFTER_MS) this.rotate();
+    if (!slot || this.dropIfSilent()) return;
+    if (document.visibilityState === "hidden") return;
+    if (!this.rotating && Date.now() - slot.openedAt >= ROTATE_AFTER_MS)
+      this.rotate();
+  }
+
+  // The slot is cleared before the recovery starts, so the tick and a wake
+  // never both recover one connection.
+  private dropIfSilent() {
+    const slot = this.slot;
+    if (!slot || document.visibilityState === "hidden") return false;
+    if (Date.now() - slot.lastFrameAt < LIVENESS_MS) return false;
+    slot.closedByClient = true;
+    slot.controller.abort();
+    this.slot = null;
+    if (slot.turnId === null) this.findLostTurn(slot, { kind: "closed" });
+    else this.retry(slot);
+    return true;
   }
 
   // Rebuilding from the DB view: no other trigger reconnects meanwhile, and

@@ -319,6 +319,23 @@ describe("recovery", () => {
     );
   });
 
+  it("a send silent while the tab slept is given up on return, not at the next tick", async () => {
+    backend.respond(({ method }) => (method === "POST" ? "silent" : "stream"));
+    setVisibility("hidden");
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(60_000);
+    backend.beginRunning();
+    backend.publish();
+
+    const views = vi.spyOn(backend, "view");
+    setVisibility("visible");
+    await advance(0);
+    expect(views).toHaveBeenCalledTimes(1);
+    expect(textsOf(render()).join("")).toBe(
+      `${PROMPT}${FIRST_TEXT}${SECOND_TEXT}`,
+    );
+  });
+
   it("a send that never reached the server still reports the failure", async () => {
     backend.respond(({ method }) =>
       method === "POST" ? "network-error" : "stream",
