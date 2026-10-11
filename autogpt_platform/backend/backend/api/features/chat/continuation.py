@@ -74,10 +74,15 @@ async def continue_session(
     await _admit(session, user_id)
     await _refuse_if_busy(session_id)
     try:
+        # Every note is the same text, so the trailing-text dedupe would refuse
+        # a Keep going after a continuation that wrote only assistant rows, or
+        # nothing. The fresh slot is what stops a second turn on this chat.
         turn_id = await schedule_chat_turn(
             session_id=session_id,
             user_id=user_id,
             message=KEEP_GOING_NOTE,
+            require_fresh_slot=True,
+            dedupe_content=False,
             is_user_message=False,
             expert_id=session.expert_id,
             session_origin=session.metadata.origin,
@@ -92,8 +97,8 @@ async def continue_session(
     except ConcurrentTurnLimitError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     if turn_id is None:
-        # The note is already the chat's last row: a double click whose
-        # first turn is still being set up.
+        # Another turn took the chat after the busy check above: a message
+        # sent at the same moment, or the first click of a double click.
         raise HTTPException(status_code=409, detail="turn_in_progress")
     await _announce(turn_id, session_id)
     return ContinueSessionResponse(turn_id=turn_id)

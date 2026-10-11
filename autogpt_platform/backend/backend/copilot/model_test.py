@@ -15,6 +15,8 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
 from prisma.models import Expert
 from pytest_mock import MockerFixture
 
+from backend.copilot.constants import COPILOT_SYSTEM_PREFIX
+from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import NotFoundError, RedisError
 
@@ -867,6 +869,111 @@ async def test_append_and_save_message_returns_none_for_duplicate(
     result = await append_and_save_message(
         session.session_id, ChatMessage(role="user", content="hello")
     )
+    assert result is None
+
+
+_PAUSE = f"{COPILOT_SYSTEM_PREFIX} Paused: checking in after a long run."
+
+# Keep going was pressed once already, and that continuation wrote only
+# assistant rows, or nothing at all: the earlier note is still in the chat's
+# trailing assistant run.
+_KEPT_GOING_ONCE = pytest.mark.parametrize(
+    "rows_after_the_note",
+    [
+        pytest.param(["Two of three sections done.", _PAUSE], id="assistant-rows"),
+        pytest.param([], id="nothing"),
+    ],
+)
+
+
+def _kept_going_once(rows_after_the_note: list[str]) -> ChatSession:
+    return _make_session_with_messages(
+        ChatMessage(role="user", content="Build the report"),
+        ChatMessage(role="assistant", content=_PAUSE),
+        ChatMessage(role="assistant", content=KEEP_GOING_NOTE),
+        *(ChatMessage(role="assistant", content=row) for row in rows_after_the_note),
+    )
+
+
+def _mock_session_store(mocker: MockerFixture, session: ChatSession) -> None:
+    """The lock is taken, the session comes from cache, and writes succeed."""
+    lock = mocker.AsyncMock()
+    lock.acquire = mocker.AsyncMock(return_value=True)
+    lock.release = mocker.AsyncMock()
+    redis = mocker.MagicMock()
+    redis.lock = mocker.MagicMock(return_value=lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=redis,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model._save_session_to_db", new_callable=mocker.AsyncMock
+    )
+    mocker.patch(
+        "backend.copilot.model.chat_db",
+        return_value=mocker.MagicMock(
+            get_next_sequence=mocker.AsyncMock(return_value=len(session.messages))
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session", new_callable=mocker.AsyncMock
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@_KEPT_GOING_ONCE
+async def test_append_and_save_message_collapses_a_repeated_note_by_default(
+    mocker: MockerFixture, rows_after_the_note: list[str]
+) -> None:
+    session = _kept_going_once(rows_after_the_note)
+    _mock_session_store(mocker, session)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="assistant", content=KEEP_GOING_NOTE)
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@_KEPT_GOING_ONCE
+async def test_append_and_save_message_saves_a_repeated_note_with_content_dedupe_off(
+    mocker: MockerFixture, rows_after_the_note: list[str]
+) -> None:
+    session = _kept_going_once(rows_after_the_note)
+    _mock_session_store(mocker, session)
+
+    result = await append_and_save_message(
+        session.session_id,
+        ChatMessage(role="assistant", content=KEEP_GOING_NOTE),
+        dedupe_content=False,
+    )
+
+    assert result is not None
+    assert result.messages[-1].content == KEEP_GOING_NOTE
+    assert [m.content for m in result.messages].count(KEEP_GOING_NOTE) == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_and_save_message_keeps_the_id_check_with_content_dedupe_off(
+    mocker: MockerFixture,
+) -> None:
+    session = _kept_going_once([])
+    session.messages[-1].id = "click-1"
+    _mock_session_store(mocker, session)
+
+    result = await append_and_save_message(
+        session.session_id,
+        ChatMessage(id="click-1", role="assistant", content=KEEP_GOING_NOTE),
+        dedupe_content=False,
+    )
+
     assert result is None
 
 
