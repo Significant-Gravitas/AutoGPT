@@ -56,7 +56,9 @@ export function ListView({
         </div>
       ) : (
         <div className="relative">
-          <ScrollArea className="h-[380px] pr-2">
+          {/* Radix wraps the list in a `display: table` div that grows to fit
+              each row's full description, pushing cards past the edge. */}
+          <ScrollArea className="h-[380px] pr-2 [&_[data-radix-scroll-area-viewport]>div]:!block">
             <ul className="flex flex-col gap-2 pb-4">
               {providers.map((provider) => (
                 <li key={provider.id}>

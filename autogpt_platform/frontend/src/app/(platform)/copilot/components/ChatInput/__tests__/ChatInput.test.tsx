@@ -13,7 +13,7 @@ import type { UIMessage } from "ai";
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatInput } from "../ChatInput";
-import { useCopilotStop } from "../../../useCopilotStop";
+import { sdkStopStream, useCopilotStop } from "../../../useCopilotStop";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
 const mockCancel =
@@ -1014,10 +1014,7 @@ function StopHarness({
   const isUserStoppingRef = useRef(false);
   const stop = useCopilotStop({
     sessionId,
-    sdkStop,
-    setMessages: setMessages as Parameters<
-      typeof useCopilotStop
-    >[0]["setMessages"],
+    stopStream: sdkStopStream(sdkStop, setMessages),
     isUserStoppingRef,
     setIsUserStopping,
   });

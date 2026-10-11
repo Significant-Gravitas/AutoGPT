@@ -29,6 +29,7 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.constants import AUTOPILOT_NAME, COPILOT_NODE_PREFIX
+from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ApprovalRequiredResponse, ResponseType
 from backend.data.db_accessors import experts_db
@@ -250,6 +251,7 @@ async def screen_read(
             tool_name=tool_name,
             tool_call_id=tool_call_id,
             args=args,
+            envelope=get_current_envelope(),
         )
         return await _hold(
             call,

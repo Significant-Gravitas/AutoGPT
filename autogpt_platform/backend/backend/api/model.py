@@ -1,4 +1,5 @@
 import enum
+from datetime import datetime
 from typing import Any, Literal, Optional
 
 import pydantic
@@ -70,6 +71,38 @@ class TimezoneResponse(pydantic.BaseModel):
 
 class UpdateTimezoneRequest(pydantic.BaseModel):
     timezone: TimeZoneName
+
+
+# Every terms and privacy policy version the signup page can show. Add a new
+# one here, and deploy it, before the frontend's TERMS_VERSION (lib/legal.ts)
+# moves to it; routes_test fails if the frontend's version is missing here.
+RECOGNIZED_TERMS_VERSIONS = frozenset({"2026-10"})
+
+
+class RecordUserConsentRequest(pydantic.BaseModel):
+    # The frontend's TERMS_VERSION, e.g. "2026-10", or "2026-10-15" for a
+    # second change in one month. ASCII digits only: `\d` would also take
+    # other scripts' digits.
+    terms_version: str = pydantic.Field(
+        min_length=1, max_length=32, pattern=r"^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$"
+    )
+    marketing_opt_out: bool
+
+    @pydantic.field_validator("terms_version")
+    @classmethod
+    def _recognized(cls, terms_version: str) -> str:
+        """Only a version the signup page has shown can be recorded, so a
+        caller cannot claim acceptance of terms that were never offered."""
+        if terms_version not in RECOGNIZED_TERMS_VERSIONS:
+            raise ValueError("Unrecognized terms version")
+        return terms_version
+
+
+class UserConsentResponse(pydantic.BaseModel):
+    terms_accepted_at: Optional[datetime] = None
+    terms_version: Optional[str] = None
+    marketing_opt_out_at: Optional[datetime] = None
+    marketing_opt_out_source: Optional[str] = None
 
 
 class NotificationPayload(pydantic.BaseModel):
