@@ -212,6 +212,29 @@ async def test_an_approval_runs_the_call_with_its_stored_arguments(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_the_result_row_carries_the_arguments_as_the_card_showed_them(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The card is consumed by then, so the chain row shows these instead."""
+    session = await _new_session(test_user_id)
+    secret = "sk-live-not-for-the-chain-row-0123456789"
+    args = {"text": "hello team", "api_key": secret}
+    decision = await check_action(
+        _TOOL, args, test_user_id, session, tool_call_id="call-1"
+    )
+    assert decision.review_id
+    await _answer(decision.review_id, ReviewStatus.APPROVED)
+
+    [delivered] = await held.resolve_answered(test_user_id, session)
+
+    assert post_tool.runs == [args]
+    shown = delivered.metadata["held_call"]
+    assert shown["arguments"] == {"text": "hello team", "api_key": "[redacted]"}
+    assert [f["key"] for f in shown["fields"]] == ["text", "api_key"]
+    assert secret not in json.dumps(delivered.metadata)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_wake_starts_under_the_envelope_its_call_was_held_under(
     setup_test_user, test_user_id, gate_on
 ):

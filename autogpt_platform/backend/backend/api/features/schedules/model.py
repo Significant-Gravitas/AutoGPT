@@ -24,3 +24,17 @@ class ScheduleCreationRequest(pydantic.BaseModel):
 
 class ResumeScheduledChatResponse(pydantic.BaseModel):
     resumed: bool
+
+
+class ScheduleUpdateRequest(pydantic.BaseModel):
+    """Fields to change on an existing schedule; omitted fields keep their value."""
+
+    name: Optional[ScheduleName] = None
+    cron: Optional[str] = None
+    inputs: Optional[dict[str, Any]] = None
+    credentials: Optional[dict[str, CredentialsMetaInput]] = None
+    timezone: Optional[str] = pydantic.Field(
+        default=None,
+        min_length=1,
+        description="Timezone to evaluate the cron in (e.g., 'America/New_York'). If not provided, the schedule keeps its current timezone.",
+    )

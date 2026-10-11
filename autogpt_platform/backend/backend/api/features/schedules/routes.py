@@ -11,6 +11,7 @@ from backend.api.features.schedule_visibility import visible_graph_schedules
 from backend.api.features.schedules.model import (
     ResumeScheduledChatResponse,
     ScheduleCreationRequest,
+    ScheduleUpdateRequest,
 )
 from backend.copilot.scheduled_chats import service as scheduled_chats
 from backend.data import graph as graph_db
@@ -19,7 +20,7 @@ from backend.data.tenancy import get_user_team_ids
 from backend.data.user import get_user_by_id
 from backend.executor import scheduler
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
     get_user_timezone_or_utc,
@@ -27,7 +28,7 @@ from backend.util.timezone_utils import (
 
 logger = logging.getLogger(__name__)
 
-# This router mounts at /api and keeps the section's full paths: its five routes
+# This router mounts at /api and keeps the section's full paths: its routes
 # span two prefixes (/schedules and /graphs/{graph_id}/schedules), so a prefixed
 # mount would have to move one of them.
 router = APIRouter(dependencies=[Security(requires_user)])
@@ -229,3 +230,37 @@ async def delete_graph_execution_schedule(
             detail=f"Schedule #{schedule_id} not found",
         )
     return {"id": schedule_id}
+
+
+@router.patch(
+    path="/schedules/{schedule_id}",
+    summary="Update execution schedule",
+)
+async def update_graph_execution_schedule(
+    user_id: Annotated[str, Security(get_user_id)],
+    schedule_id: str = Path(..., description="ID of the schedule to update"),
+    update: ScheduleUpdateRequest = Body(),
+) -> scheduler.GraphExecutionJobInfo:
+    """Change an agent schedule's name, timing or inputs. Only the schedule's
+    owner can edit it; anyone else gets the same 404 as a missing schedule."""
+    try:
+        result = await get_scheduler_client().update_execution_schedule(
+            schedule_id=schedule_id,
+            user_id=user_id,
+            name=update.name,
+            cron=update.cron,
+            user_timezone=update.timezone,
+            input_data=update.inputs,
+            input_credentials=update.credentials,
+        )
+    except (NotFoundError, NotAuthorizedError):
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail=f"Schedule #{schedule_id} not found",
+        )
+
+    if result.next_run_time:
+        result.next_run_time = convert_utc_time_to_user_timezone(
+            result.next_run_time, result.timezone
+        )
+    return result
