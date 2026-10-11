@@ -300,6 +300,37 @@ describe("recovery", () => {
     expect(textsOf(render())).toEqual([PROMPT, FIRST_TEXT]);
   });
 
+  it("a send cut while hidden whose turn finished meanwhile shows the answer, not an error", async () => {
+    backend.respond(({ method }) =>
+      method === "POST" ? "network-error" : "stream",
+    );
+    setVisibility("hidden");
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(60_000);
+
+    // The backend ran the turn to its end while the tab slept.
+    backend.beginRunning();
+    backend.publish();
+    setVisibility("visible");
+    await advance(10_000);
+    expect(snapshot().error).toBeNull();
+    expect(textsOf(render()).join("")).toBe(
+      `${PROMPT}${FIRST_TEXT}${SECOND_TEXT}`,
+    );
+  });
+
+  it("a send that never reached the server still reports the failure", async () => {
+    backend.respond(({ method }) =>
+      method === "POST" ? "network-error" : "stream",
+    );
+    setVisibility("hidden");
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(60_000);
+    setVisibility("visible");
+    await advance(10_000);
+    expect(snapshot().error?.message).toBe("Failed to fetch");
+  });
+
   it("a lost resend of the same prompt takes no earlier prompt's row", async () => {
     await sendAndPublish(toolTurn.sse.length);
     await advance(2_000);

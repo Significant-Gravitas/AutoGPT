@@ -39,6 +39,7 @@ import {
   type Segment,
   type TurnCheckpoint,
   type TurnSegment,
+  type UserSegment,
 } from "./turnTail";
 
 /** No byte for this long means the connection is dead: the route and the
@@ -646,6 +647,8 @@ export class TurnRuntime {
       if (this.disposed || this.stopped) return;
       await sleep(FINISH_PROBE_MS);
     }
+    // The view holds the prompt, so the send arrived; its rows say the rest.
+    if (this.lostSendLanded()) return;
     if (end.kind === "failed" || lost.syntheticError) {
       this.error =
         end.kind === "failed" && end.error instanceof Error
@@ -653,6 +656,13 @@ export class TurnRuntime {
           : new Error(lost.syntheticError ?? "The connection closed early.");
       this.emitNow();
     }
+  }
+
+  private lostSendLanded() {
+    const prompt = this.segments.findLast(
+      (s): s is UserSegment => s.kind === "user" && s.origin === "sent",
+    );
+    return prompt?.sequence != null;
   }
 
   // ── The turn's lifecycle ───────────────────────────────────────────────
