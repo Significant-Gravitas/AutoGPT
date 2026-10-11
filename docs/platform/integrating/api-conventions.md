@@ -39,7 +39,7 @@ Every response from the API that is not `2xx` has the same body:
 | 404 | `not_found` | No such resource in the organization and team this request acts in. | No. |
 | 405 | `method_not_allowed` | The path exists but not with this HTTP method. | No. |
 | 409 | `conflict` | The request clashes with the current state, e.g. a file or folder name already in use, stopping a run that already finished, or a run with the same `Idempotency-Key` still being created. | Only the idempotency case: retry the same run start, with the same key, after a second. |
-| 413 | `payload_too_large` | An upload is over the size limit. | No. |
+| 413 | `payload_too_large` | The request body, or an uploaded file, is over the size limit (see [Formats](#formats)). | No. |
 | 422 | `validation_error` | The body or query parameters failed validation (`details.errors` lists each failing field), or an `Idempotency-Key` was reused for a different request. | No. Fix the request, or use a new key. |
 | 428 | `precondition_required` | Something must be set up first; the message says what. | After doing it. |
 | 429 | `rate_limit_exceeded` | A rate limit was hit. | Yes, after `Retry-After` seconds. |
@@ -293,6 +293,7 @@ curl -s -X POST "$AUTOGPT_API_URL/library/agents/$AGENT_ID/runs" \
 ## Formats
 
 * Requests and responses are JSON (`Content-Type: application/json`), except uploads (`multipart/form-data`) and file downloads (the file's own type).
+* A request body can be up to 10 MB. An upload can be as large as its file allows: up to the workspace file size limit for `POST /files/upload` (100 MB on AutoGPT Cloud), and up to 10 MB for `POST /marketplace/submissions/media`. A larger body gets `413 payload_too_large`, with the limit in bytes in `details.limit_bytes`.
 * IDs are opaque strings. Today they are UUIDs; don't depend on that.
 * Timestamps are ISO 8601 with a time zone, e.g. `2026-10-08T14:03:12.418000Z`.
 * Money is in US cents in fields ending `_cents`, e.g. `balance_cents: 1250` is $12.50.

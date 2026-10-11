@@ -303,6 +303,7 @@ It prints `COMPLETED {'greeting': ['Hello, Ada!']}`. Change the name and inputs 
   * The key only reaches its own organization's agents, folders, runs and schedules, as in the REST API; an ID from another organization is not found.
   * Runs, uploads and searches count against the same [rate limits](api-conventions.md#rate-limits) as their REST endpoints, and `run_agent` refuses to start a run on a zero balance. `web_search` needs an active plan and counts against your AutoPilot usage allowance.
 * Send the key once, in the `Authorization` header. A request that also sends `X-API-Key`, or two `Authorization` headers, is refused.
+* A request to the server can be up to 10 MB, like any other API request, so `write_workspace_file` takes up to about 7 MB as `content_base64` (base64 adds a third). Upload a larger file with [`POST /files/upload`](running-agents.md), then use it by its ID.
 * Runs started over MCP are ordinary runs: they show up in the app and in `GET /runs`, and they cost the same.
 * On a self-hosted instance, `search_docs` returns results only after the instance has indexed its documentation, and `web_search` needs OpenRouter credentials configured on the instance.
 * The server doesn't support dynamic client registration, so a client's "sign in" or "authenticate" option won't work with it. Configure the API key header instead.

@@ -113,7 +113,7 @@ class GlobalRateLimitMiddleware:
         try:
             if auth:
                 state = await _authenticated_limiter.check(auth.user_id)
-            elif _app_path(scope) in _DOCS_PATHS:
+            elif app_path(scope) in _DOCS_PATHS:
                 state = await _anonymous_docs_limiter.check(ip)
             else:
                 state = await _anonymous_limiter.check(ip)
@@ -181,7 +181,7 @@ async def _refuse_before_verifying(ip: str, bucket: str) -> Optional[Response]:
     return None
 
 
-def _app_path(scope: Scope) -> str:
+def app_path(scope: Scope) -> str:
     """The request path inside this app, past the prefix it is mounted at."""
     path: str = scope.get("path", "")
     root: str = scope.get("root_path", "")

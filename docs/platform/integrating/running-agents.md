@@ -413,7 +413,7 @@ Pass `file_uri` as the value of the file input:
 { "inputs": { "document": "workspace://1d458946-1b77-4e62-b13f-67fd5b1ce100#application/pdf" } }
 ```
 
-* Uploads are virus-scanned and count toward your storage quota.
+* Uploads are virus-scanned and count toward your storage quota. A file can be up to 100 MB on AutoGPT Cloud; a larger one gets `413 payload_too_large`.
 * Uploading a file whose name is already in the workspace fails with `409 conflict`. Add `?overwrite=true` to replace it. The replacement gets a **new** `id` and `file_uri`.
 * `GET /files` lists the workspace and `DELETE /files/{file_id}` removes a file (needs **Read Files** and **Write Files**).
 

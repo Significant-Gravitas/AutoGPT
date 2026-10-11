@@ -400,6 +400,8 @@ async def delete_submission(
 # Submission Media
 # ============================================================================
 
+MEDIA_MAX_SIZE_MB = 10
+
 
 @marketplace_router.post(
     path="/submissions/media",
@@ -419,7 +421,7 @@ async def upload_submission_media(
     """
     await enforce(media_upload_limiter, auth.user_id, response)
 
-    content = await read_within_size_limit(file, max_size_mb=10)
+    content = await read_within_size_limit(file, max_size_mb=MEDIA_MAX_SIZE_MB)
 
     # Virus scan
     await scan_content_safe(content, filename=file.filename or "upload")

@@ -500,7 +500,7 @@ async def test_bearer_api_key_gets_the_authenticated_rate_limit(
 _EXTRA_COLLECTION_ENDPOINTS = {"search", "get_folder_tree"}
 
 # Non-2xx responses every operation must document with the error envelope.
-_DOCUMENTED_ERROR_STATUSES = {"400", "401", "403", "404", "422", "429", "500"}
+_DOCUMENTED_ERROR_STATUSES = {"400", "401", "403", "404", "413", "422", "429", "500"}
 
 
 def test_every_collection_endpoint_returns_the_page_envelope():
