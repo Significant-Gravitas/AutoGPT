@@ -10,6 +10,10 @@ charge is expected to rest on:
   the CLI's price (Anthropic rates) would be far off.
 - ``none``: the user's own subscription pays, or nobody does; the platform
   must not charge the user's spend budgets at all.
+
+A turn the platform relaunches after a provider failure owes only the calls
+billed after the failure. The failed attempt is the platform's to absorb, not
+the user's.
 """
 
 from typing import Any, Literal
@@ -51,9 +55,20 @@ class Scenario(BaseModel):
     # Calls the provider bills per turn: one, a tool round of two, one.
     calls_per_turn: tuple[int, int, int] = (1, 2, 1)
     fault: PlannedFault | None = None
+    # Whether the platform relaunches the turn after the fault, rather than
+    # its client retrying the one request.
+    fault_relaunches_turn: bool = False
     # CLAUDE_CODE_MAX_RETRIES for the CLI; None keeps its own default.
     cli_max_retries: int | None = None
     known_gap: KnownGap | None = None
+
+    def owed_calls(self, turn: int, calls: list[Call]) -> list[Call]:
+        """The turn's billed calls the user pays for: after a relaunch, only
+        the attempt that succeeded."""
+        fault = self.fault
+        if fault is None or fault.turn != turn or not self.fault_relaunches_turn:
+            return calls
+        return [call for call in calls if call.request > fault.request]
 
     @property
     def needs_cli(self) -> bool:
@@ -88,7 +103,6 @@ def _sdk_anthropic_failing(
     scenario_id: str,
     fault: PlannedFault,
     calls_per_turn: tuple[int, int, int],
-    known_gap: KnownGap | None = None,
 ) -> Scenario:
     """The direct-Anthropic thread with one request failed and the CLI's own
     retries off, so the platform's handling of the failure is what runs."""
@@ -96,39 +110,29 @@ def _sdk_anthropic_failing(
         update={
             "id": scenario_id,
             "fault": fault,
+            "fault_relaunches_turn": True,
             "calls_per_turn": calls_per_turn,
             "cli_max_retries": 0,
-            "known_gap": known_gap,
         }
     )
 
 
-_RETRY_TOKENS = KnownGap(
-    check="tokens",
-    reason=(
-        "A retried turn is charged the failed attempt's spend, but its "
-        "cost-log row and session usage keep only the retry's tokens"
-    ),
-)
-
 SCENARIOS = [
     _SDK_ANTHROPIC,
     # The tool round's second call is refused: the platform relaunches the CLI
-    # on the session, and the turn owes the first call and the retry's.
+    # on the session. The provider billed the tool round's first call and the
+    # retry's; the turn owes only the retry's.
     _sdk_anthropic_failing(
         "sdk-anthropic-overloaded-after-tool",
         PlannedFault(kind="overloaded", turn=1, request=2),
         calls_per_turn=(1, 2, 1),
-        known_gap=_RETRY_TOKENS,
     ),
-    # The connection drops instead, which is transient: the platform stops
+    # The connection drops instead, which is transient too: the platform stops
     # reading before the CLI's result and relaunches the CLI on the session.
-    # The turn owes the first call and the retry's.
     _sdk_anthropic_failing(
         "sdk-anthropic-dropped-after-tool",
         PlannedFault(kind="dropped", turn=1, request=2),
         calls_per_turn=(1, 2, 1),
-        known_gap=_RETRY_TOKENS,
     ),
     # A resumed turn whose first request drops is relaunched before anything
     # streamed, and charged its one successful call.
