@@ -18,7 +18,6 @@ import { useScheduledChatNoticeCard } from "./useScheduledChatNoticeCard";
 interface Props {
   notice: ScheduledChatNotice;
   sessionID?: string | null;
-  readOnly?: boolean;
 }
 
 const REASON_ICONS: Record<string, IconSvgElement> = {
@@ -32,17 +31,13 @@ const REASON_ICONS: Record<string, IconSvgElement> = {
   resumed: CheckmarkCircle02Icon,
 };
 
-export function ScheduledChatNoticeCard({
-  notice,
-  sessionID = null,
-  readOnly = false,
-}: Props) {
+export function ScheduledChatNoticeCard({ notice, sessionID = null }: Props) {
   const card = useScheduledChatNoticeCard({
     scheduleKey: notice.scheduleKey,
     sessionID,
   });
   const icon = REASON_ICONS[notice.reason] ?? Clock01Icon;
-  const showActions = !readOnly && notice.actions.length > 0;
+  const showActions = notice.actions.length > 0;
 
   function renderAction(action: NoticeAction) {
     if (action.kind === "link") {

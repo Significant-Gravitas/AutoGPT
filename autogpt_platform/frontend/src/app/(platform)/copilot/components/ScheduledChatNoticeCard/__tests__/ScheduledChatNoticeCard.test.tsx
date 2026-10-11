@@ -51,13 +51,6 @@ describe("ScheduledChatNoticeCard", () => {
     ).toBe("/settings/billing");
   });
 
-  it("shows no buttons in a read-only shared chat", () => {
-    render(<ScheduledChatNoticeCard notice={PAUSED} readOnly />);
-
-    expect(screen.getByText(/can't use Twitter/)).toBeDefined();
-    expect(screen.queryByRole("button")).toBeNull();
-  });
-
   it("resumes the paused chat it is about", async () => {
     let resumedKey: string | null = null;
     server.use(
