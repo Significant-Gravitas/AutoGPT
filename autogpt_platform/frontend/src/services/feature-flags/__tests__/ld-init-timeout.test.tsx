@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { LD_INIT_TIMEOUT_SECONDS } from "../constants";
-import { LaunchDarklyProvider } from "../feature-flag-provider";
+import { FeatureFlagProvider } from "../feature-flag-provider";
 import { Flag, useGetFlag } from "../use-get-flag";
 
 // launchdarkly-js-sdk-common warns above this many SECONDS ("We recommend a
@@ -63,9 +63,9 @@ function FlagProbe() {
 describe("LaunchDarkly initialisation timeout", () => {
   it("gives the SDK a timeout in seconds, below the threshold it warns about", () => {
     render(
-      <LaunchDarklyProvider>
+      <FeatureFlagProvider>
         <FlagProbe />
-      </LaunchDarklyProvider>,
+      </FeatureFlagProvider>,
     );
 
     expect(ld.timeouts).toEqual([LD_INIT_TIMEOUT_SECONDS]);
@@ -76,9 +76,9 @@ describe("LaunchDarkly initialisation timeout", () => {
 
   it("renders children on the default flag values while LaunchDarkly has not answered", () => {
     render(
-      <LaunchDarklyProvider>
+      <FeatureFlagProvider>
         <FlagProbe />
-      </LaunchDarklyProvider>,
+      </FeatureFlagProvider>,
     );
 
     expect(screen.getByText("payment: false")).toBeDefined();
@@ -86,9 +86,9 @@ describe("LaunchDarkly initialisation timeout", () => {
 
   it("wires no LaunchDarkly-only Sentry inspector; the flag seam records for every vendor", () => {
     render(
-      <LaunchDarklyProvider>
+      <FeatureFlagProvider>
         <FlagProbe />
-      </LaunchDarklyProvider>,
+      </FeatureFlagProvider>,
     );
 
     expect(ld.options.at(-1)).toBeUndefined();

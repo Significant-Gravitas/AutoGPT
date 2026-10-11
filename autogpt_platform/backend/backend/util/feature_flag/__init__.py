@@ -824,12 +824,20 @@ async def evaluate_feature_flag(
     irreversible — a failed read is indistinguishable from a real "off" on the
     value alone.
     """
+    return await _evaluate_boolean_flag(flag_key.value, user_id, default)
+
+
+async def _evaluate_boolean_flag(
+    flag_key: str,
+    user_id: str,
+    default: bool = False,
+) -> tuple[bool, bool]:
     override = _env_flag_override(flag_key)
     if override is not None:
         logger.debug(f"Feature flag {flag_key} overridden by env: {override}")
         return override, True
 
-    result, evaluated = await _evaluate_flag_value(flag_key.value, user_id, default)
+    result, evaluated = await _evaluate_flag_value(flag_key, user_id, default)
 
     # If the result is already a boolean, return it
     if isinstance(result, bool):
@@ -843,7 +851,7 @@ async def evaluate_feature_flag(
 
     # A misconfigured flag is not an answer either: fall back to the default,
     # but never let a caller take an irreversible action on it.
-    _record_flag_for_sentry(flag_key.value, default, False)
+    _record_flag_for_sentry(flag_key, default, False)
     return default, False
 
 
