@@ -6,7 +6,8 @@ from datetime import UTC, datetime
 import pytest
 
 from backend.copilot.constants import COPILOT_ERROR_PREFIX, STOPPED_BY_USER_MARKER
-from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.db import PaginatedMessages
+from backend.copilot.model import ChatMessage, ChatSession, ChatSessionInfo
 from backend.copilot.sdk.compaction import COMPACTION_TOOL_NAME, CompactionStats
 from backend.copilot.sdk.service import (
     _BARE_MESSAGE_TOKEN_FLOOR,
@@ -650,6 +651,58 @@ async def test_build_query_resume_cap_engaged_hole_fill_failure_uses_window_only
     assert "window-1502" in result
     assert "window-1503" in result
     assert "Now, the user says:\ncurrent" in result
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_hole_fill_drops_error_markers(monkeypatch):
+    """Rows fetched from the DB for the hole go through the same marker
+    filter as the loaded window."""
+    session = _make_session(
+        _seq_rows(
+            ("user", "window-1502"),
+            ("assistant", "window-1503"),
+            ("user", "current turn"),
+            start=1502,
+        )
+    )
+    hole_page = PaginatedMessages(
+        messages=_seq_rows(
+            ("user", "hole-1500"),
+            ("assistant", f"{COPILOT_ERROR_PREFIX} HOLE MARKER"),
+            start=1500,
+        ),
+        has_more=False,
+        oldest_sequence=1500,
+        session=ChatSessionInfo(
+            session_id="test-session",
+            user_id="u1",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        ),
+    )
+    fake_db = type(
+        "FakeDB",
+        (),
+        {
+            "get_chat_messages_paginated": staticmethod(
+                lambda *args, **kwargs: _async_return(hole_page)
+            )
+        },
+    )()
+    monkeypatch.setattr("backend.copilot.sdk.service.chat_db", lambda: fake_db)
+
+    result, _ = await _build_query_message(
+        "current turn",
+        session,
+        use_resume=True,
+        transcript_msg_count=1500,
+        session_id="test-session",
+    )
+
+    assert "hole-1500" in result
+    assert "window-1503" in result
+    assert "HOLE MARKER" not in result
 
 
 async def _async_return(value):

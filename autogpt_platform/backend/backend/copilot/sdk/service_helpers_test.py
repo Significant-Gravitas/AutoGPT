@@ -2153,13 +2153,17 @@ class TestExpectPreQueryCompaction:
             )
         ).expected is True
 
-    def test_resume_gap_of_only_error_markers_never_predicts(self):
-        # Markers are never sent, so a gap made of them compresses nothing.
+    def test_resume_gap_error_markers_never_predict(self):
+        # Markers are never sent, so only the small row is left to compress;
+        # counted, the two large markers would predict a compaction.
+        big_marker = f"{COPILOT_ERROR_PREFIX} " + "word " * 100_000
         messages = [
             _seq_msg("user", "hi", 0),
             _seq_msg("assistant", "ok", 1),
-            _seq_msg("assistant", f"{COPILOT_ERROR_PREFIX} " + "word " * 100_000, 2),
-            _seq_msg("user", "again", 3),
+            _seq_msg("user", "small question", 2),
+            _seq_msg("assistant", big_marker, 3),
+            _seq_msg("assistant", big_marker, 4),
+            _seq_msg("user", "again", 5),
         ]
         assert (
             _expect_pre_query_compaction(
