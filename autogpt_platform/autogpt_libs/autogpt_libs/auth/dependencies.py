@@ -8,6 +8,8 @@ import asyncio
 import logging
 import time
 from collections import OrderedDict
+from collections.abc import Awaitable, Callable
+from enum import Enum
 
 import fastapi
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -38,6 +40,27 @@ _FAILED_HEAL_BACKOFF_SECS = 60
 # Heals still running, id -> task: concurrent first requests for one user wait
 # on the same probe instead of each running their own.
 _HEALS_IN_FLIGHT: "dict[str, asyncio.Task[None]]" = {}
+
+ACCOUNT_CLOSED_DETAIL = "This account is closed."
+
+
+class _AccountState(Enum):
+    OPEN = "open"
+    CLOSED = "closed"
+    # The check failed: the account is not rejected, but never healed either,
+    # since it may be closed.
+    UNKNOWN = "unknown"
+
+
+# Recent answers to "did this user delete their account?", id -> (state,
+# monotonic expiry). Tokens outlive the sessions a close ends, so every request
+# asks; a closed answer is kept long, an open one only briefly, since another
+# worker can close the account at any moment. A failed check is kept as long
+# as an open answer, so a DB outage costs one query per user per TTL.
+_CLOSED_ACCOUNT_CACHE: "OrderedDict[str, tuple[_AccountState, float]]" = OrderedDict()
+_CLOSED_ACCOUNT_CACHE_MAX = 10_000
+_CLOSED_ACCOUNT_TTL_SECS = 15 * 60
+_OPEN_ACCOUNT_TTL_SECS = 30
 
 
 def _is_heal_settled(user_id: str) -> bool:
@@ -102,6 +125,85 @@ async def _settle_heal(user_id: str, jwt_payload: dict) -> None:
         user_id,
         _PROVISIONED_USER_TTL_SECS if provisioned else _FAILED_HEAL_BACKOFF_SECS,
     )
+
+
+def remember_account_closed(user_id: str) -> None:
+    """Reject *user_id* in this process at once.
+
+    For the worker that just closed the account: without this it would keep
+    accepting the user until its cached "open" answer expired.
+    """
+    _cache_account_state(user_id, _AccountState.CLOSED)
+
+
+async def _account_state(user_id: str) -> _AccountState:
+    """Whether *user_id* asked to delete their account, cached briefly.
+
+    Open without the backend package or a connected DB. On a DB error the
+    account is not rejected (the request's own next query would fail anyway),
+    but it is reported UNKNOWN so nothing heals an account that may be closed.
+    """
+    cached = _cached_account_state(user_id)
+    if cached is not None:
+        return cached
+
+    query = _closed_account_query()
+    if query is None:
+        return _AccountState.OPEN
+    try:
+        closed = await query(user_id)
+        state = _AccountState.CLOSED if closed else _AccountState.OPEN
+    except Exception:
+        logger.warning(
+            f"Closed-account check failed for {user_id}; treating it as open",
+            exc_info=True,
+        )
+        state = _AccountState.UNKNOWN
+
+    # A close remembered while the query ran wins over the query's answer.
+    if _cached_account_state(user_id) is _AccountState.CLOSED:
+        return _AccountState.CLOSED
+    _cache_account_state(user_id, state)
+    return state
+
+
+def _closed_account_query() -> Callable[[str], Awaitable[bool]] | None:
+    """The backend's closed-account query, or None without the backend
+    package or a connected DB (route unit tests, tooling)."""
+    try:
+        from backend.data.db import prisma  # deferred -- only needed at runtime
+    except ImportError:
+        return None
+    if not prisma.is_connected():
+        return None
+    try:
+        from backend.data.account_deletion import is_account_closed  # deferred
+    except ImportError:
+        return None
+    return is_account_closed
+
+
+def _cached_account_state(user_id: str) -> _AccountState | None:
+    entry = _CLOSED_ACCOUNT_CACHE.get(user_id)
+    if entry is None:
+        return None
+    state, expires_at = entry
+    if expires_at <= time.monotonic():
+        del _CLOSED_ACCOUNT_CACHE[user_id]
+        return None
+    return state
+
+
+def _cache_account_state(user_id: str, state: _AccountState) -> None:
+    ttl = (
+        _CLOSED_ACCOUNT_TTL_SECS
+        if state is _AccountState.CLOSED
+        else _OPEN_ACCOUNT_TTL_SECS
+    )
+    _CLOSED_ACCOUNT_CACHE[user_id] = (state, time.monotonic() + ttl)
+    _CLOSED_ACCOUNT_CACHE.move_to_end(user_id)
+    while len(_CLOSED_ACCOUNT_CACHE) > _CLOSED_ACCOUNT_CACHE_MAX:
+        _CLOSED_ACCOUNT_CACHE.popitem(last=False)
 
 
 def get_optional_user_id(
@@ -170,40 +272,77 @@ async def get_user_id(
     - Logs all impersonation actions for audit trail
 
     Raises:
-        HTTPException: 401 for authentication failures or missing user ID
+        HTTPException: 401 for authentication failures, a missing user ID, or
+            a token whose own subject closed their account
         HTTPException: 403 if non-admin tries to use impersonation
     """
-    # Get the authenticated user's ID from JWT
+    return await _resolve_user_id(request, jwt_payload, allow_closed=False)
+
+
+async def get_user_id_allowing_closed(
+    request: fastapi.Request, jwt_payload: dict = fastapi.Security(get_jwt_payload)
+) -> str:
+    """``get_user_id`` that still resolves a closed account.
+
+    Only for the account deletion route, so a repeat request for an account it
+    already closed can still answer. A closed account is never self-healed:
+    that would re-create the User row its erasure removes.
+    """
+    return await _resolve_user_id(request, jwt_payload, allow_closed=True)
+
+
+async def _resolve_user_id(
+    request: fastapi.Request, jwt_payload: dict, *, allow_closed: bool
+) -> str:
+    subject = _token_subject(jwt_payload)
+    state = await _account_state(subject)
+    if state is _AccountState.CLOSED and not allow_closed:
+        raise fastapi.HTTPException(status_code=401, detail=ACCOUNT_CLOSED_DETAIL)
+
+    if state is _AccountState.OPEN:
+        # Self-heal a missing platform User row for the token's own subject.
+        # Under impersonation that is the admin, never the target: the claims
+        # describe the admin, and provisioning the target from them would be
+        # wrong. Never for an account that is or may be closed: that would
+        # re-create the User row its erasure removes.
+        await _heal_platform_user(jwt_payload)
+
+    return _impersonated_user_id(request, jwt_payload) or subject
+
+
+def _token_subject(jwt_payload: dict) -> str:
+    """The authenticated user's own ID, from the token's ``sub`` claim."""
     user_id = jwt_payload.get("sub")
     if not user_id:
         raise fastapi.HTTPException(
             status_code=401, detail="User ID not found in token"
         )
+    return user_id
 
-    # Self-heal a missing platform User row for the token's own subject. Under
-    # impersonation that is the admin, never the target: the claims describe
-    # the admin, and provisioning the target from them would be wrong.
-    await _heal_platform_user(jwt_payload)
 
-    # Check for admin impersonation header
+def _impersonated_user_id(request: fastapi.Request, jwt_payload: dict) -> str | None:
+    """The user an admin acts as via the impersonation header, if any.
+
+    Raises:
+        HTTPException: 403 if a non-admin sends the header
+    """
     impersonate_header = request.headers.get(IMPERSONATION_HEADER_NAME, "").strip()
-    if impersonate_header:
-        # Verify the authenticated user is an admin
-        authenticated_user = verify_user(jwt_payload, admin_only=False)
-        if authenticated_user.role != "admin":
-            raise fastapi.HTTPException(
-                status_code=403, detail="Only admin users can impersonate other users"
-            )
+    if not impersonate_header:
+        return None
 
-        # Log the impersonation for audit trail
-        logger.info(
-            f"Admin impersonation: {authenticated_user.user_id} ({authenticated_user.email}) "
-            f"acting as user {impersonate_header} for requesting {request.method} {request.url}"
+    # Verify the authenticated user is an admin
+    authenticated_user = verify_user(jwt_payload, admin_only=False)
+    if authenticated_user.role != "admin":
+        raise fastapi.HTTPException(
+            status_code=403, detail="Only admin users can impersonate other users"
         )
 
-        return impersonate_header
-
-    return user_id
+    # Log the impersonation for audit trail
+    logger.info(
+        f"Admin impersonation: {authenticated_user.user_id} ({authenticated_user.email}) "
+        f"acting as user {impersonate_header} for requesting {request.method} {request.url}"
+    )
+    return impersonate_header
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +473,7 @@ async def get_request_context(
 
     Resolution order:
       1. Extract user_id from JWT (supports admin impersonation via X-Act-As-User-Id).
+         401 when the token's own subject closed their account.
       2. Read X-Org-Id header; fall back to the user's personal org; fail if none.
       3. Validate that the user has an ACTIVE OrgMember row for that org.
       4. Read X-Team-Id header (optional). If set, validate that the
@@ -344,25 +484,12 @@ async def get_request_context(
     from backend.data.db import prisma  # deferred -- only needed at runtime
 
     # --- 1. user_id (reuse existing impersonation logic) ----------------------
-    user_id = jwt_payload.get("sub")
-    if not user_id:
-        raise fastapi.HTTPException(
-            status_code=401, detail="User ID not found in token"
-        )
-
-    impersonate_header = request.headers.get(IMPERSONATION_HEADER_NAME, "").strip()
-    if impersonate_header:
-        authenticated_user = verify_user(jwt_payload, admin_only=False)
-        if authenticated_user.role != "admin":
-            raise fastapi.HTTPException(
-                status_code=403,
-                detail="Only admin users can impersonate other users",
-            )
-        logger.info(
-            f"Admin impersonation: {authenticated_user.user_id} ({authenticated_user.email}) "
-            f"acting as user {impersonate_header} for requesting {request.method} {request.url}"
-        )
-        user_id = impersonate_header
+    subject = _token_subject(jwt_payload)
+    # Before anything below can self-heal the account's User row.
+    account_state = await _account_state(subject)
+    if account_state is _AccountState.CLOSED:
+        raise fastapi.HTTPException(status_code=401, detail=ACCOUNT_CLOSED_DETAIL)
+    user_id = _impersonated_user_id(request, jwt_payload) or subject
 
     # --- 2. org_id ------------------------------------------------------------
     org_id = request.headers.get(ORG_HEADER_NAME, "").strip() or None
@@ -391,7 +518,9 @@ async def get_request_context(
             # recoverable: the personal org, or the platform User row the org
             # would hang off. Provision the user first so the bootstrap below
             # has something to work with.
-            if await _ensure_platform_user(user_id, jwt_payload):
+            if account_state is _AccountState.OPEN and await _ensure_platform_user(
+                user_id, jwt_payload
+            ):
                 await _finish_account_bootstrap(jwt_payload)
 
             org_id, _ = await get_user_default_team(user_id)
