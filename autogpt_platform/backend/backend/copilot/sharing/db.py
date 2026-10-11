@@ -29,6 +29,7 @@ from backend.blocks import get_block
 from backend.blocks._base import BlockType
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.expert_kickoff import is_hidden_chat_message
+from backend.copilot.hidden_rows import is_hidden_from_model
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.sharing.models import (
     ChatShareState,
@@ -353,7 +354,11 @@ async def get_shared_chat_messages_paginated(
         messages=[
             sanitize_chat_message(message)
             for message in page.messages
+            # Hidden control turns, and the platform's notes to the owner: a
+            # scheduled chat's note says what their plan, usage or connections
+            # are, and the shared copy carries no metadata to hide it by.
             if not is_hidden_chat_message(message.metadata)
+            and not is_hidden_from_model(message.metadata)
         ],
         has_more=page.has_more,
         oldest_sequence=page.oldest_sequence,
