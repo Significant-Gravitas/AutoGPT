@@ -4,6 +4,7 @@ The scheduler is mocked; the notes are really written, into a real chat, the
 way the DatabaseManager writes them.
 """
 
+import asyncio
 import logging
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -429,6 +430,42 @@ async def test_reconnecting_the_provider_resumes_what_it_paused(
         await resume_after_reconnect(user_id, "twitter")
 
         assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_two_resumes_at_once_both_say_it_resumed(
+    server: SpinTestServer, scheduler: MagicMock, mocker
+):
+    """Reconnecting from the card resumes the chat twice at once: once from
+    the connect, once from the card. Both read the row before either clears
+    it; both say it resumed, and the chat gets one note."""
+    both_read_the_row = asyncio.Event()
+    waiting: list[str] = []
+
+    async def resume_jobs(user_id: str, schedule_ids: list[str]) -> None:
+        waiting.append(user_id)
+        if len(waiting) == 2:
+            both_read_the_row.set()
+        await both_read_the_row.wait()
+
+    mocker.patch(f"{_SERVICE}.resume_jobs", side_effect=resume_jobs)
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+
+        results = await asyncio.gather(
+            resume_scheduled_chat(user_id, "sched-1"),
+            resume_scheduled_chat(user_id, "sched-1"),
+        )
+
+        assert results == [True, True]
+        assert await list_paused_scheduled_chats(user_id) == []
+        headlines = [n.metadata["headline"] for n in await _notes(session_id)]
+        assert headlines.count("Resumed \u201cDiscord monitor\u201d") == 1
     finally:
         await _cleanup(user_id)
 
