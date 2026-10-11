@@ -6,7 +6,11 @@ import type { FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
 import { streamRequestBody } from "../copilotStreamTransport";
-import { getCopilotAuthHeaders, isEngineSwitchPart } from "../helpers";
+import {
+  CopilotAuthError,
+  getCopilotAuthHeaders,
+  isEngineSwitchPart,
+} from "../helpers";
 import type { CopilotLlmModel } from "../store";
 import { isTokenDevtoolEnabled } from "../tokenDevtool/gate";
 import { createUsageCapturingFetch } from "../tokenDevtool/usageTap";
@@ -54,6 +58,8 @@ const TICK_MS = 5_000;
 const EMIT_THROTTLE_MS = 30;
 const FROZEN_POLL_MS = 10_000;
 const QUEUED_POLL_MS = 10_000;
+// A tab away this long re-reads an idle chat on return, as the flag-off chat does.
+const WAKE_REREAD_MS = 30_000;
 // The backend marks a queued turn running a moment before its stream exists;
 // past this, the stream is not coming.
 const QUEUE_START_GRACE_MS = 2 * 60_000;
@@ -70,6 +76,8 @@ const RESYNC_REASONS = new Set([
   "closed block",
   "input changed",
 ]);
+
+const CHAT_GONE_MESSAGE = "This chat is no longer available.";
 
 export const ANOMALY_TOAST = {
   title: "Connection lost",
@@ -150,7 +158,8 @@ type Lost = Pick<
 type ConnectionEnd =
   | { kind: "closed" }
   | { kind: "refused"; status: number; body: unknown }
-  | { kind: "failed"; error: unknown };
+  | { kind: "failed"; error: unknown }
+  | { kind: "denied"; error: CopilotAuthError };
 
 interface QueueWatch {
   timer: ReturnType<typeof setTimeout> | null;
@@ -176,6 +185,8 @@ export class TurnRuntime {
   private slot: Connection | null = null;
   private rotating: Connection | null = null;
   private failures = 0;
+  // 401/403s since the last frame; the first gets a fresh token, the second ends the turn.
+  private denials = 0;
   private anomalyShown = false;
   private notice: RuntimeNotice = null;
   private error: Error | null = null;
@@ -206,6 +217,7 @@ export class TurnRuntime {
   private handlers: RuntimeHandlers = {};
   private boundFetchSession: (() => Promise<SessionView | null>) | null = null;
   private disposed = false;
+  private hiddenAt: number | null = null;
 
   constructor(
     readonly sessionId: string,
@@ -469,7 +481,10 @@ export class TurnRuntime {
         ? { kind: "closed" }
         : { kind: "refused", status: result.status, body: result.body };
     } catch (error) {
-      end = { kind: "failed", error };
+      end =
+        error instanceof CopilotAuthError
+          ? { kind: "denied", error }
+          : { kind: "failed", error };
     }
     this.onEnd(conn, end);
   }
@@ -547,6 +562,10 @@ export class TurnRuntime {
     if (conn.closedByClient) return;
     const seg = conn.turnId ? this.turnFor(conn.turnId) : null;
     if (seg && (seg.ended || seg.stopped || seg.frozen)) return;
+    if (end.kind === "denied") {
+      this.giveUp(end.error);
+      return;
+    }
     if (end.kind === "refused" && conn.kind === "post") {
       this.refusedSend(end);
       return;
@@ -559,6 +578,8 @@ export class TurnRuntime {
       if (end.status === 409) void this.resync(seg.key, checkpointOf(end.body));
       else if (end.status === 410 || end.status === 204)
         void this.expire(seg.key);
+      else if (end.status === 401 || end.status === 403) this.denied(seg);
+      else if (end.status === 404) this.giveUp(new Error(CHAT_GONE_MESSAGE));
       else this.retry(conn);
       return;
     }
@@ -585,7 +606,7 @@ export class TurnRuntime {
    * rotation-age cuts resume silently; only a run of failures while the tab
    * is visible and online reaches the one alarming toast.
    */
-  private retry(lost: Lost) {
+  private retry(lost: Lost, end: ConnectionEnd = { kind: "closed" }) {
     const running = this.runningTurn();
     if (!running && lost.turnId !== null) return;
     const offline =
@@ -594,7 +615,7 @@ export class TurnRuntime {
       lost.turnId === null &&
       (offline || document.visibilityState === "hidden")
     ) {
-      this.unresolvedPost = { lost, end: { kind: "closed" } };
+      this.unresolvedPost = { lost, end };
     }
     if (document.visibilityState === "hidden") return;
     if (offline) {
@@ -617,17 +638,42 @@ export class TurnRuntime {
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
       if (this.runningTurn()) this.ensureConnected();
-      else void this.recoverUnknownTurn(lost, { kind: "closed" });
+      else void this.recoverUnknownTurn(lost, end);
     }, delay);
     this.emitNow();
   }
 
   private refusedSend(end: Extract<ConnectionEnd, { kind: "refused" }>) {
-    const text =
-      typeof end.body === "string" ? end.body : JSON.stringify(end.body);
-    this.error = new Error(text || `Request failed with status ${end.status}`);
+    this.error = new Error(refusalText(end));
     this.emitNow();
     this.handlers.onError?.(this.error, null);
+  }
+
+  // The first refusal may be a token that expired in flight; a fresh one
+  // that is refused too means the user is signed out.
+  private denied(seg: TurnSegment) {
+    this.denials += 1;
+    if (this.denials > 1) this.giveUp(new CopilotAuthError());
+    else this.resume(seg);
+  }
+
+  /** A refusal no retry can change: end the turn where it stands and say why. */
+  private giveUp(error: Error) {
+    const running = this.runningTurn();
+    this.abortConnections();
+    this.clearRetry();
+    this.unresolvedPost = null;
+    if (running) {
+      this.updateTurn(running.key, (seg) => ({
+        ...seg,
+        ended: true,
+        log: closeBlocks(seg.log),
+      }));
+    }
+    this.resetFailures();
+    this.error = error;
+    this.emitNow();
+    this.handlers.onError?.(error, null);
   }
 
   // A send whose stream ended before naming its turn: the session view says
@@ -635,6 +681,10 @@ export class TurnRuntime {
   private findLostTurn(lost: Lost, end: ConnectionEnd) {
     const offline =
       typeof navigator !== "undefined" && navigator.onLine === false;
+    if (offline) {
+      this.notice = "offline";
+      this.emitNow();
+    }
     if (document.visibilityState === "hidden" || offline)
       this.unresolvedPost = { lost, end };
     else void this.recoverUnknownTurn(lost, end);
@@ -646,7 +696,7 @@ export class TurnRuntime {
     for (let i = 0; i < CONTINUATION_PROBES; i++) {
       const view = await this.fetchView();
       if (!view) {
-        this.retry(lost);
+        this.retry(lost, end);
         return;
       }
       const attaching = this.wouldAttach(view);
@@ -656,22 +706,36 @@ export class TurnRuntime {
         return;
       }
       if (this.disposed || this.stopped) return;
+      // The session reads "running" from before the prompt row is written
+      // until the turn is released, so a landed prompt outside it is final.
+      if (
+        this.lostSendLanded(lost.prompt) &&
+        (this.runningTurn() || view.chat_status !== "running")
+      )
+        break;
       await sleep(FINISH_PROBE_MS);
     }
-    // The view holds the prompt, so the send arrived; its rows say the rest.
-    if (this.lostSendLanded(lost.prompt)) return;
-    if (end.kind === "failed" || lost.syntheticError) {
+    this.resetFailures();
+    if (
+      !this.lostSendLanded(lost.prompt) &&
+      (end.kind === "failed" || lost.syntheticError)
+    ) {
       this.error =
         end.kind === "failed" && end.error instanceof Error
           ? end.error
           : new Error(lost.syntheticError ?? "The connection closed early.");
-      this.emitNow();
     }
+    this.emitNow();
   }
 
+  // The send arrived: its prompt took a row, or the turn after it is followed.
   private lostSendLanded(promptKey: string | null) {
-    const prompt = promptKey ? this.segmentByKey(promptKey) : null;
-    return prompt?.kind === "user" && prompt.sequence !== null;
+    const index = this.segments.findIndex((s) => s.key === promptKey);
+    const prompt = this.segments[index];
+    if (prompt?.kind !== "user") return false;
+    return (
+      prompt.sequence !== null || this.segments[index + 1]?.kind === "turn"
+    );
   }
 
   // ── The turn's lifecycle ───────────────────────────────────────────────
@@ -696,6 +760,7 @@ export class TurnRuntime {
       start,
     );
     this.segments.push(seg);
+    this.error = null;
     this.resume(seg);
   }
 
@@ -1034,7 +1099,13 @@ export class TurnRuntime {
   // ── Plumbing ───────────────────────────────────────────────────────────
 
   private onVisible = () => {
-    if (document.visibilityState === "visible") this.wake();
+    if (document.visibilityState === "hidden") {
+      this.hiddenAt ??= Date.now();
+      return;
+    }
+    const away = this.hiddenAt === null ? 0 : Date.now() - this.hiddenAt;
+    this.hiddenAt = null;
+    this.wake(away);
   };
 
   private onOnline = () => {
@@ -1051,14 +1122,22 @@ export class TurnRuntime {
     }
   };
 
-  private wake() {
+  private wake(away = 0) {
     const unresolved = this.unresolvedPost;
     this.unresolvedPost = null;
     if (unresolved && !this.runningTurn())
       void this.recoverUnknownTurn(unresolved.lost, unresolved.end);
     // A send still waiting for its turn is otherwise given up only at the next tick.
     else if (this.isPostPending()) this.dropIfSilent();
+    else if (away > WAKE_REREAD_MS && this.isIdle() && !this.recovering)
+      void this.reread();
     else this.ensureConnected();
+  }
+
+  // Another tab, device or the server may have moved an idle chat on meanwhile.
+  private async reread() {
+    const view = await this.fetchView();
+    if (view && !this.disposed) this.observe(view);
   }
 
   private ensureTicking() {
@@ -1174,6 +1253,7 @@ export class TurnRuntime {
 
   private resetFailures() {
     this.failures = 0;
+    this.denials = 0;
     this.anomalyShown = false;
     if (this.notice === "reconnecting" || this.notice === "offline") {
       this.notice = null;
@@ -1336,6 +1416,14 @@ function userMessage(id: string, input: SendInput): UIMessage {
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+// JSON stays as sent, since the error handler reads its detail; a proxy's
+// HTML page or an empty body is replaced by words.
+function refusalText({ status, body }: { status: number; body: unknown }) {
+  if (body !== null && typeof body !== "string") return JSON.stringify(body);
+  if (body && !body.trimStart().startsWith("<")) return body;
+  return `Couldn't reach the server (HTTP ${status}). Please try again in a moment.`;
 }
 
 function sleep(ms: number) {
