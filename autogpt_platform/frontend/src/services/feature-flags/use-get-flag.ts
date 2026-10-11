@@ -47,7 +47,6 @@ export enum Flag {
   GRAPHITI_MEMORY = "graphiti-memory",
   GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled",
   DREAM_PASS_ENABLED = "dream-pass-enabled",
-  DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check",
   DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity",
   // JSON flag mapping copilot-bot platform key (lowercase) -> visible on the
   // Bots settings page. Lets ops hide a platform (e.g. Slack while its
@@ -96,7 +95,6 @@ const defaultFlags = {
   [Flag.GRAPHITI_MEMORY]: false,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
-  [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
   [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
   [Flag.COPILOT_VOICE_MODE]: false,
@@ -162,8 +160,6 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_COMMUNITIES_ENABLED;
     case Flag.DREAM_PASS_ENABLED:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_ENABLED;
-    case Flag.DREAM_PASS_WEB_FACT_CHECK:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_WEB_FACT_CHECK;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
     case Flag.COPILOT_VOICE_MODE:
