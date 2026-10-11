@@ -4,6 +4,7 @@ The scheduler is mocked; the notes are really written, into a real chat, the
 way the DatabaseManager writes them.
 """
 
+import asyncio
 import logging
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -13,6 +14,7 @@ from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage, ExpertRoutine, ScheduledChatStreak, User
 
 from backend.copilot import db as copilot_db
+from backend.copilot.scheduled_chats import service
 from backend.copilot.scheduled_chats.outcomes import RunFailure, RunOutcome
 from backend.copilot.scheduled_chats.service import (
     ScheduledRun,
@@ -34,6 +36,7 @@ _DISCORD = RunFailure(
 _TWITTER = RunFailure(
     key="connection:twitter", kind="connection", provider="twitter", tool="run_block"
 )
+_TWITTER_OUTRIGHT = RunOutcome(failure=_TWITTER, whole_run=True)
 
 
 @pytest.fixture
@@ -314,6 +317,81 @@ async def test_a_run_that_fired_before_the_pause_changes_nothing(
 
         assert len(await list_paused_scheduled_chats(user_id)) == 1
         assert len(await _notes(session_id)) == 1
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_two_runs_finishing_together_keep_the_pause(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """Both read two failures; one pauses the job and records it, then the
+    other finds the job already paused. Its view from before the pause must
+    not erase it, or the chat stays paused with nothing to resume it by."""
+    straggler_waiting = asyncio.Event()
+    pause_recorded = asyncio.Event()
+
+    async def pause(schedule_id: str, *, user_id: str) -> bool:
+        if not straggler_waiting.is_set():
+            straggler_waiting.set()
+            await pause_recorded.wait()
+            return False
+        return True
+
+    scheduler.pause_schedule.side_effect = pause
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(2):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+
+        straggler = asyncio.create_task(
+            record_scheduled_run(_run(user_id, session_id, failed))
+        )
+        await straggler_waiting.wait()
+        await record_scheduled_run(_run(user_id, session_id, failed))
+        pause_recorded.set()
+        await straggler
+
+        assert len(await list_paused_scheduled_chats(user_id)) == 1
+        assert len(await _notes(session_id)) == 1
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_new_failure_finishing_with_the_pause_keeps_it(
+    server: SpinTestServer, scheduler: MagicMock, mocker
+):
+    """A run that failed another way read the streak before the pause, so it
+    starts a new one; replacing the row would erase the pause."""
+    read_it = asyncio.Event()
+    pause_recorded = asyncio.Event()
+    schedule_of = service._schedule_of
+
+    async def held_schedule_of(run):
+        if run.outcome == _TWITTER_OUTRIGHT:
+            read_it.set()
+            await pause_recorded.wait()
+        return await schedule_of(run)
+
+    mocker.patch(f"{_SERVICE}._schedule_of", new=held_schedule_of)
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(2):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+
+        other = asyncio.create_task(
+            record_scheduled_run(_run(user_id, session_id, _TWITTER_OUTRIGHT))
+        )
+        await read_it.wait()
+        await record_scheduled_run(_run(user_id, session_id, failed))
+        pause_recorded.set()
+        await other
+
+        paused = await list_paused_scheduled_chats(user_id)
+        assert [chat.provider for chat in paused] == ["discord"]
     finally:
         await _cleanup(user_id)
 
