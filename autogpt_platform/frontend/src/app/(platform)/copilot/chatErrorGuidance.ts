@@ -2,6 +2,7 @@ import { CopilotAuthError } from "./helpers";
 import {
   ChatUnavailableError,
   isUnexpectedRefusal,
+  MessageTooLongError,
   SendRefusedError,
 } from "./stream/turnRuntime";
 
@@ -33,6 +34,11 @@ export function describeChatError(error: Error): ChatErrorGuidance {
     return {
       title: "This chat no longer exists. Start a new chat to keep going.",
       action: "new-chat",
+    };
+  if (error instanceof MessageTooLongError)
+    return {
+      title: "Your message is too long. Shorten it and send again.",
+      action: null,
     };
   if (/prompt is too long/i.test(error.message))
     return {

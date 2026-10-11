@@ -15,6 +15,7 @@ import {
   ANOMALY_TOAST,
   ChatUnavailableError,
   LIVENESS_MS,
+  MessageTooLongError,
   ROTATE_AFTER_MS,
   SendRefusedError,
   TurnRuntime,
@@ -695,6 +696,27 @@ describe("refusals no retry can change", () => {
         "Message too long",
       ),
     );
+  });
+
+  it("a message over the server's length limit is its own refusal, not reported", async () => {
+    // FastAPI's 422 for StreamChatRequest.message over max_length=64_000.
+    backend.respond(() => ({
+      status: 422,
+      body: {
+        detail: [
+          {
+            type: "string_too_long",
+            loc: ["body", "message"],
+            msg: "String should have at most 64000 characters",
+          },
+        ],
+      },
+    }));
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(1_000);
+
+    expect(snapshot().error).toBeInstanceOf(MessageTooLongError);
+    expect(report).not.toHaveBeenCalled();
   });
 
   it.each([401, 404, 429])(

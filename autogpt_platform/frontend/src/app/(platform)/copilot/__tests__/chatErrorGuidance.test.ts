@@ -2,11 +2,25 @@ import { describe, expect, it } from "vitest";
 
 import { describeChatError } from "../chatErrorGuidance";
 import { CopilotAuthError } from "../helpers";
-import { ChatUnavailableError, SendRefusedError } from "../stream/turnRuntime";
+import {
+  ChatUnavailableError,
+  MessageTooLongError,
+  SendRefusedError,
+} from "../stream/turnRuntime";
 
 const RESEND = /send (it|your message) again|try sending/i;
 
 describe("describeChatError", () => {
+  it("a message over the length limit says to shorten it", () => {
+    const guidance = describeChatError(
+      new MessageTooLongError('{"detail":[…]}', 422),
+    );
+    expect(guidance).toEqual({
+      title: "Your message is too long. Shorten it and send again.",
+      action: null,
+    });
+  });
+
   it.each([
     ["no session token", new CopilotAuthError(), "sign-in"],
     [

@@ -647,12 +647,16 @@ export class TurnRuntime {
   }
 
   private refusedSend(end: Extract<ConnectionEnd, { kind: "refused" }>) {
-    this.reportIfUnexpected(end);
-    this.error = new SendRefusedError(
-      refusalText(end),
-      end.status,
-      refusalReason(end.body),
-    );
+    if (isMessageTooLong(end.body)) {
+      this.error = new MessageTooLongError(refusalText(end), end.status);
+    } else {
+      this.reportIfUnexpected(end);
+      this.error = new SendRefusedError(
+        refusalText(end),
+        end.status,
+        refusalReason(end.body),
+      );
+    }
     this.emitNow();
     this.handlers.onError?.(this.error, null);
   }
@@ -1492,6 +1496,28 @@ export class SendRefusedError extends Error {
   ) {
     super(message);
     this.name = "SendRefusedError";
+  }
+}
+
+// FastAPI's 422 for a message over the request model's max_length; the composer has no cap.
+function isMessageTooLong(body: unknown) {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  return (
+    Array.isArray(detail) &&
+    detail.some(
+      (item: { type?: unknown; loc?: unknown }) =>
+        item?.type === "string_too_long" &&
+        Array.isArray(item.loc) &&
+        item.loc.at(-1) === "message",
+    )
+  );
+}
+
+/** A send refused because the message is longer than the server takes. */
+export class MessageTooLongError extends SendRefusedError {
+  constructor(message: string, status: number) {
+    super(message, status);
+    this.name = "MessageTooLongError";
   }
 }
 
