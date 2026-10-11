@@ -34,10 +34,12 @@ async def test_every_job_is_paused(scheduler: MagicMock):
 
 
 @pytest.mark.asyncio
-async def test_jobs_their_owner_paused_count_but_are_not_ours_to_undo(scheduler):
-    scheduler.pause_schedule.return_value = False
+async def test_a_job_its_owner_paused_is_not_ours_to_restart(scheduler):
+    scheduler.pause_schedule.side_effect = lambda schedule_id, *, user_id: (
+        schedule_id != "a"
+    )
 
-    assert await jobs.pause_jobs(_USER, ["a"]) == []
+    assert await jobs.pause_jobs(_USER, ["a", "b"]) == ["b"]
 
 
 @pytest.mark.asyncio
@@ -52,8 +54,8 @@ async def test_a_job_deleted_since_is_skipped_and_the_rest_pause(scheduler):
 async def test_with_no_live_job_there_is_nothing_to_pause(scheduler):
     scheduler.pause_schedule.side_effect = NotFoundError("gone")
 
-    assert await jobs.pause_jobs(_USER, ["a"]) is None
-    assert await jobs.pause_jobs(_USER, []) is None
+    assert await jobs.pause_jobs(_USER, ["a"]) == []
+    assert await jobs.pause_jobs(_USER, []) == []
 
 
 @pytest.mark.asyncio

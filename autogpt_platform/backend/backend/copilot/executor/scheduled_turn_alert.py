@@ -19,6 +19,7 @@ import sentry_sdk
 from pydantic import BaseModel
 
 from backend.copilot import stream_registry
+from backend.copilot.constants import COMPACTION_TOOL_NAME
 from backend.copilot.permissions import SDK_BUILTIN_TOOL_NAMES
 from backend.copilot.response_model import (
     StreamBaseResponse,
@@ -87,11 +88,7 @@ class ScheduledTurnWatch:
         # A platform tool can also fail without an ErrorResponse payload (a
         # login prompt, a held read, a plain-text error). The CLI's own tools
         # stay out: a missed Read or Grep is the model probing, not a failure.
-        if (
-            error_type is None
-            and not chunk.success
-            and chunk.toolName not in SDK_BUILTIN_TOOL_NAMES
-        ):
+        if error_type is None and not chunk.success and _ours(chunk.toolName):
             error_type = UNCLASSIFIED
         tool = chunk.toolName or "unknown"
         if error_type is not None:
@@ -100,7 +97,7 @@ class ScheduledTurnWatch:
                 error_type=UNCLASSIFIED, text_hash=text_hash(chunk.output)
             )
             self._failure_details.append((tool, detail))
-        elif chunk.toolName not in SDK_BUILTIN_TOOL_NAMES:
+        elif _ours(chunk.toolName):
             self._tool_successes += 1
 
     def outcome(self, turn_error: str | None) -> RunOutcome:
@@ -225,3 +222,15 @@ def error_type(error: object) -> str:
     if isinstance(error, str) and _ERROR_CODE.fullmatch(error):
         return error
     return UNCLASSIFIED
+
+
+def _ours(tool_name: str | None) -> bool:
+    """A platform tool call. The CLI's own tools stay out (a missed Read or
+    Grep is the model probing), and so does the compaction notice, which no
+    tool returned: counting it as work done would keep a run that failed
+    everywhere else from ever reading as failed."""
+    return (
+        tool_name is not None
+        and tool_name not in SDK_BUILTIN_TOOL_NAMES
+        and tool_name != COMPACTION_TOOL_NAME
+    )

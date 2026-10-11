@@ -16,19 +16,17 @@ logger = logging.getLogger(__name__)
 
 
 async def pause_jobs(user_id: str, schedule_ids: list[str]) -> list[str] | None:
-    """Pause every job. Returns the jobs this call paused, for ``unpause`` if
-    what follows fails, or None when the chat could not be paused: a failure
-    partway resumes what it paused. A job deleted since fires no more, so it
-    is skipped; with no live job left there is nothing to pause."""
+    """Pause every job that is due to fire. Returns the jobs this call paused,
+    the only ones a resume may restart: a job its owner paused, or one deleted
+    since, is left as it is. None when the scheduler refused partway, after
+    resuming what this call had paused."""
     scheduler = get_scheduler_client()
     paused: list[str] = []
-    live = False
     for schedule_id in schedule_ids:
         try:
-            # False: already paused, by its owner, and it stays that way.
+            # False: already paused by its owner, and not ours to restart.
             if await scheduler.pause_schedule(schedule_id, user_id=user_id):
                 paused.append(schedule_id)
-            live = True
         except NotFoundError:
             continue
         except Exception:
@@ -37,7 +35,7 @@ async def pause_jobs(user_id: str, schedule_ids: list[str]) -> list[str] | None:
             )
             await unpause(user_id, paused)
             return None
-    return paused if live else None
+    return paused
 
 
 async def unpause(user_id: str, schedule_ids: list[str]) -> None:

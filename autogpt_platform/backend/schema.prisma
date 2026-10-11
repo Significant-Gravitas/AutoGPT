@@ -1412,7 +1412,8 @@ model ScheduledChatStreak {
   // The routine's id, or the follow-up's schedule id: a routine with several
   // fire times is one scheduled chat.
   scheduleKey String
-  // The scheduler jobs behind it, paused and resumed together.
+  // The jobs its pause stopped, which Resume restarts. Never a job the
+  // owner had paused; empty until the streak pauses.
   scheduleIds String[]
   title       String
   // The chat its latest run went to, where the owner is told.

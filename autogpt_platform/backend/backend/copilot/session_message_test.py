@@ -107,3 +107,33 @@ async def test_a_note_never_lands_in_someone_elses_chat(server: SpinTestServer):
     finally:
         await _cleanup(owner)
         await _cleanup(other)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_note_in_the_main_chat_reaches_a_copy_already_cached(
+    server: SpinTestServer,
+):
+    """A skipped AutoPilot schedule with no chat of its own posts into the
+    owner's main chat. Whoever had that chat open has it in the cache."""
+    user_id = f"session-message-{uuid4()}"
+    await _create_user(user_id)
+    try:
+        session_id = await _create_session(user_id)
+        cached = await get_chat_session(session_id, user_id)
+        assert cached is not None and cached.messages == []
+
+        posted_in = await copilot_db.append_plain_session_message(
+            user_id=user_id,
+            content="Skipped: scheduled chats need a plan",
+            message_id=str(uuid4()),
+            metadata={"kind": "scheduled_chat_notice", "hidden_from_model": True},
+        )
+
+        assert posted_in == session_id
+        session = await get_chat_session(session_id, user_id)
+        assert session is not None
+        assert [m.content for m in session.messages] == [
+            "Skipped: scheduled chats need a plan"
+        ]
+    finally:
+        await _cleanup(user_id)
