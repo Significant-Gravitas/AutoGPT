@@ -69,9 +69,26 @@ describe("getScheduledChatNotice", () => {
       actions: [
         { kind: "resume", label: "Resume" },
         { kind: "reconnect", label: "Reconnect" },
+        { kind: "run_less_often", label: "Run less often" },
       ],
     });
 
     expect(notice?.actions).toEqual([]);
+  });
+
+  it("reads a skipped chat's offer to run less often", () => {
+    const notice = getScheduledChatNotice({
+      ...NOTICE,
+      schedule_key: "routine-1",
+      actions: [
+        { kind: "link", label: "Upgrade", href: "/settings/billing" },
+        { kind: "run_less_often", label: "Run less often" },
+      ],
+    });
+
+    expect(notice?.actions).toEqual([
+      { kind: "link", label: "Upgrade", href: "/settings/billing" },
+      { kind: "run_less_often", label: "Run less often" },
+    ]);
   });
 });

@@ -39,6 +39,51 @@ def test_a_daily_limit_says_when_the_schedule_runs_again():
     assert [(a.label, a.href) for a in notice.actions] == [("Upgrade", BILLING_PATH)]
 
 
+def test_a_schedule_that_could_fit_the_limit_is_offered_to_run_less_often():
+    notice = skip_notice(
+        _usage("daily"),
+        title="Discord monitor",
+        now=_NOW,
+        run="recurring",
+        user_timezone="America/Chicago",
+        crons=["* * * * *"],
+    )
+
+    assert notice is not None
+    assert [action.model_dump() for action in notice.actions] == [
+        {"kind": "link", "label": "Upgrade", "href": BILLING_PATH},
+        {"kind": "run_less_often", "label": "Run less often"},
+    ]
+
+
+@pytest.mark.parametrize(
+    ("refusal", "run", "crons"),
+    [
+        (_usage("daily"), "recurring", ["0 9 * * mon"]),
+        (_usage("weekly", _MONDAY), "recurring", None),
+        (_usage("daily"), "waits_for_reset", ["* * * * *"]),
+        (_usage("daily"), "dropped", ["* * * * *"]),
+        (_usage("trial"), "recurring", ["* * * * *"]),
+        (TurnRefusal(reason="paywalled", kind="no_plan"), "recurring", ["* * * * *"]),
+    ],
+    ids=[
+        "weekly-already",
+        "no-crons",
+        "one-shot-waits",
+        "one-shot-gone",
+        "trial",
+        "no-plan",
+    ],
+)
+def test_run_less_often_is_offered_only_where_it_would_help(refusal, run, crons):
+    """Once a week is the bottom of the ladder; a one-shot runs once anyway;
+    no cadence brings a used-up trial or a missing plan back."""
+    notice = skip_notice(refusal, title="Briefing", now=_NOW, run=run, crons=crons)
+
+    assert notice is not None
+    assert "run_less_often" not in [action.kind for action in notice.actions]
+
+
 def test_a_weekly_limit_names_the_day_it_resets():
     notice = skip_notice(
         _usage("weekly", _MONDAY), title="Briefing", now=_NOW, run="recurring"
