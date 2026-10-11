@@ -26,22 +26,11 @@ from backend.copilot.sdk.service import _RestoreResult, stream_chat_completion_s
 
 _SVC = "backend.copilot.sdk.service"
 _QUEUED = ["QUEUED ONE", "QUEUED TWO", "QUEUED THREE"]
-_SENT_TWICE = pytest.mark.xfail(
-    strict=True,
-    reason="queued messages before the last are also sent as history",
-)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("resumed", [True, False], ids=["resumed", "not-resumed"])
-@pytest.mark.parametrize(
-    "queued",
-    [
-        _QUEUED[:1],
-        pytest.param(_QUEUED[:2], marks=_SENT_TWICE),
-        pytest.param(_QUEUED, marks=_SENT_TWICE),
-    ],
-)
+@pytest.mark.parametrize("queued", [_QUEUED[:1], _QUEUED[:2], _QUEUED])
 async def test_an_auto_continue_turn_sends_each_queued_message_once(
     tmp_path: Path, queued: list[str], resumed: bool
 ):

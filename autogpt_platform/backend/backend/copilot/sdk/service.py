@@ -4541,12 +4541,14 @@ async def _restore_cli_session_for_turn(
     sdk_cwd: str,
     transcript_builder: "TranscriptBuilder",
     log_prefix: str,
+    history_ceiling: int | None = None,
 ) -> _RestoreResult:
     """Download, validate and restore a CLI session for ``--resume`` on this turn.
 
     Performs a single GCS round-trip to fetch the session bytes + message_count
     watermark.  Falls back to DB-message reconstruction when GCS has no session
-    (first turn or upload missed).
+    (first turn or upload missed), from the rows below *history_ceiling*
+    (all of them when ``None``).
 
     Returns a ``_RestoreResult`` with all transcript-related state ready for the
     caller to merge into its local variables.
@@ -4615,9 +4617,13 @@ async def _restore_cli_session_for_turn(
     # Build context from transcript content + gap, falling back to full DB.
     # extract_context_messages handles both: non-None baseline_download uses
     # the compacted transcript + gap; None falls back to all prior DB messages.
+    # It treats the last row as the current message, so the rows past
+    # *history_ceiling* (an auto-continue turn's other queued messages, all
+    # part of its current message) are left out first.
+    history = session.messages[:history_ceiling]
     context_msgs = await extract_context_messages(
         result.baseline_download,
-        session.messages,
+        history,
         session_id=session.session_id,
     )
     result.context_messages = context_msgs
@@ -4625,7 +4631,7 @@ async def _restore_cli_session_for_turn(
         result.baseline_download.message_count
         if result.baseline_download is not None
         and result.baseline_download.message_count > 0
-        else len(session.messages) - 1
+        else len(history) - 1
     )
     result.transcript_covers_prefix = True
     logger.info(
@@ -4852,9 +4858,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         await clear_pending_question(session)
 
     continued_entry: StreamPendingDrained | None = None
+    # Where the history this turn's query may carry ends: ``None`` means just
+    # before the last row, the turn's own message.
+    history_ceiling: int | None = None
     if continued_pending:
         # An auto-continue call streams into the turn it continues: its user
         # rows are the drained messages, one each, as a turn-start drain's are.
+        # Together they are the turn's message, so the history ends before the
+        # first of them.
+        history_ceiling = len(session.messages) + 1
         if not await persist_pending_as_user_rows(
             session,
             None,
@@ -5119,6 +5131,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     sdk_cwd,
                     transcript_builder,
                     log_prefix,
+                    history_ceiling=history_ceiling,
                 ),
             )
         except BaseException:
@@ -5490,8 +5503,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # concatenated into current_message; without the ceiling the gap slice
         # would extend into the pending messages and duplicate them in the
         # model's input context (gap_context + current_message both containing
-        # them).
-        _pre_drain_msg_count = len(session.messages)
+        # them).  An auto-continue turn's queued rows were persisted at its
+        # start, so its ceiling was taken before them.
+        _pre_drain_msg_count = (
+            history_ceiling if history_ceiling is not None else len(session.messages)
+        )
 
         # Drain any messages the user queued via POST /messages/pending
         # while the previous turn was running (or since the session was
