@@ -157,6 +157,21 @@ async def test_schedule_delete_answers_503_promptly(http: httpx.AsyncClient, cod
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("scheduler_port", "code"),
+    [("down", "scheduler_unavailable"), ("hung", "scheduler_unconfirmed")],
+    indirect=["scheduler_port"],
+)
+async def test_schedule_edit_answers_503_promptly(http: httpx.AsyncClient, code: str):
+    response, elapsed = await _timed(
+        http.patch("/schedules/schedule-1", json={"name": "Renamed"})
+    )
+
+    _assert_503(response, code)
+    assert elapsed < _PROMPT_S
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("scheduler_port", ["down", "hung"], indirect=True)
 async def test_admin_orphan_cleanup_answers_503_promptly(http: httpx.AsyncClient):
     # Cleanup reads the schedule list before deleting anything; with the
