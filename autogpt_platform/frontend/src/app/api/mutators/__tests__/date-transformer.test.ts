@@ -26,6 +26,10 @@ describe("transformDates", () => {
       output_data: { t: ["2024-03-10T09:30:00Z"] },
       credential_inputs: { c: { expires: "2024-03-10T09:30:00Z" } },
       nodes_input_masks: { n1: { when: "2024-03-10T09:30:00Z" } },
+      input_default: { when: "2024-03-10T09:30:00Z" },
+      payload: { when: "2024-03-10T09:30:00Z" },
+      reviewed_data: { when: "2024-03-10T09:30:00Z" },
+      agentInput: { when: "2024-03-10T09:30:00Z" },
     };
     const out = transformDates(payload);
 
@@ -37,6 +41,10 @@ describe("transformDates", () => {
       "output_data",
       "credential_inputs",
       "nodes_input_masks",
+      "input_default",
+      "payload",
+      "reviewed_data",
+      "agentInput",
     ] as const) {
       expect(JSON.stringify(out[key])).toBe(JSON.stringify(payload[key]));
     }

@@ -8,8 +8,9 @@
 // would otherwise be parsed as browser-local time and shift on re-serialize.
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
-// Keys holding user-supplied graph data. Their values are copied verbatim so
-// "Run again" resubmits exactly what the user entered.
+// Keys holding user-supplied data. Their values are copied verbatim so
+// "Run again", saving a graph or approving a review resubmits exactly what
+// the user entered.
 const USER_PAYLOAD_KEYS = new Set([
   "inputs",
   "outputs",
@@ -17,6 +18,10 @@ const USER_PAYLOAD_KEYS = new Set([
   "output_data",
   "credential_inputs",
   "nodes_input_masks",
+  "input_default",
+  "payload",
+  "reviewed_data",
+  "agentInput",
 ]);
 
 /**
