@@ -10,8 +10,12 @@ schedule's jobs, persist the streak, and tell the owner in the chat.
 import logging
 from datetime import datetime, timezone
 
+from prisma.errors import UniqueViolationError
 from prisma.models import ExpertRoutine, ScheduledChatStreak
-from prisma.types import ScheduledChatStreakWhereUniqueInput
+from prisma.types import (
+    ScheduledChatStreakWhereInput,
+    ScheduledChatStreakWhereUniqueInput,
+)
 from pydantic import BaseModel, ValidationError
 
 from backend.copilot.scheduled_chats import alerts
@@ -100,6 +104,7 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
             title,
             restarted=row is None or streak.failures == 1,
             told=told,
+            replaces_pause=current is not None and current.paused,
         )
     except Exception:
         # A pause with no row behind it is never listed or resumed: the chat
@@ -107,6 +112,10 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
         if changed:
             await unpause(run.user_id, changed)
         raise
+    if row is None:
+        # Another run of this chat paused it after this one read the streak,
+        # and told the owner. That pause stands.
+        return
     if paused:
         await alerts.raise_paused(
             run.user_id,
@@ -260,10 +269,18 @@ async def _save(
     *,
     restarted: bool,
     told: bool,
-) -> ScheduledChatStreak:
+    replaces_pause: bool,
+) -> ScheduledChatStreak | None:
     """A streak that restarted gets a new row, so its id names this streak
     alone: the notes it posts are deduplicated on it. *told* stamps when the
-    owner was told, once."""
+    owner was told, once.
+
+    Two runs of an every-minute chat can finish together. A view of the
+    streak from before a pause never overwrites that pause: its jobs are
+    paused, and a row that says otherwise could never be resumed. Only a run
+    that saw the pause, and found the jobs firing again, replaces it
+    (*replaces_pause*). Returns None, having written nothing, when the pause
+    stands."""
     now = datetime.now(tz=timezone.utc)
     fields = {
         "scheduleIds": paused_ids,
@@ -279,24 +296,33 @@ async def _save(
         # no runs until it is resumed, and resuming removes the row.
         "pausedAt": now if streak.paused else None,
     }
+    where: ScheduledChatStreakWhereInput = {
+        "userId": run.user_id,
+        "scheduleKey": run.schedule_key,
+    }
+    if not (streak.paused or replaces_pause):
+        where["pausedAt"] = None
     if not restarted:
-        updated = await ScheduledChatStreak.prisma().update(
-            where=_key(run.user_id, run.schedule_key),
-            data={**fields, **({"notifiedAt": now} if told else {})},
+        updated = await ScheduledChatStreak.prisma().update_many(
+            where=where, data={**fields, **({"notifiedAt": now} if told else {})}
         )
-        if updated is not None:
-            return updated
-    await ScheduledChatStreak.prisma().delete_many(
-        where={"userId": run.user_id, "scheduleKey": run.schedule_key}
-    )
-    return await ScheduledChatStreak.prisma().create(
-        data={
-            **fields,
-            "userId": run.user_id,
-            "scheduleKey": run.schedule_key,
-            "notifiedAt": now if told else None,
-        }
-    )
+        if updated:
+            return await ScheduledChatStreak.prisma().find_unique(
+                where=_key(run.user_id, run.schedule_key)
+            )
+    await ScheduledChatStreak.prisma().delete_many(where=where)
+    try:
+        return await ScheduledChatStreak.prisma().create(
+            data={
+                **fields,
+                "userId": run.user_id,
+                "scheduleKey": run.schedule_key,
+                "notifiedAt": now if told else None,
+            }
+        )
+    except UniqueViolationError:
+        # The paused row the delete left in place.
+        return None
 
 
 def _streak_of(row: ScheduledChatStreak | None) -> Streak | None:
