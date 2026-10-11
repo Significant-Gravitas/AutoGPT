@@ -197,6 +197,9 @@ async def test_a_refused_library_move_leaves_the_active_version_alone(
     flip = mocker.patch(
         "backend.data.graph.set_graph_active_version", new_callable=AsyncMock
     )
+    deactivate = mocker.patch(
+        "backend.api.external.v2.graphs.on_graph_deactivate", new_callable=AsyncMock
+    )
 
     with pytest.raises(LibraryAgentInAnotherOrganizationError):
         await set_active_version(
@@ -204,6 +207,8 @@ async def test_a_refused_library_move_leaves_the_active_version_alone(
         )
 
     flip.assert_not_awaited()
+    # The webhooks its activation hooks registered are taken back.
+    deactivate.assert_awaited_once_with(graph, user_id=_AUTH.user_id)
 
 
 @pytest.mark.parametrize(

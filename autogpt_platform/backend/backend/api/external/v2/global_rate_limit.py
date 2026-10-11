@@ -74,7 +74,6 @@ class GlobalRateLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        headers = dict(scope.get("headers", []))
         # The first of a repeated header, as the route's own dependency reads
         # it, so both charge and authenticate the same credential.
         request_headers = Headers(scope=scope)
@@ -87,7 +86,7 @@ class GlobalRateLimitMiddleware:
                 scheme="Bearer", credentials=auth_header[7:]
             )
 
-        ip = client_ip(scope, headers)
+        ip = client_ip(scope)
         bucket = _credential_bucket(ip, api_key, bearer)
         if bucket is not None and (
             refusal := await _refuse_before_verifying(ip, bucket)
@@ -188,7 +187,7 @@ def app_path(scope: Scope) -> str:
     return path[len(root) :] if root and path.startswith(root) else path
 
 
-def client_ip(scope: Scope, headers: dict[bytes, bytes]) -> str:
+def client_ip(scope: Scope) -> str:
     """The caller's address, trusting only the proxies in front of us.
 
     Our proxies append `trusted_proxy_count` entries, so the client is that
@@ -201,9 +200,12 @@ def client_ip(scope: Scope, headers: dict[bytes, bytes]) -> str:
     if hops < 1:
         return peer
 
+    # Every line, in order, as one list: a repeated header means the same as
+    # its lines joined, and a proxy may add a line rather than extend one.
     forwarded = [
         value.strip()
-        for value in headers.get(b"x-forwarded-for", b"").decode().split(",")
+        for line in Headers(scope=scope).getlist("x-forwarded-for")
+        for value in line.split(",")
         if value.strip()
     ]
     return forwarded[-hops] if len(forwarded) >= hops else peer

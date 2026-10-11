@@ -113,8 +113,8 @@ def test_the_anonymous_bucket_ignores_caller_written_hops(
         hops,
     )
 
-    headers = {b"x-forwarded-for": forwarded.encode()} if forwarded else {}
-    assert client_ip(_scope(), headers) == expected
+    headers = [(b"x-forwarded-for", forwarded.encode())] if forwarded else []
+    assert client_ip(_scope() | {"headers": headers}) == expected
 
 
 async def test_the_subscription_read_is_capped_before_it_reaches_stripe(
