@@ -191,7 +191,7 @@ jobs:
           # so the seed skips embeddings and finishes in ~30 s.
           - suite: journeys
             config: playwright.journeys.config.ts
-            min_tests: 3
+            min_tests: 4
             embeddings: false
             hosted: true
             # Journeys may pin a known bug with test.fail(); it must still fail.
