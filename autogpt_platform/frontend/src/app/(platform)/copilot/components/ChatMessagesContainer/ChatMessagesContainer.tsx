@@ -75,6 +75,7 @@ import {
 } from "../../helpers/workspaceAttachments";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -859,15 +860,7 @@ export function ChatMessagesContainer({
               </Message>
             ))}
           {!readOnly && error && !lastAssistantHasErrorMarker && (
-            <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-              <summary className="cursor-pointer font-medium">
-                The assistant encountered an error. Please try sending your
-                message again.
-              </summary>
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
-                {error instanceof Error ? error.message : String(error)}
-              </pre>
-            </details>
+            <ChatErrorBanner error={error} />
           )}
           <TailSpacer
             messageID={lastUserMessageID}

@@ -4,7 +4,13 @@ vi.mock("@/lib/auth/actions", () => ({
   getWebSocketToken: vi.fn(async () => ({ token: "test-token" })),
 }));
 
-import BackendAPI, { buildOAuthLoginQuery } from "../client";
+import { getWebSocketToken } from "@/lib/auth/actions";
+import BackendAPI, {
+  buildOAuthLoginQuery,
+  getWSReconnectDelay,
+  WebSocketSubscriptionInterrupted,
+} from "../client";
+import type { GraphID } from "../types";
 
 describe("BackendAPI.oAuthLogin", () => {
   it("passes credentialID through to buildOAuthLoginQuery", async () => {
@@ -151,7 +157,11 @@ describe("BackendAPI WebSocket failure logging", () => {
     }
   }
 
+  const apis: BackendAPI[] = [];
+
   afterEach(() => {
+    // Stop earlier instances reacting to the document events later tests fire.
+    apis.splice(0).forEach((api) => api.disconnectWebSocket());
     sockets.length = 0;
     vi.unstubAllGlobals();
     vi.useRealTimers();
@@ -162,6 +172,7 @@ describe("BackendAPI WebSocket failure logging", () => {
     vi.useFakeTimers();
     vi.stubGlobal("WebSocket", FakeWebSocket);
     const api = new BackendAPI("http://test", "ws://test/ws");
+    apis.push(api);
     void api.connectWebSocket();
     await vi.waitFor(() => expect(sockets).toHaveLength(1), { interval: 1 });
     return sockets[0];
@@ -216,5 +227,133 @@ describe("BackendAPI WebSocket failure logging", () => {
     expect(message).toContain("CLOSED");
     expect(message).not.toContain("[object");
     expect(message).not.toContain("test-token");
+  });
+
+  it("keeps retrying the reconnect when fetching a token fails", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const socket = await connect();
+    socket.state = "connected";
+    socket.onopen!();
+
+    vi.mocked(getWebSocketToken)
+      .mockClear()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    socket.onclose!({ code: 1006, reason: "", wasClean: false });
+
+    // Two failed token fetches, each followed by a backed-off retry, then a
+    // fresh socket — never a dead client waiting for a page reload.
+    await vi.waitFor(
+      async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(sockets).toHaveLength(2);
+      },
+      { interval: 1 },
+    );
+    expect(getWebSocketToken).toHaveBeenCalledTimes(3);
+  });
+
+  it("reconnects at once when the browser comes back online", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const socket = await connect();
+    socket.state = "connected";
+    socket.onopen!();
+    socket.onclose!({ code: 1006, reason: "", wasClean: false });
+
+    // A reconnect is now waiting out its backoff; going online skips it.
+    window.dispatchEvent(new Event("online"));
+
+    await vi.waitFor(() => expect(sockets).toHaveLength(2), { interval: 1 });
+  });
+
+  it("probes an open socket when the tab becomes visible again", async () => {
+    const socket = await connect();
+    socket.readyState = FakeWebSocket.OPEN;
+    socket.onopen!();
+
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(socket.send).toHaveBeenCalledWith(
+      expect.stringContaining('"heartbeat"'),
+    );
+  });
+
+  it("resolves a subscribe only once the server confirms it", async () => {
+    const socket = await connect();
+    socket.readyState = FakeWebSocket.OPEN;
+    socket.onopen!();
+    const api = apis.at(-1)!;
+
+    let confirmed = false;
+    const subscribed = api
+      .subscribeToGraphExecutions("graph-1" as GraphID)
+      .then(() => (confirmed = true));
+    await vi.waitFor(() => expect(socket.send).toHaveBeenCalled(), {
+      interval: 1,
+    });
+    await Promise.resolve();
+    expect(confirmed).toBe(false);
+
+    socket.onmessage!({
+      data: JSON.stringify({
+        method: "subscribe_graph_executions",
+        success: true,
+        channel: "user-1|graph#graph-1|executions",
+      }),
+    } as MessageEvent);
+    await subscribed;
+    expect(confirmed).toBe(true);
+  });
+
+  it("fails a pending subscribe as interrupted when the socket closes", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const socket = await connect();
+    socket.readyState = FakeWebSocket.OPEN;
+    socket.state = "connected";
+    socket.onopen!();
+    const subscribed = apis
+      .at(-1)!
+      .subscribeToGraphExecutions("graph-1" as GraphID);
+    await vi.waitFor(() => expect(socket.send).toHaveBeenCalled(), {
+      interval: 1,
+    });
+
+    socket.onclose!({ code: 1011, reason: "", wasClean: true });
+
+    await expect(subscribed).rejects.toBeInstanceOf(
+      WebSocketSubscriptionInterrupted,
+    );
+  });
+
+  it("keeps backing off when sockets open and drop straight away", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(Math, "random").mockReturnValue(1);
+    const first = await connect();
+    first.state = "connected";
+    first.onopen!();
+    first.onclose!({ code: 1011, reason: "", wasClean: true });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() => expect(sockets).toHaveLength(2), { interval: 1 });
+
+    // Opens, but drops before it has been healthy for long.
+    const second = sockets[1];
+    second.state = "connected";
+    second.onopen!();
+    second.onclose!({ code: 1011, reason: "", wasClean: true });
+
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(sockets).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(600);
+    await vi.waitFor(() => expect(sockets).toHaveLength(3), { interval: 1 });
+  });
+
+  it("backs off reconnects exponentially, with jitter, up to a cap", () => {
+    vi.spyOn(Math, "random").mockReturnValue(1);
+    expect(getWSReconnectDelay(0)).toBe(1_000);
+    expect(getWSReconnectDelay(3)).toBe(8_000);
+    expect(getWSReconnectDelay(10)).toBe(30_000);
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    expect(getWSReconnectDelay(10)).toBe(15_000);
   });
 });

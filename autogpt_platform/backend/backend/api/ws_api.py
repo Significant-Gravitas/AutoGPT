@@ -7,6 +7,7 @@ import uvicorn
 from autogpt_libs.auth.jwt_utils import parse_jwt_token_async
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
+from starlette.websockets import WebSocketState
 
 from backend.api.conn_manager import ConnectionManager
 from backend.api.model import (
@@ -234,12 +235,14 @@ async def websocket_router(
     user_id = await authenticate_websocket(websocket)
     if not user_id:
         return
-    await manager.connect_socket(websocket, user_id=user_id)
 
-    # Track WebSocket connection
-    update_websocket_connections(user_id, 1)
-
+    connected = False
     try:
+        connected = await manager.connect_socket(websocket, user_id=user_id)
+        if not connected:
+            return
+        update_websocket_connections(user_id, 1)
+
         while True:
             data = await websocket.receive_text()
             try:
@@ -303,7 +306,11 @@ async def websocket_router(
                     f"Error while handling '{message.method.value}' message "
                     f"for user #{user_id}: {e}"
                 )
-                continue
+                # The client believes the request worked (e.g. a subscribe
+                # that never got its Redis stream); reconnecting makes it
+                # resubscribe once the dependency is back.
+                await manager.close_for_lost_stream(websocket, cause="handler_failed")
+                break
 
             if message.method == WSMethod.ERROR:
                 logger.error(f"WebSocket Error message received: {message.data}")
@@ -324,12 +331,19 @@ async def websocket_router(
     except WebSocketDisconnect:
         logger.debug("WebSocket client disconnected")
     except Exception:
-        logger.exception(f"Unexpected error in websocket_router for user #{user_id}")
+        if websocket.application_state == WebSocketState.DISCONNECTED:
+            # The server closed it (e.g. its event stream was lost), already logged.
+            logger.debug("WebSocket closed by the server for user #%s", user_id)
+        else:
+            logger.exception(
+                f"Unexpected error in websocket_router for user #{user_id}"
+            )
     finally:
         # Always release subscription pumps + Redis connections, regardless of how
         # the loop exited — otherwise non-WebSocketDisconnect failures leak both.
         await manager.disconnect_socket(websocket, user_id=user_id)
-        update_websocket_connections(user_id, -1)
+        if connected:
+            update_websocket_connections(user_id, -1)
 
 
 @app.get("/")

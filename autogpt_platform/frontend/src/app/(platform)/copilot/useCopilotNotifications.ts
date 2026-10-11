@@ -130,6 +130,18 @@ export function useCopilotNotifications(activeSessionID: string | null) {
     };
   }, [api]);
 
+  // Completions sent while the socket was down are lost; refetch the session
+  // list after a reconnect so it doesn't keep showing them as running.
+  useEffect(() => {
+    let hasConnected = false;
+    return api.onWebSocketConnect(() => {
+      if (hasConnected) {
+        queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
+      }
+      hasConnected = true;
+    });
+  }, [api, queryClient]);
+
   // Track window focus for browser notifications when app is in background
   useEffect(() => {
     function handleFocus() {
