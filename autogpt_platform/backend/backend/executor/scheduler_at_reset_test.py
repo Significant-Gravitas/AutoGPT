@@ -351,3 +351,56 @@ async def test_a_builder_chat_keeps_its_tool_limits(fire_env):
     await _fire(_args("resume"))
     permissions = fire_env.dispatch.await_args.kwargs["permissions"]
     assert permissions is not None and permissions.tools
+
+
+def _job_args(service: Scheduler, kind: str) -> CopilotTurnJobArgs:
+    job = service.scheduler.get_job(
+        at_reset_schedule_id(kind, SESSION), jobstore=Jobstores.EXECUTION.value
+    )
+    return CopilotTurnJobArgs(**job.kwargs)
+
+
+def _add(service: Scheduler, kind: str, message: str, created_at=None) -> None:
+    service.add_copilot_turn_schedule(
+        user_id=USER,
+        session_id=SESSION,
+        message=message,
+        run_at=datetime.now(UTC) + timedelta(hours=3),
+        user_timezone="UTC",
+        purpose=kind,
+        schedule_id=at_reset_schedule_id(kind, SESSION),
+        created_at=created_at,
+    )
+
+
+def test_a_send_put_back_joins_one_written_while_it_ran(live_scheduler):
+    # The user set a new send while the old one was out of the store,
+    # deciding; putting the old one back must not drop what they wrote.
+    _add(live_scheduler, "send", "also the changelog")
+    _add(
+        live_scheduler,
+        "send",
+        "draft the launch post",
+        created_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    args = _job_args(live_scheduler, "send")
+    assert args.message == "draft the launch post\n\nalso the changelog"
+
+
+def test_a_resume_put_back_leaves_one_set_while_it_ran(live_scheduler):
+    _add(live_scheduler, "resume", "Resume.")
+    newer = _job_args(live_scheduler, "resume").created_at
+    _add(
+        live_scheduler,
+        "resume",
+        "Resume.",
+        created_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    assert _job_args(live_scheduler, "resume").created_at == newer
+
+
+def test_a_put_back_with_nothing_newer_is_itself(live_scheduler):
+    set_at = datetime.now(UTC) - timedelta(minutes=1)
+    _add(live_scheduler, "send", "draft the launch post", created_at=set_at)
+    args = _job_args(live_scheduler, "send")
+    assert (args.message, args.created_at) == ("draft the launch post", set_at)
