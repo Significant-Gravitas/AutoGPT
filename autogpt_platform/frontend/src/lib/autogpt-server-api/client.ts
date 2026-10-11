@@ -107,6 +107,7 @@ export default class BackendAPI {
   heartbeatTimeoutID: number | null = null;
 
   private wsWanted = false;
+  private wsWatchingNetwork = false;
   private wsReconnectAttempts = 0;
   private wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private wsReconnectWaiters: (() => void)[] = [];
@@ -117,13 +118,6 @@ export default class BackendAPI {
   ) {
     this.baseUrl = baseUrl;
     this.wsUrl = wsUrl;
-
-    if (isClient) {
-      window.addEventListener("online", () => this._checkWSConnection());
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible") this._checkWSConnection();
-      });
-    }
   }
 
   async isAuthenticated(): Promise<boolean> {
@@ -1056,6 +1050,7 @@ export default class BackendAPI {
 
     this.isIntentionallyDisconnected = false;
     this.wsWanted = true;
+    this._watchNetworkForWS();
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
         let token = "";
@@ -1197,6 +1192,16 @@ export default class BackendAPI {
     if (this.wsReconnectTimer !== null) clearTimeout(this.wsReconnectTimer);
     this.wsReconnectTimer = null;
     this.wsReconnectWaiters.splice(0).forEach((w) => w());
+  }
+
+  /** Only instances that open a socket listen, so throwaway ones don't leak listeners. */
+  private _watchNetworkForWS() {
+    if (!isClient || this.wsWatchingNetwork) return;
+    this.wsWatchingNetwork = true;
+    window.addEventListener("online", () => this._checkWSConnection());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") this._checkWSConnection();
+    });
   }
 
   /** Back online or back in view: don't wait out the backoff or the next heartbeat. */

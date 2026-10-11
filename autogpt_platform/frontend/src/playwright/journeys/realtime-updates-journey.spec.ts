@@ -8,7 +8,13 @@ const COUNTDOWN_TIMER_BLOCK_ID = "d67a9c52-5e4e-11e2-bcfd-0800200c9a71";
 // Long enough that the connection drops while the run is still going.
 const RUN_SECONDS = 10;
 
-test.use({ storageState: { cookies: [], origins: [] } });
+test.use({
+  storageState: { cookies: [], origins: [] },
+  // PostHog's edge serves no flags to "HeadlessChrome", which would test a
+  // previews' flag-off layout instead of what users get.
+  userAgent:
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+});
 
 test.describe("realtime updates journey", () => {
   test("a run's completion reaches the run view and the Activity menu after the live connection drops, without a reload", async ({

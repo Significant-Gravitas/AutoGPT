@@ -95,8 +95,7 @@ class _Subscription:
         self._pubsub = self._client.pubsub()
         # ssubscribe() records the channel in ``shard_channels``, which keeps
         # listen() running and makes redis-py's own reconnect re-issue
-        # SSUBSCRIBE. A raw SSUBSCRIBE tracked in ``channels`` came back as a
-        # plain SUBSCRIBE, which never receives SPUBLISH.
+        # SSUBSCRIBE (a SUBSCRIBE would never receive SPUBLISH).
         await self._pubsub.ssubscribe(self.full_channel)
 
     async def _close_pubsub_quietly(self) -> None:

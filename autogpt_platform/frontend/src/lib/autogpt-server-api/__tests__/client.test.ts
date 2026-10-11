@@ -155,7 +155,11 @@ describe("BackendAPI WebSocket failure logging", () => {
     }
   }
 
+  const apis: BackendAPI[] = [];
+
   afterEach(() => {
+    // Stop earlier instances reacting to the document events later tests fire.
+    apis.splice(0).forEach((api) => api.disconnectWebSocket());
     sockets.length = 0;
     vi.unstubAllGlobals();
     vi.useRealTimers();
@@ -166,6 +170,7 @@ describe("BackendAPI WebSocket failure logging", () => {
     vi.useFakeTimers();
     vi.stubGlobal("WebSocket", FakeWebSocket);
     const api = new BackendAPI("http://test", "ws://test/ws");
+    apis.push(api);
     void api.connectWebSocket();
     await vi.waitFor(() => expect(sockets).toHaveLength(1), { interval: 1 });
     return sockets[0];
@@ -245,6 +250,31 @@ describe("BackendAPI WebSocket failure logging", () => {
       { interval: 1 },
     );
     expect(getWebSocketToken).toHaveBeenCalledTimes(3);
+  });
+
+  it("reconnects at once when the browser comes back online", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const socket = await connect();
+    socket.state = "connected";
+    socket.onopen!();
+    socket.onclose!({ code: 1006, reason: "", wasClean: false });
+
+    // A reconnect is now waiting out its backoff; going online skips it.
+    window.dispatchEvent(new Event("online"));
+
+    await vi.waitFor(() => expect(sockets).toHaveLength(2), { interval: 1 });
+  });
+
+  it("probes an open socket when the tab becomes visible again", async () => {
+    const socket = await connect();
+    socket.readyState = FakeWebSocket.OPEN;
+    socket.onopen!();
+
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(socket.send).toHaveBeenCalledWith(
+      expect.stringContaining('"heartbeat"'),
+    );
   });
 
   it("backs off reconnects exponentially, with jitter, up to a cap", () => {
