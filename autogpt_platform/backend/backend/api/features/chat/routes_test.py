@@ -14,7 +14,7 @@ from pydantic import SecretStr
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import transports as chat_transports
-from backend.copilot.at_reset import cancel_resume_at_reset
+from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.model import ChatSession
@@ -367,8 +367,7 @@ def _mock_stream_internals(
     # A sent message cancels the chat's pending resume at the budget reset;
     # keep that off the scheduler.
     mock_cancel_resume = mocker.patch(
-        "backend.api.features.chat.routes.cancel_resume_at_reset",
-        new_callable=AsyncMock,
+        "backend.api.features.chat.routes.cancel_resume_at_reset_in_background"
     )
     return types.SimpleNamespace(
         enqueue=mock_schedule,
@@ -460,23 +459,15 @@ def test_stream_chat_skips_the_expert_gate_for_a_non_expert_session(
 # ─── A sent message cancels the pending resume at the budget reset ────
 
 
-def test_a_user_message_cancels_the_pending_resume_in_the_background(
+def test_a_user_message_cancels_the_pending_resume(
     mocker: pytest_mock.MockerFixture, test_user_id: str
 ) -> None:
     mocks = _mock_stream_internals(mocker)
-    spawned = mocker.patch.object(
-        chat_routes,
-        "spawn_background_task",
-        side_effect=lambda coro, name: coro.close(),
-    )
 
     response = client.post("/sessions/sess-1/stream", json={"message": "carry on"})
 
     assert response.status_code == 200
     mocks.cancel_resume.assert_called_once_with("sess-1", test_user_id)
-    assert "cancel-resume-at-reset-sess-1" in [
-        call.kwargs["name"] for call in spawned.call_args_list
-    ]
 
 
 @pytest.mark.parametrize(
@@ -503,7 +494,11 @@ def test_a_failing_resume_cancel_never_fails_the_send(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     mocks = _mock_stream_internals(mocker)
-    mocker.patch.object(chat_routes, "cancel_resume_at_reset", cancel_resume_at_reset)
+    mocker.patch.object(
+        chat_routes,
+        "cancel_resume_at_reset_in_background",
+        cancel_resume_at_reset_in_background,
+    )
     scheduler_down = MagicMock(
         cancel_at_reset_turn=AsyncMock(side_effect=RuntimeError("scheduler down"))
     )

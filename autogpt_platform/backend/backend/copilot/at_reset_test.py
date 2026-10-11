@@ -7,7 +7,7 @@ from backend.copilot.at_reset import (
     FireVerdict,
     NoResetAhead,
     at_reset_schedule_id,
-    cancel_resume_at_reset,
+    cancel_resume_at_reset_in_background,
     fire_verdict,
     next_reset_run_at,
     reset_jitter_seconds,
@@ -83,6 +83,19 @@ def chat_reads():
         yield store, busy
 
 
+@pytest.fixture
+def trial(limits):
+    """A trial user on a legacy offer: daily and weekly caps under a lifetime
+    allowance with most of it left. Tests spend it as they need."""
+    global_limits, _, _ = limits
+    global_limits.return_value = (3_000_000, 6_000_000, SubscriptionTier.TRIAL)
+    state = MagicMock(active=True, cost_microdollars=4_000_000)
+    state.offer.total_cost_limit = 10_000_000
+    store = MagicMock(get_subscription_trial=AsyncMock(return_value=state))
+    with patch(f"{_MOD}.credit_db", return_value=store):
+        yield state
+
+
 def test_one_id_per_kind_per_chat():
     assert at_reset_schedule_id("resume", SESSION) == f"at-reset-resume-{SESSION}"
     assert at_reset_schedule_id("send", SESSION) == f"at-reset-send-{SESSION}"
@@ -142,23 +155,42 @@ async def test_an_uncapped_window_is_never_exhausted(limits):
 
 
 @pytest.mark.asyncio
-async def test_a_trial_never_resets(limits):
-    global_limits, status, _ = limits
-    global_limits.return_value = (5_000_000, 5_000_000, SubscriptionTier.TRIAL)
+async def test_a_spent_trial_allowance_never_resets(limits, trial):
+    trial.cost_microdollars = 10_000_000
     with pytest.raises(NoResetAhead) as raised:
         await next_reset_run_at("user-1", SESSION, "resume")
     assert raised.value.reason == "no_reset"
-    status.assert_not_awaited()
+    limits[1].assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_a_window_with_no_allowance_never_resets(limits):
-    # A lapsed plan: the windows collapse to zero, and stay there.
-    _, status, _ = limits
-    status.return_value = _status(daily_used=0, weekly_used=0, daily_limit=0)
+@pytest.mark.parametrize(
+    "daily_used, weekly_used, reset",
+    [(3_000_000, 2_000_000, DAILY_RESET), (1_000_000, 6_000_000, WEEKLY_RESET)],
+    ids=["daily-window", "weekly-window"],
+)
+async def test_a_trials_own_window_resets_like_any_other(
+    limits, trial, daily_used, weekly_used, reset
+):
+    # The lifetime allowance has room; only the offer's tighter window is out.
+    limits[1].return_value = _status(daily_used=daily_used, weekly_used=weekly_used)
+    run_at = await next_reset_run_at("user-1", SESSION, "send")
+    assert run_at == reset + timedelta(seconds=120) + JITTER
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "allowance",
+    [(0, 0, SubscriptionTier.NO_TIER), (0, 6_000_000, SubscriptionTier.PRO)],
+    ids=["lapsed-trial-or-plan", "a-window-that-allows-nothing"],
+)
+async def test_a_window_with_no_allowance_never_resets(limits, allowance):
+    global_limits, status, _ = limits
+    global_limits.return_value = allowance
     with pytest.raises(NoResetAhead) as raised:
         await next_reset_run_at("user-1", SESSION, "send")
     assert raised.value.reason == "no_reset"
+    status.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -246,26 +278,36 @@ async def test_an_unreadable_budget_tries_again(limits, chat_reads):
 
 
 @pytest.mark.asyncio
-async def test_out_of_an_allowance_that_never_refills_drops_it(limits, chat_reads):
-    global_limits, _, gate = limits
-    gate.side_effect = RateLimitExceeded("trial", SET_AT)
-    # Read at the gate as a paid tier, then as a trial once over it.
-    global_limits.side_effect = [
-        (3_000_000, 6_000_000, SubscriptionTier.PRO),
-        (5_000_000, 5_000_000, SubscriptionTier.TRIAL),
-    ]
+async def test_a_spent_trial_drops_the_turn_when_it_fires(limits, chat_reads, trial):
+    limits[2].side_effect = RateLimitExceeded("trial", SET_AT)
+    trial.cost_microdollars = 10_000_000
     verdict = await fire_verdict("send", _chat(), SET_AT)
     assert verdict.action == "drop"
 
 
 @pytest.mark.asyncio
-async def test_cancelling_a_resume_is_best_effort():
+async def test_a_trials_spent_day_waits_for_tomorrow(limits, chat_reads, trial):
+    limits[2].side_effect = RateLimitExceeded("daily", DAILY_RESET)
+    limits[1].return_value = _status(daily_used=3_000_000, weekly_used=2_000_000)
+    verdict = await fire_verdict("send", _chat(), SET_AT)
+    assert verdict.action == "wait"
+    assert verdict.run_at == DAILY_RESET + timedelta(seconds=120) + JITTER
+
+
+@pytest.mark.asyncio
+async def test_cancelling_a_resume_runs_in_the_background_and_spares_a_send():
     client = MagicMock(cancel_at_reset_turn=AsyncMock(return_value=True))
     with patch(f"{_MOD}.get_scheduler_client", return_value=client):
-        await cancel_resume_at_reset(SESSION, "user-1")
+        await cancel_resume_at_reset_in_background(SESSION, "user-1")
     client.cancel_at_reset_turn.assert_awaited_once_with(
         user_id="user-1", session_id=SESSION, kind="resume"
     )
-    client.cancel_at_reset_turn.side_effect = RuntimeError("scheduler down")
+
+
+@pytest.mark.asyncio
+async def test_a_failing_cancel_is_swallowed():
+    client = MagicMock(cancel_at_reset_turn=AsyncMock(side_effect=RuntimeError("down")))
     with patch(f"{_MOD}.get_scheduler_client", return_value=client):
-        await cancel_resume_at_reset(SESSION, "user-1")
+        task = cancel_resume_at_reset_in_background(SESSION, "user-1")
+        await task
+    assert task.exception() is None

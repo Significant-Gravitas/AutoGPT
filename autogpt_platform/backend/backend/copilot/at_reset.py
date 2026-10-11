@@ -10,6 +10,7 @@ again when it fires (``fire_verdict``): the user may have picked the chat up
 already, or still be out of budget.
 """
 
+import asyncio
 import hashlib
 import logging
 from datetime import UTC, datetime, timedelta
@@ -33,7 +34,8 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     get_usage_status,
 )
-from backend.data.db_accessors import chat_db
+from backend.data.db_accessors import chat_db, credit_db
+from backend.util.background import spawn_background_task
 from backend.util.clients import get_scheduler_client
 
 logger = logging.getLogger(__name__)
@@ -92,9 +94,9 @@ async def next_reset_run_at(
 
     Just after the exhausted window that refills last: a user out of both
     today's and this week's budget can't start until the week resets. Raises
-    ``NoResetAhead`` when nothing is exhausted, or when the allowance never
-    refills (a trial, or a window that allows nothing at all), and
-    ``RateLimitUnavailable`` when usage can't be read.
+    ``NoResetAhead`` when nothing is exhausted, or when what is exhausted never
+    refills (a trial's lifetime allowance, or a window that allows nothing),
+    and ``RateLimitUnavailable`` when usage can't be read.
     """
     offset = timedelta(seconds=reset_jitter_seconds(session_id))
     if kind == "resume":
@@ -143,11 +145,19 @@ async def fire_verdict(
     return await _budget_verdict(session.user_id, session.session_id, kind)
 
 
-async def cancel_resume_at_reset(session_id: str, user_id: str) -> None:
-    """Drop the chat's pending "Resume at reset": the user carried on themselves.
+def cancel_resume_at_reset_in_background(session_id: str, user_id: str) -> asyncio.Task:
+    """Drop the chat's pending "Resume at reset": the user carried it on now.
 
-    Best effort, since the resume also stands down when it fires.
+    A pending send stays. Off the caller's path, so it never fails or slows a
+    request; best effort, since the resume also stands down when it fires.
     """
+    return spawn_background_task(
+        _cancel_resume(session_id, user_id),
+        name=f"cancel-resume-at-reset-{session_id[:12]}",
+    )
+
+
+async def _cancel_resume(session_id: str, user_id: str) -> None:
     try:
         await get_scheduler_client().cancel_at_reset_turn(
             user_id=user_id, session_id=session_id, kind="resume"
@@ -165,17 +175,30 @@ async def _blocking_reset(user_id: str) -> datetime:
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
     )
-    if tier == SubscriptionTier.TRIAL:
+    # A window that allows nothing (a lapsed trial or plan) never refills, and
+    # nor does a trial's lifetime allowance. A trial's own daily or weekly
+    # window does, at that window's reset.
+    if daily_limit == 0 or weekly_limit == 0:
+        raise NoResetAhead("no_reset")
+    if tier == SubscriptionTier.TRIAL and await _trial_allowance_spent(user_id):
         raise NoResetAhead("no_reset")
     status = await get_usage_status(user_id, daily_limit, weekly_limit, tier=tier)
     # As in ``check_rate_limit``: a negative limit means no cap at all.
     exhausted = [w for w in (status.daily, status.weekly) if 0 <= w.limit <= w.used]
     if not exhausted:
         raise NoResetAhead("not_out_of_budget")
-    if any(w.limit == 0 for w in exhausted):
-        # Nothing is allowed in that window, before its reset or after.
-        raise NoResetAhead("no_reset")
     return max(w.resets_at for w in exhausted)
+
+
+async def _trial_allowance_spent(user_id: str) -> bool:
+    """Whether the trial has nothing left to wait for: its lifetime allowance is
+    used up, or the trial itself is over (as ``check_rate_limit`` reads it)."""
+    trial = await credit_db().get_subscription_trial(user_id)
+    return (
+        trial is None
+        or not trial.active
+        or trial.cost_microdollars >= trial.offer.total_cost_limit
+    )
 
 
 async def _budget_verdict(
