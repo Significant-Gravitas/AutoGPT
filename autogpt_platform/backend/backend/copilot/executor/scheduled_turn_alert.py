@@ -4,9 +4,13 @@ The scheduler only learns whether it got a turn onto the queue. What happens
 next, such as the turn erroring or a tool it called returning an error
 (``run_agent`` in SECRT-2799, every Monday for ten weeks), is only visible
 here in the copilot executor, and nobody is watching an unattended turn. So a
-failed scheduled turn raises one Sentry event and a metric.
+failed scheduled turn raises one Sentry event and a metric, and every
+scheduled turn's outcome counts toward its schedule's failure streak, which
+pauses a chat that keeps failing the same way and tells its owner
+(SECRT-2879).
 """
 
+import asyncio
 import logging
 import re
 
@@ -21,12 +25,26 @@ from backend.copilot.response_model import (
     StreamError,
     StreamToolOutputAvailable,
 )
+from backend.copilot.scheduled_chats.notices import schedule_title
+from backend.copilot.scheduled_chats.outcomes import (
+    RunOutcome,
+    ToolFailureDetail,
+    classify_run,
+    text_hash,
+    tool_failure_detail,
+)
+from backend.copilot.scheduled_chats.service import ScheduledRun
 from backend.copilot.tools.models import ResponseType
 from backend.monitoring.instrumentation import COPILOT_SCHEDULED_TURN_FAILURES
+from backend.util.clients import get_database_manager_async_client
 
 from .utils import CoPilotExecutionEntry, ScheduledTurnOrigin
 
 logger = logging.getLogger(__name__)
+
+# How long a finished turn may spend recording its outcome. The turn is
+# already marked done; this only holds the worker.
+_RECORD_TIMEOUT_SECONDS = 20
 
 # A tool's error text can quote the user's data, and neither the log sinks nor
 # Sentry are redacted, so a failure is reported by its error code alone.
@@ -48,6 +66,10 @@ class ScheduledTurnWatch:
         self._origin = origin
         self.tool_failures: list[ToolFailure] = []
         self._turn_error_code: str | None = None
+        # For the failure streak: what each failure said, and how many
+        # platform tool calls worked.
+        self._failure_details: list[tuple[str, ToolFailureDetail]] = []
+        self._tool_successes = 0
 
     @classmethod
     def for_entry(cls, entry: CoPilotExecutionEntry) -> "ScheduledTurnWatch | None":
@@ -71,9 +93,55 @@ class ScheduledTurnWatch:
             and chunk.toolName not in SDK_BUILTIN_TOOL_NAMES
         ):
             error_type = UNCLASSIFIED
+        tool = chunk.toolName or "unknown"
         if error_type is not None:
-            self.tool_failures.append(
-                ToolFailure(tool=chunk.toolName or "unknown", error_type=error_type)
+            self.tool_failures.append(ToolFailure(tool=tool, error_type=error_type))
+            detail = tool_failure_detail(chunk.output) or ToolFailureDetail(
+                error_type=UNCLASSIFIED, text_hash=text_hash(chunk.output)
+            )
+            self._failure_details.append((tool, detail))
+        elif chunk.toolName not in SDK_BUILTIN_TOOL_NAMES:
+            self._tool_successes += 1
+
+    def outcome(self, turn_error: str | None) -> RunOutcome:
+        return classify_run(
+            cancelled=turn_error == stream_registry.CANCELLED_MESSAGE,
+            turn_error_code=self._turn_error_code,
+            turn_errored=turn_error is not None,
+            tool_failures=self._failure_details,
+            tool_successes=self._tool_successes,
+        )
+
+    async def record(self, turn_error: str | None) -> None:
+        """Count this run toward its schedule's failure streak.
+
+        Never raises, and bounded: it runs in the turn's cleanup, after the
+        turn has been marked done.
+        """
+        outcome = self.outcome(turn_error)
+        schedule_key = self._origin.routine_id or self._origin.schedule_id
+        if outcome.neutral or schedule_key is None or self._entry.user_id is None:
+            return
+        run = ScheduledRun(
+            user_id=self._entry.user_id,
+            schedule_key=schedule_key,
+            schedule_id=self._origin.schedule_id,
+            routine_id=self._origin.routine_id,
+            session_id=self._entry.session_id,
+            title=schedule_title(routine_title=None, message=self._entry.message),
+            outcome=outcome,
+        )
+        try:
+            await asyncio.wait_for(
+                get_database_manager_async_client().record_scheduled_run(run),
+                timeout=_RECORD_TIMEOUT_SECONDS,
+            )
+        except Exception:
+            logger.warning(
+                "Could not record scheduled copilot turn %s toward its schedule's "
+                "failure streak",
+                self._entry.turn_id,
+                exc_info=True,
             )
 
     def report(self, turn_error: str | None) -> None:

@@ -7,7 +7,11 @@ from starlette.status import HTTP_404_NOT_FOUND
 
 from backend.api.features.experts import experts_db
 from backend.api.features.schedule_visibility import visible_graph_schedules
-from backend.api.features.schedules.model import ScheduleCreationRequest
+from backend.api.features.schedules.model import (
+    ResumeScheduledChatResponse,
+    ScheduleCreationRequest,
+)
+from backend.copilot.scheduled_chats import service as scheduled_chats
 from backend.data import graph as graph_db
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.data.tenancy import get_user_team_ids
@@ -160,6 +164,39 @@ async def list_copilot_turn_schedules(
     # legacy untyped row, scheduler-side bug), we drop it rather than fail
     # the response with a Pydantic validation error.
     return [s for s in schedules if isinstance(s, scheduler.CopilotTurnJobInfo)]
+
+
+@router.get(
+    path="/schedules/followups/paused",
+    summary="List scheduled chats paused after failing the same way",
+    operation_id="listPausedScheduledChats",
+)
+async def list_paused_scheduled_chats(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> list[scheduled_chats.PausedScheduledChat]:
+    """A paused job drops out of the follow-ups list above, so the chats a
+    failure streak paused are listed here, each once however many fire times
+    it has, with why and what Resume takes."""
+    return await scheduled_chats.list_paused_scheduled_chats(user_id)
+
+
+@router.post(
+    path="/schedules/followups/{schedule_key}/resume",
+    summary="Resume a scheduled chat paused after failing the same way",
+    operation_id="resumeScheduledChat",
+)
+async def resume_scheduled_chat(
+    user_id: Annotated[str, Security(get_user_id)],
+    schedule_key: str = Path(
+        ..., description="The routine's id, or the follow-up's schedule id"
+    ),
+) -> ResumeScheduledChatResponse:
+    if not await scheduled_chats.resume_scheduled_chat(user_id, schedule_key):
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="This scheduled chat is not paused.",
+        )
+    return ResumeScheduledChatResponse(resumed=True)
 
 
 @router.delete(

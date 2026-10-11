@@ -20,3 +20,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
         default=None,
         description="Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow.",
     )
+
+
+class ResumeScheduledChatResponse(pydantic.BaseModel):
+    resumed: bool

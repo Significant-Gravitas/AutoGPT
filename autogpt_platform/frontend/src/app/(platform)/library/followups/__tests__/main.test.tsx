@@ -3,6 +3,8 @@ import {
   getDeleteV1DeleteExecutionScheduleMockHandler422,
   getGetV1ListExecutionSchedulesForAUserMockHandler,
   getListCopilotFollowupSchedulesMockHandler,
+  getListPausedScheduledChatsMockHandler,
+  getResumeScheduledChatMockHandler,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
@@ -12,6 +14,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -94,6 +97,8 @@ describe("FollowupsPage", () => {
   beforeEach(() => {
     toastMock.mockClear();
     pushMock.mockClear();
+    // Nothing paused unless a test says so.
+    server.use(getListPausedScheduledChatsMockHandler([]));
   });
 
   afterEach(() => {
@@ -493,5 +498,43 @@ describe("FollowupsPage", () => {
     expect(await screen.findByText(/scheduled items/i)).toBeDefined();
     expect(screen.queryByTestId("followups-list")).toBeNull();
     expect(screen.queryByTestId("schedules-partial-error")).toBeNull();
+  });
+
+  test("lists a paused scheduled chat with why, and Resume resumes it", async () => {
+    let resumedKey: string | null = null;
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "routine-1",
+          title: "Discord monitor",
+          session_id: "session-1",
+          reason: "chat_link",
+          provider: "discord",
+          summary: "Paused: can't post to Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+        },
+      ]),
+      getResumeScheduledChatMockHandler(({ params }) => {
+        resumedKey = String(params.scheduleKey);
+        return { resumed: true };
+      }),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("paused-chat-row");
+    expect(within(row).getByText("Discord monitor")).toBeDefined();
+    expect(
+      within(row).getByText("Paused: can't post to Discord"),
+    ).toBeDefined();
+    // A paused chat is still something scheduled: no empty state.
+    expect(screen.queryByTestId("followups-empty")).toBeNull();
+
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Resume Discord monitor" }),
+    );
+    await waitFor(() => expect(resumedKey).toBe("routine-1"));
   });
 });

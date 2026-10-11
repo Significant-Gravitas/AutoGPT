@@ -1,0 +1,263 @@
+"""The failure streak against a real database (SECRT-2879).
+
+The scheduler is mocked; the notes are really written, into a real chat, the
+way the DatabaseManager writes them.
+"""
+
+import logging
+from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
+
+import pytest
+from prisma.errors import UniqueViolationError
+from prisma.models import ChatMessage, ExpertRoutine, ScheduledChatStreak, User
+
+from backend.copilot import db as copilot_db
+from backend.copilot.scheduled_chats.outcomes import RunFailure, RunOutcome
+from backend.copilot.scheduled_chats.service import (
+    ScheduledRun,
+    list_paused_scheduled_chats,
+    record_scheduled_run,
+    resume_scheduled_chat,
+)
+from backend.util.test import SpinTestServer
+
+logger = logging.getLogger(__name__)
+
+_SERVICE = "backend.copilot.scheduled_chats.service"
+
+_DISCORD = RunFailure(
+    key="connection:discord", kind="connection", provider="discord", tool="run_block"
+)
+_TWITTER = RunFailure(
+    key="connection:twitter", kind="connection", provider="twitter", tool="run_block"
+)
+
+
+@pytest.fixture
+def scheduler(mocker) -> MagicMock:
+    client = MagicMock(
+        pause_schedule=AsyncMock(return_value=True),
+        resume_schedule=AsyncMock(return_value=True),
+    )
+    mocker.patch(f"{_SERVICE}.get_scheduler_client", return_value=client)
+    return client
+
+
+async def _owner() -> tuple[str, str]:
+    user_id = f"streak-{uuid4()}"
+    try:
+        await User.prisma().create(
+            data={"id": user_id, "email": f"{user_id}@example.com", "name": "Streak"}
+        )
+    except UniqueViolationError:
+        pass
+    session = await copilot_db.create_chat_session(
+        session_id=str(uuid4()), user_id=user_id
+    )
+    return user_id, session.session_id
+
+
+async def _cleanup(user_id: str) -> None:
+    try:
+        await User.prisma().delete_many(where={"id": user_id})
+    except Exception as exc:
+        logger.warning("cleanup for %s failed: %s", user_id, exc)
+
+
+def _run(user_id: str, session_id: str, outcome: RunOutcome, **overrides):
+    base = dict(
+        user_id=user_id,
+        schedule_key="sched-1",
+        schedule_id="sched-1",
+        routine_id=None,
+        session_id=session_id,
+        title="Discord monitor",
+        outcome=outcome,
+    )
+    base.update(overrides)
+    return ScheduledRun(**base)
+
+
+async def _notes(session_id: str) -> list[ChatMessage]:
+    rows = await ChatMessage.prisma().find_many(
+        where={"sessionId": session_id}, order={"sequence": "asc"}
+    )
+    return [
+        r
+        for r in rows
+        if isinstance(r.metadata, dict)
+        and r.metadata.get("kind") == "scheduled_chat_notice"
+    ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_monitor_is_paused_and_told_on_the_third_run(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    user_id, session_id = await _owner()
+    try:
+        for outcome in (
+            RunOutcome(failure=_DISCORD, whole_run=True),
+            RunOutcome(idle=True),
+            RunOutcome(idle=True),
+        ):
+            await record_scheduled_run(_run(user_id, session_id, outcome))
+
+        scheduler.pause_schedule.assert_awaited_once_with("sched-1", user_id=user_id)
+        row = await ScheduledChatStreak.prisma().find_first(where={"userId": user_id})
+        assert row is not None
+        assert row.pausedAt is not None and row.notifiedAt is not None
+        assert row.failures == 3
+        notes = await _notes(session_id)
+        assert [n.metadata["headline"] for n in notes] == [
+            "Paused: “Discord monitor” can't use Discord"
+        ]
+        assert notes[0].metadata["hidden_from_model"] is True
+        assert notes[0].metadata["schedule_key"] == "sched-1"
+
+        paused = await list_paused_scheduled_chats(user_id)
+        assert [p.summary for p in paused] == ["Paused: can't use Discord"]
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failing_step_is_told_once_and_never_paused(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    user_id, session_id = await _owner()
+    try:
+        for _ in range(4):
+            await record_scheduled_run(
+                _run(
+                    user_id,
+                    session_id,
+                    RunOutcome(failure=_TWITTER, whole_run=False),
+                    title="Daily briefing",
+                )
+            )
+
+        scheduler.pause_schedule.assert_not_awaited()
+        notes = await _notes(session_id)
+        assert [n.metadata["headline"] for n in notes] == [
+            "“Daily briefing” can't use Twitter"
+        ]
+        row = await ScheduledChatStreak.prisma().find_first(where={"userId": user_id})
+        assert row is not None and row.failures == 4 and row.pausedAt is None
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_good_run_clears_the_streak(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        await record_scheduled_run(_run(user_id, session_id, failed))
+        await record_scheduled_run(_run(user_id, session_id, RunOutcome()))
+
+        assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_pauses_every_fire_time_and_is_named_by_its_title(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    user_id, session_id = await _owner()
+    try:
+        routine = await ExpertRoutine.prisma().create(
+            data={
+                "userId": user_id,
+                "title": "Morning and noon sweep",
+                "prompt": "Check the inbox.",
+                "crons": ["30 8 * * *", "0 13 * * *"],
+                "asks": [],
+                "scheduleIds": ["job-a", "job-b"],
+            }
+        )
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for job in ("job-a", "job-b", "job-a"):
+            await record_scheduled_run(
+                _run(
+                    user_id,
+                    session_id,
+                    failed,
+                    schedule_key=routine.id,
+                    schedule_id=job,
+                    routine_id=routine.id,
+                    title="check the inbox",
+                )
+            )
+
+        paused = {c.args[0] for c in scheduler.pause_schedule.await_args_list}
+        assert paused == {"job-a", "job-b"}
+        notes = await _notes(session_id)
+        assert notes[0].metadata["title"] == "Morning and noon sweep"
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_schedule_that_could_not_be_paused_does_not_say_it_was(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    user_id, session_id = await _owner()
+    scheduler.pause_schedule.side_effect = RuntimeError("scheduler down")
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+
+        row = await ScheduledChatStreak.prisma().find_first(where={"userId": user_id})
+        assert row is not None and row.pausedAt is None and row.notifiedAt is None
+        assert await _notes(session_id) == []
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_resume_restarts_the_jobs_clears_the_streak_and_says_so(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+
+        assert await resume_scheduled_chat(user_id, "sched-1") is True
+        # A second click on the same card finds nothing paused.
+        assert await resume_scheduled_chat(user_id, "sched-1") is False
+        # And nobody else's chat can be resumed.
+        assert await resume_scheduled_chat("someone-else", "sched-1") is False
+
+        scheduler.resume_schedule.assert_awaited_once_with("sched-1", user_id=user_id)
+        assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
+        headlines = [n.metadata["headline"] for n in await _notes(session_id)]
+        assert headlines[-1] == "Resumed “Discord monitor”"
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_resume_the_scheduler_refuses_keeps_the_chat_paused(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        scheduler.resume_schedule.side_effect = RuntimeError("scheduler down")
+
+        with pytest.raises(RuntimeError):
+            await resume_scheduled_chat(user_id, "sched-1")
+
+        assert len(await list_paused_scheduled_chats(user_id)) == 1
+    finally:
+        await _cleanup(user_id)

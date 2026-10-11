@@ -8,6 +8,7 @@ import { NEW_SCHEDULED_TASK_PROMPT } from "../guidedPrompts";
 import { EmptyFollowups } from "./components/EmptyFollowups/EmptyFollowups";
 import { FollowupListItem } from "./components/FollowupListItem/FollowupListItem";
 import { GraphScheduleListItem } from "./components/GraphScheduleListItem/GraphScheduleListItem";
+import { PausedChatListItem } from "./components/PausedChatListItem/PausedChatListItem";
 import { useSchedulesPanel } from "./useSchedulesPanel";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -18,7 +19,8 @@ interface Props {
 }
 
 export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
-  const { schedules, isLoading, error, partialError } = useSchedulesPanel();
+  const { schedules, paused, isLoading, error, partialError } =
+    useSchedulesPanel();
 
   return (
     <section className="space-y-6">
@@ -55,6 +57,20 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
         </Text>
       )}
 
+      {paused.length > 0 && (
+        <ul
+          className="flex flex-col gap-3"
+          data-testid="paused-chats-list"
+          aria-label="Paused scheduled chats"
+        >
+          {paused.map((chat) => (
+            <li key={`paused:${chat.schedule_key}`}>
+              <PausedChatListItem paused={chat} />
+            </li>
+          ))}
+        </ul>
+      )}
+
       {error ? (
         <ErrorCard
           responseError={{
@@ -73,7 +89,7 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
           <LoadingSpinner />
         </div>
       ) : schedules.length === 0 ? (
-        <EmptyFollowups />
+        paused.length === 0 && <EmptyFollowups />
       ) : (
         <ul
           className="flex flex-col gap-3"

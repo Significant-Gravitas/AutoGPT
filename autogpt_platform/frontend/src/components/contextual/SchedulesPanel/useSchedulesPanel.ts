@@ -1,6 +1,7 @@
 import {
   useGetV1ListExecutionSchedulesForAUser,
   useListCopilotFollowupSchedules,
+  useListPausedScheduledChats,
 } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
@@ -29,6 +30,11 @@ export function useSchedulesPanel() {
   const graphQuery = useGetV1ListExecutionSchedulesForAUser({
     query: { select: (res) => okData(res) ?? [] },
   });
+  // Scheduled chats paused after failing the same way: their jobs drop out
+  // of the followups list, so they are listed apart, with Resume.
+  const pausedQuery = useListPausedScheduledChats({
+    query: { select: (res) => okData(res) ?? [] },
+  });
 
   const copilotItems: ScheduleItem[] = (copilotQuery.data ?? []).map(
     (item) => ({ kind: "copilot_turn" as const, item }),
@@ -55,6 +61,7 @@ export function useSchedulesPanel() {
     // reference it.
     followups: copilotQuery.data ?? [],
     schedules,
+    paused: pausedQuery.data ?? [],
     isLoading,
     // The two sources are independent — only hard-fail once both have
     // settled and there is nothing to show; a partial failure keeps the

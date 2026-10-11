@@ -566,6 +566,7 @@ export function ChatMessagesContainer({
                   <MessageContent className="group-[.is-assistant]:bg-transparent">
                     <ScheduledChatNoticeCard
                       notice={notice}
+                      sessionID={sessionID}
                       readOnly={readOnly}
                     />
                   </MessageContent>
