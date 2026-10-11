@@ -7,6 +7,7 @@ import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
 import {
   broadcastLogout,
+  reloadForNewDeployment,
   setupSessionEventListeners,
   setWebSocketDisconnectIntent,
 } from "../helpers";
@@ -16,7 +17,12 @@ import {
   handleStorageEvent as handleStorageEventHelper,
   refreshSession as refreshSessionHelper,
   validateSession as validateSessionHelper,
+  type SessionUnavailableReason,
 } from "./helpers";
+
+const RETRY_BASE_DELAY_MS = 1_000;
+const RETRY_MAX_DELAY_MS = 30_000;
+const MAX_RETRY_ATTEMPTS = 6;
 
 interface InitializeParams {
   api: BackendAPI;
@@ -47,6 +53,8 @@ interface AuthStoreState {
   routerRef: AppRouterInstance | null;
   apiRef: BackendAPI | null;
   currentPath: string;
+  retryTimer: ReturnType<typeof setTimeout> | null;
+  retryAttempt: number;
   initialize: (params: InitializeParams) => Promise<void>;
   setCurrentRequestContext: (params: InitializeParams) => void;
   logOut: (params?: LogOutParams) => Promise<void>;
@@ -94,7 +102,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
               currentUser: null,
             });
 
-            if (validationResult.user && validationResult.isValid) {
+            if (validationResult.unavailable) {
+              handleUnavailable(validationResult.unavailable);
+            } else if (validationResult.user && validationResult.isValid) {
               set({
                 user: validationResult.user,
                 hasLoadedUser: true,
@@ -114,6 +124,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
         const cleanup = setupSessionEventListeners(
           handleVisibilityChange,
           handleStorageEventInternal,
+          handleOnline,
         );
         set({ listenersCleanup: cleanup.cleanup });
       })();
@@ -133,6 +144,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     const options = params?.options ?? {};
 
     setWebSocketDisconnectIntent();
+    cancelRetry();
 
     if (api) {
       api.disconnectWebSocket();
@@ -185,6 +197,13 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
         currentUser: get().user,
       });
 
+      if (result.unavailable) {
+        handleUnavailable(result.unavailable);
+        return true;
+      }
+
+      cancelRetry();
+
       if (!result.isValid) {
         set({
           user: null,
@@ -221,6 +240,36 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     void validateSessionInternal();
   }
 
+  function handleOnline(): void {
+    void validateSessionInternal({ force: true });
+  }
+
+  // A validation that couldn't reach the auth backend says nothing about the
+  // session, so the user stays signed in. Retry with backoff; the next focus
+  // or `online` event also revalidates.
+  function handleUnavailable(reason: SessionUnavailableReason): void {
+    if (reason === "deployment-skew" && reloadForNewDeployment()) return;
+
+    const attempt = get().retryAttempt;
+    if (get().retryTimer || attempt >= MAX_RETRY_ATTEMPTS) return;
+
+    const delay = Math.min(
+      RETRY_BASE_DELAY_MS * 2 ** attempt,
+      RETRY_MAX_DELAY_MS,
+    );
+    const retryTimer = setTimeout(() => {
+      set({ retryTimer: null });
+      void validateSessionInternal({ force: true });
+    }, delay);
+    set({ retryTimer, retryAttempt: attempt + 1 });
+  }
+
+  function cancelRetry(): void {
+    const retryTimer = get().retryTimer;
+    if (retryTimer) clearTimeout(retryTimer);
+    set({ retryTimer: null, retryAttempt: 0 });
+  }
+
   function handleStorageEventInternal(event: StorageEvent): void {
     const result = handleStorageEventHelper({
       event,
@@ -231,6 +280,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 
     if (!result.shouldLogout) return;
 
+    cancelRetry();
     set({
       user: null,
       hasLoadedUser: false,
@@ -255,7 +305,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
         hasLoadedUser: true,
         isUserLoading: false,
       });
-    } else if (result.error) {
+    } else if (result.error && !result.isUnavailable) {
       set({
         user: null,
         hasLoadedUser: false,
@@ -267,6 +317,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
   }
 
   function cleanup(): void {
+    cancelRetry();
     const existingCleanup = get().listenersCleanup;
     if (existingCleanup) {
       existingCleanup();
@@ -285,6 +336,8 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     routerRef: null,
     apiRef: null,
     currentPath: "",
+    retryTimer: null,
+    retryAttempt: 0,
     initialize,
     setCurrentRequestContext,
     logOut,

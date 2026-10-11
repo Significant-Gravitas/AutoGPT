@@ -1,3 +1,4 @@
+import { APIError } from "better-auth/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getServerSessionMock = vi.fn();
@@ -20,8 +21,10 @@ vi.mock("../auth", () => ({
   },
 }));
 
-vi.mock("../server/getServerSession", () => ({
+vi.mock("../server/getServerSession", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../server/getServerSession")>()),
   getServerSession: () => getServerSessionMock(),
+  readServerSession: () => getServerSessionMock(),
 }));
 
 vi.mock("@/lib/auth/server/getServerAuthToken", () => ({
@@ -127,12 +130,22 @@ describe("validateSession", () => {
     expect(result.redirectPath).toBeUndefined();
   });
 
-  it("falls back to a login redirect when the session lookup throws", async () => {
+  it("reports the session as unavailable, not invalid, when the lookup throws", async () => {
     getServerSessionMock.mockRejectedValue(new Error("db unavailable"));
 
     const result = await validateSession("/library");
 
+    expect(result.isUnavailable).toBe(true);
+    expect(result.redirectPath).toBeUndefined();
+  });
+
+  it("treats an auth-backend 401 as an invalid session", async () => {
+    getServerSessionMock.mockRejectedValue(new APIError("UNAUTHORIZED"));
+
+    const result = await validateSession("/library");
+
     expect(result.isValid).toBe(false);
+    expect(result.isUnavailable).toBeUndefined();
     expect(result.redirectPath).toBe(
       `/login?next=${encodeURIComponent("/library")}`,
     );
@@ -293,6 +306,10 @@ describe("refreshSession", () => {
 
     const result = await refreshSession();
 
-    expect(result).toEqual({ user: null, error: "connection reset" });
+    expect(result).toEqual({
+      user: null,
+      error: "connection reset",
+      isUnavailable: true,
+    });
   });
 });

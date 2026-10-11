@@ -11,6 +11,7 @@ vi.mock("../../actions", () => ({
 }));
 vi.mock("../../helpers", () => ({
   broadcastLogout: vi.fn(),
+  reloadForNewDeployment: vi.fn(() => true),
   setWebSocketDisconnectIntent: vi.fn(),
   setupSessionEventListeners: vi.fn(() => ({ cleanup: vi.fn() })),
 }));
@@ -21,6 +22,7 @@ vi.mock("../helpers", () => ({
   validateSession: vi.fn(),
 }));
 
+import { reloadForNewDeployment } from "../../helpers";
 import type { User } from "../../types";
 import { validateSession as validateSessionHelper } from "../helpers";
 import { useAuthStore } from "../useAuthStore";
@@ -130,7 +132,9 @@ describe("useAuthStore.validateSession", () => {
       isValidating: false,
       lastValidation: 0,
     });
+    useAuthStore.getState().cleanup();
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   it("clears the user and redirects when the server says the session is invalid", async () => {
@@ -174,6 +178,63 @@ describe("useAuthStore.validateSession", () => {
     });
 
     expect(stillValid).toBe(true);
+    expect(useAuthStore.getState().user).toBe(user);
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it("keeps the user signed in through a network failure and retries", async () => {
+    vi.useFakeTimers();
+    const router = makeRouter();
+    const user = { id: "user-1" } as User;
+    vi.mocked(validateSessionHelper)
+      .mockResolvedValueOnce({
+        isValid: true,
+        shouldUpdateUser: false,
+        unavailable: "network",
+      })
+      .mockResolvedValueOnce({
+        user: null,
+        isValid: false,
+        redirectPath: "/login?next=%2Fbuild",
+        shouldUpdateUser: true,
+      });
+    useAuthStore.setState({ user, hasLoadedUser: true });
+
+    const stillValid = await useAuthStore.getState().validateSession({
+      router,
+      path: "/build",
+      force: true,
+    });
+
+    expect(stillValid).toBe(true);
+    expect(useAuthStore.getState().user).toBe(user);
+    expect(router.push).not.toHaveBeenCalled();
+
+    useAuthStore.setState({ routerRef: router, currentPath: "/build" });
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(validateSessionHelper).toHaveBeenCalledTimes(2);
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(router.push).toHaveBeenCalledWith("/login?next=%2Fbuild");
+  });
+
+  it("reloads onto the new deployment instead of logging out on deploy skew", async () => {
+    const router = makeRouter();
+    const user = { id: "user-1" } as User;
+    vi.mocked(validateSessionHelper).mockResolvedValue({
+      isValid: true,
+      shouldUpdateUser: false,
+      unavailable: "deployment-skew",
+    });
+    useAuthStore.setState({ user, hasLoadedUser: true });
+
+    await useAuthStore.getState().validateSession({
+      router,
+      path: "/build",
+      force: true,
+    });
+
+    expect(reloadForNewDeployment).toHaveBeenCalled();
     expect(useAuthStore.getState().user).toBe(user);
     expect(router.push).not.toHaveBeenCalled();
   });

@@ -1,5 +1,6 @@
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
+import { SessionKey, sessionStorage } from "@/services/storage/session-storage";
 
 export const PROTECTED_PAGES = [
   "/auth/authorize",
@@ -77,6 +78,7 @@ export interface EventListeners {
 export function setupSessionEventListeners(
   onVisibilityChange: () => void,
   onStorageChange: (e: StorageEvent) => void,
+  onOnline?: () => void,
 ): EventListeners {
   if (environment.isServerSide()) {
     return { cleanup: () => {} };
@@ -84,11 +86,33 @@ export function setupSessionEventListeners(
 
   document.addEventListener("visibilitychange", onVisibilityChange);
   window.addEventListener("storage", onStorageChange);
+  if (onOnline) window.addEventListener("online", onOnline);
 
   return {
     cleanup: () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("storage", onStorageChange);
+      if (onOnline) window.removeEventListener("online", onOnline);
     },
   };
+}
+
+const DEPLOYMENT_RELOAD_COOLDOWN_MS = 60_000;
+
+/**
+ * Reloads the page so it picks up the deployment the server is now running.
+ * Returns false without reloading if it already did so within the cooldown,
+ * so a server that keeps rejecting this bundle can't trap the tab in a loop.
+ */
+export function reloadForNewDeployment(): boolean {
+  if (environment.isServerSide()) return false;
+
+  const lastReloadAt = Number(
+    sessionStorage.get(SessionKey.DEPLOYMENT_RELOAD_AT) ?? 0,
+  );
+  if (Date.now() - lastReloadAt < DEPLOYMENT_RELOAD_COOLDOWN_MS) return false;
+
+  sessionStorage.set(SessionKey.DEPLOYMENT_RELOAD_AT, Date.now().toString());
+  window.location.reload();
+  return true;
 }
