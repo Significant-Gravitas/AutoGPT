@@ -285,6 +285,28 @@ async def test_a_pause_that_fails_partway_puts_back_what_it_paused(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_pause_whose_streak_cannot_be_saved_is_put_back(
+    server: SpinTestServer, scheduler: MagicMock, mocker
+):
+    """Paused jobs with no row behind them would never be listed or resumed:
+    the chat would stop without a word."""
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(2):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        mocker.patch(f"{_SERVICE}._save", AsyncMock(side_effect=RuntimeError("db")))
+
+        with pytest.raises(RuntimeError):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+
+        scheduler.pause_schedule.assert_awaited_once_with("sched-1", user_id=user_id)
+        scheduler.resume_schedule.assert_awaited_once_with("sched-1", user_id=user_id)
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_run_that_fired_before_the_pause_changes_nothing(
     server: SpinTestServer, scheduler: MagicMock
 ):

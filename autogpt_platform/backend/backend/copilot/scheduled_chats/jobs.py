@@ -15,10 +15,11 @@ from backend.util.exceptions import NotFoundError
 logger = logging.getLogger(__name__)
 
 
-async def pause_jobs(user_id: str, schedule_ids: list[str]) -> bool:
-    """Pause every job, and say whether that worked. On a failure the jobs
-    this call paused are resumed again. A job deleted since fires no more,
-    so it is skipped; with no live job left there is nothing to pause."""
+async def pause_jobs(user_id: str, schedule_ids: list[str]) -> list[str] | None:
+    """Pause every job. Returns the jobs this call paused, for ``unpause`` if
+    what follows fails, or None when the chat could not be paused: a failure
+    partway resumes what it paused. A job deleted since fires no more, so it
+    is skipped; with no live job left there is nothing to pause."""
     scheduler = get_scheduler_client()
     paused: list[str] = []
     live = False
@@ -34,9 +35,14 @@ async def pause_jobs(user_id: str, schedule_ids: list[str]) -> bool:
             logger.warning(
                 "Could not pause scheduled chat job %s", schedule_id, exc_info=True
             )
-            await _put_back(scheduler.resume_schedule, user_id, paused)
-            return False
-    return live
+            await unpause(user_id, paused)
+            return None
+    return paused if live else None
+
+
+async def unpause(user_id: str, schedule_ids: list[str]) -> None:
+    """Resume jobs that ``pause_jobs`` paused, best effort."""
+    await _put_back(get_scheduler_client().resume_schedule, user_id, schedule_ids)
 
 
 async def resume_jobs(user_id: str, schedule_ids: list[str]) -> None:

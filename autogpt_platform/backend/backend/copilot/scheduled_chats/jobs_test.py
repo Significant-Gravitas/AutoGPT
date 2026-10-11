@@ -30,15 +30,21 @@ def _fail_on(failing: str, error: Exception):
 
 @pytest.mark.asyncio
 async def test_every_job_is_paused(scheduler: MagicMock):
-    assert await jobs.pause_jobs(_USER, ["a", "b"]) is True
-    assert scheduler.pause_schedule.await_count == 2
+    assert await jobs.pause_jobs(_USER, ["a", "b"]) == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_jobs_their_owner_paused_count_but_are_not_ours_to_undo(scheduler):
+    scheduler.pause_schedule.return_value = False
+
+    assert await jobs.pause_jobs(_USER, ["a"]) == []
 
 
 @pytest.mark.asyncio
 async def test_a_job_deleted_since_is_skipped_and_the_rest_pause(scheduler):
     scheduler.pause_schedule.side_effect = _fail_on("b", NotFoundError("gone"))
 
-    assert await jobs.pause_jobs(_USER, ["a", "b"]) is True
+    assert await jobs.pause_jobs(_USER, ["a", "b"]) == ["a"]
     scheduler.resume_schedule.assert_not_awaited()
 
 
@@ -46,8 +52,8 @@ async def test_a_job_deleted_since_is_skipped_and_the_rest_pause(scheduler):
 async def test_with_no_live_job_there_is_nothing_to_pause(scheduler):
     scheduler.pause_schedule.side_effect = NotFoundError("gone")
 
-    assert await jobs.pause_jobs(_USER, ["a"]) is False
-    assert await jobs.pause_jobs(_USER, []) is False
+    assert await jobs.pause_jobs(_USER, ["a"]) is None
+    assert await jobs.pause_jobs(_USER, []) is None
 
 
 @pytest.mark.asyncio
@@ -60,7 +66,7 @@ async def test_a_pause_that_fails_resumes_only_what_it_paused(scheduler):
 
     scheduler.pause_schedule.side_effect = pause
 
-    assert await jobs.pause_jobs(_USER, ["a", "b", "c"]) is False
+    assert await jobs.pause_jobs(_USER, ["a", "b", "c"]) is None
     scheduler.resume_schedule.assert_awaited_once_with("a", user_id=_USER)
 
 
