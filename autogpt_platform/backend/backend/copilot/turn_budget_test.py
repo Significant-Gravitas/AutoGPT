@@ -147,7 +147,7 @@ async def test_trial_allowance_binds_without_a_reset(trial_limits):
         weekly_limit=20_000_000,
     )
     budget = await resolve_turn_budget("trial-user")
-    assert budget == TurnBudget(usd=0.05, limiting="trial")
+    assert budget == TurnBudget(usd=0.05, limiting="trial", hard_cap=True)
 
 
 @pytest.mark.asyncio
@@ -162,7 +162,9 @@ async def test_trial_with_a_tighter_daily_window_resets_daily(trial_limits):
         weekly_limit=20_000_000,
     )
     budget = await resolve_turn_budget("trial-user")
-    assert budget == TurnBudget(usd=0.1, limiting="daily", resets_at=DAILY_RESET)
+    assert budget == TurnBudget(
+        usd=0.1, limiting="daily", resets_at=DAILY_RESET, hard_cap=True
+    )
 
 
 @pytest.mark.asyncio
@@ -172,3 +174,21 @@ async def test_trial_with_nothing_left_starts_no_turn(trial_limits, remaining):
     remaining_mock.return_value = remaining
     with pytest.raises(ValueError, match="Trial budget"):
         await resolve_turn_budget("trial-user")
+
+
+@pytest.mark.asyncio
+async def test_a_trial_limited_by_the_task_cap_is_still_a_hard_cap(trial_limits):
+    # More left than one task may spend: the task cap binds, but the money is
+    # still the trial's, so nothing may be spent past it.
+    remaining_mock, _ = trial_limits
+    remaining_mock.return_value = 15.0
+    budget = await resolve_turn_budget("trial-user")
+    assert budget.limiting == "task"
+    assert budget.hard_cap is True
+
+
+@pytest.mark.asyncio
+async def test_a_paid_budget_is_not_a_hard_cap(limits):
+    _, remaining_mock, _ = limits
+    remaining_mock.return_value = 15.0
+    assert (await resolve_turn_budget("u-1")).hard_cap is False

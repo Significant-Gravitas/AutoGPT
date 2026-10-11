@@ -482,19 +482,21 @@ async def _consume_sdk_until_done(
             observed = getattr(sdk_msg, "model", None)
             if isinstance(observed, str) and observed:
                 state.observed_model = observed
-            # Live spend and step count: the governor lands the turn when
-            # either nears its limit (see ``security_hooks`` PreToolUse).
-            # Metering must never fail the turn it meters; the CLI's own
-            # budget and turn limits still back it up.
-            if state.governor is not None:
-                try:
-                    state.governor.observe(sdk_msg)
-                except Exception:
-                    logger.warning(
-                        "%s Turn governor could not meter a message",
-                        ctx.log_prefix,
-                        exc_info=True,
-                    )
+
+        # Live spend and step count: the governor lands the turn when either
+        # nears its limit (see ``security_hooks`` PreToolUse). It reads the
+        # assistant messages and the raw stream, where each response's real
+        # output count arrives. Metering must never fail the turn it meters;
+        # the CLI's own budget and turn limits still back it up.
+        if state.governor is not None:
+            try:
+                state.governor.observe(sdk_msg)
+            except Exception:
+                logger.warning(
+                    "%s Turn governor could not meter a message",
+                    ctx.log_prefix,
+                    exc_info=True,
+                )
 
         if loop_state.provider_refused:
             if isinstance(sdk_msg, ResultMessage):
