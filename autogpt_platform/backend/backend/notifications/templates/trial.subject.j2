@@ -3,7 +3,7 @@ Your trial allowance is available until {{ ends_label }}.
 {% elif kind == 'ending' %}Your AutoGPT trial ends on {{ ends_label }}
 Unless you cancel before then, your saved card will be charged for your {{ plan.name }} plan at {{ plan.price_display }}.
 {% elif kind == 'canceled' %}Your AutoGPT trial cancellation is confirmed
-You can keep using your remaining trial allowance until {{ ends_label }}.
+Your card won't be charged.
 {% elif kind == 'resumed' %}Your AutoGPT trial will continue into your plan
 Your saved card will be charged for your {{ plan.name }} plan on {{ ends_label }} at {{ plan.price_display }}.
 {% elif kind == 'converted' %}Your AutoGPT {{ plan.name }} plan is active
