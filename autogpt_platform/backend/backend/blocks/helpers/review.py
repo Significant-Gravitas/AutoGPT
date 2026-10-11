@@ -32,6 +32,42 @@ class HITLReviewHelper:
         return await get_database_manager_async_client().check_approval(**kwargs)
 
     @staticmethod
+    async def get_existing_decision(
+        node_exec_id: str, user_id: str
+    ) -> Optional[ReviewDecision]:
+        """The approval or rejection already recorded for this node execution.
+
+        For a node running with safe mode off: safe mode may have been on when
+        the node was held for review, and the human's answer still binds it.
+        Returns None when no review exists or it is still waiting.
+        """
+        reviews = (
+            await get_database_manager_async_client().get_reviews_by_node_exec_ids(
+                [node_exec_id], user_id
+            )
+        )
+        review = reviews.get(node_exec_id)
+        if review is None or review.status == ReviewStatus.WAITING:
+            return None
+        should_proceed = review.status == ReviewStatus.APPROVED
+        return ReviewDecision(
+            should_proceed=should_proceed,
+            message=review.review_message
+            or (
+                "Execution approved by reviewer"
+                if should_proceed
+                else "Execution rejected by reviewer"
+            ),
+            review_result=ReviewResult(
+                data=review.payload,
+                status=review.status,
+                message=review.review_message or "",
+                processed=review.processed,
+                node_exec_id=node_exec_id,
+            ),
+        )
+
+    @staticmethod
     async def get_or_create_human_review(**kwargs) -> Optional[ReviewResult]:
         """Create or retrieve a human review from the database."""
         return await get_database_manager_async_client().get_or_create_human_review(
