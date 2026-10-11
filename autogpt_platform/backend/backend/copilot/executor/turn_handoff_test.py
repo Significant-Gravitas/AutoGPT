@@ -52,9 +52,11 @@ def post_tool():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_cards_answered_during_a_turn_run_once_that_turn_has_left(
+async def test_cards_answered_during_a_turn_run_once_it_has_left_under_its_envelope(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
+    """Not a fresh root for the follow-up: the card runs under the tree of the
+    turn that held it."""
     session = await _new_session(test_user_id)
 
     async def turn(entry: CoPilotExecutionEntry) -> None:
@@ -63,7 +65,9 @@ async def test_cards_answered_during_a_turn_run_once_that_turn_has_left(
         async for _status in held.resolve_answered(test_user_id, chat, _ignore):
             pass
         if entry.message == "post it":
-            review_id = await _hold(chat, test_user_id, "approved mid-turn")
+            review_id = await _hold(
+                chat, test_user_id, "approved mid-turn", envelope=entry.envelope
+            )
             await _answer(review_id, ReviewStatus.APPROVED)
         await stream_registry.mark_session_completed(
             entry.session_id, turn_id=entry.turn_id
@@ -77,6 +81,9 @@ async def test_cards_answered_during_a_turn_run_once_that_turn_has_left(
     assert [t.message for t in pod.turns] == ["post it", held.WAKE_MESSAGE]
     assert post_tool.runs == [{"text": "approved mid-turn"}]
     assert (final.turn_id, final.status) == (pod.turns[1].turn_id, "completed")
+    held_under, woken_under = (t.envelope for t in pod.turns)
+    assert held_under is not None and woken_under is not None
+    assert woken_under.tree_id == held_under.tree_id
 
 
 @pytest.mark.asyncio(loop_scope="session")
