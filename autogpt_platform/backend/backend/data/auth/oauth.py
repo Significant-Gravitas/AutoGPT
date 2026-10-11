@@ -437,14 +437,15 @@ async def consume_authorization_code(
     # conditional write flips usedAt from NULL may mint tokens. Everything is
     # validated first so a request with a wrong redirect_uri or PKCE verifier
     # cannot burn a code that belongs to the legitimate client.
+    claimed_at = datetime.now(timezone.utc)
     claimed = await PrismaOAuthAuthorizationCode.prisma().update_many(
         where={
             "code": code,
             "applicationId": application_id,
             "usedAt": None,
-            "expiresAt": {"gt": now},
+            "expiresAt": {"gt": claimed_at},
         },
-        data={"usedAt": now},
+        data={"usedAt": claimed_at},
     )
     if claimed != 1:
         raise InvalidGrantError("authorization code already used or expired")

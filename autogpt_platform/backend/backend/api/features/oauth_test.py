@@ -17,12 +17,15 @@ import base64
 import hashlib
 import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
 import pytest_asyncio
 from autogpt_libs.api_key.keysmith import APIKeySmith
+from autogpt_libs.auth import get_user_id
 from prisma.enums import APIKeyPermission
 from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
 from prisma.models import OAuthApplication as PrismaOAuthApplication
@@ -32,9 +35,11 @@ from prisma.models import User as PrismaUser
 
 from backend.api.rest_api import app
 from backend.data.auth.oauth import (
+    InvalidClientError,
     InvalidGrantError,
     consume_authorization_code,
     create_authorization_code,
+    validate_access_token,
 )
 
 keysmith = APIKeySmith()
@@ -153,7 +158,6 @@ async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, No
     Depends on `server` to ensure the DB is connected and `test_user` to ensure
     the user exists in the database before running tests.
     """
-    from autogpt_libs.auth import get_user_id
 
     # Override get_user_id dependency to return our test user
     def override_get_user_id():
@@ -212,8 +216,6 @@ async def test_authorize_creates_code_in_database(
     redirect_url = response.json()["redirect_url"]
 
     # Parse the redirect URL to get the authorization code
-    from urllib.parse import parse_qs, urlparse
-
     parsed = urlparse(redirect_url)
     query_params = parse_qs(parsed.query)
 
@@ -263,8 +265,6 @@ async def test_authorize_with_pkce_stores_challenge(
 
     assert response.status_code == 200
 
-    from urllib.parse import parse_qs, urlparse
-
     auth_code = parse_qs(urlparse(response.json()["redirect_url"]).query)["code"][0]
 
     # Verify PKCE challenge is stored
@@ -301,8 +301,6 @@ async def test_authorize_invalid_client_returns_error(
     )
 
     assert response.status_code == 200
-    from urllib.parse import parse_qs, urlparse
-
     query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "invalid_client"
 
@@ -363,8 +361,6 @@ async def test_authorize_inactive_app(
     )
 
     assert response.status_code == 200
-    from urllib.parse import parse_qs, urlparse
-
     query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "invalid_client"
 
@@ -421,8 +417,6 @@ async def test_authorize_invalid_scope(
     )
 
     assert response.status_code == 200
-    from urllib.parse import parse_qs, urlparse
-
     query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "invalid_scope"
 
@@ -453,8 +447,6 @@ async def test_authorize_unauthorized_scope(
     )
 
     assert response.status_code == 200
-    from urllib.parse import parse_qs, urlparse
-
     query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "invalid_scope"
 
@@ -483,8 +475,6 @@ async def test_authorize_unsupported_response_type(
     )
 
     assert response.status_code == 200
-    from urllib.parse import parse_qs, urlparse
-
     query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "unsupported_response_type"
 
@@ -501,8 +491,6 @@ async def test_token_exchange_creates_tokens_in_database(
     test_oauth_app: dict,
 ):
     """Test that token exchange creates access and refresh tokens in database."""
-    from urllib.parse import parse_qs, urlparse
-
     verifier, challenge = generate_pkce()
 
     # First get an authorization code
@@ -583,8 +571,6 @@ async def test_authorization_code_cannot_be_reused(
     test_oauth_app: dict,
 ):
     """Test that authorization code can only be used once."""
-    from urllib.parse import parse_qs, urlparse
-
     verifier, challenge = generate_pkce()
 
     # Get authorization code
@@ -682,8 +668,6 @@ async def test_token_endpoint_concurrent_code_exchange_issues_one_token_pair(
     Drives the real token endpoint (client auth, PKCE, DB) rather than the data
     layer, and checks the database: a lost race must not leave extra tokens.
     """
-    from urllib.parse import parse_qs, urlparse
-
     verifier, challenge = generate_pkce()
     auth_response = await client.post(
         "/api/oauth/authorize",
@@ -728,8 +712,6 @@ async def test_token_exchange_with_invalid_client_secret(
     test_oauth_app: dict,
 ):
     """Test that token exchange fails with invalid client secret."""
-    from urllib.parse import parse_qs, urlparse
-
     verifier, challenge = generate_pkce()
 
     # Get authorization code
@@ -797,8 +779,6 @@ async def test_token_authorization_code_expired(
     test_oauth_app: dict,
 ):
     """Test token exchange with expired authorization code."""
-    from datetime import datetime, timedelta, timezone
-
     # Create an expired authorization code directly in the database
     expired_code = f"expired_code_{secrets.token_urlsafe(16)}"
     now = datetime.now(timezone.utc)
@@ -837,8 +817,6 @@ async def test_token_authorization_code_redirect_uri_mismatch(
     test_oauth_app: dict,
 ):
     """Test token exchange with mismatched redirect_uri."""
-    from urllib.parse import parse_qs, urlparse
-
     verifier, challenge = generate_pkce()
 
     # Get authorization code with one redirect_uri
@@ -887,8 +865,6 @@ async def test_token_authorization_code_pkce_failure(
     pkce_credentials: tuple[str, str],
 ):
     """Test token exchange with PKCE verification failure (wrong verifier)."""
-    from urllib.parse import parse_qs, urlparse
-
     verifier, challenge = pkce_credentials
 
     # Get authorization code with PKCE challenge
@@ -954,8 +930,6 @@ async def test_refresh_token_creates_new_tokens(
     test_oauth_app: dict,
 ):
     """Test that refresh token grant creates new access and refresh tokens."""
-    from urllib.parse import parse_qs, urlparse
-
     verifier, challenge = generate_pkce()
 
     # Get initial tokens
@@ -1054,8 +1028,6 @@ async def test_token_refresh_expired(
     test_oauth_app: dict,
 ):
     """Test token refresh with expired refresh token."""
-    from datetime import datetime, timedelta, timezone
-
     # Create an expired refresh token directly in the database
     expired_token_value = f"expired_refresh_{secrets.token_urlsafe(16)}"
     expired_token_hash = hashlib.sha256(expired_token_value.encode()).hexdigest()
@@ -1092,8 +1064,6 @@ async def test_token_refresh_revoked(
     test_oauth_app: dict,
 ):
     """Test token refresh with revoked refresh token."""
-    from datetime import datetime, timedelta, timezone
-
     # Create a revoked refresh token directly in the database
     revoked_token_value = f"revoked_refresh_{secrets.token_urlsafe(16)}"
     revoked_token_hash = hashlib.sha256(revoked_token_value.encode()).hexdigest()
@@ -1164,8 +1134,6 @@ async def test_token_refresh_wrong_application(
     other_oauth_app: dict,
 ):
     """Test token refresh with token from different application."""
-    from datetime import datetime, timedelta, timezone
-
     # Create a refresh token for `test_oauth_app`
     token_value = f"app1_refresh_{secrets.token_urlsafe(16)}"
     token_hash = hashlib.sha256(token_value.encode()).hexdigest()
@@ -1208,8 +1176,6 @@ async def test_introspect_valid_access_token(
     test_oauth_app: dict,
 ):
     """Test introspection returns correct info for valid access token."""
-    from urllib.parse import parse_qs, urlparse
-
     verifier, challenge = generate_pkce()
 
     # Get tokens
@@ -1292,8 +1258,6 @@ async def test_introspect_active_refresh_token(
     test_oauth_app: dict,
 ):
     """Test introspection returns correct info for valid refresh token."""
-    from urllib.parse import parse_qs, urlparse
-
     verifier, challenge = generate_pkce()
 
     # Get tokens via the full flow
@@ -1376,10 +1340,6 @@ async def test_validate_access_token_fails_when_app_disabled(
     This tests the security feature where disabling an OAuth application
     immediately invalidates all its access tokens.
     """
-    from datetime import datetime, timedelta, timezone
-
-    from backend.data.auth.oauth import InvalidClientError, validate_access_token
-
     # Create an OAuth app
     app_id = str(uuid.uuid4())
     client_id = f"disable_test_{secrets.token_urlsafe(8)}"
@@ -1447,8 +1407,6 @@ async def test_revoke_access_token_updates_database(
     test_oauth_app: dict,
 ):
     """Test that revoking access token updates database."""
-    from urllib.parse import parse_qs, urlparse
-
     verifier, challenge = generate_pkce()
 
     # Get tokens
@@ -1540,8 +1498,6 @@ async def test_revoke_refresh_token_updates_database(
     test_oauth_app: dict,
 ):
     """Test that revoking refresh token updates database."""
-    from urllib.parse import parse_qs, urlparse
-
     verifier, challenge = generate_pkce()
 
     # Get tokens
@@ -1636,8 +1592,6 @@ async def test_revoke_token_from_different_app_fails_silently(
     Per RFC 7009, the endpoint still returns 200 OK (to prevent token scanning),
     but the token should remain valid in the database.
     """
-    from urllib.parse import parse_qs, urlparse
-
     verifier, challenge = generate_pkce()
 
     # Get tokens for app 1
@@ -1761,8 +1715,6 @@ async def test_complete_oauth_flow_end_to_end(
     This is a comprehensive integration test that verifies the entire
     OAuth flow works correctly with real API calls and database operations.
     """
-    from urllib.parse import parse_qs, urlparse
-
     verifier, challenge = pkce_credentials
 
     # Step 1: Authorization request with PKCE
