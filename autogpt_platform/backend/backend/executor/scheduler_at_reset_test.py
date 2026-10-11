@@ -72,6 +72,13 @@ async def _fire(args: CopilotTurnJobArgs) -> None:
     await _execute_copilot_turn(**args.model_dump(mode="json"))
 
 
+@pytest.fixture(autouse=True)
+def no_cancels():
+    """Cancels are remembered in process: no test sees another's."""
+    with patch.dict(f"{_SCHEDULER}._at_reset_cancels", clear=True):
+        yield
+
+
 @pytest.fixture
 def fire_env():
     """A due at-reset turn on an idle, platform-route chat with budget left."""
@@ -310,3 +317,37 @@ async def test_followups_keep_their_own_path(fire_env):
         await _fire(followup)
     fire_env.load.assert_not_awaited()
     assert fire_env.dispatch.await_args.kwargs["message"] == "check CI"
+
+
+@pytest.mark.asyncio
+async def test_a_job_cancelled_while_it_runs_neither_fires_nor_comes_back(
+    fire_env, live_scheduler
+):
+    # The cancel finds no job (it is out of the store while it runs) but is
+    # remembered, so the run that was deciding stands down either way.
+    assert live_scheduler.cancel_at_reset_turn(USER, SESSION, "send") is False
+    await _fire(_args("send", created_at=datetime.now(UTC) - timedelta(minutes=1)))
+    fire_env.dispatch.assert_not_awaited()
+
+    fire_env.busy.return_value = True
+    await _fire(_args("send", created_at=datetime.now(UTC) - timedelta(minutes=1)))
+    fire_env.client.add_copilot_turn_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_send_set_again_after_a_cancel_still_fires(fire_env, live_scheduler):
+    live_scheduler.cancel_at_reset_turn(USER, SESSION, "send")
+    await _fire(_args("send", created_at=datetime.now(UTC) + timedelta(seconds=1)))
+    fire_env.dispatch.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_builder_chat_keeps_its_tool_limits(fire_env):
+    chat = _chat()
+    chat.session.metadata = ChatSessionMetadata(
+        llm_auth_provider="platform", builder_graph_id="graph-1"
+    )
+    fire_env.load.return_value = chat
+    await _fire(_args("resume"))
+    permissions = fire_env.dispatch.await_args.kwargs["permissions"]
+    assert permissions is not None and permissions.tools
