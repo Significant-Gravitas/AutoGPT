@@ -10,9 +10,10 @@ const RUN_SECONDS = 10;
 
 test.use({
   storageState: { cookies: [], origins: [] },
-  // PostHog's edge serves no flags to "HeadlessChrome", which would test a
-  // previews' flag-off layout instead of what users get.
+  // PostHog's edge serves no flags to "HeadlessChrome", so a preview would
+  // show its flag-off layout instead of what users get. Override to choose.
   userAgent:
+    process.env.PLAYWRIGHT_JOURNEY_USER_AGENT ??
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
 });
 
@@ -22,7 +23,7 @@ test.describe("realtime updates journey", () => {
   }) => {
     test.setTimeout(90_000);
     const liveConnection = await proxyLiveConnection(page);
-    await signUpJourneyUser(page);
+    await signInJourneyUser(page);
     const agentName = createUniqueAgentName("Journey realtime");
     await createCountdownAgent(page, agentName);
 
@@ -89,10 +90,10 @@ async function proxyLiveConnection(page: Page) {
   };
 }
 
-/** Opens the navbar Activity menu and checks the agent's latest run there. */
+/** Opens the Activity menu and checks the agent's latest run there. */
 async function expectActivity(page: Page, agentName: string, status: RegExp) {
   const menu = page.getByTestId("agent-activity-dropdown");
-  await page.getByTestId("agent-activity-button").click();
+  await openActivityMenu(page);
   await expect(menu).toBeVisible();
   const item: Locator = menu
     .getByRole("button")
@@ -100,7 +101,20 @@ async function expectActivity(page: Page, agentName: string, status: RegExp) {
     .first();
   await expect(item).toContainText(status, { timeout: 20_000 });
   await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
   await expect(menu).toBeHidden();
+}
+
+// The classic layout has an Activity button in the navbar; the new layout
+// keeps the same list under the account menu's Activity row.
+async function openActivityMenu(page: Page) {
+  const navbarButton = page.getByTestId("agent-activity-button");
+  if (await navbarButton.isVisible()) {
+    await navbarButton.click();
+    return;
+  }
+  await page.getByTestId("profile-popout-menu-trigger").click();
+  await page.getByTestId("account-menu-activity-trigger").click();
 }
 
 /** Survives client-side navigation, but not a reload. */
@@ -112,23 +126,51 @@ async function markPageInstance(page: Page): Promise<string> {
   });
 }
 
-async function signUpJourneyUser(page: Page) {
-  const id = `${Date.now()}-${randomBytes(3).toString("hex")}`;
-  const user = {
-    email: `journey-${id}@${journeyEmailDomain()}`,
-    password: `Journey-${randomBytes(12).toString("hex")}`,
-    name: `Journey ${id}`,
-  };
-  const origin = appOrigin();
-  const signUp = await page.request.post("/api/auth/sign-up/email", {
-    headers: { Origin: origin },
-    data: user,
-  });
-  expect(signUp.ok(), `sign-up failed: ${signUp.status()}`).toBe(true);
-  const onboarding = await page.request.post("/api/proxy/api/onboarding/step", {
-    params: { step: "ONBOARDING_COMPLETE" },
-  });
-  expect(onboarding.ok(), "completing onboarding failed").toBe(true);
+// Onboarding a journey user has already done; the later steps dismiss
+// first-visit cards that would cover the page.
+const COMPLETED_ONBOARDING_STEPS = [
+  "ONBOARDING_COMPLETE",
+  "AGENT_NEW_RUN",
+  "CAPABILITY_CARDS",
+  "AGENTS_TAB_INTRO",
+  "MARKETPLACE_TAB_INTRO",
+  "BUILD_TAB_INTRO",
+  "WORKFLOWS_MOVED",
+];
+
+/**
+ * Signs up a fresh user, or signs in as PLAYWRIGHT_JOURNEY_EMAIL /
+ * PLAYWRIGHT_JOURNEY_PASSWORD when set (e.g. a subscribed user on a preview,
+ * where fresh users meet the paywall).
+ */
+async function signInJourneyUser(page: Page) {
+  const headers = { Origin: appOrigin() };
+  const email = process.env.PLAYWRIGHT_JOURNEY_EMAIL;
+  const password = process.env.PLAYWRIGHT_JOURNEY_PASSWORD;
+  if (email && password) {
+    const signIn = await page.request.post("/api/auth/sign-in/email", {
+      headers,
+      data: { email, password },
+    });
+    expect(signIn.ok(), `sign-in failed: ${signIn.status()}`).toBe(true);
+  } else {
+    const id = `${Date.now()}-${randomBytes(3).toString("hex")}`;
+    const signUp = await page.request.post("/api/auth/sign-up/email", {
+      headers,
+      data: {
+        email: `journey-${id}@${journeyEmailDomain()}`,
+        password: `Journey-${randomBytes(12).toString("hex")}`,
+        name: `Journey ${id}`,
+      },
+    });
+    expect(signUp.ok(), `sign-up failed: ${signUp.status()}`).toBe(true);
+  }
+  for (const step of COMPLETED_ONBOARDING_STEPS) {
+    const response = await page.request.post("/api/proxy/api/onboarding/step", {
+      params: { step },
+    });
+    expect(response.ok(), `onboarding step ${step} failed`).toBe(true);
+  }
 }
 
 async function createCountdownAgent(page: Page, name: string) {
