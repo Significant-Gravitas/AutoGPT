@@ -44,6 +44,7 @@
       "recommended_schedule_cron": null,
       "is_scheduled": false,
       "next_scheduled_run": null,
+      "schedule_info_unavailable": false,
       "settings": {
         "human_in_the_loop_safe_mode": true,
         "sensitive_action_safe_mode": false,
@@ -95,6 +96,7 @@
       "recommended_schedule_cron": null,
       "is_scheduled": false,
       "next_scheduled_run": null,
+      "schedule_info_unavailable": false,
       "settings": {
         "human_in_the_loop_safe_mode": true,
         "sensitive_action_safe_mode": false,
