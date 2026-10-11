@@ -528,9 +528,9 @@ Local dev and Playwright:
 
 Adding new flags:
 
-1. Add the flag to the `Flag` enum and `FlagValues` type
-2. Provide a mock value in the mock map
-3. Configure the flag in LaunchDarkly
+1. Add the flag to `FrontendFlag` in `backend/backend/util/feature_flag/frontend.py`; the frontend's `Flag` is generated from it (`pnpm generate:api`)
+2. Give it a default in `defaultFlags` (`use-get-flag.ts`); `tsc` fails until you do
+3. Configure the flag in the flag vendor
 
 ---
 
