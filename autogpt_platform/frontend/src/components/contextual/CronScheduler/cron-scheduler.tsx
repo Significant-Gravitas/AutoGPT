@@ -289,7 +289,10 @@ export function CronScheduler({
             <Select
               value={customInterval.unit}
               onValueChange={(value: any) =>
-                setCustomInterval({ ...customInterval, unit: value })
+                setCustomInterval({
+                  unit: value,
+                  value: clampCustomIntervalValue(value, customInterval.value),
+                })
               }
             >
               <SelectTrigger className="w-32">
