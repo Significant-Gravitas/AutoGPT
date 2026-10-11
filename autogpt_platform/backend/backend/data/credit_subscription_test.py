@@ -60,6 +60,17 @@ def _clear_active_subscription_cache():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _no_pending_update():
+    """The payment failures here are plans that lapsed, not a change Stripe
+    holds until it's paid (see credit_pending_update_test.py)."""
+    with patch(
+        "backend.data.credit._holds_pending_update",
+        AsyncMock(return_value=False),
+    ):
+        yield
+
+
 # What the shared PostHog client adds to every event (see posthog_client.capture).
 BASE_PROPERTIES = {"environment": "test", "source": "platform"}
 

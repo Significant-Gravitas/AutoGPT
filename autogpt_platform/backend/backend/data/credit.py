@@ -3199,8 +3199,7 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
 
     if invoice.get("billing_reason") == "subscription_create":
         # A new plan's first payment failed inside Checkout, which lets the
-        # customer retry; no plan lapsed. Cancelling here would also end the
-        # trial a cancel-pending customer was buying the plan beside.
+        # customer retry; no plan lapsed.
         logger.info(
             "handle_subscription_payment_failure: first payment of new sub %s"
             " failed for user %s; leaving it to Checkout",
@@ -3214,6 +3213,19 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
             "handle_subscription_payment_failure: amount_due=%d for user %s;"
             " nothing to deduct",
             amount_due,
+            user.id,
+        )
+        return
+
+    if sub_id and await _holds_pending_update(sub_id, invoice_id):
+        # Stripe applies a pending update only once its invoice is paid, and
+        # voids the invoice when the update lapses: nothing has changed. A
+        # trial converting early waits like this for the bank to confirm.
+        logger.info(
+            "handle_subscription_payment_failure: invoice %s holds a pending"
+            " update on sub %s for user %s; nothing changed",
+            invoice_id,
+            sub_id,
             user.id,
         )
         return
@@ -3291,6 +3303,15 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
             )
             return
         await set_subscription_tier(user.id, SubscriptionTier.NO_TIER)
+
+
+async def _holds_pending_update(subscription_id: str, invoice_id: str) -> bool:
+    subscription = await stripe_call(
+        stripe.Subscription.retrieve_async, subscription_id
+    )
+    return bool(subscription.get("pending_update")) and (
+        subscription.get("latest_invoice") == invoice_id
+    )
 
 
 async def handle_subscription_payment_success(invoice: dict) -> None:
