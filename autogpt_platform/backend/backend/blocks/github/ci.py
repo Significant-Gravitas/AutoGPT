@@ -28,6 +28,14 @@ from ._auth import (
 logger = logging.getLogger(__name__)
 
 
+def _is_not_found(error: HTTPClientError) -> bool:
+    # GitHub answers an unknown commit ref with 422 "No commit found for SHA";
+    # any other 422 is a real validation error.
+    if error.status_code == 404:
+        return True
+    return error.status_code == 422 and "No commit found" in str(error)
+
+
 class CheckRunStatus(Enum):
     QUEUED = "queued"
     IN_PROGRESS = "in_progress"
@@ -200,14 +208,15 @@ class GithubGetCIResultsBlock(Block):
 
         if re.fullmatch(r"[0-9]+", target):
             # All-digit input is ambiguous: an abbreviated SHA can be all
-            # digits. Try the likelier reading first and fall back on 404/422.
+            # digits. Try the likelier reading first and fall back only when
+            # it doesn't exist.
             lookups = [cls._resolve_commit_sha, cls._pr_head_sha]
             if len(target) < 7:
                 lookups.reverse()
             try:
                 return await lookups[0](api, repo, target)
             except HTTPClientError as e:
-                if e.status_code not in (404, 422):
+                if not _is_not_found(e):
                     raise
             return await lookups[1](api, repo, target)
 

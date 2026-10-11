@@ -12,11 +12,20 @@ COMMITS = f"https://api.github.com/repos/{REPO}/commits/"
 PULLS = f"https://api.github.com/repos/{REPO}/pulls/"
 
 
-def _api(routes: dict[str, dict | int]) -> MagicMock:
-    """Fake GitHub client: URL -> JSON body, or an int HTTP error status."""
+NO_COMMIT = HTTPClientError(
+    "HTTP 422 Error: Unprocessable Entity, "
+    'Body: {"message":"No commit found for SHA: 1234567"}',
+    422,
+)
+
+
+def _api(routes: dict[str, dict | int | HTTPClientError]) -> MagicMock:
+    """Fake GitHub client: URL -> JSON body, an HTTP error status, or an error."""
 
     async def get(url, *args, **kwargs):
         result = routes.get(url, 404)
+        if isinstance(result, HTTPClientError):
+            raise result
         if isinstance(result, int):
             raise HTTPClientError(f"HTTP {result}", result)
         response = MagicMock()
@@ -78,6 +87,23 @@ async def test_hex_sha_is_returned_unchanged():
         "abc123d"
     )
     api.get.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unknown_commit_422_falls_back_to_pr():
+    api = _api(
+        {COMMITS + "1234567": NO_COMMIT, PULLS + "1234567": {"head": {"sha": "prhead"}}}
+    )
+    sha = await GithubGetCIResultsBlock.get_commit_sha(api, REPO, "1234567")
+    assert sha == "prhead"
+
+
+@pytest.mark.asyncio
+async def test_other_422_is_not_swallowed():
+    api = _api({COMMITS + "1234567": 422})
+    with pytest.raises(HTTPClientError):
+        await GithubGetCIResultsBlock.get_commit_sha(api, REPO, "1234567")
+    assert _urls(api) == [COMMITS + "1234567"]
 
 
 @pytest.mark.asyncio
