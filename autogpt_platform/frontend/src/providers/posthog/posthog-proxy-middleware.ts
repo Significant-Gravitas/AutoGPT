@@ -22,10 +22,10 @@ export function proxyPostHogRequest(request: NextRequest) {
 
   const path = request.nextUrl.pathname.slice(POSTHOG_PROXY_PATH.length);
   const isAsset = path.startsWith("/static/") || path.startsWith("/array/");
-  const destination = new URL(
-    `${path}${request.nextUrl.search}`,
-    isAsset ? target.assetsHost : target.apiHost,
-  );
+  // Never resolve the path against the host: "//evil.com/x" would replace it.
+  const destination = new URL(isAsset ? target.assetsHost : target.apiHost);
+  destination.pathname = path;
+  destination.search = request.nextUrl.search;
 
   const headers = new Headers(request.headers);
   headers.set("host", destination.host);

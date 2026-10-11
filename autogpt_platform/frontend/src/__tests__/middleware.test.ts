@@ -182,6 +182,19 @@ describe("middleware PostHog proxy", () => {
     expect(authMiddlewareMock).not.toHaveBeenCalled();
   });
 
+  it.each(["/relay//evil.example/x", "/relay///evil.example/x"])(
+    "never forwards %s anywhere but PostHog",
+    async (path) => {
+      const response = await middleware(
+        new NextRequest(`https://platform.agpt.co${path}`),
+      );
+
+      expect(response.headers.get("x-middleware-rewrite")).toMatch(
+        /^https:\/\/eu\.i\.posthog\.com\//,
+      );
+    },
+  );
+
   it("doesn't treat look-alike paths as the proxy", async () => {
     authMiddlewareMock.mockResolvedValueOnce(new Response("ok"));
 
