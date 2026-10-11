@@ -5,6 +5,7 @@ import contextvars
 import json
 import logging
 import uuid
+from datetime import UTC
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -34,6 +35,7 @@ from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockExecutionError
 
 if TYPE_CHECKING:
+    from backend.copilot.turn_pause import TurnPause
     from backend.data.execution import ExecutionContext
 
 logger = logging.getLogger(__name__)
@@ -67,6 +69,21 @@ class SubAgentRecursionError(BlockExecutionError):
     def __init__(self, message: str) -> None:
         super().__init__(
             message=message,
+            block_name="AutoPilotBlock",
+            block_id=AUTOPILOT_BLOCK_ID,
+        )
+
+
+class AutoPilotOutOfBudgetError(BlockExecutionError):
+    """The block's turn was refused when picked up: no AutoPilot budget left.
+
+    A deliberate stop like the recursion limit, so it skips the recovery
+    re-enqueue, which would only be refused again.
+    """
+
+    def __init__(self, pause: "TurnPause") -> None:
+        super().__init__(
+            message=_out_of_budget_message(pause),
             block_name="AutoPilotBlock",
             block_id=AUTOPILOT_BLOCK_ID,
         )
@@ -463,6 +480,10 @@ class AutoPilotBlock(Block):
                 # SessionResult carries only the refusal and its empty
                 # response_text would otherwise render as a successful turn.
                 raise RuntimeError(result.refusal or "AutoPilot turn was refused")
+            if result.pause is not None and not result.pause.started:
+                # Completed, but only as a not-started pause: the executor
+                # refused the turn for want of budget, so nothing ran either.
+                raise AutoPilotOutOfBudgetError(result.pause)
 
             # Build a lightweight conversation summary from the aggregated data.
             # When ``result.queued`` is True the prompt rode on an already-
@@ -664,7 +685,7 @@ class AutoPilotBlock(Block):
             yield "session_id", sid
             yield "error", "AutoPilot execution was cancelled."
             raise
-        except SubAgentRecursionError as exc:
+        except (SubAgentRecursionError, AutoPilotOutOfBudgetError) as exc:
             # Deliberate block — re-enqueueing would immediately hit the limit
             # again, so skip recovery and just surface the error.
             yield "session_id", sid
@@ -705,6 +726,17 @@ class AutoPilotBlock(Block):
 # ---------------------------------------------------------------------------
 # Helpers – placed after the block class for top-down readability.
 # ---------------------------------------------------------------------------
+
+
+def _out_of_budget_message(pause: "TurnPause") -> str:
+    """What a graph run shows for a turn refused for want of budget."""
+    if pause.reason == "trial":
+        return "Out of AutoPilot budget: the trial allowance is used up."
+    if pause.resets_at is None:
+        return "Out of AutoPilot budget."
+    resets_at = pause.resets_at.astimezone(UTC)
+    return f"Out of AutoPilot budget until {resets_at:%Y-%m-%d %H:%M} UTC."
+
 
 # Task-scoped recursion depth counter & chain-wide limit.
 # contextvars are scoped to the current asyncio task, so concurrent

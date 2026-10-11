@@ -11,12 +11,19 @@ Focuses on the queue-on-busy fallback:
   fresh dispatch.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.copilot import active_turns
-from backend.copilot.sdk.session_waiter import SessionResult, run_copilot_turn_via_queue
+from backend.copilot.response_model import StreamFinish, StreamStart, StreamTurnPaused
+from backend.copilot.sdk.session_waiter import (
+    SessionResult,
+    run_copilot_turn_via_queue,
+    wait_for_session_result,
+)
+from backend.copilot.turn_pause import TurnPause
 
 _QR = type(
     "QR",
@@ -346,3 +353,35 @@ async def test_a_tree_refusal_becomes_the_refused_outcome():
 
     assert outcome == "refused"
     assert result.refusal == "This task's tree has closed."
+
+
+@pytest.mark.asyncio
+async def test_a_turn_refused_at_pickup_completes_carrying_its_pause():
+    """The executor ends a turn the allowance can't cover as a not-started
+    pause, which the waiter sees complete; the pause says nothing ran."""
+    pause = TurnPause(reason="weekly", checkpoint_saved=False, started=False)
+    events: asyncio.Queue = asyncio.Queue()
+    for event in (
+        StreamStart(messageId="msg-1"),
+        StreamTurnPaused(pause=pause.as_part()),
+        StreamFinish(),
+    ):
+        events.put_nowait(("0-0", event))
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.stream_registry.subscribe_to_session",
+            new=AsyncMock(return_value=events),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.stream_registry.unsubscribe_from_session",
+            new=AsyncMock(),
+        ),
+    ):
+        outcome, result = await wait_for_session_result(
+            session_id="sess-1", user_id="u1", timeout=5
+        )
+
+    assert outcome == "completed"
+    assert result.pause == pause
+    assert result.response_text == ""

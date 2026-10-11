@@ -33,6 +33,7 @@ from backend.copilot.pending_message_helpers import (
 )
 from backend.copilot.response_model import StreamError, StreamFinish
 from backend.copilot.tree import SpawnRequest, TreeRefusal
+from backend.copilot.turn_pause import TurnPause
 
 from .stream_accumulator import EventAccumulator, ToolCallEntry, process_event
 
@@ -74,6 +75,10 @@ class SessionResult:
     # Why the turn never started, when the outcome is ``refused``. Written
     # for the model: it names the bound that was hit.
     refusal: str = ""
+    # Set when the turn ended as a pause. A ``completed`` turn whose pause
+    # has ``started=False`` was refused at pickup for want of allowance, so
+    # it produced nothing.
+    pause: TurnPause | None = None
 
 
 async def wait_for_session_result(
@@ -130,6 +135,7 @@ async def wait_for_session_result(
     result.prompt_tokens = acc.prompt_tokens
     result.completion_tokens = acc.completion_tokens
     result.total_tokens = acc.total_tokens
+    result.pause = acc.pause
     return outcome, result
 
 
