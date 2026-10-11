@@ -176,9 +176,9 @@ async def test_bundled_claude_cli_delivers_a_post_tool_use_followup_to_codex(
 
     The PostToolUse hook hands queued messages to the CLI, which sends them
     after the tool result rather than inside it -- for a non-Claude model, as
-    a separate ``system`` message, labelled and followed by the CLI's own
-    token count. Exactly the queued block must reach Codex as a follow-up,
-    leaving the tool's own output untouched.
+    a separate ``system`` message under the hook's label, which newer builds
+    follow with the CLI's own token count. Exactly the queued block must
+    reach Codex as a follow-up, leaving the tool's own output untouched.
     """
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
     stderr_lines: list[str] = []

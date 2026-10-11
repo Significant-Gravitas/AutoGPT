@@ -270,9 +270,9 @@ _USER_FOLLOW_UP = format_pending_as_followup(
     [PendingMessage(content="also check the logs")]
 )
 _TOTAL_TOKENS = "<total_tokens>14989339 tokens left</total_tokens>"
-# What the bundled CLI (claude-agent-sdk 0.2.161) sends with a tool result
-# whose PostToolUse hook returned a queued message: the hook's context, then
-# the CLI's own note.
+# What the CLI sends with a tool result whose PostToolUse hook returned a
+# queued message: the hook's label and context, then (CLI 2.1.296) its own
+# token count.
 _HOOK_CONTEXT = (
     "PostToolUse:mcp__copilot__run_block hook additional context: "
     f"{_USER_FOLLOW_UP}\n\n{_TOTAL_TOKENS}"
@@ -286,14 +286,18 @@ def _with_cli_context(
 ) -> dict[str, object]:
     """Add what the CLI sends with a tool result, in one of its shapes.
 
-    Given a non-Claude model name, as on the ChatGPT route, the bundled CLI
-    sends it as a ``system`` message after the tool_result's message. Older
-    builds put it in a text block beside the tool_result; given a Claude model
-    name, the CLI folds it into the tool_result's own content.
+    Given a non-Claude model name, as on the ChatGPT route, the CLI sends it
+    as a ``system`` message after the tool_result's message: a text block on
+    2.1.284, which claude-agent-sdk 0.2.161 bundles, a string on 2.1.296.
+    Older builds put it in a text block beside the tool_result; given a Claude
+    model name, the CLI folds it into the tool_result's own content.
     """
     messages = cast(list[dict[str, object]], payload["messages"])
     if shape == "system-message":
         messages.append({"role": "system", "content": text})
+        return payload
+    if shape == "system-message-blocks":
+        messages.append({"role": "system", "content": [{"type": "text", "text": text}]})
         return payload
     reminder = {
         "type": "text",
@@ -1167,6 +1171,10 @@ async def test_retry_with_a_changed_system_prompt_still_replays() -> None:
     [
         (
             "system-message",
+            CodexDynamicToolResult(content="one result", followup=_USER_FOLLOW_UP),
+        ),
+        (
+            "system-message-blocks",
             CodexDynamicToolResult(content="one result", followup=_USER_FOLLOW_UP),
         ),
         (

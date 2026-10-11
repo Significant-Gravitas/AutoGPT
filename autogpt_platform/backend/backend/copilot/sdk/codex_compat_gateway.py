@@ -1130,11 +1130,12 @@ def _followup_after_results(messages: object, call_ids: list[str]) -> str | None
 
     The PostToolUse hook hands them over as ``<user_follow_up>`` blocks in its
     context, which the CLI sends after the result: for a non-Claude model
-    name, in a ``system`` message after the result's message; older builds, in
-    a text block beside the result. Only the blocks are passed on. The CLI's
-    own notes ride the same way, a ``<total_tokens>`` count every round, and
-    must not become user turns. A block inside the result itself is not read
-    here: the result is forwarded whole, so Codex already has it.
+    name, in a ``system`` message after the result's message (CLI 2.1.284 and
+    2.1.296); older builds, in a text block beside the result. Only the blocks
+    are passed on. The CLI's own notes can ride the same way (2.1.296 adds a
+    ``<total_tokens>`` count every round) and must not become user turns. A
+    block inside the result itself, the CLI's shape for Claude model names,
+    is not read here: the result is forwarded whole, so Codex already has it.
     """
     if not isinstance(messages, list):
         return None
