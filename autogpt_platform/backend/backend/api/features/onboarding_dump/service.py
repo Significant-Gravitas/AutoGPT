@@ -9,7 +9,7 @@ import asyncio
 import logging
 import time
 
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, HTTPException
 from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
@@ -35,6 +35,9 @@ from backend.api.features.onboarding_dump.models import (
     RecommendedProvider,
     RecommendedProvidersResponse,
     SuggestedPrompt,
+)
+from backend.api.features.onboarding_dump.rate_limit import (
+    enforce_personalization_budget,
 )
 from backend.copilot.db import user_has_any_session
 from backend.data.onboarding import format_brain_dump_for_extraction
@@ -125,6 +128,7 @@ async def finalize_voice_dump(
             current.status, current.transcript, BrainDumpInputMode.voice
         )
 
+    await _admit_processing(user_id, recording_id)
     audio = await storage.assemble_parts(user_id, recording_id)
     if not audio:
         # Nothing buffered server-side. The browser still holds every part
@@ -270,6 +274,7 @@ async def finalize_typed_dump(
             )
         return _pipeline_response(current.status, current.transcript, current.inputMode)
 
+    await _admit_processing(user_id, recording_id)
     # Typed dumps skip transcription but not the gate: a keyboard can
     # produce "asdf asdf asdf" just as easily as a silent mic produces a
     # hallucinated transcript. Only the claim winner reaches this point,
@@ -290,6 +295,17 @@ async def finalize_typed_dump(
     return _pipeline_response(
         BrainDumpStatus.transcribed, text.strip(), BrainDumpInputMode.typed
     )
+
+
+async def _admit_processing(user_id: str, recording_id: str) -> None:
+    try:
+        await enforce_personalization_budget(user_id)
+    except HTTPException as exc:
+        code = (
+            "rate_limited" if exc.status_code == 429 else "personalization_unavailable"
+        )
+        await db.mark_failed(user_id, recording_id, code)
+        raise
 
 
 async def _quality_rejection(
