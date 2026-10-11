@@ -59,7 +59,12 @@ class E2ESeedCacheContractTests(unittest.TestCase):
             "\n      - name:", 1
         )[0]
         self.assertIn("--refresh-credentials-only", verification)
-        self.assertNotIn("if:", verification)
+        # Runs whenever the leg seeds, cached dump or fresh; only the
+        # journeys leg, which seeds nothing, skips it.
+        self.assertEqual(
+            re.findall(r"^\s+if: (.+)$", verification, re.M), ["matrix.seed"]
+        )
+        self.assertEqual(_matrix_leg(workflow, "smoke")["seed"], "true")
         self.assertNotIn("continue-on-error", verification)
         self.assertLess(
             workflow.index("- name: Set up tests - Create E2E test data"),
@@ -116,7 +121,7 @@ class E2ECoverageContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("--min-tests ${{ matrix.min_tests }}", workflow)
         self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "28")
-        self.assertEqual(_matrix_leg(workflow, "journeys")["min_tests"], "4")
+        self.assertEqual(_matrix_leg(workflow, "journeys")["min_tests"], "5")
         # Smoke stays strict: no test.fail() known failures.
         self.assertEqual(_matrix_leg(workflow, "smoke")["known_failures"], "false")
 

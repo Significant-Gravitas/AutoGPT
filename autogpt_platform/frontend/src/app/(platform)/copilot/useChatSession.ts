@@ -21,7 +21,7 @@ import {
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
-import { isPaywallError, ReportedSendError } from "./helpers/sendFailureToast";
+import { isPaywallError } from "./helpers/sendFailureToast";
 import { getSessionSentFrom } from "./sentFrom";
 import {
   getAvailableLLMTransports,
@@ -34,6 +34,7 @@ import {
   compareShadowWithSession,
   setStreamShadowRate,
 } from "./stream/turnShadow";
+import { ReportedSendError } from "./helpers/reportedSendError";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
@@ -262,13 +263,15 @@ export function useChatSession({
       throw new ReportedSendError("Could not load AI connections");
     }
     if (chatTransports !== undefined && availableTransports.length === 0) {
+      // NoAIConnectionNotice above the composer says how to fix this and
+      // stays put; the toast only marks that this send went nowhere.
       toast({
         variant: "destructive",
-        title: "Your expert needs an AI connection",
+        title: "No AI connection is set up",
         description:
-          "Connect ChatGPT or Microsoft 365 Copilot in Settings → Integrations, or configure a chat API or local model on this server.",
+          "Your message is back in the composer. See the notice above it for how to connect a model.",
       });
-      throw new ReportedSendError("chat_transport_not_configured");
+      throw new ReportedSendError("No AI connection is set up");
     }
     if (!resolvedLLMAuth) {
       const connectionsAreLoading = chatTransports === undefined;

@@ -456,6 +456,25 @@ describe("recovery", () => {
     expect(most).toBe(1);
   });
 
+  it("a send queued behind another tab's running turn is not drawn above that turn", async () => {
+    // Another tab's turn runs; this tab has not read the session since.
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    backend.respond(({ method }) =>
+      method === "POST" ? "follow-up-queued" : "stream",
+    );
+    void runtime.send({ text: "And what about example.org?" }, undefined);
+    await advance(2_000);
+
+    expect(backend.connections.at(-1)?.url.searchParams.get("turn")).toBe(
+      backend.turnId,
+    );
+    // The other tab's prompt (row 0) stays history above the followed turn.
+    expect(snapshot().ownedFrom).toBe(1);
+    expect(textsOf(render())).toEqual([FIRST_TEXT]);
+    expect(snapshot().error).toBeNull();
+  });
+
   it("stops reading the session once its queued turn is cancelled", async () => {
     backend.queueNextTurn();
     void runtime.send({ text: PROMPT }, undefined);

@@ -5,6 +5,12 @@ import { BlockCost } from "@/app/api/__generated__/models/blockCost";
 import { BlockCostType } from "@/app/api/__generated__/models/blockCostType";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 
+// These cover the hosted billing UI, which self-hosted builds hide.
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+  useBillingStatus: () => ({ isBillingEnabled: true, isResolved: true }),
+}));
+
 vi.mock("@/hooks/useCredits", () => ({
   default: () => ({
     formatCredits: (credit: number | null) =>

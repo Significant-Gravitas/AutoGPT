@@ -8,5 +8,5 @@
   "skills-hub": true,
   "graphiti-memory": true,
   "expert-spend-approval": true,
-  "enable-platform-payment": false
+  "enable-platform-payment": true
 }

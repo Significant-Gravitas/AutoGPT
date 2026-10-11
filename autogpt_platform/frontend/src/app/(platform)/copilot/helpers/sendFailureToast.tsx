@@ -1,11 +1,13 @@
-import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
-import { toast as sonnerToast } from "sonner";
 import { describeSendFailure } from "../components/ChatInput/helpers";
+import {
+  PAYWALL_TOAST_KEY,
+  PaywallToastAction,
+  PaywallToastDescription,
+} from "../components/PaywallToast/PaywallToast";
+import { ReportedSendError } from "./reportedSendError";
 
-const BILLING_PATH = "/settings/billing";
-const PAYWALL_TOAST_KEY = "copilot-send-paywall";
 const PAYWALL_TOAST_DURATION_MS = 15_000;
 
 /** The backend answers 402 when the account has no plan (or its trial
@@ -13,15 +15,6 @@ const PAYWALL_TOAST_DURATION_MS = 15_000;
  *  a "try again". */
 export function isPaywallError(error: unknown) {
   return error instanceof ApiError && error.status === 402;
-}
-
-/** A send refused before it left the browser, by a check that already told
- *  the user why in its own words. The caller must not toast it again. */
-export class ReportedSendError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ReportedSendError";
-  }
 }
 
 interface Args {
@@ -45,22 +38,12 @@ export function toastSendFailure({
   if (error instanceof ReportedSendError) return;
   if (isPaywallError(error)) {
     toast({
-      title: "Choose a plan to keep chatting",
-      description: `Sending needs an active plan — ${paywallRecovery}.`,
+      title: "Sending needs an active plan",
+      description: <PaywallToastDescription recovery={paywallRecovery} />,
       variant: "destructive",
       duration: PAYWALL_TOAST_DURATION_MS,
       replaceKey: PAYWALL_TOAST_KEY,
-      action: (
-        <Button
-          as="NextLink"
-          href={BILLING_PATH}
-          size="small"
-          variant="secondary"
-          onClick={() => sonnerToast.dismiss(PAYWALL_TOAST_KEY)}
-        >
-          See plans
-        </Button>
-      ),
+      action: <PaywallToastAction />,
     });
     return;
   }

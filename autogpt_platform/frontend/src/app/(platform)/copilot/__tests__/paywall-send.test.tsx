@@ -18,6 +18,11 @@ import { useChatSession } from "../useChatSession";
 
 const toast = vi.hoisted(() => vi.fn());
 const transports = vi.hoisted(() => ({ loaded: true }));
+const billing = vi.hoisted(() => ({ enabled: true }));
+
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => billing.enabled,
+}));
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: (...args: unknown[]) => toast(...args),
@@ -89,6 +94,7 @@ afterEach(() => {
   server.resetHandlers();
   toast.mockReset();
   transports.loaded = true;
+  billing.enabled = true;
 });
 
 describe("a refused first send", () => {
@@ -102,14 +108,44 @@ describe("a refused first send", () => {
     expect(toast).toHaveBeenCalledOnce();
     const [paywall] = toast.mock.calls[0];
     expect(paywall).toMatchObject({
-      title: "Choose a plan to keep chatting",
+      title: "Sending needs an active plan",
       variant: "destructive",
     });
-    render(paywall.action);
+    render(
+      <>
+        {paywall.description}
+        {paywall.action}
+      </>,
+    );
+    expect(
+      screen.getByText(
+        "Choose one to keep chatting — your message is back in the composer.",
+      ),
+    ).toBeDefined();
     expect(
       screen.getByRole("link", { name: "See plans" }).getAttribute("href"),
     ).toBe("/settings/billing");
     expect(textarea.value).toBe("draft my weekly report");
+  });
+
+  it("offers no plans link where this install doesn't bill", async () => {
+    billing.enabled = false;
+    answerSessionCreate(
+      402,
+      "A subscription is required to use this feature. Upgrade to continue.",
+    );
+    await send("draft my weekly report");
+
+    expect(toast).toHaveBeenCalledOnce();
+    const [paywall] = toast.mock.calls[0];
+    render(
+      <>
+        {paywall.description}
+        {paywall.action}
+      </>,
+    );
+    expect(screen.getByText(/Ask whoever runs this server/)).toBeDefined();
+    expect(screen.queryByRole("link", { name: "See plans" })).toBeNull();
   });
 
   it("reports any other failure once, with the server's reason", async () => {

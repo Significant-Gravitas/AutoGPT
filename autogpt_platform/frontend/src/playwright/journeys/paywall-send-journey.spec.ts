@@ -2,21 +2,13 @@ import type { Page } from "@playwright/test";
 import { CopilotPage } from "../pages/copilot.page";
 import { expect, test } from "./fixtures";
 
-// PostHog's edge serves no flags to a "HeadlessChrome" user agent, so a
-// headless run would not see the product hosted users see.
-const CHROME_USER_AGENT =
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
-
-const CREATE_SESSION_PATH = "/api/proxy/api/chat/sessions";
-// What the hosted backend answers a NO_TIER account (backend/api/rest_api.py
-// maps UserPaywalledError to this).
-const PAYWALL_DETAIL =
-  "A subscription is required to use this feature. Upgrade to continue.";
+const SUBSCRIPTION_PATH = "/api/proxy/api/credits/subscription";
 
 test.use({
-  userAgent: CHROME_USER_AGENT,
+  // The backend's own paywall answers this send: a NO_TIER account with
+  // `enable-platform-payment` on gets a 402 from session creation.
   expectedResponses: [
-    { status: 402, url: CREATE_SESSION_PATH, method: "POST" },
+    { status: 402, url: "/api/proxy/api/chat/sessions", method: "POST" },
   ],
 });
 
@@ -24,6 +16,15 @@ test("a send after the plan lapses offers one way to upgrade and keeps the messa
   page,
   journeyUser: _journeyUser,
 }) => {
+  test.skip(
+    Boolean(process.env.PLAYWRIGHT_JOURNEY_EMAIL),
+    "cancels the user's plan, so it never runs as a real account",
+  );
+  expect(
+    await currentTier(page),
+    "the journey user starts on a plan (PLAYWRIGHT_JOURNEY_TIER, e.g. PRO)",
+  ).not.toBe("NO_TIER");
+
   const copilot = new CopilotPage(page);
   // Sending before the AI connections load is refused client-side ("AI
   // connections are still loading"), which is not what this journey is about.
@@ -39,7 +40,6 @@ test("a send after the plan lapses offers one way to upgrade and keeps the messa
   // The plan ends while the page is open: a cancelled plan or a lapsed trial
   // drops the account to NO_TIER, and nothing tells the open page.
   await cancelPlan(page);
-  await answerSendsLikeHostedPaywall(page);
 
   const message = `paywall journey ${Date.now()}`;
   await composer.fill(message);
@@ -64,29 +64,21 @@ test("a send after the plan lapses offers one way to upgrade and keeps the messa
   await expect(toasts).toHaveCount(0);
 });
 
+async function currentTier(page: Page) {
+  const status = await page.request.get(SUBSCRIPTION_PATH);
+  expect(status.ok(), `reading the plan failed: ${status.status()}`).toBe(true);
+  return (await status.json()).tier as string;
+}
+
+// A plan granted without Stripe (no customer) is downgraded in the database at
+// once, the same state a lapsed trial or an ended subscription leaves.
 async function cancelPlan(page: Page) {
-  const cancel = await page.request.post(
-    "/api/proxy/api/credits/subscription",
-    { data: { tier: "NO_TIER" } },
-  );
+  const cancel = await page.request.post(SUBSCRIPTION_PATH, {
+    data: { tier: "NO_TIER" },
+  });
   expect(
     cancel.ok(),
     `cancelling the plan failed: ${cancel.status()} ${await cancel.text()}`,
   ).toBe(true);
-  const status = await page.request.get("/api/proxy/api/credits/subscription");
-  expect((await status.json()).tier).toBe("NO_TIER");
-}
-
-// The journeys leg forces `enable-platform-payment` off on the backend so
-// fresh users elsewhere aren't paywalled (journeys/README.md). Where the
-// backend already paywalls (hosted config, previews) its own 402 passes
-// through untouched; otherwise the session it created is answered the way
-// the hosted backend answers this NO_TIER account.
-async function answerSendsLikeHostedPaywall(page: Page) {
-  await page.route(`**${CREATE_SESSION_PATH}`, async (route) => {
-    if (route.request().method() !== "POST") return route.fallback();
-    const response = await route.fetch();
-    if (response.status() === 402) return route.fulfill({ response });
-    return route.fulfill({ status: 402, json: { detail: PAYWALL_DETAIL } });
-  });
+  expect(await currentTier(page)).toBe("NO_TIER");
 }

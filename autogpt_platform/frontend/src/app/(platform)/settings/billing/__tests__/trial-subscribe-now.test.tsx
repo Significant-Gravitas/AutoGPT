@@ -26,6 +26,11 @@ vi.mock("next/navigation", async (importOriginal) => ({
   useParams: () => ({}),
 }));
 
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+  useBillingStatus: () => ({ isBillingEnabled: true, isResolved: true }),
+}));
+
 beforeEach(() => setTrialUser());
 afterEach(() => {
   setTrialUser(null);
