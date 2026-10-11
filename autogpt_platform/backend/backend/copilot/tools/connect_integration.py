@@ -23,13 +23,13 @@ from backend.copilot.tools.utils import build_missing_credentials_from_field_inf
 from backend.data.model import CredentialsFieldInfo, CredentialsType
 from backend.integrations.providers import ProviderName
 
-from .ayrshare_managed import AYRSHARE, link_accounts_card, link_message, sso_link
+from .ayrshare_managed import AYRSHARE, ensure_profile, link_accounts_card, link_message
 from .base import BaseTool
 from .expert_scope import annotate_expert_grants
 
 CONNECT_INTEGRATION_TOOL = "connect_integration"
 
-# Providers whose account AutoGPT holds: connecting hands the user a link to
+# Providers whose account AutoGPT holds: connecting shows the user a button to
 # link their own accounts to it, never a key or token field.  Kept out of
 # SUPPORTED_PROVIDERS, which also decides what is injected into the sandbox.
 MANAGED_PROVIDERS: dict[str, str] = {AYRSHARE: "Ayrshare"}
@@ -89,7 +89,7 @@ class ConnectIntegrationTool(BaseTool):
         return (
             f"Prompt the user to connect a required integration. "
             f"Supported providers: {supported}. "
-            "'ayrshare' (post_to_* blocks) returns the link where the user "
+            "'ayrshare' (post_to_* blocks) returns the card where the user "
             "links their social accounts, whenever they want to link them; "
             "never ask for its API key. "
             "ONLY call this tool for one of the supported providers listed above — "
@@ -284,12 +284,13 @@ async def _connect_managed(
     """The card for a provider AutoGPT holds the account for.
 
     Provisions the user's profile when it does not exist yet, through the
-    same path as the builder's connect button, and hands back its link.
+    same path as the builder's connect button, and hands back the card with
+    that button.
     """
-    link = await sso_link(user_id)
-    if isinstance(link, ErrorResponse):
-        link.session_id = session_id
-        return link
+    error = await ensure_profile(user_id)
+    if error is not None:
+        error.session_id = session_id
+        return error
     display_name = MANAGED_PROVIDERS[provider]
     field_key = f"{provider}_credentials"
     field_info = CredentialsFieldInfo[ProviderName, CredentialsType](
@@ -307,8 +308,7 @@ async def _connect_managed(
         agent_id=f"connect_{provider}",
         agent_name=display_name,
         missing_credentials=missing,
-        link=link,
-        message=link_message(link, f"{lead} {reason}".strip()),
+        message=link_message(f"{lead} {reason}".strip()),
         session_id=session_id,
         execution_modes=(),
     )

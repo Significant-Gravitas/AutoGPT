@@ -167,7 +167,7 @@ async def test_a_connect_call_on_a_block_has_no_gate_subject():
     assert subject is NO_OP
 
 
-async def test_connect_on_an_ayrshare_block_hands_over_the_link():
+async def test_connect_on_an_ayrshare_block_shows_the_connect_card():
     # The managed credential exists, but which networks are linked is only
     # visible on Ayrshare's page, so "connected" would be a guess.
     session = make_session(USER)

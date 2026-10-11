@@ -55,8 +55,8 @@ class AyrshareManagedProvider(ManagedCredentialProvider):
 
     # Opt out of the credentials sweep — each Ayrshare profile counts
     # against our subscription quota, so we only provision through
-    # :func:`get_sso_link`, when the user opens the SSO flow from a block or
-    # AutoPilot runs an Ayrshare block for them.  See
+    # :func:`provision_profile`, when the user opens the SSO flow from a block
+    # or AutoPilot runs an Ayrshare block for them.  See
     # ``ManagedCredentialProvider.auto_provision`` for the gate semantics.
     auto_provision = False
 
@@ -214,28 +214,20 @@ class AyrshareSSOLink(BaseModel):
     expires_at: datetime
 
 
-async def get_sso_link(
-    user_id: str, store: IntegrationCredentialsStore
-) -> AyrshareSSOLink:
-    """Provision the user's managed profile if needed and sign an SSO link.
-
-    The one path every caller takes to hand a user the Ayrshare page where
-    they link their social networks: the builder's ``/ayrshare/sso_url``
-    route and AutoPilot's block and ``connect_integration`` tools.
-
-    Raises :class:`AyrshareNotConfiguredError` when the org secrets are
-    missing, and :class:`AyrshareProvisioningError` when provisioning or
-    signing fails.
-    """
+def _configured_client() -> AyrshareClient:
     if not settings_available():
         raise AyrshareNotConfiguredError("Ayrshare integration is not configured")
     try:
-        client = AyrshareClient()
+        return AyrshareClient()
     except MissingConfigError as exc:
         raise AyrshareNotConfiguredError(
             "Ayrshare integration is not configured"
         ) from exc
 
+
+async def _provision_profile(
+    user_id: str, store: IntegrationCredentialsStore
+) -> APIKeyCredentials:
     # On-demand provisioning: AyrshareManagedProvider opts out of the
     # credentials sweep (profile quota is per-user subscription-bound), so a
     # profile is only created for a user who actually needs one.
@@ -256,11 +248,43 @@ async def get_sso_link(
             user_id,
         )
         raise AyrshareProvisioningError("Failed to provision Ayrshare profile")
+    return ayrshare_creds[0]
+
+
+async def provision_profile(
+    user_id: str, store: IntegrationCredentialsStore
+) -> APIKeyCredentials:
+    """Provision the user's managed profile if needed, without signing a link.
+
+    For callers that only need the profile to exist, such as AutoPilot, which
+    sends the user to the card's connect button (it fetches its own link
+    from ``/ayrshare/sso_url``) instead of putting a link in the chat.
+
+    Raises the same errors as :func:`get_sso_link`.
+    """
+    _configured_client()
+    return await _provision_profile(user_id, store)
+
+
+async def get_sso_link(
+    user_id: str, store: IntegrationCredentialsStore
+) -> AyrshareSSOLink:
+    """Provision the user's managed profile if needed and sign an SSO link.
+
+    The path the builder's ``/ayrshare/sso_url`` route takes to hand a user
+    the Ayrshare page where they link their social networks.
+
+    Raises :class:`AyrshareNotConfiguredError` when the org secrets are
+    missing, and :class:`AyrshareProvisioningError` when provisioning or
+    signing fails.
+    """
+    client = _configured_client()
+    profile = await _provision_profile(user_id, store)
 
     try:
         jwt_response = await client.generate_jwt(
             private_key=Settings().secrets.ayrshare_jwt_key,
-            profile_key=ayrshare_creds[0].api_key.get_secret_value(),
+            profile_key=profile.api_key.get_secret_value(),
             allowed_social=SSO_ALLOWED_SOCIAL,
             expires_in=SSO_MAX_EXPIRY_MINUTES,
             verify=True,

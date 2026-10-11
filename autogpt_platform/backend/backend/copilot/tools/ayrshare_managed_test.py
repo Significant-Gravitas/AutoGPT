@@ -16,12 +16,14 @@ from backend.blocks.ayrshare.post_to_linkedin import PostToLinkedInBlock
 from backend.blocks.ayrshare.post_to_x import PostToXBlock
 from backend.copilot.context import _current_permissions, set_turn_unattended
 from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.tools.ayrshare_managed import CONNECT_BUTTON
 from backend.copilot.tools.connect_integration import ConnectIntegrationTool
 from backend.copilot.tools.helpers import execute_block, prepare_block_for_execution
 from backend.copilot.tools.models import (
     BlockOutputResponse,
     ErrorResponse,
     SetupRequirementsResponse,
+    ToolResponseBase,
 )
 from backend.copilot.tools.run_block import RunBlockTool
 from backend.data.model import APIKeyCredentials, CredentialsMetaInput
@@ -113,21 +115,30 @@ def ayrshare_backend(
         yield provision
 
 
-async def _prepare(block_id: str, *, dry_run: bool = False):
+async def _prepare(block_id: str, *, session=None):
     return await prepare_block_for_execution(
         block_id=block_id,
         input_data={"post": "Hello from AutoPilot"},
         user_id=USER,
-        session=make_session(USER),
+        session=session or make_session(USER),
         session_id="s-ayrshare",
-        dry_run=dry_run,
+        dry_run=False,
     )
+
+
+def assert_no_sso_link(result: ToolResponseBase) -> None:
+    # Tool output is stored with the chat, sent to the model provider and
+    # served by a shared chat; the link signs into the user's Ayrshare page.
+    dumped = result.model_dump_json()
+    assert SSO_URL not in dumped
+    assert "jwt=" not in dumped
+    assert "connect_url" not in dumped
 
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestBlockWithoutCredential:
     @pytest.mark.parametrize("block", [PostToLinkedInBlock(), PostToXBlock()])
-    async def test_provisions_the_profile_and_returns_the_link(self, block):
+    async def test_provisions_the_profile_and_returns_the_connect_card(self, block):
         # Repro of SECRT-2878: every prod session ended on "requires
         # credentials that are not configured".
         with ayrshare_backend() as provision:
@@ -135,11 +146,11 @@ class TestBlockWithoutCredential:
 
         assert isinstance(result, SetupRequirementsResponse)
         assert "not configured" not in result.message
-        assert SSO_URL in result.message
+        assert CONNECT_BUTTON in result.message
+        assert "Each post costs $0.02 ($0.05 for video)." in result.message
         provision.assert_awaited_once()
         (entry,) = result.setup_info.user_readiness.missing_credentials.values()
         assert entry["provider"] == "ayrshare"
-        assert entry["connect_url"] == SSO_URL
 
     async def test_not_configured_says_it_is_unavailable(self):
         with ayrshare_backend(configured=False) as provision:
@@ -159,13 +170,22 @@ class TestBlockWithoutCredential:
         assert "not configured" in result.message
         provision.assert_not_awaited()
 
-    async def test_dry_run_provisions_nothing(self):
+    @pytest.mark.parametrize("dry_run,validate_only", [(True, False), (False, True)])
+    async def test_inspection_provisions_nothing(self, dry_run, validate_only):
         with ayrshare_backend() as provision:
-            await _prepare(PostToLinkedInBlock().id, dry_run=True)
+            await prepare_block_for_execution(
+                block_id=PostToLinkedInBlock().id,
+                input_data={"post": "Hello from AutoPilot"},
+                user_id=USER,
+                session=make_session(USER),
+                session_id="s-ayrshare",
+                dry_run=dry_run,
+                validate_only=validate_only,
+            )
 
         provision.assert_not_awaited()
 
-    async def test_unattended_turn_gets_the_link_in_an_error(self):
+    async def test_unattended_turn_says_where_to_connect(self):
         session = make_session(USER)
         set_turn_unattended(session, scheduled=True)
         try:
@@ -176,7 +196,8 @@ class TestBlockWithoutCredential:
 
         assert isinstance(result, ErrorResponse)
         assert result.error == "ayrshare_accounts_not_linked"
-        assert SSO_URL in result.message
+        assert "opening this chat" in result.message
+        assert CONNECT_BUTTON in result.message
 
     async def test_a_block_the_session_may_not_run_provisions_nothing(self):
         block_id = PostToLinkedInBlock().id
@@ -202,20 +223,19 @@ class TestBlockWithoutCredential:
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestConnectIntegration:
-    async def test_ayrshare_returns_the_managed_link(self):
+    async def test_ayrshare_returns_the_managed_connect_card(self):
         with ayrshare_backend() as provision:
             result = await ConnectIntegrationTool()._execute(
                 USER, make_session(USER), provider="ayrshare"
             )
 
         assert isinstance(result, SetupRequirementsResponse)
-        assert SSO_URL in result.message
+        assert CONNECT_BUTTON in result.message
         provision.assert_awaited_once()
         entry = result.setup_info.user_readiness.missing_credentials[
             "ayrshare_credentials"
         ]
         assert entry["provider"] == "ayrshare"
-        assert entry["connect_url"] == SSO_URL
 
     async def test_ayrshare_not_configured(self):
         with ayrshare_backend(configured=False):
@@ -330,7 +350,7 @@ class TestManagedPostBilling:
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestPostToUnlinkedNetwork:
-    async def test_returns_the_link_and_charges_nothing(self):
+    async def test_returns_the_connect_card_and_charges_nothing(self):
         spend = AsyncMock()
         post = AsyncMock(
             side_effect=BlockExecutionError(
@@ -343,7 +363,7 @@ class TestPostToUnlinkedNetwork:
             result = await _run(PostToXBlock(), post, spend)
 
         assert isinstance(result, SetupRequirementsResponse)
-        assert SSO_URL in result.message
+        assert CONNECT_BUTTON in result.message
         assert "Twitter is not linked" in result.message
         spend.assert_not_awaited()
 
@@ -355,3 +375,63 @@ class TestPostToUnlinkedNetwork:
 
         assert isinstance(result, ErrorResponse)
         assert "Duplicate post" in result.message
+
+
+def _unlinked_post() -> AsyncMock:
+    return AsyncMock(
+        side_effect=BlockExecutionError(
+            "Ayrshare API request failed (400): Twitter is not linked",
+            "PostToXBlock",
+            "x",
+        )
+    )
+
+
+async def _block_without_credential(session):
+    return await _prepare(PostToLinkedInBlock().id, session=session)
+
+
+async def _connect(session):
+    return await ConnectIntegrationTool()._execute(USER, session, provider="ayrshare")
+
+
+async def _post_to_unlinked_network(session):
+    return await _run(PostToXBlock(), _unlinked_post(), AsyncMock())
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestNoSSOLinkInChat:
+    @pytest.mark.parametrize("unattended", [False, True])
+    @pytest.mark.parametrize(
+        "answer,has_profile",
+        [
+            (_block_without_credential, False),
+            (_connect, False),
+            (_connect, True),
+            (_post_to_unlinked_network, True),
+        ],
+    )
+    async def test_no_response_carries_the_sso_link(
+        self, answer, has_profile, unattended
+    ):
+        session = make_session(USER)
+        set_turn_unattended(session, scheduled=unattended)
+        signed = JWTResponse(status="success", title="t", token="tok", url=SSO_URL)
+        try:
+            with (
+                ayrshare_backend(has_profile=has_profile),
+                patch.object(
+                    AyrshareClient, "generate_jwt", AsyncMock(return_value=signed)
+                ) as sign,
+            ):
+                result = await answer(session)
+        finally:
+            set_turn_unattended(session, scheduled=False)
+
+        if unattended and answer is not _connect:
+            assert isinstance(result, ErrorResponse)
+            assert result.error == "ayrshare_accounts_not_linked"
+        else:
+            assert isinstance(result, SetupRequirementsResponse)
+        assert_no_sso_link(result)
+        sign.assert_not_awaited()

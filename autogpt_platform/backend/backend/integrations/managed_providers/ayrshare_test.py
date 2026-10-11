@@ -13,6 +13,7 @@ from backend.integrations.managed_providers.ayrshare import (
     AyrshareProvisioningError,
     _migrate_legacy_or_create_profile_key,
     get_sso_link,
+    provision_profile,
     settings_available,
 )
 
@@ -297,7 +298,7 @@ class TestMigrationOrderingSafety:
 
 
 class TestGetSSOLink:
-    """The one path the builder route and AutoPilot share."""
+    """The builder route's path, and AutoPilot's provisioning without a link."""
 
     _MODULE = "backend.integrations.managed_providers.ayrshare"
 
@@ -368,3 +369,28 @@ class TestGetSSOLink:
         with available, client_cls, ensure_patch:
             with pytest.raises(AyrshareProvisioningError, match="JWT"):
                 await get_sso_link(_USER_ID, self._store([self._managed()]))
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_provision_profile_signs_no_link(self):
+        available, client_cls, ensure_patch, client, ensure = self._patches()
+        with available, client_cls, ensure_patch:
+            profile = await provision_profile(_USER_ID, self._store([self._managed()]))
+
+        assert profile.api_key.get_secret_value() == "profile-key"
+        ensure.assert_awaited_once()
+        client.generate_jwt.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_provision_profile_not_configured_provisions_nothing(self):
+        available, client_cls, ensure_patch, _, ensure = self._patches(configured=False)
+        with available, client_cls, ensure_patch:
+            with pytest.raises(AyrshareNotConfiguredError):
+                await provision_profile(_USER_ID, self._store([]))
+        ensure.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_provision_profile_failed(self):
+        available, client_cls, ensure_patch, _, _ = self._patches(provisioned=False)
+        with available, client_cls, ensure_patch:
+            with pytest.raises(AyrshareProvisioningError):
+                await provision_profile(_USER_ID, self._store([]))

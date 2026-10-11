@@ -6,8 +6,11 @@ It opts out of the credentials sweep, so a user who never opened the
 builder's "Connect Social Media Accounts" button has no credential, and the
 copilot used to answer every ``post_to_*`` call with a card asking for an
 API key the user cannot have.  Here the copilot provisions the profile on
-demand through the same path as ``/ayrshare/sso_url`` and hands back the SSO
-link where the user links their networks.
+demand through the same path as ``/ayrshare/sso_url`` and points the user at
+the card's connect button, which fetches its own SSO link on click.  No SSO
+link goes into anything the copilot returns: tool output is stored with the
+chat, sent to the model provider and served by a shared chat, and the link
+signs the user into their Ayrshare page for two days.
 """
 
 import logging
@@ -15,13 +18,13 @@ import re
 from typing import Any
 
 from backend.blocks._base import AnyBlockSchema
+from backend.blocks.ayrshare._cost import AYRSHARE_POST_COSTS
 from backend.copilot.context import is_unattended_turn
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.managed_providers.ayrshare import (
     AyrshareNotConfiguredError,
     AyrshareProvisioningError,
-    AyrshareSSOLink,
-    get_sso_link,
+    provision_profile,
 )
 
 from .expert_scope import provider_slug
@@ -41,6 +44,21 @@ AYRSHARE = "ayrshare"
 NO_API_KEY = (
     "AutoGPT holds the Ayrshare account, so never ask the user for an Ayrshare "
     "API key or subscription."
+)
+
+CONNECT_BUTTON = "Connect Social Media Accounts"
+
+
+def _post_cost(*, is_video: bool) -> str:
+    cost = next(
+        c for c in AYRSHARE_POST_COSTS if c.cost_filter.get("is_video") is is_video
+    )
+    return f"${cost.cost_amount / 100:.2f}"
+
+
+POST_COST = (
+    f"Each post costs {_post_cost(is_video=False)} "
+    f"({_post_cost(is_video=True)} for video)."
 )
 
 NOT_AVAILABLE_MESSAGE = (
@@ -78,29 +96,30 @@ def is_not_linked_error(exc: BaseException) -> bool:
     return False
 
 
-async def sso_link(user_id: str) -> AyrshareSSOLink | ErrorResponse:
-    """The user's SSO link, provisioning their profile first if needed, or
-    the error the copilot should relay instead."""
+async def ensure_profile(user_id: str) -> ErrorResponse | None:
+    """Provision the user's profile if needed, so the card's connect button
+    has one to link to, or the error the copilot should relay instead."""
     try:
-        return await get_sso_link(user_id, IntegrationCredentialsManager().store)
+        await provision_profile(user_id, IntegrationCredentialsManager().store)
     except AyrshareNotConfiguredError:
         return ErrorResponse(
             message=NOT_AVAILABLE_MESSAGE, error="ayrshare_not_configured"
         )
     except AyrshareProvisioningError as exc:
-        logger.warning("Ayrshare SSO link failed for user %s: %s", user_id, exc)
+        logger.warning("Ayrshare profile failed for user %s: %s", user_id, exc)
         return ErrorResponse(
             message=PROVISIONING_FAILED_MESSAGE, error="ayrshare_provisioning_failed"
         )
+    return None
 
 
-def link_message(link: AyrshareSSOLink, lead: str) -> str:
+def link_message(lead: str) -> str:
     return (
-        f"{lead} Give the user this link to link their social accounts on "
-        f"Ayrshare's page (valid until {link.expires_at:%Y-%m-%d %H:%M} UTC): "
-        f"{link.url} — or the Connect Social Media Accounts button in the card. "
+        f"{lead} Ask the user to link their social accounts with the "
+        f"{CONNECT_BUTTON} button in the card, which opens Ayrshare's page. "
+        "Do not write a link to that page yourself. "
         "Once they say they have linked them, run the step again. "
-        "Each post costs 2 credits (5 for video). " + NO_API_KEY
+        f"{POST_COST} " + NO_API_KEY
     )
 
 
@@ -109,7 +128,6 @@ def link_accounts_card(
     agent_id: str,
     agent_name: str,
     missing_credentials: dict[str, dict[str, Any]],
-    link: AyrshareSSOLink,
     message: str,
     session_id: str | None,
     execution_modes: tuple[str, ...] = ("immediate",),
@@ -117,13 +135,9 @@ def link_accounts_card(
     """The setup card for an Ayrshare field.
 
     Each entry keeps the usual shape (provider ``ayrshare``), which the chat
-    card renders as the Ayrshare connect button rather than a key field, and
-    carries the SSO link as ``connect_url`` for a card that opens it directly.
+    card renders as the Ayrshare connect button rather than a key field.
     """
-    entries = {
-        key: {**entry, "connect_url": link.url}
-        for key, entry in missing_credentials.items()
-    }
+    entries = dict(missing_credentials)
     return SetupRequirementsResponse(
         message=message,
         session_id=session_id,
@@ -149,7 +163,7 @@ async def provision_for_block(
 ) -> ToolResponseBase | None:
     """Answer for an Ayrshare block that found no credential to run with.
 
-    Provisions the user's managed profile and returns the link card, since a
+    Provisions the user's managed profile and returns the connect card, since a
     profile that was just created has no linked networks yet.  ``None`` when
     the user already has the managed credential and something else kept it
     out of the match (an expert grant, a pinned account): the usual card
@@ -178,7 +192,7 @@ async def connect_for_block(
     """Answer for an explicit connect on an Ayrshare block.
 
     Having the managed credential says nothing about which networks are
-    linked, so connecting always means handing over the link.
+    linked, so connecting always means showing the connect card.
     """
     return await _block_link_answer(
         user_id,
@@ -220,26 +234,25 @@ async def _block_link_answer(
     lead: str,
     outside: tuple[str, ...] = (),
 ) -> ToolResponseBase:
-    link = await sso_link(user_id)
-    if isinstance(link, ErrorResponse):
-        link.session_id = session_id
-        return link.from_outside()
+    error = await ensure_profile(user_id)
+    if error is not None:
+        error.session_id = session_id
+        return error.from_outside()
     if is_unattended_turn():
         return _unattended_link_error(
-            f"Block '{block.name}'", reason, link, session_id
+            f"Block '{block.name}'", reason, session_id
         ).from_outside(*outside)
     return link_accounts_card(
         agent_id=block_id,
         agent_name=block.name,
         missing_credentials=_block_entries(block),
-        link=link,
-        message=link_message(link, lead),
+        message=link_message(lead),
         session_id=session_id,
     ).from_outside(*outside)
 
 
 def _unattended_link_error(
-    subject: str, reason: str, link: AyrshareSSOLink, session_id: str | None
+    subject: str, reason: str, session_id: str | None
 ) -> ErrorResponse:
     logger.warning(
         "Unattended copilot turn in session %s: %s skipped, %s",
@@ -251,8 +264,10 @@ def _unattended_link_error(
         message=(
             f"{subject} did not post: {reason}. Nobody is watching this turn "
             "(it was scheduled), so say plainly in your reply that the post "
-            "was skipped and that the user can link their social accounts "
-            f"here: {link.url} . " + NO_API_KEY
+            "was skipped and that the user can link their social accounts by "
+            "opening this chat (or the agent builder) and choosing "
+            f"{CONNECT_BUTTON}. Do not write a link to Ayrshare's page "
+            "yourself. " + NO_API_KEY
         ),
         error="ayrshare_accounts_not_linked",
         session_id=session_id,

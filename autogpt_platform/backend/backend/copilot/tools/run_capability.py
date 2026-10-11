@@ -287,7 +287,7 @@ async def _run_block(
         if isinstance(prep, ToolResponseBase) and not picker_only:
             return prep
         # Holding the managed Ayrshare credential says nothing about which
-        # networks are linked, so connecting hands over the linking link.
+        # networks are linked, so connecting shows the connect card.
         if managed and block is not None:
             return await ayrshare_connect_for_block(
                 user_id, block, block_id, session.session_id
