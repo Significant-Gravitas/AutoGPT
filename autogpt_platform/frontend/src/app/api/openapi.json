@@ -4201,7 +4201,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Schedule turn at budget reset",
-        "description": "Resume the chat's paused task, or send a message, when the budget resets.\n\nIt fires just after the exhausted window that refills last. Setting the\nsame kind again replaces the earlier one; sending a message in the chat\ncancels a pending resume.",
+        "description": "Resume the chat's paused task, or send a message, when the budget resets.\n\nIt fires just after the exhausted window that refills last. A chat has\nat most one of each: a resume set again replaces the earlier one, and a\nsend joins the message already waiting, so nothing written meanwhile is\nlost. Sending a message in the chat cancels a pending resume.",
         "operationId": "postV2Schedule turn at budget reset",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4235,6 +4235,9 @@
           "404": { "description": "Session not found, or not writable" },
           "409": {
             "description": "\"not_out_of_budget\": nothing to wait for, so carry on now. \"no_reset\": the allowance never refills (a trial)."
+          },
+          "413": {
+            "description": "\"message_too_long\": the message waiting plus this one would be longer than a single message may be"
           },
           "422": {
             "description": "Validation Error",

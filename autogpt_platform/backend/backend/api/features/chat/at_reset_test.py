@@ -116,6 +116,45 @@ def test_send_at_reset_keeps_the_users_message(scheduler, session, run_at):
     assert job["message"] == "also check the invoices"
 
 
+def test_a_second_send_joins_the_message_already_waiting(scheduler, session, run_at):
+    # One send per chat: replacing the waiting one would lose what the user
+    # wrote first.
+    scheduler.get_execution_schedules.return_value = [
+        _job("send", "draft the launch post")
+    ]
+    response = client.post(
+        f"/sessions/{SESSION}/at-reset",
+        json={"kind": "send", "message": "also the changelog"},
+    )
+
+    assert response.status_code == 200
+    joined = "draft the launch post\n\nalso the changelog"
+    assert response.json()["message"] == joined
+    assert scheduler.add_copilot_turn_schedule.await_args.kwargs["message"] == joined
+
+
+def test_a_joined_send_longer_than_a_message_is_413(scheduler, session, run_at):
+    scheduler.get_execution_schedules.return_value = [_job("send", "x" * 60_000)]
+    response = client.post(
+        f"/sessions/{SESSION}/at-reset",
+        json={"kind": "send", "message": "y" * 5_000},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "message_too_long"
+    scheduler.add_copilot_turn_schedule.assert_not_awaited()
+
+
+def test_a_resume_set_again_replaces_it(scheduler, session, run_at):
+    scheduler.get_execution_schedules.return_value = [
+        _job("resume", "Resumed after the budget reset.")
+    ]
+    response = client.post(f"/sessions/{SESSION}/at-reset", json={"kind": "resume"})
+
+    assert response.status_code == 200
+    scheduler.get_execution_schedules.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "payload",
     [

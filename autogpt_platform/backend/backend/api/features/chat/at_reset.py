@@ -30,6 +30,10 @@ from backend.util.clients import get_scheduler_client
 
 router = APIRouter(tags=["chat"])
 
+# The same cap as a message sent now (``StreamChatRequest``), for one
+# message and for messages joined while waiting for the reset.
+_MAX_MESSAGE_CHARS = 64_000
+
 # What a resume job keeps as its message, for the Scheduled page: the note it
 # fires carries a marker that page would show raw. It always fires the note.
 _RESUME_DESCRIPTION = as_model_prompt(RESUMED_AT_RESET_NOTE)
@@ -44,8 +48,7 @@ class AtResetRequest(BaseModel):
     )
     message: str | None = Field(
         default=None,
-        # The same cap as a message sent now (``StreamChatRequest``).
-        max_length=64_000,
+        max_length=_MAX_MESSAGE_CHARS,
         description="What to send. Required for send, ignored for resume.",
     )
 
@@ -81,6 +84,10 @@ class AtResetTurnsResponse(BaseModel):
             "description": '"not_out_of_budget": nothing to wait for, so carry '
             'on now. "no_reset": the allowance never refills (a trial).'
         },
+        413: {
+            "description": '"message_too_long": the message waiting plus '
+            "this one would be longer than a single message may be"
+        },
         503: {"description": "Usage could not be read; retry shortly"},
     },
 )
@@ -92,13 +99,18 @@ async def schedule_at_reset(
 ) -> AtResetTurn:
     """Resume the chat's paused task, or send a message, when the budget resets.
 
-    It fires just after the exhausted window that refills last. Setting the
-    same kind again replaces the earlier one; sending a message in the chat
-    cancels a pending resume.
+    It fires just after the exhausted window that refills last. A chat has
+    at most one of each: a resume set again replaces the earlier one, and a
+    send joins the message already waiting, so nothing written meanwhile is
+    lost. Sending a message in the chat cancels a pending resume.
     """
     session = await _validate_and_get_writable_session(session_id, user_id)
     run_at = await _run_at(user_id, session, request.kind)
-    message = request.message if request.kind == "send" else None
+    message = (
+        await _joined_with_waiting_send(user_id, session_id, request.message)
+        if request.kind == "send" and request.message
+        else None
+    )
     await get_scheduler_client().add_copilot_turn_schedule(
         user_id=user_id,
         session_id=session_id,
@@ -128,10 +140,7 @@ async def list_at_reset(
 ) -> AtResetTurnsResponse:
     """The chat's pending resume and send at the budget reset."""
     await _validate_and_get_session(session_id, user_id)
-    schedules = await get_scheduler_client().get_execution_schedules(
-        user_id=user_id, session_id=session_id, kind="copilot_turn"
-    )
-    turns = [_as_turn(s) for s in schedules if isinstance(s, CopilotTurnJobInfo)]
+    turns = [_as_turn(job) for job in await _chat_turns(user_id, session_id)]
     return AtResetTurnsResponse(jobs=[t for t in turns if t is not None])
 
 
@@ -174,6 +183,31 @@ async def _run_at(
             detail="Rate limit service degraded, retry shortly",
             headers={"Retry-After": "30"},
         ) from e
+
+
+async def _joined_with_waiting_send(user_id: str, session_id: str, message: str) -> str:
+    """The message to schedule: this one after any already waiting."""
+    waiting = next(
+        (
+            job.message
+            for job in await _chat_turns(user_id, session_id)
+            if job.purpose == "send" and job.message
+        ),
+        None,
+    )
+    if waiting is None:
+        return message
+    joined = f"{waiting}\n\n{message}"
+    if len(joined) > _MAX_MESSAGE_CHARS:
+        raise HTTPException(status_code=413, detail="message_too_long")
+    return joined
+
+
+async def _chat_turns(user_id: str, session_id: str) -> list[CopilotTurnJobInfo]:
+    schedules = await get_scheduler_client().get_execution_schedules(
+        user_id=user_id, session_id=session_id, kind="copilot_turn"
+    )
+    return [s for s in schedules if isinstance(s, CopilotTurnJobInfo)]
 
 
 def _as_turn(job: CopilotTurnJobInfo) -> AtResetTurn | None:
