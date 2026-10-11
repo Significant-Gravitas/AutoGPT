@@ -54,6 +54,7 @@ jobs:
     env:
       CI: "1"
       EXPO_NO_TELEMETRY: "1"
+      COCOAPODS_DISABLE_STATS: "true"
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       MAESTRO_VERSION: "2.11.0"
       MAESTRO_CLI_NO_ANALYTICS: "true"
@@ -102,45 +103,36 @@ jobs:
         with:
           path: |
             ~/Library/Caches/CocoaPods
+            ~/Library/Caches/ReactNative
             autogpt_platform/mobile/ios/Pods
             autogpt_platform/mobile/ios/Podfile.lock
-          key: native-ios-pods-macos-26-xcode-26.6-${{ hashFiles('autogpt_platform/mobile/pnpm-lock.yaml', 'autogpt_platform/mobile/app.config.ts') }}
+          key: native-ios-pods-v2-macos-26-xcode-26.6-${{ hashFiles('autogpt_platform/mobile/pnpm-lock.yaml', 'autogpt_platform/mobile/app.config.ts') }}
 
       - name: Install CocoaPods
         run: |
           (cd ios && pod install) > e2e/artifacts/pods.log 2>&1 || { tail -100 e2e/artifacts/pods.log; exit 1; }
 
-      - name: Build simulator app
+      - name: Build functional-test simulator app
         id: build
         run: |
-          /usr/bin/time -l xcodebuild \
-            -workspace ios/AutoGPT.xcworkspace -scheme AutoGPT \
-            -configuration Release -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath .build/DerivedData -jobs 3 \
-            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGN_IDENTITY=- \
-            COMPILER_INDEX_STORE_ENABLE=NO build > e2e/artifacts/xcodebuild.log 2>&1 \
-            || { tail -100 e2e/artifacts/xcodebuild.log; exit 1; }
-          ditto -c -k --keepParent .build/DerivedData/Build/Products/Release-iphonesimulator/AutoGPT.app e2e/artifacts/AutoGPT-simulator.zip
-
-      - name: Install Maestro and launch simulator
-        run: |
-          maestro_dir="$RUNNER_TEMP/native-maestro"
-          mkdir -p "$maestro_dir"
-          curl --fail --location --retry 2 "https://github.com/mobile-dev-inc/Maestro/releases/download/cli-$MAESTRO_VERSION/maestro.zip" -o "$maestro_dir/maestro.zip"
-          curl --fail --location --retry 2 "https://github.com/mobile-dev-inc/Maestro/releases/download/cli-$MAESTRO_VERSION/checksums_sha256.txt" -o "$maestro_dir/checksums_sha256.txt"
-          (cd "$maestro_dir" && shasum -a 256 -c checksums_sha256.txt && unzip -q maestro.zip)
-          echo "$maestro_dir/maestro/bin" >> "$GITHUB_PATH"
-          xcrun simctl list devices available --json > e2e/artifacts/devices.json
-          device_id=$(python3 scripts/select-simulator.py e2e/artifacts/devices.json)
-          echo "NATIVE_SIMULATOR_ID=$device_id" >> "$GITHUB_ENV"
-          xcrun simctl boot "$device_id"
-          xcrun simctl bootstatus "$device_id" -b
-          xcrun simctl install "$device_id" .build/DerivedData/Build/Products/Release-iphonesimulator/AutoGPT.app
+          bash scripts/prepare-ios-e2e.sh > e2e/artifacts/device-setup.log 2>&1 &
+          prepare_pid=$!
+          trap 'kill "$prepare_pid" 2>/dev/null || true' EXIT
+          build_status=0
+          bash scripts/build-simulator.sh || build_status=$?
+          prepare_status=0
+          wait "$prepare_pid" || prepare_status=$?
+          trap - EXIT
+          if [ "$prepare_status" -ne 0 ]; then tail -100 e2e/artifacts/device-setup.log; fi
+          if [ "$build_status" -ne 0 ] || [ "$prepare_status" -ne 0 ]; then exit 1; fi
 
       - name: Run native launch journey
+        env:
+          NATIVE_SIMULATOR_ID: ${{ steps.build.outputs.simulator-id }}
+          MAESTRO_BIN: ${{ steps.build.outputs.maestro }}
         run: |
-          maestro --device "$NATIVE_SIMULATOR_ID" test --format junit \
+          xcrun simctl install "$NATIVE_SIMULATOR_ID" .build/SimulatorChecks/Build/Products/Release-iphonesimulator/AutoGPT.app
+          "$MAESTRO_BIN" --device "$NATIVE_SIMULATOR_ID" test --format junit \
             --output e2e/artifacts/launch.xml --test-output-dir e2e/artifacts/maestro e2e/launch.yaml
           python3 scripts/check-junit.py e2e/artifacts/launch.xml
 
@@ -153,6 +145,7 @@ jobs:
           df -h . | tee e2e/artifacts/disk-after.txt
           {
             echo 'Standard free macos-26 runner; Xcode 26.6; arm64 simulator.'
+            echo 'Release runtime and bundled JS; native optimization and debug symbol generation disabled for functional tests.'
             echo "JavaScript cache hit: ${JAVASCRIPT_CACHE_HIT:-false}"
             echo "CocoaPods cache hit: ${PODS_CACHE_HIT:-false}"
             echo 'Use full job timestamps, including setup and upload, for the ten-minute budget.'

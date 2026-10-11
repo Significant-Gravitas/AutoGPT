@@ -1,6 +1,6 @@
 # Native journeys
 
-Use an installed release simulator build and Maestro 2.11 with Java 21. Open the simulator in the shared T3 Device panel before local testing. The launch journey needs no account or server:
+Use an installed simulator build from `scripts/build-simulator.sh` or an ordinary Release build, and Maestro 2.11 with Java 21. Open the simulator in the shared T3 Device panel before local testing. The launch journey needs no account or server:
 
 ```sh
 maestro --device <simulator-udid> test --format junit --output e2e/artifacts/launch.xml e2e/launch.yaml
