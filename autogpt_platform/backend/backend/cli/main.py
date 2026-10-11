@@ -60,6 +60,9 @@ def start():
 
 
 class MainApp(AppProcess):
+    # Only launches the services, each of which starts its own flags.
+    reads_feature_flags = False
+
     def run(self):
         from backend import app
 
