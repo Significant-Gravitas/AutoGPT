@@ -331,6 +331,20 @@ describe("recovery", () => {
     expect(snapshot().error?.message).toBe("Failed to fetch");
   });
 
+  it("a send lost while a later send lands still reports its own failure", async () => {
+    backend.respond(({ method }) =>
+      method === "POST" ? "network-error" : "stream",
+    );
+    void runtime.send({ text: "Did this one arrive?" }, undefined);
+    await advance(0);
+
+    // The user sends again while the lost one is being looked for.
+    backend.respond(() => "stream");
+    await sendAndPublish(toolTurn.sse.length);
+    await advance(10_000);
+    expect(snapshot().error?.message).toBe("Failed to fetch");
+  });
+
   it("a lost resend of the same prompt takes no earlier prompt's row", async () => {
     await sendAndPublish(toolTurn.sse.length);
     await advance(2_000);

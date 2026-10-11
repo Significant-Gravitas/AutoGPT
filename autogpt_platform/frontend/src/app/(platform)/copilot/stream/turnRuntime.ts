@@ -39,7 +39,6 @@ import {
   type Segment,
   type TurnCheckpoint,
   type TurnSegment,
-  type UserSegment,
 } from "./turnTail";
 
 /** No byte for this long means the connection is dead: the route and the
@@ -138,10 +137,15 @@ interface Connection {
   turnId: string | null;
   closedByClient: boolean;
   syntheticError: string | null;
+  /** A send's own prompt segment, by key. */
+  prompt: string | null;
 }
 
 /** What the classification needs to know about a connection that is gone. */
-type Lost = Pick<Connection, "turnId" | "openedAt" | "syntheticError">;
+type Lost = Pick<
+  Connection,
+  "turnId" | "openedAt" | "syntheticError" | "prompt"
+>;
 
 type ConnectionEnd =
   | { kind: "closed" }
@@ -269,6 +273,7 @@ export class TurnRuntime {
       method: "POST",
       body: JSON.stringify(body),
       extraHeaders: { "Content-Type": "application/json" },
+      prompt: message.id,
     });
   }
 
@@ -418,7 +423,12 @@ export class TurnRuntime {
     kind: Connection["kind"],
     turnId: string | null,
     url: string,
-    init: { method?: string; body?: string; extraHeaders?: object } = {},
+    init: {
+      method?: string;
+      body?: string;
+      extraHeaders?: object;
+      prompt?: string;
+    } = {},
     asRotation = false,
   ) {
     const now = Date.now();
@@ -432,6 +442,7 @@ export class TurnRuntime {
       turnId,
       closedByClient: false,
       syntheticError: null,
+      prompt: init.prompt ?? null,
     };
     if (asRotation) this.rotating = conn;
     else {
@@ -648,7 +659,7 @@ export class TurnRuntime {
       await sleep(FINISH_PROBE_MS);
     }
     // The view holds the prompt, so the send arrived; its rows say the rest.
-    if (this.lostSendLanded()) return;
+    if (this.lostSendLanded(lost.prompt)) return;
     if (end.kind === "failed" || lost.syntheticError) {
       this.error =
         end.kind === "failed" && end.error instanceof Error
@@ -658,11 +669,9 @@ export class TurnRuntime {
     }
   }
 
-  private lostSendLanded() {
-    const prompt = this.segments.findLast(
-      (s): s is UserSegment => s.kind === "user" && s.origin === "sent",
-    );
-    return prompt?.sequence != null;
+  private lostSendLanded(promptKey: string | null) {
+    const prompt = promptKey ? this.segmentByKey(promptKey) : null;
+    return prompt?.kind === "user" && prompt.sequence !== null;
   }
 
   // ── The turn's lifecycle ───────────────────────────────────────────────
@@ -798,6 +807,7 @@ export class TurnRuntime {
         turnId: seg.log.turnId,
         openedAt: Date.now(),
         syntheticError: null,
+        prompt: null,
       });
       return;
     }
@@ -832,6 +842,7 @@ export class TurnRuntime {
         turnId: seg.log.turnId,
         openedAt: Date.now(),
         syntheticError: null,
+        prompt: null,
       });
       return;
     }
