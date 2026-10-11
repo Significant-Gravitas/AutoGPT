@@ -97,6 +97,63 @@ async def test_paused_schedule_excluded_unless_include_paused(server: SpinTestSe
     assert [s.id for s in active_after_resume] == [schedule.id]
 
 
+# Python weekday numbers (Mon=0..Sun=6) each Unix day-of-week field covers.
+_DOW_FIELD_WEEKDAYS = {
+    "1-5": {0, 1, 2, 3, 4},
+    "0-7": {0, 1, 2, 3, 4, 5, 6},
+    "*/2": {6, 1, 3, 5},
+    "5-1/2": {4, 6},
+}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dow", list(_DOW_FIELD_WEEKDAYS))
+async def test_schedule_next_run_lands_on_the_cron_weekdays(
+    server: SpinTestServer, dow: str
+):
+    """#15276: a schedule created through the real scheduler service must
+    report a next run on one of the days its Unix day-of-week field names.
+    The hour sits 12 h from now so the reference can't straddle a tick."""
+    await db.connect()
+    test_user = await create_test_user()
+    test_graph = await server.agent_server.test_create_graph(
+        create_graph=CreateGraph(graph=create_test_graph()),
+        user_id=test_user.id,
+    )
+    now = datetime.now(timezone.utc)
+    hour = (now.hour + 12) % 24
+    expected = next(
+        candidate
+        for day in range(8)
+        if (
+            candidate := (now + timedelta(days=day)).replace(
+                hour=hour, minute=0, second=0, microsecond=0
+            )
+        )
+        > now
+        and candidate.weekday() in _DOW_FIELD_WEEKDAYS[dow]
+    )
+
+    scheduler = get_scheduler_client()
+    schedule = await scheduler.add_execution_schedule(
+        graph_id=test_graph.id,
+        user_id=test_user.id,
+        graph_version=1,
+        cron=f"0 {hour} * * {dow}",
+        input_data={"input": "data"},
+        input_credentials={},
+        user_timezone="UTC",
+    )
+    try:
+        next_run = datetime.fromisoformat(schedule.next_run_time)
+        assert next_run == expected, (
+            f"{dow!r} next run {next_run:%A %Y-%m-%d %H:%M}, "
+            f"expected {expected:%A %Y-%m-%d %H:%M}"
+        )
+    finally:
+        await scheduler.delete_schedule(schedule.id, user_id=test_user.id)
+
+
 # ---------------------------------------------------------------------------
 # Community rebuild @expose methods — lightweight unit tests
 #
@@ -801,6 +858,15 @@ def test_normalize_cron_day_of_week_field_translates_unix_to_apscheduler(
     through unchanged. Numeric tokens become explicit APS day lists."""
     cron = f"0 9 * * {raw}"
     assert _normalize_cron_day_of_week(cron) == f"0 9 * * {expected}"
+
+
+@pytest.mark.parametrize("raw", ["*/0", "8", "1-9", "9-2", "0-5/0"])
+def test_normalize_cron_day_of_week_rejects_what_cron_rejects(raw: str):
+    """A zero step or a day above 7 is invalid cron. Coercing it (``*/0`` to
+    every day, ``8`` to Monday) would save a schedule that fires on days the
+    user never asked for."""
+    with pytest.raises(ValueError):
+        _normalize_cron_day_of_week(f"0 9 * * {raw}")
 
 
 def test_build_trigger_with_unix_dow_numbers_fires_on_correct_weekday():

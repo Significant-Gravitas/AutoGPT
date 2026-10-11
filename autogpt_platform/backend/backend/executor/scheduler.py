@@ -1970,9 +1970,11 @@ def _expand_unix_dow(token: str) -> list[int] | None:
     each day is unambiguous.
     """
     body, _, step_s = token.partition("/")
+    if step_s and not step_s.isdigit():
+        return None
     step = int(step_s) if step_s else 1
     if step < 1:
-        step = 1
+        raise ValueError(f"Invalid day-of-week step in {token!r}")
 
     if body in ("*", "?"):
         seq = list(range(7))
@@ -1980,19 +1982,28 @@ def _expand_unix_dow(token: str) -> list[int] | None:
         start_s, end_s = body.split("-", 1)
         if not (start_s.isdigit() and end_s.isdigit()):
             return None
-        start, end = int(start_s), int(end_s)
+        start, end = _unix_dow_day(start_s, token), _unix_dow_day(end_s, token)
         if start <= end:
             seq = list(range(start, end + 1))
         else:
             seq = list(range(start, 7)) + list(range(0, end + 1))
     elif body.isdigit():
         # ``1/2`` means "from 1 every 2 days to the end of the week".
-        start = int(body)
+        start = _unix_dow_day(body, token)
         seq = list(range(start, max(start, 6) + 1)) if step_s else [start]
     else:
         return None
 
     return sorted({d % 7 for d in seq[::step]})
+
+
+def _unix_dow_day(value: str, token: str) -> int:
+    """Parse one Unix day number, rejecting anything outside 0-7 the way cron
+    does instead of letting ``% 7`` turn ``8`` into Monday."""
+    day = int(value)
+    if day > 7:
+        raise ValueError(f"Day-of-week {day} out of range 0-7 in {token!r}")
+    return day
 
 
 def _convert_dow_token(token: str) -> str:

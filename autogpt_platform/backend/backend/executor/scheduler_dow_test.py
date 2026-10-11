@@ -32,6 +32,7 @@ def _fire_weekdays(cron: str, n: int = 7) -> list[str]:
         ("1-5/2", ["Mon", "Wed", "Fri", "Mon", "Wed", "Fri", "Mon"]),
         ("6-2", ["Sun", "Mon", "Tue", "Sat", "Sun", "Mon", "Tue"]),
         ("1-5", ["Mon", "Tue", "Wed", "Thu", "Fri", "Mon", "Tue"]),
+        ("5-1/2", ["Sun", "Fri", "Sun", "Fri", "Sun", "Fri", "Sun"]),
         ("7", ["Sun"] * 7),
         ("0", ["Sun"] * 7),
         ("mon-fri", ["Mon", "Tue", "Wed", "Thu", "Fri", "Mon", "Tue"]),
