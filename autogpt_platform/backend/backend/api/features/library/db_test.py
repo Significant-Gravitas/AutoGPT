@@ -2341,7 +2341,7 @@ async def test_a_version_moves_only_the_named_entry_in_the_callers_organizations
         "graph-id",
         2,
         library_agent_id="entry-a",
-        organization_ids={"org-a"},
+        organization_ids=frozenset({"org-a"}),
     )
 
     assert library_rows.update.await_args.kwargs["where"] == {"id": "entry-a"}
@@ -2362,7 +2362,7 @@ async def test_another_organizations_entry_on_the_version_is_not_replaced(
 
     with pytest.raises(LibraryAgentInAnotherOrganizationError):
         await db.update_agent_version_in_library(
-            "test-user", "graph-id", 2, organization_ids={"org-a"}
+            "test-user", "graph-id", 2, organization_ids=frozenset({"org-a"})
         )
 
     library_rows.delete_many.assert_not_awaited()
@@ -2377,7 +2377,7 @@ async def test_presets_move_only_within_the_callers_organizations(mocker):
     await db.migrate_webhook_presets_to_new_version(
         "test-user",
         MagicMock(id="graph-id", version=2),
-        organization_ids={"org-a", None},
+        organization_ids=frozenset({"org-a", None}),
     )
 
     assert presets.find_many.await_args.kwargs["where"]["AND"] == [

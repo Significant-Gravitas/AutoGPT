@@ -1,7 +1,6 @@
 import asyncio
 import itertools
 import logging
-from collections.abc import Collection
 from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
@@ -759,7 +758,7 @@ async def update_agent_version_in_library(
     agent_graph_version: int,
     *,
     library_agent_id: Optional[str] = None,
-    organization_ids: Optional[Collection[str | None]] = None,
+    organization_ids: Optional[frozenset[str | None]] = None,
 ) -> library_model.LibraryAgent:
     """
     Updates the agent version in the library for any agent owned by the user.
@@ -1005,7 +1004,7 @@ async def update_library_agent(
     is_deleted: Optional[Literal[False]] = None,
     settings: Optional[GraphSettings] = None,
     folder_id: Optional[str] = None,
-    organization_ids: Optional[Collection[str | None]] = None,
+    organization_ids: Optional[frozenset[str | None]] = None,
 ) -> library_model.LibraryAgent:
     """
     Updates the specified LibraryAgent record.
@@ -2545,7 +2544,7 @@ async def migrate_webhook_presets_to_new_version(
     user_id: str,
     new_graph: graph_db.GraphModel,
     *,
-    organization_ids: Optional[Collection[str | None]] = None,
+    organization_ids: Optional[frozenset[str | None]] = None,
 ) -> library_model.WebhookPresetMigrationResult:
     """
     Migrates webhook-attached presets for a graph to a newly activated version.
