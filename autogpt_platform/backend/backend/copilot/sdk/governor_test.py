@@ -121,6 +121,14 @@ def test_a_landed_turn_pauses_with_its_window_and_reset():
     assert governor.paused is True
 
 
+@pytest.mark.parametrize("subtype", ["error", "error_during_execution"])
+def test_a_genuine_error_while_landing_stays_an_error(subtype):
+    governor = _governor(meter=_Meter(spent=1.0))
+    governor.refusal()
+    assert governor.pause(subtype, wrote_checkpoint=True) is None
+    assert governor.paused is False
+
+
 def test_a_landed_turn_without_a_reply_says_so():
     governor = _governor(meter=_Meter(spent=1.0))
     governor.refusal()

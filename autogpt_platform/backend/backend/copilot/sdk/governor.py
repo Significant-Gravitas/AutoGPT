@@ -86,17 +86,19 @@ class TurnGovernor:
         return _BUDGET_REFUSAL
 
     def pause(self, result_subtype: str, *, wrote_checkpoint: bool) -> TurnPause | None:
-        """The pause this turn ended in, or None if it simply finished.
+        """The pause this turn ended in, or None if it finished or failed.
 
         A backstop subtype means the CLI stopped the turn itself, before (or
-        while) the agent wrote its checkpoint, so none is claimed.
+        while) the agent wrote its checkpoint, so none is claimed. A genuine
+        error while landing stays an error: only a turn that ended normally
+        after its tools were refused is a pause.
         """
         if result_subtype == "error_max_turns":
             return self._pause("steps", checkpoint_saved=False)
         if result_subtype == "error_max_budget_usd":
             reason = self.budget.limiting if self.budget is not None else "task"
             return self._pause(reason, checkpoint_saved=False)
-        if self.landing is None:
+        if self.landing is None or result_subtype != "success":
             return None
         return self._pause(self.landing, checkpoint_saved=wrote_checkpoint)
 
