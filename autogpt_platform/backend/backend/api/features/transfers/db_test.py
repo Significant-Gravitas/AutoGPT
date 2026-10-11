@@ -190,8 +190,9 @@ async def test_reject_racing_execute_cannot_undo_a_completed_transfer(
     # ...then the execute committed before the reject wrote.
     await transfers_db.execute_transfer(t1, world["source_user"], world["org_a"])
 
+    # The actions object uses __slots__, so patch its class for this call.
     with patch.object(
-        transfers_db.prisma.transferrequest,
+        type(transfers_db.prisma.transferrequest),
         "find_unique",
         AsyncMock(return_value=stale),
     ):
