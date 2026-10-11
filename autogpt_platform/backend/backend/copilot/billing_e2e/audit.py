@@ -98,14 +98,15 @@ def _audit_turn(
                 message=f"turn {turn}: the provider billed {len(calls)} calls",
             )
         ]
-    findings = _audit_spend(scenario, turn, calls, ledger)
+    owed = scenario.owed_calls(turn, calls)
+    findings = _audit_spend(scenario, turn, owed, ledger)
     rows = ledger.rows_in(turn)
     if len(rows) != 1:
         message = f"turn {turn}: {len(rows)} cost-log rows, expected 1"
         return [*findings, Finding(check="charge", message=message)]
     findings += _audit_row(scenario, turn, rows[0], ledger)
     if scenario.reports_usage:
-        findings += _audit_tokens(turn, calls, rows[0], session_usage)
+        findings += _audit_tokens(turn, owed, rows[0], session_usage)
     return findings
 
 
@@ -129,7 +130,7 @@ def _audit_spend(
     messages = []
     if len(spend) != 1 or abs(spend[0] - (expected or 0)) > tolerance:
         messages.append(
-            f"turn {turn}: charged {spend} microdollars; the provider billed "
+            f"turn {turn}: charged {spend} microdollars; the turn owes "
             f"{expected} ({scenario.charge}) for {len(calls)} call(s)"
         )
     if tree != spend:
@@ -162,7 +163,7 @@ def _audit_row(
 def _audit_tokens(
     turn: int, calls: list[Call], row: PlatformCostEntry, session_usage: list[Usage]
 ) -> list[Finding]:
-    billed = (
+    owed = (
         sum(call.usage.input_tokens for call in calls),
         sum(call.usage.output_tokens for call in calls),
         sum(call.usage.cache_read_tokens for call in calls),
@@ -184,12 +185,8 @@ def _audit_tokens(
         for u in session_usage
     ]
     messages = []
-    if logged != billed:
-        messages.append(
-            f"turn {turn}: logged tokens {logged}, provider billed {billed}"
-        )
-    if recorded != [billed]:
-        messages.append(
-            f"turn {turn}: session usage {recorded}, provider billed {billed}"
-        )
+    if logged != owed:
+        messages.append(f"turn {turn}: logged tokens {logged}, the turn owes {owed}")
+    if recorded != [owed]:
+        messages.append(f"turn {turn}: session usage {recorded}, the turn owes {owed}")
     return [Finding(check="tokens", message=message) for message in messages]
