@@ -1797,9 +1797,10 @@ class TestSdkServingSegment:
         from backend.copilot.sdk.service import stream_chat_completion_sdk
 
         source = inspect.getsource(stream_chat_completion_sdk)
+        flat = " ".join(source.split())
 
         assert "turn_segment = _sdk_serving_segment(credential_lease)" in source
-        assert "pre_turn_message_count,\n                turn_segment," in source
+        assert "pre_turn_message_count, turn_segment," in flat
         assert "session_segment(session)" not in source
 
 
