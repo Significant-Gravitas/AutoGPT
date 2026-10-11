@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { ImpersonationState } from "@/lib/impersonation";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { usePostV2NotifyImpersonationStart } from "@/app/api/__generated__/endpoints/admin/admin";
 
@@ -62,7 +63,7 @@ export function useAdminImpersonation(): AdminImpersonationHook {
           return;
         }
 
-        ImpersonationState.set(userId);
+        ImpersonationState.set(userId, useAuthStore.getState().user?.id);
         setImpersonatedUserId(userId);
         window.location.reload();
       } catch (error) {

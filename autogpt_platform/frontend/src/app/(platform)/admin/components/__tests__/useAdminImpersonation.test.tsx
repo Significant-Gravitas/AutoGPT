@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { getPostV2NotifyImpersonationStartMockHandler200 } from "@/app/api/__generated__/endpoints/admin/admin.msw";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
 import { ImpersonationState } from "@/lib/impersonation";
 import { server } from "@/mocks/mock-server";
 import { act, renderHook, waitFor } from "@/tests/integrations/test-utils";
@@ -72,6 +74,9 @@ describe("useAdminImpersonation", () => {
   });
 
   test("proceeds with the swap when the audit alert is delivered", async () => {
+    useAuthStore.setState({
+      user: { id: "admin-1", role: "admin" } as User,
+    });
     server.use(
       getPostV2NotifyImpersonationStartMockHandler200({ alerted: true }),
     );
@@ -83,7 +88,9 @@ describe("useAdminImpersonation", () => {
     });
 
     await waitFor(() => expect(reloadMock).toHaveBeenCalledTimes(1));
-    expect(setSpy).toHaveBeenCalledWith(TARGET_USER_ID);
+    // Recorded against the admin who chose it, so no other account adopts it.
+    expect(setSpy).toHaveBeenCalledWith(TARGET_USER_ID, "admin-1");
+    useAuthStore.setState({ user: null });
     expect(toastMock).not.toHaveBeenCalledWith(
       expect.objectContaining({ variant: "destructive" }),
     );
