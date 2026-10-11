@@ -37,8 +37,8 @@ export function TrialDetails({ offer }: Props) {
         cancel before it ends.
       </Text>
       <Text variant="body" tone="secondary">
-        Trial usage is limited. Canceling ends trial access immediately. You can
-        manage or cancel your plan in billing.
+        Trial usage is limited. If you cancel, you keep access until the trial
+        ends. You can manage or cancel your plan in billing.
       </Text>
     </div>
   );
