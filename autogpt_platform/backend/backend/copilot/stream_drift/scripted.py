@@ -204,6 +204,10 @@ async def sdk_service_turn(
                 "use_e2b_sandbox": False,
                 "claude_agent_fallback_model": None,
                 "claude_agent_max_transient_retries": 1,
+                # Same pin as baseline_offline: keep the OpenRouter transport
+                # so the recorded rows match the fixtures whether or not CI
+                # handed the job a real key (fork PRs get none).
+                "api_key": "drift-test",
             }
         ),
     }

@@ -45,7 +45,15 @@ def baseline_offline(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         baseline,
         "config",
         baseline.config.model_copy(
-            update={"use_e2b_sandbox": False, "use_local": False}
+            update={
+                "use_e2b_sandbox": False,
+                "use_local": False,
+                # Pin the transport to OpenRouter. Without a key the config
+                # falls back to direct-Anthropic, which strips the vendor
+                # prefix off the persisted model slug and drifts every
+                # baseline fixture — and fork PRs get no secrets in CI.
+                "api_key": "drift-test",
+            }
         ),
     )
     for name, value in {
