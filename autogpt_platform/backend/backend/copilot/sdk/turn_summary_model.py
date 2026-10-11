@@ -9,6 +9,11 @@ import hashlib
 import json
 
 from claude_agent_sdk import ClaudeAgentOptions
+from claude_agent_sdk.types import (
+    SystemPromptCustom,
+    SystemPromptFile,
+    SystemPromptPreset,
+)
 from pydantic import BaseModel
 
 from backend.copilot.moonshot import is_moonshot_model
@@ -186,13 +191,7 @@ def cost_source(
 
 def record_options(s: TurnSummary, options: ClaudeAgentOptions) -> None:
     """System prompt identity and tool surface of the options the CLI ran with."""
-    prompt = options.system_prompt
-    if isinstance(prompt, str):
-        text, s.system_prompt_mode = prompt, "replace"
-    elif isinstance(prompt, dict):
-        text, s.system_prompt_mode = str(prompt.get("append") or ""), "preset_append"
-    else:
-        text = ""
+    text, s.system_prompt_mode = _system_prompt_text(options.system_prompt)
     s.system_prompt_sha = short_hash(text)
     s.system_prompt_chars = len(text)
     s.prompt_name, s.prompt_version = system_prompt_source(text)
@@ -200,6 +199,23 @@ def record_options(s: TurnSummary, options: ClaudeAgentOptions) -> None:
     s.tools_allowed = len(tools)
     s.tools_builtin = sum(1 for name in tools if not name.startswith("mcp__"))
     s.tools_sha = short_hash("\n".join(tools))
+
+
+def _system_prompt_text(
+    prompt: str | SystemPromptPreset | SystemPromptCustom | SystemPromptFile | None,
+) -> tuple[str, str | None]:
+    """The prompt text a launch was given, and how the CLI combines it with its own.
+
+    The live prompt carries the replace-mode text in a ``custom`` dict so it
+    can turn the CLI's snapshot off; it still replaces the CLI's prompt.
+    """
+    if isinstance(prompt, str):
+        return prompt, "replace"
+    if prompt is None or prompt["type"] == "file":
+        return "", None
+    if prompt["type"] == "custom":
+        return prompt["prompt"], "replace"
+    return prompt.get("append", ""), "preset_append"
 
 
 def outcome(

@@ -12,8 +12,10 @@ from claude_agent_sdk import (
     ToolUseBlock,
 )
 
+from backend.copilot import service as copilot_service
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.compaction import CompactionTracker
+from backend.copilot.sdk.service import _build_system_prompt_value
 from backend.copilot.sdk.turn_summary import LANGFUSE_EVENT_NAME, TurnSummaryCollector
 from backend.copilot.sdk.turn_summary_model import (
     TURN_SUMMARY_MARKER,
@@ -230,6 +232,34 @@ class TestCollector:
         assert s.cli_compactions == 1
         assert (s.cost_usd, s.cost_source) == (0.5, "cli_reported")
         assert (s.outcome, s.error_class) == ("ok", None)
+
+    @pytest.mark.parametrize("live", [True, False])
+    @pytest.mark.parametrize(
+        "cross_user_cache, mode", [(False, "replace"), (True, "preset_append")]
+    )
+    def test_finish_reads_the_prompt_in_every_form_a_launch_sends(
+        self, monkeypatch, live, cross_user_cache, mode
+    ):
+        monkeypatch.setattr(
+            copilot_service, "_cached_prompt_identity", ("v38 prompt", 38)
+        )
+        prompt = "v38 prompt\nsupplement"
+        options = ClaudeAgentOptions(
+            system_prompt=_build_system_prompt_value(
+                prompt, cross_user_cache=cross_user_cache, live=live
+            )
+        )
+        c = TurnSummaryCollector("s")
+
+        _finish(c, options=options)
+
+        s = c.summary
+        assert (s.system_prompt_mode, s.system_prompt_chars) == (mode, len(prompt))
+        assert s.system_prompt_sha == short_hash(prompt)
+        assert (s.prompt_name, s.prompt_version) == (
+            copilot_service.config.langfuse_prompt_name,
+            38,
+        )
 
     @pytest.mark.parametrize(
         "overrides, expected",
