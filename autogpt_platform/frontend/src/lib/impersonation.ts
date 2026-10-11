@@ -9,6 +9,7 @@ import {
   IMPERSONATION_STORAGE_KEY,
 } from "./constants";
 import { environment } from "@/services/environment";
+import { Key, storage } from "@/services/storage/local-storage";
 
 /**
  * Cookie utility functions
@@ -167,6 +168,21 @@ export const ImpersonationState = {
     return await ImpersonationCookie.getServerSide();
   },
 };
+
+/**
+ * Drops impersonation in this tab and tells every other tab to drop theirs.
+ * The cookie is shared, but each tab keeps its own sessionStorage copy, which
+ * would otherwise keep sending the header for a session that no longer owns
+ * it.
+ */
+export function clearImpersonationEverywhere(): void {
+  ImpersonationState.clear();
+  storage.set(Key.IMPERSONATION_CLEARED, Date.now().toString());
+}
+
+export function isImpersonationClearedEvent(event: StorageEvent): boolean {
+  return event.key === Key.IMPERSONATION_CLEARED;
+}
 
 /**
  * Returns system headers to attach to every backend request.

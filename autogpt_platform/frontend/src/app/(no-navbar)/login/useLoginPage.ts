@@ -15,7 +15,7 @@ import { useForm } from "react-hook-form";
 import z from "zod";
 import { login as loginAction } from "./actions";
 import { isTeamEmail } from "@/lib/auth/team-email";
-import { ImpersonationState } from "@/lib/impersonation";
+import { clearImpersonationEverywhere } from "@/lib/impersonation";
 
 export function useLoginPage() {
   useCaptureMarketingPrompt();
@@ -64,7 +64,7 @@ export function useLoginPage() {
     setIsGoogleLoading(true);
     setIsLoggingIn(true);
     // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
-    ImpersonationState.clear();
+    clearImpersonationEverywhere();
 
     try {
       // Include next URL in OAuth flow if present
@@ -110,7 +110,7 @@ export function useLoginPage() {
       return;
     }
 
-    ImpersonationState.clear();
+    clearImpersonationEverywhere();
 
     try {
       const result = await loginAction(data.email, data.password, nextUrl);

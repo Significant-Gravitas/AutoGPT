@@ -2,7 +2,11 @@
 
 import type BackendAPI from "@/lib/autogpt-server-api/client";
 import { resetAnalyticsIdentity } from "@/services/analytics/reset-identity";
-import { ImpersonationState } from "@/lib/impersonation";
+import {
+  clearImpersonationEverywhere,
+  ImpersonationState,
+  isImpersonationClearedEvent,
+} from "@/lib/impersonation";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
@@ -147,9 +151,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 
     broadcastLogout();
 
-    // Drop any admin impersonation (sessionStorage + cookie) so the next user
-    // signing in on this browser doesn't send X-Act-As-User-Id and get 403s.
-    ImpersonationState.clear();
+    // Drop any admin impersonation (sessionStorage + cookie, in every tab) so
+    // the next user signing in on this browser doesn't send X-Act-As-User-Id.
+    clearImpersonationEverywhere();
 
     // Clear React Query cache to prevent stale data from old user
     if (typeof window !== "undefined") {
@@ -191,6 +195,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       });
 
       if (!result.isValid) {
+        clearImpersonationEverywhere();
         set({
           user: null,
           hasLoadedUser: false,
@@ -205,7 +210,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       }
 
       if (result.user && result.shouldUpdateUser) {
-        set({ user: result.user });
+        adoptUser(result.user);
       }
 
       if (result.user) {
@@ -226,7 +231,20 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     void validateSessionInternal();
   }
 
+  // An impersonation target belongs to the admin session that chose it. When
+  // this tab takes on a different account, the target must go with the old one.
+  function adoptUser(user: User): void {
+    const previous = get().user;
+    if (previous && previous.id !== user.id) clearImpersonationEverywhere();
+    set({ user });
+  }
+
   function handleStorageEventInternal(event: StorageEvent): void {
+    if (isImpersonationClearedEvent(event)) {
+      ImpersonationState.clear();
+      return;
+    }
+
     const result = handleStorageEventHelper({
       event,
       api: get().apiRef,
@@ -255,12 +273,10 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     const result = await refreshSessionHelper();
 
     if (result.user) {
-      set({
-        user: result.user,
-        hasLoadedUser: true,
-        isUserLoading: false,
-      });
+      adoptUser(result.user);
+      set({ hasLoadedUser: true, isUserLoading: false });
     } else if (result.error) {
+      clearImpersonationEverywhere();
       set({
         user: null,
         hasLoadedUser: false,
