@@ -4,12 +4,17 @@ import json
 import logging
 from typing import Any, cast
 
+from backend.api.features.library.exceptions import (
+    LibraryAgentInAnotherOrganizationError,
+)
 from backend.copilot.tools.models import (
     AgentPreviewResponse,
     AgentSavedResponse,
     ErrorResponse,
     ToolResponseBase,
 )
+from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from .blocks import get_blocks_as_dicts
 from .core import get_library_agents_by_ids, save_agent_to_library
@@ -19,6 +24,16 @@ from .validator import AgentValidator
 logger = logging.getLogger(__name__)
 
 MAX_AGENT_JSON_SIZE = 1_000_000  # 1 MB
+
+# Raised with text written for whoever saves the agent. Any other exception's
+# text can name a query, a table or a provider's response.
+_CALLER_FACING_ERRORS = (
+    GraphActivationError,
+    LibraryAgentInAnotherOrganizationError,
+    NotAuthorizedError,
+    NotFoundError,
+    ValueError,
+)
 
 
 async def fetch_library_agents(
@@ -58,6 +73,7 @@ async def fix_validate_and_save(
     organization_id: str | None = None,
     team_id: str | None = None,
     move_webhook_presets: bool = True,
+    external_caller: bool = False,
 ) -> ToolResponseBase:
     """Shared pipeline: auto-fix → validate → preview or save.
 
@@ -75,6 +91,8 @@ async def fix_validate_and_save(
             keeps the defaults.
         move_webhook_presets: On an update, move the agent's webhook presets
             onto the new version.
+        external_caller: An External API client is saving; a failed save
+            tells it only what was written for it.
 
     Returns:
         An appropriate ToolResponseBase subclass.
@@ -204,9 +222,14 @@ async def fix_validate_and_save(
         )
     except Exception as e:
         logger.error(f"Failed to save agent: {e}", exc_info=True)
+        detail = (
+            "an internal error"
+            if external_caller and not isinstance(e, _CALLER_FACING_ERRORS)
+            else str(e)
+        )
         return ErrorResponse(
-            message=f"Failed to save the agent: {str(e)}",
+            message=f"Failed to save the agent: {detail}",
             error="save_failed",
-            details={"exception": str(e)},
+            details={"exception": detail},
             session_id=session_id,
         )

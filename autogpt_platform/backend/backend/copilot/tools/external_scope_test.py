@@ -15,6 +15,7 @@ from prisma.enums import APIKeyPermission
 from backend.api.features.library.model import LibraryFolder
 from backend.copilot.model import ChatSession
 from backend.copilot.tools import TOOL_REGISTRY
+from backend.copilot.tools.agent_generator.pipeline import fix_validate_and_save
 from backend.copilot.tools.agent_output import AgentOutputTool, _run_visible
 from backend.copilot.tools.agent_search import (
     _get_library_agent_by_id,
@@ -31,6 +32,7 @@ from backend.copilot.tools.helpers import require_guide_read, require_library_ch
 from backend.copilot.tools.manage_folders import CreateFolderTool, ListFoldersTool
 from backend.copilot.tools.manage_schedules import _is_in_session_scope
 from backend.copilot.tools.models import ErrorResponse
+from backend.util.exceptions import NotAuthorizedError
 
 USER = "user-1"
 
@@ -267,6 +269,58 @@ async def test_an_agent_created_over_the_external_api_lands_in_its_organization(
 
     assert save.await_args.kwargs["organization_id"] == "org-1"
     assert save.await_args.kwargs["team_id"] == "team-1"
+
+
+@pytest.mark.parametrize(
+    "error, external_caller, shown",
+    [
+        (
+            RuntimeError('insert on "AgentGraph" violates a key'),
+            True,
+            "an internal error",
+        ),
+        (RuntimeError('insert on "AgentGraph" violates a key'), False, "violates"),
+        (
+            NotAuthorizedError("Graph #g has versions by another user"),
+            True,
+            "another user",
+        ),
+    ],
+    ids=["internal-external", "internal-chat", "written-for-the-caller"],
+)
+async def test_a_failed_save_tells_an_external_caller_only_what_was_written_for_it(
+    error: Exception, external_caller: bool, shown: str
+):
+    """A database error's text names tables and constraints; AutoPilot's model
+    reads it to recover, an External API client gets none of it."""
+    validator = MagicMock(errors=[])
+    validator.validate.return_value = (True, None)
+    with (
+        patch(
+            "backend.copilot.tools.agent_generator.pipeline.save_agent_to_library",
+            AsyncMock(side_effect=error),
+        ),
+        patch(
+            "backend.copilot.tools.agent_generator.pipeline.get_blocks_as_dicts",
+            return_value=[],
+        ),
+        patch(
+            "backend.copilot.tools.agent_generator.pipeline.AgentValidator",
+            return_value=validator,
+        ),
+    ):
+        result = await fix_validate_and_save(
+            {"name": "Mailer", "nodes": [], "links": []},
+            user_id=USER,
+            session_id="session-1",
+            external_caller=external_caller,
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert shown in result.message
+    assert shown in str(result.details)
+    if external_caller and shown == "an internal error":
+        assert "AgentGraph" not in result.model_dump_json()
 
 
 async def test_a_folder_created_over_the_external_api_lands_in_its_organization():

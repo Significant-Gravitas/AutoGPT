@@ -212,6 +212,7 @@ class EditAgentTool(BaseTool):
             # A webhook preset runs the version it is pinned to with its stored
             # credentials, so moving it onto this one is a start.
             move_webhook_presets=external_allows(session, APIKeyPermission.RUN_AGENT),
+            external_caller=session.external_caller,
         )
 
 

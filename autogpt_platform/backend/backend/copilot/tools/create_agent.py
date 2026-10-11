@@ -185,6 +185,7 @@ class CreateAgentTool(BaseTool):
             is_hidden=is_hidden,
             organization_id=organization_id,
             team_id=team_id,
+            external_caller=session.external_caller,
         )
         if user_id:
             return await install_saved_agent(user_id, session, saved)
