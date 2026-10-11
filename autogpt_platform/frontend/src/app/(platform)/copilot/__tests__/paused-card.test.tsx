@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +17,7 @@ import {
   renderHost,
   TEST_BACKEND_BASE_URL,
   TEST_SESSION_ID,
+  typeAndSend,
 } from "./sse-helpers";
 
 vi.mock("@/services/environment", async (importActual) => {
@@ -217,6 +218,85 @@ describe("the Paused card in a reopened chat", () => {
     expect(screen.getByText(answer)).toBeDefined();
     expect(screen.queryByRole("button", { name: "Keep going" })).toBeNull();
   }, 15_000);
+});
+
+describe("the Paused card as the turn lands", () => {
+  it("stays stopped when the live pause it was stopped on comes back as its stored row", async () => {
+    let sent = false;
+    server.use(
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        ({ request }) => {
+          sent = true;
+          return streamSseResponse(
+            [
+              { type: "start", messageId: "live-turn" },
+              { type: "start-step" },
+              { type: "text-start", id: "t1" },
+              {
+                type: "text-delta",
+                id: "t1",
+                delta: "Halfway there: the numbers are in.",
+              },
+              { type: "text-end", id: "t1" },
+              { type: "finish-step" },
+              {
+                type: "data-turn-paused",
+                data: {
+                  reason: "steps",
+                  resets_at: null,
+                  steps: 450,
+                  checkpoint_saved: true,
+                  started: true,
+                },
+              },
+              { type: "finish" },
+            ],
+            // The turn ends a beat later, so the card is still the live part,
+            // with no stored row yet, when it is stopped.
+            {
+              abortSignal: request.signal,
+              perChunkDelaysMs: [0, 0, 0, 0, 0, 0, 0, 1500],
+            },
+          );
+        },
+      ),
+    );
+    renderHost({
+      sessionResponse: getGetV2GetSessionMockHandler200(() =>
+        session({ messages: sent ? PAUSED_CHAT : [] }),
+      ),
+    });
+
+    await typeAndSend("Build the quarterly report.");
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole(
+        "button",
+        { name: "Stop here" },
+        { timeout: 5000 },
+      ),
+    );
+    expect(screen.getByText("Stopped here")).toBeDefined();
+
+    // Once the turn ends the chat swaps the live part for the stored row,
+    // which the card then remounts from.
+    await waitFor(
+      () =>
+        expect(
+          document.querySelector(
+            `[data-message-id="${TEST_SESSION_ID}-seq-2"]`,
+          ),
+        ).not.toBeNull(),
+      { timeout: 8000 },
+    );
+    expect(
+      screen.getByRole("note", {
+        name: "Paused · checking in after a long run. Stopped here",
+      }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Keep going" })).toBeNull();
+  }, 20_000);
 });
 
 function session(over: Partial<SessionDetailResponse>): SessionDetailResponse {

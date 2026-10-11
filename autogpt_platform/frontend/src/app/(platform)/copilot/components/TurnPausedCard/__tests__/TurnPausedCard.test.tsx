@@ -155,24 +155,53 @@ function backend({
   return calls;
 }
 
-function renderCard(
+interface CardOptions {
+  current?: boolean;
+  name?: string;
+  sessionId?: string;
+  /** Still streaming in: no stored row, so no key that outlives a reload. */
+  live?: boolean;
+  rowKey?: string;
+}
+
+function cardTree(
   data: Record<string, unknown>,
-  { current = true, name = "Otto" } = {},
+  {
+    current = true,
+    name = "Otto",
+    sessionId = SESSION_ID,
+    live = false,
+    rowKey = "seq-7",
+  }: CardOptions,
+  onBackendTurn: () => void,
 ) {
-  const onBackendTurn = vi.fn();
-  const view = render(
+  return (
     <CopilotChatActionsProvider
       onSend={vi.fn()}
       onBackendTurn={onBackendTurn}
-      sessionId={SESSION_ID}
+      sessionId={sessionId}
       assistantName={name}
     >
       <CurrentPauseContext.Provider value={current ? data : null}>
-        <TurnPausedCard data={data} pauseKey="seq-7" />
+        <TurnPausedCard
+          data={data}
+          pauseKey={live ? "live-turn-3" : rowKey}
+          isStoredRow={!live}
+        />
       </CurrentPauseContext.Provider>
-    </CopilotChatActionsProvider>,
+    </CopilotChatActionsProvider>
   );
-  return { onBackendTurn, ...view };
+}
+
+function renderCard(data: Record<string, unknown>, options: CardOptions = {}) {
+  const onBackendTurn = vi.fn();
+  const view = render(cardTree(data, options, onBackendTurn));
+  return {
+    onBackendTurn,
+    ...view,
+    rerenderCard: (next: Record<string, unknown>, nextOptions: CardOptions) =>
+      view.rerender(cardTree(next, nextOptions, onBackendTurn)),
+  };
 }
 
 /** Exact text whose spaces may be any whitespace: times can carry a narrow
@@ -525,6 +554,47 @@ describe("TurnPausedCard — once it's history", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
+  it("keeps a stop made while the pause was live once its stored row takes over, and only for that pause", () => {
+    backend();
+    const sessionId = "chat-stopped-live";
+    const data = pause({ reason: "steps", resets_at: null, steps: 450 });
+    const live = renderCard(data, { sessionId, live: true });
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop here" }));
+    expect(screen.getByText("Stopped here")).toBeDefined();
+
+    // The stream ends and the chat rebuilds the pause from its stored row.
+    live.unmount();
+    const stored = renderCard({ ...data }, { sessionId, rowKey: "seq-9" });
+    expect(screen.getByText("Stopped here")).toBeDefined();
+    expect(screen.queryByRole("button")).toBeNull();
+
+    // Kept under that row from now on, as for a stop made on the row itself.
+    stored.unmount();
+    const reopened = renderCard({ ...data }, { sessionId, rowKey: "seq-9" });
+    expect(screen.getByText("Stopped here")).toBeDefined();
+
+    // A later pause in the same chat is its own, however alike.
+    reopened.unmount();
+    renderCard({ ...data }, { sessionId, rowKey: "seq-12" });
+    expect(screen.getByRole("button", { name: "Stop here" })).toBeDefined();
+  });
+
+  it("forgets a live stop the chat moved past before the pause's row arrived", () => {
+    backend();
+    const sessionId = "chat-moved-past";
+    const data = pause({ reason: "task", resets_at: null });
+    const live = renderCard(data, { sessionId, live: true });
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop here" }));
+    // A new message lands under it while it is still the live part.
+    live.rerenderCard(data, { sessionId, live: true, current: false });
+    live.unmount();
+
+    renderCard({ ...data }, { sessionId, rowKey: "seq-12" });
+    expect(screen.getByRole("button", { name: "Keep going" })).toBeDefined();
+  });
+
   it("reads as one static line once the chat has moved past it", () => {
     backend();
     renderCard(pause(), { current: false });
@@ -540,7 +610,7 @@ describe("TurnPausedCard — once it's history", () => {
   it("shows just the title where the chat can't be acted on", () => {
     render(
       <CopilotChatActionsProvider onSend={vi.fn()} chatSurface="share">
-        <TurnPausedCard data={pause()} pauseKey="seq-7" />
+        <TurnPausedCard data={pause()} pauseKey="seq-7" isStoredRow />
       </CopilotChatActionsProvider>,
     );
 

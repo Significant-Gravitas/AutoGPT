@@ -1,7 +1,5 @@
 import type { UIMessage } from "ai";
 
-import { Key, storage } from "@/services/storage/local-storage";
-
 import { TURN_PAUSED_PART_TYPE, type TurnPause } from "../../turnPause";
 
 /**
@@ -170,31 +168,4 @@ export function resetIn(date: Date, now = new Date()): string {
   }
   const days = Math.round(minutes / (24 * 60));
   return `in ${days} ${days === 1 ? "day" : "days"}`;
-}
-
-const MAX_STOPPED = 50;
-
-/** "Stop here" is the user's call alone, so it lives on this device only. */
-export function isPauseStopped(key: string): boolean {
-  return readStopped().includes(key);
-}
-
-export function rememberStoppedPause(key: string) {
-  const kept = readStopped()
-    .filter((stopped) => stopped !== key)
-    .slice(-(MAX_STOPPED - 1));
-  storage.set(Key.COPILOT_STOPPED_PAUSES, JSON.stringify([...kept, key]));
-}
-
-function readStopped(): string[] {
-  try {
-    const value: unknown = JSON.parse(
-      storage.get(Key.COPILOT_STOPPED_PAUSES) ?? "[]",
-    );
-    return Array.isArray(value)
-      ? value.filter((key): key is string => typeof key === "string")
-      : [];
-  } catch {
-    return [];
-  }
 }

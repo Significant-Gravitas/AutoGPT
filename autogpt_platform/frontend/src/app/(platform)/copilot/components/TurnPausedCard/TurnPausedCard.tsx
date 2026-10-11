@@ -8,6 +8,8 @@ import { useTurnPausedCard } from "./useTurnPausedCard";
 interface Props {
   data: unknown;
   pauseKey: string;
+  /** The pause is a stored row, so its key outlives a reload. */
+  isStoredRow: boolean;
 }
 
 /**
@@ -15,8 +17,8 @@ interface Props {
  * pick it back up. Only the pause the chat is still sitting on offers them;
  * any other reads as a one-line record of what happened.
  */
-export function TurnPausedCard({ data, pauseKey }: Props) {
-  const card = useTurnPausedCard({ data, pauseKey });
+export function TurnPausedCard({ data, pauseKey, isStoredRow }: Props) {
+  const card = useTurnPausedCard({ data, pauseKey, isStoredRow });
   if (!card.pause) return null;
   if (card.isLive && card.sessionId) {
     return (

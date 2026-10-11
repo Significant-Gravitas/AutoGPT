@@ -225,14 +225,19 @@ export function MessagePartRenderer({
         />
       );
     }
-    case TURN_PAUSED_PART_TYPE:
+    case TURN_PAUSED_PART_TYPE: {
+      // A pause built from its stored row is keyed by that row; one still
+      // streaming in has no row yet, so its key is this render's only.
+      const rowKey = "id" in part ? part.id : undefined;
       return (
         <TurnPausedCard
           key={key}
           data={"data" in part ? part.data : undefined}
-          pauseKey={("id" in part && part.id) || key}
+          pauseKey={rowKey || key}
+          isStoredRow={Boolean(rowKey)}
         />
       );
+    }
     case "tool-ask_question":
       return <AskQuestionTool key={key} part={part as ToolUIPart} />;
     case "tool-expert_onboarding":
