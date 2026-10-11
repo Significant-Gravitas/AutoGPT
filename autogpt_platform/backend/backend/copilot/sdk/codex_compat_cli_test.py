@@ -13,6 +13,7 @@ from claude_agent_sdk import (
     tool,
 )
 
+from backend.copilot.pending_messages import PendingMessage, format_pending_as_followup
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.copilot.sdk.env import build_sdk_env
 from backend.integrations.codex.models import (
@@ -153,6 +154,9 @@ async def test_bundled_claude_cli_executes_mcp_tool_through_codex_gateway(
     assert agent_session.tool_result is not None
     assert agent_session.tool_result.success
     assert "echo:ping" in agent_session.tool_result.content
+    # The CLI still sends its own token count after the round; that is not a
+    # message from the user and must not reach Codex as one.
+    assert agent_session.tool_result.followup is None
     assert any(
         isinstance(message, ResultMessage) and not message.is_error
         for message in received
@@ -172,11 +176,13 @@ async def test_bundled_claude_cli_delivers_a_post_tool_use_followup_to_codex(
 
     The PostToolUse hook hands queued messages to the CLI, which sends them
     after the tool result rather than inside it -- for a non-Claude model, as
-    a separate ``system`` message. They must reach Codex as a follow-up and
-    leave the tool's own output untouched.
+    a separate ``system`` message, labelled and followed by the CLI's own
+    token count. Exactly the queued block must reach Codex as a follow-up,
+    leaving the tool's own output untouched.
     """
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
     stderr_lines: list[str] = []
+    queued = format_pending_as_followup([PendingMessage(content="also check the logs")])
 
     @tool("echo", "Echo a value", {"value": str})
     async def echo(arguments):
@@ -186,10 +192,7 @@ async def test_bundled_claude_cli_delivers_a_post_tool_use_followup_to_codex(
         return {
             "hookSpecificOutput": {
                 "hookEventName": "PostToolUse",
-                "additionalContext": (
-                    "<user_follow_up>\nMessage 1:\nalso check the logs\n"
-                    "</user_follow_up>"
-                ),
+                "additionalContext": queued,
             }
         }
 
@@ -237,5 +240,4 @@ async def test_bundled_claude_cli_delivers_a_post_tool_use_followup_to_codex(
     result = agent_session.tool_result
     assert result is not None
     assert result.content == "echo:ping"
-    assert result.followup is not None
-    assert "also check the logs" in result.followup
+    assert result.followup == queued

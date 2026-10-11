@@ -8,6 +8,7 @@ from typing import cast
 import pytest
 from aiohttp import ClientSession, web
 
+from backend.copilot.pending_messages import PendingMessage, format_pending_as_followup
 from backend.copilot.sdk import codex_compat_gateway
 from backend.copilot.sdk.codex_compat_gateway import (
     CodexAnthropicGateway,
@@ -265,27 +266,66 @@ def _tool_result_request(
     return payload
 
 
-_FOLLOWUP = (
+_USER_FOLLOW_UP = format_pending_as_followup(
+    [PendingMessage(content="also check the logs")]
+)
+_TOTAL_TOKENS = "<total_tokens>14989339 tokens left</total_tokens>"
+# What the bundled CLI (claude-agent-sdk 0.2.161) sends with a tool result
+# whose PostToolUse hook returned a queued message: the hook's context, then
+# the CLI's own note.
+_HOOK_CONTEXT = (
     "PostToolUse:mcp__copilot__run_block hook additional context: "
-    "<user_follow_up>\nMessage 1:\nalso check the logs\n</user_follow_up>"
+    f"{_USER_FOLLOW_UP}\n\n{_TOTAL_TOKENS}"
 )
 
 
-def _with_followup(payload: dict[str, object], *, beside: bool) -> dict[str, object]:
-    """Add what the CLI sends after a tool result that a hook spoke to.
+def _with_cli_context(
+    payload: dict[str, object],
+    shape: str,
+    text: str = _HOOK_CONTEXT,
+) -> dict[str, object]:
+    """Add what the CLI sends with a tool result, in one of its shapes.
 
     Given a non-Claude model name, as on the ChatGPT route, the bundled CLI
-    (claude-agent-sdk 0.2.161) sends a PostToolUse hook's context as a
-    ``system`` message after the tool_result's message. Older builds sent it
-    as a text block beside the tool_result.
+    sends it as a ``system`` message after the tool_result's message. Older
+    builds put it in a text block beside the tool_result; given a Claude model
+    name, the CLI folds it into the tool_result's own content.
     """
     messages = cast(list[dict[str, object]], payload["messages"])
-    if beside:
-        content = cast(list[dict[str, object]], messages[-1]["content"])
-        content.append({"type": "text", "text": _FOLLOWUP})
-    else:
-        messages.append({"role": "system", "content": _FOLLOWUP})
+    if shape == "system-message":
+        messages.append({"role": "system", "content": text})
+        return payload
+    reminder = {
+        "type": "text",
+        "text": f"<system-reminder>\n{text}\n</system-reminder>",
+    }
+    content = cast(list[dict[str, object]], messages[-1]["content"])
+    if shape == "beside-result":
+        content.append(reminder)
+        return payload
+    result = content[0]
+    result["content"] = [{"type": "text", "text": str(result["content"])}, reminder]
     return payload
+
+
+async def _answer_first_tool_call(
+    client: ClientSession,
+    gateway: CodexAnthropicGateway,
+    shape: str,
+    text: str = _HOOK_CONTEXT,
+) -> dict[str, object]:
+    """Start a turn, then build the request that answers its tool call."""
+    first = await client.post(
+        f"{gateway.base_url}/v1/messages",
+        headers=_headers(gateway),
+        json=_tool_request("run", stream=True),
+    )
+    gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
+    return _with_cli_context(
+        _tool_result_request(gateway_call_id, "one result", stream=True),
+        shape,
+        text,
+    )
 
 
 def _tool_use_message(call_id: str) -> dict[str, object]:
@@ -1123,69 +1163,91 @@ async def test_retry_with_a_changed_system_prompt_still_replays() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "beside",
-    [False, True],
-    ids=["system-message-after-result", "text-block-beside-result"],
+    "shape, expected",
+    [
+        (
+            "system-message",
+            CodexDynamicToolResult(content="one result", followup=_USER_FOLLOW_UP),
+        ),
+        (
+            "beside-result",
+            CodexDynamicToolResult(content="one result", followup=_USER_FOLLOW_UP),
+        ),
+        # The result is forwarded whole, so Codex reads the message in the
+        # tool's output and a follow-up would say it twice.
+        (
+            "inside-result",
+            CodexDynamicToolResult(
+                content=f"one result\n<system-reminder>\n{_HOOK_CONTEXT}\n"
+                "</system-reminder>"
+            ),
+        ),
+    ],
 )
-async def test_what_the_cli_sends_after_a_tool_result_reaches_codex(
-    beside: bool,
+async def test_only_the_users_queued_messages_reach_codex_as_a_followup(
+    shape: str,
+    expected: CodexDynamicToolResult,
 ) -> None:
-    """A message the user sends mid-turn rides in after a tool result.
+    """A message the user sends mid-turn rides in with a tool result.
 
     The PostToolUse hook drains it from the queue, so if the gateway drops it
-    here it is gone. It reaches Codex as its own follow-up, not inside the
-    tool's output.
+    here it is gone. It reaches Codex as its own follow-up, wrapper and all,
+    without the hook's label or the CLI's token count around it.
     """
     agent_session = _FakeAgentSession(use_tool=True)
-    transport = _FakeTransport(agent_session)
     async with CodexAnthropicGateway(
         credential_lease=_lease(),
         model="gpt-5.6-terra",
-        transport=transport,
+        transport=_FakeTransport(agent_session),
     ) as gateway:
         async with ClientSession() as client:
-            first = await client.post(
-                f"{gateway.base_url}/v1/messages",
-                headers=_headers(gateway),
-                json=_tool_request("run", stream=True),
-            )
-            gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
+            continuation = await _answer_first_tool_call(client, gateway, shape)
             continued = await client.post(
                 f"{gateway.base_url}/v1/messages",
                 headers=_headers(gateway),
-                json=_with_followup(
-                    _tool_result_request(gateway_call_id, "one result", stream=True),
-                    beside=beside,
-                ),
+                json=continuation,
             )
             await continued.read()
 
     assert continued.status == 200
-    assert agent_session.tool_result == CodexDynamicToolResult(
-        content="one result",
-        followup=_FOLLOWUP,
-    )
+    assert agent_session.tool_result == expected
+
+
+@pytest.mark.asyncio
+async def test_a_round_with_only_the_clis_own_note_forwards_nothing() -> None:
+    """The CLI adds a token count after every tool round. It is not the user."""
+    agent_session = _FakeAgentSession(use_tool=True)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=_FakeTransport(agent_session),
+    ) as gateway:
+        async with ClientSession() as client:
+            continuation = await _answer_first_tool_call(
+                client, gateway, "system-message", _TOTAL_TOKENS
+            )
+            continued = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            await continued.read()
+
+    assert continued.status == 200
+    assert agent_session.tool_result == CodexDynamicToolResult(content="one result")
 
 
 @pytest.mark.asyncio
 async def test_a_retried_followup_request_replays_and_reaches_codex_once() -> None:
     agent_session = _FakeAgentSession(use_tool=True)
-    transport = _FakeTransport(agent_session)
     async with CodexAnthropicGateway(
         credential_lease=_lease(),
         model="gpt-5.6-terra",
-        transport=transport,
+        transport=_FakeTransport(agent_session),
     ) as gateway:
         async with ClientSession() as client:
-            first = await client.post(
-                f"{gateway.base_url}/v1/messages",
-                headers=_headers(gateway),
-                json=_tool_request("run", stream=True),
-            )
-            gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
-            continuation = _with_followup(
-                _tool_result_request(gateway_call_id, "one result", stream=True),
-                beside=False,
+            continuation = await _answer_first_tool_call(
+                client, gateway, "system-message"
             )
             accepted = await client.post(
                 f"{gateway.base_url}/v1/messages",
@@ -1204,7 +1266,7 @@ async def test_a_retried_followup_request_replays_and_reaches_codex_once() -> No
     assert retried_body == accepted_body
     assert len(agent_session.requests) == 1
     assert agent_session.tool_result is not None
-    assert agent_session.tool_result.followup == _FOLLOWUP
+    assert agent_session.tool_result.followup == _USER_FOLLOW_UP
 
 
 @pytest.mark.asyncio
@@ -1233,7 +1295,7 @@ async def test_the_round_after_a_followup_is_not_a_conflict() -> None:
                 {"role": "user", "content": "run"},
                 _tool_use_message(first_id),
                 _tool_result_message(first_id, "first result"),
-                {"role": "system", "content": _FOLLOWUP},
+                {"role": "system", "content": _HOOK_CONTEXT},
             ]
             second = await client.post(
                 f"{gateway.base_url}/v1/messages",
@@ -1250,6 +1312,7 @@ async def test_the_round_after_a_followup_is_not_a_conflict() -> None:
                         *history,
                         _tool_use_message(second_id),
                         _tool_result_message(second_id, "second result"),
+                        {"role": "system", "content": _TOTAL_TOKENS},
                     ],
                 },
             )
@@ -1261,9 +1324,27 @@ async def test_the_round_after_a_followup_is_not_a_conflict() -> None:
         for event in third_events
     )
     assert agent_session.tool_results == [
-        CodexDynamicToolResult(content="first result", followup=_FOLLOWUP),
+        CodexDynamicToolResult(content="first result", followup=_USER_FOLLOW_UP),
         CodexDynamicToolResult(content="second result"),
     ]
+
+
+def test_a_message_quoting_the_closing_tag_is_not_cut_short() -> None:
+    block = format_pending_as_followup(
+        [PendingMessage(content="why is </user_follow_up> in my logs?")]
+    )
+    messages = [
+        _tool_result_message("toolu_codex_1", "one result"),
+        {
+            "role": "system",
+            "content": f"PostToolUse:x hook additional context: {block}\n\n"
+            f"{_TOTAL_TOKENS}",
+        },
+    ]
+
+    followup = codex_compat_gateway._followup_after_results(messages, ["toolu_codex_1"])
+
+    assert followup == block
 
 
 @pytest.mark.asyncio

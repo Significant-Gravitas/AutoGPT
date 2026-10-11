@@ -14,6 +14,7 @@ from uuid import uuid4
 from aiohttp import web
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.copilot.pending_messages import FOLLOW_UP_CLOSE_TAG, FOLLOW_UP_OPEN_TAG
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.provider_failure import classify as classify_provider_failure
 from backend.copilot.provider_failure import status_for
@@ -61,6 +62,13 @@ _SECRET_ASSIGNMENT_PATTERN = re.compile(
     r"token|api[_ -]?key)\b)"
     r"\s*[\"']?\s*[:=]\s*(?:Bearer\s+)?"
     r"(?:\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*'|[^\s,;]+)"
+)
+# A queued user message the PostToolUse hook injected, wrapper included.
+# Greedy, so a message quoting the closing tag is not cut short; a tool round
+# carries one hook's context, so one block.
+_FOLLOW_UP_BLOCK = re.compile(
+    re.escape(FOLLOW_UP_OPEN_TAG) + ".*" + re.escape(FOLLOW_UP_CLOSE_TAG),
+    re.DOTALL,
 )
 
 logger = logging.getLogger(__name__)
@@ -1097,10 +1105,11 @@ def _claim(
     """Hand each result to the Codex call waiting on it.
 
     ``record.result`` stays exactly what the CLI sent as the result, since
-    every later request is checked against it. What the CLI sent after the
-    results travels to Codex with the last of them, so it is read once.
+    every later request is checked against it. The user's queued messages
+    that came with the results travel with the last of them, so Codex reads
+    them once.
     """
-    followup = _text_after_results(
+    followup = _followup_after_results(
         messages, [record.gateway_call_id for record, _ in claimable]
     )
     for record, result in claimable:
@@ -1116,15 +1125,16 @@ def _claim(
             )
 
 
-def _text_after_results(messages: object, call_ids: list[str]) -> str | None:
-    """Text the CLI sent with these tool results without making it part of one.
+def _followup_after_results(messages: object, call_ids: list[str]) -> str | None:
+    """The user's queued messages the CLI sent with these tool results.
 
-    This is how a message the user sends mid-turn reaches the model: the
-    PostToolUse hook returns it as context, and the CLI sends that after the
-    result -- for a non-Claude model name, as a ``system`` message after the
-    result's message; older CLI builds, as a text block beside the result.
-    The CLI's own notes (a token count) ride the same way. It is all passed on
-    verbatim, as a fresh turn's transcript would show it.
+    The PostToolUse hook hands them over as ``<user_follow_up>`` blocks in its
+    context, which the CLI sends after the result: for a non-Claude model
+    name, in a ``system`` message after the result's message; older builds, in
+    a text block beside the result. Only the blocks are passed on. The CLI's
+    own notes ride the same way, a ``<total_tokens>`` count every round, and
+    must not become user turns. A block inside the result itself is not read
+    here: the result is forwarded whole, so Codex already has it.
     """
     if not isinstance(messages, list):
         return None
@@ -1143,7 +1153,8 @@ def _text_after_results(messages: object, call_ids: list[str]) -> str | None:
         for message in messages[start:]
         if isinstance(message, dict) and message.get("role") != "assistant"
     ]
-    return "\n".join(text for text in texts if text) or None
+    blocks = [block for text in texts for block in _FOLLOW_UP_BLOCK.findall(text)]
+    return "\n\n".join(blocks) or None
 
 
 def _carries_tool_result(message: object, call_ids: list[str]) -> bool:
