@@ -1,4 +1,5 @@
 import { getGetV2GetSessionQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
+import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/home/home";
 import {
   getListPausedScheduledChatsQueryKey,
   useResumeScheduledChat,
@@ -27,6 +28,8 @@ export function useScheduledChatNoticeCard({ scheduleKey, sessionID }: Args) {
     queryClient.invalidateQueries({
       queryKey: getListPausedScheduledChatsQueryKey(),
     });
+    // Home lists each paused chat under Needs you.
+    queryClient.invalidateQueries({ queryKey: getGetHomeDashboardQueryKey() });
     void invalidateAllScheduleQueries(queryClient);
     if (sessionID) {
       queryClient.invalidateQueries({
