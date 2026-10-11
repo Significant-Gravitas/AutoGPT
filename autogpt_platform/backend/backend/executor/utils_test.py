@@ -3251,6 +3251,34 @@ async def test_admin_requeue_publishes_queued_execution_without_cas(
 
 
 @pytest.mark.asyncio
+async def test_admin_requeue_of_expert_run_persists_tenancy_without_a_status_write(
+    mocker: MockerFixture,
+):
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id="expert-1", organization_id="org-1", team_id="team-1"
+    )
+    _mock_expert_personal_tenancy(
+        mocker, organization_id="current-org", team_id="current-team"
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+        bypass_paywall=True,
+        admin_requeue=True,
+    )
+
+    execution_store.update_graph_execution_stats.assert_awaited_once_with(
+        graph_exec_id="existing-execution",
+        update_tenancy=True,
+        organization_id="current-org",
+        team_id="current-team",
+    )
+    queue.publish_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "status",
     [

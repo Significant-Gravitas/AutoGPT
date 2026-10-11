@@ -503,6 +503,9 @@ async def requeue_multiple_executions(
                 admin_requeue=True,
             )
             return True
+        except ExecutionNotRequeuedError as e:
+            logger.info(f"Did not requeue {exec.id}: {e}")
+            return False
         except Exception as e:
             logger.error(f"Failed to requeue {exec.id}: {e}")
             return False
@@ -946,6 +949,9 @@ async def requeue_all_stuck_executions(
                 admin_requeue=True,
             )
             return True
+        except ExecutionNotRequeuedError as e:
+            logger.info(f"Did not requeue {exec.id}: {e}")
+            return False
         except Exception as e:
             logger.error(f"Failed to requeue {exec.id}: {e}")
             return False

@@ -1325,7 +1325,7 @@ async def add_graph_execution(
             graph_id=graph_id, status="validation_error", user_id=user_id
         )
         raise
-    except UserPaywalledError:
+    except (UserPaywalledError, ExecutionNotRequeuedError):
         raise
     except Exception:
         record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
@@ -1731,13 +1731,12 @@ async def _add_graph_execution(
         # fail the whole requeue — the exact case the admin fallback serves.
         persist_tenancy = expert_id is not None and organization_id is not None
         if admin_requeue:
-            # The row was QUEUED when re-read above. It can't pass the QUEUED
-            # CAS below (QUEUED is not a valid source for QUEUED), so admin
-            # recovery used to skip the publish while reporting success
-            # (#15282). Publish directly: if the original message was not
-            # lost after all, the consumer takes a per-execution cluster lock
-            # and re-reads the status under it, so the second delivery is
-            # dropped or skipped instead of starting a second run.
+            # The row was QUEUED when re-read above, and QUEUED is not a valid
+            # source for the QUEUED CAS below, so admin recovery publishes
+            # directly (#15282). If the original message was not lost after
+            # all, the consumer takes a per-execution cluster lock and
+            # re-reads the status under it, so the second delivery is dropped
+            # or skipped instead of starting a second run.
             if persist_tenancy:
                 await edb.update_graph_execution_stats(
                     graph_exec_id=graph_exec.id,
