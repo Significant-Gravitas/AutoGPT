@@ -35,6 +35,7 @@ from forge.llm.providers.schema import (
 from forge.models.action import ActionProposal
 from forge.models.config import SystemConfiguration, UserConfigurable
 from forge.models.utils import ModelWithSummary
+from forge.utils.const import FINISH_COMMAND
 from forge.utils.exceptions import AgentFinished
 
 if TYPE_CHECKING:
@@ -471,7 +472,12 @@ class BaseMultiStepPromptStrategy(ABC):
 
         Returns:
             The result from the finish command, or None if max cycles reached.
+
+        Raises:
+            RuntimeError: If the last cycle proposed a finish command that
+                the permission manager denied.
         """
+        finish_denied = False
         for cycle in range(max_cycles):
             # Check for cancellation
             if self._execution_context and self._execution_context.cancelled:
@@ -488,10 +494,18 @@ class BaseMultiStepPromptStrategy(ABC):
                 handle.summary = result[:200] if result else "Task completed"
                 return result
 
+            finish_denied = proposal.use_tool.name == FINISH_COMMAND
+
             # Log progress
             self.logger.debug(
                 f"Sub-agent {handle.agent_id} cycle {cycle + 1}: "
                 f"{proposal.use_tool.name}"
+            )
+
+        if finish_denied:
+            handle.summary = f"Finish denied before max cycles ({max_cycles})"
+            raise RuntimeError(
+                f"The {FINISH_COMMAND} command was denied on the last cycle"
             )
 
         # Hit max cycles

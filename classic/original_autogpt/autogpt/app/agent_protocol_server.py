@@ -281,6 +281,7 @@ class AgentProtocolServer:
                     step = await self.db.update_step(
                         task_id=task_id,
                         step_id=step.step_id,
+                        status="completed",
                         output=last_proposal.use_tool.arguments["reason"],
                         is_last=True,
                         additional_output=additional_output,

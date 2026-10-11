@@ -5,7 +5,7 @@ from autogpt.agent_factory.default_factory import DefaultAgentFactory
 from autogpt.agents.agent import Agent
 from autogpt.agents.prompt_strategies.base import BaseMultiStepPromptStrategy
 
-from forge.agent.execution_context import SubAgentHandle
+from forge.agent.execution_context import SubAgentHandle, SubAgentStatus
 from forge.utils.exceptions import AgentFinished
 
 
@@ -77,7 +77,7 @@ async def test_sub_agent_finish_runs_permission_check():
 
 
 @pytest.mark.asyncio
-async def test_denied_sub_agent_finish_does_not_complete():
+async def test_denied_sub_agent_finish_on_last_cycle_raises():
     strategy = MagicMock()
     strategy._execution_context = None
     strategy.logger = MagicMock()
@@ -89,9 +89,79 @@ async def test_denied_sub_agent_finish_does_not_complete():
     agent.execute = AsyncMock(return_value=MagicMock())
     handle = SubAgentHandle(agent_id="child", task="child task")
 
+    with pytest.raises(RuntimeError, match="finish"):
+        await BaseMultiStepPromptStrategy._run_agent_loop(
+            strategy, agent, max_cycles=1, handle=handle
+        )
+
+    agent.execute.assert_awaited_once_with(proposal)
+
+
+@pytest.mark.asyncio
+async def test_denied_sub_agent_finish_marks_handle_failed():
+    strategy = MagicMock()
+    strategy._execution_context = None
+    strategy.logger = MagicMock()
+    strategy.config.sub_agent_max_cycles = 1
+    strategy.config.sub_agent_timeout_seconds = 5
+    proposal = MagicMock()
+    proposal.use_tool.name = "finish"
+    proposal.use_tool.arguments = {"reason": "Done"}
+    agent = MagicMock()
+    agent.propose_action = AsyncMock(return_value=proposal)
+    agent.execute = AsyncMock(return_value=MagicMock())
+    handle = SubAgentHandle(agent_id="child", task="child task")
+    handle._agent = agent
+
+    async def run_loop(agent, max_cycles, handle):
+        return await BaseMultiStepPromptStrategy._run_agent_loop(
+            strategy, agent, max_cycles, handle
+        )
+
+    strategy._run_agent_loop = run_loop
+
+    result = await BaseMultiStepPromptStrategy.run_sub_agent(strategy, handle)
+
+    assert result is None
+    assert handle.status is SubAgentStatus.FAILED
+    assert handle.error
+
+
+@pytest.mark.asyncio
+async def test_denied_sub_agent_finish_followed_by_finish_completes():
+    strategy = MagicMock()
+    strategy._execution_context = None
+    strategy.logger = MagicMock()
+    proposal = MagicMock()
+    proposal.use_tool.name = "finish"
+    proposal.use_tool.arguments = {"reason": "Done"}
+    agent = MagicMock()
+    agent.propose_action = AsyncMock(return_value=proposal)
+    agent.execute = AsyncMock(side_effect=[MagicMock(), AgentFinished("Done")])
+    handle = SubAgentHandle(agent_id="child", task="child task")
+
+    result = await BaseMultiStepPromptStrategy._run_agent_loop(
+        strategy, agent, max_cycles=2, handle=handle
+    )
+
+    assert result == "Done"
+
+
+@pytest.mark.asyncio
+async def test_non_finish_exhaustion_keeps_returning_none():
+    strategy = MagicMock()
+    strategy._execution_context = None
+    strategy.logger = MagicMock()
+    proposal = MagicMock()
+    proposal.use_tool.name = "read_file"
+    proposal.use_tool.arguments = {}
+    agent = MagicMock()
+    agent.propose_action = AsyncMock(return_value=proposal)
+    agent.execute = AsyncMock(return_value=MagicMock())
+    handle = SubAgentHandle(agent_id="child", task="child task")
+
     result = await BaseMultiStepPromptStrategy._run_agent_loop(
         strategy, agent, max_cycles=1, handle=handle
     )
 
     assert result is None
-    agent.execute.assert_awaited_once_with(proposal)

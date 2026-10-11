@@ -218,3 +218,4 @@ async def test_successful_finish_step_is_marked_final():
     assert result is completed_step
     assert server.db.create_step.call_args.kwargs["is_last"] is False
     assert server.db.update_step.await_args_list[1].kwargs["is_last"] is True
+    assert server.db.update_step.await_args_list[1].kwargs["status"] == "completed"
