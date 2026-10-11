@@ -19,7 +19,7 @@ from backend.executor.scheduler import (
 )
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import NotAuthorizedError
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.test import SpinTestServer
 
 
@@ -285,6 +285,97 @@ class TestAddCopilotTurnScheduleExpertAttribution:
 
     def test_plain_session_persists_no_expert(self) -> None:
         assert self._persisted_args().expert_id is None
+
+
+class TestUpdateGraphExecutionSchedule:
+    """In-process checks of the change set ``update_graph_execution_schedule``
+    hands APScheduler. The end-to-end behavior is covered against the real
+    scheduler service above; these pin the branches that matter for a
+    single, minimal ``modify_job`` write."""
+
+    @staticmethod
+    def _job(*, paused: bool = False, kind: str = "graph") -> MagicMock:
+        job = MagicMock(id="sched-1")
+        job.name = "Weekday report"
+        job.trigger = _build_trigger(
+            cron="0 9 * * 1,2,3,4,5", run_at=None, user_timezone="UTC"
+        )
+        job.next_run_time = None if paused else datetime.now(timezone.utc)
+        if kind == "graph":
+            job.kwargs = GraphExecutionJobArgs(
+                schedule_id="sched-1",
+                user_id="user-1",
+                graph_id="graph-1",
+                graph_version=1,
+                agent_name="Weekday report",
+                cron="0 9 * * 1,2,3,4,5",
+                input_data={"input": "data"},
+            ).model_dump(mode="json")
+        else:
+            job.kwargs = {
+                "kind": "copilot_turn",
+                "schedule_id": "sched-1",
+                "user_id": "user-1",
+                "message": "hi",
+                "cron": "0 9 * * *",
+            }
+        return job
+
+    def _update(self, job: MagicMock, **fields):
+        s = _stub_scheduler()
+        s.scheduler.get_job.return_value = job
+        s.scheduler.modify_job.return_value = job
+        with (
+            patch.object(s, "_invalidate_jobs_cache"),
+            patch("backend.executor.scheduler.run_async") as run_async,
+        ):
+            s.update_graph_execution_schedule(
+                schedule_id="sched-1", user_id="user-1", **fields
+            )
+        return s.scheduler.modify_job.call_args.kwargs, run_async
+
+    def test_new_time_and_timezone_move_the_next_run(self) -> None:
+        changes, run_async = self._update(
+            self._job(), cron="30 18 * * 1,2,3,4,5", user_timezone="America/New_York"
+        )
+        assert str(changes["trigger"].timezone) == "America/New_York"
+        assert changes["kwargs"]["cron"] == "30 18 * * 1,2,3,4,5"
+        next_run = changes["next_run_time"].astimezone(
+            pytz.timezone("America/New_York")
+        )
+        assert (next_run.hour, next_run.minute, next_run.weekday() < 5) == (
+            18,
+            30,
+            True,
+        )
+        assert "name" not in changes
+        run_async.assert_not_called()
+
+    def test_a_paused_schedule_stays_paused(self) -> None:
+        changes, _ = self._update(self._job(paused=True), cron="0 7 * * *")
+        assert "trigger" in changes
+        assert "next_run_time" not in changes
+
+    def test_a_rename_leaves_the_timing_alone(self) -> None:
+        changes, _ = self._update(self._job(), name="  Evening report  ")
+        assert changes["name"] == "Evening report"
+        assert changes["kwargs"]["agent_name"] == "Evening report"
+        assert changes["kwargs"]["input_data"] == {"input": "data"}
+        assert "trigger" not in changes
+
+    def test_new_inputs_are_validated_against_the_graph(self) -> None:
+        changes, run_async = self._update(self._job(), input_data={"input": "new"})
+        assert changes["kwargs"]["input_data"] == {"input": "new"}
+        run_async.assert_called_once()
+
+    def test_a_copilot_follow_up_is_not_an_agent_schedule(self) -> None:
+        s = _stub_scheduler()
+        s.scheduler.get_job.return_value = self._job(kind="copilot_turn")
+        with pytest.raises(NotFoundError):
+            s.update_graph_execution_schedule(
+                schedule_id="sched-1", user_id="user-1", cron="0 7 * * *"
+            )
+        s.scheduler.modify_job.assert_not_called()
 
 
 class TestAddCommunityRebuildSchedule:

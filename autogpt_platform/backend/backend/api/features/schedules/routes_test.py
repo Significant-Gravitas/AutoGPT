@@ -245,6 +245,43 @@ def test_delete_schedule_maps_not_found_to_404(
     assert response.status_code == 404
 
 
+def test_update_schedule_forwards_only_the_sent_fields(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Omitted fields go through as None so the scheduler keeps them, and the
+    next run comes back in the schedule's own timezone, as on create."""
+    updated = scheduler.GraphExecutionJobInfo(
+        id="sched-1",
+        name="Evening report",
+        next_run_time="2026-10-12T22:30:00+00:00",
+        timezone="America/New_York",
+        user_id="test-user-id",
+        graph_id="graph-1",
+        graph_version=1,
+        cron="30 18 * * 1,2,3,4,5",
+        input_data={},
+    )
+    sched = _patch_scheduler(
+        mocker, update_execution_schedule=AsyncMock(return_value=updated)
+    )
+
+    response = client.patch(
+        "/schedules/sched-1",
+        json={"name": "Evening report", "cron": "30 18 * * 1,2,3,4,5"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["next_run_time"] == "2026-10-12T18:30:00-04:00"
+    kwargs = sched.update_execution_schedule.await_args.kwargs
+    assert kwargs["schedule_id"] == "sched-1"
+    assert (kwargs["name"], kwargs["cron"]) == ("Evening report", "30 18 * * 1,2,3,4,5")
+    assert (
+        kwargs["user_timezone"],
+        kwargs["input_data"],
+        kwargs["input_credentials"],
+    ) == (None, None, None)
+
+
 @pytest.mark.parametrize(
     "error", [NotFoundError("gone"), NotAuthorizedError("not yours")]
 )
