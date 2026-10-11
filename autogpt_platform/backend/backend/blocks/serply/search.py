@@ -118,6 +118,8 @@ class SerplySearchBlock(Block):
 
         try:
             response = await self._search(credentials, params)
+            # num is only an approximate bound, so trim to the caller's limit here.
+            results = results_from_response(response)[: input_data.max_results]
         except Exception as e:
             raise BlockExecutionError(
                 message=f"Search failed: {e}",
@@ -131,9 +133,6 @@ class SerplySearchBlock(Block):
                 provider_cost_type="cost_usd",
             )
         )
-
-        # num is only an approximate bound, so trim to the caller's limit here.
-        results = results_from_response(response)[: input_data.max_results]
 
         yield "results", results
         for result in results:

@@ -118,17 +118,19 @@ async def test_block_request_params_and_trim():
         seen.update(params)
         return {"results": [_row(i + 1) for i in range(4)]}
 
-    block._search = fake_search  # type: ignore[method-assign]
-    outputs = await _collect(
-        block,
-        {
-            "credentials": TEST_CREDENTIALS_INPUT,
-            "query": "site:go.dev generics",
-            "max_results": 2,
-            "country": "gb",
-            "time_range": "week",
-        },
-    )
+    with mock.patch.object(
+        block, "_search", new=mock.AsyncMock(side_effect=fake_search)
+    ):
+        outputs = await _collect(
+            block,
+            {
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "query": "site:go.dev generics",
+                "max_results": 2,
+                "country": "gb",
+                "time_range": "week",
+            },
+        )
 
     # Always requests the API ceiling and trims client-side.
     assert seen == {"q": "site:go.dev generics", "num": 10, "gl": "gb", "tbs": "qdr:w"}
@@ -145,8 +147,10 @@ async def test_block_omits_unset_optional_params():
         seen.update(params)
         return {"results": [_row()]}
 
-    block._search = fake_search  # type: ignore[method-assign]
-    await _collect(block, {"credentials": TEST_CREDENTIALS_INPUT, "query": "q"})
+    with mock.patch.object(
+        block, "_search", new=mock.AsyncMock(side_effect=fake_search)
+    ):
+        await _collect(block, {"credentials": TEST_CREDENTIALS_INPUT, "query": "q"})
 
     assert seen == {"q": "q", "num": 10}
 
@@ -158,6 +162,19 @@ async def test_block_wraps_api_errors():
     async def fake_search(credentials, params):
         raise ValueError("Serply search request failed with HTTP 401")
 
-    block._search = fake_search  # type: ignore[method-assign]
-    with pytest.raises(BlockExecutionError, match="HTTP 401"):
-        await _collect(block, {"credentials": TEST_CREDENTIALS_INPUT, "query": "q"})
+    with mock.patch.object(
+        block, "_search", new=mock.AsyncMock(side_effect=fake_search)
+    ):
+        with pytest.raises(BlockExecutionError, match="HTTP 401"):
+            await _collect(block, {"credentials": TEST_CREDENTIALS_INPUT, "query": "q"})
+
+
+@pytest.mark.asyncio
+async def test_block_wraps_malformed_results():
+    block = SerplySearchBlock()
+
+    with mock.patch.object(
+        block, "_search", new=mock.AsyncMock(return_value={"results": [None]})
+    ):
+        with pytest.raises(BlockExecutionError, match="Search failed"):
+            await _collect(block, {"credentials": TEST_CREDENTIALS_INPUT, "query": "q"})
