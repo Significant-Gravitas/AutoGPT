@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from backend.blocks.autopilot import AutoPilotBlock
 from backend.copilot.permissions import (
     ALL_TOOL_NAMES,
     CAPABILITY_GATE_NAMES,
@@ -17,6 +18,7 @@ from backend.copilot.permissions import (
     validate_block_identifiers,
     validate_tool_names,
 )
+from backend.copilot.sdk.tool_adapter import SDK_SUBAGENT_TOOLS, get_sdk_declared_tools
 from backend.copilot.tools import TOOL_REGISTRY
 
 # ---------------------------------------------------------------------------
@@ -814,3 +816,132 @@ class TestApplyToolPermissionsIsLossless:
             for name in allowed_unfiltered
             if name.rsplit("__", 1)[-1] in DESCENT_DENIED_TOOLS
         }
+
+
+class TestSubAgentToolIsInert:
+    """Saved graphs, routines and delegated turns may still name ``Agent`` or
+    ``Task``.  The CLI sub-agent tool is off by default, so those names must
+    still validate and must grant nothing, while the turn keeps the rest of
+    what its list allows."""
+
+    def test_saved_block_input_naming_the_sub_agent_tool_validates(self) -> None:
+        data = AutoPilotBlock.Input.model_validate(
+            {"prompt": "hi", "tools": ["Agent", "Task", "TodoWrite", "Glob"]}
+        )
+
+        assert data.tools == ["Agent", "Task", "TodoWrite", "Glob"]
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_whitelist_naming_it_keeps_its_other_tools(self, use_e2b: bool) -> None:
+        perms = CopilotPermissions(
+            tools=["Agent", "Task", "web_fetch", "TodoWrite"], tools_exclude=False
+        )
+
+        allowed, _ = apply_tool_permissions(perms, use_e2b=use_e2b)
+
+        assert "mcp__copilot__web_fetch" in allowed
+        assert "TodoWrite" in allowed
+        assert not {"Agent", "Task"} & set(allowed)
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_blacklist_naming_it_changes_nothing(self, use_e2b: bool) -> None:
+        perms = CopilotPermissions(tools=["Agent", "Task"], tools_exclude=True)
+
+        allowed, _ = apply_tool_permissions(perms, use_e2b=use_e2b)
+        unfiltered, _ = apply_tool_permissions(CopilotPermissions(), use_e2b=use_e2b)
+
+        assert set(allowed) == set(unfiltered)
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_operator_extra_is_still_narrowed_by_a_whitelist(
+        self, use_e2b: bool
+    ) -> None:
+        with_agent = CopilotPermissions(
+            tools=["Agent", "web_fetch"], tools_exclude=False
+        )
+        without_agent = CopilotPermissions(tools=["web_fetch"], tools_exclude=False)
+
+        allowed_with, _ = apply_tool_permissions(
+            with_agent, use_e2b=use_e2b, extra_builtins=["Agent"]
+        )
+        allowed_without, _ = apply_tool_permissions(
+            without_agent, use_e2b=use_e2b, extra_builtins=["Agent"]
+        )
+
+        assert "Agent" in allowed_with
+        assert "Agent" not in allowed_without
+
+
+class TestSubAgentToolAliases:
+    """``Agent`` and ``Task`` are one CLI tool, which the CLI drops when either
+    name is disallowed.  A list naming one must decide both, or an
+    operator-enabled sub-agent tool passes the hook but is never declared."""
+
+    @pytest.mark.parametrize("named", SDK_SUBAGENT_TOOLS)
+    def test_whitelist_naming_one_alias_grants_both(self, named: str) -> None:
+        perms = CopilotPermissions(tools=[named], tools_exclude=False)
+
+        effective = perms.effective_allowed_tools(ALL_TOOL_NAMES)
+
+        assert set(SDK_SUBAGENT_TOOLS) <= effective
+
+    @pytest.mark.parametrize("named", SDK_SUBAGENT_TOOLS)
+    def test_blacklist_naming_one_alias_denies_both(self, named: str) -> None:
+        perms = CopilotPermissions(tools=[named], tools_exclude=True)
+
+        effective = perms.effective_allowed_tools(ALL_TOOL_NAMES)
+
+        assert not set(SDK_SUBAGENT_TOOLS) & effective
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    @pytest.mark.parametrize("named", SDK_SUBAGENT_TOOLS)
+    def test_whitelist_naming_one_alias_keeps_the_tool_declared(
+        self, use_e2b: bool, named: str
+    ) -> None:
+        perms = CopilotPermissions(tools=[named, "web_fetch"], tools_exclude=False)
+
+        allowed, disallowed = apply_tool_permissions(
+            perms, use_e2b=use_e2b, extra_builtins=["Agent"]
+        )
+
+        assert set(SDK_SUBAGENT_TOOLS) <= set(allowed)
+        assert not set(SDK_SUBAGENT_TOOLS) & set(disallowed)
+        assert set(SDK_SUBAGENT_TOOLS) <= set(
+            get_sdk_declared_tools(allowed, disallowed)
+        )
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    @pytest.mark.parametrize("named", SDK_SUBAGENT_TOOLS)
+    def test_blacklist_naming_one_alias_removes_the_tool(
+        self, use_e2b: bool, named: str
+    ) -> None:
+        perms = CopilotPermissions(tools=[named], tools_exclude=True)
+
+        allowed, disallowed = apply_tool_permissions(
+            perms, use_e2b=use_e2b, extra_builtins=["Agent"]
+        )
+
+        assert not set(SDK_SUBAGENT_TOOLS) & set(allowed)
+        assert set(SDK_SUBAGENT_TOOLS) <= set(disallowed)
+        assert not set(SDK_SUBAGENT_TOOLS) & set(
+            get_sdk_declared_tools(allowed, disallowed)
+        )
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    @pytest.mark.parametrize("named", SDK_SUBAGENT_TOOLS)
+    def test_parent_blacklist_naming_one_alias_bounds_a_delegated_turn(
+        self, use_e2b: bool, named: str
+    ) -> None:
+        # The merge stores what both sides allow as a whitelist, so the
+        # parent's denial must already cover the other name.
+        parent = CopilotPermissions(tools=[named], tools_exclude=True)
+        merged = CopilotPermissions().merged_with_parent(parent, ALL_TOOL_NAMES)
+
+        allowed, disallowed = apply_tool_permissions(
+            merged, use_e2b=use_e2b, extra_builtins=["Agent"]
+        )
+
+        assert not set(SDK_SUBAGENT_TOOLS) & set(allowed)
+        assert not set(SDK_SUBAGENT_TOOLS) & set(
+            get_sdk_declared_tools(allowed, disallowed)
+        )

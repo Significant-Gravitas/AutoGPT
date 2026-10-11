@@ -7,7 +7,7 @@ ensuring multi-user isolation and preventing unauthorized operations.
 import json
 import logging
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection, Iterable
 from typing import Any, cast
 
 from claude_agent_sdk.types import HookEvent, HookMatcher
@@ -25,16 +25,13 @@ from .tool_adapter import (
     BLOCKED_TOOLS,
     DANGEROUS_PATTERNS,
     MCP_TOOL_PREFIX,
+    SDK_SUBAGENT_TOOLS,
     WORKSPACE_SCOPED_TOOLS,
     stash_pending_tool_output,
 )
 from .tool_display import SDKToolDisplayBridge
 
 logger = logging.getLogger(__name__)
-
-# The SDK CLI uses "Task" in older versions and "Agent" in v2.x+.
-# Shared across all sessions — used by security hooks for sub-agent detection.
-_SUBAGENT_TOOLS: frozenset[str] = frozenset({"Task", "Agent"})
 
 # ``SessionStart`` is missing from the Python SDK's ``HookEvent`` literal, but
 # the CLI runs SDK callback hooks for it: with matcher ``compact`` it fires
@@ -133,9 +130,16 @@ def _validate_workspace_path(
 
 
 def _validate_tool_access(
-    tool_name: str, tool_input: dict[str, Any], sdk_cwd: str | None = None
+    tool_name: str,
+    tool_input: dict[str, Any],
+    sdk_cwd: str | None = None,
+    allowed_tools: Collection[str] = frozenset(),
 ) -> dict[str, Any]:
     """Validate that a tool call is allowed.
+
+    A tool outside *allowed_tools* is denied: ``allowed_tools`` on
+    ``ClaudeAgentOptions`` only pre-approves, so a CLI built-in that needs no
+    permission runs unless this hook refuses it.
 
     Returns:
         Empty dict to allow, or dict with hookSpecificOutput to deny
@@ -156,6 +160,9 @@ def _validate_tool_access(
             "Use the CoPilot-specific MCP tools instead."
         )
 
+    if tool_name not in allowed_tools:
+        return _deny_unlisted(tool_name)
+
     # Check for dangerous patterns in tool input
     # Use json.dumps for predictable format (str() produces Python repr)
     input_str = json.dumps(tool_input) if tool_input else ""
@@ -171,6 +178,14 @@ def _validate_tool_access(
             )
 
     return {}
+
+
+def _deny_unlisted(tool_name: str) -> dict[str, Any]:
+    logger.warning(f"Blocked tool outside the session's allowed set: {tool_name}")
+    return _deny(
+        f"[SECURITY] Tool '{tool_name}' is not available in this session. "
+        "This is enforced by the platform and cannot be bypassed."
+    )
 
 
 def _validate_user_isolation(
@@ -211,6 +226,8 @@ def create_security_hooks(
     on_compact: Callable[[str], None] | None = None,
     tool_display_bridge: SDKToolDisplayBridge | None = None,
     context_after_compaction: Callable[[], Awaitable[list[str]]] | None = None,
+    *,
+    allowed_tools: Iterable[str],
 ) -> dict[HookEvent, list[HookMatcher]]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -234,10 +251,13 @@ def create_security_hooks(
             summary does not carry — as at most
             ``AFTER_COMPACTION_MAX_PARTS`` parts, each within the CLI's
             per-callback cap.  ``[]`` sends nothing.
+        allowed_tools: The ``allowed_tools`` passed to ``ClaudeAgentOptions``;
+            every other tool is denied.
 
     Returns:
         Hooks configuration dict for ClaudeAgentOptions
     """
+    allowed = frozenset(allowed_tools)
     try:
         from claude_agent_sdk import HookMatcher
         from claude_agent_sdk.types import HookContext, HookInput, SyncHookJSONOutput
@@ -262,7 +282,7 @@ def create_security_hooks(
 
             # Rate-limit sub-agent spawns per session.
             # The SDK CLI renamed "Task" → "Agent" in v2.x; handle both.
-            if tool_name in _SUBAGENT_TOOLS:
+            if tool_name in SDK_SUBAGENT_TOOLS:
                 if len(subagent_tool_use_ids) >= max_subtasks:
                     logger.warning(
                         f"[SDK] Sub-agent limit reached ({max_subtasks}), "
@@ -281,12 +301,16 @@ def create_security_hooks(
             is_copilot_tool = tool_name.startswith(MCP_TOOL_PREFIX)
             clean_name = tool_name.removeprefix(MCP_TOOL_PREFIX)
 
-            # Only block non-CoPilot tools; our MCP-registered tools
-            # (including Read for oversized results) are already sandboxed.
+            # Our MCP tools sandbox themselves, so they skip the path and
+            # pattern checks — but not the allowed set.
             if not is_copilot_tool:
-                result = _validate_tool_access(clean_name, tool_input, sdk_cwd)
+                result = _validate_tool_access(
+                    clean_name, tool_input, sdk_cwd, allowed_tools=allowed
+                )
                 if result:
                     return cast(SyncHookJSONOutput, result)
+            elif tool_name not in allowed:
+                return cast(SyncHookJSONOutput, _deny_unlisted(tool_name))
 
             # Validate user isolation
             result = _validate_user_isolation(clean_name, tool_input, user_id)
@@ -294,7 +318,7 @@ def create_security_hooks(
                 return cast(SyncHookJSONOutput, result)
 
             # Reserve the sub-agent slot only after all validations pass
-            if tool_name in _SUBAGENT_TOOLS and tool_use_id is not None:
+            if tool_name in SDK_SUBAGENT_TOOLS and tool_use_id is not None:
                 subagent_tool_use_ids.add(tool_use_id)
 
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
@@ -316,7 +340,7 @@ def create_security_hooks(
 
         def _release_subagent_slot(tool_name: str, tool_use_id: str | None) -> None:
             """Release a sub-agent concurrency slot if one was reserved."""
-            if tool_name in _SUBAGENT_TOOLS and tool_use_id in subagent_tool_use_ids:
+            if tool_name in SDK_SUBAGENT_TOOLS and tool_use_id in subagent_tool_use_ids:
                 subagent_tool_use_ids.discard(tool_use_id)
                 logger.info(
                     "[SDK] Sub-agent slot released, active=%d/%d, user=%s",

@@ -119,6 +119,7 @@ async def _requests_around_a_compaction(
             "u1",
             sdk_cwd=str(work),
             context_after_compaction=context_after_compaction,
+            allowed_tools=(),
         ),
         setting_sources=[],
         permission_mode="bypassPermissions",

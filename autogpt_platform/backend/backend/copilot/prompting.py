@@ -153,8 +153,8 @@ After building the file, reference it with `@@agptfile:` in other tools:
 - If 3 similar web searches don't return the specific data you need, conclude
   it isn't publicly available and work with what you have.
 - Prefer fewer, well-targeted searches over many variations of the same query.
-- When spawning sub-agents for research, ensure each has a distinct
-  non-overlapping scope to avoid redundant searches.
+- When delegating research to several `run_sub_session` calls, give each a
+  distinct non-overlapping scope to avoid redundant searches.
 
 
 ### Discovery — `find_capability` is MANDATORY before any "no integration" reply

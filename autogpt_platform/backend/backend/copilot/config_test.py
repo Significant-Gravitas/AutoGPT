@@ -43,6 +43,7 @@ _ENV_VARS_TO_CLEAR = (
     "CHAT_TITLE_MODEL",
     "CHAT_SIMULATION_MODEL",
     "CHAT_STREAM_REPLAY_COUNT",
+    "CHAT_CLAUDE_AGENT_EXTRA_BUILTIN_TOOLS",
 )
 
 
@@ -1199,3 +1200,14 @@ class TestLangfusePromptCacheTTL:
         # at once, which is the unbounded staleness this field exists to avoid.
         with pytest.raises(ValidationError, match="langfuse_prompt_cache_ttl"):
             ChatConfig(langfuse_prompt_cache_ttl=-1)
+
+
+class TestClaudeAgentExtraBuiltinTools:
+    def test_default_adds_no_builtin(self):
+        # The field default, not an instance: backend/.env can set it.
+        field = ChatConfig.model_fields["claude_agent_extra_builtin_tools"]
+        assert field.get_default(call_default_factory=True) == []
+
+    def test_env_var_reads_a_json_list(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("CHAT_CLAUDE_AGENT_EXTRA_BUILTIN_TOOLS", '["Agent"]')
+        assert ChatConfig().claude_agent_extra_builtin_tools == ["Agent"]

@@ -453,6 +453,13 @@ class ChatConfig(BaseSettings):
         default=10,
         description="Max number of concurrent sub-agent Tasks the SDK can run per session.",
     )
+    claude_agent_extra_builtin_tools: list[str] = Field(
+        default_factory=list,
+        description="Claude Code built-in tools to allow and declare on the SDK "
+        "path on top of the default set, for an operator or an eval arm, e.g. "
+        "CHAT_CLAUDE_AGENT_EXTRA_BUILTIN_TOOLS='[\"Agent\"]'. Names on the SDK "
+        "disallowed list stay off.",
+    )
     claude_agent_use_resume: bool = Field(
         default=True,
         description="Use --resume for multi-turn conversations instead of "

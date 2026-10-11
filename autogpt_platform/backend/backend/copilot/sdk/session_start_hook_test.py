@@ -18,7 +18,9 @@ from .security_hooks import create_security_hooks
 
 def _session_start_matcher(context_after_compaction):
     hooks = create_security_hooks(
-        user_id="u1", context_after_compaction=context_after_compaction
+        user_id="u1",
+        context_after_compaction=context_after_compaction,
+        allowed_tools=(),
     )
     (matcher,) = hooks["SessionStart"]
     return matcher
@@ -65,7 +67,7 @@ def _resent(part: str) -> dict:
 
 
 def test_not_registered_without_a_context_source():
-    hooks = create_security_hooks(user_id="u1")
+    hooks = create_security_hooks(user_id="u1", allowed_tools=())
 
     assert "SessionStart" not in hooks
 
