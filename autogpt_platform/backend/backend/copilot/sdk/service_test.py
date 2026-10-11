@@ -8,21 +8,16 @@ from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
 from claude_agent_sdk import ResultMessage
-from openai import RateLimitError
-from pydantic import SecretStr
 
 from backend.copilot import config as cfg_mod
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
-from backend.data.model import OAuth2Credentials
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
-from backend.integrations.codex.transport import CodexCredentialLease
 
-from .codex_compat_gateway import CodexAnthropicGateway, _Failed
+from .codex_compat_gateway import CodexAnthropicGateway
 from .cost_tracking import TokenUsage
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
@@ -31,7 +26,6 @@ from .service import (
     _THINKING_ONLY_REPROMPT,
     _build_system_prompt_value,
     _close_codex_gateway_for_finally,
-    _codex_gateway_for,
     _hidden_short_names_for_permissions,
     _humanise_tool_list,
     _idle_timeout_threshold,
@@ -114,34 +108,6 @@ class TestCodexGatewayCleanup:
 
         assert raised.value is cleanup_error
         assert raised.value.__cause__ is turn_error
-
-
-class TestCodexGatewayConstruction:
-    def test_a_chatgpt_failure_names_the_account_that_refused(self):
-        # Without the id the client cannot tell which ChatGPT account hit
-        # its limit, so the switch offer hides every one of them.
-        credentials = OAuth2Credentials(
-            id="cred-chatgpt-1",
-            provider="codex",
-            title="ChatGPT",
-            access_token=SecretStr("access"),
-            scopes=[],
-        )
-        gateway = _codex_gateway_for(
-            CodexCredentialLease(credentials, MagicMock()), "gpt-5.6-terra", "high"
-        )
-        limit = RateLimitError(
-            "usage limit",
-            response=httpx.Response(
-                429, request=httpx.Request("POST", "https://chatgpt.test")
-            ),
-            body=None,
-        )
-
-        gateway._failure_response(_Failed(error=limit))
-
-        assert gateway.last_failure is not None
-        assert gateway.last_failure.credential_id == "cred-chatgpt-1"
 
 
 @dataclass

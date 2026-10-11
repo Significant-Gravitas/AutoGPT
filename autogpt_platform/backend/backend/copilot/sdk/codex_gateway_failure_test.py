@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 from aiohttp import ClientSession
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, RateLimitError
 from pydantic import SecretStr
 
 from backend.copilot.provider_failure import ProviderFailureKind
@@ -12,11 +12,13 @@ from backend.copilot.sdk.codex_compat_gateway import (
     _Conversation,
     _Failed,
     _TextDelta,
+    gateway_for_lease,
 )
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.http_session import CodexHttpSession
 from backend.integrations.codex.transport import (
     CodexCredentialIntegrityError,
+    CodexCredentialLease,
     CodexTransportError,
     CodexTransportOverloadedError,
 )
@@ -161,3 +163,31 @@ class TestASpentChatGPTQuota:
         assert part["authProvider"] == "codex"
         assert part["credentialId"] == "cred-chatgpt-2"
         assert part["resetsAt"] == _RESETS_AT
+
+    def test_a_gateway_built_for_a_lease_names_its_account(self) -> None:
+        # The service builds the gateway from the lease as an agent session,
+        # which carries no credential of its own to name.
+        credentials = OAuth2Credentials(
+            id="cred-chatgpt-1",
+            provider="codex",
+            title="ChatGPT",
+            access_token=SecretStr("access"),
+            scopes=[],
+        )
+        gateway = gateway_for_lease(
+            CodexCredentialLease(credentials, MagicMock()),
+            model="gpt-5.6-terra",
+            effort="high",
+        )
+        limit = RateLimitError(
+            "usage limit",
+            response=httpx.Response(
+                429, request=httpx.Request("POST", "https://chatgpt.test")
+            ),
+            body=None,
+        )
+
+        gateway._failure_response(_Failed(error=limit))
+
+        assert gateway.last_failure is not None
+        assert gateway.last_failure.credential_id == "cred-chatgpt-1"

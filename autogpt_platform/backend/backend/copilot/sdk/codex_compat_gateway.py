@@ -30,6 +30,7 @@ from backend.integrations.codex.models import (
 )
 from backend.integrations.codex.transport import (
     CodexAgentSession,
+    CodexCredentialLease,
     CodexTransport,
     get_codex_transport,
 )
@@ -64,10 +65,15 @@ _SECRET_ASSIGNMENT_PATTERN = re.compile(
     r"(?:\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*'|[^\s,;]+)"
 )
 # A queued user message the PostToolUse hook injected, wrapper included.
-# Greedy, so a message quoting the closing tag is not cut short; a tool round
-# carries one hook's context, so one block.
+# Greedy up to the next opening tag, never past it: a message quoting the
+# closing tag is not cut short, and two blocks never merge into one match
+# that carries the CLI's text between them.
 _FOLLOW_UP_BLOCK = re.compile(
-    re.escape(FOLLOW_UP_OPEN_TAG) + ".*" + re.escape(FOLLOW_UP_CLOSE_TAG),
+    re.escape(FOLLOW_UP_OPEN_TAG)
+    + r"(?:(?!"
+    + re.escape(FOLLOW_UP_OPEN_TAG)
+    + r").)*"
+    + re.escape(FOLLOW_UP_CLOSE_TAG),
     re.DOTALL,
 )
 
@@ -918,6 +924,27 @@ class CodexAnthropicGateway:
             api_key,
             self._auth_token,
         )
+
+
+def gateway_for_lease(
+    lease: CredentialLease | CodexCredentialLease,
+    *,
+    model: str,
+    effort: CodexReasoningEffort | None,
+) -> CodexAnthropicGateway:
+    """The gateway for a ChatGPT turn, told which account it spends.
+
+    A failure it reports names the account, so the client offers the user's
+    other ChatGPT accounts rather than hiding every one of them.
+    """
+    if isinstance(lease, CodexCredentialLease):
+        return CodexAnthropicGateway(
+            agent_session=lease,
+            credential_id=lease.credentials.id,
+            model=model,
+            effort=effort,
+        )
+    return CodexAnthropicGateway(credential_lease=lease, model=model, effort=effort)
 
 
 class _RecordingSink:

@@ -213,7 +213,10 @@ def usage_limit_resets_at(headers: Mapping[str, str], body: object) -> int | Non
     full = [
         window.resets_at
         for window in (limits.primary, limits.secondary)
-        if window is not None and window.used_percent >= 100 and window.resets_at
+        if window is not None
+        and window.used_percent >= 100
+        and window.resets_at is not None
+        and window.resets_at > 0
     ]
     return max(full, default=None)
 

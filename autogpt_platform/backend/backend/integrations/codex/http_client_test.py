@@ -1,6 +1,7 @@
 import base64
 import json
 
+import pytest
 from pydantic import SecretStr
 
 from backend.integrations.codex.auth_bundle import CodexAuthBundleV1, CodexAuthTokensV1
@@ -251,3 +252,8 @@ def test_no_reset_is_invented_when_no_window_is_full() -> None:
 def test_an_unreadable_body_reset_falls_back_to_the_headers() -> None:
     headers = _window("primary", "100", "1788400000")
     assert usage_limit_resets_at(headers, {"resets_at": "soon"}) == 1788400000
+
+
+@pytest.mark.parametrize("raw", ["-1", "0"])
+def test_a_non_positive_header_reset_is_not_a_time(raw: str) -> None:
+    assert usage_limit_resets_at(_window("primary", "100", raw), None) is None

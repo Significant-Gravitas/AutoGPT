@@ -1355,6 +1355,23 @@ def test_a_message_quoting_the_closing_tag_is_not_cut_short() -> None:
     assert followup == block
 
 
+def test_two_blocks_reach_codex_without_the_cli_text_between_them() -> None:
+    first = format_pending_as_followup([PendingMessage(content="also check logs")])
+    second = format_pending_as_followup([PendingMessage(content="and the config")])
+    messages = [
+        _tool_result_message("toolu_codex_1", "one result"),
+        {
+            "role": "system",
+            "content": f"PostToolUse:x hook additional context: {first}\n\n"
+            f"{_TOTAL_TOKENS}\n\nPostToolUse:y hook additional context: {second}",
+        },
+    ]
+
+    followup = codex_compat_gateway._followup_after_results(messages, ["toolu_codex_1"])
+
+    assert followup == f"{first}\n\n{second}"
+
+
 @pytest.mark.asyncio
 async def test_recording_sink_drops_the_buffer_past_the_replay_cap(
     monkeypatch: pytest.MonkeyPatch,
