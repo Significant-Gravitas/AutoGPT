@@ -230,7 +230,7 @@ def test_a_paused_scheduled_chat_points_at_the_card_in_its_chat() -> None:
     assert len(items) == 1
     item = items[0]
     assert item.kind == "paused" and item.priority == "high"
-    assert item.title == "“Morning briefing” is paused"
+    assert item.title == "Scheduled chat “Morning briefing”"
     assert item.description == "Paused: can't use Twitter"
     assert item.primary_action is not None
     assert item.primary_action.href == "/copilot?sessionId=session%201"

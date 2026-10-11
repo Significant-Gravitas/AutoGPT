@@ -222,7 +222,7 @@ def _paused_chat_attention(chat: PausedScheduledChat) -> HomeAttentionItem:
         id=f"paused-chat-{chat.schedule_key}",
         kind="paused",
         priority="high",
-        title=f"“{chat.title}” is paused",
+        title=f"Scheduled chat “{chat.title}”",
         description=chat.summary,
         why_it_matters="It won't run again until it is fixed and resumed.",
         created_at=as_utc(chat.paused_at),

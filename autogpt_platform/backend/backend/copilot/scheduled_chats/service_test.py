@@ -319,6 +319,9 @@ async def test_a_chat_resumed_some_other_way_starts_over(
         await record_scheduled_run(_run(user_id, session_id, RunOutcome()))
 
         assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
+        # The run that worked is the fix, so the pause alert is withdrawn too.
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
     finally:
         await _cleanup(user_id)
 
@@ -419,6 +422,8 @@ async def test_reconnecting_the_provider_resumes_what_it_paused(
         await resume_after_reconnect(user_id, "discord")
 
         scheduler.resume_schedule.assert_awaited_once_with("sched-1", user_id=user_id)
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
         keys = {
             row.scheduleKey
             for row in await ScheduledChatStreak.prisma().find_many(

@@ -37,6 +37,10 @@ async def resume_after_reconnect(user_id: str, provider: str) -> None:
     """Resume every scheduled chat paused on *provider*, and forget the ones
     only told about it. Never raises."""
     try:
+        # *provider* is the connect route's ProviderName value, and a streak's
+        # is what the failing tool put in ErrorResponse.details: the same
+        # vocabulary, which must stay the same. A failure that named no
+        # provider is not resumed here; Resume or a good run clears it.
         rows = await ScheduledChatStreak.prisma().find_many(
             where={"userId": user_id, "provider": provider, "failureKind": "connection"}
         )
