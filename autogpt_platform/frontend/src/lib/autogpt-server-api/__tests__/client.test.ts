@@ -8,7 +8,9 @@ import { getWebSocketToken } from "@/lib/auth/actions";
 import BackendAPI, {
   buildOAuthLoginQuery,
   getWSReconnectDelay,
+  WebSocketSubscriptionInterrupted,
 } from "../client";
+import type { GraphID } from "../types";
 
 describe("BackendAPI.oAuthLogin", () => {
   it("passes credentialID through to buildOAuthLoginQuery", async () => {
@@ -275,6 +277,75 @@ describe("BackendAPI WebSocket failure logging", () => {
     expect(socket.send).toHaveBeenCalledWith(
       expect.stringContaining('"heartbeat"'),
     );
+  });
+
+  it("resolves a subscribe only once the server confirms it", async () => {
+    const socket = await connect();
+    socket.readyState = FakeWebSocket.OPEN;
+    socket.onopen!();
+    const api = apis.at(-1)!;
+
+    let confirmed = false;
+    const subscribed = api
+      .subscribeToGraphExecutions("graph-1" as GraphID)
+      .then(() => (confirmed = true));
+    await vi.waitFor(() => expect(socket.send).toHaveBeenCalled(), {
+      interval: 1,
+    });
+    await Promise.resolve();
+    expect(confirmed).toBe(false);
+
+    socket.onmessage!({
+      data: JSON.stringify({
+        method: "subscribe_graph_executions",
+        success: true,
+        channel: "user-1|graph#graph-1|executions",
+      }),
+    } as MessageEvent);
+    await subscribed;
+    expect(confirmed).toBe(true);
+  });
+
+  it("fails a pending subscribe as interrupted when the socket closes", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const socket = await connect();
+    socket.readyState = FakeWebSocket.OPEN;
+    socket.state = "connected";
+    socket.onopen!();
+    const subscribed = apis
+      .at(-1)!
+      .subscribeToGraphExecutions("graph-1" as GraphID);
+    await vi.waitFor(() => expect(socket.send).toHaveBeenCalled(), {
+      interval: 1,
+    });
+
+    socket.onclose!({ code: 1011, reason: "", wasClean: true });
+
+    await expect(subscribed).rejects.toBeInstanceOf(
+      WebSocketSubscriptionInterrupted,
+    );
+  });
+
+  it("keeps backing off when sockets open and drop straight away", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(Math, "random").mockReturnValue(1);
+    const first = await connect();
+    first.state = "connected";
+    first.onopen!();
+    first.onclose!({ code: 1011, reason: "", wasClean: true });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() => expect(sockets).toHaveLength(2), { interval: 1 });
+
+    // Opens, but drops before it has been healthy for long.
+    const second = sockets[1];
+    second.state = "connected";
+    second.onopen!();
+    second.onclose!({ code: 1011, reason: "", wasClean: true });
+
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(sockets).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(600);
+    await vi.waitFor(() => expect(sockets).toHaveLength(3), { interval: 1 });
   });
 
   it("backs off reconnects exponentially, with jitter, up to a cap", () => {

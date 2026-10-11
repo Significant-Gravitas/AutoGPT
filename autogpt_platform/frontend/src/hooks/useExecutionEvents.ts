@@ -1,5 +1,6 @@
 "use client";
 
+import { WebSocketSubscriptionInterrupted } from "@/lib/autogpt-server-api/client";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import type { GraphExecution, GraphID } from "@/lib/autogpt-server-api/types";
 import * as Sentry from "@sentry/nextjs";
@@ -71,6 +72,7 @@ export function useExecutionEvents({
 
       const subscriptions = normalizedIds.map((id) =>
         api.subscribeToGraphExecutions(id as GraphID).catch((error) => {
+          if (error instanceof WebSocketSubscriptionInterrupted) return;
           console.error(
             `Failed to subscribe to execution updates for graph ${id}:`,
             error,

@@ -111,6 +111,8 @@ export default class BackendAPI {
   private wsReconnectAttempts = 0;
   private wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private wsReconnectWaiters: (() => void)[] = [];
+  private wsHealthyTimer: ReturnType<typeof setTimeout> | null = null;
+  private wsAckWaiters: SubscribeAckWaiter[] = [];
 
   constructor(
     baseUrl: string = environment.getAGPTServerApiUrl(),
@@ -964,16 +966,74 @@ export default class BackendAPI {
   ////////////// WEBSOCKETS //////////////
   ////////////////////////////////////////
 
+  /** Resolves once the server confirms the subscription is live. */
   subscribeToGraphExecution(graphExecID: GraphExecutionID): Promise<void> {
-    return this.sendWebSocketMessage("subscribe_graph_execution", {
-      graph_exec_id: graphExecID,
+    return this._subscribe(
+      "subscribe_graph_execution",
+      { graph_exec_id: graphExecID },
+      `|graph_exec#${graphExecID}`,
+    );
+  }
+
+  /** Resolves once the server confirms the subscription is live. */
+  subscribeToGraphExecutions(graphID: GraphID): Promise<void> {
+    return this._subscribe(
+      "subscribe_graph_executions",
+      { graph_id: graphID },
+      `|graph#${graphID}|executions`,
+    );
+  }
+
+  // Sent is not subscribed: a refetch done before the server's ack can miss
+  // an event published in between, so callers wait for the ack.
+  private async _subscribe<M extends SubscribeMethod>(
+    method: M,
+    data: WebsocketMessageTypeMap[M],
+    channelSuffix: string,
+  ): Promise<void> {
+    const ack = new Promise<void>((resolve, reject) => {
+      const waiter: SubscribeAckWaiter = {
+        method,
+        channelSuffix,
+        resolve,
+        reject,
+        timer: setTimeout(() => {
+          this._removeAckWaiter(waiter);
+          reject(new Error(`No confirmation for ${method} ${channelSuffix}`));
+        }, WS_SUBSCRIBE_ACK_TIMEOUT_MS),
+      };
+      this.wsAckWaiters.push(waiter);
+    });
+    try {
+      await this.sendWebSocketMessage(method, data);
+    } catch (error) {
+      this._rejectAckWaiters(error);
+      throw error;
+    }
+    return ack;
+  }
+
+  private _removeAckWaiter(waiter: SubscribeAckWaiter) {
+    clearTimeout(waiter.timer);
+    this.wsAckWaiters = this.wsAckWaiters.filter((w) => w !== waiter);
+  }
+
+  private _rejectAckWaiters(reason: unknown) {
+    const waiters = this.wsAckWaiters;
+    this.wsAckWaiters = [];
+    waiters.forEach((waiter) => {
+      clearTimeout(waiter.timer);
+      waiter.reject(reason);
     });
   }
 
-  subscribeToGraphExecutions(graphID: GraphID): Promise<void> {
-    return this.sendWebSocketMessage("subscribe_graph_executions", {
-      graph_id: graphID,
-    });
+  private _resolveAckWaiters(method: string, channel: string) {
+    this.wsAckWaiters
+      .filter((w) => w.method === method && channel.endsWith(w.channelSuffix))
+      .forEach((waiter) => {
+        this._removeAckWaiter(waiter);
+        waiter.resolve();
+      });
   }
 
   async sendWebSocketMessage<M extends keyof WebsocketMessageTypeMap>(
@@ -1094,7 +1154,11 @@ export default class BackendAPI {
           console.info("[BackendAPI] WebSocket connected to", this.wsUrl);
           this._startWSHeartbeat(); // Start heartbeat when connection opens
           this._clearDisconnectIntent(); // Clear disconnect intent when connected
-          this.wsReconnectAttempts = 0;
+          // Only a socket that stays up resets the backoff; one that opens
+          // and drops at once (e.g. during a Redis outage) keeps backing off.
+          this.wsHealthyTimer = setTimeout(() => {
+            this.wsReconnectAttempts = 0;
+          }, WS_HEALTHY_AFTER_MS);
           this.wsOnConnectHandlers.forEach((handler) => handler());
           resolve();
         };
@@ -1125,6 +1189,9 @@ export default class BackendAPI {
 
           this._stopWSHeartbeat(); // Stop heartbeat when connection closes
           this.wsConnecting = null;
+          if (this.wsHealthyTimer !== null) clearTimeout(this.wsHealthyTimer);
+          this.wsHealthyTimer = null;
+          this._rejectAckWaiters(new WebSocketSubscriptionInterrupted());
 
           const wasIntentional =
             this.isIntentionallyDisconnected || this._hasDisconnectIntent();
@@ -1240,6 +1307,12 @@ export default class BackendAPI {
   private _handleWSMessage(event: MessageEvent): void {
     const message: WebsocketMessage = JSON.parse(event.data);
 
+    const ack = message as Partial<SubscribeAck>;
+    if (ack.success && typeof ack.channel === "string" && ack.method) {
+      this._resolveAckWaiters(ack.method, ack.channel);
+      return;
+    }
+
     // Handle heartbeat response
     if (message.method === "heartbeat" && message.data === "pong") {
       this._handleWSHeartbeatResponse();
@@ -1303,6 +1376,31 @@ export default class BackendAPI {
 }
 
 const WS_RECONNECT_BASE_DELAY_MS = 1_000;
+const WS_HEALTHY_AFTER_MS = 10_000;
+const WS_SUBSCRIBE_ACK_TIMEOUT_MS = 15_000;
+
+/** The socket closed before the server confirmed a subscription; the next
+ * connection resubscribes, so this needs no reporting. */
+export class WebSocketSubscriptionInterrupted extends Error {
+  constructor() {
+    super("WebSocket closed before the subscription was confirmed");
+    this.name = "WebSocketSubscriptionInterrupted";
+  }
+}
+
+type SubscribeMethod =
+  | "subscribe_graph_execution"
+  | "subscribe_graph_executions";
+
+type SubscribeAck = { method: string; success: boolean; channel: string };
+
+type SubscribeAckWaiter = {
+  method: SubscribeMethod;
+  channelSuffix: string;
+  resolve: () => void;
+  reject: (reason: unknown) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
 const WS_RECONNECT_MAX_DELAY_MS = 30_000;
 
 /** Exponential backoff with jitter, so a server restart isn't met by every client at once. */

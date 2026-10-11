@@ -67,6 +67,26 @@ describe("useExecutionEvents", () => {
     await waitFor(() => expect(onReconnect).toHaveBeenCalledTimes(1));
   });
 
+  test("refetches only once the server confirmed the resubscriptions", async () => {
+    const onReconnect = vi.fn();
+    renderHook(() => useExecutionEvents({ graphId: "graph-a", onReconnect }));
+    api.open();
+    let confirm: () => void = () => {};
+    api.subscribeToGraphExecutions.mockImplementationOnce(
+      () =>
+        new Promise<undefined>(
+          (resolve) => (confirm = () => resolve(undefined)),
+        ),
+    );
+
+    api.open();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(onReconnect).not.toHaveBeenCalled();
+
+    confirm();
+    await waitFor(() => expect(onReconnect).toHaveBeenCalledTimes(1));
+  });
+
   test("still asks for a refetch when a resubscribe fails", async () => {
     const onReconnect = vi.fn();
     renderHook(() => useExecutionEvents({ graphId: "graph-a", onReconnect }));
