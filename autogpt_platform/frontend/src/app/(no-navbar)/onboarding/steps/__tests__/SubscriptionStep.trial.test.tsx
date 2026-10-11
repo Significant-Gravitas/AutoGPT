@@ -284,7 +284,11 @@ test("preserves active-trial status and confirmed cancellation", async () => {
     screen.queryByRole("button", { name: "Start 7-day trial" }),
   ).toBeNull();
   expect(cancel).not.toHaveBeenCalled();
-  fireEvent.click(await screen.findByRole("button", { name: "End trial now" }));
+  fireEvent.click(
+    within(
+      await screen.findByRole("dialog", { name: "Cancel your trial?" }),
+    ).getByRole("button", { name: "Cancel trial" }),
+  );
   await screen.findByText(/Cancellation confirmed/);
   expect(cancel).toHaveBeenCalledOnce();
   expect(screen.getByText("Your trial has ended")).toBeDefined();
