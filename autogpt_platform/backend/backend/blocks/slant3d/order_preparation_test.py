@@ -203,7 +203,10 @@ async def test_parallel_uploads_preserve_different_files_with_the_same_name(tmp_
 
     downloader = Mock()
     downloader.get = AsyncMock(
-        side_effect=[Mock(content=b"first STL"), Mock(content=b"second STL")]
+        side_effect=[
+            Mock(status=200, content=b"first STL"),
+            Mock(status=200, content=b"second STL"),
+        ]
     )
     with (
         patch("backend.util.file.TEMP_DIR", tmp_path),
