@@ -226,6 +226,20 @@ class TestConnectIntegration:
         assert isinstance(result, ErrorResponse)
         assert result.error == "ayrshare_not_configured"
 
+    async def test_a_dry_run_creates_nothing(self):
+        session = make_session(USER)
+        session.metadata.dry_run = True
+        with ayrshare_backend() as provision:
+            result = await ConnectIntegrationTool()._execute(
+                USER, session, provider="ayrshare"
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "dry_run"
+        assert "nothing was created" in result.message.lower()
+        assert SSO_URL not in result.message
+        provision.assert_not_awaited()
+
 
 def test_connect_integration_offers_ayrshare():
     tool = ConnectIntegrationTool()

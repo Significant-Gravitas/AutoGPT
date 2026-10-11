@@ -182,6 +182,17 @@ class ConnectIntegrationTool(BaseTool):
         ]
 
         if provider in MANAGED_PROVIDERS and user_id:
+            # Connecting creates the user's real profile; a dry run may not.
+            if session.dry_run:
+                return ErrorResponse(
+                    message=(
+                        f"This is a dry-run session, so connecting "
+                        f"{MANAGED_PROVIDERS[provider]} was skipped. Nothing was "
+                        "created."
+                    ),
+                    error="dry_run",
+                    session_id=session_id,
+                )
             return await _connect_managed(user_id, provider, reason, session_id)
         entry = SUPPORTED_PROVIDERS.get(provider)
         if not entry:
