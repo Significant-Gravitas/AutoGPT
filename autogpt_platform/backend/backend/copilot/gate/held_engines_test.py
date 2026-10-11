@@ -20,11 +20,23 @@ from backend.copilot.context import (
     get_execution_context,
     set_execution_context,
 )
+from backend.copilot.gate.held import HeldCall, _result_row
 from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
-from backend.copilot.pending_messages import PendingMessage
+from backend.copilot.pending_message_helpers import (
+    combine_pending_with_current,
+    persist_pending_as_user_rows,
+)
+from backend.copilot.pending_messages import (
+    PendingMessage,
+    format_pending_as_user_message,
+)
 from backend.copilot.response_model import StreamStatus
 from backend.copilot.sdk.expert_tool_gate_test import _make_patches, _make_session
+from backend.copilot.sdk.service import (
+    _session_messages_to_transcript,
+    stream_chat_completion_sdk,
+)
 from backend.copilot.sdk.tool_adapter import cap_late_tool_result
 from backend.copilot.tree import root_envelope
 
@@ -40,8 +52,6 @@ class _StopAtFold(Exception):
 
 @pytest.mark.asyncio
 async def test_the_sdk_engine_opens_its_turn_with_the_held_result():
-    from backend.copilot.sdk.service import stream_chat_completion_sdk
-
     order: list[str] = []
     folded: list[list[PendingMessage]] = []
 
@@ -196,14 +206,6 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
 async def test_the_card_copy_on_a_held_result_never_reaches_the_model():
     """The result row carries the card's arguments for the chain row, up to the
     card's clip; each engine's fold and history replay read the content alone."""
-    from backend.copilot.gate.held import HeldCall, _result_row
-    from backend.copilot.pending_message_helpers import (
-        combine_pending_with_current,
-        persist_pending_as_user_rows,
-    )
-    from backend.copilot.pending_messages import format_pending_as_user_message
-    from backend.copilot.sdk.service import _session_messages_to_transcript
-
     marker = "card-copy-only-7f3a"
     call = HeldCall(
         review_id="r1", tool_name="post_to_chat_platform", tool_call_id="c1", args={}
