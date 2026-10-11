@@ -99,6 +99,7 @@ from ..constants import (
     STREAM_INCOMPLETE_MARKER,
     STREAM_LOCK_PREFIX,
     is_transient_api_error,
+    is_transient_assistant_error,
 )
 from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
@@ -597,14 +598,12 @@ async def _consume_sdk_until_done(
                 )
                 raise RuntimeError("Prompt is too long")
 
-            # Intercept transient API errors (socket closed,
-            # ECONNRESET) — replace the raw message with a
-            # user-friendly error text and use the retryable
-            # error prefix so the frontend shows a retry button.
-            # Check both the error field and content for patterns.
-            if is_transient_api_error(error_text) or is_transient_api_error(
-                error_preview
-            ):
+            # Intercept transient API errors (5xx, overloaded, 429,
+            # socket closed, ECONNRESET) — replace the raw message with
+            # a user-friendly error text and use the retryable error
+            # prefix so the frontend shows a retry button. The error
+            # field carries the CLI's category; the content its text.
+            if is_transient_assistant_error(category=error_text, content=error_preview):
                 logger.warning(
                     "%s Transient Anthropic API error detected, "
                     "suppressing raw error text",
