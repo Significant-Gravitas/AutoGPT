@@ -103,22 +103,23 @@ def _sdk_anthropic_failing(
     )
 
 
-_CLI_529_NOT_TRANSIENT = (
-    "The bundled CLI words a 529 as 'API Error: 529 Overloaded. This is a "
-    "server-side issue...', which is_transient_api_error does not match (it "
-    "looks for 'status code 529'), so the platform never retries it: the "
-    "reply is the CLI's error text"
+_RETRY_TOKENS = KnownGap(
+    check="tokens",
+    reason=(
+        "A retried turn is charged the failed attempt's spend, but its "
+        "cost-log row and session usage keep only the retry's tokens"
+    ),
 )
 
 SCENARIOS = [
     _SDK_ANTHROPIC,
-    # The tool round's second call is refused. Unmatched as transient (see
-    # _CLI_529_NOT_TRANSIENT), the CLI's error becomes the reply, and the
-    # turn still owes the first call.
+    # The tool round's second call is refused: the platform relaunches the CLI
+    # on the session, and the turn owes the first call and the retry's.
     _sdk_anthropic_failing(
         "sdk-anthropic-overloaded-after-tool",
         PlannedFault(kind="overloaded", turn=1, request=2),
-        calls_per_turn=(1, 1, 1),
+        calls_per_turn=(1, 2, 1),
+        known_gap=_RETRY_TOKENS,
     ),
     # The connection drops instead, which is transient: the platform stops
     # reading before the CLI's result and relaunches the CLI on the session.
@@ -127,13 +128,7 @@ SCENARIOS = [
         "sdk-anthropic-dropped-after-tool",
         PlannedFault(kind="dropped", turn=1, request=2),
         calls_per_turn=(1, 2, 1),
-        known_gap=KnownGap(
-            check="tokens",
-            reason=(
-                "A retried turn is charged the failed attempt's spend, but its "
-                "cost-log row and session usage keep only the retry's tokens"
-            ),
-        ),
+        known_gap=_RETRY_TOKENS,
     ),
     # A resumed turn whose first request drops is relaunched before anything
     # streamed, and charged its one successful call.
@@ -146,7 +141,6 @@ SCENARIOS = [
         "sdk-anthropic-overloaded-on-resume",
         PlannedFault(kind="overloaded", turn=2, request=1),
         calls_per_turn=(1, 2, 1),
-        known_gap=KnownGap(check="path", reason=_CLI_529_NOT_TRANSIENT),
     ),
     Scenario(
         id="sdk-openrouter",

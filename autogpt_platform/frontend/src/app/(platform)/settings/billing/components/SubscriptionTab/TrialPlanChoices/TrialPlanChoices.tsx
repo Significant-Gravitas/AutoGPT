@@ -3,6 +3,8 @@
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
 
 import { ConfirmTrialPlanDialog } from "./ConfirmTrialPlanDialog";
+import { ConfirmWithBankDialog } from "./ConfirmWithBankDialog";
+import { formatChoicePrice } from "./helpers";
 import { PlanChoice } from "./PlanChoice";
 import { useTrialPlanChoices } from "./useTrialPlanChoices";
 
@@ -15,17 +17,19 @@ export function TrialPlanChoices({ offer }: Props) {
     isVisible,
     ownPlan,
     upgradePlan,
-    ownPrice,
+    confirmPlan,
     requestedTier,
-    isConfirmOpen,
+    paymentPage,
     onSelectOwnPlan,
-    onConfirmOwnPlan,
-    onCloseConfirm,
     onSelectUpgradePlan,
+    onConfirmPlan,
+    onCloseConfirm,
+    onClosePaymentPage,
   } = useTrialPlanChoices(offer);
 
   if (!isVisible) return null;
   const isBusy = requestedTier !== null;
+  const dialogPlan = confirmPlan ?? ownPlan;
 
   return (
     <section aria-label="Plan choices" className="flex flex-col gap-3">
@@ -50,13 +54,14 @@ export function TrialPlanChoices({ offer }: Props) {
         ) : null}
       </ul>
       <ConfirmTrialPlanDialog
-        isOpen={isConfirmOpen}
-        planLabel={ownPlan.label}
-        price={ownPrice}
-        isSaving={requestedTier === ownPlan.tier}
-        onConfirm={onConfirmOwnPlan}
+        isOpen={confirmPlan !== null}
+        planLabel={dialogPlan.label}
+        price={formatChoicePrice(dialogPlan)}
+        isSaving={requestedTier === dialogPlan.tier}
+        onConfirm={onConfirmPlan}
         onClose={onCloseConfirm}
       />
+      <ConfirmWithBankDialog page={paymentPage} onClose={onClosePaymentPage} />
     </section>
   );
 }
