@@ -67,6 +67,8 @@ class CreateAgentTool(BaseTool):
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Library agent IDs as building blocks.",
+                    "title": "Building blocks",
+                    "entity": "library_agent",
                 },
                 "save": {
                     "type": "boolean",
@@ -76,6 +78,7 @@ class CreateAgentTool(BaseTool):
                 "folder_id": {
                     "type": "string",
                     "description": "Folder ID to save into (default: root).",
+                    "entity": "library_folder",
                 },
                 "is_hidden": {
                     "type": "boolean",
@@ -86,11 +89,13 @@ class CreateAgentTool(BaseTool):
                         "from AgentExecutorBlock usage in the graph)."
                     ),
                     "default": False,
+                    "title": "Hidden from your library",
                 },
                 "library_check_ack": {
                     "type": "boolean",
                     "description": "Bypass library-similarity gate after user declined.",
                     "default": False,
+                    "title": "Skips the library check",
                 },
             },
             "required": [],

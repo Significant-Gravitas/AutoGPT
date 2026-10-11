@@ -33,6 +33,7 @@ import uuid
 from typing import Any, Mapping
 
 from prisma.errors import UniqueViolationError
+from pydantic import BaseModel
 
 from backend.copilot.active_turns import TurnSlot, count_running_turns
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
@@ -270,52 +271,14 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     head = queued[0]
 
     route_provider = head.metadata.llm_auth_provider
-    if route_provider == "codex":
-        if not await has_codex_access(user_id):
-            logger.info(
-                "dispatch_next_for_user: user=%s lacks Codex entitlement, "
-                "leaving session=%s queued",
-                user_id,
-                head.session_id,
-            )
-            return False
-    elif route_provider == "platform":
-        if await is_user_paywalled(user_id):
-            logger.info(
-                "dispatch_next_for_user: user=%s paywalled, leaving session=%s queued",
-                user_id,
-                head.session_id,
-            )
-            return False
-
-        cfg = ChatConfig()
-        try:
-            daily_limit, weekly_limit, _ = await get_global_rate_limits(
-                user_id,
-                cfg.daily_cost_limit_microdollars,
-                cfg.weekly_cost_limit_microdollars,
-            )
-            await check_rate_limit(
-                user_id=user_id,
-                daily_cost_limit=daily_limit,
-                weekly_cost_limit=weekly_limit,
-            )
-        except RateLimitExceeded as exc:
-            logger.info(
-                "dispatch_next_for_user: user=%s rate-limited (%s), "
-                "leaving session=%s queued",
-                user_id,
-                exc,
-                head.session_id,
-            )
-            return False
-        except RateLimitUnavailable:
-            logger.warning(
-                "dispatch_next_for_user: rate-limit service degraded for user=%s; "
-                "leaving queue intact for the next tick",
-                user_id,
-            )
-            return False
+    refusal = await turn_refusal(user_id, route_provider)
+    if refusal is not None:
+        logger.log(
+            logging.WARNING if refusal.transient else logging.INFO,
+            f"dispatch_next_for_user: user={user_id} {refusal.reason}, "
+            f"leaving session={head.session_id} queued",
+        )
+        return False
 
     # Claim by transitioning the session ``queued`` → ``running``.  A
     # parallel cancel between validation and claim rejects this
@@ -445,3 +408,45 @@ async def dispatch_next_for_user(user_id: str) -> bool:
 
     await invalidate_session_cache(head.session_id)
     return True
+
+
+class TurnRefusal(BaseModel):
+    reason: str
+    # The usage store was unreadable: an outage, not the user's state.
+    transient: bool = False
+
+
+async def turn_refusal(
+    user_id: str, llm_auth_provider: CopilotLlmAuthProvider
+) -> TurnRefusal | None:
+    """Why a turn billed to this route may not start for this user, if so.
+
+    Access first (Codex entitlement, the platform paywall), then the platform
+    route's usage: its daily and weekly windows and a trial's total budget.
+    Lookup errors propagate, so each caller decides what an unknown means.
+    """
+    if llm_auth_provider == "codex":
+        if await has_codex_access(user_id):
+            return None
+        return TurnRefusal(reason="lacks Codex entitlement")
+    if llm_auth_provider != "platform":
+        return None
+    if await is_user_paywalled(user_id):
+        return TurnRefusal(reason="paywalled")
+    cfg = ChatConfig()
+    try:
+        daily_limit, weekly_limit, _ = await get_global_rate_limits(
+            user_id,
+            cfg.daily_cost_limit_microdollars,
+            cfg.weekly_cost_limit_microdollars,
+        )
+        await check_rate_limit(
+            user_id=user_id,
+            daily_cost_limit=daily_limit,
+            weekly_cost_limit=weekly_limit,
+        )
+    except RateLimitExceeded as exc:
+        return TurnRefusal(reason=f"rate-limited ({exc})")
+    except RateLimitUnavailable:
+        return TurnRefusal(reason="has unreadable usage limits", transient=True)
+    return None

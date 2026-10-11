@@ -7,6 +7,7 @@ import uuid
 
 import pytest
 from ldclient import Context, LDClient
+from ldclient.evaluation import EvaluationDetail
 from posthog import Posthog
 from posthog.request import GetResponse
 from pydantic import ValidationError
@@ -418,7 +419,7 @@ class TestDefaultBackendIsUntouched:
         self, mocker, ld_client, user_context
     ):
         build = mocker.patch.object(ph, "get_flag_definition_cache")
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
 
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
         build.assert_not_called()
@@ -562,3 +563,8 @@ class TestMetrics:
         provider(redis).get_flag_definitions()
 
         assert REGISTRY.get_sample_value(name, {"outcome": "cached"}) == before + 1
+
+
+def served(value):
+    """LaunchDarkly's answer for a flag it has, as its fallthrough serves it."""
+    return EvaluationDetail(value, 0, {"kind": "FALLTHROUGH"})
