@@ -10,13 +10,14 @@ from pydantic import BaseModel, Field, field_validator
 from backend.api.features.library.model import LibraryAgent
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
-from backend.data.db_accessors import execution_db, library_db
+from backend.data.db_accessors import execution_db, graph_db, library_db
 from backend.data.execution import (
     ExecutionStatus,
     GraphExecution,
     GraphExecutionMeta,
     GraphExecutionWithNodes,
 )
+from backend.data.graph import GraphModel
 
 from .base import BaseTool
 from .execution_utils import (
@@ -33,6 +34,7 @@ from .models import (
     NoResultsResponse,
     ToolResponseBase,
 )
+from .run_trace import run_outside
 from .utils import fetch_graph_from_store_slug
 
 logger = logging.getLogger(__name__)
@@ -115,6 +117,28 @@ def parse_time_expression(
 def _run_visible(execution: GraphExecutionMeta, expert_id: str | None) -> bool:
     """Personal AutoPilot sees every run; an expert only runs it started."""
     return expert_id is None or execution.expert_id == expert_id
+
+
+async def _trace_graph(
+    user_id: str, execution: GraphExecution | GraphExecutionWithNodes | None
+) -> GraphModel | None:
+    """The graph a run's per-node trace came from, so the judge can tell the
+    graph's own text from what the run produced; None judges the trace whole."""
+    if not isinstance(execution, GraphExecutionWithNodes):
+        return None
+    try:
+        return await graph_db().get_graph(
+            execution.graph_id,
+            execution.graph_version,
+            user_id=user_id,
+            include_subgraphs=True,
+        )
+    except Exception:
+        logger.warning(
+            f"Graph of execution {execution.id} not loaded; its trace is judged whole",
+            exc_info=True,
+        )
+        return None
 
 
 class AgentOutputTool(BaseTool):
@@ -334,6 +358,7 @@ class AgentOutputTool(BaseTool):
         execution: GraphExecution | GraphExecutionWithNodes | None,
         available_executions: list[GraphExecutionMeta],
         session_id: str | None,
+        graph: GraphModel | None = None,
     ) -> AgentOutputResponse:
         """Build the response based on execution data."""
         library_agent_link = f"/library/agents/{agent.id}"
@@ -435,7 +460,15 @@ class AgentOutputTool(BaseTool):
             execution=execution_info,
             available_executions=available_list,
             total_executions=len(available_executions) if available_executions else 1,
-        ).from_outside(execution_info)
+        ).from_outside(
+            *run_outside(
+                graph,
+                node_executions_data,
+                execution_info.outputs,
+                execution_info.inputs_summary,
+                node_failures,
+            )
+        )
 
     async def _execute(
         self,
@@ -519,7 +552,10 @@ class AgentOutputTool(BaseTool):
                     suggestions=["Add the agent to your library to see more details"],
                 ).from_outside()
 
-            return self._build_response(agent, execution, [], session_id)
+            graph = await _trace_graph(user_id, execution)
+            return self._build_response(
+                agent, execution, [], session_id, graph=graph
+            )
 
         # Resolve agent from identifiers
         agent, error = await self._resolve_agent(
@@ -576,4 +612,7 @@ class AgentOutputTool(BaseTool):
                 timeout_seconds=wait_timeout,
             )
 
-        return self._build_response(agent, execution, available_executions, session_id)
+        graph = await _trace_graph(user_id, execution)
+        return self._build_response(
+            agent, execution, available_executions, session_id, graph=graph
+        )

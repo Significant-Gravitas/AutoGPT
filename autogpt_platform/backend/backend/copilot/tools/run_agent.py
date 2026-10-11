@@ -87,6 +87,7 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
+from .run_trace import run_outside
 from .utils import (
     build_missing_credentials_from_graph,
     extract_credentials_from_schema,
@@ -1183,7 +1184,15 @@ class RunAgentTool(BaseTool):
                         node_executions=node_executions_data,
                         nodes_failed=node_failures or None,
                     ),
-                ).from_outside(outputs, node_executions_data, node_failures)
+                ).from_outside(
+                    *run_outside(
+                        graph,
+                        node_executions_data,
+                        outputs,
+                        node_failures,
+                        run_inputs=inputs,
+                    )
+                )
             elif completed and completed.status == ExecutionStatus.FAILED:
                 error_detail = completed.stats.error if completed.stats else None
                 # Auto-share the failed run too — share-modal users may
