@@ -1813,7 +1813,9 @@ async def _apply_building_mode_restart(
         if building_suffix
         else _BUILDING_MODE_UNAVAILABLE_CONTINUATION
     )
-    # Fresh adapter, same carry-over rules as a transient retry.
+    # Fresh adapter, carrying over the same flags as a transient retry. Unlike
+    # a transient retry, this relaunch keeps the CLI cost baseline: it is
+    # deliberate, so the interrupted run's spend is the user's.
     # NOTE: the transcript builder is NOT restored — its partial
     # entries are real; the relaunched run's `append_user` adds
     # the original message once more, which only surfaces in the
@@ -4175,7 +4177,9 @@ async def _run_stream_attempt(
     yield StreamStatus(message="Starting the assistant…")
     # An interruption can precede ResultMessage. A building-mode relaunch keeps
     # the baseline, so its next result includes that unreported spend; a
-    # transient retry clears it first (see ``_do_transient_backoff``).
+    # transient retry clears it first (see ``_do_transient_backoff``). The
+    # baseline is the total the CLI restores, and only ``--resume`` restores
+    # one: a launch with ``session_id`` starts at zero, so don't read its file.
     if state.usage.cli_session_total_usd is None:
         baseline = await asyncio.to_thread(
             read_cli_session_usage, ctx.sdk_cwd, state.options.resume, ctx.log_prefix
