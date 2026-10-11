@@ -275,13 +275,23 @@ class NotificationManager(AppService):
 
     @expose
     async def send_email_or_raise(
-        self, to: str, subject: str, body: str, text_body: str | None = None
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        text_body: str | None = None,
+        reply_to: str | None = None,
     ):
         """One-off transactional email (e.g. Better Auth password-reset links
         forwarded by the REST API). Deliberately not wrapped in try/except: a
         delivery failure must reach the RPC caller."""
         await asyncio.to_thread(
-            self.email_sender.send_email_or_raise, to, subject, body, text_body
+            self.email_sender.send_email_or_raise,
+            to,
+            subject,
+            body,
+            text_body,
+            reply_to,
         )
 
     # ── consumers ───────────────────────────────────────────────────────

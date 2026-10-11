@@ -1,16 +1,21 @@
-"""Render the fixed Better Auth messages through the shared service-email kit."""
+"""Render the fixed account emails through the shared service-email kit: the
+Better Auth link emails and the account-deleted confirmation."""
 
+import asyncio
 from typing import Literal
 
 from pydantic import BaseModel
 
 from backend.notifications.renderer import RenderedEmail, build_urls
 from backend.notifications.template_env import create_body_environment
+from backend.util.clients import get_notification_manager_client
 from backend.util.settings import Settings
 
-AuthEmailType = Literal[
+# The emails a frontend service token may trigger: each one carries a link.
+AuthLinkEmailType = Literal[
     "reset_password", "verify_email", "change_email", "set_password"
 ]
+AuthEmailType = Literal[AuthLinkEmailType, "account_deleted"]
 settings = Settings()
 _html_env = create_body_environment(autoescape=True)
 _text_env = create_body_environment(autoescape=False)
@@ -22,16 +27,23 @@ class AuthEmailContent(BaseModel):
     headline: str
     intro: str
     preheader: str
-    action: str
+    # The button label. Without one the email has no button, no link and no
+    # "If you didn't request this" line.
+    action: str | None = None
     reason: str
     # Must match the links the frontend issues.
     expiry: str | None = None
-    # What the recipient may not expect from following the link.
+    # What the recipient may not expect from following the link. Without a
+    # link it ends the body paragraph instead.
     note: str | None = None
 
 
-def render_auth_email(email_type: AuthEmailType, action_url: str) -> RenderedEmail:
+def render_auth_email(
+    email_type: AuthEmailType, action_url: str | None = None
+) -> RenderedEmail:
     content = _CONTENT[email_type]
+    if content.action and not action_url:
+        raise ValueError(f"The {email_type} email needs an action URL")
     context = {
         "content": content,
         "action_url": action_url,
@@ -43,6 +55,20 @@ def render_auth_email(email_type: AuthEmailType, action_url: str) -> RenderedEma
         preheader=content.preheader,
         html=_html_env.get_template("auth.html.j2").render(**context),
         text=_text_env.get_template("auth.txt.j2").render(**context).strip(),
+    )
+
+
+async def send_account_deleted_email(to: str) -> None:
+    """Confirm a closed account to its owner, with replies going to the shared
+    inbox. Raises when delivery fails; the caller decides what that means."""
+    email = render_auth_email("account_deleted")
+    await asyncio.to_thread(
+        get_notification_manager_client().send_email_or_raise,
+        to,
+        email.subject,
+        email.html,
+        email.text,
+        reply_to=settings.config.billing_reply_to_email,
     )
 
 
@@ -95,5 +121,14 @@ _CONTENT: dict[AuthEmailType, AuthEmailContent] = {
             "password you chose then no longer works: set a new one with this "
             'link, or use "Forgot password" on the login page.'
         ),
+    ),
+    "account_deleted": AuthEmailContent(
+        subject="Your AutoGPT account is deleted",
+        eyebrow="ACCOUNT · DELETED",
+        headline="Your account is deleted",
+        intro="We've closed your AutoGPT account and disconnected your apps.",
+        preheader="We finish removing your data within 30 days.",
+        reason="You deleted your account from your AutoGPT settings.",
+        note="If you have a minute, reply and tell us what we could have done better.",
     ),
 }
