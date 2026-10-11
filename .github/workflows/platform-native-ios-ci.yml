@@ -49,7 +49,7 @@ jobs:
 
   ios:
     name: iOS build and launch journey
-    runs-on: macos-26
+    runs-on: macos-26-intel
     timeout-minutes: 10
     env:
       CI: "1"
@@ -80,7 +80,11 @@ jobs:
         run: |
           mkdir -p e2e/artifacts
           echo "pnpm-store=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-          xcodebuild -version | tee e2e/artifacts/toolchain.txt
+          {
+            xcodebuild -version
+            uname -m
+            sysctl hw.memsize hw.ncpu
+          } | tee e2e/artifacts/toolchain.txt
           df -h . | tee e2e/artifacts/disk-before.txt
 
       - name: Restore JavaScript dependencies
@@ -89,7 +93,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ${{ steps.environment.outputs.pnpm-store }}
-          key: native-ios-pnpm-macos-26-${{ hashFiles('autogpt_platform/mobile/pnpm-lock.yaml') }}
+          key: native-ios-pnpm-macos-26-${{ runner.arch }}-${{ hashFiles('autogpt_platform/mobile/pnpm-lock.yaml') }}
 
       - name: Install dependencies and generate iOS project
         run: |
@@ -106,7 +110,7 @@ jobs:
             ~/Library/Caches/ReactNative
             autogpt_platform/mobile/ios/Pods
             autogpt_platform/mobile/ios/Podfile.lock
-          key: native-ios-pods-v2-macos-26-xcode-26.6-${{ hashFiles('autogpt_platform/mobile/pnpm-lock.yaml', 'autogpt_platform/mobile/app.config.ts') }}
+          key: native-ios-pods-v3-macos-26-${{ runner.arch }}-xcode-26.6-${{ hashFiles('autogpt_platform/mobile/pnpm-lock.yaml', 'autogpt_platform/mobile/app.config.ts') }}
 
       - name: Install CocoaPods
         run: |
@@ -144,7 +148,8 @@ jobs:
         run: |
           df -h . | tee e2e/artifacts/disk-after.txt
           {
-            echo 'Standard free macos-26 runner; Xcode 26.6; arm64 simulator.'
+            echo 'Standard free macos-26-intel runner; Xcode 26.6; x86_64 simulator.'
+            echo 'This artifact runs on Intel simulators; the shared Apple Silicon simulator uses a local arm64 build.'
             echo 'Release runtime and bundled JS; native optimization and debug symbol generation disabled for functional tests.'
             echo "JavaScript cache hit: ${JAVASCRIPT_CACHE_HIT:-false}"
             echo "CocoaPods cache hit: ${PODS_CACHE_HIT:-false}"

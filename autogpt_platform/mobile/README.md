@@ -27,10 +27,21 @@ pnpm lint
 pnpm types
 ```
 
-`.github/workflows/platform-native-ios-ci.yml` builds an arm64 simulator app on the standard free `macos-26` runner with Xcode 26.6 and runs a Maestro launch journey. The artifact contains the installable `AutoGPT-simulator.zip`, build logs, JUnit report and screenshots. This first launch gate does not certify real chat, all card actions, provider integrations or the complete native interaction/build feasibility gate.
+`.github/workflows/platform-native-ios-ci.yml` builds an x86_64 simulator app on the standard free `macos-26-intel` runner with Xcode 26.6 and runs a Maestro launch journey. Successful runs retain an installable `AutoGPT-simulator.zip`, build/resource logs, JUnit report and screenshots. That CI binary is for Intel simulators; the shared Apple Silicon simulator uses a local arm64 build. This first launch gate does not certify real chat, all card actions, provider integrations or the complete native interaction/build feasibility gate.
 
 The functional-test build uses the Release runtime and bundled production JavaScript, with native optimization and debug symbol generation disabled. `bash scripts/build-simulator.sh` reproduces those compiler settings locally. Swift compiles as a whole module to avoid repeated per-file frontend work. All configured native modules remain included. This artifact is for simulator behavior checks; optimized release performance and symbolicated native crashes require the ordinary Release build separately.
 
-The [first cold iOS run](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/38163767681) hit the ten-minute limit during compilation: dependency setup took 3m29s and compilation was still running after another 6m38s. No native tests ran. The next measurement uses the functional-test compiler settings and overlaps Maestro/simulator preparation with compilation; a passing cold and warm run is still required. The parent server lane has separate production-auth and PostgreSQL/Redis journeys; see [server validation](../../docs/engineering/native-mobile/server-validation.md). Real Google login, APNs and App Store purchase settlement need their own provider setup and evidence.
+Both cold ARM runner measurements hit the ten-minute limit before native tests:
+
+| Commit / run                                                                          | Setup | Build before cancellation | Whole job, including cleanup | Native tests |
+| ------------------------------------------------------------------------------------- | ----- | ------------------------- | ---------------------------- | ------------ |
+| [`54f2a47`](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/38163767681) | 3m29s | 6m38s                     | 10m17s                       | Skipped      |
+| [`273ffa5`](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/38165924664) | 2m46s | 7m27s                     | 11m07s                       | Skipped      |
+
+The second run overlapped simulator boot with compilation for 2m53s and progressed through fewer compilation operations. Resource contention is a hypothesis; those runs did not capture memory or CPU samples. [GitHub's standard runner specifications](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) give the ARM runner 3 CPUs/7 GB and the Intel runner 4 CPUs/14 GB; both are free for public repositories. All bundled native frameworks include x86_64 simulator slices.
+
+The next bounded feasibility experiment uses the standard Intel runner, architecture-specific dependency caches and resource samples. The intended native modules and ten-minute limit stay in place. A cold pass and a warm pass including setup, tests, artifact upload and cache saves remain required. If the complete cold gate still fails, reassess the SwiftUI fallback in the implementation plan before expanding the card surface; do not treat local or warm-only results as acceptance.
+
+The parent server lane has separate production-auth and PostgreSQL/Redis journeys; see [server validation](../../docs/engineering/native-mobile/server-validation.md). Real Google login, APNs and App Store purchase settlement need their own provider setup and evidence.
 
 The [native E2E guide](e2e/README.md) also covers the local production-server sign-in, streaming and transcript-restoration journey.
