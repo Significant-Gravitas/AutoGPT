@@ -1092,10 +1092,10 @@ _SDK_BUILTIN_ALWAYS = ["TodoWrite"]
 _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 
 # The CLI's sub-agent tool ("Task" before v2.x, "Agent" since).  Off by
-# default: its sub-agents get none of the copilot system prompt, their cost
-# is not counted, and a background launch is lost when the turn's stream
-# ends.  ``run_sub_session`` is the copilot's own delegation path.  An
-# operator or eval arm turns it back on with ``claude_agent_extra_builtin_tools``.
+# default: its sub-agents get none of the copilot system prompt and their
+# cost is not counted.  ``run_sub_session`` is the copilot's own delegation
+# path.  An operator or eval arm turns it back on with
+# ``claude_agent_extra_builtin_tools``.
 SDK_SUBAGENT_TOOLS = ("Agent", "Task")
 
 # SDK built-in tools that must be explicitly blocked.
