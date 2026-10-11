@@ -16,9 +16,8 @@ import {
 } from "./copilotChatRegistry";
 import { handleStreamError } from "./copilotStreamErrorHandlers";
 import {
-  endLiveRequest,
   hasHealthyStream,
-  trackRequest,
+  startRequest,
   type ResumeReason,
 } from "./copilotStreamFlight";
 import { useCopilotStreamStore } from "./copilotStreamStore";
@@ -453,24 +452,23 @@ export function useCopilotStream({
 
   // At most one stream per chat: a resume first ends the live request and
   // waits for the SDK to clean it up, or leaves a healthy one alone when it
-  // only means to attach. Resumes asked for while one is starting join it.
+  // only means to attach. Resumes asked for while one is queued join it.
   function resumeStreamFromStart(reason: ResumeReason) {
     if (!chatRuntime) return;
     const { flight } = chatRuntime;
-    if (flight.starting) return;
+    if (flight.resumeQueued) return;
     if (reason === "attach" && hasHealthyStream(flight)) return;
-    flight.starting = (async () => {
-      await endLiveRequest(flight);
-      if (!isMountedRef.current || isUserStoppingRef.current) return;
+    flight.resumeQueued = true;
+    void startRequest(flight, () => {
+      flight.resumeQueued = false;
+      if (!isMountedRef.current || isUserStoppingRef.current) return undefined;
       if (sessionId) {
         markCopilotChatRuntimeHealthy(sessionId);
       }
       // Whatever asked, the page-load resume must not run this turn again.
       hasResumedRef.current = true;
       trimReplayedTurn();
-      void trackRequest(flight, resumeStream());
-    })().finally(() => {
-      flight.starting = null;
+      return resumeStream();
     });
   }
 
@@ -592,8 +590,10 @@ export function useCopilotStream({
     }
     if (!chatRuntime) return sdkSendMessage(...args);
     // A send beside a live request breaks both (see copilotStreamFlight).
-    await endLiveRequest(chatRuntime.flight);
-    return trackRequest(chatRuntime.flight, sdkSendMessage(...args));
+    await startRequest(chatRuntime.flight, () =>
+      // Stop pressed while the previous request was ending.
+      isUserStoppingRef.current ? undefined : sdkSendMessage(...args),
+    );
   }
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams.

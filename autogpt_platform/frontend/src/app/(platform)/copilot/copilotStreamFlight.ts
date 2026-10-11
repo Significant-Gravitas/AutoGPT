@@ -27,8 +27,10 @@ export type ResumeReason = "attach" | "replace";
  */
 export interface StreamFlight {
   request: Promise<unknown> | null;
-  /** A resume waiting for the live request to end before it starts. */
-  starting: Promise<void> | null;
+  /** Request starts in order: each waits for the one before it to start. */
+  queue: Promise<void>;
+  /** A resume is queued and has not started yet. */
+  resumeQueued: boolean;
   /** When the live request last received bytes, heartbeats included. */
   lastActivityAt: number;
   abortController: AbortController | null;
@@ -37,7 +39,8 @@ export interface StreamFlight {
 export function createStreamFlight(): StreamFlight {
   return {
     request: null,
-    starting: null,
+    queue: Promise.resolve(),
+    resumeQueued: false,
     lastActivityAt: 0,
     abortController: null,
   };
@@ -68,11 +71,16 @@ export function trackStreamFetch(
         start(output) {
           // End the read the SDK is waiting on even if the body ignores the
           // abort, so the request always settles once it is replaced.
-          controller.signal.addEventListener(
-            "abort",
-            () => output.error(controller.signal.reason),
-            { once: true },
-          );
+          const { signal } = controller;
+          if (signal.aborted) output.error(signal.reason);
+          else
+            signal.addEventListener(
+              "abort",
+              () => output.error(signal.reason),
+              {
+                once: true,
+              },
+            );
         },
         transform(chunk, output) {
           flight.lastActivityAt = Date.now();
@@ -88,8 +96,30 @@ export function trackStreamFetch(
   };
 }
 
-/** Record a send or resume as the chat's live request until it has ended. */
-export function trackRequest<T>(flight: StreamFlight, request: Promise<T>) {
+/**
+ * Start a send or resume once the live request has ended and every start
+ * queued before it has run, so two can never be live at once. `start` may
+ * return nothing to stand down. Resolves when the started request ends.
+ */
+export async function startRequest<T>(
+  flight: StreamFlight,
+  start: () => Promise<T> | undefined,
+) {
+  const started = flight.queue.then(async () => {
+    await endLiveRequest(flight);
+    const request = start();
+    if (request) trackRequest(flight, request);
+    return { request };
+  });
+  flight.queue = started.then(
+    () => {},
+    () => {},
+  );
+  const { request } = await started;
+  return request;
+}
+
+function trackRequest<T>(flight: StreamFlight, request: Promise<T>) {
   flight.request = request;
   void request
     .catch(() => {})
