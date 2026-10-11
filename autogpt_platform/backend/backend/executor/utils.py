@@ -1455,6 +1455,10 @@ async def _add_graph_execution(
                 f"Expert scope does not match graph execution #{graph_exec.id}"
             )
         expert_id = graph_exec.expert_id
+        # Same for a dry run. No resume caller (review approval, admin
+        # requeue) passes the flag back, so without this the rest of a dry
+        # run would execute for real and be charged.
+        dry_run = graph_exec.is_dry_run
 
         # A resumed expert execution respects the pause/budget gate too;
         # bypass_paywall marks admin recovery, which stays exempt.
@@ -1721,6 +1725,11 @@ async def _add_graph_execution(
         execution_context = execution_context.model_copy(
             update={"sensitive_action_safe_mode": True}
         )
+
+    # A caller-supplied context does not decide whether the run is a dry run;
+    # the executor reads only the context, to simulate blocks and skip charges.
+    if execution_context.dry_run != dry_run:
+        execution_context = execution_context.model_copy(update={"dry_run": dry_run})
 
     try:
         graph_exec_entry = graph_exec.to_graph_execution_entry(

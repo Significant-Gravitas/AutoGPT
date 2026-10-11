@@ -976,6 +976,7 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
     mock_graph_exec.graph_version = 1
     mock_graph_exec.nodes_input_masks = {}
     mock_graph_exec.organization_id = "org-row"
+    mock_graph_exec.is_dry_run = False
     mock_graph_exec.trigger_source = None
     mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = "team-row"
@@ -2263,6 +2264,7 @@ def _mock_add_graph_execution_requeue_path(
     graph_exec.team_id = team_id
     graph_exec.trigger_source = None
     graph_exec.trigger_ref = None
+    graph_exec.is_dry_run = False
 
     captured: dict = {}
 
