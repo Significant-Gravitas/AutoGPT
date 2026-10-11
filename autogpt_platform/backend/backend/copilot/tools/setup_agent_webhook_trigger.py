@@ -122,14 +122,18 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 "library_agent_id": {
                     "type": "string",
                     "description": "Library agent ID (preferred identifier).",
+                    "entity": "library_agent",
                 },
                 "graph_id": {
                     "type": "string",
                     "description": "Agent graph ID (alt to library_agent_id).",
+                    "title": "Agent",
+                    "entity": "graph",
                 },
                 "graph_version": {
                     "type": "integer",
                     "description": "Graph version (used with graph_id).",
+                    "title": "Agent version",
                 },
                 "name": {
                     "type": "string",
@@ -148,6 +152,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                         "the trigger node. Usually empty for generic webhooks."
                     ),
                     "additionalProperties": True,
+                    "title": "Trigger settings",
                 },
                 "credentials": {
                     "type": "object",
