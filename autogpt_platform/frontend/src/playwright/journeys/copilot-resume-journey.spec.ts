@@ -26,7 +26,9 @@ test.use({
 });
 
 const ANSWER = "I counted: 1... 2... 3. All done!";
+// Distinct per turn: the composer drops a repeat of the last message.
 const QUIET_PROMPT = "__test_quiet_pause__ count to three";
+const BLIP_PROMPT = "__test_quiet_pause__ count again";
 
 test("copilot resume journey: one stream per turn through wake, quiet stretches and a network blip", async ({
   page,
@@ -34,6 +36,12 @@ test("copilot resume journey: one stream per turn through wake, quiet stretches 
   browserName,
 }) => {
   test.skip(browserName !== "chromium", "reads stream bytes through CDP");
+  test.skip(
+    new URL(
+      test.info().project.use.baseURL ?? "http://localhost",
+    ).hostname.endsWith(".vercel.app"),
+    "previews run real models; this journey needs CHAT_TEST_MODE",
+  );
   test.setTimeout(90_000);
 
   await watchConnectionLostToasts(page);
@@ -64,12 +72,14 @@ test("copilot resume journey: one stream per turn through wake, quiet stretches 
   expect(streams.resumes, "a healthy stream is never resumed beside").toBe(0);
   expect(await connectionLostToasts(page)).toBe(0);
 
-  // Turn 2: a network blip mid-turn may drop the stream; whatever reconnects
-  // replaces it rather than running beside it.
-  await send(page, copilot, QUIET_PROMPT);
+  // Turn 2: a network blip mid-turn.
+  await send(page, copilot, BLIP_PROMPT);
   await context.setOffline(true);
   await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
   await context.setOffline(false);
+  // A blip can leave the stream open but dead. Past the stall watchdog, the
+  // chat recovers it by replacing it, never by running a second one.
+  await page.clock.fastForward(61_000);
   await expect(answers).toHaveCount(2, { timeout: 30_000 });
 
   // Turn 3: the chat still takes a follow-up.
