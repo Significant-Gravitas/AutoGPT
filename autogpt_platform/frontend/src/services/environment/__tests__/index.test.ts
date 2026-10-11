@@ -113,13 +113,25 @@ describe("Sentry environment tagging", () => {
 });
 
 describe("Sentry enablement", () => {
+  const HOSTED_DSN_PROJECT = "/4507946746380288";
+
   it("stays off under the test runner, where no cloud deployment env is set", () => {
     expect(environment.isSentryEnabled()).toBe(false);
   });
 
-  it("is on for a cloud deployment", () => {
+  it("reports to AutoGPT's Sentry from a hosted deployment on Vercel", () => {
     vi.stubEnv("NEXT_PUBLIC_APP_ENV", "prod");
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "production");
+
+    expect(environment.isSentryEnabled()).toBe(true);
+    expect(environment.getSentryDSN()).toContain(HOSTED_DSN_PROJECT);
+  });
+
+  it("reports from a hosted preview deployment", () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", "dev");
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "preview");
 
     expect(environment.isSentryEnabled()).toBe(true);
   });
@@ -131,9 +143,25 @@ describe("Sentry enablement", () => {
     expect(environment.isSentryEnabled()).toBe(false);
   });
 
+  it("does not report to AutoGPT's Sentry from a self-hosted build configured like the cloud", () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", "prod");
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+    vi.stubEnv("VERCEL", "");
+
+    expect(environment.isSentryEnabled()).toBe(false);
+  });
+
+  it("reports to a self-hoster's own Sentry once they opt in with a DSN", () => {
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "https://key@sentry.example.com/7");
+
+    expect(environment.getSentryDSN()).toBe("https://key@sentry.example.com/7");
+  });
+
   it("honours the DISABLE_SENTRY kill switch on a cloud deployment", () => {
     vi.stubEnv("NEXT_PUBLIC_APP_ENV", "prod");
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "production");
     vi.stubEnv("DISABLE_SENTRY", "true");
 
     expect(environment.isSentryEnabled()).toBe(false);
