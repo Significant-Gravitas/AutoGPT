@@ -260,6 +260,27 @@ def test_stamps_without_a_fire_time_are_not_matched_to_each_other():
     assert len(session.messages) == 5
 
 
+def test_a_later_fire_after_a_user_role_first_fire_appends_its_row():
+    """A thread routine's first fire opens the chat as a user-role row; its
+    later fires are assistant-role and must still get their own row."""
+    session = _thread_after_a_fire(None)
+    session.messages.append(ChatMessage(role="user", content="Check the inbox."))
+
+    assert _fire(session, NEXT_FIRE) is True
+    assert session.messages[-1].role == "assistant"
+
+
+def test_a_fire_without_a_fire_time_matches_the_same_last_prompt():
+    """An entry queued before fire times existed cannot be told apart from the
+    previous fire, so the same prompt as the last row is taken as already
+    written, even when that row's stamp can be read."""
+    session = _thread_after_a_fire(ORIGIN)
+    session.messages.pop()
+
+    assert _fire(session, ORIGIN.model_copy(update={"fired_at": None})) is False
+    assert len(session.messages) == 3
+
+
 # ---- persistence: the insert folds the stamp back into the metadata column ---
 
 
