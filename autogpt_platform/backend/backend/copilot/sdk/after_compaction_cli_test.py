@@ -15,17 +15,16 @@ and none is bundled.
 import asyncio
 import json
 import os
-import platform
 import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-import claude_agent_sdk
 import pytest
 from aiohttp import web
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 from .after_compaction import fit_after_compaction, utf16_len
+from .cli_openrouter_compat_test import _resolve_cli_path
 from .security_hooks import create_security_hooks
 
 _CLI_HOOK_CAP = 10_000
@@ -34,17 +33,6 @@ _REMINDER = "SessionStart hook additional context: "
 # Small enough that two big turns push the CLI over its compaction trigger.
 _CONTEXT_WINDOW_TOKENS = 50_000
 _BIG_TURN = "The quick brown fox jumps over the lazy dog near the riverbank. " * 1_800
-
-
-def _cli_path() -> str | None:
-    override = os.environ.get("CHAT_CLAUDE_AGENT_CLI_PATH") or os.environ.get(
-        "CLAUDE_AGENT_CLI_PATH"
-    )
-    if override:
-        return override
-    name = "claude.exe" if platform.system() == "Windows" else "claude"
-    bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / name
-    return str(bundled) if bundled.is_file() else None
 
 
 def _block(tag: str, lines: int, line: str) -> str:
@@ -67,8 +55,8 @@ def _first_turn_prefix() -> str:
 async def test_over_cap_context_reaches_the_model_whole(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    cli = _cli_path()
-    if not cli:
+    cli = _resolve_cli_path()
+    if cli is None:
         pytest.skip("No Claude Code CLI binary bundled or configured")
     # A run inside Claude Code inherits its CLAUDE_* flags.
     for key in [k for k in os.environ if k.startswith("CLAUDE")]:
@@ -93,7 +81,7 @@ async def test_over_cap_context_reaches_the_model_whole(
 
 
 async def _requests_around_a_compaction(
-    cli: str,
+    cli: Path,
     tmp_path: Path,
     context_after_compaction: Callable[[], Awaitable[list[str]]],
 ) -> list[dict]:

@@ -7,15 +7,14 @@ call fails here too.
 
 import asyncio
 import os
-import platform
 from pathlib import Path
 
-import claude_agent_sdk
 import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, SystemMessage
 
 from backend.copilot.permissions import CopilotPermissions
 
+from .cli_openrouter_compat_test import _resolve_cli_path
 from .env import build_sdk_env
 from .service import _build_sdk_tool_options
 from .tool_adapter import (
@@ -27,22 +26,12 @@ from .tool_adapter import (
 _EXTRA_BUILTINS = "backend.copilot.sdk.service.config.claude_agent_extra_builtin_tools"
 
 
-def _cli_path() -> str:
-    """The CLI the copilot would run: ``ChatConfig.claude_agent_cli_path``'s
-    env vars, else the binary bundled with the SDK wheel (none on Windows)."""
-    override = os.environ.get("CHAT_CLAUDE_AGENT_CLI_PATH") or os.environ.get(
-        "CLAUDE_AGENT_CLI_PATH"
-    )
-    if override:
-        return override
-    name = "claude.exe" if platform.system() == "Windows" else "claude"
-    return str(Path(claude_agent_sdk.__file__).parent / "_bundled" / name)
-
-
-_CLI_PATH = _cli_path()
+# The CLI the copilot would run: ``ChatConfig.claude_agent_cli_path``'s env
+# vars, else the binary bundled with the SDK wheel (none on Windows).
+_CLI_PATH = _resolve_cli_path()
 
 pytestmark = pytest.mark.skipif(
-    not Path(_CLI_PATH).is_file(),
+    _CLI_PATH is None,
     reason="No Claude CLI binary: the SDK wheel bundles none here and "
     "CHAT_CLAUDE_AGENT_CLI_PATH / CLAUDE_AGENT_CLI_PATH is unset",
 )
