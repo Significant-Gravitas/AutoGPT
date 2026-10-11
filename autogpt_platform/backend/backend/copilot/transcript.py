@@ -29,9 +29,11 @@ from backend.util.clients import get_openai_client
 from backend.util.prompt import CompressResult, compress_context
 from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_storage
 
+from .config import ChatConfig
 from .model import ChatMessage
 
 logger = logging.getLogger(__name__)
+config = ChatConfig()
 
 # UUIDs are hex + hyphens; strip everything else to prevent path injection.
 _SAFE_ID_RE = re.compile(r"[^0-9a-fA-F-]")
@@ -46,6 +48,12 @@ _SAFE_ID_RE = re.compile(r"[^0-9a-fA-F-]")
 STRIPPABLE_TYPES = frozenset(
     {"progress", "file-history-snapshot", "queue-operation", "summary", "pr-link"}
 )
+
+# Attachment entries (``type: "attachment"``) that can be removed the same way,
+# keyed by ``attachment.type``.
+# - prompt_snapshot: the CLI's record of the system prompt and every tool
+#   description (134-180KB each, two per recording).
+STRIPPABLE_ATTACHMENT_TYPES = frozenset({"prompt_snapshot"})
 
 
 TranscriptMode = Literal["sdk", "baseline"]
@@ -224,12 +232,29 @@ def strip_stale_thinking_blocks(content: str) -> str:
     return "\n".join(result_lines) + "\n"
 
 
+def _strippable_attachment_types() -> frozenset[str]:
+    """Attachment types to drop from a stored transcript.
+
+    Recorded prompts are dropped only while launches send a live prompt.  A
+    launch that relies on the recording and finds none sends its own prompt
+    and records it again, so stripping under it would change the prompt (and
+    re-write the session's cache) every turn.
+    """
+    if not config.claude_agent_live_system_prompt:
+        return frozenset()
+    if not config.claude_agent_strip_prompt_snapshots:
+        return frozenset()
+    return STRIPPABLE_ATTACHMENT_TYPES
+
+
 def strip_for_upload(content: str) -> str:
     """Combined single-parse strip of progress entries and stale thinking blocks.
 
     Equivalent to ``strip_stale_thinking_blocks(strip_progress_entries(content))``
     but parses the JSONL only once, avoiding redundant ``split`` + ``json.loads``
-    passes on every upload.
+    passes on every upload.  Also drops the attachment entries listed in
+    ``STRIPPABLE_ATTACHMENT_TYPES`` when prompt snapshots are being stripped
+    (see :func:`_strippable_attachment_types`).
     """
     lines = content.strip().split("\n")
     if not lines:
@@ -238,6 +263,8 @@ def strip_for_upload(content: str) -> str:
     parsed: list[tuple[str, dict | None]] = []
     for line in lines:
         parsed.append((line, json.loads(line, fallback=None)))
+
+    attachment_types = _strippable_attachment_types()
 
     # --- Phase 1: progress stripping (reparent children) ---
     stripped_uuids: set[str] = set()
@@ -250,11 +277,7 @@ def strip_for_upload(content: str) -> str:
         parent = entry.get("parentUuid", "")
         if uid:
             uuid_to_parent[uid] = parent
-        if (
-            entry.get("type", "") in STRIPPABLE_TYPES
-            and uid
-            and not entry.get("isCompactSummary")
-        ):
+        if uid and _is_stripped_for_upload(entry, attachment_types):
             stripped_uuids.add(uid)
 
     reparented: set[str] = set()
@@ -280,9 +303,7 @@ def strip_for_upload(content: str) -> str:
         _line, entry = parsed[i]
         if not isinstance(entry, dict):
             continue
-        if entry.get("type", "") in STRIPPABLE_TYPES and not entry.get(
-            "isCompactSummary"
-        ):
+        if _is_stripped_for_upload(entry, attachment_types):
             continue
         msg = entry.get("message", {})
         if msg.get("role") == "assistant":
@@ -299,9 +320,7 @@ def strip_for_upload(content: str) -> str:
             continue
 
         # Drop progress/metadata entries
-        if entry.get("type", "") in STRIPPABLE_TYPES and not entry.get(
-            "isCompactSummary"
-        ):
+        if _is_stripped_for_upload(entry, attachment_types):
             continue
 
         needs_reserialize = False
@@ -354,6 +373,18 @@ def strip_for_upload(content: str) -> str:
         )
 
     return "\n".join(result_lines) + "\n"
+
+
+def _is_stripped_for_upload(entry: dict, attachment_types: frozenset[str]) -> bool:
+    if entry.get("isCompactSummary"):
+        return False
+    entry_type = entry.get("type", "")
+    if entry_type in STRIPPABLE_TYPES:
+        return True
+    if entry_type != "attachment":
+        return False
+    attachment = entry.get("attachment")
+    return isinstance(attachment, dict) and attachment.get("type") in attachment_types
 
 
 # ---------------------------------------------------------------------------
