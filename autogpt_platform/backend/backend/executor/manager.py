@@ -184,9 +184,12 @@ SKIPPED_NODE_STATUSES = (ExecutionStatus.RUNNING, ExecutionStatus.COMPLETED)
 # charge comes before `_on_node_execution` writes RUNNING, and a block parks
 # itself in REVIEW from inside its run. A resume (REVIEW) or a redelivery after
 # a pod died (RUNNING) dispatches such a row again without a second charge.
-# (An OrchestratorBlock tool call is charged after its run instead, so a tool
-# row left RUNNING by a dead pod was never charged; re-running it is a
-# spurious duplicate the user did not ask for, so it is not charged either.)
+# Known gaps, closed by keying the charge on the node execution instead: an
+# OrchestratorBlock tool call is charged after its run, so a tool row left
+# RUNNING by a dead pod was never charged, and a REVIEW row that resumed and
+# then lost its pod comes back RUNNING after the pause refunded a usage-priced
+# pre-flight. Per-run prices bill such a re-run nothing extra; usage-priced
+# ones settle against a pre-flight that is no longer held, under-billing it.
 BILLED_REDISPATCH_STATUSES = (ExecutionStatus.REVIEW, ExecutionStatus.RUNNING)
 
 
