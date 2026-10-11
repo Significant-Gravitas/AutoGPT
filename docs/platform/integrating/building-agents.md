@@ -170,7 +170,7 @@ curl -s -X PUT "$AUTOGPT_API_URL/graphs/$GRAPH_ID" \
 * To update an agent you made earlier, [find it by name](running-agents.md#find-the-agent) and use its `graph_id`.
 * `GET /graphs/{graph_id}/versions` lists every version. `GET /graphs/{graph_id}?version=2` reads one.
 * `PUT /graphs/{graph_id}/versions/active` with `{"active_graph_version": 1}` rolls back.
-* A run uses the version its library agent points at. `PATCH /library/agents/{agent_id}` with `{"graph_version": 1}` pins it to a version, and `{"auto_update_version": true}` makes it follow the active one.
+* A run uses the version its library agent points at. `PATCH /library/agents/{agent_id}` with `{"graph_version": 1}` pins it to a version, and `{"auto_update_version": true}` makes it follow the active one. An agent added from the marketplace can be pinned only to a version approved there; any other answers `404`.
 
 ## Human-in-the-loop blocks
 

@@ -781,7 +781,9 @@ async def update_agent_version_in_library(
 
     Raises:
         DatabaseError: If there's an error with the update.
-        NotFoundError: If no library agent is found for this user and agent.
+        NotFoundError: If no library agent is found for this user and agent,
+            or the target version doesn't exist or is another user's that
+            isn't approved in the marketplace.
         LibraryAgentInAnotherOrganizationError: If the target version is in
             the user's library in an organization outside ``organization_ids``.
         NotAuthorizedError: If the target version is one of the user's own,
@@ -805,10 +807,9 @@ async def update_agent_version_in_library(
             )
         ]
     async with transaction() as tx:
-        if organization_ids is not None:
-            await _assert_version_within(
-                tx, user_id, agent_graph_id, agent_graph_version, organization_ids
-            )
+        await _assert_target_version(
+            tx, user_id, agent_graph_id, agent_graph_version, organization_ids
+        )
         library_agent = await prisma.models.LibraryAgent.prisma(tx).find_first_or_raise(
             where=entry
         )
@@ -1004,26 +1005,34 @@ async def update_graph_in_library(
     return created_graph, library_agent
 
 
-async def _assert_version_within(
+async def _assert_target_version(
     tx: prisma.Prisma,
     user_id: str,
     graph_id: str,
     version: int,
-    organization_ids: frozenset[str | None],
+    organization_ids: Optional[frozenset[str | None]],
 ) -> None:
-    """Refuse to point an entry at one of the user's own graph versions outside
-    *organization_ids*: running the entry runs that version, billed where the
-    entry is.
+    """Refuse a graph version the user may not point a library entry at.
 
-    Another user's version is left to the run's own authorization, which takes
-    a marketplace agent's submitted versions only.
+    Any of their own, within *organization_ids* when given: running the entry
+    runs that version, billed where the entry is. Of another user's, a
+    marketplace agent's, only an approved one, as adding it to the library
+    grants: a version in the library that was ever submitted can be read, run
+    and forked, so pointing at a pending or rejected one would unlock it. A
+    refused version of another user's answers as a missing one does, so
+    neither shows which versions exist.
     """
+    not_found = NotFoundError(f"Graph #{graph_id} v{version} not found")
     target = await prisma.models.AgentGraph.prisma(tx).find_unique(
         where={"graphVersionId": {"id": graph_id, "version": version}}
     )
     if target is None:
-        raise NotFoundError(f"Graph #{graph_id} v{version} not found")
-    if target.userId == user_id and target.organizationId not in organization_ids:
+        raise not_found
+    if target.userId != user_id:
+        if not await graph_db.is_graph_published_in_marketplace(graph_id, version):
+            raise not_found
+        return
+    if organization_ids is not None and target.organizationId not in organization_ids:
         raise NotAuthorizedError(
             f"Version {version} of this agent is in another organization; "
             "choose it with a credential for that organization"
