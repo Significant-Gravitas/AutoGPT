@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getGetTrialsGetTrialStatusMockHandler200 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
@@ -8,6 +8,12 @@ import {
   trialResponse,
 } from "@/tests/integrations/trial-fixtures";
 import SettingsBillingPage from "../page";
+
+// These cover the hosted billing UI, which self-hosted builds hide.
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+  useBillingStatus: () => ({ isBillingEnabled: true, isResolved: true }),
+}));
 
 beforeEach(() => setTrialUser());
 afterEach(() => setTrialUser(null));

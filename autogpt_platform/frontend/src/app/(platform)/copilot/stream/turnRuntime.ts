@@ -139,6 +139,8 @@ interface Connection {
   syntheticError: string | null;
   /** A send's own prompt segment, by key. */
   prompt: string | null;
+  /** The backend queued this send behind the session's running turn. */
+  followUp: boolean;
 }
 
 /** What the classification needs to know about a connection that is gone. */
@@ -443,6 +445,7 @@ export class TurnRuntime {
       closedByClient: false,
       syntheticError: null,
       prompt: init.prompt ?? null,
+      followUp: false,
     };
     if (asRotation) this.rotating = conn;
     else {
@@ -494,6 +497,11 @@ export class TurnRuntime {
       this.applyFrom(conn, frame.entry);
     } else if (frame.kind === "synthetic" && frame.chunk.type === "error") {
       conn.syntheticError = str(frame.chunk.errorText);
+    } else if (
+      frame.kind === "synthetic" &&
+      frame.chunk.type === "data-follow-up-queued"
+    ) {
+      conn.followUp = true;
     }
     this.emit();
   }
@@ -552,6 +560,9 @@ export class TurnRuntime {
       return;
     }
     if (!seg) {
+      // The page shows a queued follow-up as a chip; the prompt drawn at
+      // send would sit above the running turn and take that turn's prompt row.
+      if (conn.followUp) this.dropUnsentUserRow();
       this.findLostTurn(conn, end);
       return;
     }

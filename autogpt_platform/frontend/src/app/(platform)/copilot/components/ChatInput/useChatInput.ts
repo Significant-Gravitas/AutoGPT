@@ -1,4 +1,5 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import { ReportedSendError } from "@/app/(platform)/copilot/helpers/reportedSendError";
 import { describeSendFailure } from "./helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
@@ -88,6 +89,7 @@ export function useChatInput({
       notifyMessageSent();
     } catch (error) {
       setValue((current) => restoreFailedDraft(current, message));
+      if (error instanceof ReportedSendError) return;
       toast({
         title: "Couldn't send message",
         description: describeSendFailure(
@@ -118,6 +120,7 @@ export function useChatInput({
       await onEnqueue(trimmedMessage);
     } catch (error) {
       setValue((current) => restoreFailedDraft(current, message));
+      if (error instanceof ReportedSendError) return;
       toast({
         title: "Couldn't send message",
         description: describeSendFailure(

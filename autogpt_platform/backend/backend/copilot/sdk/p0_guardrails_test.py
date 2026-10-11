@@ -784,8 +784,10 @@ class TestDoTransientBackoff:
         mock_cls.assert_called_once_with(message_id="msg-1", session_id="sess-1")
         assert state.adapter is new_adapter
 
-    async def test_preserves_usage_after_yield(self):
-        """A resumed retry must retain both reported spend and its CLI baseline."""
+    async def test_keeps_reported_usage_and_clears_the_cli_baseline(self):
+        """A retry keeps the spend already reported, but re-reads the CLI
+        baseline at relaunch, so the failed attempt's unreported spend is not
+        charged."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
         from backend.copilot.sdk.service import _do_transient_backoff
@@ -812,7 +814,7 @@ class TestDoTransientBackoff:
             cache_creation_tokens=30,
             cost_usd=0.02,
             cli_cost_usd=0.1,
-            cli_session_total_usd=1.1,
+            cli_session_total_usd=None,
         )
 
 

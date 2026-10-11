@@ -33,6 +33,7 @@ import {
   compareShadowWithSession,
   setStreamShadowRate,
 } from "./stream/turnShadow";
+import { ReportedSendError } from "./helpers/reportedSendError";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
@@ -258,16 +259,18 @@ export function useChatSession({
         title: "Could not check AI connections",
         description: "Refresh the page and try again.",
       });
-      throw new Error("Could not load AI connections");
+      throw new ReportedSendError("Could not load AI connections");
     }
     if (chatTransports !== undefined && availableTransports.length === 0) {
+      // NoAIConnectionNotice above the composer says how to fix this and
+      // stays put; the toast only marks that this send went nowhere.
       toast({
         variant: "destructive",
-        title: "Your expert needs an AI connection",
+        title: "No AI connection is set up",
         description:
-          "Connect ChatGPT or Microsoft 365 Copilot in Settings → Integrations, or configure a chat API or local model on this server.",
+          "Your message is back in the composer. See the notice above it for how to connect a model.",
       });
-      throw new Error("chat_transport_not_configured");
+      throw new ReportedSendError("No AI connection is set up");
     }
     if (!resolvedLLMAuth) {
       const connectionsAreLoading = chatTransports === undefined;
@@ -280,7 +283,7 @@ export function useChatSession({
           ? "Wait a moment and try again."
           : "Select the connection your expert should use before starting a new task.",
       });
-      throw new Error(
+      throw new ReportedSendError(
         connectionsAreLoading
           ? "AI connections are still loading"
           : "AI connection selection required",
