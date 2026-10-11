@@ -2381,6 +2381,28 @@ async def _resolve_sdk_model_for_request(
     return sdk_model, resolved.source
 
 
+def _codex_gateway_for(
+    credential_lease: CredentialLease | CodexCredentialLease,
+    model: str,
+    effort: CodexReasoningEffort | None,
+) -> CodexAnthropicGateway:
+    """The loopback gateway for a ChatGPT turn, told which account it spends.
+
+    A failure it reports names the account, so the client offers the user's
+    other ChatGPT accounts rather than hiding every one of them.
+    """
+    if isinstance(credential_lease, CodexCredentialLease):
+        return CodexAnthropicGateway(
+            agent_session=credential_lease,
+            credential_id=credential_lease.credentials.id,
+            model=model,
+            effort=effort,
+        )
+    return CodexAnthropicGateway(
+        credential_lease=credential_lease, model=model, effort=effort
+    )
+
+
 def _codex_gateway_usage(
     gateway: CodexAnthropicGateway,
 ) -> CodexTokenUsage | None:
@@ -5185,18 +5207,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 tier_name,
                 credential_lease,
             )
-            if isinstance(credential_lease, CodexCredentialLease):
-                codex_gateway = CodexAnthropicGateway(
-                    agent_session=credential_lease,
-                    model=sdk_model,
-                    effort=codex_effort,
-                )
-            else:
-                codex_gateway = CodexAnthropicGateway(
-                    credential_lease=credential_lease,
-                    model=sdk_model,
-                    effort=codex_effort,
-                )
+            codex_gateway = _codex_gateway_for(
+                credential_lease, sdk_model, codex_effort
+            )
             await codex_gateway.start()
             fallback_model = None
         else:

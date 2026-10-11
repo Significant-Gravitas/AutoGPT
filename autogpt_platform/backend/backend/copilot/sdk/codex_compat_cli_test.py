@@ -7,6 +7,7 @@ import pytest
 from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    HookMatcher,
     ResultMessage,
     create_sdk_mcp_server,
     tool,
@@ -159,3 +160,82 @@ async def test_bundled_claude_cli_executes_mcp_tool_through_codex_gateway(
     assert gateway.result is not None
     assert gateway.result.usage is not None
     assert gateway.result.usage.total_tokens == 25
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_bundled_claude_cli_delivers_a_post_tool_use_followup_to_codex(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A message the user sends mid-turn reaches a ChatGPT model.
+
+    The PostToolUse hook hands queued messages to the CLI, which sends them
+    after the tool result rather than inside it -- for a non-Claude model, as
+    a separate ``system`` message. They must reach Codex as a follow-up and
+    leave the tool's own output untouched.
+    """
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
+    stderr_lines: list[str] = []
+
+    @tool("echo", "Echo a value", {"value": str})
+    async def echo(arguments):
+        return {"content": [{"type": "text", "text": f"echo:{arguments['value']}"}]}
+
+    async def deliver_followup(_input_data, _tool_use_id, _context):
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "additionalContext": (
+                    "<user_follow_up>\nMessage 1:\nalso check the logs\n"
+                    "</user_follow_up>"
+                ),
+            }
+        }
+
+    agent_session = _ClaudeHarnessAgentSession()
+    gateway = CodexAnthropicGateway(
+        credential_lease=cast(CredentialLease, object()),
+        model="gpt-5.6-terra",
+        transport=_ClaudeHarnessTransport(agent_session),
+    )
+
+    async with gateway:
+        options = ClaudeAgentOptions(
+            model="gpt-5.6-terra",
+            system_prompt="Use the supplied echo tool once.",
+            mcp_servers={
+                "codex-conformance": create_sdk_mcp_server(
+                    name="codex-conformance", tools=[echo]
+                )
+            },
+            allowed_tools=["mcp__codex-conformance__echo"],
+            setting_sources=[],
+            hooks={"PostToolUse": [HookMatcher(hooks=[deliver_followup])]},
+            cwd=str(tmp_path),
+            max_turns=3,
+            stderr=stderr_lines.append,
+            env=build_sdk_env(
+                session_id="codex-cli-followup",
+                sdk_cwd=str(tmp_path),
+                model="gpt-5.6-terra",
+                codex_gateway_url=gateway.base_url,
+                codex_gateway_token=gateway.auth_token,
+            ),
+        )
+        async with ClaudeSDKClient(options=options) as client:
+            await client.query("Call echo with ping, then report completion.")
+            try:
+                async with asyncio.timeout(45):
+                    async for _ in client.receive_response():
+                        pass
+            except TimeoutError as exc:
+                raise AssertionError(
+                    f"Claude CLI did not finish; stderr={stderr_lines!r}"
+                ) from exc
+
+    result = agent_session.tool_result
+    assert result is not None
+    assert result.content == "echo:ping"
+    assert result.followup is not None
+    assert "also check the logs" in result.followup

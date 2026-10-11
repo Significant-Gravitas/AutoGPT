@@ -35,6 +35,7 @@ from openai import (
 from pydantic import BaseModel, Field
 
 from backend.copilot.rate_limit import UserPaywalledError
+from backend.integrations.codex.http_client import usage_limit_resets_at
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
     CodexCredentialIntegrityError,
@@ -178,7 +179,7 @@ def classify(
         message=message or _humanize(exc) or str(exc) or type(exc).__name__,
         auth_provider=auth_provider,
         credential_id=credential_id,
-        resets_at=_resets_at(exc),
+        resets_at=_resets_at(exc, auth_provider),
     )
 
 
@@ -236,13 +237,19 @@ def _kind_of(exc: BaseException) -> ProviderFailureKind | None:
     return None
 
 
-def _resets_at(exc: BaseException) -> int | None:
+def _resets_at(exc: BaseException, auth_provider: str | None = None) -> int | None:
     """A reset time only if the provider actually sent one.
 
-    Read from the standard ``x-ratelimit-reset-*`` response headers. Anything
-    unparseable is dropped rather than approximated -- a wrong time is worse
-    than no time, because the user schedules around it.
+    Read from the standard ``x-ratelimit-reset-*`` response headers -- or, for
+    a spent ChatGPT quota, which sends none of those, from the 429's own body
+    and quota headers. Anything unparseable is dropped rather than
+    approximated -- a wrong time is worse than no time, because the user
+    schedules around it.
     """
+    if auth_provider == "codex" and isinstance(exc, RateLimitError):
+        reported = usage_limit_resets_at(exc.response.headers, exc.body)
+        if reported is not None:
+            return reported
     response = getattr(exc, "response", None)
     headers = getattr(response, "headers", None)
     if headers is None:

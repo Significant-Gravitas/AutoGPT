@@ -211,6 +211,68 @@ async def test_a_tool_call_is_dispatched_and_its_output_fed_back() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_followup_reaches_the_model_as_a_user_message_after_the_output() -> (
+    None
+):
+    """What the user said while the tool ran is the user talking, not the tool."""
+    session, client = _session([_tool_turn("lookup", "{}"), _text_turn("done")])
+
+    async def handler(_call: CodexDynamicToolCall) -> CodexDynamicToolResult:
+        return CodexDynamicToolResult(content="tool output", followup="also do X")
+
+    await session.invoke(_request(), [TOOL], handler)
+
+    second_input = client.responses.requests[1]["input"]
+    assert second_input[-2:] == [
+        {"type": "function_call_output", "call_id": "call-1", "output": "tool output"},
+        {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "also do X"}],
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_followup_waits_until_every_call_in_the_round_has_its_output() -> None:
+    first = _tool_turn("lookup", "{}", call_id="call-1")
+    first.append(
+        _Event(
+            "response.output_item.done",
+            item=_Item(
+                type="function_call", name="lookup", arguments="{}", call_id="call-2"
+            ),
+        )
+    )
+    session, client = _session([first, _text_turn("done")])
+    followups = iter(["first follow-up", None])
+
+    async def handler(_call: CodexDynamicToolCall) -> CodexDynamicToolResult:
+        return CodexDynamicToolResult(content="out", followup=next(followups))
+
+    await session.invoke(_request(), [TOOL], handler)
+
+    tail = client.responses.requests[1]["input"][-3:]
+    assert [(item["type"], item.get("call_id")) for item in tail] == [
+        ("function_call_output", "call-1"),
+        ("function_call_output", "call-2"),
+        ("message", None),
+    ]
+    assert tail[2]["content"] == [{"type": "input_text", "text": "first follow-up"}]
+
+
+@pytest.mark.asyncio
+async def test_a_round_without_a_followup_adds_no_message() -> None:
+    session, client = _session([_tool_turn("lookup", "{}"), _text_turn("done")])
+
+    await session.invoke(_request(), [TOOL], _echo_tool)
+
+    second_input = client.responses.requests[1]["input"]
+    assert second_input[-1]["type"] == "function_call_output"
+    assert [item.get("role") for item in second_input].count("user") == 1
+
+
+@pytest.mark.asyncio
 async def test_every_output_item_is_replayed_so_reasoning_survives_a_tool_hop() -> None:
     """Replaying only the tool calls would break the chain on reasoning models."""
     first = _tool_turn("lookup", "{}")

@@ -170,6 +170,7 @@ class CodexAnthropicGateway:
         *,
         credential_lease: CredentialLease | None = None,
         agent_session: _AgentSession | None = None,
+        credential_id: str | None = None,
         model: str,
         effort: CodexReasoningEffort | None = None,
         transport: CodexTransport | _AgentTransport | None = None,
@@ -179,6 +180,9 @@ class CodexAnthropicGateway:
                 "Codex gateway requires a credential lease or agent session"
             )
         self._credential_lease = credential_lease
+        # Named on every failure so the client can tell which ChatGPT account
+        # refused. A bare agent session has no lease to read it from.
+        self._credential_id = credential_id
         # The last failure this gateway named, kept so the service layer can
         # report *what* went wrong. By the time a failure reaches the CLI it
         # is an HTTP status and a sentence; the typed exception only exists
@@ -480,12 +484,7 @@ class CodexAnthropicGateway:
         if any(record.conversation is not conversation for record, _ in claimable):
             raise ValueError("Tool results span multiple model conversations")
 
-        for record, result in claimable:
-            record.result = result
-            record.claim_fingerprint = fingerprint
-        for record, result in claimable:
-            if not record.future.done():
-                record.future.set_result(result)
+        _claim(claimable, fingerprint, payload.get("messages"))
         return _Continuation(conversation=conversation, replay_key=fingerprint)
 
     def _start_conversation(self, payload: dict[str, object]) -> _Conversation:
@@ -584,7 +583,8 @@ class CodexAnthropicGateway:
         failure = classify_provider_failure(
             failed.error,
             auth_provider="codex",
-            credential_id=(
+            credential_id=self._credential_id
+            or (
                 self._credential_lease.credentials.id
                 if self._credential_lease is not None
                 else None
@@ -1087,6 +1087,73 @@ def _extract_tool_results(value: object) -> dict[str, CodexDynamicToolResult]:
                 success=not bool(block.get("is_error")),
             )
     return results
+
+
+def _claim(
+    claimable: list[tuple[_ToolCallRecord, CodexDynamicToolResult]],
+    fingerprint: str,
+    messages: object,
+) -> None:
+    """Hand each result to the Codex call waiting on it.
+
+    ``record.result`` stays exactly what the CLI sent as the result, since
+    every later request is checked against it. What the CLI sent after the
+    results travels to Codex with the last of them, so it is read once.
+    """
+    followup = _text_after_results(
+        messages, [record.gateway_call_id for record, _ in claimable]
+    )
+    for record, result in claimable:
+        record.result = result
+        record.claim_fingerprint = fingerprint
+    last = claimable[-1][0]
+    for record, result in claimable:
+        if not record.future.done():
+            record.future.set_result(
+                result.model_copy(update={"followup": followup})
+                if record is last
+                else result
+            )
+
+
+def _text_after_results(messages: object, call_ids: list[str]) -> str | None:
+    """Text the CLI sent with these tool results without making it part of one.
+
+    This is how a message the user sends mid-turn reaches the model: the
+    PostToolUse hook returns it as context, and the CLI sends that after the
+    result -- for a non-Claude model name, as a ``system`` message after the
+    result's message; older CLI builds, as a text block beside the result.
+    The CLI's own notes (a token count) ride the same way. It is all passed on
+    verbatim, as a fresh turn's transcript would show it.
+    """
+    if not isinstance(messages, list):
+        return None
+    start = next(
+        (
+            index
+            for index, message in enumerate(messages)
+            if _carries_tool_result(message, call_ids)
+        ),
+        None,
+    )
+    if start is None:
+        return None
+    texts = [
+        _content_text(message.get("content"))
+        for message in messages[start:]
+        if isinstance(message, dict) and message.get("role") != "assistant"
+    ]
+    return "\n".join(text for text in texts if text) or None
+
+
+def _carries_tool_result(message: object, call_ids: list[str]) -> bool:
+    content = message.get("content") if isinstance(message, dict) else None
+    return isinstance(content, list) and any(
+        isinstance(block, dict)
+        and block.get("type") == "tool_result"
+        and block.get("tool_use_id") in call_ids
+        for block in content
+    )
 
 
 def _tool_result_request_fingerprint(payload: dict[str, object]) -> str:

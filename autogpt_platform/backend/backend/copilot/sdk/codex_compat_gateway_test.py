@@ -134,6 +134,36 @@ class _CollidingCallSession:
         return _result(f"completed:{result.content}")
 
 
+class _TwoRoundSession:
+    """Codex calling a tool, then another, as a long turn does."""
+
+    def __init__(self) -> None:
+        self.tool_results: list[CodexDynamicToolResult] = []
+
+    async def invoke(
+        self,
+        request,
+        dynamic_tools,
+        tool_handler,
+        event_handler=None,
+    ) -> CodexInvocationResult:
+        for round_index in range(2):
+            self.tool_results.append(
+                await tool_handler(
+                    CodexDynamicToolCall(
+                        thread_id="thread-1",
+                        turn_id="turn-1",
+                        call_id=f"call-{round_index}",
+                        tool=dynamic_tools[0].name,
+                        arguments={"round": round_index},
+                    )
+                )
+            )
+        assert event_handler is not None
+        await event_handler(CodexStreamEvent(type="text_delta", delta="done"))
+        return _result("done")
+
+
 class _FakeTransport:
     def __init__(self, session: _FakeAgentSession) -> None:
         self.session = session
@@ -233,6 +263,47 @@ def _tool_result_request(
     if stream is not None:
         payload["stream"] = stream
     return payload
+
+
+_FOLLOWUP = (
+    "PostToolUse:mcp__copilot__run_block hook additional context: "
+    "<user_follow_up>\nMessage 1:\nalso check the logs\n</user_follow_up>"
+)
+
+
+def _with_followup(payload: dict[str, object], *, beside: bool) -> dict[str, object]:
+    """Add what the CLI sends after a tool result that a hook spoke to.
+
+    Given a non-Claude model name, as on the ChatGPT route, the bundled CLI
+    (claude-agent-sdk 0.2.161) sends a PostToolUse hook's context as a
+    ``system`` message after the tool_result's message. Older builds sent it
+    as a text block beside the tool_result.
+    """
+    messages = cast(list[dict[str, object]], payload["messages"])
+    if beside:
+        content = cast(list[dict[str, object]], messages[-1]["content"])
+        content.append({"type": "text", "text": _FOLLOWUP})
+    else:
+        messages.append({"role": "system", "content": _FOLLOWUP})
+    return payload
+
+
+def _tool_use_message(call_id: str) -> dict[str, object]:
+    return {
+        "role": "assistant",
+        "content": [
+            {"type": "tool_use", "id": call_id, "name": "mcp.tool/status", "input": {}}
+        ],
+    }
+
+
+def _tool_result_message(call_id: str, content: str) -> dict[str, object]:
+    return {
+        "role": "user",
+        "content": [
+            {"type": "tool_result", "tool_use_id": call_id, "content": content}
+        ],
+    }
 
 
 def _streamed_tool_use_id(events: list[dict[str, object]]) -> str:
@@ -1048,6 +1119,151 @@ async def test_retry_with_a_changed_system_prompt_still_replays() -> None:
     assert retried.status == 200
     assert retried_body == accepted_body
     assert len(agent_session.requests) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "beside",
+    [False, True],
+    ids=["system-message-after-result", "text-block-beside-result"],
+)
+async def test_what_the_cli_sends_after_a_tool_result_reaches_codex(
+    beside: bool,
+) -> None:
+    """A message the user sends mid-turn rides in after a tool result.
+
+    The PostToolUse hook drains it from the queue, so if the gateway drops it
+    here it is gone. It reaches Codex as its own follow-up, not inside the
+    tool's output.
+    """
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run", stream=True),
+            )
+            gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
+            continued = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_with_followup(
+                    _tool_result_request(gateway_call_id, "one result", stream=True),
+                    beside=beside,
+                ),
+            )
+            await continued.read()
+
+    assert continued.status == 200
+    assert agent_session.tool_result == CodexDynamicToolResult(
+        content="one result",
+        followup=_FOLLOWUP,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_retried_followup_request_replays_and_reaches_codex_once() -> None:
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run", stream=True),
+            )
+            gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
+            continuation = _with_followup(
+                _tool_result_request(gateway_call_id, "one result", stream=True),
+                beside=False,
+            )
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            accepted_body = await accepted.read()
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            retried_body = await retried.read()
+
+    assert [accepted.status, retried.status] == [200, 200]
+    assert retried_body == accepted_body
+    assert len(agent_session.requests) == 1
+    assert agent_session.tool_result is not None
+    assert agent_session.tool_result.followup == _FOLLOWUP
+
+
+@pytest.mark.asyncio
+async def test_the_round_after_a_followup_is_not_a_conflict() -> None:
+    """The follow-up stays in the history; the stored result must still match.
+
+    Every request re-checks earlier tool results against what was claimed, so
+    the claimed result has to stay exactly what the CLI sent as the result.
+    """
+    agent_session = _TwoRoundSession()
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            start = _tool_request("run", stream=True)
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=start,
+            )
+            first_id = _streamed_tool_use_id(_events(await first.text()))
+            history = [
+                {"role": "user", "content": "run"},
+                _tool_use_message(first_id),
+                _tool_result_message(first_id, "first result"),
+                {"role": "system", "content": _FOLLOWUP},
+            ]
+            second = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json={**start, "messages": history},
+            )
+            second_id = _streamed_tool_use_id(_events(await second.text()))
+            third = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json={
+                    **start,
+                    "messages": [
+                        *history,
+                        _tool_use_message(second_id),
+                        _tool_result_message(second_id, "second result"),
+                    ],
+                },
+            )
+            third_events = _events(await third.text())
+
+    assert [first.status, second.status, third.status] == [200, 200, 200]
+    assert any(
+        event.get("delta") == {"type": "text_delta", "text": "done"}
+        for event in third_events
+    )
+    assert agent_session.tool_results == [
+        CodexDynamicToolResult(content="first result", followup=_FOLLOWUP),
+        CodexDynamicToolResult(content="second result"),
+    ]
 
 
 @pytest.mark.asyncio

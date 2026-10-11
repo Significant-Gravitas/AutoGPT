@@ -125,6 +125,10 @@ class CodexDynamicToolResult(BaseModel):
 
     content: str
     success: bool = True
+    # What arrived with the result without being part of it -- a message the
+    # user sent while the tool ran. The model reads it as a user turn after
+    # the round's outputs, never inside this tool's output.
+    followup: str | None = None
 
 
 class CodexLoginCompletion(BaseModel):
