@@ -1782,6 +1782,10 @@ async def _add_graph_execution(
         logger.error(
             f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {err}"
         )
+        if admin_requeue:
+            # Leave the stuck run QUEUED so the admin can retry; failing it
+            # would put it out of reach of the requeue tools.
+            raise
         await edb.update_node_execution_status_batch(
             [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
             ExecutionStatus.FAILED,

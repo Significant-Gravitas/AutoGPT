@@ -3251,6 +3251,31 @@ async def test_admin_requeue_publishes_queued_execution_without_cas(
 
 
 @pytest.mark.asyncio
+async def test_admin_requeue_publish_failure_leaves_the_run_queued(
+    mocker: MockerFixture,
+):
+    """A broker error during admin recovery must not fail the user's run: it
+    stays QUEUED, where the requeue tools can reach it again."""
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org-1", team_id="team-1"
+    )
+    queue.publish_message.side_effect = ConnectionError("broker down")
+
+    with pytest.raises(ConnectionError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="owner",
+            graph_exec_id="existing-execution",
+            bypass_paywall=True,
+            admin_requeue=True,
+        )
+
+    execution_store.update_node_execution_status_batch.assert_not_called()
+    for call in execution_store.update_graph_execution_stats.await_args_list:
+        assert call.kwargs.get("status") != ExecutionStatus.FAILED
+
+
+@pytest.mark.asyncio
 async def test_admin_requeue_of_expert_run_persists_tenancy_without_a_status_write(
     mocker: MockerFixture,
 ):
