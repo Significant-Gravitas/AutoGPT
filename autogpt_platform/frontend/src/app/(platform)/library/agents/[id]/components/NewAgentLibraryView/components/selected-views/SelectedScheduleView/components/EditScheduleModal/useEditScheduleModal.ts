@@ -4,13 +4,24 @@ import { getGetV1ListGraphExecutionsQueryKey } from "@/app/api/__generated__/end
 import { usePatchV1UpdateExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { validateSchedule } from "../../../../modals/ScheduleAgentModal/components/ModalScheduleSection/helpers";
 import {
-  parseCronToForm,
-  validateSchedule,
-} from "../../../../modals/ScheduleAgentModal/components/ModalScheduleSection/helpers";
+  buildCron,
+  DAY_ITEMS,
+  type EditScheduleForm,
+  formFromSchedule,
+  REPEAT_OPTIONS,
+} from "./helpers";
+
+interface FormErrors {
+  scheduleName?: string;
+  time?: string;
+  days?: string;
+}
 
 export function useEditScheduleModal(
   graphId: string,
@@ -19,49 +30,21 @@ export function useEditScheduleModal(
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
-  const [name, setName] = useState(schedule.name);
+  const [form, setForm] = useState(() => formFromSchedule(schedule));
+  const [errors, setErrors] = useState<FormErrors>({});
 
-  const parsed = useMemo(() => parseCronToForm(schedule.cron), [schedule.cron]);
-  const [repeat, setRepeat] = useState<string>(parsed?.repeat || "daily");
-  const [selectedDays, setSelectedDays] = useState<string[]>(
-    parsed?.selectedDays || [],
-  );
-  const [time, setTime] = useState<string>(parsed?.time || "00:00");
-  const [errors, setErrors] = useState<{
-    scheduleName?: string;
-    time?: string;
-  }>({});
+  function update(fields: Partial<EditScheduleForm>) {
+    setForm((current) => ({ ...current, ...fields }));
+  }
 
-  const repeatOptions = useMemo(
-    () => [
-      { value: "daily", label: "Daily" },
-      { value: "weekly", label: "Weekly" },
-    ],
-    [],
-  );
-
-  const dayItems = useMemo(
-    () => [
-      { value: "0", label: "Su" },
-      { value: "1", label: "Mo" },
-      { value: "2", label: "Tu" },
-      { value: "3", label: "We" },
-      { value: "4", label: "Th" },
-      { value: "5", label: "Fr" },
-      { value: "6", label: "Sa" },
-    ],
-    [],
-  );
-
-  function humanizeToCron(): string {
-    const [hh, mm] = time.split(":");
-    const minute = Number(mm || 0);
-    const hour = Number(hh || 0);
-    if (repeat === "weekly") {
-      const dow = selectedDays.length ? selectedDays.join(",") : "*";
-      return `${minute} ${hour} * * ${dow}`;
+  // The dialog stays mounted while the selected schedule changes, so the form
+  // reloads from whichever schedule is current each time it opens.
+  function handleOpenChange(open: boolean) {
+    if (open) {
+      setForm(formFromSchedule(schedule));
+      setErrors({});
     }
-    return `${minute} ${hour} * * *`;
+    setIsOpen(open);
   }
 
   const { mutate: updateSchedule, isPending } =
@@ -87,30 +70,44 @@ export function useEditScheduleModal(
     });
 
   function handleSave() {
-    const errorsNow = validateSchedule({ scheduleName: name, time });
+    const errorsNow: FormErrors = validateSchedule({
+      scheduleName: form.name,
+      time: form.canEditTiming ? form.time : undefined,
+    });
+    if (
+      form.canEditTiming &&
+      form.repeat === "weekly" &&
+      form.selectedDays.length === 0
+    ) {
+      errorsNow.days = "Pick at least one day";
+    }
     setErrors(errorsNow);
     if (Object.keys(errorsNow).length > 0) return;
     updateSchedule({
       scheduleId: schedule.id,
-      data: { name, cron: humanizeToCron() },
+      data: form.canEditTiming
+        ? { name: form.name, cron: buildCron(form) }
+        : { name: form.name },
     });
   }
 
   return {
     isOpen,
-    setIsOpen,
-    name,
-    setName,
-    repeat,
-    setRepeat,
-    selectedDays,
-    setSelectedDays,
-    time,
-    setTime,
+    setIsOpen: handleOpenChange,
+    name: form.name,
+    setName: (name: string) => update({ name }),
+    canEditTiming: form.canEditTiming,
+    recurrenceLabel: safeHumanizeCronExpression(schedule.cron),
+    repeat: form.repeat,
+    setRepeat: (repeat: string) => update({ repeat }),
+    selectedDays: form.selectedDays,
+    setSelectedDays: (selectedDays: string[]) => update({ selectedDays }),
+    time: form.time,
+    setTime: (time: string) => update({ time }),
     errors,
-    repeatOptions,
-    dayItems,
+    repeatOptions: REPEAT_OPTIONS,
+    dayItems: DAY_ITEMS,
     handleSave,
     isPending,
-  } as const;
+  };
 }

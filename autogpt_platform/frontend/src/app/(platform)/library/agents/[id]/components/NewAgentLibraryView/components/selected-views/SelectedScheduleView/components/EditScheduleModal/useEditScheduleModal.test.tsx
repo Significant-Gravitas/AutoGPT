@@ -114,4 +114,78 @@ describe("useEditScheduleModal", () => {
     });
     expect(invalidateSpy).not.toHaveBeenCalled();
   });
+
+  test("reopening after the selected schedule changes loads that schedule, not the last one", async () => {
+    const other = {
+      ...schedule,
+      id: "sched-2",
+      name: "Weekly sync",
+      cron: "15 7 * * 1,3",
+    } as GraphExecutionJobInfo;
+    const { result, rerender } = renderHook(
+      ({ current }) => useEditScheduleModal("graph-xyz", current),
+      { wrapper, initialProps: { current: schedule } },
+    );
+    act(() => {
+      result.current.setIsOpen(true);
+      result.current.setName("Half-typed");
+    });
+
+    rerender({ current: other });
+    act(() => {
+      result.current.setIsOpen(false);
+    });
+    act(() => {
+      result.current.setIsOpen(true);
+    });
+
+    expect(result.current.name).toBe("Weekly sync");
+    expect(result.current.repeat).toBe("weekly");
+    expect(result.current.selectedDays).toEqual(["1", "3"]);
+    expect(result.current.time).toBe("07:15");
+  });
+
+  test("a timing the form can't express is never rewritten: saving sends the name only", async () => {
+    let body: unknown;
+    server.use(
+      getPatchV1UpdateExecutionScheduleMockHandler(async ({ request }) => {
+        body = await request.json();
+        return schedule;
+      }),
+    );
+    const everyQuarterHour = {
+      ...schedule,
+      cron: "*/15 * * * *",
+    } as GraphExecutionJobInfo;
+
+    const { result } = renderHook(
+      () => useEditScheduleModal("graph-xyz", everyQuarterHour),
+      { wrapper },
+    );
+    expect(result.current.canEditTiming).toBe(false);
+    act(() => {
+      result.current.setName("Renamed");
+    });
+    act(() => {
+      result.current.handleSave();
+    });
+
+    await waitFor(() => expect(body).toEqual({ name: "Renamed" }));
+  });
+
+  test("weekly with no days asks for a day instead of saving a daily schedule", () => {
+    const { result } = renderHook(
+      () => useEditScheduleModal("graph-xyz", schedule),
+      { wrapper },
+    );
+    act(() => {
+      result.current.setRepeat("weekly");
+      result.current.setSelectedDays([]);
+    });
+    act(() => {
+      result.current.handleSave();
+    });
+
+    expect(result.current.errors.days).toBe("Pick at least one day");
+  });
 });

@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Any, Literal, Optional, Union
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from zoneinfo import ZoneInfoNotFoundError
 
 from apscheduler.events import (
     EVENT_JOB_ERROR,
@@ -2011,11 +2012,15 @@ def _build_trigger(
 ) -> Union[CronTrigger, DateTrigger]:
     if (cron is None) == (run_at is None):
         raise ValueError("Exactly one of `cron` or `run_at` must be provided")
-    if cron is not None:
-        return CronTrigger.from_crontab(
-            _normalize_cron_day_of_week(cron), timezone=user_timezone
-        )
-    return DateTrigger(run_date=run_at, timezone=user_timezone)
+    try:
+        if cron is not None:
+            return CronTrigger.from_crontab(
+                _normalize_cron_day_of_week(cron), timezone=user_timezone
+            )
+        return DateTrigger(run_date=run_at, timezone=user_timezone)
+    except ZoneInfoNotFoundError as e:
+        # A KeyError, which the API would turn into a 500, not a 400.
+        raise ValueError(f"Unknown timezone {user_timezone!r}") from e
 
 
 def _updated_graph_job_args(

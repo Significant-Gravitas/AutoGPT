@@ -287,6 +287,13 @@ class TestAddCopilotTurnScheduleExpertAttribution:
         assert self._persisted_args().expert_id is None
 
 
+def test_build_trigger_reports_an_unknown_timezone_as_bad_input():
+    """APScheduler raises ZoneInfoNotFoundError (a KeyError) for an unknown
+    zone. Creating or editing a schedule with one must be a 400, not a 500."""
+    with pytest.raises(ValueError, match="Unknown timezone"):
+        _build_trigger(cron="0 9 * * *", run_at=None, user_timezone="Mars/Olympus")
+
+
 class TestUpdateGraphExecutionSchedule:
     """In-process checks of the change set ``update_graph_execution_schedule``
     hands APScheduler. The end-to-end behavior is covered against the real
