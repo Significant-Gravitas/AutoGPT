@@ -58,12 +58,16 @@ return 1
 #
 #   KEYS[1]  hash key
 #   KEYS[2]  list key
+#   KEYS[3]  optional receipt key, retained after the list is drained
 #   ARGV[1]  hash field
 #   ARGV[2]  expected current value
 #   ARGV[3]  list value
 #   ARGV[4]  max list length
 #   ARGV[5]  list TTL seconds
 _GATED_CAPPED_RPUSH_LUA = """
+if #KEYS == 3 and redis.call('EXISTS', KEYS[3]) == 1 then
+    return redis.call('LLEN', KEYS[2])
+end
 local current = redis.call('HGET', KEYS[1], ARGV[1])
 if current ~= ARGV[2] then
     return -1
@@ -71,6 +75,9 @@ end
 redis.call('RPUSH', KEYS[2], ARGV[3])
 redis.call('LTRIM', KEYS[2], -tonumber(ARGV[4]), -1)
 redis.call('EXPIRE', KEYS[2], tonumber(ARGV[5]))
+if #KEYS == 3 then
+    redis.call('SET', KEYS[3], '1', 'EX', tonumber(ARGV[5]))
+end
 return redis.call('LLEN', KEYS[2])
 """
 
@@ -262,19 +269,24 @@ async def capped_rpush_if_hash_field(
     value: str,
     max_len: int,
     ttl_seconds: int,
+    receipt_key: str | None = None,
 ) -> int | None:
     """Atomically RPUSH to a bounded list iff a hash field matches.
 
     Returns the new list length when the push happens, or ``None`` when the
-    hash field does not currently match ``expected``.
+    hash field does not currently match ``expected``. With a receipt key,
+    retries return the current length without pushing or extending the TTL.
+    All keys must share a Redis Cluster hash tag.
     """
+    keys = [hash_key, list_key]
+    if receipt_key is not None:
+        keys.append(receipt_key)
     result = await cast(
         "Any",
         redis.eval(
             _GATED_CAPPED_RPUSH_LUA,
-            2,
-            hash_key,
-            list_key,
+            len(keys),
+            *keys,
             hash_field,
             expected,
             value,

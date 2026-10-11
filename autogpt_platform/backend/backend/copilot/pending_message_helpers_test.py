@@ -515,8 +515,13 @@ def _make_chat_message_class(
 
     class _Msg:
         def __init__(
-            self, role: str, content: str, metadata: dict[str, Any] | None = None
+            self,
+            role: str,
+            content: str,
+            metadata: dict[str, Any] | None = None,
+            id: str | None = None,
         ) -> None:
+            self.id = id
             self.role = role
             self.content = content
             self.metadata = metadata
@@ -572,6 +577,7 @@ async def test_persist_pending_happy_path_appends_and_returns_true(
     ok = await persist_pending_as_user_rows(session, tb, pending, log_prefix="[T]")
     assert ok is True
     assert [m.content for m in session.messages] == ["a", "b"]
+    assert [m.id for m in session.messages] == [message.id for message in pending]
     assert tb.entries == ["a", "b"]
     push_mock.assert_not_awaited()
 

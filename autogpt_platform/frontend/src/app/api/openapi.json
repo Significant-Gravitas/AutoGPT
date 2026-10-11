@@ -28447,6 +28447,14 @@
               { "type": "null" }
             ],
             "title": "Folder Ids"
+          },
+          "message_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Message Id",
+            "description": "Per-send idempotency key, scoped to the user and session. Reuse on retries; use a new key for a separate send."
           }
         },
         "type": "object",

@@ -1,0 +1,160 @@
+"""HTTP-to-Redis retry journeys with isolated keys in the real Redis cluster.
+
+Session ownership and active-turn discovery are stubbed; request validation,
+pending-message admission, Redis scripts, and draining run unchanged.
+"""
+
+import asyncio
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock
+from uuid import uuid4
+
+import pytest
+import pytest_asyncio
+from autogpt_libs import auth
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from backend.api.features.chat import routes
+from backend.copilot.expert_kickoff import scoped_client_message_id
+from backend.copilot.model import ChatSessionInfo
+from backend.copilot.pending_messages import drain_pending_messages
+from backend.copilot.stream_registry import get_session_meta_key
+from backend.data.redis_client import get_redis_async
+
+
+@pytest_asyncio.fixture
+async def pending_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> AsyncIterator[tuple[AsyncClient, str, str]]:
+    user_id, session_id = str(uuid4()), str(uuid4())
+    now = datetime.now(UTC)
+    session = ChatSessionInfo(
+        session_id=session_id,
+        user_id=user_id,
+        usage=[],
+        started_at=now,
+        updated_at=now,
+    )
+    monkeypatch.setattr(
+        routes, "_validate_and_get_writable_session", AsyncMock(return_value=session)
+    )
+    monkeypatch.setattr(routes, "is_turn_in_flight", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        routes, "chat_message_has_assistant_reply", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(routes, "enforce_payment_paywall", AsyncMock())
+    monkeypatch.setattr(
+        "backend.copilot.briefing.scheduling.ensure_morning_briefing_scheduled",
+        AsyncMock(),
+    )
+    redis = await get_redis_async()
+    await redis.hset(get_session_meta_key(session_id), mapping={"status": "running"})
+    await redis.expire(get_session_meta_key(session_id), 120)
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=_test_app(user_id)), base_url="http://test"
+        ) as client:
+            yield client, user_id, session_id
+    finally:
+        async for key in redis.scan_iter(match=f"*{{{session_id}}}*"):
+            await redis.delete(key)
+        await redis.delete(f"copilot:pending:calls:{user_id}")
+
+
+def _test_app(user_id: str) -> FastAPI:
+    app = FastAPI()
+    app.include_router(routes.router)
+    app.dependency_overrides[auth.get_user_id] = lambda: user_id
+    app.dependency_overrides[auth.get_request_context] = lambda: auth.RequestContext(
+        user_id=user_id,
+        org_id="test-org",
+        team_id=None,
+        is_org_owner=False,
+        is_org_admin=False,
+        is_org_billing_manager=False,
+        is_team_admin=False,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
+    return app
+
+
+@pytest.mark.parametrize("endpoint", ["messages/pending", "stream"])
+async def test_pending_http_retry_is_one_message(
+    pending_client: tuple[AsyncClient, str, str],
+    endpoint: str,
+) -> None:
+    client, user_id, session_id = pending_client
+    body = {"message": "Include the weekly totals", "message_id": str(uuid4())}
+
+    responses = await asyncio.gather(
+        *[
+            client.post(f"/sessions/{session_id}/{endpoint}", json=body)
+            for _ in range(2)
+        ]
+    )
+
+    assert [response.status_code for response in responses] == [200, 200]
+    drained = await drain_pending_messages(session_id)
+    assert len(drained) == 1
+    assert drained[0].id == scoped_client_message_id(
+        user_id, session_id, body["message_id"]
+    )
+
+
+async def test_separate_pending_sends_can_have_identical_text(
+    pending_client: tuple[AsyncClient, str, str],
+) -> None:
+    client, _, session_id = pending_client
+    for _ in range(2):
+        response = await client.post(
+            f"/sessions/{session_id}/messages/pending",
+            json={"message": "Yes", "message_id": str(uuid4())},
+        )
+        assert response.status_code == 200
+
+    drained = await drain_pending_messages(session_id)
+    assert [message.content for message in drained] == ["Yes", "Yes"]
+    assert len({message.id for message in drained}) == 2
+
+
+async def test_pending_retry_after_drain_and_completion_does_not_requeue(
+    pending_client: tuple[AsyncClient, str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _, session_id = pending_client
+    body = {"message": "Include the weekly totals", "message_id": str(uuid4())}
+    path = f"/sessions/{session_id}/messages/pending"
+    assert (await client.post(path, json=body)).status_code == 200
+    assert len(await drain_pending_messages(session_id)) == 1
+
+    redis = await get_redis_async()
+    await redis.hset(get_session_meta_key(session_id), mapping={"status": "completed"})
+    monkeypatch.setattr(routes, "is_turn_in_flight", AsyncMock(return_value=False))
+    response = await client.post(path, json=body)
+
+    assert response.status_code == 200
+    assert response.json()["turn_in_flight"] is False
+    stream_retry = await client.post(f"/sessions/{session_id}/stream", json=body)
+    assert stream_retry.status_code == 200
+    assert "[DONE]" in stream_retry.text
+    assert await drain_pending_messages(session_id) == []
+
+
+async def test_persisted_pending_retry_is_accepted_after_receipt_expiry(
+    pending_client: tuple[AsyncClient, str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _, session_id = pending_client
+    monkeypatch.setattr(routes, "is_turn_in_flight", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        routes, "chat_message_has_assistant_reply", AsyncMock(return_value=False)
+    )
+
+    response = await client.post(
+        f"/sessions/{session_id}/messages/pending",
+        json={"message": "Already saved", "message_id": str(uuid4())},
+    )
+
+    assert response.status_code == 200
+    assert await drain_pending_messages(session_id) == []

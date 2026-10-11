@@ -29,6 +29,7 @@ from typing import Any, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot.pending_message_receipts import pending_message_receipt_key
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import capped_rpush, capped_rpush_if_hash_field
 
@@ -145,6 +146,7 @@ async def push_pending_message_if_session_running(
     message: PendingMessage,
     *,
     session_meta_key: str,
+    deduplicate: bool = False,
 ) -> int | None:
     """Append a pending message only while the stream meta is still running."""
     redis = await get_redis_async()
@@ -160,6 +162,9 @@ async def push_pending_message_if_session_running(
         value=payload,
         max_len=MAX_PENDING_MESSAGES,
         ttl_seconds=_PENDING_TTL_SECONDS,
+        receipt_key=(
+            pending_message_receipt_key(session_id, message.id) if deduplicate else None
+        ),
     )
     if new_length is None:
         logger.info(

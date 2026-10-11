@@ -147,6 +147,7 @@ async def queue_user_message(
     file_ids: list[str] | None = None,
     require_turn_in_flight: bool = False,
     metadata: dict[str, Any] | None = None,
+    message_id: str | None = None,
 ) -> QueuePendingMessageResponse:
     """Push *message* into the per-session pending buffer.
 
@@ -165,11 +166,14 @@ async def queue_user_message(
         context=context,
         metadata=metadata or None,
     )
+    if message_id is not None:
+        pending.id = message_id
     if require_turn_in_flight:
         new_len = await push_pending_message_if_session_running(
             session_id,
             pending,
             session_meta_key=get_session_meta_key(session_id),
+            deduplicate=message_id is not None,
         )
         return QueuePendingMessageResponse(
             buffer_length=new_len or 0,
@@ -211,6 +215,7 @@ async def queue_pending_for_http(
     file_ids: list[str] | None,
     folder_ids: list[str] | None,
     expert_id: str | None,
+    message_id: str | None = None,
 ) -> QueuePendingMessageResponse:
     """HTTP-facing wrapper around :func:`queue_user_message`.
 
@@ -262,6 +267,7 @@ async def queue_pending_for_http(
         context=queue_context,
         file_ids=sanitized_file_ids,
         require_turn_in_flight=True,
+        message_id=message_id,
     )
     if not response.turn_in_flight:
         raise HTTPException(
@@ -483,7 +489,9 @@ async def persist_pending_as_user_rows(
     for pm in pending:
         content = content_of(pm)
         session.messages.append(
-            ChatMessage(role="user", content=content, metadata=pm.metadata or None)
+            ChatMessage(
+                id=pm.id, role="user", content=content, metadata=pm.metadata or None
+            )
         )
         if transcript_builder is not None:
             transcript_builder.append_user(content=content)

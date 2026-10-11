@@ -71,7 +71,12 @@ from backend.copilot.pending_message_helpers import (
     queue_pending_for_http,
     resolve_attachments_for_http,
 )
+from backend.copilot.pending_message_receipts import (
+    PendingMessageReceiptUnavailable,
+    pending_message_was_received,
+)
 from backend.copilot.pending_messages import (
+    MAX_PENDING_MESSAGES,
     clear_pending_messages_unsafe,
     peek_pending_messages,
 )
@@ -342,6 +347,13 @@ class QueuePendingMessageRequest(BaseModel):
     context: dict[str, str] | None = None
     file_ids: list[str] | None = Field(default=None, max_length=20)
     folder_ids: list[str] | None = Field(default=None, max_length=5)
+    message_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description="Per-send idempotency key, scoped to the user and session. "
+        "Reuse on retries; use a new key for a separate send.",
+    )
 
 
 class PeekPendingMessagesResponse(BaseModel):
@@ -1836,10 +1848,14 @@ async def stream_chat_post(
     turn_team_id = session.team_id if session.organization_id else ctx.team_id
 
     try:
+        if request.is_user_message and await pending_message_was_received(
+            session_id, message_id
+        ):
+            return _empty_ui_message_stream_response()
         turn_in_flight = (
             request.is_user_message and message and await is_turn_in_flight(session_id)
         )
-    except StreamRegistryUnavailable as exc:
+    except (StreamRegistryUnavailable, PendingMessageReceiptUnavailable) as exc:
         # Same fail-closed mapping as the RateLimitUnavailable branch below:
         # the pre-flight chain runs is_turn_in_flight BEFORE check_rate_limit,
         # so a Redis brown-out at this step would otherwise surface as a raw
@@ -1849,6 +1865,14 @@ async def stream_chat_post(
             detail="Chat service degraded, retry shortly",
             headers={"Retry-After": "30"},
         ) from exc
+
+    if (
+        turn_in_flight
+        and message_id is not None
+        and not request.expert_kickoff
+        and await chat_message_has_assistant_reply(message_id, session_id) is not None
+    ):
+        turn_in_flight = False
 
     if turn_in_flight:
         if request.expert_kickoff:
@@ -1867,6 +1891,7 @@ async def stream_chat_post(
                 file_ids=request.file_ids,
                 folder_ids=request.folder_ids,
                 expert_id=session.expert_id,
+                message_id=message_id,
             )
             return _empty_ui_message_stream_response()
         except HTTPException as exc:
@@ -2213,14 +2238,29 @@ async def queue_pending_message(
     session = await _validate_and_get_writable_session(session_id, user_id)
     if session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
+    message_id = (
+        scoped_client_message_id(user_id, session_id, request.message_id)
+        if request.message_id
+        else None
+    )
     try:
         turn_in_flight = await is_turn_in_flight(session_id)
-    except StreamRegistryUnavailable as exc:
+        received = await pending_message_was_received(session_id, message_id)
+    except (StreamRegistryUnavailable, PendingMessageReceiptUnavailable) as exc:
         raise HTTPException(
             status_code=503,
             detail="Chat service degraded, retry shortly",
             headers={"Retry-After": "30"},
         ) from exc
+    if received or (
+        message_id is not None
+        and await chat_message_has_assistant_reply(message_id, session_id) is not None
+    ):
+        return QueuePendingMessageResponse(
+            buffer_length=len(await peek_pending_messages(session_id)),
+            max_buffer_length=MAX_PENDING_MESSAGES,
+            turn_in_flight=turn_in_flight,
+        )
     if not turn_in_flight:
         raise HTTPException(
             status_code=409,
@@ -2234,6 +2274,7 @@ async def queue_pending_message(
         file_ids=request.file_ids,
         folder_ids=request.folder_ids,
         expert_id=session.expert_id,
+        message_id=message_id,
     )
 
 

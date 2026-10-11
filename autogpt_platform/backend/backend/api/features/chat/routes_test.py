@@ -310,6 +310,10 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value=False,
     )
+    mocker.patch.object(
+        chat_routes, "pending_message_was_received", AsyncMock(return_value=False)
+    )
+    mocker.patch.object(chat_routes, "check_rate_limit", AsyncMock())
     # The write gate only queries when ``session.expert_id`` is set; default it
     # to "still hired" so expert-scoped tests reach the logic they care about.
     # The gate's own tests re-patch this with the verdict they need.
