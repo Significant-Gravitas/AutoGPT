@@ -127,18 +127,22 @@ async def _trace_graph(
     if not isinstance(execution, GraphExecutionWithNodes):
         return None
     try:
-        return await graph_db().get_graph(
+        graph = await graph_db().get_graph(
             execution.graph_id,
             execution.graph_version,
             user_id=user_id,
             include_subgraphs=True,
         )
     except Exception:
+        graph = None
         logger.warning(
-            f"Graph of execution {execution.id} not loaded; its trace is judged whole",
-            exc_info=True,
+            f"Graph of execution {execution.id} failed to load", exc_info=True
         )
-        return None
+    if graph is None:
+        logger.warning(
+            f"Graph of execution {execution.id} not loaded; trace judged whole"
+        )
+    return graph
 
 
 class AgentOutputTool(BaseTool):

@@ -321,11 +321,18 @@ async def test_a_system_prompt_a_link_fed_from_outside_is_judged(judge):
 
 
 @pytest.mark.asyncio
-async def test_a_trace_is_judged_whole_when_its_graph_cannot_be_loaded(judge):
-    graph, run = _haiku_run()
+@pytest.mark.parametrize(
+    "get_graph",
+    [AsyncMock(side_effect=RuntimeError("db")), AsyncMock(return_value=None)],
+    ids=["raises", "not-found"],
+)
+async def test_a_trace_is_judged_whole_when_its_graph_cannot_be_loaded(
+    judge, get_graph
+):
+    _, run = _haiku_run()
     with patch(
         "backend.copilot.tools.agent_output.graph_db",
-        lambda: MagicMock(get_graph=AsyncMock(side_effect=RuntimeError("db"))),
+        lambda: MagicMock(get_graph=get_graph),
     ):
         _, judged = await _view_output(judge, run)
 
