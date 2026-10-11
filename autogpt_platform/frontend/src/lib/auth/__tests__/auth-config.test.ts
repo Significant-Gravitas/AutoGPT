@@ -9,6 +9,7 @@ vi.mock("better-auth/next-js", () => ({
 }));
 vi.mock("better-auth/plugins", () => ({
   admin: vi.fn(() => ({ id: "admin" })),
+  bearer: vi.fn(() => ({ id: "bearer" })),
   jwt: vi.fn((opts: unknown) => ({ id: "jwt", opts })),
 }));
 vi.mock("../supabase-bridge", () => ({
@@ -30,10 +31,12 @@ interface JwtPluginOptions {
     expirationTime: string;
     definePayload: (args: {
       user: { id: string; email: string; name: string; role?: string };
+      session: { id: string };
     }) => {
       email: string;
       role: string;
       user_metadata: { name: string };
+      sid: string;
     };
   };
 }
@@ -159,6 +162,7 @@ describe("auth config", () => {
     expect(definePayload).toBeDefined();
     expect(
       definePayload?.({
+        session: { id: "session-1" },
         user: {
           id: "u1",
           email: "admin@example.com",
@@ -167,12 +171,14 @@ describe("auth config", () => {
         },
       }),
     ).toEqual({
+      sid: "session-1",
       email: "admin@example.com",
       role: "admin",
       user_metadata: { name: "Admin" },
     });
     expect(
       definePayload?.({
+        session: { id: "session-2" },
         user: {
           id: "u2",
           email: "user@example.com",
@@ -181,6 +187,7 @@ describe("auth config", () => {
         },
       }),
     ).toEqual({
+      sid: "session-2",
       email: "user@example.com",
       role: "authenticated",
       user_metadata: { name: "Regular" },
@@ -253,6 +260,7 @@ describe("auth config", () => {
 
     expect(pluginIds).toEqual([
       "admin",
+      "bearer",
       "jwt",
       "supabase-bridge",
       "next-cookies",

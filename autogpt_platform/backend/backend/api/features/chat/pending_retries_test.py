@@ -19,7 +19,10 @@ from httpx import ASGITransport, AsyncClient
 from backend.api.features.chat import routes
 from backend.copilot.expert_kickoff import scoped_client_message_id
 from backend.copilot.model import ChatSessionInfo
-from backend.copilot.pending_message_receipts import pending_message_receipt_key
+from backend.copilot.pending_message_receipts import (
+    pending_message_receipt_key,
+    pending_message_was_received,
+)
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
@@ -223,3 +226,20 @@ async def test_internal_send_cannot_evict_http_send(
     with pytest.raises(RedisListCapacityExceeded):
         await push_pending_message(session_id, PendingMessage(content="Overflow"))
     assert all(m.content == "Keep" for m in await drain_pending_messages(session_id))
+
+
+async def test_restored_receipt_expires_with_undrained_queue(
+    pending_client: tuple[AsyncClient, str, str],
+) -> None:
+    client, user_id, session_id = pending_client
+    path = f"/sessions/{session_id}/messages/pending"
+    body = {"message": "Expiring send", "message_id": str(uuid4())}
+    assert (await client.post(path, json=body)).status_code == 200
+    message_id = scoped_client_message_id(user_id, session_id, body["message_id"])
+    redis = await get_redis_async()
+    await redis.delete(pending_message_receipt_key(session_id, message_id))
+    await redis.pexpire(f"copilot:pending:{{{session_id}}}", 200)
+    assert (await client.post(path, json=body)).status_code == 200
+    await asyncio.sleep(0.3)
+    assert await drain_pending_messages(session_id) == []
+    assert not await pending_message_was_received(session_id, message_id)

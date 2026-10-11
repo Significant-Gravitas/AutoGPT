@@ -72,7 +72,10 @@ if #KEYS == 3 then
     for _, entry in ipairs(redis.call('LRANGE', KEYS[2], 0, -1)) do
         local ok, decoded = pcall(cjson.decode, entry)
         if ok and type(decoded) == 'table' and decoded.id == ARGV[6] then
-            redis.call('SET', KEYS[3], '1', 'EX', tonumber(ARGV[5]))
+            local remaining = redis.call('PTTL', KEYS[2])
+            if remaining > 0 then
+                redis.call('SET', KEYS[3], '1', 'PX', remaining)
+            end
             return redis.call('LLEN', KEYS[2])
         end
     end

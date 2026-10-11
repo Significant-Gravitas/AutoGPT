@@ -5,7 +5,7 @@ from typing import Protocol
 import pydantic
 import uvicorn
 from autogpt_libs.auth.jwt_utils import parse_jwt_token_async
-from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.api.conn_manager import ConnectionManager
@@ -15,6 +15,7 @@ from backend.api.model import (
     WSSubscribeGraphExecutionRequest,
     WSSubscribeGraphExecutionsRequest,
 )
+from backend.api.session_auth import require_active_auth_session
 from backend.api.utils.cors import build_cors_params
 from backend.data import db, redis_client
 from backend.data.user import DEFAULT_USER_ID
@@ -83,6 +84,7 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
 
     try:
         payload = await parse_jwt_token_async(token)
+        await require_active_auth_session(payload)
         user_id = payload.get("sub")
         if not user_id:
             await websocket.close(code=4002, reason="Invalid token")
@@ -90,6 +92,14 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
         return user_id
     except ValueError:
         await websocket.close(code=4003, reason="Invalid token")
+        return ""
+    except HTTPException as exc:
+        if exc.status_code == 503:
+            await websocket.close(
+                code=1013, reason="Authentication service unavailable"
+            )
+        else:
+            await websocket.close(code=4003, reason="Session expired or revoked")
         return ""
 
 

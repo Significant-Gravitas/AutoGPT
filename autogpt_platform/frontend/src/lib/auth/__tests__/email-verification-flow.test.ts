@@ -36,6 +36,7 @@ vi.mock("better-auth/next-js", () => ({
 }));
 vi.mock("better-auth/plugins", () => ({
   admin: vi.fn(() => ({ id: "admin" })),
+  bearer: vi.fn(() => ({ id: "bearer" })),
   jwt: vi.fn(() => ({ id: "jwt" })),
 }));
 vi.mock("../supabase-bridge", () => ({

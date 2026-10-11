@@ -81,6 +81,7 @@ from backend.data.analytics import (
     get_marketplace_graphs_for_monitoring,
 )
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
+from backend.data.auth.session import is_auth_session_active
 from backend.data.block import (
     get_blocks_needing_optimization,
     update_block_optimized_description,
@@ -338,6 +339,8 @@ class DatabaseManager(AppService):
         if name is not None:
             f.__name__ = name
         return cast(Callable[Concatenate[object, P], R], expose(f))
+
+    is_auth_session_active = _(is_auth_session_active)
 
     # ============ Graph Executions ============ #
     get_child_graph_executions = _(get_child_graph_executions)
@@ -798,6 +801,7 @@ class DatabaseManagerClient(AppServiceClient):
 
 class DatabaseManagerAsyncClient(AppServiceClient):
     d = DatabaseManager
+    is_auth_session_active = d.is_auth_session_active
 
     @classmethod
     def get_service_type(cls):

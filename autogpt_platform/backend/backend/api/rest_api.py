@@ -12,6 +12,7 @@ import starlette.middleware.cors
 import uvicorn
 from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
@@ -89,6 +90,7 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
+from backend.api.session_auth import get_session_bound_jwt_payload
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.webhook_routes import register_webhook_adapters
@@ -285,6 +287,8 @@ app = fastapi.FastAPI(
     docs_url=docs_url,
     generate_unique_id_function=custom_generate_unique_id,
 )
+
+app.dependency_overrides[get_jwt_payload] = get_session_bound_jwt_payload
 
 app.add_middleware(SecurityHeadersMiddleware)
 
