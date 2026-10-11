@@ -233,6 +233,7 @@ from .compaction import (
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .openrouter_cost import record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
+from .resume_gap import missing_range, sendable_gap, uncovered_rows
 from .security_hooks import create_security_hooks
 from .system_prompt import SystemPromptParts, assemble_system_prompt
 from .tool_adapter import (
@@ -859,10 +860,6 @@ async def _consume_sdk_until_done(
                     followup_drained,
                     log_prefix=ctx.log_prefix,
                 ):
-                    # Track CLI-JSONL-invisible rows so the upload
-                    # watermark excludes them and the next turn's
-                    # detect_gap picks them up as gap-fill.
-                    state.midturn_user_rows += len(followup_drained)
                     yield drained_rows_entry(followup_drained)
 
         # Append assistant entry AFTER convert_message so that
@@ -1371,15 +1368,6 @@ class _RetryState:
     # None = model-aware default.  Halved each retry for progressively more
     # aggressive compression (LLM summarize → truncate → middle-out → trim).
     target_tokens: int | None = None
-    # Count of user rows inserted MID-TURN by the follow-up persist path
-    # (``StreamToolOutputAvailable`` handler).  The CLI JSONL does NOT contain
-    # these as separate user entries — they are embedded inside tool_result
-    # text via the MCP wrapper injection, which the CLI may even strip when
-    # the tool output exceeds its internal size cap.  Tracking them separately
-    # lets the upload path subtract from ``message_count`` so the next turn's
-    # ``detect_gap`` picks them up as gap-fill entries instead of assuming the
-    # JSONL already covers them.
-    midturn_user_rows: int = 0
     # Tracks whether the thinking-only-final-turn re-prompt has already
     # fired for this user turn.  Lives on ``_RetryState`` (not on
     # ``adapter``) so a transient retry that rebuilds the adapter does
@@ -3098,25 +3086,12 @@ def _expect_pre_query_compaction(
     if transcript_msg_count <= 0:
         # ``use_resume`` with no covered rows compresses nothing.
         return _NO_COMPACTION
-    cap_engaged = transcript_msg_count >= len(prior) or (
-        bool(prior) and prior[0].sequence is not None and prior[0].sequence > 0
-    )
-    if cap_engaged and prior and prior[0].sequence is not None:
-        window_gap = [
-            m
-            for m in prior
-            if m.sequence is not None and m.sequence >= transcript_msg_count
-        ]
-        return _will_compact(window_gap, model)
-    if transcript_msg_count < session_msg_ceiling - 1:
-        if transcript_msg_count > len(prior):
-            return _NO_COMPACTION
-        if prior[transcript_msg_count - 1].role != "assistant":
-            # Misaligned watermark — _build_query_message skips the gap.
-            return _NO_COMPACTION
-        return _will_compact(prior[transcript_msg_count:], model)
-    # Scenario A: --resume covers the full context; nothing is compressed.
-    return _NO_COMPACTION
+    prior_rows = messages[: max(0, session_msg_ceiling - 1)]
+    gap = sendable_gap(uncovered_rows(prior_rows, transcript_msg_count))
+    if not gap:
+        # Scenario A: --resume covers the full context; nothing is compressed.
+        return _NO_COMPACTION
+    return _will_compact(gap, model)
 
 
 def _retry_reduced_context(
@@ -3403,16 +3378,11 @@ async def _build_query_message(
     # the ceiling snapshot — only history up to effective_count-1 is in scope.
     # max(0, ...) guards against a theoretical 0-message ceiling (brand-new
     # session) where -1 would select all-but-last instead of an empty slice.
-    prior = session.messages[: max(0, effective_count - 1)]
+    prior_rows = session.messages[: max(0, effective_count - 1)]
     # ``role="reasoning"`` rows are persisted for frontend replay only and are
     # never present in the CLI JSONL (extended_thinking is embedded inside
-    # assistant entries).  The watermark — ``transcript_msg_count`` — counts
-    # non-reasoning rows (see _jsonl_covered upload), so we must filter reasoning
-    # out of ``prior`` too; otherwise the ``prior[transcript_msg_count - 1]``
-    # watermark-alignment check trips on a reasoning row (instead of the
-    # expected assistant) and the gap injection is skipped, dropping real
-    # mid-turn user rows from the next LLM query.
-    prior = [m for m in prior if m.role != "reasoning"]
+    # assistant entries), so no history built here includes them.
+    prior = [m for m in prior_rows if m.role != "reasoning"]
 
     # Every branch below makes at most one ``_compress_messages`` call and then
     # returns, so this is written exactly once per invocation.
@@ -3432,140 +3402,15 @@ async def _build_query_message(
     )
 
     if use_resume and transcript_msg_count > 0:
-        # Cap-engaged: the windowed ``prior`` doesn't start at absolute sequence
-        # 0, so any index-based slice ``prior[transcript_msg_count:]`` is wrong
-        # regardless of whether the watermark fits inside ``len(prior)``.  Two
-        # signals indicate cap engagement:
-        # 1. transcript_msg_count >= len(prior) — watermark beyond the window
-        # 2. prior[0].sequence > 0 — window starts above absolute sequence 0
-        # Either condition means the index-based path silently mis-slices
-        # (or returns []), so route through the sequence-based gap detection.
-        # ``transcript_msg_count`` IS the next uncovered DB sequence, so
-        # filtering ``sequence >= transcript_msg_count`` reads it directly.
-        cap_engaged = transcript_msg_count >= len(prior) or (
-            bool(prior) and prior[0].sequence is not None and prior[0].sequence > 0
+        return await _resume_query_with_gap(
+            current_message,
+            prior_rows,
+            transcript_msg_count=transcript_msg_count,
+            msg_count=msg_count,
+            session_id=session_id,
+            target_tokens=target_tokens,
+            turn_summary=turn_summary,
         )
-        if cap_engaged and prior and prior[0].sequence is not None:
-            window_gap = [
-                m
-                for m in prior
-                if m.sequence is not None and m.sequence >= transcript_msg_count
-            ]
-            window_start_seq = (
-                min(m.sequence for m in window_gap if m.sequence is not None)
-                if window_gap
-                else None
-            )
-            hole: list[ChatMessage] = []
-            if window_start_seq is not None and window_start_seq > transcript_msg_count:
-                try:
-                    hole_page = await chat_db().get_chat_messages_paginated(
-                        session_id,
-                        limit=window_start_seq - transcript_msg_count,
-                        after_sequence=transcript_msg_count,
-                        before_sequence=window_start_seq,
-                    )
-                    if hole_page:
-                        hole = [m for m in hole_page.messages if m.role != "reasoning"]
-                except Exception as e:
-                    logger.warning(
-                        "[SDK] [%s] hole-fill DB fetch failed (range=[%d,%d)):"
-                        " %s — sending gap without hole",
-                        session_id[:8],
-                        transcript_msg_count,
-                        window_start_seq,
-                        e,
-                    )
-            gap = hole + window_gap
-            compressed, _was_compressed, stats = await _compress_messages(
-                gap, target_tokens
-            )
-            compaction_stats = stats
-            gap_context = _format_conversation_context(compressed)
-            if gap_context:
-                logger.info(
-                    "[SDK] [%s] Cap-engaged stale watermark (%d) — sequence-"
-                    "based gap=%d msgs from windowed view (compressed=%s, "
-                    "context_bytes=%d)",
-                    session_id[:8],
-                    transcript_msg_count,
-                    len(gap),
-                    stats is not None,
-                    len(gap_context),
-                )
-                if turn_summary is not None:
-                    turn_summary.note_history_rows(
-                        len(gap), compressed=stats is not None
-                    )
-                return (
-                    f"{gap_context}\n\nNow, the user says:\n{current_message}",
-                    compaction_stats,
-                )
-            logger.warning(
-                "[SDK] [%s] Cap-engaged + empty sequence-based gap: window may"
-                " not contain post-watermark rows (transcript=%d, db=%d)",
-                session_id[:8],
-                transcript_msg_count,
-                msg_count,
-            )
-            return current_message, compaction_stats
-        if transcript_msg_count < effective_count - 1:
-            # Sanity-check the watermark: the last covered position should be
-            # an assistant turn.  A user-role message here means the count is
-            # misaligned (e.g. a message was deleted and DB positions shifted).
-            # Skip the gap rather than injecting wrong context — the CLI session
-            # loaded via --resume still has good history.
-            if prior[transcript_msg_count - 1].role != "assistant":
-                logger.warning(
-                    "[SDK] [%s] Watermark misaligned: prior[%d].role=%r"
-                    " (expected 'assistant') — skipping gap to avoid"
-                    " injecting wrong context (transcript=%d, db=%d)",
-                    session_id[:8],
-                    transcript_msg_count - 1,
-                    prior[transcript_msg_count - 1].role,
-                    transcript_msg_count,
-                    msg_count,
-                )
-                return current_message, compaction_stats
-            gap = prior[transcript_msg_count:]
-            compressed, _was_compressed, stats = await _compress_messages(
-                gap, target_tokens
-            )
-            compaction_stats = stats
-            gap_context = _format_conversation_context(compressed)
-            if gap_context:
-                logger.info(
-                    "[SDK] Transcript stale: covers %d of %d messages, "
-                    "gap=%d (compressed=%s), gap_context_bytes=%d",
-                    transcript_msg_count,
-                    msg_count,
-                    len(gap),
-                    stats is not None,
-                    len(gap_context),
-                )
-                if turn_summary is not None:
-                    turn_summary.note_history_rows(
-                        len(gap), compressed=stats is not None
-                    )
-                return (
-                    f"{gap_context}\n\nNow, the user says:\n{current_message}",
-                    compaction_stats,
-                )
-            logger.warning(
-                "[SDK] [%s] Transcript stale: gap produced empty context"
-                " (%d msgs, transcript=%d/%d) — sending message without gap prefix",
-                session_id[:8],
-                len(gap),
-                transcript_msg_count,
-                msg_count,
-            )
-        else:
-            logger.info(
-                "[SDK] [%s] --resume covers full context (%d messages)",
-                session_id[:8],
-                transcript_msg_count,
-            )
-        return current_message, compaction_stats
 
     elif not use_resume and effective_count > 1:
         # No --resume: the CLI starts a fresh session with no prior context.
@@ -3636,6 +3481,135 @@ async def _build_query_message(
         return context_prefix + current_message, compaction_stats
 
     return current_message, compaction_stats
+
+
+async def _resume_query_with_gap(
+    current_message: str,
+    prior_rows: list[ChatMessage],
+    *,
+    transcript_msg_count: int,
+    msg_count: int,
+    session_id: str,
+    target_tokens: int | None,
+    turn_summary: TurnSummaryCollector | None = None,
+) -> tuple[str, "CompactionStats | None"]:
+    """The query for a ``--resume`` turn: the rows the transcript lacks, then
+    the message.
+
+    ``transcript_msg_count`` is the next uncovered DB sequence, so the gap is
+    every loaded row at or above it, plus the rows between it and the start of
+    a capped window, which are fetched from the DB.  Error markers and
+    compaction rows are never sent.
+    """
+    hole_range = missing_range(prior_rows, transcript_msg_count)
+    hole = await _fetch_gap_hole(session_id, hole_range) if hole_range else []
+    gap = sendable_gap((hole or []) + uncovered_rows(prior_rows, transcript_msg_count))
+    rows_left_out = hole_range is not None and hole is None
+    if rows_left_out:
+        logger.warning(
+            "[SDK] [%s] Cap-engaged + empty sequence-based gap: window may"
+            " not contain post-watermark rows (transcript=%d, db=%d)",
+            session_id[:8],
+            transcript_msg_count,
+            msg_count,
+        )
+    if not gap:
+        if not rows_left_out:
+            logger.info(
+                "[SDK] [%s] --resume covers full context (%d messages)",
+                session_id[:8],
+                transcript_msg_count,
+            )
+        return current_message, None
+    compressed, _was_compressed, stats = await _compress_messages(gap, target_tokens)
+    gap_context = _format_conversation_context(compressed)
+    if not gap_context:
+        logger.warning(
+            "[SDK] [%s] Transcript stale: gap produced empty context"
+            " (%d msgs, transcript=%d/%d) — sending message without gap prefix",
+            session_id[:8],
+            len(gap),
+            transcript_msg_count,
+            msg_count,
+        )
+        return current_message, stats
+    _log_gap_sent(
+        session_id, hole_range, transcript_msg_count, msg_count, gap, stats, gap_context
+    )
+    if turn_summary is not None:
+        turn_summary.note_history_rows(len(gap), compressed=stats is not None)
+    return f"{gap_context}\n\nNow, the user says:\n{current_message}", stats
+
+
+async def _fetch_gap_hole(
+    session_id: str, hole_range: tuple[int, int]
+) -> list[ChatMessage] | None:
+    """The rows in ``[start, end)`` from the DB, or ``None`` if the fetch failed."""
+    start, end = hole_range
+    try:
+        page = await chat_db().get_chat_messages_paginated(
+            session_id,
+            limit=end - start,
+            after_sequence=start,
+            before_sequence=end,
+        )
+    except Exception as e:
+        logger.warning(
+            "[SDK] [%s] hole-fill DB fetch failed (range=[%d,%d)):"
+            " %s — sending gap without hole",
+            session_id[:8],
+            start,
+            end,
+            e,
+        )
+        return None
+    if not page:
+        return []
+    return [m for m in page.messages if m.role != "reasoning"]
+
+
+def _log_gap_sent(
+    session_id: str,
+    hole_range: tuple[int, int] | None,
+    transcript_msg_count: int,
+    msg_count: int,
+    gap: list[ChatMessage],
+    stats: "CompactionStats | None",
+    gap_context: str,
+) -> None:
+    if hole_range is not None:
+        logger.info(
+            "[SDK] [%s] Cap-engaged stale watermark (%d) — sequence-"
+            "based gap=%d msgs from windowed view (compressed=%s, "
+            "context_bytes=%d)",
+            session_id[:8],
+            transcript_msg_count,
+            len(gap),
+            stats is not None,
+            len(gap_context),
+        )
+        return
+    logger.info(
+        "[SDK] Transcript stale: covers %d of %d messages, "
+        "gap=%d (compressed=%s), gap_context_bytes=%d",
+        transcript_msg_count,
+        msg_count,
+        len(gap),
+        stats is not None,
+        len(gap_context),
+    )
+
+
+def _transcript_watermark_after_turn(messages: list[ChatMessage]) -> int:
+    """The watermark to store with the session file a finished turn wrote.
+
+    It is the next uncovered DB sequence over every row of the turn.  A
+    mid-turn follow-up row is covered like any other: its text reached the CLI
+    as the PostToolUse hook's additionalContext, which the CLI keeps in the
+    session file and replays on resume.  A lower watermark re-sends the rows
+    that follow the follow-up, not the follow-up.
+    """
+    return next_uncovered_sequence(messages)
 
 
 # Claude API vision-supported image types.
@@ -6674,20 +6648,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     # (using the GCS watermark as the anchor for gap detection),
                     # which makes len(session.messages) safe to use here.
                     #
-                    # Watermark = next uncovered DB sequence.  Mid-turn
-                    # follow-up user rows (StreamToolOutputAvailable) are
-                    # persisted to DB but not to the CLI's JSONL, so we step
-                    # the watermark back by their count — detect_gap on the
-                    # next turn re-injects them as the model would otherwise
-                    # only see them embedded in the tool_result (and the CLI's
-                    # internal tool_result size cap can strip that embedding).
-                    _midturn_offset = (
-                        state.midturn_user_rows if state is not None else 0
-                    )
-                    _jsonl_covered = max(
-                        0,
-                        next_uncovered_sequence(session.messages) - _midturn_offset,
-                    )
+                    # Watermark = next uncovered DB sequence.
+                    _jsonl_covered = _transcript_watermark_after_turn(session.messages)
                     await asyncio.shield(
                         upload_transcript(
                             user_id=user_id,

@@ -24,6 +24,7 @@ from backend.util.prompt import (
     get_compression_target,
 )
 
+from ..constants import COPILOT_ERROR_PREFIX
 from ..model import ChatMessage, ChatSession
 from ..model_router import ResolvedModel
 from ..transcript_builder import TranscriptBuilder
@@ -2138,9 +2139,9 @@ class TestExpectPreQueryCompaction:
             )
         ).expected is False
 
-    def test_resume_misaligned_watermark_never_predicts(self):
-        # prior[transcript_msg_count - 1] is a user row — _build_query_message
-        # skips the gap entirely, so no compaction row should open.
+    def test_resume_watermark_after_a_user_row_predicts_from_the_rest(self):
+        # The watermark is a sequence: rows 1.. are uncovered whatever role
+        # row 0 has, and _build_query_message compresses them.
         messages = _big_history()
         assert (
             _expect_pre_query_compaction(
@@ -2148,6 +2149,24 @@ class TestExpectPreQueryCompaction:
                 "gpt-4o",
                 use_resume=True,
                 transcript_msg_count=1,
+                session_msg_ceiling=len(messages),
+            )
+        ).expected is True
+
+    def test_resume_gap_of_only_error_markers_never_predicts(self):
+        # Markers are never sent, so a gap made of them compresses nothing.
+        messages = [
+            _seq_msg("user", "hi", 0),
+            _seq_msg("assistant", "ok", 1),
+            _seq_msg("assistant", f"{COPILOT_ERROR_PREFIX} " + "word " * 100_000, 2),
+            _seq_msg("user", "again", 3),
+        ]
+        assert (
+            _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=True,
+                transcript_msg_count=2,
                 session_msg_ceiling=len(messages),
             )
         ).expected is False
@@ -2242,10 +2261,26 @@ _DIFFERENTIAL_CASES: list[dict] = [
         "prior_messages": None,
     },
     {
-        "name": "resume, watermark misaligned on a user row",
+        "name": "resume, watermark right after a user row",
         "use_resume": True,
         "transcript_msg_count": 1,
         "messages": _big_history(),
+        "prior_messages": None,
+    },
+    {
+        "name": "resume, big gap with reasoning rows and an error marker",
+        "use_resume": True,
+        "transcript_msg_count": 3,
+        "messages": [
+            _seq_msg("user", "hi", 0),
+            _seq_msg("reasoning", "word " * 30_000, 1),
+            _seq_msg("assistant", "ok", 2),
+            _seq_msg("user", "word " * 30_000, 3),
+            _seq_msg("reasoning", "word " * 30_000, 4),
+            _seq_msg("assistant", "word " * 30_000, 5),
+            _seq_msg("assistant", f"{COPILOT_ERROR_PREFIX} " + "word " * 30_000, 6),
+            _seq_msg("user", "again", 7),
+        ],
         "prior_messages": None,
     },
     {
