@@ -27,6 +27,7 @@ from backend.copilot.pending_messages import (
     push_pending_message,
     stash_pending_for_persist,
 )
+from backend.data.redis_helpers import RedisListCapacityExceeded
 
 # ── Fake Redis ──────────────────────────────────────────────────────
 
@@ -43,6 +44,12 @@ class _FakeRedis:
         lst = self.lists.setdefault(key, [])
         lst.extend(values)
         return len(lst)
+
+    async def eval(self, script: str, numkeys: int, *args: Any) -> int:
+        key, value, max_len, _ttl = args
+        if await self.llen(key) >= max_len:
+            return -2
+        return await self.rpush(key, value)
 
     async def ltrim(self, key: str, start: int, stop: int) -> None:
         lst = self.lists.get(key, [])
@@ -234,19 +241,20 @@ async def test_drain_defaults_id_for_legacy_entries(fake_redis: _FakeRedis) -> N
 
 
 @pytest.mark.asyncio
-async def test_cap_drops_oldest_when_exceeded(fake_redis: _FakeRedis) -> None:
-    # Push MAX_PENDING_MESSAGES + 3 messages
-    for i in range(MAX_PENDING_MESSAGES + 3):
+async def test_cap_rejects_new_message_without_eviction(fake_redis: _FakeRedis) -> None:
+    for i in range(MAX_PENDING_MESSAGES):
         await push_pending_message("sess3", PendingMessage(content=f"m{i}"))
+
+    with pytest.raises(RedisListCapacityExceeded):
+        await push_pending_message("sess3", PendingMessage(content="overflow"))
 
     # Buffer should be clamped to MAX
     assert await peek_pending_count("sess3") == MAX_PENDING_MESSAGES
 
     drained = await drain_pending_messages("sess3")
     assert len(drained) == MAX_PENDING_MESSAGES
-    # Oldest 3 dropped — we should only see m3..m(MAX+2)
-    assert drained[0].content == "m3"
-    assert drained[-1].content == f"m{MAX_PENDING_MESSAGES + 2}"
+    assert drained[0].content == "m0"
+    assert drained[-1].content == f"m{MAX_PENDING_MESSAGES - 1}"
 
 
 # ── Clear ───────────────────────────────────────────────────────────

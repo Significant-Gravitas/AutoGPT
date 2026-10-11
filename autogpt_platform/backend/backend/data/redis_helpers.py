@@ -68,18 +68,43 @@ _GATED_CAPPED_RPUSH_LUA = """
 if #KEYS == 3 and redis.call('EXISTS', KEYS[3]) == 1 then
     return redis.call('LLEN', KEYS[2])
 end
+if #KEYS == 3 then
+    for _, entry in ipairs(redis.call('LRANGE', KEYS[2], 0, -1)) do
+        local ok, decoded = pcall(cjson.decode, entry)
+        if ok and type(decoded) == 'table' and decoded.id == ARGV[6] then
+            redis.call('SET', KEYS[3], '1', 'EX', tonumber(ARGV[5]))
+            return redis.call('LLEN', KEYS[2])
+        end
+    end
+end
 local current = redis.call('HGET', KEYS[1], ARGV[1])
 if current ~= ARGV[2] then
     return -1
 end
+if redis.call('LLEN', KEYS[2]) >= tonumber(ARGV[4]) then
+    return -2
+end
 redis.call('RPUSH', KEYS[2], ARGV[3])
-redis.call('LTRIM', KEYS[2], -tonumber(ARGV[4]), -1)
 redis.call('EXPIRE', KEYS[2], tonumber(ARGV[5]))
 if #KEYS == 3 then
     redis.call('SET', KEYS[3], '1', 'EX', tonumber(ARGV[5]))
 end
 return redis.call('LLEN', KEYS[2])
 """
+
+_BOUNDED_RPUSH_LUA = """
+if redis.call('LLEN', KEYS[1]) >= tonumber(ARGV[2]) then
+    return -2
+end
+local length = redis.call('RPUSH', KEYS[1], ARGV[1])
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3]))
+return length
+"""
+
+
+class RedisListCapacityExceeded(Exception):
+    """The list is at capacity; the new item was not admitted."""
+
 
 # Exactly-once batch-dispatch claim. Used by the BatchExecutor's walk
 # to transition a finished provider batch from ``pending → dispatched``
@@ -259,6 +284,25 @@ async def capped_rpush(
     return int(results[-1])
 
 
+async def bounded_rpush(
+    redis: AsyncRedisClient,
+    key: str,
+    value: str,
+    *,
+    max_len: int,
+    ttl_seconds: int,
+) -> int:
+    """Push without evicting accepted items; reject a full list atomically."""
+    length = int(
+        await cast(
+            "Any", redis.eval(_BOUNDED_RPUSH_LUA, 1, key, value, max_len, ttl_seconds)
+        )
+    )
+    if length == -2:
+        raise RedisListCapacityExceeded("Pending buffer is at capacity")
+    return length
+
+
 async def capped_rpush_if_hash_field(
     redis: AsyncRedisClient,
     *,
@@ -270,12 +314,15 @@ async def capped_rpush_if_hash_field(
     max_len: int,
     ttl_seconds: int,
     receipt_key: str | None = None,
+    message_id: str | None = None,
 ) -> int | None:
     """Atomically RPUSH to a bounded list iff a hash field matches.
 
     Returns the new list length when the push happens, or ``None`` when the
     hash field does not currently match ``expected``. With a receipt key,
-    retries return the current length without pushing or extending the TTL.
+    retries return the current length without pushing. A matching JSON
+    ``id`` in the list restores an expired receipt. Full lists raise
+    ``RedisListCapacityExceeded`` without evicting an accepted item.
     All keys must share a Redis Cluster hash tag.
     """
     keys = [hash_key, list_key]
@@ -292,9 +339,12 @@ async def capped_rpush_if_hash_field(
             value,
             str(max_len),
             str(ttl_seconds),
+            message_id or "",
         ),
     )
     length = int(result)
+    if length == -2:
+        raise RedisListCapacityExceeded("Pending buffer is at capacity")
     return None if length < 0 else length
 
 

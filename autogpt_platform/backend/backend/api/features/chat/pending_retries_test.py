@@ -19,9 +19,16 @@ from httpx import ASGITransport, AsyncClient
 from backend.api.features.chat import routes
 from backend.copilot.expert_kickoff import scoped_client_message_id
 from backend.copilot.model import ChatSessionInfo
-from backend.copilot.pending_messages import drain_pending_messages
+from backend.copilot.pending_message_receipts import pending_message_receipt_key
+from backend.copilot.pending_messages import (
+    MAX_PENDING_MESSAGES,
+    PendingMessage,
+    drain_pending_messages,
+    push_pending_message,
+)
 from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.redis_client import get_redis_async
+from backend.data.redis_helpers import RedisListCapacityExceeded
 
 
 @pytest_asyncio.fixture
@@ -158,3 +165,61 @@ async def test_persisted_pending_retry_is_accepted_after_receipt_expiry(
 
     assert response.status_code == 200
     assert await drain_pending_messages(session_id) == []
+
+
+async def test_full_pending_queue_rejects_new_send_without_eviction(
+    pending_client: tuple[AsyncClient, str, str],
+) -> None:
+    client, user_id, session_id = pending_client
+    bodies = [
+        {"message": f"Send {i}", "message_id": str(uuid4())}
+        for i in range(MAX_PENDING_MESSAGES + 1)
+    ]
+    path = f"/sessions/{session_id}/messages/pending"
+    for body in bodies[:-1]:
+        assert (await client.post(path, json=body)).status_code == 200
+
+    assert (await client.post(path, json=bodies[-1])).status_code == 429
+    assert (await client.post(path, json=bodies[0])).status_code == 200
+    drained = await drain_pending_messages(session_id)
+    assert [m.id for m in drained] == [
+        scoped_client_message_id(user_id, session_id, body["message_id"])
+        for body in bodies[:-1]
+    ]
+    assert (await client.post(path, json=bodies[-1])).status_code == 200
+    assert len(await drain_pending_messages(session_id)) == 1
+
+
+async def test_pending_retry_after_receipt_expiry_keeps_one_copy(
+    pending_client: tuple[AsyncClient, str, str],
+) -> None:
+    client, user_id, session_id = pending_client
+    body = {"message": "First", "message_id": str(uuid4())}
+    path = f"/sessions/{session_id}/messages/pending"
+    assert (await client.post(path, json=body)).status_code == 200
+    assert (
+        await client.post(path, json={"message": "Second", "message_id": str(uuid4())})
+    ).status_code == 200
+    redis = await get_redis_async()
+    message_id = scoped_client_message_id(user_id, session_id, body["message_id"])
+    await redis.pexpire(pending_message_receipt_key(session_id, message_id), 1)
+    await asyncio.sleep(0.01)
+    assert (await client.post(path, json=body)).status_code == 200
+    drained = await drain_pending_messages(session_id)
+    assert [message.content for message in drained] == ["First", "Second"]
+
+
+async def test_internal_send_cannot_evict_http_send(
+    pending_client: tuple[AsyncClient, str, str],
+) -> None:
+    client, _, session_id = pending_client
+    path = f"/sessions/{session_id}/messages/pending"
+    for _ in range(MAX_PENDING_MESSAGES):
+        assert (
+            await client.post(
+                path, json={"message": "Keep", "message_id": str(uuid4())}
+            )
+        ).status_code == 200
+    with pytest.raises(RedisListCapacityExceeded):
+        await push_pending_message(session_id, PendingMessage(content="Overflow"))
+    assert all(m.content == "Keep" for m in await drain_pending_messages(session_id))

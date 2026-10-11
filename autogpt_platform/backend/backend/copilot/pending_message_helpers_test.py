@@ -528,6 +528,13 @@ def _make_chat_message_class(
             self.sequence: int | None = None
 
     monkeypatch.setattr(helpers_module, "ChatMessage", _Msg)
+    monkeypatch.setattr(
+        "backend.copilot.pending_message_reconciliation.ChatMessage", _Msg
+    )
+    monkeypatch.setattr(
+        "backend.copilot.pending_message_reconciliation.chat_db",
+        lambda: MagicMock(get_chat_messages_by_ids=AsyncMock(return_value=[])),
+    )
     return _Msg
 
 

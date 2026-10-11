@@ -20,6 +20,7 @@ from backend.copilot.model import (
     ChatMessage,
     upsert_chat_session,
 )
+from backend.copilot.pending_message_reconciliation import reconcile_pending_rows
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
@@ -37,7 +38,7 @@ from backend.copilot.stream_registry import get_session as get_active_session_me
 from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
-from backend.data.redis_helpers import incr_with_ttl
+from backend.data.redis_helpers import RedisListCapacityExceeded, incr_with_ttl
 from backend.data.workspace import build_files_block, resolve_attachable_workspace_files
 from backend.data.workspace_folder import resolve_attachable_workspace_folders
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
@@ -261,14 +262,21 @@ async def queue_pending_for_http(
     # the FE's is_turn_in_flight check and our gate), which both this
     # endpoint and the POST /stream queue-fall-through can hit.  Pushing
     # first lets the gate own the no-op short-circuit.
-    response = await queue_user_message(
-        session_id=session_id,
-        message=message,
-        context=queue_context,
-        file_ids=sanitized_file_ids,
-        require_turn_in_flight=True,
-        message_id=message_id,
-    )
+    try:
+        response = await queue_user_message(
+            session_id=session_id,
+            message=message,
+            context=queue_context,
+            file_ids=sanitized_file_ids,
+            require_turn_in_flight=True,
+            message_id=message_id,
+        )
+    except RedisListCapacityExceeded as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="Pending message buffer is full. Retry after messages are delivered.",
+            headers={"Retry-After": "5"},
+        ) from exc
     if not response.turn_in_flight:
         raise HTTPException(
             status_code=409,
@@ -486,15 +494,18 @@ async def persist_pending_as_user_rows(
         transcript_builder.snapshot() if transcript_builder is not None else None
     )
 
-    for pm in pending:
-        content = content_of(pm)
-        session.messages.append(
-            ChatMessage(
-                id=pm.id, role="user", content=content, metadata=pm.metadata or None
-            )
-        )
-        if transcript_builder is not None:
-            transcript_builder.append_user(content=content)
+    rows = await reconcile_pending_rows(session, pending, content_of)
+    existing = {
+        message.id: i for i, message in enumerate(session.messages) if message.id
+    }
+    for row in rows:
+        if row.id in existing:
+            if row.sequence is not None:
+                session.messages[existing[row.id]] = row
+            continue
+        session.messages.append(row)
+        if transcript_builder is not None and row.sequence is None:
+            transcript_builder.append_user(content=row.content or "")
 
     # ``persist_session_safe`` may return a ``model_copy`` of *session* (e.g.
     # when ``upsert_chat_session`` patches a concurrently-updated title).
@@ -506,16 +517,15 @@ async def persist_pending_as_user_rows(
     # ``append_and_save_message`` calls.
     persisted = await persist_session_safe(session, log_prefix)
     persisted_tail = persisted.messages[session_anchor:]
-    if len(persisted_tail) == len(pending) and all(
+    if len(persisted_tail) == len(session.messages) - session_anchor and all(
         m.sequence is not None for m in persisted_tail
     ):
         for caller_msg, persisted_msg in zip(
             session.messages[session_anchor:], persisted_tail
         ):
             caller_msg.sequence = persisted_msg.sequence
-    newly_appended = session.messages[session_anchor:]
-
-    if any(m.sequence is None for m in newly_appended):
+    pending_ids = {message.id for message in pending}
+    if any(m.sequence is None for m in session.messages if m.id in pending_ids):
         logger.warning(
             "%s Mid-turn follow-up persist did not back-fill sequences; "
             "rolling back %d row(s) and re-queueing into the primary buffer",
@@ -527,35 +537,14 @@ async def persist_pending_as_user_rows(
             transcript_builder.restore(transcript_snapshot)
         if on_rollback is not None:
             on_rollback(session_anchor)
-        # ``push_pending_message`` uses the bounded ``capped_rpush`` (LTRIM
-        # to ``MAX_PENDING_MESSAGES``).  If ≥``MAX_PENDING_MESSAGES`` fresh
-        # follow-ups arrived between the original drain and this rollback
-        # (heavy typing across a tool boundary), the LTRIM drops oldest
-        # entries — which can include the ones we just re-pushed. The model
-        # already saw that content (mid-turn injection earlier in the
-        # turn), but no DB row lands so the user sees no UI bubble.
-        # Surface a warning so the bounded data-loss path is visible in
-        # prod (it is rare and would otherwise be observable only via the
-        # absence of a bubble).
-        rollback_buffer_at_cap = False
-        for pm in pending:
+        for pm in {message.id: message for message in pending}.values():
             try:
-                new_length = await push_pending_message(session.session_id, pm)
-                if new_length >= MAX_PENDING_MESSAGES:
-                    rollback_buffer_at_cap = True
+                await push_pending_message(session.session_id, pm)
             except Exception:
                 logger.exception(
                     "%s Failed to re-queue mid-turn follow-up on rollback",
                     log_prefix,
                 )
-        if rollback_buffer_at_cap:
-            logger.warning(
-                "%s Rollback re-push hit pending-buffer cap (MAX=%d); a "
-                "previously queued follow-up may have been LTRIM-displaced "
-                "(silent UI-bubble drop). Investigate if observed.",
-                log_prefix,
-                MAX_PENDING_MESSAGES,
-            )
         return False
 
     logger.info(

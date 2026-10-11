@@ -13,12 +13,12 @@ This module provides the cross-process buffer that makes that possible:
 - **Consumer** (executor running the turn): on each tool-call round,
   drains the buffer and appends the pending messages to the conversation.
 
-The Redis list is the durable store; the pub/sub channel is a fast
+The Redis list is an expiring buffer; the pub/sub channel is a fast
 wake-up hint for long-idle consumers (not used by default, but available
 for future blocking-wait semantics).
 
 A hard cap of ``MAX_PENDING_MESSAGES`` per session prevents abuse.  The
-buffer is trimmed to the latest ``MAX_PENDING_MESSAGES`` on every push.
+full buffer rejects new messages without evicting accepted messages.
 """
 
 import json
@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from backend.copilot.pending_message_receipts import pending_message_receipt_key
 from backend.data.redis_client import get_redis_async
-from backend.data.redis_helpers import capped_rpush, capped_rpush_if_hash_field
+from backend.data.redis_helpers import bounded_rpush, capped_rpush_if_hash_field
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ async def push_pending_message(
     message: PendingMessage,
 ) -> int:
     """Append a pending message to the session's buffer, capped at
-    ``MAX_PENDING_MESSAGES`` (oldest trimmed). Returns the new buffer length.
+    ``MAX_PENDING_MESSAGES`` (rejecting overflow). Returns the new buffer length.
 
     The buffer survives consumer crashes until ``_PENDING_TTL_SECONDS``
     expires; messages not drained within that window are dropped.
@@ -114,7 +114,7 @@ async def push_pending_message(
     key = _buffer_key(session_id)
     payload = message.model_dump_json()
 
-    new_length = await capped_rpush(
+    new_length = await bounded_rpush(
         redis,
         key,
         payload,
@@ -165,6 +165,7 @@ async def push_pending_message_if_session_running(
         receipt_key=(
             pending_message_receipt_key(session_id, message.id) if deduplicate else None
         ),
+        message_id=message.id,
     )
     if new_length is None:
         logger.info(
