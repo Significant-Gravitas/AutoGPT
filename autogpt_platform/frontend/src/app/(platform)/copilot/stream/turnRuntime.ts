@@ -139,8 +139,6 @@ export type SendInput =
 interface Connection {
   kind: "post" | "resume";
   controller: AbortController;
-  /** Open the same request again; for a send that never left. */
-  reopen: () => Promise<void>;
   openedAt: number;
   lastFrameAt: number;
   frames: number;
@@ -279,7 +277,6 @@ export class TurnRuntime {
     this.suppressAttach = false;
     this.queueDeclined = false;
     this.error = null;
-    this.denials = 0;
     this.providerFailure = null;
     const message = userMessage(`local:${uuidv4({})}`, input);
     this.claimTail(this.nextSequence());
@@ -454,7 +451,6 @@ export class TurnRuntime {
     const conn: Connection = {
       kind,
       controller: new AbortController(),
-      reopen: () => this.open(kind, turnId, url, init, asRotation),
       openedAt: now,
       lastFrameAt: now,
       frames: 0,
@@ -473,7 +469,7 @@ export class TurnRuntime {
     this.emit();
     let end: ConnectionEnd;
     try {
-      const headers = await this.deps.headers();
+      const headers = await this.authHeaders(conn);
       const result = await fetchSse(
         url,
         {
@@ -495,6 +491,19 @@ export class TurnRuntime {
           : { kind: "failed", error };
     }
     this.onEnd(conn, end);
+  }
+
+  // The token action answers "no token" for a sign-out and for a failed lookup
+  // alike, so a connection asks once more before it counts as signed out.
+  private async authHeaders(conn: Connection) {
+    try {
+      return await this.deps.headers();
+    } catch (error) {
+      if (!(error instanceof CopilotAuthError)) throw error;
+      await sleep(TOKEN_RETRY_MS);
+      if (conn.controller.signal.aborted) throw error;
+      return this.deps.headers();
+    }
   }
 
   private onFrame(conn: Connection, frame: SseFrame) {
@@ -571,7 +580,7 @@ export class TurnRuntime {
     const seg = conn.turnId ? this.turnFor(conn.turnId) : null;
     if (seg && (seg.ended || seg.stopped || seg.frozen)) return;
     if (end.kind === "denied") {
-      this.tokenFailed(conn, seg, end.error);
+      this.giveUp(end.error);
       return;
     }
     if (end.kind === "refused" && conn.kind === "post") {
@@ -683,29 +692,6 @@ export class TurnRuntime {
     this.deps.report("refused", { status: end.status, body: end.body });
   }
 
-  // The token action answers "no token" for a sign-out and for a failed lookup
-  // alike, so only a second failure in a row means signed out.
-  private tokenFailed(
-    conn: Connection,
-    seg: TurnSegment | null,
-    error: CopilotAuthError,
-  ) {
-    if (seg) {
-      this.denied(seg, { kind: "refused", status: 401, body: null });
-      return;
-    }
-    this.denials += 1;
-    if (this.denials > 1) {
-      this.giveUp(error);
-      return;
-    }
-    this.clearRetry();
-    this.retryTimer = setTimeout(() => {
-      this.retryTimer = null;
-      void conn.reopen();
-    }, TOKEN_RETRY_MS);
-  }
-
   /** A refusal no retry can change: end the turn where it stands and say why. */
   private giveUp(error: Error) {
     const running = this.runningTurn();
@@ -810,7 +796,6 @@ export class TurnRuntime {
     );
     this.segments.push(seg);
     this.error = null;
-    this.denials = 0;
     this.resume(seg);
   }
 

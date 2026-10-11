@@ -641,7 +641,7 @@ describe("refusals no retry can change", () => {
     await sendAndPublish(FIRST_BLOCK_DONE);
     tokenFailsFirst(1);
     backend.connections[0].fail();
-    await advance(1_000);
+    await advance(2_000);
 
     expect(snapshot().error).toBeNull();
     expect(backend.connections.at(-1)?.url.searchParams.get("turn")).toBe(
@@ -649,37 +649,30 @@ describe("refusals no retry can change", () => {
     );
   });
 
-  it("a send stopped while its token retry waits leaves the next send its own retry", async () => {
+  it("a second send while a send waits out its token retry opens no second request", async () => {
     tokenFailsFirst(1);
     void runtime.send({ text: PROMPT }, undefined);
     await advance(500);
-    runtime.stop();
-
-    tokenFailsFirst(1);
-    void runtime.send({ text: PROMPT }, undefined);
-    await advance(1_500);
+    void runtime.send({ text: "And example.org?" }, undefined);
+    await advance(1_000);
     backend.publish(FIRST_BLOCK_DONE);
     await advance(100);
-    expect(snapshot().error).toBeNull();
+
     expect(backend.requests.filter((r) => r.method === "POST")).toHaveLength(1);
+    expect(backend.connections.some((c) => c.aborted)).toBe(false);
+    expect(snapshot().error).toBeNull();
+    expect(snapshot().phase).toBe("live");
   });
 
-  it("a turn attached after a stopped token retry gets its own retry", async () => {
+  it("a stop while a send waits out its token retry sends nothing after", async () => {
     tokenFailsFirst(1);
     void runtime.send({ text: PROMPT }, undefined);
     await advance(500);
     runtime.stop();
-    runtime.observe(backend.view());
+    await advance(5_000);
 
-    backend.beginRunning();
-    backend.publish(FIRST_BLOCK_DONE);
-    tokenFailsFirst(1);
-    runtime.observe(backend.view());
-    await advance(1_000);
+    expect(backend.requests.filter((r) => r.method === "POST")).toHaveLength(0);
     expect(snapshot().error).toBeNull();
-    expect(backend.connections.at(-1)?.url.searchParams.get("turn")).toBe(
-      backend.turnId,
-    );
   });
 
   it("signed out mid-turn ends the turn with the sign-in error, without the connection toast", async () => {
