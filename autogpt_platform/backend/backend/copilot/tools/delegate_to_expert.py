@@ -101,6 +101,7 @@ class DelegateToExpertTool(BaseTool):
                         "<team_context>, or their exact name if you don't "
                         "have the id. Must not be you."
                     ),
+                    "entity": "expert_or_name",
                 },
                 "prompt": {
                     "type": "string",
@@ -109,11 +110,13 @@ class DelegateToExpertTool(BaseTool):
                         "context they need — they cannot see this "
                         "conversation."
                     ),
+                    "title": "Task",
                 },
                 "system_context": {
                     "type": "string",
                     "description": "Optional context prepended to the prompt.",
                     "default": "",
+                    "title": "Background",
                 },
                 "delegated_session_id": {
                     "type": "string",
@@ -121,6 +124,8 @@ class DelegateToExpertTool(BaseTool):
                         "Continue a prior delegation to this teammate; empty = new."
                     ),
                     "default": "",
+                    "title": "Continues",
+                    "entity": "chat_session",
                 },
                 "wait_for_result": {
                     "type": "integer",
@@ -129,6 +134,8 @@ class DelegateToExpertTool(BaseTool):
                         f"Clamped to {MAX_SUB_SESSION_WAIT_SECONDS}."
                     ),
                     "default": 60,
+                    "title": "Waits up to",
+                    "format": "seconds",
                 },
             },
             "required": ["expert_id", "prompt"],

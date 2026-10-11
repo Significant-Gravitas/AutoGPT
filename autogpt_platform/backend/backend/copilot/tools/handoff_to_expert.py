@@ -110,6 +110,7 @@ class HandoffToExpertTool(BaseTool):
                     "description": (
                         "Teammate taking it over, from <team_context>. Not you."
                     ),
+                    "entity": "expert",
                 },
                 "prompt": {
                     "type": "string",
@@ -117,11 +118,13 @@ class HandoffToExpertTool(BaseTool):
                         "The task, written for them. They cannot see this "
                         "conversation or ask you follow-ups."
                     ),
+                    "title": "Task",
                 },
                 "context": {
                     "type": "string",
                     "description": "Optional background; what you already tried.",
                     "default": "",
+                    "title": "Background",
                 },
             },
             "required": ["expert_id", "prompt"],

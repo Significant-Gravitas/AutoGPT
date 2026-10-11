@@ -98,11 +98,13 @@ class RunSubSessionTool(BaseTool):
                 "prompt": {
                     "type": "string",
                     "description": "The task for the child session to execute.",
+                    "title": "Task",
                 },
                 "system_context": {
                     "type": "string",
                     "description": "Optional context prepended to the prompt.",
                     "default": "",
+                    "title": "Background",
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
@@ -111,6 +113,8 @@ class RunSubSessionTool(BaseTool):
                         "Cheaper when the follow-up builds on what it read."
                     ),
                     "default": "",
+                    "title": "Continues",
+                    "entity": "chat_session",
                 },
                 "wait_for_result": {
                     "type": "integer",
@@ -119,6 +123,8 @@ class RunSubSessionTool(BaseTool):
                         f"Clamped to {MAX_SUB_SESSION_WAIT_SECONDS}."
                     ),
                     "default": 60,
+                    "title": "Waits up to",
+                    "format": "seconds",
                 },
             },
             "required": ["prompt"],

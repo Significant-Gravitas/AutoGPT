@@ -3,6 +3,7 @@ import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsL
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import {
   type Fact,
+  type FieldSpec,
   isIdKey,
   type Reference,
   visibleKeys,
@@ -36,7 +37,7 @@ export interface ApprovalItem {
   toolName: string;
   toolCallId: string;
   args: Record<string, unknown>;
-  fields: { key: string; label: string }[];
+  fields: FieldSpec[];
   references: Reference[];
   // Ids per argument before the server clipped it.
   referenceTotals: Record<string, number>;
@@ -87,6 +88,7 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
       .map((f) => ({
         key: String(f.key),
         label: str(f, "label") ?? String(f.key),
+        format: str(f, "format"),
       })),
     references: asArray(payload.references).flatMap(toReference),
     referenceTotals: toTotals(payload.reference_totals),
