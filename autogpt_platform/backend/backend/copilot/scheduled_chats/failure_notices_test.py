@@ -70,6 +70,23 @@ def test_any_other_error_points_at_the_chat():
     assert "Open the chat to see the error" in notice.body
 
 
+def test_one_that_could_not_be_paused_says_so_without_claiming_it():
+    notice = paused_notice(
+        _TWITTER, title="Briefing", failures=3, streak_id="s1", paused=False
+    )
+
+    assert notice.headline == "“Briefing” can't use Twitter"
+    assert notice.body == (
+        "Its last 3 runs failed because the Twitter connection is missing or "
+        "was refused. Reconnect it."
+    )
+    # Nothing to resume: it is still firing.
+    assert _actions(notice) == [
+        {"kind": "reconnect", "label": "Reconnect Twitter", "provider": "twitter"}
+    ]
+    assert notice.window_key == "failing:s1"
+
+
 def test_a_failing_step_is_told_without_a_resume():
     """Nothing was paused, so there is nothing to resume."""
     notice = failing_notice(_TWITTER, title="Briefing", failures=3, streak_id="s1")

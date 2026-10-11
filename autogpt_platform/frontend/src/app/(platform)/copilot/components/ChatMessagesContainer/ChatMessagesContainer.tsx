@@ -553,9 +553,11 @@ export function ChatMessagesContainer({
             }
 
             // A scheduled chat whose run was skipped says why, with the fix
-            // on a button. The model never reads this row back.
+            // on a button. The model never reads this row back, and it is
+            // the owner's: a shared copy of the chat leaves it out.
             const notice = getScheduledChatNotice(message.metadata);
             if (notice) {
+              if (readOnly) return null;
               return (
                 <Message
                   from={message.role}
@@ -567,7 +569,6 @@ export function ChatMessagesContainer({
                     <ScheduledChatNoticeCard
                       notice={notice}
                       sessionID={sessionID}
-                      readOnly={readOnly}
                     />
                   </MessageContent>
                 </Message>

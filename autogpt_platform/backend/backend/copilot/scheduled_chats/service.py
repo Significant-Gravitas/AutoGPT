@@ -21,10 +21,10 @@ from backend.copilot.scheduled_chats.failure_notices import (
     paused_notice,
     resumed_notice,
 )
-from backend.copilot.scheduled_chats.notices import post_notice
+from backend.copilot.scheduled_chats.jobs import jobs_paused, pause_jobs, resume_jobs
+from backend.copilot.scheduled_chats.notices import ScheduledChatNotice, post_notice
 from backend.copilot.scheduled_chats.outcomes import RunFailure, RunOutcome
-from backend.copilot.scheduled_chats.streaks import Streak, advance
-from backend.util.clients import get_scheduler_client
+from backend.copilot.scheduled_chats.streaks import Streak, StreakStep, advance
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,10 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
     where = _key(run.user_id, run.schedule_key)
     row = await ScheduledChatStreak.prisma().find_unique(where=where)
     current = _streak_of(row)
+    if current is not None and current.paused and await _still_paused(run):
+        # It fired before the pause and finished after it, so it changes
+        # nothing. One that fired after was resumed some other way.
+        return
     step = advance(current, run.outcome)
     if step.ended_notified:
         await alerts.resolve(run.user_id, run.schedule_key)
@@ -74,22 +78,21 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
         return
     streak = step.streak
     schedule_ids, title = await _schedule_of(run)
-    if step.pause and not await _pause(run.user_id, schedule_ids):
-        # Nothing was paused, so nothing may say it was: the next run counts
-        # again and tries once more.
-        streak = streak.model_copy(update={"paused": False, "notified": False})
+    paused = step.pause and await pause_jobs(run.user_id, schedule_ids)
+    if step.pause and not paused:
+        # Nothing was paused, so nothing may say it was. Each later run tries
+        # again; meanwhile the owner is told once, without that claim.
+        streak = streak.model_copy(update={"paused": False})
+    told = streak.notified and not (current is not None and current.notified)
     row = await _save(
         run,
         streak,
         schedule_ids,
         title,
         restarted=row is None or streak.failures == 1,
-        told=streak.notified and not (current is not None and current.notified),
+        told=told,
     )
-    if streak.paused:
-        notice = paused_notice(
-            streak.failure, title=title, failures=streak.failures, streak_id=row.id
-        )
+    if paused:
         await alerts.raise_paused(
             run.user_id,
             run.schedule_key,
@@ -100,36 +103,24 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
                 session_id=run.session_id,
             ),
         )
-    elif step.tell:
-        notice = failing_notice(
-            streak.failure, title=title, failures=streak.failures, streak_id=row.id
-        )
-    else:
-        return
-    await post_notice(
-        notice,
-        user_id=run.user_id,
-        schedule_key=run.schedule_key,
-        title=title,
-        session_id=run.session_id,
-        expert_id=None,
-    )
+    notice = _notice(step, streak, paused=paused, told=told, title=title, row=row)
+    if notice is not None:
+        await _tell(run, row, notice, told=told)
 
 
 async def resume_scheduled_chat(user_id: str, schedule_key: str) -> bool:
     """Resume a scheduled chat its streak paused, and say whether it was.
 
-    Every job is resumed before the streak is cleared: one that fails leaves
-    the row, so the chat still reads as paused and Resume can be tried again.
+    Its jobs are resumed before the streak is cleared, all of them or none:
+    a failure keeps the row, so the chat still reads as paused and Resume can
+    be tried again.
     """
     row = await ScheduledChatStreak.prisma().find_unique(
         where=_key(user_id, schedule_key)
     )
     if row is None or row.pausedAt is None:
         return False
-    scheduler = get_scheduler_client()
-    for schedule_id in row.scheduleIds:
-        await scheduler.resume_schedule(schedule_id, user_id=user_id)
+    await resume_jobs(user_id, row.scheduleIds)
     await ScheduledChatStreak.prisma().delete(where={"id": row.id})
     await alerts.resolve(user_id, schedule_key)
     if row.sessionId is not None:
@@ -175,19 +166,61 @@ async def list_paused_scheduled_chats(user_id: str) -> list[PausedScheduledChat]
     return paused
 
 
-async def _pause(user_id: str, schedule_ids: list[str]) -> bool:
-    """Pause every job, and say whether any is paused now."""
-    scheduler = get_scheduler_client()
-    paused = False
-    for schedule_id in schedule_ids:
-        try:
-            await scheduler.pause_schedule(schedule_id, user_id=user_id)
-            paused = True
-        except Exception:
-            logger.warning(
-                "Could not pause scheduled chat job %s", schedule_id, exc_info=True
+async def _still_paused(run: ScheduledRun) -> bool:
+    """Whether the chat's jobs are paused yet. A routine's are its current
+    ones: editing it while paused replaces them with jobs that fire."""
+    schedule_ids, _ = await _schedule_of(run)
+    return await jobs_paused(run.user_id, schedule_ids)
+
+
+def _notice(
+    step: StreakStep,
+    streak: Streak,
+    *,
+    paused: bool,
+    told: bool,
+    title: str,
+    row: ScheduledChatStreak,
+) -> ScheduledChatNotice | None:
+    failure, failures = streak.failure, streak.failures
+    if paused:
+        return paused_notice(failure, title=title, failures=failures, streak_id=row.id)
+    if step.pause and told:
+        return paused_notice(
+            failure, title=title, failures=failures, streak_id=row.id, paused=False
+        )
+    if step.tell:
+        return failing_notice(failure, title=title, failures=failures, streak_id=row.id)
+    return None
+
+
+async def _tell(
+    run: ScheduledRun,
+    row: ScheduledChatStreak,
+    notice: ScheduledChatNotice,
+    *,
+    told: bool,
+) -> None:
+    try:
+        await post_notice(
+            notice,
+            user_id=run.user_id,
+            schedule_key=run.schedule_key,
+            title=row.title,
+            session_id=run.session_id,
+            expert_id=None,
+        )
+    except Exception:
+        logger.warning(
+            "Could not post the note for scheduled chat %s",
+            run.schedule_key,
+            exc_info=True,
+        )
+        if told:
+            # Not told after all: the next run that fails this way tells again.
+            await ScheduledChatStreak.prisma().update(
+                where={"id": row.id}, data={"notifiedAt": None}
             )
-    return paused
 
 
 async def _schedule_of(run: ScheduledRun) -> tuple[list[str], str]:

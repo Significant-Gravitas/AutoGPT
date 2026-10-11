@@ -36,6 +36,7 @@ describe("getScheduledChatNotice", () => {
         { kind: "link", label: "Upgrade", href: "/settings/billing" },
         { kind: "link", label: "Elsewhere", href: "https://example.com" },
         { kind: "link", label: "Protocol-relative", href: "//example.com" },
+        { kind: "link", label: "Backslash", href: "/\\example.com" },
         { kind: "link", label: "Script", href: "javascript:alert(1)" },
         "not an action",
       ],
