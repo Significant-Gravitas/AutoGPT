@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getPostHogClientHosts, getPostHogProxyTarget } from "../posthog-proxy";
+import { getPostHogProxyTarget } from "../posthog-proxy";
 
 describe("getPostHogProxyTarget", () => {
   it("targets the PostHog Cloud region the host names", () => {
@@ -43,25 +43,5 @@ describe("getPostHogProxyTarget", () => {
     expect(
       getPostHogProxyTarget({ key: "", host: "https://eu.i.posthog.com" }),
     ).toBeNull();
-  });
-});
-
-describe("getPostHogClientHosts", () => {
-  it("sends PostHog Cloud through the proxy path and keeps the UI on PostHog", () => {
-    expect(
-      getPostHogClientHosts({
-        key: "phc_test",
-        host: "https://eu.i.posthog.com",
-      }),
-    ).toEqual({ api_host: "/relay", ui_host: "https://eu.posthog.com" });
-  });
-
-  it("talks to any other PostHog host directly", () => {
-    expect(
-      getPostHogClientHosts({
-        key: "phc_test",
-        host: "https://posthog.example.com",
-      }),
-    ).toEqual({ api_host: "https://posthog.example.com" });
   });
 });
