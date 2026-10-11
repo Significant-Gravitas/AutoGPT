@@ -6,7 +6,10 @@ from backend.sdk import APIKeyCredentials, BaseModel, Requests, SchemaField
 SERPLY_API_URL = "https://api.serply.io"
 
 # Upper bound of the USD cost of one uncached search (Micro pack, $2.00 per
-# 1,000 credits). Cached responses are free.
+# 1,000 credits). Cached responses are free, but /v1/search returns no
+# cache-hit indicator in its body or headers, so every call is recorded at
+# this fixed rate on purpose, the same flat per-call estimate firecrawl's
+# scrape and map blocks use.
 SEARCH_COST_USD = 0.002
 
 # The API returns at most 10 organic results per page.
