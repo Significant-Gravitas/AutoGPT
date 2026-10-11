@@ -6148,6 +6148,31 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/credits/trial/resume": {
+      "post": {
+        "tags": ["trials"],
+        "summary": "Resume Trial",
+        "operationId": "postTrialsResumeTrial",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrialStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "No live cancel-pending trial to resume, another plan is active, or the trial is already being updated"
+          },
+          "502": { "description": "Stripe update temporarily unavailable" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/credits/{transaction_key}/refund": {
       "post": {
         "tags": ["v1", "credits"],

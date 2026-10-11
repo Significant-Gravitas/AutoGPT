@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
+import { TrialCanceledDialog } from "./TrialCanceledDialog/TrialCanceledDialog";
 import { TrialOffer } from "./TrialOffer";
 import { TrialStatus } from "./TrialStatus";
 import { useTrialCard } from "./useTrialCard";
@@ -30,8 +31,13 @@ export function TrialCardContent({
     retry,
     isStarting,
     isCanceling,
+    isResuming,
     startTrial,
     cancelTrial,
+    resumeTrial,
+    showCanceledDialog,
+    dismissCanceledDialog,
+    subscribeNow,
   } = controller;
   const isBilling = returnTo === "billing";
   if (isLoading)
@@ -65,6 +71,8 @@ export function TrialCardContent({
           trial={trial}
           isCanceling={isCanceling}
           onCancel={cancelTrial}
+          isResuming={isResuming}
+          onResume={resumeTrial}
         />
       )}
       {error ? (
@@ -72,6 +80,14 @@ export function TrialCardContent({
           {error}
         </p>
       ) : null}
+      <TrialCanceledDialog
+        trial={trial}
+        isOpen={showCanceledDialog}
+        isResuming={isResuming}
+        onResume={resumeTrial}
+        onSubscribe={subscribeNow}
+        onClose={dismissCanceledDialog}
+      />
     </>
   );
   if (isBilling)
