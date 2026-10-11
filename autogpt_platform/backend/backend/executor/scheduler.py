@@ -1024,6 +1024,14 @@ async def _readd_at_reset_turn(
         )
 
 
+def _put_back_onto(
+    newer: "CopilotTurnJobInfo", message: str
+) -> tuple[str, datetime | None]:
+    """A send put back after the user wrote another while it ran: both go,
+    this one first, as the newer job the user set."""
+    return f"{message}\n\n{newer.message}", newer.created_at
+
+
 def _remember_at_reset_cancel(job_id: str) -> None:
     now = datetime.now(tz=timezone.utc)
     with _at_reset_cancels_lock:
@@ -2594,7 +2602,9 @@ class Scheduler(AppService):
         reset; it comes with the chat's own *schedule_id*
         (``at_reset_schedule_id``), so adding it again replaces the earlier
         job. *created_at* is passed only when putting a job back, to keep when
-        it was first set.
+        it was first set; a job put back after the user set a newer one
+        under the same id while it ran doesn't overwrite that one (see
+        ``_put_back_onto``).
         """
         # Mirror add_graph_execution_schedule: validate the expert scope at
         # creation (active, owned, PRIVATE) and pin the schedule to the
@@ -2604,6 +2614,14 @@ class Scheduler(AppService):
             organization_id, team_id = run_async(
                 experts_db().resolve_private_expert_tenancy(user_id, expert_id)
             )
+
+        if purpose != "followup" and schedule_id and created_at is not None:
+            newer = self._newer_at_reset_job(schedule_id, created_at)
+            if newer is not None and purpose == "resume":
+                # Set again while this one ran: the newer resume stands.
+                return newer
+            if newer is not None:
+                message, created_at = _put_back_onto(newer, message)
 
         user_timezone = _resolve_timezone(user_timezone, user_id)
         trigger = _build_trigger(cron=cron, run_at=run_at, user_timezone=user_timezone)
@@ -2650,6 +2668,16 @@ class Scheduler(AppService):
                 job_args, job, title=name or message[:80] or "Follow-up"
             )
         return CopilotTurnJobInfo.from_db(job_args, job)
+
+    def _newer_at_reset_job(
+        self, schedule_id: str, than: datetime
+    ) -> CopilotTurnJobInfo | None:
+        """The job under *schedule_id*, if it was set after *than*."""
+        job = self.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+        info = _job_to_info(job) if job else None
+        if not isinstance(info, CopilotTurnJobInfo) or info.created_at is None:
+            return None
+        return info if info.created_at > than else None
 
     @expose
     def cancel_at_reset_turn(
