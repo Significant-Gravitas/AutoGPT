@@ -121,9 +121,19 @@ describe("LoginPage sign-in guards", () => {
   test("drops leftover admin impersonation before a Google sign-in", async () => {
     ImpersonationState.set("someone-elses-user-id");
     expect(impersonationCookiePresent()).toBe(true);
+    let stateAtProviderRequest: { session: string | null; cookie: boolean } = {
+      session: "unset",
+      cookie: true,
+    };
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
-      .mockImplementation(async () => new Response(JSON.stringify({})));
+      .mockImplementation(async () => {
+        stateAtProviderRequest = {
+          session: ImpersonationState.get(),
+          cookie: impersonationCookiePresent(),
+        };
+        return new Response(JSON.stringify({}));
+      });
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     render(<LoginPage />);
 
@@ -132,7 +142,6 @@ describe("LoginPage sign-in guards", () => {
     );
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
-    expect(ImpersonationState.get()).toBeNull();
-    expect(impersonationCookiePresent()).toBe(false);
+    expect(stateAtProviderRequest).toEqual({ session: null, cookie: false });
   });
 });

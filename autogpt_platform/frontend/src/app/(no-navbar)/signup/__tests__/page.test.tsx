@@ -194,7 +194,19 @@ describe("SignupPage", () => {
     ImpersonationState.set("someone-elses-user-id");
     expect(document.cookie).toContain(`${IMPERSONATION_COOKIE_NAME}=`);
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
-    const fetchSpy = stubProviderFetch();
+    let stateAtProviderRequest: { session: string | null; cookie: string } = {
+      session: "unset",
+      cookie: "unset",
+    };
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => {
+        stateAtProviderRequest = {
+          session: ImpersonationState.get(),
+          cookie: document.cookie,
+        };
+        return new Response(JSON.stringify({}));
+      });
     render(<SignupPage />);
 
     fireEvent.click(
@@ -202,8 +214,10 @@ describe("SignupPage", () => {
     );
 
     await waitFor(() => expect(providerFetchCallOrder(fetchSpy)).toBeDefined());
-    expect(ImpersonationState.get()).toBeNull();
-    expect(document.cookie).not.toContain(`${IMPERSONATION_COOKIE_NAME}=`);
+    expect(stateAtProviderRequest.session).toBeNull();
+    expect(stateAtProviderRequest.cookie).not.toContain(
+      `${IMPERSONATION_COOKIE_NAME}=`,
+    );
   });
 
   test("signs up without a terms checkbox", async () => {
