@@ -11,7 +11,7 @@ from fastapi.routing import APIRoute
 from backend.api.features.schedules.routes import router
 from backend.api.rest_api import app as real_app
 from backend.executor import scheduler
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -54,6 +54,7 @@ EXPECTED_OPERATIONS = {
     ("get", "/api/schedules"): "getV1List execution schedules for a user",
     ("get", "/api/schedules/followups"): "listCopilotFollowupSchedules",
     ("delete", "/api/schedules/{schedule_id}"): "deleteV1Delete execution schedule",
+    ("patch", "/api/schedules/{schedule_id}"): "patchV1Update execution schedule",
 }
 
 
@@ -240,6 +241,21 @@ def test_delete_schedule_maps_not_found_to_404(
     )
 
     response = client.delete("/schedules/missing")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "error", [NotFoundError("gone"), NotAuthorizedError("not yours")]
+)
+def test_update_schedule_hides_other_users_schedules_behind_404(
+    mocker: pytest_mock.MockFixture, error: Exception
+) -> None:
+    """A schedule someone else owns must look exactly like a missing one, so
+    ids can't be probed by editing them."""
+    _patch_scheduler(mocker, update_execution_schedule=AsyncMock(side_effect=error))
+
+    response = client.patch("/schedules/sched-1", json={"cron": "0 9 * * 1-5"})
 
     assert response.status_code == 404
 

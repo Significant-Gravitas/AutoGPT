@@ -15,12 +15,14 @@ type Props = {
   graphId: string;
   schedule: GraphExecutionJobInfo;
   triggerClassName?: string;
+  iconOnly?: boolean;
 };
 
 export function EditScheduleModal({
   graphId,
   schedule,
   triggerClassName,
+  iconOnly = false,
 }: Props) {
   const {
     isOpen,
@@ -36,7 +38,7 @@ export function EditScheduleModal({
     errors,
     repeatOptions,
     dayItems,
-    mutateAsync,
+    handleSave,
     isPending,
   } = useEditScheduleModal(graphId, schedule);
 
@@ -47,13 +49,19 @@ export function EditScheduleModal({
       styling={{ maxWidth: "22rem" }}
     >
       <Dialog.Trigger>
-        <Button
-          variant="ghost"
-          size="small"
-          className={triggerClassName ?? "absolute -right-2 -top-2"}
-        >
-          <Icon icon={PencilEdit02Icon} className="size-4" /> Edit schedule
-        </Button>
+        {iconOnly ? (
+          <Button variant="icon" size="icon" aria-label="Edit schedule">
+            <Icon icon={PencilEdit02Icon} size={18} className="text-zinc-700" />
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="small"
+            className={triggerClassName ?? "absolute -right-2 -top-2"}
+          >
+            <Icon icon={PencilEdit02Icon} className="size-4" /> Edit schedule
+          </Button>
+        )}
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="flex flex-col gap-6">
@@ -101,7 +109,7 @@ export function EditScheduleModal({
             <Button
               variant="primary"
               size="small"
-              onClick={() => mutateAsync()}
+              onClick={handleSave}
               loading={isPending}
               className="min-w-32"
             >

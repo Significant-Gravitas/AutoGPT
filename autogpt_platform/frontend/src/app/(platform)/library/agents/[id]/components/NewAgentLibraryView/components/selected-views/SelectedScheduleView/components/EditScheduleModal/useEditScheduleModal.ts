@@ -1,10 +1,11 @@
 "use client";
 
 import { getGetV1ListGraphExecutionsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { usePatchV1UpdateExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
   parseCronToForm,
@@ -63,47 +64,37 @@ export function useEditScheduleModal(
     return `${minute} ${hour} * * *`;
   }
 
-  const { mutateAsync, isPending } = useMutation({
-    mutationKey: ["patchSchedule", schedule.id],
-    mutationFn: async () => {
-      const errorsNow = validateSchedule({ scheduleName: name, time });
-      setErrors(errorsNow);
-      if (Object.keys(errorsNow).length > 0) throw new Error("Invalid form");
+  const { mutate: updateSchedule, isPending } =
+    usePatchV1UpdateExecutionSchedule({
+      mutation: {
+        onSuccess: async () => {
+          invalidateAllScheduleQueries(queryClient, graphId);
+          const runsKey = getGetV1ListGraphExecutionsQueryKey(graphId);
+          await queryClient.invalidateQueries({ queryKey: runsKey });
+          setIsOpen(false);
+        },
+        onError: (error) => {
+          toast({
+            title: "Failed to update schedule",
+            description:
+              error instanceof Error
+                ? error.message
+                : "An unexpected error occurred.",
+            variant: "destructive",
+          });
+        },
+      },
+    });
 
-      const cron = humanizeToCron();
-      const res = await fetch(`/api/schedules/${schedule.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, cron }),
-      });
-      if (!res.ok) {
-        let message = "Failed to update schedule";
-        try {
-          const data = await res.json();
-          message = data?.message || data?.detail || message;
-        } catch {
-          try {
-            message = await res.text();
-          } catch {}
-        }
-        throw new Error(message);
-      }
-      return res.json();
-    },
-    onSuccess: async () => {
-      invalidateAllScheduleQueries(queryClient, graphId);
-      const runsKey = getGetV1ListGraphExecutionsQueryKey(graphId);
-      await queryClient.invalidateQueries({ queryKey: runsKey });
-      setIsOpen(false);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "❌ Failed to update schedule",
-        description: error?.message || "An unexpected error occurred.",
-        variant: "destructive",
-      });
-    },
-  });
+  function handleSave() {
+    const errorsNow = validateSchedule({ scheduleName: name, time });
+    setErrors(errorsNow);
+    if (Object.keys(errorsNow).length > 0) return;
+    updateSchedule({
+      scheduleId: schedule.id,
+      data: { name, cron: humanizeToCron() },
+    });
+  }
 
   return {
     isOpen,
@@ -119,7 +110,7 @@ export function useEditScheduleModal(
     errors,
     repeatOptions,
     dayItems,
-    mutateAsync,
+    handleSave,
     isPending,
   } as const;
 }

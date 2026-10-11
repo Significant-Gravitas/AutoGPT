@@ -16,6 +16,7 @@ from backend.executor.scheduler import (
 )
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
+from backend.util.exceptions import NotAuthorizedError
 from backend.util.test import SpinTestServer
 
 
@@ -95,6 +96,110 @@ async def test_paused_schedule_excluded_unless_include_paused(server: SpinTestSe
         graph_id=test_graph.id, user_id=test_user.id
     )
     assert [s.id for s in active_after_resume] == [schedule.id]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_schedule_changes_timing_and_inputs_in_place(
+    server: SpinTestServer,
+):
+    """#15281: editing a schedule rewrites its cron, timezone, inputs and name
+    on the same job, and the next run moves to the new time."""
+    await db.connect()
+    test_user = await create_test_user()
+    test_graph = await server.agent_server.test_create_graph(
+        create_graph=CreateGraph(graph=create_test_graph()),
+        user_id=test_user.id,
+    )
+    scheduler = get_scheduler_client()
+    schedule = await scheduler.add_execution_schedule(
+        graph_id=test_graph.id,
+        user_id=test_user.id,
+        graph_version=1,
+        cron="0 9 * * 1-5",
+        input_data={"input": "data"},
+        input_credentials={},
+        name="Weekday report",
+        user_timezone="UTC",
+    )
+
+    try:
+        await scheduler.update_execution_schedule(
+            schedule_id=schedule.id,
+            user_id=test_user.id,
+            name="Evening report",
+            cron="30 18 * * 1-5",
+            user_timezone="America/New_York",
+            input_data={"input": "changed"},
+        )
+
+        [stored] = await scheduler.get_execution_schedules(test_graph.id, test_user.id)
+        assert stored.id == schedule.id
+        assert (stored.name, stored.cron, stored.timezone) == (
+            "Evening report",
+            "30 18 * * 1-5",
+            "America/New_York",
+        )
+        assert stored.input_data == {"input": "changed"}
+        next_run = datetime.fromisoformat(stored.next_run_time).astimezone(
+            pytz.timezone("America/New_York")
+        )
+        assert (next_run.hour, next_run.minute) == (18, 30)
+        assert next_run.weekday() < 5
+    finally:
+        await scheduler.delete_schedule(schedule.id, user_id=test_user.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_schedule_is_owner_only_and_all_or_nothing(
+    server: SpinTestServer,
+):
+    """Another user can't edit the schedule, a bad cron changes nothing (not
+    even the name sent with it), and editing a paused schedule keeps it
+    paused instead of silently re-arming it."""
+    await db.connect()
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    test_graph = await server.agent_server.test_create_graph(
+        create_graph=CreateGraph(graph=create_test_graph()),
+        user_id=owner.id,
+    )
+    scheduler = get_scheduler_client()
+    schedule = await scheduler.add_execution_schedule(
+        graph_id=test_graph.id,
+        user_id=owner.id,
+        graph_version=1,
+        cron="0 9 * * 1-5",
+        input_data={"input": "data"},
+        input_credentials={},
+        name="Weekday report",
+        user_timezone="UTC",
+    )
+
+    try:
+        with pytest.raises(NotAuthorizedError):
+            await scheduler.update_execution_schedule(
+                schedule_id=schedule.id, user_id=other.id, cron="0 1 * * *"
+            )
+        with pytest.raises(ValueError):
+            await scheduler.update_execution_schedule(
+                schedule_id=schedule.id,
+                user_id=owner.id,
+                name="Renamed",
+                cron="not a cron",
+            )
+        [stored] = await scheduler.get_execution_schedules(test_graph.id, owner.id)
+        assert (stored.name, stored.cron) == ("Weekday report", "0 9 * * 1-5")
+
+        assert await scheduler.pause_schedule(schedule.id, user_id=owner.id)
+        await scheduler.update_execution_schedule(
+            schedule_id=schedule.id, user_id=owner.id, cron="0 7 * * *"
+        )
+        [paused] = await scheduler.get_execution_schedules(
+            test_graph.id, owner.id, include_paused=True
+        )
+        assert (paused.cron, paused.next_run_time) == ("0 7 * * *", "")
+    finally:
+        await scheduler.delete_schedule(schedule.id, user_id=owner.id)
 
 
 # ---------------------------------------------------------------------------
