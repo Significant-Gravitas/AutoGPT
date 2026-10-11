@@ -115,10 +115,14 @@ async def access_token(client: AsyncClient, bearer: str) -> str:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("reset_overrides", [False, True])
 async def test_native_email_login_renewal_and_signout_revoke_backend_access(
     auth_service: tuple[AsyncClient, str],
     monkeypatch: pytest.MonkeyPatch,
+    reset_overrides: bool,
 ) -> None:
+    if reset_overrides:
+        monkeypatch.setattr(app, "dependency_overrides", {})
     client, prefix = auth_service
     bearer = await sign_in_native(client, f"{prefix}@example.test")
     token = await access_token(client, bearer)

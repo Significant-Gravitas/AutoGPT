@@ -2,9 +2,7 @@ import asyncio
 import logging
 from typing import Any
 
-from autogpt_libs.auth.jwt_utils import bearer_jwt_auth, get_jwt_payload
-from fastapi import HTTPException, Security
-from fastapi.security import HTTPAuthorizationCredentials
+from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from backend.data.db_accessors import auth_session_db
@@ -18,14 +16,6 @@ class SessionTokenClaims(BaseModel):
 
     sub: str = Field(min_length=1, max_length=128)
     sid: str = Field(min_length=1, max_length=128)
-
-
-async def get_session_bound_jwt_payload(
-    credentials: HTTPAuthorizationCredentials | None = Security(bearer_jwt_auth),
-) -> dict[str, Any]:
-    payload = await get_jwt_payload(credentials)
-    await require_active_auth_session(payload)
-    return payload
 
 
 async def require_active_auth_session(payload: dict[str, Any]) -> None:

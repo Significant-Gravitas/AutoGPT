@@ -1,10 +1,11 @@
 import asyncio
 import logging
 import threading
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Annotated, Any
 
 import jwt
-from fastapi import HTTPException, Security
+from fastapi import HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .config import get_settings
@@ -36,7 +37,10 @@ _jwks_client_lock = threading.Lock()
 
 
 async def get_jwt_payload(
-    credentials: HTTPAuthorizationCredentials | None = Security(bearer_jwt_auth),
+    request: Request,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Security(bearer_jwt_auth)
+    ] = None,
 ) -> dict[str, Any]:
     """
     Extract and validate JWT payload from HTTP Authorization header.
@@ -56,9 +60,15 @@ async def get_jwt_payload(
     try:
         payload = await parse_jwt_token_async(credentials.credentials)
         logger.debug("Token decoded successfully")
-        return payload
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e)) from e
+
+    validator: Callable[[dict[str, Any]], Awaitable[None]] | None = getattr(
+        request.app.state, "jwt_payload_validator", None
+    )
+    if validator is not None:
+        await validator(payload)
+    return payload
 
 
 async def parse_jwt_token_async(
