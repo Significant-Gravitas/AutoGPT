@@ -29,7 +29,24 @@ export const ENV_CONFIG = {
 // Get environment config based on K6_ENVIRONMENT variable (default: DEV)
 export function getEnvironmentConfig() {
   const env = __ENV.K6_ENVIRONMENT || "DEV";
+  if (env === "PREVIEW") {
+    return getPreviewConfig(__ENV.PR_NUMBER);
+  }
   return ENV_CONFIG[env];
+}
+
+// K6_ENVIRONMENT=PREVIEW PR_NUMBER=<n> targets the `!deploy` preview of PR <n>.
+export function getPreviewConfig(prNumber) {
+  if (!/^\d+$/.test(prNumber || "")) {
+    throw new Error(
+      "K6_ENVIRONMENT=PREVIEW needs PR_NUMBER=<pull request number>",
+    );
+  }
+  return {
+    API_BASE_URL: `https://pr-${prNumber}-server.agpt.co`,
+    BUILDER_BASE_URL: `https://autogpt-pr-${prNumber}.vercel.app`,
+    WS_BASE_URL: `wss://pr-${prNumber}-ws.agpt.co`,
+  };
 }
 
 // Authentication configuration
