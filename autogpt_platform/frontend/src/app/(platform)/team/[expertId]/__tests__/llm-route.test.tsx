@@ -301,8 +301,11 @@ describe("an expert's AI connection", () => {
     expect(
       await within(section).findByText(/ChatGPT connection missing/),
     ).toBeDefined();
-    expect(within(section).getByRole("combobox").textContent).toContain(
-      "ChatGPT · not connected",
+    const select = within(section).getByRole("combobox");
+    expect(select.textContent).toContain("ChatGPT · not connected");
+    const noteId = select.getAttribute("aria-describedby");
+    expect(noteId ? document.getElementById(noteId)?.textContent : "").toMatch(
+      /ChatGPT connection missing/,
     );
   });
 

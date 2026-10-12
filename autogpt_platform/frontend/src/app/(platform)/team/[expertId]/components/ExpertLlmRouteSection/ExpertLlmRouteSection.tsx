@@ -16,6 +16,8 @@ interface Props {
 export function ExpertLlmRouteSection({ expert }: Props) {
   const { value, options, note, isLoading, isSaving, selectRoute } =
     useExpertLlmRouteSection({ expert });
+  const selectId = `expert-${expert.id}-llm-route`;
+  const noteId = `${selectId}-note`;
 
   return (
     <SettingsGroup title="AI connection" label={`${expert.name} AI connection`}>
@@ -24,9 +26,10 @@ export function ExpertLlmRouteSection({ expert }: Props) {
         description={`Where ${expert.name}'s new threads, routines and follow-ups run. Existing threads keep theirs.`}
         control={
           <Select
-            id={`expert-${expert.id}-llm-route`}
+            id={selectId}
             label="AI connection"
             hideLabel
+            aria-describedby={noteId}
             size="small"
             value={value}
             options={options}
@@ -37,6 +40,7 @@ export function ExpertLlmRouteSection({ expert }: Props) {
         }
       >
         <Text
+          id={noteId}
           variant="small"
           tone={note.warning ? undefined : "muted"}
           className={cn("mt-1", note.warning && "text-amber-700")}
