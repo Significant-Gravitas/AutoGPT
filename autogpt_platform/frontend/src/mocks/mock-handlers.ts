@@ -76,8 +76,8 @@ export const mockHandlers = [
   ...getSkillsMock(),
   ...getStoreMock(),
   ...getWorkspaceMock(),
-  // The WebSocket client gets its token from Better Auth's token route.
-  http.get("*/api/auth/token", () =>
-    HttpResponse.json({ token: "test-token" }),
-  ),
+  // No session token: page tests run without a live WebSocket (the client
+  // treats a 401 as signed out and doesn't connect). Tests that need a
+  // socket stub the token themselves.
+  http.get("*/api/auth/token", () => new HttpResponse(null, { status: 401 })),
 ];
