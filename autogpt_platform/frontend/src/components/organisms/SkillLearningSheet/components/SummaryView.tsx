@@ -37,7 +37,8 @@ export function SummaryView({
   onEdit,
   onReport,
 }: Props) {
-  const isCurrent = version?.id === detail.current_version?.id;
+  const isCurrent =
+    version != null && version.id === detail.current_version?.id;
   const badgeState = version && !isCurrent ? version.state : detail.state;
   const badgeLabel =
     version && !isCurrent ? version.state_label : detail.state_label;
@@ -165,9 +166,11 @@ export function SummaryView({
             size="small"
             disabled={isBusy || !isCurrent}
             title={
-              isCurrent
-                ? undefined
-                : "Editing starts from the current version. Restore this version first to build on it."
+              !version
+                ? "Editing is available after a version is published."
+                : isCurrent
+                  ? undefined
+                  : "Editing starts from the current version. Restore this version first to build on it."
             }
             onClick={onEdit}
           >
