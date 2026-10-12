@@ -1,7 +1,8 @@
+import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { http, HttpResponse } from "msw";
 import { ArtifactPanel } from "./ArtifactPanel";
-import { useCopilotUIStore } from "../../store";
+import { DEFAULT_ARTIFACT_PANEL_WIDTH, useCopilotUIStore } from "../../store";
 import type { ArtifactRef } from "../../store";
 
 const PROXY_BASE = "/api/proxy/api/workspace/files";
@@ -19,6 +20,7 @@ function makeArtifact(overrides?: Partial<ArtifactRef>): ArtifactRef {
 
 function openPanelWith(artifact: ArtifactRef) {
   useCopilotUIStore.setState({
+    artifactPanelWidth: DEFAULT_ARTIFACT_PANEL_WIDTH,
     artifactPanel: {
       isOpen: true,
       activeArtifact: artifact,
@@ -41,18 +43,20 @@ const meta: Meta<typeof ArtifactPanel> = {
     docs: {
       description: {
         component:
-          "Side panel for previewing workspace artifacts. Supports resize, navigation history, and a collapsed context rail. Bug: panel auto-opens on chat switch instead of staying collapsed.",
+          "Rounded artifact preview with file actions, fullscreen, resize, and navigation history.",
       },
     },
   },
   decorators: [
     (Story) => (
-      <div className="flex h-[600px] w-full">
-        <div className="flex-1 bg-zinc-50 p-8">
-          <p className="text-sm text-zinc-500">Chat area</p>
+      <TooltipProvider>
+        <div className="flex h-[800px] w-full bg-sidebar">
+          <div className="flex-1 bg-zinc-50 p-8">
+            <p className="text-sm text-zinc-500">Chat area</p>
+          </div>
+          <Story />
         </div>
-        <Story />
-      </div>
+      </TooltipProvider>
     ),
   ],
 };
@@ -112,7 +116,7 @@ export const OpenWithHTMLArtifact: Story = {
 };
 
 export const OpenWithImageArtifact: Story = {
-  name: "Open — Image (Bug: No Loading State)",
+  name: "Open — Image",
   decorators: [
     (Story) => {
       openPanelWith(
@@ -131,7 +135,7 @@ export const OpenWithImageArtifact: Story = {
       handlers: [
         http.get(`${PROXY_BASE}/img-panel/download`, () => {
           return HttpResponse.text(
-            '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="300"><rect width="500" height="300" fill="#dbeafe"/><text x="250" y="150" text-anchor="middle" fill="#1e40af" font-size="20">Image Preview (no skeleton)</text></svg>',
+            '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="300"><rect width="500" height="300" fill="#dbeafe"/><text x="250" y="150" text-anchor="middle" fill="#1e40af" font-size="20">Image preview</text></svg>',
             { headers: { "Content-Type": "image/svg+xml" } },
           );
         }),
@@ -140,7 +144,7 @@ export const OpenWithImageArtifact: Story = {
     docs: {
       description: {
         story:
-          "**BUG:** Image artifacts render with a bare `<img>` tag — no loading skeleton or error handling. Compare with text/HTML artifacts which show a proper skeleton while loading.",
+          "Image artifacts show a skeleton while loading and a retry action if loading fails.",
       },
     },
   },
@@ -205,4 +209,29 @@ export const Closed: Story = {
       },
     },
   },
+};
+
+export const NarrowWithLongTitle: Story = {
+  ...OpenWithHTMLArtifact,
+  name: "Narrow — Long title and view controls",
+  args: { sessionId: "storybook-session" },
+  decorators: [
+    (Story) => {
+      openPanelWith(
+        makeArtifact({
+          id: "html-panel",
+          title: "Daily journal September through December 2026.html",
+          sourceUrl: `${PROXY_BASE}/html-panel/download`,
+        }),
+      );
+      useCopilotUIStore.setState({ artifactPanelWidth: 400 });
+      return <Story />;
+    },
+  ],
+};
+
+export const Mobile: Story = {
+  ...OpenWithHTMLArtifact,
+  name: "Mobile — Preview drawer",
+  args: { mobile: true },
 };

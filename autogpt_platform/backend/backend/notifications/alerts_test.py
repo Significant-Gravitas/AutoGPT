@@ -97,9 +97,10 @@ async def test_the_cta_verb_is_the_fix_not_view_dashboard():
 
     assert built is not None
     assert built.data.primary.cta_label == "Reconnect Gmail"
+    assert built.data.primary.preheader == AUTH.preheader
+    assert "2 scheduled runs have been skipped" in built.data.primary.body
     assert (
-        built.data.primary.subject
-        == "Invoice Chaser is stuck — Gmail needs a reconnect"
+        built.data.primary.subject == "Invoice Chaser is stuck: Gmail needs a reconnect"
     )
 
 
@@ -169,3 +170,18 @@ def test_the_debounce_and_dedupe_windows_match_the_design():
     assert ALERT_DEBOUNCE == timedelta(minutes=10)
     assert ALERT_DEDUPE_WINDOW == timedelta(hours=24)
     assert MAX_ALERT_EMAILS_PER_DAY == 2
+
+
+def test_alert_copy_names_workflows_and_uses_plain_punctuation():
+    assert AUTH.subject_line == "Invoice Chaser is stuck: Gmail needs a reconnect"
+    assert "4 scheduled workflows would stop" in LOW.body
+    for cause in (AUTH, LOW, ZERO):
+        assert "—" not in cause.subject_line
+        assert "—" not in cause.body
+        assert "–" not in cause.body
+
+
+def test_alert_copy_preserves_customer_workflow_names():
+    cause = AUTH.model_copy(update={"agent": "Invoices — EU"})
+    assert cause.subject_line == "Invoices — EU is stuck: Gmail needs a reconnect"
+    assert "Invoices — EU" in cause.body

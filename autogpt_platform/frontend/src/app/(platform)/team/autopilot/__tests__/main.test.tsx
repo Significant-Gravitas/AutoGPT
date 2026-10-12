@@ -1,6 +1,6 @@
 import { getListExpertsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
-  getGetV2GetLibraryAgentMockHandler200,
+  getGetV2GetLibraryAgentsByIdsMockHandler200,
   getGetV2ListLibraryAgentsMockHandler200,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
@@ -198,7 +198,7 @@ beforeEach(() => {
     getGetV2ListLibraryAgentsMockHandler200(
       libraryResponse([mariasAgent, freeAgent, strayAgent]),
     ),
-    getGetV2GetLibraryAgentMockHandler200(freeAgent),
+    getGetV2GetLibraryAgentsByIdsMockHandler200([freeAgent, strayAgent]),
     getListCopilotSkillsMockHandler200(librarySkills),
   );
 });
@@ -264,7 +264,7 @@ describe("AutopilotPage", () => {
       within(rows[0])
         .getByRole("link", { name: "Ask about this workflow" })
         .getAttribute("href"),
-    ).toContain("/copilot?autosubmit=true");
+    ).toContain("/home?autosubmit=true");
   });
 
   test("keeps loading library pages so a second-page workflow still counts as Otto's", async () => {
@@ -293,6 +293,62 @@ describe("AutopilotPage", () => {
     expect(await screen.findByText("Nobody's Job")).toBeDefined();
     expect(pagesRequested).toEqual(["1", "2"]);
   });
+
+  test("loads every workflow card's details in a few batched requests, not one per card", async () => {
+    // A user with a big library: one request per card sent 205 at once.
+    const agents = Array.from({ length: 120 }, (_, i) =>
+      makeLibraryAgent({
+        id: `lib-${String(i).padStart(3, "0")}`,
+        graph_id: `graph-many-${i}`,
+        name: `Workflow ${i}`,
+        execution_count: i,
+      }),
+    );
+    const singleReads: string[] = [];
+    const batchSizes: number[] = [];
+    function countLibraryReads({ request }: { request: Request }) {
+      const url = new URL(request.url);
+      if (url.pathname.endsWith("/api/library/agents/batch")) {
+        batchSizes.push(url.searchParams.getAll("ids").length);
+      } else if (/\/api\/library\/agents\/lib-[^/]+$/.test(url.pathname)) {
+        singleReads.push(url.pathname);
+      }
+    }
+    server.use(
+      getGetV2ListLibraryAgentsMockHandler200({
+        ...libraryResponse(agents),
+        pagination: {
+          total_items: agents.length,
+          total_pages: 1,
+          current_page: 1,
+          page_size: agents.length,
+        },
+      } as LibraryAgentResponse),
+      getGetV2GetLibraryAgentsByIdsMockHandler200(({ request }) => {
+        const ids = new URL(request.url).searchParams.getAll("ids");
+        return agents.filter((agent) => ids.includes(agent.id));
+      }),
+    );
+    server.events.on("request:start", countLibraryReads);
+
+    try {
+      render(<AutopilotPage />);
+      await screen.findByRole("heading", { name: "Otto" });
+      await openTab("Workflows");
+
+      expect(await screen.findAllByTestId("expert-workflow-row")).toHaveLength(
+        120,
+      );
+      const lastCard = (await screen.findByText("Workflow 119")).closest(
+        "[data-testid='expert-workflow-row']",
+      ) as HTMLElement;
+      expect(await within(lastCard).findByText(/119 runs/)).toBeDefined();
+      expect(batchSizes.sort((a, b) => a - b)).toEqual([20, 50, 50]);
+      expect(singleReads).toEqual([]);
+    } finally {
+      server.events.removeListener("request:start", countLibraryReads);
+    }
+  }, 30_000);
 
   test("lists the library skills no expert has claimed as Otto's", async () => {
     render(<AutopilotPage />);

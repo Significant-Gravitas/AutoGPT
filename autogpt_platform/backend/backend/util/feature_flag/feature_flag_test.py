@@ -8,6 +8,7 @@ import pytest
 from fastapi import HTTPException
 from ldclient import Context, LDClient
 from ldclient.config import Config
+from ldclient.evaluation import EvaluationDetail
 from ldclient.integrations.test_data import TestData
 
 import backend
@@ -39,7 +40,7 @@ def ld_client(mocker):
 
 @pytest.mark.asyncio
 async def test_feature_flag_enabled(ld_client):
-    ld_client.variation.return_value = True
+    ld_client.variation_detail.return_value = served(True)
 
     @feature_flag("test-flag")
     async def test_function(user_id: str):
@@ -47,12 +48,12 @@ async def test_feature_flag_enabled(ld_client):
 
     result = await test_function(user_id="test-user")
     assert result == "success"
-    ld_client.variation.assert_called_once()
+    ld_client.variation_detail.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_feature_flag_unauthorized_response(ld_client):
-    ld_client.variation.return_value = False
+    ld_client.variation_detail.return_value = served(False)
 
     @feature_flag("test-flag")
     async def test_function(user_id: str):
@@ -65,23 +66,23 @@ async def test_feature_flag_unauthorized_response(ld_client):
 
 def test_mock_flag_variation(ld_client):
     with mock_flag_variation("test-flag", True):
-        assert ld_client.variation("test-flag", None, False) is True
+        assert ld_client.variation_detail("test-flag", None, False).value is True
 
     with mock_flag_variation("test-flag", False):
-        assert ld_client.variation("test-flag", None, True) is False
+        assert ld_client.variation_detail("test-flag", None, True).value is False
 
 
 @pytest.mark.asyncio
 async def test_is_feature_enabled(ld_client):
     """Test the is_feature_enabled helper function."""
     ld_client.is_initialized.return_value = True
-    ld_client.variation.return_value = True
+    ld_client.variation_detail.return_value = served(True)
 
     result = await is_feature_enabled(Flag.AUTOMOD, "user123", default=False)
     assert result is True
 
-    ld_client.variation.assert_called_once()
-    call_args = ld_client.variation.call_args
+    ld_client.variation_detail.assert_called_once()
+    call_args = ld_client.variation_detail.call_args
     assert call_args[0][0] == "AutoMod"  # flag_key
     assert call_args[0][2] is False  # default value
 
@@ -94,7 +95,7 @@ async def test_is_feature_enabled_not_initialized(ld_client):
     result = await is_feature_enabled(Flag.AUTOMOD, "user123", default=True)
     assert result is True  # Should return default
 
-    ld_client.variation.assert_not_called()
+    ld_client.variation_detail.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -403,13 +404,13 @@ class TestEnvOverrideWiring:
             return "success"
 
         assert await test_function(user_id="test-user") == "success"
-        ld_client.variation.assert_not_called()
+        ld_client.variation_detail.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_decorator_per_flag_false_wins_over_launchdarkly(
         self, ld_client, monkeypatch: pytest.MonkeyPatch
     ):
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
         monkeypatch.setenv("FORCE_FLAG_TEST_FLAG", "false")
 
         @feature_flag("test-flag")
@@ -419,7 +420,7 @@ class TestEnvOverrideWiring:
         with pytest.raises(HTTPException) as exc_info:
             await test_function(user_id="test-user")
         assert exc_info.value.status_code == 404
-        ld_client.variation.assert_not_called()
+        ld_client.variation_detail.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_dependency_force_all_wins_over_unconfigured_sdk(
@@ -456,7 +457,7 @@ class TestEnvOverrideWiring:
         explicit passthrough every request to a disabled route files an
         ERROR and buries real flag-evaluation failures.
         """
-        ld_client.variation.return_value = False
+        ld_client.variation_detail.return_value = served(False)
 
         @feature_flag("test-flag")
         async def test_function(user_id: str):
@@ -496,7 +497,7 @@ class TestEnvOverrideWiring:
         """
         mocker.patch("backend.util.feature_flag.is_configured", return_value=True)
         ld_client.is_initialized.return_value = True
-        ld_client.variation.return_value = False
+        ld_client.variation_detail.return_value = served(False)
 
         check_feature_flag = create_feature_flag_dependency(Flag.AUTOMOD)
         with pytest.raises(HTTPException) as exc_info:
@@ -879,7 +880,7 @@ class TestEvaluateFeatureFlag:
     async def test_a_successful_evaluation_is_authoritative(
         self, ld_client, user_context
     ):
-        ld_client.variation.return_value = False
+        ld_client.variation_detail.return_value = served(False)
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, True)
 
     @pytest.mark.asyncio
@@ -891,7 +892,7 @@ class TestEvaluateFeatureFlag:
     async def test_an_evaluation_that_raises_is_not(self, ld_client, user_context):
         """The regression this class exists for: a LIVE client can still fail
         to produce a value, and that must not read as a real "off"."""
-        ld_client.variation.side_effect = Exception("evaluation exploded")
+        ld_client.variation_detail.side_effect = Exception("evaluation exploded")
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
 
     @pytest.mark.asyncio
@@ -905,16 +906,16 @@ class TestEvaluateFeatureFlag:
             "backend.data.user.get_auth_user_flag_fields",
             new=mocker.AsyncMock(side_effect=ConnectionError("database unreachable")),
         )
-        ld_client.variation.return_value = False
+        ld_client.variation_detail.return_value = served(False)
 
         result = await evaluate_feature_flag(Flag.HIRE_EXPERTS, str(uuid.uuid4()))
 
         assert result == (False, False)
-        ld_client.variation.assert_called_once()
+        ld_client.variation_detail.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_a_non_boolean_flag_value_is_not(self, ld_client, user_context):
-        ld_client.variation.return_value = {"some": "object"}
+        ld_client.variation_detail.return_value = served({"some": "object"})
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
 
     @pytest.mark.asyncio
@@ -934,9 +935,9 @@ class TestEvaluateFeatureFlag:
         self, ld_client, user_context
     ):
         """The refactor must not change what existing callers see."""
-        ld_client.variation.return_value = True
+        ld_client.variation_detail.return_value = served(True)
         assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
-        ld_client.variation.side_effect = Exception("boom")
+        ld_client.variation_detail.side_effect = Exception("boom")
         assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is False
 
 
@@ -957,13 +958,13 @@ class TestRequestAttributes:
             "backend.util.feature_flag._fetch_user_context_status",
             return_value=(cached, True),
         )
-        ld_client.variation.return_value = {"version": "v1"}
+        ld_client.variation_detail.return_value = served({"version": "v1"})
 
         await feature_flag_module.get_feature_flag_value(
             "card-required-trial-offer", "user-1", None, attributes={"country": "IN"}
         )
 
-        evaluated = ld_client.variation.call_args[0][1]
+        evaluated = ld_client.variation_detail.call_args[0][1]
         assert evaluated.get("country") == "IN"
         assert evaluated.get("email_domain") == "agpt.co"
         assert cached.get("country") is None
@@ -978,7 +979,7 @@ class TestRequestAttributes:
         await feature_flag_module.get_feature_flag_value(
             "f", "user-1", None, attributes={"key": "someone-else", "kind": "org"}
         )
-        evaluated = ld_client.variation.call_args[0][1]
+        evaluated = ld_client.variation_detail.call_args[0][1]
         assert (evaluated.key, evaluated.kind) == ("user-1", "user")
 
     @pytest.mark.asyncio
@@ -1020,3 +1021,8 @@ class TestRequestAttributes:
         finally:
             client.close()
         assert (value == {"version": "v1"}) is offered
+
+
+def served(value):
+    """LaunchDarkly's answer for a flag it has, as its fallthrough serves it."""
+    return EvaluationDetail(value, 0, {"kind": "FALLTHROUGH"})

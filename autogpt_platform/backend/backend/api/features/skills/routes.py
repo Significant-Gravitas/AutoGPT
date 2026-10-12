@@ -87,6 +87,8 @@ async def list_copilot_skills(
             name=s.name,
             description=s.description,
             triggers=list(s.triggers),
+            origin=s.origin,
+            update=s.update,
         )
         for s in skills
     ]

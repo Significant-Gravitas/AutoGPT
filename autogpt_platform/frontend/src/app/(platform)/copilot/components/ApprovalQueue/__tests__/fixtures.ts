@@ -134,6 +134,25 @@ export function shell(id = "shell") {
   });
 }
 
+export function createAgent(id = "agent") {
+  return heldReview({
+    id,
+    tool: "create_agent",
+    mode: "auto",
+    reason: "it creates an agent the user did not ask for.",
+    reasonKind: "supervisor",
+    subject: {
+      kind: "tool",
+      key: "create_agent",
+      name: "Create an agent",
+      effect: "platform",
+      irreversible: false,
+    },
+    chatRules: ["allow", "judge"],
+    headline: { ask: "Create an agent" },
+  });
+}
+
 export function deleteFolder(id: string, folderId: string) {
   return heldReview({
     id,

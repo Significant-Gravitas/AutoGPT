@@ -44,3 +44,8 @@ def test_memory_schedule_rpc_request_schemas_are_constructible() -> None:
     manager = DatabaseManager()
     manager._create_fastapi_endpoint(manager.claim_scope_schedule)
     manager._create_fastapi_endpoint(manager.record_scope_run)
+
+
+def test_the_audience_consumer_can_read_the_opt_out() -> None:
+    assert hasattr(DatabaseManager, "is_marketing_opted_out")
+    assert hasattr(DatabaseManagerAsyncClient, "is_marketing_opted_out")

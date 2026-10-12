@@ -119,3 +119,207 @@ async def test_checkout_history_pagination_has_a_bounded_timeout():
                 "user-1", "cus_test"
             )
     next_page.assert_awaited_once()
+
+
+def _trial_history(**subscription) -> stripe.ListObject:
+    return stripe.ListObject.construct_from(
+        {
+            "data": [
+                {
+                    "id": "sub_trial",
+                    "metadata": {"trial_enrollment_id": "trial-1"},
+                    **subscription,
+                }
+            ],
+            "has_more": False,
+        },
+        "test-key",
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancel_pending_trial_does_not_block_another_plan():
+    with (
+        patch.object(
+            subscription_checkout,
+            "get_subscription_trial",
+            AsyncMock(return_value=MagicMock(id="trial-1", converted_at=None)),
+        ),
+        patch.object(
+            stripe.Subscription,
+            "list_async",
+            AsyncMock(
+                return_value=_trial_history(
+                    status="trialing", cancel_at_period_end=True
+                )
+            ),
+        ),
+    ):
+        await subscription_checkout.ensure_no_unconverted_trial("user-1", "cus_test")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "subscription",
+    [
+        {"status": "trialing", "cancel_at_period_end": False},
+        {"status": "trialing"},
+        {"status": "active", "cancel_at_period_end": True},
+        {"status": "past_due", "cancel_at_period_end": True},
+    ],
+)
+async def test_running_or_unconverted_trial_still_blocks_another_plan(subscription):
+    with (
+        patch.object(
+            subscription_checkout,
+            "get_subscription_trial",
+            AsyncMock(return_value=MagicMock(id="trial-1", converted_at=None)),
+        ),
+        patch.object(
+            stripe.Subscription,
+            "list_async",
+            AsyncMock(return_value=_trial_history(**subscription)),
+        ),
+    ):
+        with pytest.raises(
+            subscription_checkout.SubscriptionCheckoutUnavailable,
+            match="already has a trial subscription",
+        ):
+            await subscription_checkout.ensure_no_unconverted_trial(
+                "user-1", "cus_test"
+            )
+
+
+def _subscriptions(*subscriptions: dict, has_more: bool = False) -> stripe.ListObject:
+    return stripe.ListObject.construct_from(
+        {"data": list(subscriptions), "has_more": has_more}, "test-key"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status", ["active", "trialing", "past_due", "incomplete", "unpaid", "paused"]
+)
+async def test_another_plan_that_has_not_ended_is_live(status):
+    listed = _subscriptions(
+        {"id": "sub_trial", "status": "trialing"}, {"id": "sub_max", "status": status}
+    )
+    with patch.object(
+        stripe.Subscription, "list_async", AsyncMock(return_value=listed)
+    ) as list_async:
+        assert await subscription_checkout.other_plan_is_live("cus_test", "sub_trial")
+    list_async.assert_awaited_once_with(customer="cus_test", status="all", limit=100)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "others",
+    [
+        [],
+        [{"id": "sub_old", "status": "canceled"}],
+        [{"id": "sub_abandoned", "status": "incomplete_expired"}],
+    ],
+    ids=["only-this-one", "canceled", "incomplete-expired"],
+)
+async def test_this_plan_and_ended_plans_are_not_another_live_plan(others):
+    listed = _subscriptions({"id": "sub_trial", "status": "trialing"}, *others)
+    with patch.object(
+        stripe.Subscription, "list_async", AsyncMock(return_value=listed)
+    ):
+        assert not await subscription_checkout.other_plan_is_live(
+            "cus_test", "sub_trial"
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status,has_access",
+    [
+        ("active", True),
+        ("trialing", True),
+        ("incomplete", False),
+        ("past_due", False),
+        ("canceled", False),
+    ],
+)
+async def test_only_an_active_or_trialing_plan_grants_access(status, has_access):
+    """An incomplete plan (a Checkout whose first payment failed or is still
+    pending) grants nothing, so it must not end a trial that still has access."""
+    listed = _subscriptions(
+        {"id": "sub_trial", "status": "trialing"}, {"id": "sub_max", "status": status}
+    )
+    with patch.object(
+        stripe.Subscription, "list_async", AsyncMock(return_value=listed)
+    ):
+        assert (
+            await subscription_checkout.other_plan_has_access("cus_test", "sub_trial")
+            is has_access
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_live_plan_on_a_later_page_is_found():
+    first = _subscriptions({"id": "sub_old", "status": "canceled"}, has_more=True)
+    second = _subscriptions({"id": "sub_max", "status": "active"})
+    with (
+        patch.object(stripe.Subscription, "list_async", AsyncMock(return_value=first)),
+        patch.object(
+            stripe.ListObject, "next_page_async", AsyncMock(return_value=second)
+        ) as next_page,
+    ):
+        assert await subscription_checkout.other_plan_is_live("cus_test", "sub_trial")
+    next_page.assert_awaited_once()
+
+
+def _cancel_pending_trial_and(*others: dict) -> stripe.ListObject:
+    trial = {
+        "id": "sub_trial",
+        "status": "trialing",
+        "cancel_at_period_end": True,
+        "metadata": {"trial_enrollment_id": "trial-1"},
+    }
+    return _subscriptions(*others, trial)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["active", "trialing", "past_due", "incomplete"])
+async def test_cancel_pending_trial_blocks_checkout_while_another_plan_is_live(status):
+    """A plan bought while the trial is cancel-pending ends the trial only once
+    its webhook is handled; a second Checkout before then bills twice."""
+    listed = _cancel_pending_trial_and(
+        {"id": "sub_max", "status": status, "metadata": {}}
+    )
+    with (
+        patch.object(
+            subscription_checkout,
+            "get_subscription_trial",
+            AsyncMock(return_value=MagicMock(id="trial-1", converted_at=None)),
+        ),
+        patch.object(stripe.Subscription, "list_async", AsyncMock(return_value=listed)),
+    ):
+        with pytest.raises(subscription_checkout.AnotherPlanLive) as refused:
+            await subscription_checkout.ensure_no_unconverted_trial(
+                "user-1", "cus_test"
+            )
+
+    assert isinstance(
+        refused.value, subscription_checkout.SubscriptionCheckoutUnavailable
+    )
+    assert str(refused.value) == "Another plan is already active. Manage it in billing."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["canceled", "incomplete_expired"])
+async def test_cancel_pending_trial_ignores_plans_that_ended(status):
+    listed = _cancel_pending_trial_and(
+        {"id": "sub_old", "status": status, "metadata": {}}
+    )
+    with (
+        patch.object(
+            subscription_checkout,
+            "get_subscription_trial",
+            AsyncMock(return_value=MagicMock(id="trial-1", converted_at=None)),
+        ),
+        patch.object(stripe.Subscription, "list_async", AsyncMock(return_value=listed)),
+    ):
+        await subscription_checkout.ensure_no_unconverted_trial("user-1", "cus_test")

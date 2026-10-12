@@ -1,8 +1,9 @@
 """One door for every E2B box: where its egress is pinned.
 
 Every ``AsyncSandbox.create`` and ``.connect`` in the backend goes through
-``create_sandbox`` / ``connect_sandbox`` here; ``e2b_network_test`` fails on
-any that does not.  That is the chokepoint at which a box's network is set:
+``create_sandbox`` / ``connect_sandbox`` here, and a reattach to a running
+command through ``reattach_command``; ``e2b_network_test`` fails on any that
+does not.  That is the chokepoint at which a box's network is set:
 the credential swap proxy (SECRT-2651) that every box will egress through,
 so that the model never holds a real credential and nothing dials out
 around the proxy.
@@ -40,7 +41,7 @@ import logging
 import secrets
 from typing import Any, Literal, Optional, TypeVar, cast
 
-from e2b import AsyncSandbox
+from e2b import AsyncCommandHandle, AsyncSandbox
 from e2b.sandbox.sandbox_api import (
     SandboxEgressProxyOpts,
     SandboxNetworkOpts,
@@ -72,9 +73,11 @@ class EgressOwner(BaseModel):
     """Whose box a connection comes from: what the proxy audits and swaps for.
 
     ``session`` and ``expert`` are CoPilot boxes (``SandboxOwner``); ``block``
-    is a graph execution's, keyed by the user.  *user_id* is whose stored
-    credentials the proxy may swap into this box's requests; ``None`` means
-    none at all.
+    is a graph execution's, keyed by the user.  *user_id* is who the box runs
+    for.  Only a CoPilot box gets that user's credentials swapped in
+    (``swaps``): a block runs a graph someone else may have written, and a
+    marketplace agent must not get to act with the GitHub account of whoever
+    runs it.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -86,6 +89,10 @@ class EgressOwner(BaseModel):
     @property
     def label(self) -> str:
         return f"{self.kind}:{self.id}"
+
+    @property
+    def swaps(self) -> bool:
+        return self.kind != "block" and self.user_id is not None
 
 
 class ProxyCredential(BaseModel):
@@ -209,6 +216,21 @@ async def connect_sandbox(
     return sandbox
 
 
+async def reattach_command(
+    sandbox: AsyncSandbox, pid: int, **kwargs: Any
+) -> AsyncCommandHandle:
+    """Reattach to a process still running on a box the caller already holds.
+
+    Not a box connect: it opens one more stream to the box's own process
+    service, like ``commands.run`` does, on a box that ``create_sandbox`` or
+    ``connect_sandbox`` has already pinned.  It creates nothing and changes no
+    network: the box keeps the egress that create or connect pinned, and
+    there is no credential to rotate.  Every other keyword goes to
+    ``commands.connect``.
+    """
+    return await sandbox.commands.connect(pid, **kwargs)
+
+
 async def kill_sandbox(sandbox: AsyncSandbox) -> None:
     """Kill a box and revoke its proxy credential: the kill for any caller
     that holds the handle.  A kill that raises leaves the credential alone,
@@ -279,6 +301,8 @@ async def _remember(
     record = {
         "owner": owner.label,
         "user_id": owner.user_id,
+        # Absent or false means the proxy swaps nothing for this box.
+        "swaps": owner.swaps,
         "sandbox_id": sandbox_id,
         "secret_sha256": secret_digest(credential.secret),
     }

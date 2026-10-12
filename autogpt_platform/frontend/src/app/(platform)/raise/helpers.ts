@@ -1,17 +1,18 @@
+import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
 import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
+import { legacyCategoryForRole } from "./legacyCategory";
 import { creditsToUsdLabel } from "@/lib/credits";
 import {
   buildVoicePreferences,
   type VoicePickResult,
 } from "@/components/organisms/VoicePicker/helpers";
 import {
-  findRoleOption,
-  isValidCustomRole,
-  normalizeCustomRole,
-} from "./components/RoleStep/helpers";
+  categoryForRole,
+  colorForCategory,
+} from "./components/CategoryStep/helpers";
 
 export type RaiseStep =
-  | "role"
+  | "category"
   | "jobTitle"
   | "name"
   | "avatar"
@@ -23,7 +24,7 @@ export type RaiseStep =
   | "done";
 
 export const STEP_ORDER: RaiseStep[] = [
-  "role",
+  "category",
   "jobTitle",
   "name",
   "avatar",
@@ -61,11 +62,12 @@ export const VOICE_SAMPLES: VoiceSample[] = [
 
 export const RAISE_PROMPTS = {
   greeting: "Hello, I'm Otto. I'll help you create your own AI Expert.",
-  roleQuestion: "First — what should your expert do for you?",
+  categoryQuestion:
+    "First — which area should your expert work in? It sets their color.",
   jobTitleQuestion: "And what's their job title?",
   nameQuestion: "Good pick. What do you want to call them?",
   avatarQuestion: (name: string) =>
-    `Now give ${name || "them"} a face and a color. Shuffle until one feels right, or upload a picture.`,
+    `Here's an avatar for ${name || "your expert"}. Use it, generate another, or upload a picture.`,
   aboutQuestion: (name: string) =>
     `Anything else I should know about ${name || "your expert"}? How they should work, what matters to you — or skip it.`,
   voiceQuestion: (name: string) =>
@@ -87,10 +89,12 @@ export const VOICE_SKIPPED_LABEL = "I'll decide the voice later";
 export interface RaiseDraft {
   step: RaiseStep;
   hasStarted: boolean;
-  role: string | null;
+  // Answers the color and the role too: every category owns one of each.
+  category: ExpertAvatarRequestCategory | null;
+  legacyRole?: string;
+  color: string | null;
   jobTitle: string | null;
   name: string;
-  color: string | null;
   // "" once the user skips, so the question is not asked again on restore.
   avatarUrl: string | null;
   about: string | null;
@@ -103,12 +107,12 @@ export interface RaiseDraft {
 }
 
 export const EMPTY_DRAFT: RaiseDraft = {
-  step: "role",
+  step: "category",
   hasStarted: false,
-  role: null,
+  category: null,
+  color: null,
   jobTitle: null,
   name: "",
-  color: null,
   avatarUrl: null,
   about: null,
   voicePreferences: "",
@@ -125,27 +129,39 @@ export function loadDraft(): RaiseDraft {
   try {
     const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
     if (!raw) return EMPTY_DRAFT;
-    const parsed = JSON.parse(raw) as Omit<Partial<RaiseDraft>, "step"> & {
-      step?: string;
-    };
-    if (parsed.role && parsed.jobTitle == null) {
-      return reopenedAtJobTitle(parsed.role);
-    }
+    const { role, ...parsed } = JSON.parse(raw) as StoredDraft;
+    if (role && !categoryForRole(role)) parsed.legacyRole = role;
+    if (role && parsed.jobTitle == null) return reopenedAtJobTitle(role);
     const step = migrateStep(parsed.step);
-    return backfillSkippedVoice({
+    const draft = backfillSkippedVoice({
       ...EMPTY_DRAFT,
       ...parsed,
       step: isRaiseStep(step) ? step : EMPTY_DRAFT.step,
     });
+    return role ? backfillCategory(draft, role) : draft;
   } catch {
     return EMPTY_DRAFT;
   }
 }
 
+// Earlier builds opened on a role question and stored the answer as `role`.
+type StoredDraft = Omit<Partial<RaiseDraft>, "step"> & {
+  step?: string;
+  role?: string | null;
+};
+
 // A draft written before the job title beat existed has a role and no title.
 // Every later beat waits on the title, so the draft resumes there.
 function reopenedAtJobTitle(role: string): RaiseDraft {
-  return { ...EMPTY_DRAFT, hasStarted: true, role, step: "jobTitle" };
+  return backfillCategory(
+    {
+      ...EMPTY_DRAFT,
+      hasStarted: true,
+      step: "jobTitle",
+      ...(!categoryForRole(role) ? { legacyRole: role } : {}),
+    },
+    role,
+  );
 }
 
 // A draft written by an earlier build recorded a skipped voice as a null
@@ -157,7 +173,22 @@ function reopenedAtJobTitle(role: string): RaiseDraft {
 function migrateStep(step: string | undefined): string | undefined {
   if (step === "kit") return "budget";
   if (step === "color") return "avatar";
+  if (step === "role") return "category";
   return step;
+}
+
+// A draft started on the role question takes the category its role implies,
+// so it never waits on an area it was not asked for. One parked on the area
+// beat, which used to follow the name, moves on to the avatar.
+function backfillCategory(draft: RaiseDraft, role: string): RaiseDraft {
+  if (draft.category !== null) return draft;
+  const category = categoryForRole(role) ?? legacyCategoryForRole(role);
+  return {
+    ...draft,
+    category,
+    color: draft.color ?? colorForCategory(category),
+    step: draft.step === "category" ? "avatar" : draft.step,
+  };
 }
 
 function backfillSkippedVoice(draft: RaiseDraft): RaiseDraft {
@@ -210,20 +241,21 @@ export function isEmptyDraft(draft: RaiseDraft): boolean {
   );
 }
 
-/** `/raise?role=…` from the greeting page's raise door: answers the role
- *  beat exactly as `pickRole` would, so the flow opens on the job title
- *  question instead of asking again for something already chosen. */
+/** `/raise?role=…` from the greeting page's raise door: answers the area
+ *  beat with the role's category exactly as `pickCategory` would, so the flow
+ *  opens on the job title question instead of asking again. */
 export function draftWithPrefilledRole(
   draft: RaiseDraft,
   role: string | null,
 ): RaiseDraft {
   if (!role || !isEmptyDraft(draft)) return draft;
-  const preset = findRoleOption(role);
-  if (!preset && !isValidCustomRole(role)) return draft;
+  const category = categoryForRole(role);
+  if (!category) return draft;
   return {
     ...draft,
     hasStarted: true,
-    role: preset ? preset.id : normalizeCustomRole(role),
+    category,
+    color: colorForCategory(category),
     step: "jobTitle",
   };
 }
