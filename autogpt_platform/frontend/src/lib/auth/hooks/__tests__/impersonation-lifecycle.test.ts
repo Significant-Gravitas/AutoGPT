@@ -103,7 +103,7 @@ afterEach(() => {
 describe("admin impersonation follows the session that chose it", () => {
   it("is dropped, here and in other tabs, when the backend rejects the session", async () => {
     useAuthStore.setState({ user: admin, hasLoadedUser: true });
-    ImpersonationState.set("user-a");
+    ImpersonationState.set("user-a", admin.id);
     expect(getSystemHeaders()).toEqual({ [ACT_AS]: "user-a" });
 
     await validateAs({ user: null, isValid: false });
@@ -115,7 +115,7 @@ describe("admin impersonation follows the session that chose it", () => {
 
   it("is dropped when a session refresh finds no session", async () => {
     useAuthStore.setState({ user: admin, hasLoadedUser: true });
-    ImpersonationState.set("user-a");
+    ImpersonationState.set("user-a", admin.id);
     actions.refreshSession.mockResolvedValue({
       user: null,
       error: "No active session",
@@ -128,7 +128,7 @@ describe("admin impersonation follows the session that chose it", () => {
 
   it("is dropped when the tab finds itself signed in as someone else", async () => {
     useAuthStore.setState({ user: admin, hasLoadedUser: true });
-    ImpersonationState.set("user-a");
+    ImpersonationState.set("user-a", admin.id);
 
     await validateAs({ user: otherUser, isValid: true });
 
@@ -138,7 +138,7 @@ describe("admin impersonation follows the session that chose it", () => {
 
   it("stays while the same admin is still signed in", async () => {
     useAuthStore.setState({ user: admin, hasLoadedUser: true });
-    ImpersonationState.set("user-a");
+    ImpersonationState.set("user-a", admin.id);
 
     await validateAs({ user: { ...admin }, isValid: true });
 
@@ -150,6 +150,7 @@ describe("admin impersonation follows the session that chose it", () => {
     // This tab's own copy; the other tab's sign-in already cleared the
     // shared cookie and announced it.
     ImpersonationSession.set("user-a");
+    ImpersonationSession.setOwner(admin.id);
     expect(getSystemHeaders()).toEqual({ [ACT_AS]: "user-a" });
 
     storageEvent("impersonation-cleared");
@@ -161,6 +162,7 @@ describe("admin impersonation follows the session that chose it", () => {
   it("is dropped from this tab when another tab signs out", async () => {
     await signInTab(admin);
     ImpersonationSession.set("user-a");
+    ImpersonationSession.setOwner(admin.id);
 
     storageEvent("supabase-logout");
 
@@ -169,7 +171,7 @@ describe("admin impersonation follows the session that chose it", () => {
 
   it("is dropped everywhere on an explicit sign-out", async () => {
     await signInTab(admin);
-    ImpersonationState.set("user-a");
+    ImpersonationState.set("user-a", admin.id);
     actions.serverLogout.mockResolvedValue({ success: true });
 
     await useAuthStore.getState().logOut();
@@ -189,6 +191,7 @@ describe("admin impersonation follows the session that chose it", () => {
 
     it("drops it for an account that can't impersonate", async () => {
       ImpersonationSession.set("user-a");
+      ImpersonationSession.setOwner(admin.id);
 
       await signInTab(otherUser);
 
@@ -202,5 +205,106 @@ describe("admin impersonation follows the session that chose it", () => {
 
       expect(getSystemHeaders()).toEqual({});
     });
+  });
+
+  it("is never sent from a restored tab that can't say whose it is", async () => {
+    // A second tab copied the target from the cookie before owners were
+    // recorded, missed the cleanup, and comes back signed in as another admin.
+    ImpersonationSession.set("target-a");
+
+    await signInTab(otherAdmin);
+
+    expect(getSystemHeaders()).toEqual({});
+  });
+
+  it("is dropped when the admin is demoted, even with the same account", async () => {
+    useAuthStore.setState({ user: admin, hasLoadedUser: true });
+    ImpersonationState.set("user-a", admin.id);
+
+    await validateAs({
+      user: { ...admin, role: "authenticated" },
+      isValid: true,
+    });
+
+    expect(useAuthStore.getState().user?.role).toBe("authenticated");
+    expect(getSystemHeaders()).toEqual({});
+  });
+
+  it("is dropped when a tab starts up and finds no session", async () => {
+    ImpersonationState.set("user-a", admin.id);
+    actions.getCurrentUser.mockResolvedValue({ user: null });
+    actions.validateSession.mockResolvedValue({
+      user: null,
+      isValid: false,
+      redirectPath: "/login?next=%2Flibrary",
+    });
+
+    await useAuthStore.getState().initialize({
+      api: { disconnectWebSocket: vi.fn() } as unknown as BackendAPI,
+      router: makeRouter(),
+      path: "/library",
+    });
+
+    expect(getSystemHeaders()).toEqual({});
+  });
+});
+
+describe("signing out", () => {
+  const LOGOUT_SIGNAL = "supabase-logout";
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("tells other tabs only once the server has ended the session", async () => {
+    await signInTab(admin);
+    let finishServerLogout!: () => void;
+    actions.serverLogout.mockReturnValue(
+      new Promise<{ success: boolean }>((resolve) => {
+        finishServerLogout = () => resolve({ success: true });
+      }),
+    );
+
+    const loggingOut = useAuthStore.getState().logOut();
+    await vi.waitFor(() => expect(actions.serverLogout).toHaveBeenCalled());
+    // A tab told now would reload into the still-live session.
+    expect(localStorage.getItem(LOGOUT_SIGNAL)).toBeNull();
+
+    finishServerLogout();
+    await loggingOut;
+
+    expect(localStorage.getItem(LOGOUT_SIGNAL)).not.toBeNull();
+    expect(useAuthStore.getState().user).toBeNull();
+  });
+
+  it("keeps the user signed in, and tells no other tab, when the sign-out never reaches the server", async () => {
+    await signInTab(admin);
+    vi.useFakeTimers();
+    actions.serverLogout.mockRejectedValue(new TypeError("Failed to fetch"));
+
+    const loggingOut = useAuthStore.getState().logOut();
+    const outcome = loggingOut.catch((error: unknown) => error);
+    await vi.runAllTimersAsync();
+
+    expect(await outcome).toBeInstanceOf(TypeError);
+    expect(actions.serverLogout).toHaveBeenCalledTimes(3);
+    expect(localStorage.getItem(LOGOUT_SIGNAL)).toBeNull();
+    expect(useAuthStore.getState().user).toBe(admin);
+  });
+
+  it("retries a sign-out that didn't get through, then completes", async () => {
+    await signInTab(admin);
+    vi.useFakeTimers();
+    actions.serverLogout
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({ success: true });
+
+    const loggingOut = useAuthStore.getState().logOut();
+    await vi.runAllTimersAsync();
+    await loggingOut;
+
+    expect(actions.serverLogout).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem(LOGOUT_SIGNAL)).not.toBeNull();
+    expect(useAuthStore.getState().user).toBeNull();
   });
 });

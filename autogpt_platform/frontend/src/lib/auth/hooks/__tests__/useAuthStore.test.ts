@@ -189,7 +189,7 @@ describe("useAuthStore.validateSession", () => {
 
 describe("useAuthStore.logOut", () => {
   it("clears admin impersonation so the next user doesn't act as someone else", async () => {
-    ImpersonationState.set("impersonated-user");
+    ImpersonationState.set("impersonated-user", "admin-1");
     expect(ImpersonationState.get()).toBe("impersonated-user");
 
     await useAuthStore.getState().logOut();

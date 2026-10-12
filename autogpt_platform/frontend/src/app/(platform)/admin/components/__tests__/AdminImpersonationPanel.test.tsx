@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { getPostV2NotifyImpersonationStartMockHandler200 } from "@/app/api/__generated__/endpoints/admin/admin.msw";
 import { getGetV1GetUserCreditsMockHandler } from "@/app/api/__generated__/endpoints/credits/credits.msw";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
 import { ImpersonationState } from "@/lib/impersonation";
 import { server } from "@/mocks/mock-server";
 import {
@@ -106,6 +108,11 @@ describe("AdminImpersonationPanel", () => {
     );
 
     render(<AdminImpersonationPanel />);
+    // After render: the test wrapper's own auth start-up finds no session.
+    await waitFor(() =>
+      expect(useAuthStore.getState().isUserLoading).toBe(false),
+    );
+    useAuthStore.setState({ user: { id: "admin-1", role: "admin" } as User });
     typeUserId(VALID_UUID);
     clickStart();
 

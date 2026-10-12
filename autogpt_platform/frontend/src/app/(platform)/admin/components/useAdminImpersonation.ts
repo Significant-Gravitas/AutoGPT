@@ -63,7 +63,9 @@ export function useAdminImpersonation(): AdminImpersonationHook {
           return;
         }
 
-        ImpersonationState.set(userId, useAuthStore.getState().user?.id);
+        const adminId = useAuthStore.getState().user?.id;
+        if (!adminId) throw new Error("Sign in again to impersonate a user.");
+        ImpersonationState.set(userId, adminId);
         setImpersonatedUserId(userId);
         window.location.reload();
       } catch (error) {

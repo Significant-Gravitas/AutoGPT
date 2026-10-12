@@ -173,7 +173,7 @@ describe("SignupPage", () => {
   );
 
   test("drops leftover admin impersonation before a password sign-up", async () => {
-    ImpersonationState.set("someone-elses-user-id");
+    ImpersonationState.set("someone-elses-user-id", "admin-1");
     expect(document.cookie).toContain(`${IMPERSONATION_COOKIE_NAME}=`);
     let impersonationAtSignup: string | null = "unset";
     mockSignupAction.mockImplementation(async () => {
@@ -191,7 +191,7 @@ describe("SignupPage", () => {
   });
 
   test("drops leftover admin impersonation before a Google sign-up", async () => {
-    ImpersonationState.set("someone-elses-user-id");
+    ImpersonationState.set("someone-elses-user-id", "admin-1");
     expect(document.cookie).toContain(`${IMPERSONATION_COOKIE_NAME}=`);
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     let stateAtProviderRequest: { session: string | null; cookie: string } = {

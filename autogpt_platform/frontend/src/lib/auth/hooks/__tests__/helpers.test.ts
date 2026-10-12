@@ -257,7 +257,7 @@ describe("handleStorageEvent", () => {
   it("drops this tab's admin impersonation when another tab logs out", () => {
     isLogoutEventMock.mockReturnValue(true);
     getRedirectPathMock.mockReturnValue(null);
-    ImpersonationState.set("impersonated-user");
+    ImpersonationState.set("impersonated-user", "admin-1");
 
     handleStorageEvent({
       event: new StorageEvent("storage", { key: "supabase-logout" }),
