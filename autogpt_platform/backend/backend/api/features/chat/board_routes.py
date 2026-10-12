@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from backend.api.features.chat.routes import (
     SessionSummaryResponse,
+    _board_not_found,
     _validate_and_get_session,
     _validate_and_get_writable_session,
     _validate_session_expert_writable_by_user,
@@ -544,10 +545,6 @@ async def reassign_session(
         old_session=await _fresh_summary(session_id, user_id),
         new_session=await _fresh_summary(new_id, user_id),
     )
-
-
-def _board_not_found() -> HTTPException:
-    return HTTPException(status_code=404, detail="Project not found")
 
 
 @contextmanager
