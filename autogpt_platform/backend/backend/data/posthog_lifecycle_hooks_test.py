@@ -208,7 +208,7 @@ async def test_signup_schedules_only_a_new_user(existing: bool):
     app_user = MagicMock(id="user-1")
     with (
         patch.object(user_module, "prisma") as prisma,
-        patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
+        patch.object(user_module, "ensure_profile", new_callable=AsyncMock),
         patch.object(
             user_module,
             "ensure_personal_org",

@@ -1189,8 +1189,11 @@ _OUTER_LOOP_YIELDS_ERROR_CODES: frozenset[str] = frozenset(
 # the CLI's own compaction, is output the retry cannot take back.  The retry
 # rolls the attempt's rows out of the session, so a row the user watched would
 # vanish on refresh, and the resent query can run a side-effecting tool (an
-# email, an agent run) a second time.  Pre-query compaction rows are yielded
-# by the retry loop itself, outside the attempt, so they never count.
+# email, an agent run) a second time.  Not retrying keeps every row that
+# closed.  A compaction the failure cuts short is the exception: its row was
+# opened but is never closed or persisted, and the frontend hides a row left
+# unfinished.  Pre-query compaction rows are yielded by the retry loop itself,
+# outside the attempt, so they never count.
 _EPHEMERAL_EVENT_TYPES = (
     StreamHeartbeat,
     StreamCheckpoint,
