@@ -25,6 +25,7 @@ from prisma.models import PendingHumanReview
 
 from backend.copilot.context import get_current_envelope, set_execution_context
 from backend.copilot.gate import check_action, held
+from backend.copilot.gate import review as review_store
 from backend.copilot.model import (
     ChatSession,
     get_chat_session,
@@ -158,6 +159,44 @@ async def _fold(
     return await asyncio.create_task(in_a_turn())
 
 
+async def _propose(
+    tool: _Post,
+    session: ChatSession,
+    user_id: str,
+    turn: TurnEnvelope | None,
+    text: str,
+):
+    """The model proposing the call in a turn running under ``turn``."""
+
+    async def in_a_turn():
+        set_execution_context(user_id, session, envelope=turn)
+        return await tool.execute(user_id, session, f"again-{text}", text=text)
+
+    return await asyncio.create_task(in_a_turn())
+
+
+async def _record(session: ChatSession, review_id: str) -> str | None:
+    """The held call's record as stored, encrypted."""
+    redis = await get_redis_async()
+    return await redis.hget(held._key(session.session_id), review_id)
+
+
+class _UndeletableReviews:
+    """The review store, its deletes failing: an approval cannot be spent."""
+
+    def __init__(self) -> None:
+        self._db = review_db()
+
+    async def get_reviews_by_node_exec_ids(self, ids: list[str], user_id: str):
+        return await self._db.get_reviews_by_node_exec_ids(ids, user_id)
+
+    async def get_or_create_human_review(self, **kwargs):
+        return await self._db.get_or_create_human_review(**kwargs)
+
+    async def delete_review_by_node_exec_id(self, *_args, **_kwargs) -> int:
+        raise ConnectionError("the delete did not go through")
+
+
 def _result(delivered: list[PendingMessage], review_id: str) -> PendingMessage:
     [row] = [
         r
@@ -241,8 +280,8 @@ async def test_a_stale_approval_replayed_after_a_newer_turn_asks_again(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
     """Answered after its tree closed. The newer turn that folds it does not run
-    it, and the same call proposed there opens a fresh card rather than riding
-    the old approval."""
+    it and spends its approval; the same call proposed there opens a card of
+    its own, under its own authority, rather than riding the old one."""
     thread = await _thread(test_user_id)
     delegated = await _delegated_turn()
     review_id = await _hold(thread, test_user_id, "stale", delegated)
@@ -251,17 +290,14 @@ async def test_a_stale_approval_replayed_after_a_newer_turn_asks_again(
     newer = _root(thread)
 
     [delivered] = await _fold(thread, test_user_id, newer)
-
-    async def replay():
-        set_execution_context(test_user_id, thread, envelope=newer)
-        return await post_tool.execute(test_user_id, thread, "call-again", text="stale")
-
-    replayed = await asyncio.create_task(replay())
+    replayed = await _propose(post_tool, thread, test_user_id, newer, "stale")
 
     assert post_tool.runs == []
     _refused_for(delivered, "tree has closed")
-    assert json.loads(str(replayed.output))["type"] == "approval_required"
-    card = await _card(review_id, test_user_id)
+    assert await _card(review_id, test_user_id) is None
+    asked = json.loads(str(replayed.output))
+    assert asked["type"] == "approval_required" and asked["review_id"] != review_id
+    card = await _card(asked["review_id"], test_user_id)
     assert card is not None and card.status == ReviewStatus.WAITING
 
 
@@ -346,6 +382,14 @@ async def test_an_expired_or_malformed_envelope_fails_closed(
         "above the root": ({"depth": -1}, "could not be read back"),
         "past the bound": ({"depth": MAX_DEPTH + 1}, "could not be read back"),
         "root of no tree": ({"depth": 0, "tree_id": ""}, "could not be read back"),
+        "root past its deadline": (
+            {
+                "depth": 0,
+                "tools": None,
+                "deadline_at": datetime.now(UTC) - timedelta(minutes=1),
+            },
+            "past its deadline",
+        ),
         "deadline with no time zone": (
             {"deadline_at": datetime.now() + timedelta(hours=1)},
             "could not be read back",
@@ -457,3 +501,156 @@ async def test_a_held_call_whose_record_no_longer_reads_back_does_not_run(
         dispatch.assert_awaited_once()
     assert post_tool.runs == []
     _refused_for(delivered, "details were lost")
+
+
+@pytest.mark.parametrize(
+    "expired", [False, True], ids=["its tree open", "its tree closed"]
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_given_to_a_delegated_call_is_never_spent_by_a_root(
+    setup_test_user, test_user_id, gate_on, post_tool, expired: bool
+):
+    """The delegated turn's card is approved while a later root runs, and the
+    root proposes the same call. The root gets a card of its own instead of
+    the delegated turn's approval; the fold then runs the delegated call under
+    its own envelope, or, its tree closed, does not run it at all."""
+    thread = await _thread(test_user_id)
+    delegated = await _delegated_turn()
+    review_id = await _hold(thread, test_user_id, "same call", delegated)
+    await _answer(review_id)
+    if expired:
+        await _close(delegated)
+    later = _root(thread)
+
+    proposed = await _propose(post_tool, thread, test_user_id, later, "same call")
+
+    asked = json.loads(str(proposed.output))
+    assert asked["type"] == "approval_required" and asked["review_id"] != review_id
+    assert post_tool.runs == []
+    card = await _card(review_id, test_user_id)
+    assert card is not None and card.status == ReviewStatus.APPROVED
+
+    delivered = await _fold(thread, test_user_id, later)
+
+    if expired:
+        assert post_tool.runs == []
+        _refused_for(_result(delivered, review_id), "tree has closed")
+    else:
+        assert post_tool.runs == [("same call", delegated)]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_unread_card_refuses_the_call_and_leaves_its_record_alone(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """A card that cannot be read is not an absent one: the same call proposed
+    again under the card's own authority is refused, nothing is parked over
+    the card, and the record it was held with stands."""
+    thread = await _thread(test_user_id)
+    delegated = await _delegated_turn()
+    review_id = await _hold(thread, test_user_id, "unread", delegated)
+    before = await _record(thread, review_id)
+    unreadable = AsyncMock(side_effect=ConnectionError("the read did not go through"))
+
+    with patch.object(review_db(), "get_reviews_by_node_exec_ids", unreadable):
+        refused = await _propose(post_tool, thread, test_user_id, delegated, "unread")
+
+    body = json.loads(str(refused.output))
+    assert body["review_id"] is None and "could not be checked" in body["reason"]
+    assert before is not None and await _record(thread, review_id) == before
+    card = await _card(review_id, test_user_id)
+    assert card is not None and card.status == ReviewStatus.WAITING
+    assert post_tool.runs == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_held_record_is_never_written_over(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The review id binds the call, its arguments and its authority, so a
+    record already standing is the call's own: a second write, whatever it
+    carries, leaves it as it was."""
+    thread = await _thread(test_user_id)
+    delegated = await _delegated_turn()
+    review_id = await _hold(thread, test_user_id, "kept", delegated)
+    before = await _record(thread, review_id)
+    other = held.HeldCall(
+        review_id=review_id,
+        tool_name=_TOOL,
+        tool_call_id="another",
+        args={"text": "kept"},
+        envelope=_root(thread),
+    )
+
+    assert await held.remember(thread.session_id, other)
+
+    assert before is not None and await _record(thread, review_id) == before
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_refusal_whose_approval_cannot_be_spent_waits_and_says_nothing(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The delegated turn's tree has closed, but its approval cannot be
+    deleted. The fold delivers nothing and keeps the call, rather than invite
+    it again over an approval still live. Meanwhile a root proposing the same
+    call gets a card of its own, and the delegated turn itself is refused at
+    the gate. Once the delete goes through, the refusal goes out."""
+    thread = await _thread(test_user_id)
+    delegated = await _delegated_turn()
+    review_id = await _hold(thread, test_user_id, "undeletable", delegated)
+    await _answer(review_id)
+    await _close(delegated)
+    root = _root(thread)
+
+    with patch(
+        "backend.copilot.gate.review.review_db", return_value=_UndeletableReviews()
+    ):
+        assert await _fold(thread, test_user_id, root) == []
+        assert [
+            c.review_id for c in await held.answered(test_user_id, thread.session_id)
+        ] == [review_id]
+        from_root = await _propose(post_tool, thread, test_user_id, root, "undeletable")
+        own_turn = await _propose(
+            post_tool, thread, test_user_id, delegated, "undeletable"
+        )
+
+    assert json.loads(str(from_root.output))["review_id"] not in (None, review_id)
+    refused = json.loads(str(own_turn.output))
+    assert refused["review_id"] is None and "cannot be used now" in refused["reason"]
+    assert post_tool.runs == []
+    card = await _card(review_id, test_user_id)
+    assert card is not None and card.status == ReviewStatus.APPROVED
+
+    [delivered] = await _fold(thread, test_user_id, root)
+
+    _refused_for(delivered, "tree has closed")
+    assert await _card(review_id, test_user_id) is None
+    assert post_tool.runs == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_card_from_before_approvals_were_bound_is_asked_again(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """Held before this change, a call has no envelope and its card's id binds
+    no authority. In the user's own chat a root would stand in for its turn,
+    but no approval was ever given under that root, so the fold refuses it and
+    the call is proposed again for a bound card."""
+    chat = await _thread(test_user_id, delegated=False)
+    args = {"text": "from before"}
+    review_id = review_store.review_id_for(chat.session_id, test_user_id, _TOOL, args)
+    legacy = held.HeldCall(
+        review_id=review_id, tool_name=_TOOL, tool_call_id="call-old", args=args
+    )
+    assert await held.remember(chat.session_id, legacy)
+    assert await review_store.open_review(
+        review_id, test_user_id, chat, _TOOL, args, "needs you"
+    )
+    await _answer(review_id)
+
+    [delivered] = await _fold(chat, test_user_id, _root(chat))
+
+    assert post_tool.runs == []
+    _refused_for(delivered, "does not match its approval")
+    assert await _card(review_id, test_user_id) is None
