@@ -35,9 +35,9 @@ from backend.copilot.prompting import (
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_graphiti_supplement,
-    get_sdk_supplement,
     get_team_building_supplement,
 )
+from backend.copilot.sdk.system_prompt import SystemPromptParts, assemble_system_prompt
 from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
 
 from .models import Baseline, ExpertFixture, Rubric
@@ -146,25 +146,28 @@ def user_prefix(expert: Expert | None, roster: list[Expert]) -> str:
 
 
 def chat_system_prompt(expert: Expert | None) -> str:
-    """The SDK engine's system prompt for an expert session (the assembly in
-    ``sdk/service.py``) with the flags such a session has on in production:
-    cloud sandbox, hire-experts, memory. ``None`` is plain Otto."""
-    suffix = render_expert_identity_suffix(expert) if expert else ""
-    return (
-        CACHEABLE_SYSTEM_PROMPT
-        + get_sdk_supplement(use_e2b=True, expert_session=expert is not None)
-        + (get_delegation_supplement() if DELEGATION_ENABLED else "")
-        + get_expert_oversight_supplement(
-            experts_enabled=DELEGATION_ENABLED,
-            expert_id=expert.id if expert else None,
-        )
-        + get_team_building_supplement(
-            experts_enabled=DELEGATION_ENABLED,
-            expert_id=expert.id if expert else None,
-        )
-        + get_graphiti_supplement()
-        + suffix
+    """The SDK engine's system prompt for an expert session, assembled by
+    the engine's own ``assemble_system_prompt``, with the flags such a
+    session has on in production: cloud sandbox, hire-experts, memory.
+    ``None`` is plain Otto."""
+    expert_id = expert.id if expert else None
+    parts = SystemPromptParts(
+        base=CACHEABLE_SYSTEM_PROMPT,
+        use_e2b=True,
+        expert_session=expert is not None,
+        delegation=get_delegation_supplement() if DELEGATION_ENABLED else "",
+        oversight=get_expert_oversight_supplement(
+            experts_enabled=DELEGATION_ENABLED, expert_id=expert_id
+        ),
+        team_building=get_team_building_supplement(
+            experts_enabled=DELEGATION_ENABLED, expert_id=expert_id
+        ),
+        chat_platform="",
+        graphiti=get_graphiti_supplement(),
+        auto_mode="",
+        expert_identity=render_expert_identity_suffix(expert) if expert else "",
     )
+    return assemble_system_prompt(parts, building_suffix="")
 
 
 async def resolve_chat_model(config: ChatConfig) -> RoutedModel:
