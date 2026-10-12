@@ -1,7 +1,7 @@
 import logging
 import time
 from typing import Any, ClassVar, Optional
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 
 from backend.data.model import OAuth2Credentials
 from backend.integrations.providers import ProviderName
@@ -19,8 +19,8 @@ class HubSpotOAuthError(Exception):
 class HubSpotOAuthHandler(BaseOAuthHandler):
     """
     Based on the documentation at:
-    - [Manage OAuth tokens (v3)](https://developers.hubspot.com/docs/api-reference/auth-oauth-v3/guide)
-    - [Delete a refresh token (v1)](https://developers.hubspot.com/docs/api-reference/legacy/authentication/oauth-tokens/v1/guide)
+    - [Manage OAuth tokens (2026-09)](https://developers.hubspot.com/docs/api-reference/latest/authentication/manage-oauth-tokens)
+    - [Revoke a token](https://developers.hubspot.com/docs/api-reference/latest/authentication/oauth-tokens/revoke-token)
     - [Scopes](https://developers.hubspot.com/docs/apps/developer-platform/build-apps/authentication/scopes)
 
     Notes:
@@ -28,9 +28,11 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
     - Every scope ticked in the app's Auth settings is required, and HubSpot shows
       an error page if the authorize URL leaves one out. The login URL therefore
       always asks for the full default set, plus anything a block adds.
-    - HubSpot has no v3 revoke endpoint; revoking deletes the refresh token with
-      the v1 endpoint. Access tokens already issued stay valid until they expire.
-    """  # noqa
+    - The date-versioned endpoints take every token and secret in the form body,
+      never the URL. The v1 endpoints, which put tokens in the path, are retired
+      on 2027-02-16. Revoking deletes the refresh token; access tokens already
+      issued stay valid until they expire.
+    """
 
     PROVIDER_NAME = ProviderName.HUBSPOT
     # What the HubSpot blocks call: the contacts and companies CRM objects, and
@@ -45,9 +47,9 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
     ]
 
     AUTHORIZE_URL = "https://app.hubspot.com/oauth/authorize"
-    TOKEN_URL = "https://api.hubspot.com/oauth/v3/token"
-    INTROSPECT_URL = "https://api.hubspot.com/oauth/v3/token/introspect"
-    REVOKE_URL = "https://api.hubapi.com/oauth/v1/refresh-tokens/{token}"
+    TOKEN_URL = "https://api.hubspot.com/oauth/2026-09/token"
+    INTROSPECT_URL = "https://api.hubspot.com/oauth/2026-09/token/introspect"
+    REVOKE_URL = "https://api.hubapi.com/oauth/2026-09/token/revoke"
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -121,9 +123,16 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
         if not credentials.refresh_token:
             return False
 
-        token = quote(credentials.refresh_token.get_secret_value(), safe="")
-        response = await _requests().delete(
-            self.REVOKE_URL.format(token=token), allow_redirects=False
+        response = await _requests().post(
+            self.REVOKE_URL,
+            data={
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "token_type_hint": "refresh_token",
+                "token": credentials.refresh_token.get_secret_value(),
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            allow_redirects=False,
         )
         if not response.ok:
             # The credential is already deleted on our side by now, so a failure
@@ -166,7 +175,7 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
                     "client_id": self.client_id,
                     "client_secret": self.client_secret,
                     "token_type_hint": "access_token",
-                    "access_token": access_token,
+                    "token": access_token,
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
                 allow_redirects=False,
@@ -188,7 +197,7 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
 
     @staticmethod
     def _granted_scopes(tokens: dict[str, Any], fallback: list[str]) -> list[str]:
-        # v3 returns the granted scopes as a list under `scopes`.
+        # HubSpot returns the granted scopes as a list under `scopes`.
         granted = " ".join(tokens.get("scopes") or [])
         return parse_granted_scopes(granted, fallback=fallback)
 

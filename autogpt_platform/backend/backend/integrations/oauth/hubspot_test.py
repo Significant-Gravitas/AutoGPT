@@ -116,7 +116,7 @@ async def test_exchange_code_for_tokens(mocker: MockerFixture):
     creds = await _handler().exchange_code_for_tokens("auth-code", SCOPES, None)
 
     token_call, introspect_call = post.await_args_list
-    assert token_call.args[0] == "https://api.hubspot.com/oauth/v3/token"
+    assert token_call.args[0] == "https://api.hubspot.com/oauth/2026-09/token"
     assert token_call.kwargs["data"] == {
         "client_id": "test-client-id",
         "client_secret": "test-client-secret",
@@ -126,9 +126,14 @@ async def test_exchange_code_for_tokens(mocker: MockerFixture):
     }
     assert token_call.kwargs["allow_redirects"] is False
     assert introspect_call.args[0] == (
-        "https://api.hubspot.com/oauth/v3/token/introspect"
+        "https://api.hubspot.com/oauth/2026-09/token/introspect"
     )
-    assert introspect_call.kwargs["data"]["access_token"] == "new-access-token"
+    assert introspect_call.kwargs["data"] == {
+        "client_id": "test-client-id",
+        "client_secret": "test-client-secret",
+        "token_type_hint": "access_token",
+        "token": "new-access-token",
+    }
     assert introspect_call.kwargs["allow_redirects"] is False
 
     assert creds.provider == ProviderName.HUBSPOT
@@ -232,21 +237,29 @@ async def test_refresh_raises_when_hubspot_refuses(mocker: MockerFixture):
         await _handler().refresh_tokens(_creds(expires_at=0))
 
 
-async def test_revoke_deletes_the_refresh_token(mocker: MockerFixture):
-    delete = AsyncMock(return_value=_response({}, 204))
-    _mock_requests(mocker, delete=delete)
+async def test_revoke_revokes_the_refresh_token(mocker: MockerFixture):
+    post = AsyncMock(return_value=_response({}, 204))
+    _mock_requests(mocker, post=post)
 
     assert await _handler().revoke_tokens(_creds()) is True
 
-    delete.assert_awaited_once()
-    assert delete.await_args.args[0] == (
-        "https://api.hubapi.com/oauth/v1/refresh-tokens/na1-refresh-token"
+    post.assert_awaited_once()
+    # The token goes in the form body: HubSpot rejects tokens in the URL, and
+    # a URL ends up in logs.
+    assert post.await_args.args[0] == (
+        "https://api.hubapi.com/oauth/2026-09/token/revoke"
     )
-    assert delete.await_args.kwargs["allow_redirects"] is False
+    assert post.await_args.kwargs["data"] == {
+        "client_id": "test-client-id",
+        "client_secret": "test-client-secret",
+        "token_type_hint": "refresh_token",
+        "token": "na1-refresh-token",
+    }
+    assert post.await_args.kwargs["allow_redirects"] is False
 
 
 async def test_failed_revoke_does_not_raise(mocker: MockerFixture):
-    _mock_requests(mocker, delete=AsyncMock(return_value=_response({}, 404)))
+    _mock_requests(mocker, post=AsyncMock(return_value=_response({}, 400)))
 
     assert await _handler().revoke_tokens(_creds()) is False
 
@@ -254,11 +267,13 @@ async def test_failed_revoke_does_not_raise(mocker: MockerFixture):
 async def test_every_hubspot_request_has_a_retry_cap(mocker: MockerFixture):
     # Uncapped, a throttled or failing HubSpot is retried forever.
     post = AsyncMock(
-        side_effect=[_response(TOKEN_RESPONSE), _response(INTROSPECT_RESPONSE)]
+        side_effect=[
+            _response(TOKEN_RESPONSE),
+            _response(INTROSPECT_RESPONSE),
+            _response({}, 204),
+        ]
     )
-    requests = _mock_requests(
-        mocker, post=post, delete=AsyncMock(return_value=_response({}, 204))
-    )
+    requests = _mock_requests(mocker, post=post)
 
     await _handler().exchange_code_for_tokens("auth-code", SCOPES, None)
     await _handler().revoke_tokens(_creds())
