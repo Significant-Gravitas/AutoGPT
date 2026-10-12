@@ -1,7 +1,8 @@
 name: AutoGPT Platform - Flake Gate
 
-# Re-runs the test files a PR adds or changes: once without load, then up to
-# ten times under CPU load, each in a new random order. A test that passes in
+# Re-runs the test files a PR adds or changes, with coverage on as in their
+# CI jobs: once without load, then up to ten times under CPU load (three busy
+# processes per core), each in a new random order. A test that passes in
 # some runs and fails in others is reported as flaky, with the seed and the
 # command that reproduce it. That is the test that passes PR CI and then
 # fails in the merge queue or on dev. See .github/scripts/flake_gate.py.
@@ -238,7 +239,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: flake-gate-backend
-          path: autogpt_platform/backend/flake-gate-results
+          path: |
+            autogpt_platform/backend/flake-gate-results/*.log
+            autogpt_platform/backend/flake-gate-results/*.jsonl
+            autogpt_platform/backend/flake-gate-results/summary.md
           if-no-files-found: ignore
           retention-days: 7
 
@@ -286,6 +290,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: flake-gate-frontend
-          path: autogpt_platform/frontend/flake-gate-results
+          path: |
+            autogpt_platform/frontend/flake-gate-results/*.log
+            autogpt_platform/frontend/flake-gate-results/*.json
+            autogpt_platform/frontend/flake-gate-results/summary.md
           if-no-files-found: ignore
           retention-days: 7
