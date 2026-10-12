@@ -59,9 +59,14 @@ from .fetch import (
     is_dream_authored_episode,
     parse_episode_timestamp,
 )
-from .guard import guard_dream_pass
+from .guard import GUARD_BUDGET_SECONDS, guard_dream_pass
 from .lease import admit_sync_apply, checkpoint
-from .locks import DreamLockHandle, DreamLockHeld, dream_lock
+from .locks import (
+    LOCK_CHECK_TIMEOUT_SECONDS,
+    DreamLockHandle,
+    DreamLockHeld,
+    dream_lock,
+)
 from .pass_record import DreamTrigger
 from .pass_run import DreamPassRun, PassEnded
 from .phase_jobs import phase_job
@@ -82,6 +87,7 @@ from .schemas import (
     RecombinationOutput,
 )
 from .store import (
+    RECORD_WRITE_TIMEOUT_SECONDS,
     record_applying,
     record_gathered,
     record_phase_output,
@@ -129,16 +135,24 @@ SANITIZE_MAX_TOKENS = 16384
 #   consolidate 240s + recombine 600s + sanitize 480s   = 1320s LLM ceiling
 #   + apply.INGESTION_DRAIN_TIMEOUT_SECONDS 300s          drain cap
 #   + DREAM_NON_LLM_HEADROOM_SECONDS 120s (budget check + fetch + enqueue
-#     + demotions + summary + cost logging + the pass's record writes,
-#     EXCLUDING the drain)
+#     + demotions + summary + cost logging, EXCLUDING the drain)
 #   = 1740s <= 1800s SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS  (60s slack)
+#
+# The pass's own bounded round trips to its record, its guard and its lock
+# come on top: DREAM_STORE_IO_SECONDS, 179s should every one of them run to
+# its deadline (a stalled DatabaseManager or Redis). Then a pass whose phases
+# also run to their ceilings outlasts the scheduler's wait. That wait is not
+# a kill: ``run_async`` stops waiting and leaves the pass running, and its
+# lease renewals keep its lock and its row's lease fresh, so neither a newer
+# pass's guard nor the reaper takes it for dead, and it finishes.
 #
 # The drain no longer counts against the lock TTL: apply renews the dream
 # lock to a fresh budget right before the drain (see
 # apply.LOCK_DRAIN_RENEWAL_SECONDS), so the lock only has to cover
-# LLM + non-drain headroom = 1440s <= 0.9 * DEFAULT_LOCK_TTL_SECONDS (1620s)
-# with genuine margin, and the drain itself runs under the renewed lock.
-# Both invariants are pinned by
+# LLM + non-drain headroom + store I/O = 1619s <= 0.9 * DEFAULT_LOCK_TTL_SECONDS
+# (1620s), even with every store round trip at its deadline (and a lease
+# renewal before each phase shortens that stretch further), and the drain
+# itself runs under the renewed lock. Both invariants are pinned by
 # test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope —
 # bumping any value here fails that test until the budget is re-balanced.
 #
@@ -150,11 +164,25 @@ CONSOLIDATE_TIMEOUT_SECONDS = 240
 RECOMBINE_TIMEOUT_SECONDS = 600
 SANITIZE_TIMEOUT_SECONDS = 480
 # Reserved for the non-LLM segments of the pass OTHER than the ingestion
-# drain (budget check, fetch, enqueue, demotions, summary write, cost
-# logging, and the DreamPass record writes, each capped at
-# store.RECORD_WRITE_TIMEOUT_SECONDS). The drain is budgeted separately as
-# apply.INGESTION_DRAIN_TIMEOUT_SECONDS and covered by a lock renewal.
+# drain and the store round trips below (budget check, fetch, enqueue,
+# demotions, summary write, cost logging). The drain is budgeted separately
+# as apply.INGESTION_DRAIN_TIMEOUT_SECONDS and covered by a lock renewal.
 DREAM_NON_LLM_HEADROOM_SECONDS = 120
+# The sync pass's bounded round trips to its record and its lock, each at
+# its own deadline. Record reads and writes: the RUNNING insert, the
+# gathered window, before each phase a stop check, a lease write and the
+# phase's output, the APPLYING write, apply's admission (a stop check and a
+# lease write), and the outcome. Lock round trips: the lease extend before
+# each phase, apply's admission (a lock read and an extend), and apply's own
+# renewals, before its first write and before its drain. Plus the guard's
+# whole budget.
+_RECORD_ROUND_TRIPS = 2 + 3 * 3 + 1 + 2 + 1
+_LOCK_ROUND_TRIPS = 3 + 2 + 2
+DREAM_STORE_IO_SECONDS = (
+    GUARD_BUDGET_SECONDS
+    + _RECORD_ROUND_TRIPS * RECORD_WRITE_TIMEOUT_SECONDS
+    + _LOCK_ROUND_TRIPS * LOCK_CHECK_TIMEOUT_SECONDS
+)
 
 # Per-user marker stamped after a successful (non-skipped) sync apply so
 # the next nightly pass can skip all three LLM phases when no new episode

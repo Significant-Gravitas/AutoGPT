@@ -40,7 +40,7 @@ from backend.data.db_accessors import memory_schedule_db
 from backend.data.memory_schedule import MemoryScopeSchedule
 
 from .deadline import within_deadline
-from .scheduling import DREAM_SYSTEM_JOBS, resolve_user_timezone
+from .scheduling import resolve_user_timezone
 from .scope_jobs import (
     flag_gate,
     register_scope_jobs,
@@ -93,9 +93,31 @@ async def ensure_scope_scheduled(
         # "Unknown" is not "UTC": keep the existing crons until a later call
         # can read the real timezone.
         return results | skip_all(enabled, "timezone_lookup_failed")
-    return results | await register_scope_jobs(
+    outcomes = await register_scope_jobs(
         scope, enabled, row, user_timezone, force_refresh
     )
+    if _taken_down(outcomes) and (resumed := await _active_row(scope)) is not None:
+        # The scope left ACTIVE while this registered, so its crons were taken
+        # down; it is ACTIVE again: a resume landed in between, and its crons,
+        # which have the same job ids, went with them. Register them once more.
+        outcomes = await register_scope_jobs(
+            scope, enabled, resumed, user_timezone, True
+        )
+    return results | outcomes
+
+
+async def restore_if_resumed(scope: MemoryScope) -> None:
+    """After the scope's crons were taken down for a row that left ACTIVE:
+    when the row says ACTIVE again, a resume landed in between, and its
+    crons, which have the same job ids, may have gone with the takedown, so
+    they are registered again. Fails soft, like the rest of the registry."""
+    if await _active_row(scope) is None:
+        return
+    logger.info(
+        f"{scope_label(scope)} was resumed while its crons were taken down; "
+        "registering them again"
+    )
+    await ensure_scope_scheduled(scope, force_refresh=True)
 
 
 async def ensure_dream_system_scheduled(
@@ -170,7 +192,9 @@ async def resume_scope(
     scope: MemoryScope, *, force_refresh: bool = False
 ) -> dict[str, Any]:
     """Undo :func:`pause_scope` and register the crons again; a scope with no
-    row is simply registered. A WIPED scope stays WIPED."""
+    row is simply registered. A WIPED scope stays WIPED. A resume that cannot
+    write the row reports the crons the owner's flags enable as unavailable,
+    and the others as their flags say, as an ensure would."""
     try:
         await within_deadline(
             memory_schedule_db().set_scope_state(
@@ -182,7 +206,8 @@ async def resume_scope(
         )
     except Exception:
         logger.warning(f"Could not resume {scope_label(scope)}", exc_info=True)
-        return skip_all(DREAM_SYSTEM_JOBS, "registry_unavailable")
+        results, enabled = await flag_gate(scope)
+        return results | skip_all(enabled, "registry_unavailable")
     return await ensure_scope_scheduled(scope, force_refresh=force_refresh)
 
 
@@ -215,12 +240,43 @@ async def _leave_active(scope: MemoryScope, state: MemoryScopeScheduleState) -> 
     remove the crons; True only if both happened. When the state write fails
     the crons stay: removing them under a row that still says ACTIVE would
     hide them from the next ensure, and their bodies check the expert's
-    lifecycle themselves."""
+    lifecycle themselves. A resume that lands between the write and the
+    removal gets its crons back (:func:`restore_if_resumed`)."""
     reached = await _establish_state(scope, state)
     if reached is None or not await remove_scope_jobs(scope):
         return False
     logger.info(f"Dream-system: {scope_label(scope)} is now {reached.value}")
+    await restore_if_resumed(scope)
     return True
+
+
+def _taken_down(outcomes: dict[str, Any]) -> bool:
+    """Whether a registration's crons were taken down because the scope left
+    ACTIVE while it ran (``scope_jobs._record``)."""
+    return any(
+        outcome and outcome.get("reason") == "scope_changed"
+        for outcome in outcomes.values()
+    )
+
+
+async def _active_row(scope: MemoryScope) -> MemoryScopeSchedule | None:
+    """The scope's row when it says ACTIVE; None when it says otherwise, has
+    no row, or cannot be read in time."""
+    try:
+        row = await within_deadline(
+            memory_schedule_db().get_scope_schedule(
+                scope.owner_user_id, scope.scope_key
+            )
+        )
+    except Exception:
+        logger.warning(
+            f"Could not read {scope_label(scope)} again after taking its crons " "down",
+            exc_info=True,
+        )
+        return None
+    if row is None or row.state != MemoryScopeScheduleState.ACTIVE:
+        return None
+    return row
 
 
 async def _establish_state(

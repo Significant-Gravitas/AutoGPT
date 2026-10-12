@@ -1,11 +1,16 @@
 import inspect
 import logging
 import os
+from contextlib import asynccontextmanager
+from multiprocessing import get_all_start_methods, get_context, set_forkserver_preload
+from threading import Thread
+from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
 
+from backend.data import subscription_lookup_cache
 from backend.util.logging import configure_logging
 
 load_dotenv()
@@ -14,6 +19,7 @@ load_dotenv()
 # Set up logging
 configure_logging()
 logger = logging.getLogger(__name__)
+_preload_started = False
 
 # Reduce Prisma log spam unless PRISMA_DEBUG is set
 if not os.getenv("PRISMA_DEBUG"):
@@ -21,12 +27,34 @@ if not os.getenv("PRISMA_DEBUG"):
     prisma_logger.setLevel(logging.INFO)
 
 
+def pytest_itemcollected(item: pytest.Function) -> None:
+    global _preload_started
+    if (
+        _preload_started
+        or os.getenv("CI")
+        or item.config.getoption("collectonly")
+        or "server" not in item.fixturenames
+        or "forkserver" not in get_all_start_methods()
+    ):
+        return
+    set_forkserver_preload(["scripts.server_preload"])
+    Thread(target=_warm_test_forkserver, daemon=True).start()
+    _preload_started = True
+
+
+def _warm_test_forkserver() -> None:
+    process = get_context("forkserver").Process(target=os.getpid)
+    process.start()
+    process.join()
+
+
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def server():
     from backend.util.test import SpinTestServer
 
     async with SpinTestServer() as server:
-        yield server
+        async with _track_test_graphs(server):
+            yield server
 
 
 @pytest.fixture(autouse=True)
@@ -36,6 +64,24 @@ def no_force_all_flags(monkeypatch: pytest.MonkeyPatch):
     flag-off test. Tests that want the switch on set it themselves."""
     monkeypatch.delenv("FORCE_ALL_FLAGS", raising=False)
     monkeypatch.delenv("NEXT_PUBLIC_FORCE_ALL_FLAGS", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def isolated_subscription_lookup_cache(monkeypatch: pytest.MonkeyPatch):
+    """The subscription lookup cache lives in Redis, which outlives a test and
+    is shared by parallel runs; give every test keys of its own, and a cache
+    that hasn't backed off after an earlier test's Redis failure."""
+    monkeypatch.setattr(
+        subscription_lookup_cache, "KEY_PREFIX", f"test:{uuid4().hex}:subscription"
+    )
+    monkeypatch.setattr(subscription_lookup_cache._backoff, "until", 0.0)
+    monkeypatch.setattr(subscription_lookup_cache, "_fallback", {})
+    monkeypatch.setattr(subscription_lookup_cache, "_in_flight", {})
+    monkeypatch.setattr(
+        subscription_lookup_cache,
+        "_unconfirmed",
+        subscription_lookup_cache._UnconfirmedInvalidations(),
+    )
 
 
 @pytest.fixture
@@ -76,7 +122,7 @@ async def _create_user_with_loop_retry(user_data: dict) -> None:
 
 
 @pytest.fixture
-async def setup_test_user(test_user_id):
+async def setup_test_user(server, test_user_id):
     """Create test user in database before tests."""
     user_data = {
         "sub": test_user_id,
@@ -88,7 +134,7 @@ async def setup_test_user(test_user_id):
 
 
 @pytest.fixture
-async def setup_admin_user(admin_user_id):
+async def setup_admin_user(server, admin_user_id):
     """Create admin user in database before tests."""
     user_data = {
         "sub": admin_user_id,
@@ -99,8 +145,8 @@ async def setup_admin_user(admin_user_id):
     return admin_user_id
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def graph_cleanup(server):
+@asynccontextmanager
+async def _track_test_graphs(server):
     """Delete the graphs and store listings that tests created through the test
     server, at the end of the session, so they don't pile up in the test DB."""
     created_graphs: list[tuple[str, str]] = []

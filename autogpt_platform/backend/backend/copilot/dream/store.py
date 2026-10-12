@@ -48,6 +48,7 @@ from .pass_record import (
     DreamTrigger,
     applying,
     cleanup_finished,
+    cleanup_unfinished,
     expired,
     failed,
     gathered,
@@ -205,14 +206,22 @@ async def read_open_passes(
 
 
 async def read_expired_passes(
-    expired_before: datetime, *, limit: int
+    expired_before: datetime,
+    *,
+    limit: int,
+    after: tuple[datetime, str] | None = None,
 ) -> list[DreamPassRecord]:
     """Open passes, of every user, whose lease lapsed before
-    *expired_before*, the oldest lapse first. Raises when the read fails or
-    runs out of time."""
-    return await _bounded(
-        dream_db().list_expired_dream_passes(expired_before, limit=limit)
-    )
+    *expired_before*, in lapse order (the lapse, then the id): the first
+    ones, or those after *after*, a lapse and an id. Raises when the read
+    fails or runs out of time."""
+    if after is None:
+        listing = dream_db().list_expired_dream_passes(expired_before, limit=limit)
+    else:
+        listing = dream_db().list_expired_dream_passes(
+            expired_before, limit=limit, after_lapse=after[0], after_id=after[1]
+        )
+    return await _bounded(listing)
 
 
 async def read_pending_cleanups(
@@ -220,8 +229,8 @@ async def read_pending_cleanups(
 ) -> list[DreamPassRecord]:
     """Closed passes, of every user, marked for a cleanup that has not
     finished and is due: marked, or their lease lapsed, before *due_before*;
-    the longest pending first. Raises when the read fails or runs out of
-    time."""
+    the ones written least recently (closed, or their cleanup tried) first.
+    Raises when the read fails or runs out of time."""
     return await _bounded(dream_db().list_dream_pass_cleanups(due_before, limit=limit))
 
 
@@ -261,6 +270,13 @@ async def record_cleanup_finished(pass_id: str) -> bool:
     return await _bounded(dream_db().update_dream_pass(pass_id, cleanup_finished()))
 
 
+async def record_cleanup_unfinished(pass_id: str) -> bool:
+    """The reaper tried the cleanup after the closed pass and did not finish
+    it; whether the row took it. The row goes behind the cleanups tried less
+    recently. Raises when the write fails or runs out of time."""
+    return await _bounded(dream_db().update_dream_pass(pass_id, cleanup_unfinished()))
+
+
 async def _write(
     pass_id: str, step: str, build: Callable[[], DreamPassUpdate]
 ) -> bool | None:
@@ -286,4 +302,5 @@ async def _write(
 async def _bounded(call: Awaitable[_T], timeout: float | None = None) -> _T:
     """*call*, or ``TimeoutError`` once it has taken *timeout* (the write
     deadline by default); the abandoned call is cancelled, not left running."""
-    return await asyncio.wait_for(call, timeout=timeout or RECORD_WRITE_TIMEOUT_SECONDS)
+    async with asyncio.timeout(timeout or RECORD_WRITE_TIMEOUT_SECONDS):
+        return await call

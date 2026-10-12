@@ -279,11 +279,19 @@ def reaped(reason: str, *, not_updated_since: datetime) -> DreamPassUpdate:
 
 def cleanup_finished() -> DreamPassUpdate:
     """The cleanup after a closed pass has finished: the mark and the lease
-    the row kept for it go. The one write a closed row takes."""
+    the row kept for it go. One of the two writes a closed row takes."""
     return DreamPassUpdate(
         closed_row=True,
         clear=frozenset({"cleanup_pending_at", "lease_token", "lease_expires_at"}),
     )
+
+
+def cleanup_unfinished() -> DreamPassUpdate:
+    """The reaper tried the cleanup after a closed pass and did not finish
+    it: nothing changes but the row's write time, which puts the row behind
+    the cleanups the reaper has tried less recently. The other write a
+    closed row takes."""
+    return DreamPassUpdate(closed_row=True)
 
 
 def stop_error(row: DreamPassRecord) -> str | None:

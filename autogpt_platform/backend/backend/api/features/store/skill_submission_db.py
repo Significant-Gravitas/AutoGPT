@@ -24,6 +24,7 @@ from backend.copilot.tools.skills import (
 from backend.data.db import transaction
 from backend.util.exceptions import NotFoundError, PreconditionFailed
 
+from . import db as store_db
 from . import skill_db, skill_model
 
 _MAX_LICENSE_CHARS = 256
@@ -199,6 +200,8 @@ async def review_skill_submission(
                 )
                 or listing
             )
+    if is_approved and listing.owningUserId:
+        await store_db.publish_creator_avatar(listing.owningUserId)
     return skill_model.SkillSubmission.from_db(updated, listing)
 
 

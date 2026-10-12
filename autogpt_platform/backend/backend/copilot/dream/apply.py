@@ -19,6 +19,7 @@ guard at the top of ``apply_operations``.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid as uuidlib
 from collections.abc import Mapping
@@ -42,7 +43,7 @@ from backend.copilot.transports import resolve_default_chat_route
 
 from .demotions import apply_demotions
 from .fetch import DREAM_EPISODE_NAME_PREFIX
-from .locks import DreamLockHandle, DreamLockLostError
+from .locks import LOCK_CHECK_TIMEOUT_SECONDS, DreamLockHandle, DreamLockLostError
 from .schemas import (
     ConsolidatedFact,
     DreamOperations,
@@ -264,18 +265,17 @@ async def _create_dream_session(scope: MemoryScope, pass_id: str) -> str:
     """
     # Lazy import — avoids circular dependency at module-import time
     # AND keeps the dream-pass / chat-model coupling explicit. Routing
-    # through ``chat_db()`` means the dream pass (running in the
-    # Scheduler subprocess) auto-uses the DatabaseManager RPC client;
+    # through ``chat_db()``/``orgs_db()`` means the dream pass (running in
+    # the Scheduler subprocess) auto-uses the DatabaseManager RPC client;
     # the DatabaseManager process itself uses the direct module.
-    from backend.api.features.orgs.db import get_user_default_team
     from backend.copilot.model import ChatSessionMetadata
-    from backend.data.db_accessors import chat_db
+    from backend.data.db_accessors import chat_db, orgs_db
 
     user_id = scope.owner_user_id
     # Dream passes run per-user with no request context; the user's
     # default (personal) org is the correct tenant for their dreams.
     try:
-        org_id, team_id = await get_user_default_team(user_id)
+        org_id, team_id = await orgs_db().get_user_default_team(user_id)
     except Exception:
         logger.warning(
             f"Could not resolve default team for dream session (user {user_id}); "
@@ -618,7 +618,7 @@ async def apply_operations(
     if lock_handle is not None and (
         completion.registered or ops.demotions or ops.entity_invalidations
     ):
-        if not await lock_handle.extend(LOCK_DRAIN_RENEWAL_SECONDS):
+        if not await _renewed_for_the_tail(lock_handle, pass_id):
             raise DreamLockLostError(user_id)
 
     # Drain the in-process ingestion queue before anything downstream
@@ -680,3 +680,21 @@ async def apply_operations(
         "ingestion_drain_status": ingestion_drain_status,
         "snapshot": snapshot,
     }
+
+
+async def _renewed_for_the_tail(lock_handle: DreamLockHandle, pass_id: str) -> bool:
+    """Renew the lock for the drain and the writes after it. A renewal Redis
+    does not answer within ``LOCK_CHECK_TIMEOUT_SECONDS`` fails closed, as
+    the lease renewals that admit apply do: ownership unknown is not
+    ownership."""
+    try:
+        async with asyncio.timeout(LOCK_CHECK_TIMEOUT_SECONDS):
+            return await lock_handle.extend(LOCK_DRAIN_RENEWAL_SECONDS)
+    except TimeoutError:
+        logger.warning(
+            "Dream pass %s: the lock renewal before the drain did not answer "
+            "within %ss; stopping before the destructive tail",
+            pass_id,
+            LOCK_CHECK_TIMEOUT_SECONDS,
+        )
+        return False

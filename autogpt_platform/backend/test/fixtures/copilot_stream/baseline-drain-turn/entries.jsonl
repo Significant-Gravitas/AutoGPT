@@ -1,0 +1,29 @@
+{"id": "1-0", "data": {"type": "data-status", "message": "Message received…"}}
+{"id": "2-0", "data": {"type": "data-status", "message": "Setting up your environment…"}}
+{"id": "3-0", "data": {"type": "start", "messageId": "00000000-0000-4000-8000-000000000001", "sessionId": "drift-session"}}
+{"id": "4-0", "data": {"type": "data-pending-drained", "drainedCount": 1, "messages": [{"id": "00000000-0000-4000-8000-000000000002", "content": "Keep it short."}]}}
+{"id": "5-0", "data": {"type": "start-step"}}
+{"id": "6-0", "data": {"type": "reasoning-start", "id": "00000000-0000-4000-8000-000000000003"}}
+{"id": "7-0", "data": {"type": "reasoning-delta", "id": "00000000-0000-4000-8000-000000000003", "delta": "The user wants "}}
+{"id": "8-0", "data": {"type": "reasoning-delta", "id": "00000000-0000-4000-8000-000000000003", "delta": "a summary."}}
+{"id": "9-0", "data": {"type": "reasoning-end", "id": "00000000-0000-4000-8000-000000000003"}}
+{"id": "10-0", "data": {"type": "text-start", "id": "00000000-0000-4000-8000-000000000004"}}
+{"id": "11-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000004", "delta": "Fetching it."}}
+{"id": "12-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000004"}}
+{"id": "13-0", "data": {"type": "finish-step"}}
+{"id": "14-0", "data": {"type": "tool-input-start", "toolCallId": "call-fetch", "toolName": "web_fetch"}}
+{"id": "15-0", "data": {"type": "tool-input-available", "toolCallId": "call-fetch", "toolName": "web_fetch", "input": {"url": "example.com"}}}
+{"id": "16-0", "data": {"type": "tool-output-available", "toolCallId": "call-fetch", "output": "Example Domain", "toolName": "web_fetch", "success": true}}
+{"id": "17-0", "data": {"type": "data-pending-drained", "drainedCount": 1, "messages": [{"id": "00000000-0000-4000-8000-000000000005", "content": "In French, please."}]}}
+{"id": "18-0", "data": {"type": "data-checkpoint", "rows": 5, "sequence": 1, "digest": "630cc061bcb09f33a99719db8a07e65f79152226f69db47702f7a59ea02b17be"}}
+{"id": "19-0", "data": {"type": "start-step"}}
+{"id": "20-0", "data": {"type": "reasoning-start", "id": "00000000-0000-4000-8000-000000000006"}}
+{"id": "21-0", "data": {"type": "reasoning-delta", "id": "00000000-0000-4000-8000-000000000006", "delta": "Short answer."}}
+{"id": "22-0", "data": {"type": "reasoning-end", "id": "00000000-0000-4000-8000-000000000006"}}
+{"id": "23-0", "data": {"type": "text-start", "id": "00000000-0000-4000-8000-000000000007"}}
+{"id": "24-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000007", "delta": "It is a placeholder page."}}
+{"id": "25-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000007"}}
+{"id": "26-0", "data": {"type": "finish-step"}}
+{"id": "27-0", "data": {"type": "data-checkpoint", "rows": 7, "sequence": 1, "digest": "3d5d2ab2fec9709ebf4df2930a8d04ed2277a6a0401a6b0b62ad5faaf9ac2c21"}}
+{"id": "28-0", "data": {"type": "usage", "prompt_tokens": 200, "completion_tokens": 40, "total_tokens": 240, "cache_read_tokens": 0, "cache_creation_tokens": 0}}
+{"id": "29-0", "data": {"type": "finish"}}

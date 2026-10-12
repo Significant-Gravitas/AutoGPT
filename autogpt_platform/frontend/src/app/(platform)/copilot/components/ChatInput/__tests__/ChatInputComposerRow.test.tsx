@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatInput } from "../ChatInput";
 
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
+  useGetV2ListChatTransports: () => ({ data: undefined }),
   postV2CancelSessionTask: vi.fn(),
   // A lone platform connection whose tiers resolve to one model: the picker
   // presents nothing, which keeps these tests about the composer itself.

@@ -11,6 +11,7 @@ from backend.copilot.integration_creds import (
     _NULL_CACHE_TTL,
     _TOKEN_CACHE_TTL,
     PROVIDER_ENV_VARS,
+    ProviderTokenUnavailable,
     _consume_creds_changed_events,
     _gh_identity_cache,
     _gh_identity_null_cache,
@@ -22,12 +23,14 @@ from backend.copilot.integration_creds import (
     invalidate_user_provider_cache,
 )
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.integrations.creds_events import CredentialsChangedEvent
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     register_creds_changed_hook,
     unregister_creds_changed_hook,
 )
+from backend.util.cache import clear_thread_cache
 
 _USER = "user-integration-creds-test"
 _PROVIDER = "github"
@@ -262,6 +265,48 @@ class TestGetProviderToken:
         assert (_USER, _PROVIDER) not in _null_cache
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_strict_raises_on_a_db_failure_instead_of_not_connected(self):
+        """The swap proxy scrubs against this answer: a failure must not read
+        as "not connected", which would mean nothing to scrub."""
+        mock_manager = MagicMock()
+        mock_manager.store.get_creds_by_provider = AsyncMock(
+            side_effect=RuntimeError("db down")
+        )
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
+            with pytest.raises(ProviderTokenUnavailable):
+                await get_provider_token(_USER, _PROVIDER, strict=True)
+        assert (_USER, _PROVIDER) not in _null_cache
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_strict_raises_when_the_only_refresh_fails(self):
+        mock_manager = MagicMock()
+        mock_manager.store.get_creds_by_provider = AsyncMock(
+            return_value=[_make_oauth2_creds("stale-oauth-tok")]
+        )
+        mock_manager.refresh_if_needed = AsyncMock(side_effect=RuntimeError("network"))
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
+            with pytest.raises(ProviderTokenUnavailable):
+                await get_provider_token(_USER, _PROVIDER, strict=True)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_strict_still_falls_back_when_a_refresh_fails(self):
+        """A failed refresh with an API key to fall back to is an answer."""
+        mock_manager = MagicMock()
+        mock_manager.store.get_creds_by_provider = AsyncMock(
+            return_value=[_make_oauth2_creds("stale"), _make_api_key_creds("api-tok")]
+        )
+        mock_manager.refresh_if_needed = AsyncMock(side_effect=RuntimeError("network"))
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
+            assert await get_provider_token(_USER, _PROVIDER, strict=True) == "api-tok"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_strict_not_connected_is_still_none(self):
+        mock_manager = MagicMock()
+        mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[])
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
+            assert await get_provider_token(_USER, _PROVIDER, strict=True) is None
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_token_cache_ttl_is_the_stale_token_ceiling(self):
         """The TTL is the fallback when a pub/sub invalidation is lost."""
         assert _null_cache.ttl == _NULL_CACHE_TTL
@@ -393,6 +438,13 @@ class TestThreadSafetyLocks:
     """Bug reproduction: shared AsyncRedisKeyedMutex across threads caused
     'Future attached to a different loop' when copilot workers accessed
     credentials from different event loops."""
+
+    @pytest.fixture(autouse=True)
+    def drop_mock_backed_locks(self):
+        # Every store in a thread shares one cached mutex, so one built on the
+        # mock Redis below would serve every later test in this session.
+        yield
+        clear_thread_cache(IntegrationCredentialsStore.locks)
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_locks_returns_per_thread_instance(self):

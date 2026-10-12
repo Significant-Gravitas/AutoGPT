@@ -9,7 +9,9 @@ import type { CreateSessionRequest } from "@/app/api/__generated__/models/create
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 import { useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { trackFunnel } from "@/services/experts/experts-analytics";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
@@ -19,6 +21,7 @@ import {
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
+import { isPaywallError } from "./helpers/sendFailureToast";
 import { getSessionSentFrom } from "./sentFrom";
 import {
   getAvailableLLMTransports,
@@ -27,6 +30,11 @@ import {
 import { useAutopilotModeStore } from "./autopilotModeStore";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import { latestExpertSessionParams } from "./expertSessionQuery";
+import {
+  compareShadowWithSession,
+  setStreamShadowRate,
+} from "./stream/turnShadow";
+import { ReportedSendError } from "./helpers/reportedSendError";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
@@ -63,6 +71,8 @@ export function useChatSession({
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       refetchOnMount: true,
+      retry: (failureCount, error) =>
+        !isDefinitiveSessionFailure(error) && failureCount < 3,
     },
   });
 
@@ -168,6 +178,17 @@ export function useChatSession({
       ? sessionQuery.data.data
       : null;
 
+  const streamShadowRate = useGetFlag(Flag.COPILOT_STREAM_SHADOW);
+  useEffect(() => {
+    setStreamShadowRate(streamShadowRate);
+  }, [streamShadowRate]);
+
+  useEffect(() => {
+    if (sessionId && freshSessionData) {
+      compareShadowWithSession(sessionId, freshSessionData);
+    }
+  }, [sessionId, freshSessionData]);
+
   // Expose active_stream info so the caller can trigger manual resume
   // after hydration completes (rather than relying on AI SDK's built-in
   // resume which fires before hydration).
@@ -239,16 +260,18 @@ export function useChatSession({
         title: "Could not check AI connections",
         description: "Refresh the page and try again.",
       });
-      throw new Error("Could not load AI connections");
+      throw new ReportedSendError("Could not load AI connections");
     }
     if (chatTransports !== undefined && availableTransports.length === 0) {
+      // NoAIConnectionNotice above the composer says how to fix this and
+      // stays put; the toast only marks that this send went nowhere.
       toast({
         variant: "destructive",
-        title: "Your expert needs an AI connection",
+        title: "No AI connection is set up",
         description:
-          "Connect ChatGPT or Microsoft 365 Copilot in Settings → Integrations, or configure a chat API or local model on this server.",
+          "Your message is back in the composer. See the notice above it for how to connect a model.",
       });
-      throw new Error("chat_transport_not_configured");
+      throw new ReportedSendError("No AI connection is set up");
     }
     if (!resolvedLLMAuth) {
       const connectionsAreLoading = chatTransports === undefined;
@@ -261,7 +284,7 @@ export function useChatSession({
           ? "Wait a moment and try again."
           : "Select the connection your expert should use before starting a new task.",
       });
-      throw new Error(
+      throw new ReportedSendError(
         connectionsAreLoading
           ? "AI connections are still loading"
           : "AI connection selection required",
@@ -306,11 +329,6 @@ export function useChatSession({
         Sentry.captureException(error, {
           extra: { status: response.status },
         });
-        toast({
-          variant: "destructive",
-          title: "Could not start a new chat session",
-          description: "Please try again.",
-        });
         throw error;
       }
       useCopilotStreamStore
@@ -326,18 +344,17 @@ export function useChatSession({
       });
       return response.data.id;
     } catch (error) {
+      // The caller owns the one toast for this failure (see
+      // toastSendFailure); toasting here as well stacked two contradictory
+      // messages. A paywall is an account state, not a fault.
       if (
-        error instanceof Error &&
-        error.message === "Failed to create session"
+        !isPaywallError(error) &&
+        !(
+          error instanceof Error && error.message === "Failed to create session"
+        )
       ) {
-        throw error; // already handled above
+        Sentry.captureException(error);
       }
-      Sentry.captureException(error);
-      toast({
-        variant: "destructive",
-        title: "Could not start a new chat session",
-        description: "Please try again.",
-      });
       throw error;
     }
   }
@@ -407,6 +424,8 @@ export function useChatSession({
   return {
     sessionId,
     setSessionId,
+    /** The session GET as last fetched; null while a fetch is in flight. */
+    sessionView: freshSessionData,
     sessionLlmAuthProvider,
     sessionLlmCredentialId,
     sessionExpertId,
@@ -425,6 +444,8 @@ export function useChatSession({
     // flips back to ``true`` mid-refetch, silently dropping the message.
     isLoadingSession: sessionQuery.isLoading,
     isSessionError: sessionQuery.isError,
+    // Another account's session and a missing one are the same 404 by design.
+    isSessionNotFound: isDefinitiveSessionFailure(sessionQuery.error),
     createSession,
     isCreatingSession,
     refetchSession: sessionQuery.refetch,
@@ -433,4 +454,10 @@ export function useChatSession({
     sessionSentFrom,
     sessionAutopilotMode,
   };
+}
+
+function isDefinitiveSessionFailure(error: unknown) {
+  return (
+    error instanceof ApiError && (error.status === 403 || error.status === 404)
+  );
 }

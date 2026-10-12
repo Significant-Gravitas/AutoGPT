@@ -1,0 +1,24 @@
+{% import '_email_ui.j2' as ui with context %}
+<!doctype html>
+<html lang="en">
+<head>{{ ui.head_block(content.subject) }}</head>
+{{ ui.body_open() }}
+{{ ui.preheader(content.preheader) }}
+{{ ui.page_open() }}
+{{ ui.masthead() }}
+{{ ui.sheet_open() }}
+{% call ui.eyebrow(top=28) %}{{ content.eyebrow }}{% endcall %}
+{% call ui.headline() %}{{ content.headline }}{% endcall %}
+{% call ui.para() %}{{ content.intro }} {{ content.preheader }} If you didn't request this, you can safely ignore this email.{% endcall %}
+{{ ui.cta(content.action, action_url, micro='Button not working? Copy this link into your browser:') }}
+{% call ui.para(top=6, size=12, lh=18) %}
+<a href="{{ action_url }}" style="color:#4D36AD; text-decoration:underline; font-family:{{ ui.MONO }}; font-size:12px; overflow-wrap:anywhere; word-break:break-word;">{{ action_url }}</a>
+{% endcall %}
+{% if content.expiry %}{% call ui.para() %}The link expires in {{ content.expiry }}.{% endcall %}{% endif %}
+{% if content.note %}{% call ui.para() %}{{ content.note }}{% endcall %}{% endif %}
+{{ ui.close_row(content.reason, 'Something wrong? Ask in Discord', urls.discord) }}
+{{ ui.sheet_close() }}
+{{ ui.page_close() }}
+{{ ui.legal_footer("This is a service message about an AutoGPT account. It's sent even if you've opted out of product news.", 'Discord', urls.discord) }}
+</td></tr></table>
+</body></html>

@@ -4,6 +4,7 @@ import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/cre
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 import { Link } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
+import type { ReactNode } from "react";
 import {
   TabsLine,
   TabsLineList,
@@ -27,9 +28,11 @@ const METHOD_LABELS: Record<AuthMethod, string> = {
 interface Props {
   server: NonNullable<ProviderMetadata["mcp_server"]>;
   onSuccess: (credential?: CredentialsMetaResponse) => void;
+  /** Extra buttons for the row that holds Connect. */
+  actions?: ReactNode;
 }
 
-export function MCPPresetPanel({ server, onSuccess }: Props) {
+export function MCPPresetPanel({ server, onSuccess, actions }: Props) {
   const methods = server.auth_methods;
   return (
     <div className="flex flex-col gap-4">
@@ -44,6 +47,7 @@ export function MCPPresetPanel({ server, onSuccess }: Props) {
           server={server}
           onSuccess={onSuccess}
           method={methods[0]}
+          actions={actions}
         />
       ) : (
         <TabsLine defaultValue={methods[0]}>
@@ -60,6 +64,7 @@ export function MCPPresetPanel({ server, onSuccess }: Props) {
                 server={server}
                 onSuccess={onSuccess}
                 method={method}
+                actions={actions}
               />
             </TabsLineContent>
           ))}
@@ -73,10 +78,11 @@ function PresetMethod({
   server,
   onSuccess,
   method,
+  actions,
 }: Props & { method: AuthMethod }) {
   if (method === "none") {
     return server.server_url ? (
-      <PublicMCPPanel serverURL={server.server_url} />
+      <PublicMCPPanel serverURL={server.server_url} actions={actions} />
     ) : null;
   }
   return (
@@ -87,11 +93,14 @@ function PresetMethod({
         server.server_url ??
         ""
       }
-      lockServerURL={server.connection_mode === "hosted"}
+      lockServerURL={
+        server.connection_mode === "hosted" && !server.allow_custom_url
+      }
       allowedAuthMethods={[method]}
       oauthScopes={server.oauth_scopes}
       oauthWriteScopes={server.oauth_write_scopes}
       serverURLOptions={server.server_url_options}
+      actions={actions}
     />
   );
 }

@@ -42,6 +42,7 @@ from backend.copilot.graphiti.recall import live_fact_predicate
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.dream_pass_models import DreamPassRecord
 from backend.util.clients import get_scheduler_client
+from backend.util.url_redaction import redact_url
 
 logger = logging.getLogger(__name__)
 
@@ -243,7 +244,7 @@ def _audit_cross_user_access(
         # The URL is repr-escaped too: with path-scoped expert routes the
         # expert_id is a path segment, so control characters would
         # otherwise ride into the log line through the URL itself.
-        f"for {request.method} {str(request.url)!r}"
+        f"for {request.method} {redact_url(str(request.url))!r}"
     )
 
 

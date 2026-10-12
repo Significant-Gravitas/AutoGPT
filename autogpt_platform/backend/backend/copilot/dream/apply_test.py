@@ -11,15 +11,17 @@ Each of those is mocked here.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from backend.copilot.graphiti.guarded_writes import NeighbourWrites, WriteOutcome
 from backend.copilot.graphiti.ingest import IngestionCompletion
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.data.db_accessors import orgs_db as real_orgs_db
 
 from . import apply as apply_mod
 from . import demotions as demotions_mod
@@ -110,8 +112,10 @@ def _stub_boundaries(mocker):
     # next session-loop test touching Prisma dies with "Event loop is
     # closed" (test_chatsession_redis_storage in CI).
     mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
-        AsyncMock(return_value=(None, None)),
+        "backend.data.db_accessors.orgs_db",
+        return_value=MagicMock(
+            get_user_default_team=AsyncMock(return_value=(None, None))
+        ),
     )
     # Entity invalidation is gated on DREAM_PASS_INVALIDATE_ENTITY. Default
     # the flag ON so the existing entity tests exercise the apply path; the
@@ -523,6 +527,35 @@ async def test_expert_dream_session_and_write_keep_expert_scope(mocker):
 
 
 @pytest.mark.asyncio
+async def test_dream_session_resolves_tenant_through_db_manager(mocker):
+    """The dream pass runs in the scheduler, where Prisma is not connected,
+    so the default-team lookup has to go through the DatabaseManager client
+    rather than leaving every dream session tenant-less."""
+    db = mocker.MagicMock()
+    db.create_chat_session = AsyncMock()
+    db.update_chat_session_title = AsyncMock(return_value=True)
+    mocker.patch("backend.data.db_accessors.chat_db", return_value=db)
+    # The autouse stub replaces the accessor; put the real one back so the
+    # connection check below decides where the lookup goes.
+    mocker.patch("backend.data.db_accessors.orgs_db", real_orgs_db)
+    mocker.patch("backend.data.db.is_connected", return_value=False)
+    db_manager = MagicMock(
+        get_user_default_team=AsyncMock(return_value=("org-1", "team-1"))
+    )
+    mocker.patch(
+        "backend.util.clients.get_database_manager_async_client",
+        return_value=db_manager,
+    )
+
+    await apply_mod._create_dream_session(MemoryScope.for_user("u1"), "p1")
+
+    db_manager.get_user_default_team.assert_awaited_once_with("u1")
+    kwargs = db.create_chat_session.call_args.kwargs
+    assert kwargs["organization_id"] == "org-1"
+    assert kwargs["team_id"] == "team-1"
+
+
+@pytest.mark.asyncio
 async def test_summary_written_after_memory_ops(mocker):
     """The user-facing narrative must be written AFTER the memory ops, so a
     partway failure doesn't leave a 'completed' dream narrative with no
@@ -708,6 +741,43 @@ async def test_failed_lock_renewal_aborts_before_drain_and_demotions(mocker):
             pass_id="p-lost",
             ops=ops,
             lock_handle=lock_handle,
+        )
+
+    drain.assert_not_awaited()
+    demote.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_lock_renewal_redis_does_not_answer_aborts_before_drain(mocker):
+    """The renewal before the drain is bounded like every other lock round
+    trip, and fails closed: a renewal that does not answer in time is not
+    taken for one that landed."""
+    mocker.patch.object(apply_mod, "LOCK_CHECK_TIMEOUT_SECONDS", 0.05)
+    drain = mocker.patch.object(apply_mod, "_drain_ingestion", AsyncMock())
+    demote = mocker.patch.object(
+        apply_mod, "_filter_demotions_to_known_facts", AsyncMock()
+    )
+
+    async def never_answers(_ttl_seconds: int) -> bool:
+        await asyncio.Event().wait()
+        return True
+
+    lock_handle = mocker.MagicMock()
+    lock_handle.extend = never_answers
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+
+    with pytest.raises(DreamLockLostError):
+        await asyncio.wait_for(
+            apply_mod.apply_operations(
+                scope=MemoryScope.for_user("u-slow"),
+                pass_id="p-slow",
+                ops=ops,
+                lock_handle=lock_handle,
+            ),
+            5,
         )
 
     drain.assert_not_awaited()

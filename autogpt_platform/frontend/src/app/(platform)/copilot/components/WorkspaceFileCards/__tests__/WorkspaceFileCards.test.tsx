@@ -10,7 +10,6 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
-import { act } from "@testing-library/react";
 import type { UIMessage } from "ai";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -78,41 +77,6 @@ function listResponse(): ListFilesResponse {
   };
 }
 
-function openFilesCard() {
-  useCopilotUIStore.setState({
-    artifactPanel: {
-      isOpen: true,
-      activeArtifact: null,
-      history: [],
-      activeTab: "files",
-      lastArtifact: null,
-      mode: "artifact",
-      computer: null,
-      isComputerOpen: false,
-    },
-  });
-}
-
-function closeFilesCard() {
-  useCopilotUIStore.setState({
-    artifactPanel: {
-      isOpen: false,
-      activeArtifact: null,
-      history: [],
-      activeTab: "files",
-      lastArtifact: null,
-      mode: "artifact",
-      computer: null,
-      isComputerOpen: false,
-    },
-  });
-}
-
-// Long enough for a mounted list query to reach the MSW handler.
-function flushRequests() {
-  return new Promise((resolve) => setTimeout(resolve, 20));
-}
-
 function activityMessages(): UIMessage[] {
   return [
     {
@@ -151,7 +115,6 @@ function activityMessages(): UIMessage[] {
 
 beforeEach(() => {
   server.use(getListWorkspaceFilesMockHandler200(listResponse()));
-  openFilesCard();
 });
 
 afterEach(() => {
@@ -176,83 +139,68 @@ afterEach(() => {
 });
 
 describe("WorkspaceFileCards", () => {
-  it("renders the session's files as a floating card when the store flag is open", async () => {
+  it("renders the session's files", async () => {
     render(<WorkspaceFileCards sessionId={SESSION} />);
 
     expect(await screen.findByText("uploaded.png")).toBeDefined();
     expect(screen.getByText("result.csv")).toBeDefined();
-    expect(screen.getByText(/^Files \(2\)/)).toBeDefined();
+    expect(screen.getByText(/^Files in this chat \(2\)/)).toBeDefined();
     expect(screen.getByLabelText("Download all")).toBeDefined();
   });
 
-  it("renders nothing while the card is closed", () => {
-    useCopilotUIStore.setState({
-      artifactPanel: {
-        isOpen: false,
-        activeArtifact: null,
-        history: [],
-        activeTab: "files",
-        lastArtifact: null,
-        mode: "artifact",
-        computer: null,
-        isComputerOpen: false,
-      },
-    });
-    const { container } = render(<WorkspaceFileCards sessionId={SESSION} />);
-    expect(container.textContent).toBe("");
-  });
-
-  it("steps aside while the artifacts tab owns the side panel", () => {
-    useCopilotUIStore.setState({
-      artifactPanel: {
-        isOpen: true,
-        activeArtifact: null,
-        history: [],
-        activeTab: "artifacts",
-        lastArtifact: null,
-        mode: "artifact",
-        computer: null,
-        isComputerOpen: false,
-      },
-    });
-    const { container } = render(<WorkspaceFileCards sessionId={SESSION} />);
-    expect(container.textContent).toBe("");
-  });
-
-  it("steps aside while the computer face covers the panel", () => {
-    useCopilotUIStore.setState({
-      artifactPanel: {
-        isOpen: true,
-        activeArtifact: null,
-        history: [],
-        activeTab: "files",
-        lastArtifact: null,
-        mode: "computer",
-        computer: null,
-        isComputerOpen: true,
-      },
-    });
-    const { container } = render(<WorkspaceFileCards sessionId={SESSION} />);
-    expect(container.textContent).toBe("");
-  });
-
-  it("requests the file list only while the card is open", async () => {
-    let listRequests = 0;
+  it("lists generated documents from all of the expert's chats", async () => {
+    const expertRequests: URLSearchParams[] = [];
     server.use(
-      getListWorkspaceFilesMockHandler200(() => {
-        listRequests += 1;
-        return listResponse();
+      http.get("*/api/workspace/files", ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        if (params.get("expert_id") !== "expert-maria") {
+          return HttpResponse.json(listResponse());
+        }
+        expertRequests.push(params);
+        return HttpResponse.json({
+          files: [
+            ...Array.from({ length: 5 }, (_, index) => ({
+              id: `expert-document-${index}`,
+              name: `maria-${index + 1}.md`,
+              path: `/sessions/maria-${index}/document.md`,
+              mime_type: "text/markdown",
+              size_bytes: 128,
+              origin: "generated" as const,
+              created_at: "2026-09-29T10:00:00Z",
+              expert_id: "expert-maria",
+            })),
+            {
+              id: "expert-tool-output",
+              name: "raw.json",
+              path: "/sessions/maria/tool-results/raw.json",
+              mime_type: "application/json",
+              size_bytes: 64,
+              metadata: { purpose: "tool-output" },
+              origin: "generated" as const,
+              created_at: "2026-09-29T09:00:00Z",
+              expert_id: "expert-maria",
+            },
+          ],
+          offset: 0,
+          has_more: false,
+        });
       }),
     );
-    closeFilesCard();
-    render(<WorkspaceFileCards sessionId={SESSION} />);
-    await flushRequests();
-    expect(listRequests).toBe(0);
 
-    act(() => openFilesCard());
+    render(
+      <WorkspaceFileCards
+        sessionId={SESSION}
+        expert={{ id: "expert-maria", name: "Maria" }}
+      />,
+    );
 
-    expect(await screen.findByText("uploaded.png")).toBeDefined();
-    expect(listRequests).toBeGreaterThan(0);
+    expect(await screen.findByText("All Maria's documents")).toBeDefined();
+    expect(await screen.findByText("maria-1.md")).toBeDefined();
+    expect(screen.getByText("View more (1)")).toBeDefined();
+    expect(screen.queryByText("raw.json")).toBeNull();
+    expect(expertRequests).toHaveLength(1);
+    expect(expertRequests[0].get("origin")).toBe("generated");
+    expect(expertRequests[0].get("limit")).toBe("200");
   });
 
   it("opens a file as an artifact preview on click", async () => {

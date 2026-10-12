@@ -8,12 +8,14 @@ LLM extraction step and ends up on production :RELATES_TO edges.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 import pytest
 from pydantic import ValidationError
 
-from .memory_model import MemoryStatus, SourceKind
+from .memory_model import ExtractedStatus, MemoryStatus, SourceKind
+from .recall import USER_FORGET_REASON
 from .types import (
     EDGE_TYPE_MAP,
     EDGE_TYPES,
@@ -54,6 +56,21 @@ def test_memoryfact_status_enum_restricted():
     MemoryFact(status=MemoryStatus.tentative)
     with pytest.raises(ValidationError):
         MemoryFact(status="archived")  # type: ignore[arg-type]
+
+
+def test_memoryfact_leaves_a_forgets_marks_out_of_the_extraction_schema():
+    """``MemoryFact`` is graphiti's schema for what its extraction model fills
+    from an episode's text: every status but ``retracted``, and no
+    ``user_signal`` among the example reasons, since only a forget writes
+    them ("I retracted my application" is no forget)."""
+    assert {s.value for s in ExtractedStatus} == {s.value for s in MemoryStatus} - {
+        MemoryStatus.retracted.value
+    }
+    with pytest.raises(ValidationError):
+        MemoryFact.model_validate({"status": MemoryStatus.retracted.value})
+    schema = json.dumps(MemoryFact.model_json_schema())
+    assert MemoryStatus.retracted.value not in schema
+    assert USER_FORGET_REASON not in schema
 
 
 def test_memoryfact_carries_full_envelope_metadata():

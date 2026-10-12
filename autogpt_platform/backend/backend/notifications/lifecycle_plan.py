@@ -10,6 +10,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Literal
 
+from prisma.enums import SubscriptionTier
+
 from backend.data.credit import build_price_to_tier_map
 from backend.data.notifications import CardDetails, SubscriptionPlan
 from backend.notifications.stripe_payloads import StripeInvoice
@@ -46,7 +48,7 @@ async def plan_from_subscription(subscription: dict) -> SubscriptionPlan:
         name=name,
         cycle=cycle,
         cycle_noun="month" if cycle == "monthly" else "year",
-        label=f"{name} — {cycle}",
+        label=f"{name} · {cycle}",
         price_display=f"{format_amount(price.get('unit_amount'), price.get('currency', 'usd'))} / {'month' if cycle == 'monthly' else 'year'}",
     )
 
@@ -61,9 +63,18 @@ async def plan_from_invoice(invoice: dict) -> SubscriptionPlan:
         name=name,
         cycle=cycle,
         cycle_noun="month" if cycle == "monthly" else "year",
-        label=f"{name} — {cycle}",
+        label=f"{name} · {cycle}",
         price_display=f"{format_amount(price.get('unit_amount'), price.get('currency', 'usd'))} / {'month' if cycle == 'monthly' else 'year'}",
     )
+
+
+async def tier_and_cycle_from_subscription(
+    subscription: dict,
+) -> tuple[str | None, Literal["monthly", "yearly"]]:
+    """The tier key (``PRO``) and cycle, in the form analytics reports them."""
+    price = _first_price(subscription)
+    tier = await _tier(price.get("id"))
+    return (tier.value if tier else None), _cycle(price)
 
 
 def card_from_invoice(invoice: dict) -> CardDetails:
@@ -84,7 +95,7 @@ def format_amount(minor_units: int | None, currency: str) -> str:
     """Stripe amounts are in the currency's minor unit, except where they
     aren't."""
     if minor_units is None:
-        return "—"
+        return "Not available"
     symbol = {"usd": "$", "eur": "€", "gbp": "£"}.get(currency.lower(), "")
     if currency.lower() in _ZERO_DECIMAL_CURRENCIES:
         return f"{symbol}{minor_units:,}"
@@ -94,7 +105,7 @@ def format_amount(minor_units: int | None, currency: str) -> str:
 def format_date(timestamp: int | None) -> str:
     """The one fact these emails exist to state, so it is never relative."""
     if not timestamp:
-        return "—"
+        return "Not available"
     moment = datetime.fromtimestamp(timestamp, tz=timezone.utc)
     return f"{moment.day} {moment.strftime('%b %Y')}"
 
@@ -110,11 +121,15 @@ def _cycle(price: dict) -> Literal["monthly", "yearly"]:
 
 
 async def _tier_name(price_id: str | None) -> str:
+    tier = await _tier(price_id)
+    return tier.value.title() if tier else "AutoGPT"
+
+
+async def _tier(price_id: str | None) -> SubscriptionTier | None:
     if not price_id:
-        return "AutoGPT"
+        return None
     try:
-        tier = (await build_price_to_tier_map()).get(price_id)
+        return (await build_price_to_tier_map()).get(price_id)
     except Exception:
         logger.warning(f"Could not resolve tier for price {price_id}", exc_info=True)
-        return "AutoGPT"
-    return tier.value.title() if tier else "AutoGPT"
+        return None

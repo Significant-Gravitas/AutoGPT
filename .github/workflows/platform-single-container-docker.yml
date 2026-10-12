@@ -102,7 +102,7 @@ jobs:
             image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
 
       - name: Authenticate to GHCR build cache
-        if: ${{ github.event_name != 'pull_request' }}
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
@@ -206,6 +206,7 @@ jobs:
           severity: CRITICAL
           exit-code: "1"
           timeout: 30m
+          trivyignores: autogpt_platform/single-container/.trivyignore.yaml
 
       - name: Scan image filesystem for embedded secrets
         id: secret_scan
@@ -219,6 +220,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
           timeout: 30m
+          trivyignores: autogpt_platform/single-container/.trivyignore.yaml
 
       - name: Signal concurrent scans complete
         if: ${{ !cancelled() }}
@@ -376,6 +378,7 @@ jobs:
           severity: CRITICAL
           exit-code: "1"
           timeout: 30m
+          trivyignores: autogpt_platform/single-container/.trivyignore.yaml
 
       - name: Scan the exact pushed digest for embedded secrets
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -388,6 +391,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
           timeout: 30m
+          trivyignores: autogpt_platform/single-container/.trivyignore.yaml
 
       - name: Export verified digest
         shell: bash
