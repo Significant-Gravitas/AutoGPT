@@ -327,6 +327,13 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
   // restores the full retry budget for whatever it runs into.
   function handleVisibilityChange(): void {
     if (document.visibilityState !== "visible") return;
+    // Back while a retry is waiting: check now rather than waiting it out,
+    // the same as when the network returns.
+    if (get().retryTimer) {
+      cancelRetry();
+      void validateSessionInternal({ force: true });
+      return;
+    }
     set({ retryAttempt: 0 });
     void validateSessionInternal();
   }
