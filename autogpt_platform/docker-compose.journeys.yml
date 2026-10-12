@@ -20,6 +20,11 @@ x-scripted-model-env: &scripted-model-env
   CHAT_USE_CLAUDE_CODE_SUBSCRIPTION: "false"
   CHAT_BASE_URL: http://scripted_model:4010/api/v1
   CHAT_API_KEY: "scripted-model-accepts-any-key" # pragma: allowlist secret
+  # The stack has no platform LLM keys, so an AI block asks the user for one.
+  # Run with the key they save, its Anthropic client (which reads this when no
+  # base URL is passed) calls the fake too, which journals which key it was
+  # sent. The SDK engine's CLI gets its own ANTHROPIC_BASE_URL either way.
+  ANTHROPIC_BASE_URL: http://scripted_model:4010/api
   # Memory (graphiti-memory is a hosted flag) would otherwise send that key to
   # openrouter.ai and api.openai.com. Kept inside the stack, its calls fail
   # fast and the turn goes on without memory, as it does on any failure.

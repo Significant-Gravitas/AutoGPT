@@ -12,7 +12,7 @@ from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
 from . import chat_completions, messages
-from .journal import Journal, Request
+from .journal import Journal, Request, fingerprint
 from .planner import Conversation, Plan, Reply, plan
 from .scripts import ScriptError
 from .streaming import Event, sse
@@ -77,7 +77,9 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == JOURNAL_PATH:
             query = {key: values[-1] for key, values in parse_qs(url.query).items()}
             entries = self.model_server.journal.find(
-                script=query.get("script"), nonce=query.get("nonce")
+                script=query.get("script"),
+                nonce=query.get("nonce"),
+                credential=query.get("credential"),
             )
             self._send_json(HTTPStatus.OK, {"entries": entries})
         elif url.path.endswith("/api/hello"):
@@ -144,7 +146,16 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.BAD_REQUEST, dialect.error(reason))
 
     def _request(self, dialect: Dialect) -> Request:
-        return Request(dialect.name, self.path)
+        return Request(dialect.name, self.path, self._credential())
+
+    def _credential(self) -> str | None:
+        """The API key the request presented: Anthropic's ``x-api-key``, or a
+        bearer token (OpenAI clients, the CLI's auth token)."""
+        key = self.headers.get("x-api-key") or ""
+        authorization = self.headers.get("Authorization") or ""
+        if not key and authorization.lower().startswith("bearer "):
+            key = authorization[len("bearer ") :].strip()
+        return fingerprint(key) if key else None
 
     def _stream(self, events: Iterator[Event], entry: dict[str, Any]) -> None:
         self.send_response(HTTPStatus.OK)

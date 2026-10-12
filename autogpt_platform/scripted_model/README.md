@@ -106,6 +106,13 @@ the tool results it carried, expectation checks, usage, cost, and whether the
 whole reply reached the platform (`completed`). Refused requests are there
 with their reason. The container log has one line per request.
 
+Each entry also names the API key the request presented (`x-api-key`, or a
+bearer token) as `credential`: the first 16 hex digits of its SHA-256, never
+the key itself. `?credential=<fingerprint>` lists the requests made with one
+key. The journeys stack points Anthropic clients at this server
+(`ANTHROPIC_BASE_URL`), so an AI block run with a key the journey's user saved
+lands here too, and a journey can check the block ran once, with that key.
+
 ## Run it
 
 With the stack, add the override file:

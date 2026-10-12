@@ -1,4 +1,4 @@
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { expect, test } from "@playwright/test";
 import { withJourneyDatabase } from "./journey-database";
 
@@ -28,6 +28,8 @@ export interface JournalEntry {
   cost_usd?: number | null;
   checks?: { what: string; ok: boolean; detail: string }[];
   completed?: boolean | null;
+  /** The API key the request presented, as its keyFingerprint(). */
+  credential?: string | null;
 }
 
 /** A chat message that makes the model follow `script`, and its run's id. */
@@ -61,8 +63,27 @@ export async function requireScriptedModel() {
 
 /** Every model request a run made, oldest first. */
 export async function readJournal(nonce: string) {
+  return journalEntries({ nonce });
+}
+
+/**
+ * Every model request made with `apiKey`, oldest first: e.g. an AI block run
+ * with a key the journey's user saved. The journeys stack points Anthropic
+ * clients at the scripted model, which journals each request's key as a
+ * fingerprint.
+ */
+export async function readJournalForKey(apiKey: string) {
+  return journalEntries({ credential: keyFingerprint(apiKey) });
+}
+
+/** How the scripted model's journal names an API key. */
+function keyFingerprint(apiKey: string) {
+  return createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
+}
+
+async function journalEntries(query: Record<string, string>) {
   const response = await fetch(
-    `${SCRIPTED_MODEL_URL}/__scripted__/journal?nonce=${nonce}`,
+    `${SCRIPTED_MODEL_URL}/__scripted__/journal?${new URLSearchParams(query)}`,
   );
   expect(response.ok, `GET journal: ${response.status}`).toBe(true);
   const body = (await response.json()) as { entries: JournalEntry[] };

@@ -5,10 +5,12 @@ does, and the OpenAI client is the baseline engine's own. A script that round
 trips through both is one the copilot can follow.
 """
 
+import hashlib
 import json
 import re
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -16,6 +18,7 @@ import anthropic
 import openai
 import pytest
 
+from scripted_model.journal import fingerprint
 from scripted_model.scripts import parse_script
 
 JOURNEY_SCRIPTS = (
@@ -306,6 +309,38 @@ def test_a_side_call_gets_the_script_title(scripted_model):
     assert untitled.choices[0].message.content == "Scripted reply"
     assert titled.usage.model_extra["cost"] == pytest.approx((200 * 1 + 10 * 5) / 1e6)
     assert scripted_model.journal(nonce="side")[0]["kind"] == "side_call"
+
+
+def test_the_journal_names_the_key_a_request_used_but_never_keeps_it(
+    scripted_model,
+):
+    """A journey finds the calls made with a key its user saved, e.g. an AI
+    block run with the user's own Anthropic key, by the key's fingerprint."""
+    users_key = "sk-ant-journey-key-0123456789"  # pragma: allowlist secret
+    block_client = anthropic.Anthropic(
+        base_url=f"{scripted_model.url}/api", api_key=users_key, max_retries=0
+    )
+    answer = block_client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=64,
+        messages=[{"role": "user", "content": "One line about the sea."}],
+    )
+    _openai(scripted_model).chat.completions.create(
+        model="anthropic/claude-haiku-4-5",
+        messages=[{"role": "user", "content": "Title this chat."}],
+    )
+
+    assert [b.text for b in answer.content] == ["Scripted reply"]
+    query = urllib.parse.urlencode({"credential": fingerprint(users_key)})
+    with urllib.request.urlopen(
+        f"{scripted_model.url}/__scripted__/journal?{query}", timeout=5
+    ) as response:
+        (entry,) = json.load(response)["entries"]
+    assert (entry["dialect"], entry["kind"]) == ("anthropic", "side_call")
+    assert entry["credential"] == hashlib.sha256(users_key.encode()).hexdigest()[:16]
+    (bearer,) = scripted_model.journal(credential=fingerprint("any"))
+    assert bearer["dialect"] == "openai"
+    assert users_key not in json.dumps(scripted_model.journal())
 
 
 def test_concurrent_runs_of_one_script_each_get_their_own_turns(scripted_model):

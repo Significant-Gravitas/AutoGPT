@@ -1,0 +1,47 @@
+{
+  "description": "AutoPilot runs the AI Text Generator with Claude, but the user has no Anthropic key, so the block answers with its sign-in card and AutoPilot stops. The user starts adding a key, cancels, and asks AutoPilot to skip it instead; AutoPilot answers that message once and nothing else runs. copilot-connect-card-journey.spec.ts follows it.",
+  "title": "A line about the sea",
+  "turns": [
+    {
+      "text": "I'll write that line with the AI Text Generator, using Claude.",
+      "tool_calls": [
+        {
+          "name": "run_capability",
+          "input": {
+            "id": "block:1f292d4a-41a4-4977-9684-7c8d560b9f91",
+            "input": {
+              "prompt": "Write one line about the sea.",
+              "model": "claude-haiku-4-5-20251001"
+            }
+          }
+        }
+      ],
+      "usage": {
+        "input_tokens": 3200,
+        "output_tokens": 60,
+        "cache_read_input_tokens": 24000,
+        "cache_creation_input_tokens": 1800
+      }
+    },
+    {
+      "expect_tool_results": [
+        { "tool": "run_capability", "contains": "setup_requirements" }
+      ],
+      "text": "It needs your Anthropic API key first. Connect one on the card and I'll carry on.",
+      "usage": {
+        "input_tokens": 600,
+        "output_tokens": 25,
+        "cache_read_input_tokens": 25800
+      }
+    },
+    {
+      "expect_user_text": "Never mind, skip that line.",
+      "text": "No problem, I've left it. Ask me again whenever you want it.",
+      "usage": {
+        "input_tokens": 650,
+        "output_tokens": 18,
+        "cache_read_input_tokens": 26400
+      }
+    }
+  ]
+}
