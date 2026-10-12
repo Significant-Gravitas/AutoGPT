@@ -223,6 +223,23 @@ export function moveCardToTop(
   return moveCard(data, cardId, column, positionBetween(null, top));
 }
 
+export function applyReassign(
+  data: BoardResponse,
+  oldSession: Card,
+  newSession: Card,
+): BoardResponse {
+  return {
+    ...data,
+    sessions: [
+      newSession,
+      ...data.sessions.flatMap((card) => {
+        if (card.id === newSession.id) return [];
+        return card.id === oldSession.id ? [oldSession] : [card];
+      }),
+    ],
+  };
+}
+
 export type CardState =
   | { kind: "running" }
   | { kind: "needs_you" }

@@ -1,13 +1,17 @@
 import { isKey } from "@/lib/keyboard";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useState } from "react";
 
 interface Args {
   title: string;
+  isStarted: boolean;
   onRename: (title: string) => void;
 }
 
-export function useTaskPanelHeader({ title, onRename }: Args) {
+export function useTaskPanelHeader({ title, isStarted, onRename }: Args) {
   const [draft, setDraft] = useState<string | null>(null);
+  // Without experts the only assignee is Otto, so there is no one to hand to.
+  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
 
   function startEditing() {
     setDraft(title);
@@ -40,6 +44,7 @@ export function useTaskPanelHeader({ title, onRename }: Args) {
 
   return {
     isEditing: draft !== null,
+    canReassign: isStarted && isExpertsEnabled,
     draft: draft ?? "",
     startEditing,
     stopEditing,

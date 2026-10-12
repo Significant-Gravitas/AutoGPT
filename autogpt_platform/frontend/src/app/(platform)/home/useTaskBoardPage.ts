@@ -71,5 +71,7 @@ export function useTaskBoardPage() {
     closePanel: () => void setSessionId(null),
     reassignTarget,
     startReassign: setReassignTarget,
+    closeReassign: () => setReassignTarget(null),
+    openReassigned: (id: string) => void setSessionId(id),
   };
 }

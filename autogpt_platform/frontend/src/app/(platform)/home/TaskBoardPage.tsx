@@ -12,6 +12,7 @@ import { AddColumnButton } from "./components/ColumnEditor/AddColumnButton";
 import { ColumnMenu } from "./components/ColumnEditor/ColumnMenu";
 import { DeleteColumnDialog } from "./components/ColumnEditor/DeleteColumnDialog";
 import { useColumnEditor } from "./components/ColumnEditor/useColumnEditor";
+import { ReassignDialog } from "./components/ReassignDialog/ReassignDialog";
 import { TaskCard } from "./components/TaskCard/TaskCard";
 import { TaskPanel } from "./components/TaskPanel/TaskPanel";
 import { useTaskBoardPage } from "./useTaskBoardPage";
@@ -32,7 +33,10 @@ export function TaskBoardPage() {
     draggingCard,
     panel,
     closePanel,
+    reassignTarget,
     startReassign,
+    closeReassign,
+    openReassigned,
   } = useTaskBoardPage();
   const editor = useColumnEditor(columns.map(({ column }) => column));
 
@@ -132,6 +136,12 @@ export function TaskBoardPage() {
           onReassign={startReassign}
         />
       )}
+      <ReassignDialog
+        key={`reassign-${reassignTarget?.id}`}
+        card={reassignTarget}
+        onClose={closeReassign}
+        onReassigned={openReassigned}
+      />
     </div>
   );
 }

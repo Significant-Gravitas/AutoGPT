@@ -45,12 +45,13 @@ export function TaskPanelHeader({
 }: Props) {
   const {
     isEditing,
+    canReassign,
     draft,
     startEditing,
     stopEditing,
     handleChange,
     handleKeyDown,
-  } = useTaskPanelHeader({ title, onRename });
+  } = useTaskPanelHeader({ title, isStarted: !!card?.started, onRename });
 
   function handleMarkDone() {
     onMove("done");
@@ -96,7 +97,7 @@ export function TaskPanelHeader({
             onSelect={onAssign}
           />
         )}
-        {card?.started && (
+        {card && canReassign && (
           <Button
             variant="secondary"
             size="xs"

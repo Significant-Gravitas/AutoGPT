@@ -1,6 +1,7 @@
 import type { BoardColumn } from "@/app/api/__generated__/models/boardColumn";
 import { describe, expect, it } from "vitest";
 import {
+  applyReassign,
   type Card,
   cardColumnKey,
   cardState,
@@ -356,6 +357,45 @@ describe("moveCardToTop", () => {
     expect(moveCardToTop(board, "b", "done").sessions[1].board_position).toBe(
       3 - 1024,
     );
+  });
+});
+
+describe("applyReassign", () => {
+  const board = {
+    columns: COLUMNS,
+    sessions: [
+      card("a", { board_column: "in_progress", board_position: 0 }),
+      card("b", { board_column: "done", board_position: 5 }),
+    ],
+  };
+  const oldSession = card("a", {
+    board_column: "done",
+    board_position: -1019,
+    last_line: "Reassigned to Priya",
+  });
+  const newSession = card("n", {
+    board_column: "in_progress",
+    board_position: -1024,
+    expert_id: "expert-priya",
+  });
+
+  it("moves the old card to Done and adds the new card", () => {
+    const next = applyReassign(board, oldSession, newSession);
+    expect(idsByColumn(groupCards(COLUMNS, next.sessions, NOW))).toEqual({
+      backlog: [],
+      in_progress: ["n"],
+      done: ["a", "b"],
+    });
+    expect(next.sessions.find((c) => c.id === "a")?.last_line).toBe(
+      "Reassigned to Priya",
+    );
+    expect(board.sessions).toHaveLength(2);
+  });
+
+  it("does not add the new card twice", () => {
+    const once = applyReassign(board, oldSession, newSession);
+    const twice = applyReassign(once, oldSession, newSession);
+    expect(twice.sessions.filter((c) => c.id === "n")).toHaveLength(1);
   });
 });
 
