@@ -52,7 +52,7 @@ function ExpertModeOptions({ expert }: Props) {
             <label
               key={option.value}
               className={cn(
-                "flex cursor-pointer items-start gap-3 rounded-xl p-3 text-left transition-colors focus-within:ring-2 focus-within:ring-zinc-400",
+                "flex cursor-pointer items-start gap-3 rounded-xl p-3 text-left transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-zinc-800",
                 isSelected
                   ? "bg-white ring-2 ring-inset ring-zinc-800"
                   : "bg-zinc-50 ring-1 ring-inset ring-zinc-200 hover:bg-zinc-100",
