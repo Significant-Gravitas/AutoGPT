@@ -180,23 +180,13 @@ function NavMenu({
 function CollapsibleNavGroup({
   label,
   children,
-  scrollable = false,
 }: {
   label: string;
   children: ReactNode;
-  scrollable?: boolean;
 }) {
   return (
-    <Collapsible
-      defaultOpen
-      className={cn(
-        "group/collapsible",
-        scrollable && "flex min-h-0 flex-1 flex-col",
-      )}
-    >
-      <SidebarGroup
-        className={cn("py-1", scrollable && "flex min-h-0 flex-1 flex-col")}
-      >
+    <Collapsible defaultOpen className="group/collapsible">
+      <SidebarGroup className="py-1">
         <SidebarGroupLabel
           asChild
           className="text-[13px] font-medium text-zinc-500 group-data-[collapsible=icon]:hidden"
@@ -209,21 +199,8 @@ function CollapsibleNavGroup({
             />
           </CollapsibleTrigger>
         </SidebarGroupLabel>
-        <CollapsibleContent
-          className={cn(
-            "overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none",
-            scrollable && "flex min-h-0 flex-1 flex-col",
-          )}
-        >
-          <SidebarGroupContent
-            className={
-              scrollable
-                ? "min-h-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                : undefined
-            }
-          >
-            {children}
-          </SidebarGroupContent>
+        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+          <SidebarGroupContent>{children}</SidebarGroupContent>
         </CollapsibleContent>
       </SidebarGroup>
     </Collapsible>
@@ -271,7 +248,7 @@ export function AppSidebar(props: Props) {
     >
       <AppSidebarHeader />
 
-      <SidebarContent className="gap-2 overflow-hidden">
+      <SidebarContent className="min-h-0 flex-1 gap-2 overflow-y-auto overflow-x-hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <motion.div
           variants={sidebarContainerVariants}
           initial="hidden"
@@ -299,7 +276,7 @@ export function AppSidebar(props: Props) {
               variants={itemVariants}
               className="flex min-h-0 flex-1 flex-col group-data-[collapsible=icon]:hidden"
             >
-              <CollapsibleNavGroup label="Recent chats" scrollable>
+              <CollapsibleNavGroup label="Recent chats">
                 {/* Suspense boundary: RecentChats reads useSearchParams(), which
                   Next.js requires to be wrapped to avoid forcing the route to
                   client-side rendering. */}
