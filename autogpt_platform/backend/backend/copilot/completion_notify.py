@@ -168,13 +168,23 @@ async def build_copilot_completion_payload(
 
 
 async def publish_copilot_completion(
-    session_id: str, user_id: str, status: Literal["completed", "failed"]
+    session_id: str,
+    user_id: str,
+    status: Literal["completed", "failed"],
+    *,
+    cancelled: bool = False,
 ) -> None:
     """Publish the completion notification, never raising.
+
+    A user-initiated Stop notifies nothing: the user took the action
+    themselves, so an OS popup can only ever be noise. (It also skips the
+    enrichment reads below.)
 
     Even payload construction is guarded: if enrichment itself blows up in
     an unexpected way, the bare payload (today's behavior) still goes out.
     """
+    if cancelled:
+        return
     try:
         payload = await build_copilot_completion_payload(session_id, user_id, status)
     except Exception as e:

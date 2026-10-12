@@ -382,3 +382,23 @@ class TestPublishCopilotCompletion:
             ),
         ):
             await publish_copilot_completion("sess-1", "user-1", "completed")
+
+    @pytest.mark.parametrize("status", ["completed", "failed"])
+    async def test_cancelled_stop_notifies_nothing(self, status):
+        """A user-initiated Stop publishes no notification at all — and
+        skips the enrichment reads, so no DB work happens either."""
+        chat_db, experts_db = _mock_dbs(session=_session())
+        bus = MagicMock()
+        bus.publish = AsyncMock()
+        with (
+            patch(f"{_CN}.chat_db", MagicMock(return_value=chat_db)),
+            patch(f"{_CN}.experts_db", MagicMock(return_value=experts_db)),
+            patch(
+                f"{_CN}.AsyncRedisNotificationEventBus",
+                MagicMock(return_value=bus),
+            ),
+        ):
+            await publish_copilot_completion("sess-1", "user-1", status, cancelled=True)
+        bus.publish.assert_not_awaited()
+        chat_db.get_chat_session_metadata.assert_not_awaited()
+        experts_db.get_expert.assert_not_awaited()

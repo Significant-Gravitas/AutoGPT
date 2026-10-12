@@ -74,6 +74,13 @@ function resolveIconUrl(icon) {
   return null;
 }
 
+// Merge the push payload into the click-through data with the sanitized URL
+// winning: `data` arrives carrying the server's raw `url`, which must never
+// override the validated target (open redirect on notification click).
+function buildNotificationData(data, targetUrl) {
+  return Object.assign({}, data, { url: targetUrl });
+}
+
 // Merge server-provided rich content over the static fallback map. Any
 // notification type whose push payload carries title/body/icon/url renders
 // richly; older payloads without them keep the hardcoded copy.
@@ -206,7 +213,7 @@ self.addEventListener("push", function (event) {
           icon: content.icon,
           badge: "/notification-badge-96.png",
           tag: tag,
-          data: Object.assign({ url: targetUrl }, data),
+          data: buildNotificationData(data, targetUrl),
           renotify: true,
         };
 

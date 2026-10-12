@@ -1141,11 +1141,17 @@ async def mark_session_completed(
 
     # Publish copilot completion notification via WebSocket + web push.
     # Enrichment (expert name/avatar, session summary) and error handling
-    # live in completion_notify; this call never raises.
+    # live in completion_notify; this call never raises. A user-initiated
+    # Stop notifies nothing — same as it already skips StreamError above.
     if meta:
         parsed = _parse_session_meta(meta, session_id)
         if parsed.user_id:
-            await publish_copilot_completion(session_id, parsed.user_id, status)
+            await publish_copilot_completion(
+                session_id,
+                parsed.user_id,
+                status,
+                cancelled=error_message == CANCELLED_MESSAGE,
+            )
 
     return True
 

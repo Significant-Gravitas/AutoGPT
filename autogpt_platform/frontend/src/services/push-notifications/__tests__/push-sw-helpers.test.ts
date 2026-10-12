@@ -46,6 +46,10 @@ function loadServiceWorkerHelpers() {
     _effectiveUrl: (client: { id: string; url: string }) => string;
     isSafeRelativeUrl: (value: unknown) => boolean;
     resolveIconUrl: (icon: unknown) => string | null;
+    buildNotificationData: (
+      data: Record<string, unknown>,
+      targetUrl: string,
+    ) => Record<string, unknown>;
     resolvePushContent: (
       data: Record<string, unknown>,
       fallback: { title: string; body: string; url: string },
@@ -345,5 +349,35 @@ describe("push-sw resolvePushContent", () => {
     expect(content.title).toBe("Someone");
     expect(content.body).toBe("Did something");
     expect(content.url).toBe("/");
+  });
+});
+
+describe("push-sw buildNotificationData", () => {
+  const sw = loadServiceWorkerHelpers();
+
+  it("keeps the payload fields and forces the sanitized url last", () => {
+    const data = sw.buildNotificationData(
+      {
+        type: "copilot_completion",
+        event: "session_completed",
+        session_id: "sess-1",
+        url: "https://evil.example.com/phish",
+      },
+      "/copilot?sessionId=sess-1",
+    );
+    expect(data).toEqual({
+      type: "copilot_completion",
+      event: "session_completed",
+      session_id: "sess-1",
+      url: "/copilot?sessionId=sess-1",
+    });
+  });
+
+  it("sets the url when the payload carries none", () => {
+    const data = sw.buildNotificationData(
+      { type: "copilot_completion", event: "session_completed" },
+      "/copilot",
+    );
+    expect(data.url).toBe("/copilot");
   });
 });
