@@ -51,6 +51,15 @@ const grainTexture = plugin(function grainTexture({ addUtilities }) {
   });
 });
 
+const textShadow = plugin(function textShadow({ matchUtilities, theme }) {
+  matchUtilities(
+    {
+      "text-shadow": (value) => ({ textShadow: value }),
+    },
+    { values: theme("textShadow") },
+  );
+});
+
 const config = {
   darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
   content: ["./src/**/*.{ts,tsx}", "./node_modules/streamdown/dist/**/*.js"],
@@ -182,6 +191,19 @@ const config = {
       },
       boxShadow: {
         subtle: "0px 1px 2px 0px rgba(0,0,0,0.05)",
+        "message-table": "0 1px 2px rgba(0,0,0,0.04)",
+      },
+      backgroundImage: {
+        "message-table-header":
+          "radial-gradient(35% 160% at 8% 0%, rgba(139,92,246,0.05), transparent), radial-gradient(35% 160% at 50% 0%, rgba(99,102,241,0.04), transparent), radial-gradient(35% 160% at 92% 0%, rgba(59,130,246,0.05), transparent), linear-gradient(to bottom, theme(colors.white), theme(colors.zinc.50))",
+      },
+      textShadow: {
+        "message-table-violet":
+          "0 0 6px rgba(139,92,246,0.45), 0 0 18px rgba(139,92,246,0.55)",
+        "message-table-indigo":
+          "0 0 6px rgba(99,102,241,0.45), 0 0 18px rgba(99,102,241,0.55)",
+        "message-table-blue":
+          "0 0 6px rgba(59,130,246,0.45), 0 0 18px rgba(59,130,246,0.55)",
       },
       keyframes: {
         "accordion-down": {
@@ -327,6 +349,7 @@ const config = {
     scrollbar({ nocompatible: true }),
     smoothShadowRing,
     grainTexture,
+    textShadow,
   ],
 } satisfies Config;
 
