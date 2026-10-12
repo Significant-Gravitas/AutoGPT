@@ -103,7 +103,7 @@ To run the platform, follow these steps:
    docker compose up -d --build
   ```
   This command will start all the necessary backend services defined in the `docker-compose.yml` file in detached mode.
-  Building the frontend image needs at least 8 GiB of memory free for Docker: its build step peaks at about 7 GiB.
+  Building the frontend image needs more than 8 GiB of memory available to Docker: its build step alone peaks at about 7.5 GiB.
 
 ---
 
