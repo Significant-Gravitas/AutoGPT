@@ -19,8 +19,9 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { NuqsTestingAdapter } from "nuqs/adapters/testing";
+import { NuqsTestingAdapter, type UrlUpdateEvent } from "nuqs/adapters/testing";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { BOARDS_LIST_QUERY_KEY } from "@/components/layout/AppSidebar/components/ProjectsNavSection/helpers";
 import { boardQueryKey } from "../board-helpers";
 import { TaskBoardPage } from "../TaskBoardPage";
 
@@ -120,9 +121,18 @@ function serveBoards(boards: Record<string, BoardResponse>) {
   );
 }
 
-function renderBoard(boardRef: string, search = "", client?: QueryClient) {
+function renderBoard(
+  boardRef: string,
+  search = "",
+  client?: QueryClient,
+  onUrlUpdate?: (event: UrlUpdateEvent) => void,
+) {
   const page = (
-    <NuqsTestingAdapter searchParams={search} hasMemory>
+    <NuqsTestingAdapter
+      searchParams={search}
+      hasMemory
+      onUrlUpdate={onUrlUpdate}
+    >
       <TaskBoardPage boardRef={boardRef} />
     </NuqsTestingAdapter>
   );
@@ -304,6 +314,51 @@ describe("task board projects", () => {
     await userEvent.type(input, "   {Enter}");
 
     expect(await screen.findByText("Give the project a name.")).toBeDefined();
+  });
+
+  test("a new project opens with its name ready to type over", async () => {
+    const renames: unknown[] = [];
+    const onUrlUpdate = vi.fn<(event: UrlUpdateEvent) => void>();
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    client.setQueryData(BOARDS_LIST_QUERY_KEY, {
+      status: 200,
+      data: { boards: [] },
+      headers: new Headers(),
+    });
+    serveBoards({ [B1]: PROJECT });
+    server.use(
+      getPatchV2UpdateBoardMockHandler(async ({ request }) => {
+        renames.push(await request.json());
+        return PROJECT.board;
+      }),
+    );
+    renderBoard(B1, "?rename=1", client, onUrlUpdate);
+
+    const input = await screen.findByRole("textbox", { name: "Project name" });
+    expect((input as HTMLInputElement).value).toBe("Launch");
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    await userEvent.keyboard("Q3 launch{Enter}");
+
+    await waitFor(() => expect(renames).toEqual([{ name: "Q3 launch" }]));
+    await waitFor(() => expect(onUrlUpdate).toHaveBeenCalled());
+    expect(onUrlUpdate.mock.lastCall?.[0].searchParams.has("rename")).toBe(
+      false,
+    );
+    await waitFor(() =>
+      expect(client.getQueryState(BOARDS_LIST_QUERY_KEY)?.isInvalidated).toBe(
+        true,
+      ),
+    );
+  });
+
+  test("Home ignores ?rename=1", async () => {
+    serveBoards({ default: HOME });
+    renderBoard("default", "?rename=1");
+
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeDefined();
+    expect(screen.queryByRole("textbox", { name: "Project name" })).toBeNull();
   });
 
   test("deleting a project confirms, deletes it and goes Home", async () => {

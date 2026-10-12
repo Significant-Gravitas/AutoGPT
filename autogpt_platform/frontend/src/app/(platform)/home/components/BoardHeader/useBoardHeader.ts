@@ -1,12 +1,13 @@
 import {
-  getGetV2ListBoardsQueryKey,
   useDeleteV2DeleteBoard,
   usePatchV2UpdateBoard,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import { BOARDS_LIST_QUERY_KEY } from "@/components/layout/AppSidebar/components/ProjectsNavSection/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { isKey } from "@/lib/keyboard";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
 import { useBoardRef } from "../../BoardContext";
 import {
@@ -22,17 +23,23 @@ type Action = "rename" | "delete";
 export function useBoardHeader(name: string) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { boardRef } = useBoardRef();
+  const { boardRef, isDefault } = useBoardRef();
   const { applyOptimistic, rollback, settleBoard } = useBoardCache(boardRef);
-  const [isRenaming, setIsRenaming] = useState(false);
-  const [draft, setDraft] = useState("");
+  // A new project opens with its name in edit mode.
+  const [renameParam, setRenameParam] = useQueryState("rename", parseAsString);
+  const [isRenaming, setIsRenaming] = useState(
+    () => renameParam === "1" && !isDefault,
+  );
+  // Null until edited, so the name shows even if it loads after mounting.
+  const [editedDraft, setDraft] = useState<string | null>(null);
+  const draft = editedDraft ?? name;
   const [error, setError] = useState<string | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [chosen, setChosen] = useState<Action | null>(null);
 
   function invalidateBoardList() {
     return queryClient.invalidateQueries({
-      queryKey: getGetV2ListBoardsQueryKey(),
+      queryKey: BOARDS_LIST_QUERY_KEY,
     });
   }
 
@@ -79,7 +86,7 @@ export function useBoardHeader(name: string) {
   );
 
   function startRename() {
-    setDraft(name);
+    setDraft(null);
     setError(null);
     setIsRenaming(true);
   }
@@ -87,6 +94,11 @@ export function useBoardHeader(name: string) {
   function stopRename() {
     setIsRenaming(false);
     setError(null);
+    if (renameParam !== null) void setRenameParam(null);
+  }
+
+  function handleFocus(event: React.FocusEvent<HTMLInputElement>) {
+    event.target.select();
   }
 
   function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -142,6 +154,7 @@ export function useBoardHeader(name: string) {
     chooseDelete: () => setChosen("delete"),
     handleMenuCloseAutoFocus,
     handleChange,
+    handleFocus,
     handleKeyDown,
     cancelRename: stopRename,
     confirmDelete,

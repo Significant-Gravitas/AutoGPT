@@ -1,10 +1,11 @@
 "use client";
 
+import { BubbleChatIcon } from "@hugeicons/core-free-icons";
 import { motion, type Variants } from "framer-motion";
 import { Suspense } from "react";
-import { useJumpToRecentChats } from "../../useJumpToRecentChats";
-import { ChatsRailItem } from "../ChatsRailItem/ChatsRailItem";
+import { useJumpToNavGroup } from "../../useJumpToNavGroup";
 import { CollapsibleNavGroup } from "../CollapsibleNavGroup/CollapsibleNavGroup";
+import { NavRailItem } from "../NavRailItem/NavRailItem";
 import { RecentChats } from "../RecentChats/RecentChats";
 
 interface Props {
@@ -12,28 +13,24 @@ interface Props {
 }
 
 export function ChatsNavSection({ itemVariants }: Props) {
-  const {
-    isRecentChatsOpen,
-    setIsRecentChatsOpen,
-    recentChatsRef,
-    jumpToRecentChats,
-  } = useJumpToRecentChats();
+  const { isOpen, setIsOpen, groupRef, jumpToGroup } = useJumpToNavGroup();
 
   // One stagger slot: only one of the two is ever displayed.
   return (
     <motion.div variants={itemVariants}>
       <div className="hidden group-data-[collapsible=icon]:block">
-        <ChatsRailItem onClick={jumpToRecentChats} />
+        <NavRailItem
+          icon={BubbleChatIcon}
+          label="Chats"
+          onClick={jumpToGroup}
+        />
       </div>
 
-      <div
-        ref={recentChatsRef}
-        className="group-data-[collapsible=icon]:hidden"
-      >
+      <div ref={groupRef} className="group-data-[collapsible=icon]:hidden">
         <CollapsibleNavGroup
           label="Recent chats"
-          open={isRecentChatsOpen}
-          onOpenChange={setIsRecentChatsOpen}
+          open={isOpen}
+          onOpenChange={setIsOpen}
         >
           {/* Suspense boundary: RecentChats reads useSearchParams(), which
             Next.js requires to be wrapped to avoid forcing the route to

@@ -44,6 +44,7 @@ export function BoardHeader({ name }: Props) {
         value={header.draft}
         error={header.error ?? undefined}
         onChange={header.handleChange}
+        onFocus={header.handleFocus}
         onKeyDown={header.handleKeyDown}
         onBlur={header.cancelRename}
         wrapperClassName="mb-0 w-72 max-w-full"

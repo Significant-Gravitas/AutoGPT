@@ -22,6 +22,7 @@ import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { ChatsNavSection } from "./components/ChatsNavSection/ChatsNavSection";
 import { CollapsibleNavGroup } from "./components/CollapsibleNavGroup/CollapsibleNavGroup";
+import { ProjectsNavSection } from "./components/ProjectsNavSection/ProjectsNavSection";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 import { useNavItemClassName } from "./useNavItemClassName";
@@ -219,6 +220,10 @@ export function AppSidebar(props: Props) {
                 <NavMenu links={workspaceLinks} />
               </CollapsibleNavGroup>
             </motion.div>
+          ) : null}
+
+          {isLoggedIn && isTaskBoardEnabled ? (
+            <ProjectsNavSection itemVariants={itemVariants} />
           ) : null}
 
           {isLoggedIn && !isTaskBoardEnabled ? (

@@ -5,14 +5,17 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { BubbleChatIcon } from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 import { useNavItemClassName } from "../../useNavItemClassName";
 
 interface Props {
+  icon: IconSvgElement;
+  label: string;
+  isActive?: boolean;
   onClick: () => void;
 }
 
-export function ChatsRailItem({ onClick }: Props) {
+export function NavRailItem({ icon, label, isActive = false, onClick }: Props) {
   const navItemClassName = useNavItemClassName();
 
   return (
@@ -20,15 +23,16 @@ export function ChatsRailItem({ onClick }: Props) {
       <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
         <SidebarMenuItem>
           <SidebarMenuButton
-            tooltip="Chats"
+            tooltip={label}
+            isActive={isActive}
             onClick={onClick}
             className={navItemClassName}
           >
             <Icon
-              icon={BubbleChatIcon}
+              icon={icon}
               className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
             />
-            <span className="truncate">Chats</span>
+            <span className="truncate">{label}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
