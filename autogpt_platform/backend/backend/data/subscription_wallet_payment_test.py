@@ -332,31 +332,45 @@ async def test_unfinished_wallet_payment_is_settled_under_the_lock():
 @pytest.mark.parametrize("lost_response", [False, True])
 async def test_wallet_payment_drops_the_shared_lookup_after_paying(lost_response):
     """An out-of-band payment sends no ``invoice.payment_succeeded``, so the
-    billing page's shared lookup is dropped here, once the plan is active,
-    not left to the subscription update that follows."""
+    billing page's shared lookups (the active subscription and any pending
+    change) are dropped here, once the plan is active, not left to the
+    subscription update that follows."""
     with World(balance=5000) as world:
         event = _renewal_failed(world)
         if lost_response:
             world.stripe.fail_next["pay_response"] = 1
-        seen: list[tuple[str, str, str]] = []
+        seen: list[tuple[str, str, str, str]] = []
 
-        async def invalidate(customer_id: str) -> None:
-            seen.append(
-                (
-                    customer_id,
-                    world.stripe.invoices["in_1"]["status"],
-                    world.stripe.subscriptions["sub_1"]["status"],
+        def recorder(cache: str):
+            async def invalidate(customer_id: str) -> None:
+                seen.append(
+                    (
+                        cache,
+                        customer_id,
+                        world.stripe.invoices["in_1"]["status"],
+                        world.stripe.subscriptions["sub_1"]["status"],
+                    )
                 )
-            )
 
-        with patch(
-            "backend.data.subscription_wallet_payment.invalidate_active_subscription_cache",
-            invalidate,
+            return invalidate
+
+        with (
+            patch(
+                "backend.data.credit.invalidate_active_subscription_cache",
+                recorder("active"),
+            ),
+            patch(
+                "backend.data.credit.invalidate_pending_subscription_change",
+                recorder("pending"),
+            ),
         ):
             await handle_subscription_payment_failure(event)
 
     assert world.ledger.settled("in_1")
-    assert seen == [(CUSTOMER, "paid", "active")]
+    assert sorted(seen) == [
+        ("active", CUSTOMER, "paid", "active"),
+        ("pending", CUSTOMER, "paid", "active"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -371,7 +385,7 @@ async def test_refunded_wallet_debit_does_not_drop_the_shared_lookup():
         world.stripe.card_pays("in_1")
         invalidate = AsyncMock()
         with patch(
-            "backend.data.subscription_wallet_payment.invalidate_active_subscription_cache",
+            "backend.data.subscription_wallet_payment.invalidate_billing_lookups",
             invalidate,
         ):
             await reconcile_wallet_payment_on_paid_invoice(world.stripe.view("in_1"))

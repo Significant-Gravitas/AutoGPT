@@ -1,8 +1,11 @@
 import logging
 
 from backend.util.settings import AppEnvironment, BehaveAs, Settings
+from backend.util.url_redaction import RequestURLRedactionFilter
 
 settings = Settings()
+
+_request_url_redaction = RequestURLRedactionFilter()
 
 
 def configure_logging():
@@ -15,6 +18,14 @@ def configure_logging():
 
     # Silence httpx logger
     logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    # These log request URLs we don't format: uvicorn the path and query of
+    # every request (the access log, and a line per WebSocket handshake), and
+    # autogpt_libs the URL of every request an admin makes as another user. A
+    # parent logger's filters never see records propagated from its children,
+    # so the filter goes on each logger directly.
+    for name in ("uvicorn.access", "uvicorn.error", "autogpt_libs.auth.dependencies"):
+        logging.getLogger(name).addFilter(_request_url_redaction)
 
 
 def is_structured_logging_enabled() -> bool:

@@ -22,11 +22,10 @@ from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import User
 
-from backend.data.credit import UserCredit
+from backend.data.credit import UserCredit, invalidate_billing_lookups
 from backend.data.redis_client import get_redis_async
 from backend.data.stripe_client import stripe_call
 from backend.data.stripe_invoice_payments import paid_by_stripe_collection
-from backend.data.subscription_lookup_cache import invalidate_active_subscription_cache
 from backend.data.wallet_payment_state import (
     WalletPayment,
     WalletPaymentState,
@@ -208,12 +207,13 @@ async def _drop_cached_lookup(invoice: dict) -> None:
 
     Stripe sends ``invoice.paid`` for an out-of-band payment, not
     ``invoice.payment_succeeded``, so the success handler that drops the
-    billing page's shared lookup for a card payment may never run; without
-    this the page waits for ``customer.subscription.updated`` to see it.
+    billing page's shared lookups (the active subscription and any pending
+    change) for a card payment may never run; without this the page waits
+    for ``customer.subscription.updated`` to see it.
     """
     customer_id = invoice.get("customer")
     if isinstance(customer_id, str) and customer_id:
-        await invalidate_active_subscription_cache(customer_id)
+        await invalidate_billing_lookups(customer_id)
 
 
 async def _refund(payment: WalletPayment, reason: str) -> None:

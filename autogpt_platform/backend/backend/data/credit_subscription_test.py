@@ -180,7 +180,10 @@ async def test_sync_subscription_from_stripe_tracks_upgrade():
             return_value=MagicMock(capture=track_mock),
         ),
         patch("backend.util.posthog_client._environment", return_value="test"),
-        patch.object(get_pending_subscription_change, "cache_delete"),
+        patch(
+            "backend.data.credit.invalidate_pending_subscription_change",
+            new_callable=AsyncMock,
+        ),
     ):
         await sync_subscription_from_stripe(stripe_sub)
 
@@ -438,16 +441,16 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
                 "ENTERPRISE": 15 * 1024,
             },
         ),
-        patch.object(
-            get_pending_subscription_change,
-            "cache_delete",
+        patch(
+            "backend.data.credit.invalidate_pending_subscription_change",
+            new_callable=AsyncMock,
         ) as mock_pending_cache_delete,
     ):
         await sync_subscription_from_stripe(stripe_sub)
         result = await get_workspace_storage_limit_bytes("user-1")
 
     assert result == 250 * 1024 * 1024
-    mock_pending_cache_delete.assert_called_once_with("user-1")
+    mock_pending_cache_delete.assert_awaited_once_with("cus_123")
 
 
 @pytest.mark.asyncio
@@ -614,7 +617,10 @@ async def test_cancel_stripe_subscription_tracks_cancellation():
             return_value=MagicMock(capture=track_mock),
         ),
         patch("backend.util.posthog_client._environment", return_value="test"),
-        patch.object(get_pending_subscription_change, "cache_delete"),
+        patch(
+            "backend.data.credit.invalidate_pending_subscription_change",
+            new_callable=AsyncMock,
+        ),
     ):
         result = await cancel_stripe_subscription("user-1")
 
@@ -2991,7 +2997,10 @@ async def test_modify_stripe_subscription_skips_emit_when_db_flip_fails():
             return_value=MagicMock(capture=track_mock),
         ),
         patch("backend.util.posthog_client._environment", return_value="test"),
-        patch.object(get_pending_subscription_change, "cache_delete"),
+        patch(
+            "backend.data.credit.invalidate_pending_subscription_change",
+            new_callable=AsyncMock,
+        ),
     ):
         result = await modify_stripe_subscription_for_tier(
             "user-1", SubscriptionTier.BUSINESS
@@ -3263,8 +3272,6 @@ async def test_get_pending_subscription_change_cancel_at_period_end():
     """cancel_at_period_end=True maps to pending NO_TIER at current_period_end."""
     import time as time_mod
 
-    _clear_cache(get_pending_subscription_change)
-
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
     mock_sub = stripe.Subscription.construct_from(
@@ -3320,8 +3327,6 @@ async def test_get_pending_subscription_change_cancel_at_period_end():
 async def test_get_pending_subscription_change_from_schedule():
     """A schedule whose next phase uses the PRO price maps to pending_tier=PRO."""
     import time as time_mod
-
-    _clear_cache(get_pending_subscription_change)
 
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
@@ -3404,8 +3409,6 @@ async def test_get_pending_subscription_change_yearly_next_phase_maps_to_tier():
     """A schedule whose next phase uses a YEARLY price still resolves to the
     correct tier — yearly subscribers must see their pending downgrade in UI."""
     import time as time_mod
-
-    _clear_cache(get_pending_subscription_change)
 
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
@@ -3494,8 +3497,6 @@ async def test_get_pending_subscription_change_from_schedule_to_basic():
     """A schedule whose next phase uses the BASIC price maps to pending_tier=BASIC."""
     import time as time_mod
 
-    _clear_cache(get_pending_subscription_change)
-
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
     mock_sub = stripe.Subscription.construct_from(
@@ -3579,8 +3580,6 @@ async def test_get_pending_subscription_change_none_when_no_schedule_or_cancel()
     """Returns None when neither a schedule nor cancel_at_period_end is set."""
     import time as time_mod
 
-    _clear_cache(get_pending_subscription_change)
-
     now = int(time_mod.time())
     mock_sub = stripe.Subscription.construct_from(
         {
@@ -3632,8 +3631,6 @@ async def test_get_pending_subscription_change_same_tier_yearly_to_monthly_repor
     UI can describe a cycle-only switch correctly (pending_tier == current tier
     would otherwise look like a no-op or a confusing same-tier "downgrade")."""
     import time as time_mod
-
-    _clear_cache(get_pending_subscription_change)
 
     now = int(time_mod.time())
     period_end = now + 200 * 24 * 3600
@@ -4337,8 +4334,6 @@ async def test_get_pending_subscription_change_raises_when_price_lookups_fail():
     @cached wrapper doesn't store None and hide pending changes for 30s."""
     from backend.data.credit import PendingChangeUnknown
 
-    _clear_cache(get_pending_subscription_change)
-
     mock_user = MagicMock()
     mock_user.stripe_customer_id = "cus_abc"
 
@@ -4367,7 +4362,6 @@ async def test_release_pending_subscription_schedule_invalidates_cache_on_partia
     """If schedule.release succeeds but cancel_at_period_end clear fails, the
     cache must still be invalidated — otherwise the UI shows a stale pending
     banner for up to 30s even though the schedule was actually released."""
-    _clear_cache(get_pending_subscription_change)
 
     mock_user = MagicMock()
     mock_user.stripe_customer_id = "cus_abc"
@@ -4407,14 +4401,15 @@ async def test_release_pending_subscription_schedule_invalidates_cache_on_partia
             new_callable=AsyncMock,
             side_effect=stripe.APIConnectionError("transient Stripe error"),
         ),
-        patch.object(
-            get_pending_subscription_change, "cache_delete"
+        patch(
+            "backend.data.credit.invalidate_pending_subscription_change",
+            new_callable=AsyncMock,
         ) as mock_cache_delete,
     ):
         with pytest.raises(stripe.APIConnectionError):
             await release_pending_subscription_schedule("user-partial")
 
-        mock_cache_delete.assert_called_once_with("user-partial")
+        mock_cache_delete.assert_awaited_once_with("cus_abc")
 
 
 # ─── TOP_UP vs GRANT routing ─────────────────────────────────────────────
