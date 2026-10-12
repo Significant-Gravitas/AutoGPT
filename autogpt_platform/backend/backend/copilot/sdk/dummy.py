@@ -11,9 +11,6 @@ Magic keywords (case-insensitive, anywhere in message):
                                  yields StreamError with retryable prefix.
     __test_fatal_error__       — Simulate a non-retryable SDK error.
     __test_slow_response__     — Simulate a slow response (2s per word).
-    __test_quiet_pause__       — Go silent for 9s before answering: the
-                                 stream carries only heartbeats, as during a
-                                 long tool call (under the 10s silence status).
     (no keyword)               — Normal dummy response.
 """
 
@@ -44,10 +41,6 @@ from ..response_model import (
 from ..stream_checkpoint import turn_checkpoint
 
 logger = logging.getLogger(__name__)
-
-# Long enough for the stream registry to send a heartbeat (it does after 5s
-# of silence), short of the 10s at which the silence watchdog sends a status.
-QUIET_PAUSE_S = 9.0
 
 
 async def _safe_upsert(session: ChatSession) -> None:
@@ -143,10 +136,6 @@ async def stream_chat_completion_dummy(
             await _safe_upsert(session)
         yield StreamError(errorText=error_msg, code="sdk_error")
         return
-
-    # --- Magic keyword: quiet pause ----------------------------------------
-    if _has_keyword(message, "__test_quiet_pause__"):
-        await asyncio.sleep(QUIET_PAUSE_S)
 
     # --- Magic keyword: slow response ---------------------------------------
     delay = 2.0 if _has_keyword(message, "__test_slow_response__") else 0.1

@@ -1,0 +1,24 @@
+{
+  "description": "An answer that goes quiet for nine seconds before it starts, so the stream carries only heartbeats for a while, then a short answer to a follow-up. copilot-resume-journey.spec.ts follows it.",
+  "title": "Quiet answer",
+  "turns": [
+    {
+      "text": "After a long quiet think, here is the whole answer in one go.",
+      "usage": {
+        "input_tokens": 2600,
+        "output_tokens": 14,
+        "cache_read_input_tokens": 24000
+      },
+      "stream": { "chunk_words": 200, "delay_ms": 9000 }
+    },
+    {
+      "expect_user_text": "Thanks, and one more thing?",
+      "text": "Happy to help with one more thing.",
+      "usage": {
+        "input_tokens": 2700,
+        "output_tokens": 8,
+        "cache_read_input_tokens": 24300
+      }
+    }
+  ]
+}

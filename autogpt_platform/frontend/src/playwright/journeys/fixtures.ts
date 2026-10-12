@@ -1,20 +1,12 @@
 import { PW_FLAG_OVERRIDES_STORAGE_KEY } from "../../services/feature-flags/pw-flag-overrides";
 import { expect, test as base } from "../coverage-fixture";
-import {
-  type ExpectedError,
-  type ExpectedResponse,
-  watchForUnexpectedErrors,
-} from "./guard";
+import { type ExpectedResponse, watchForUnexpectedErrors } from "./guard";
 import hostedFlags from "./hosted-flags.json";
 import { type JourneyUser, provisionJourneyUser } from "./journey-user";
 
 interface JourneyOptions {
   /** API responses of 400 or more this journey provokes on purpose. */
   expectedResponses: ExpectedResponse[];
-  /** Page or console errors this journey provokes on purpose, e.g. by
-   *  going offline. Each needs a comment saying why it is expected, and a
-   *  `while` scoping it to the window that provokes it where there is one. */
-  expectedErrors: ExpectedError[];
   /** Flag values to change from the hosted defaults; the rest are kept. */
   flagOverrides: Record<string, unknown>;
 }
@@ -27,14 +19,10 @@ interface JourneyFixtures {
 
 export const test = base.extend<JourneyOptions & JourneyFixtures>({
   expectedResponses: [[], { option: true }],
-  expectedErrors: [[], { option: true }],
   flagOverrides: [{}, { option: true }],
 
   journeyGuard: [
-    async (
-      { context, expectedResponses, expectedErrors, flagOverrides },
-      use,
-    ) => {
+    async ({ context, expectedResponses, flagOverrides }, use) => {
       await context.addInitScript(
         ({ key, value }) => {
           try {
@@ -48,11 +36,7 @@ export const test = base.extend<JourneyOptions & JourneyFixtures>({
           value: JSON.stringify({ ...hostedFlags, ...flagOverrides }),
         },
       );
-      const guard = watchForUnexpectedErrors(
-        context,
-        expectedResponses,
-        expectedErrors,
-      );
+      const guard = watchForUnexpectedErrors(context, expectedResponses);
 
       await use();
 

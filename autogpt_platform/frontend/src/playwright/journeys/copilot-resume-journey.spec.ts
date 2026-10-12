@@ -1,77 +1,54 @@
 import type { BrowserContext, Page, Request } from "@playwright/test";
 import { CopilotPage } from "../pages/copilot.page";
 import { expect, test } from "./fixtures";
+import quietThenAnswerScript from "./model-scripts/quiet-then-answer.json";
+import {
+  expectEachTurnOnce,
+  type ModelScript,
+  readJournal,
+  requireScriptedModel,
+  scriptedRun,
+} from "./scripted-model";
 
-// A copilot turn keeps exactly one stream while everything that can resume it
-// fires: a network blip, a tab wake, and the stall watchdog over a quiet
-// stretch carrying only heartbeats. Two streams on one chat crashed the AI SDK's
-// request cleanup (Sentry BUILDER-777) and dropped the turn's end handling;
-// the watchdog read heartbeat-only stretches as a dead stream and showed
-// "Connection lost".
+// A copilot turn keeps exactly one stream while what can resume it fires: a
+// tab wake, and the stall watchdog over a quiet stretch carrying only
+// heartbeats. Two streams on one chat crashed the AI SDK's request cleanup
+// (Sentry BUILDER-777) and dropped the turn's end handling; the watchdog read
+// heartbeat-only stretches as a dead stream and showed "Connection lost".
+// A connection dropped mid-answer is copilot-reconnect-journey.spec.ts.
 //
-// Needs the backend in CHAT_TEST_MODE: `__test_quiet_pause__` makes the dummy
-// go quiet for 9 s, long enough for one heartbeat and short of the 10 s
-// silence status.
+// The model goes quiet for 9 s before it answers: long enough for the
+// stream registry's heartbeat (after 5 s of silence), short of the silence
+// watchdog's status (10 s).
 
-const blip = { offline: false };
+const SCRIPT: ModelScript = quietThenAnswerScript;
+const ANSWER = SCRIPT.turns[0].text ?? "";
+const FOLLOW_UP = SCRIPT.turns[1].expect_user_text ?? "";
+const FOLLOW_UP_ANSWER = SCRIPT.turns[1].text ?? "";
 
-test.use({
-  // Going offline leaves an unrelated effect's fetch rejection unhandled.
-  // Allowed only around the deliberate blip; the AI SDK's BUILDER-777
-  // TypeError is caught by the guard throughout.
-  expectedErrors: [{ message: /^Failed to fetch$/, while: () => blip.offline }],
-});
+test.beforeAll(requireScriptedModel);
 
-const ANSWER = "I counted: 1... 2... 3. All done!";
-// Distinct per turn: the composer drops a repeat of the last message.
-const QUIET_PROMPT = "__test_quiet_pause__ count to three";
-const BLIP_PROMPT = "__test_quiet_pause__ count again";
-
-test("copilot resume journey: one stream per turn through a network blip, a tab wake and quiet stretches", async ({
+test("copilot resume journey: one stream per turn through a tab wake and a heartbeat-only stretch", async ({
   page,
   context,
   browserName,
   journeyUser: _user,
 }) => {
   test.skip(browserName !== "chromium", "reads stream bytes through CDP");
-  test.skip(
-    new URL(
-      test.info().project.use.baseURL ?? "http://localhost",
-    ).hostname.endsWith(".vercel.app"),
-    "previews run real models; this journey needs CHAT_TEST_MODE",
-  );
   test.setTimeout(90_000);
 
   await watchConnectionLostToasts(page);
   const streams = watchStreams(page);
   const bytes = await watchStreamBytes(context, page);
-
-  const copilot = new CopilotPage(page);
-  const answers = page.getByText(ANSWER, { exact: true });
-
-  // Each scenario gets its own chat: the dummy always gives the same reply,
-  // and a chat currently drops a later reply identical to an earlier one.
-
-  // A network blip mid-turn. The turn still completes, on one stream.
-  await openNewChat(copilot);
-  await send(page, copilot, BLIP_PROMPT);
-  blip.offline = true;
-  try {
-    await context.setOffline(true);
-    await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
-  } finally {
-    await context.setOffline(false);
-    blip.offline = false;
-  }
-  await expect(answers).toHaveCount(1, { timeout: 30_000 });
+  const run = scriptedRun("quiet-then-answer");
 
   // A tab wake and the stall watchdog while the turn is quiet, on a fake
-  // clock from here on.
+  // clock.
   await page.clock.install();
+  const copilot = new CopilotPage(page);
   await openNewChat(copilot);
-  const resumesBefore = streams.resumes;
   bytes.markTurn();
-  await send(page, copilot, QUIET_PROMPT);
+  await send(page, copilot, `Think it over. ${run.marker}`);
   await setTabVisibility(page, "hidden");
   await page.clock.fastForward(31_000);
   await setTabVisibility(page, "visible");
@@ -80,27 +57,24 @@ test("copilot resume journey: one stream per turn through a network blip, a tab 
   // not from the heartbeat.
   await page.clock.fastForward(30_000);
 
-  await expect(answers).toHaveCount(1, { timeout: 20_000 });
-  expect(
-    streams.resumes - resumesBefore,
-    "a healthy stream is never resumed beside",
-  ).toBe(0);
+  const transcript = page.getByRole("log");
+  await expect(
+    transcript.getByText(ANSWER, { exact: true }),
+    "the answer should show once",
+  ).toHaveCount(1, { timeout: 30_000 });
+  expect(streams.resumes, "a healthy stream is never resumed beside").toBe(0);
   expect(await connectionLostToasts(page)).toBe(0);
 
-  // The chat still takes a follow-up, whose turn streams and ends. Sent once
-  // the turn is over on both sides: one sent while it still runs is queued
-  // on the server, and the test-mode dummy never drains that queue.
+  // The chat still takes a follow-up, whose turn streams and ends.
   await waitForTurnOver(page, copilot);
-  const followUpEnded = page.waitForEvent(
-    "requestfinished",
-    (request) => isStreamRequest(request) && request.method() === "POST",
-  );
-  await send(page, copilot, "thanks");
-  await followUpEnded;
-  await expect(page.getByText("thanks", { exact: true })).toBeVisible();
-  await expect(copilot.getChatInput()).toBeEnabled({ timeout: 15_000 });
+  await send(page, copilot, FOLLOW_UP);
+  await expect(
+    transcript.getByText(FOLLOW_UP_ANSWER, { exact: true }),
+    "the follow-up's answer should show once",
+  ).toHaveCount(1, { timeout: 30_000 });
 
   expect(streams.maxOpen, "streams open at once on one chat").toBe(1);
+  expectEachTurnOnce(await readJournal(run.nonce), SCRIPT);
 });
 
 async function waitForTurnOver(page: Page, copilot: CopilotPage) {

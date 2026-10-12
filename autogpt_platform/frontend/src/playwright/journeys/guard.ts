@@ -14,13 +14,6 @@ export interface ExpectedResponse {
   method?: string;
 }
 
-/**
- * A page or console error a journey provokes on purpose. With `while`, it is
- * expected only while that returns true, e.g. during a deliberate offline
- * window.
- */
-export type ExpectedError = RegExp | { message: RegExp; while: () => boolean };
-
 interface KnownNoise {
   reason: string;
   kind: "response" | "console" | "pageerror";
@@ -52,14 +45,7 @@ const BODY_SNIPPET_LENGTH = 300;
 export function watchForUnexpectedErrors(
   context: BrowserContext,
   expected: ExpectedResponse[],
-  expectedErrors: ExpectedError[] = [],
 ) {
-  const isExpectedError = (text: string) =>
-    expectedErrors.some((expected) =>
-      expected instanceof RegExp
-        ? expected.test(text)
-        : expected.while() && expected.message.test(text),
-    );
   const pending: Promise<string>[] = [];
 
   context.on("response", (response) => {
@@ -71,14 +57,12 @@ export function watchForUnexpectedErrors(
 
   context.on("console", (message) => {
     if (message.type() !== "error") return;
-    if (isExpectedError(message.text())) return;
     if (isKnownNoise({ kind: "console", text: message.text() })) return;
     pending.push(Promise.resolve(describeConsole(message)));
   });
 
   context.on("weberror", (webError) => {
     const error = webError.error();
-    if (isExpectedError(error.message)) return;
     if (isKnownNoise({ kind: "pageerror", text: error.message })) return;
     pending.push(
       Promise.resolve(
