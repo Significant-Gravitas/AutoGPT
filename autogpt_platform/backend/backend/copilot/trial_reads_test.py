@@ -92,6 +92,24 @@ async def test_one_caller_giving_up_does_not_cancel_the_shared_read():
 
 
 @pytest.mark.asyncio
+async def test_a_task_started_in_a_block_reads_afresh_once_it_ends():
+    read = AsyncMock(return_value=_trial())
+    block_ended = asyncio.Event()
+
+    async def background() -> None:
+        await shared_trial_read("u1", read)
+        await block_ended.wait()
+        await shared_trial_read("u1", read)
+
+    with trial_reads_shared():
+        task = asyncio.create_task(background())
+        await shared_trial_read("u1", read)
+    block_ended.set()
+    await task
+    assert read.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_a_failed_read_fails_every_check_that_shares_it():
     read = AsyncMock(side_effect=ConnectionError("db down"))
     with trial_reads_shared():
