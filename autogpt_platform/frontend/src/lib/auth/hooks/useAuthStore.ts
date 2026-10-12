@@ -8,6 +8,7 @@ import {
   isImpersonationClearedEvent,
   isImpersonationUsableBy,
   hasImpersonation,
+  setImpersonationViewer,
 } from "@/lib/impersonation";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
@@ -38,6 +39,15 @@ const SIGN_OUT_RETRY_DELAY_MS = 1_000;
 // The sign-out action itself never throws once delivered (it expires the
 // cookies even if revoking the session fails), so a throw means the request
 // didn't get through. Retry those before giving up.
+async function refetchEverything(): Promise<void> {
+  try {
+    const { getQueryClient } = await import("@/lib/react-query/queryClient");
+    await getQueryClient().invalidateQueries();
+  } catch (error) {
+    console.debug("Couldn't refetch after impersonation resumed:", error);
+  }
+}
+
 async function signOutOnServer(options: ServerLogoutOptions): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -94,6 +104,10 @@ interface AuthStoreState {
   currentPath: string;
   retryTimer: ReturnType<typeof setTimeout> | null;
   retryAttempt: number;
+  // Bumped whenever the signed-in identity ends or changes (sign-out, a
+  // rejected session, another account or role). An auth request started in
+  // an earlier epoch has its answer dropped rather than applied.
+  sessionEpoch: number;
   initialize: (params: InitializeParams) => Promise<void>;
   setCurrentRequestContext: (params: InitializeParams) => void;
   logOut: (params?: LogOutParams) => Promise<void>;
@@ -126,37 +140,8 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 
     if (!initializationPromise) {
       initializationPromise = (async () => {
-        // Always fetch user if we haven't loaded it yet, or if user is null but hasLoadedUser is true
-        // This handles the case where hasLoadedUser might be stale after logout/login
-        if (!get().hasLoadedUser || !get().user) {
-          set({ isUserLoading: true });
-          const { user, ...result } = await fetchUser();
-          set(result);
-          if (user) adoptUser(user);
-          else set({ user: null });
-
-          // If fetchUser didn't return a user, validate the session to ensure we have the latest state
-          // This handles race conditions after login where cookies might not be immediately available
-          if (!user) {
-            const validationResult = await validateSessionHelper({
-              path: params.path,
-              currentUser: null,
-            });
-
-            if (validationResult.unavailable) {
-              handleUnavailable(validationResult.unavailable);
-            } else if (validationResult.user && validationResult.isValid) {
-              adoptUser(validationResult.user);
-              set({ hasLoadedUser: true, isUserLoading: false });
-            } else if (!validationResult.isValid && hasImpersonation()) {
-              // No session at startup: a target left from the last one goes.
-              clearImpersonationEverywhere();
-            }
-          }
-        } else {
-          set({ isUserLoading: false });
-        }
-
+        // Listen first: a sign-out in another tab while this tab's first
+        // lookup is in flight must still reach it (and void that lookup).
         const existingCleanup = get().listenersCleanup;
         if (existingCleanup) {
           existingCleanup();
@@ -168,6 +153,41 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
           handleOnline,
         );
         set({ listenersCleanup: cleanup.cleanup });
+
+        // Always fetch user if we haven't loaded it yet, or if user is null but hasLoadedUser is true
+        // This handles the case where hasLoadedUser might be stale after logout/login
+        if (!get().hasLoadedUser || !get().user) {
+          set({ isUserLoading: true });
+          const epoch = get().sessionEpoch;
+          const { user, ...result } = await fetchUser();
+          if (get().sessionEpoch !== epoch) return;
+          set(result);
+          if (user) adoptUser(user);
+          else set({ user: null });
+
+          // If fetchUser didn't return a user, validate the session to ensure we have the latest state
+          // This handles race conditions after login where cookies might not be immediately available
+          if (!user) {
+            const validationResult = await validateSessionHelper({
+              path: params.path,
+              currentUser: null,
+            });
+            if (get().sessionEpoch !== epoch) return;
+
+            if (validationResult.unavailable) {
+              handleUnavailable(validationResult.unavailable);
+            } else if (validationResult.user && validationResult.isValid) {
+              adoptUser(validationResult.user);
+              set({ hasLoadedUser: true, isUserLoading: false });
+            } else if (!validationResult.isValid && hasImpersonation()) {
+              // No session at startup: a target left from the last one goes.
+              endSessionEpoch();
+              clearImpersonationEverywhere();
+            }
+          }
+        } else {
+          set({ isUserLoading: false });
+        }
       })();
 
       set({ initializationPromise });
@@ -185,6 +205,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     const options = params?.options ?? {};
 
     cancelRetry();
+    // Whatever the outcome, answers to auth requests already in flight
+    // belong to the session being signed out of, and must not be applied.
+    endSessionEpoch();
 
     // Drop any admin impersonation (sessionStorage + cookie, in every tab) so
     // the next user signing in on this browser doesn't send X-Act-As-User-Id.
@@ -194,6 +217,10 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     // never got through, the cookies are still live, so this tab stays signed
     // in and no other tab is told otherwise; the caller reports the failure.
     await signOutOnServer(options);
+    // Anything answered while the sign-out was in flight described the
+    // session that has now ended, including a target set meanwhile.
+    endSessionEpoch();
+    clearImpersonationEverywhere();
 
     // The server has ended the session, so the user is signed out whatever
     // happens next: a local cleanup step that fails is logged and skipped.
@@ -201,11 +228,8 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       setWebSocketDisconnectIntent();
       api?.disconnectWebSocket();
     });
-    await afterSignOut("remove the session listeners", () => {
-      const existingCleanup = get().listenersCleanup;
-      set({ listenersCleanup: null });
-      existingCleanup?.();
-    });
+    // The session listeners stay: this tab must keep hearing other tabs'
+    // sign-outs and impersonation clears after it signs in again.
     // Clear React Query cache to prevent stale data from old user
     await afterSignOut("clear cached data", async () => {
       if (typeof window === "undefined") return;
@@ -243,11 +267,13 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       lastValidation: now,
     });
 
+    const epoch = get().sessionEpoch;
     try {
       const result = await validateSessionHelper({
         path: pathname,
         currentUser: get().user,
       });
+      if (get().sessionEpoch !== epoch) return true;
 
       if (result.unavailable) {
         handleUnavailable(result.unavailable);
@@ -257,6 +283,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       cancelRetry();
 
       if (!result.isValid) {
+        endSessionEpoch();
         clearImpersonationEverywhere();
         set({
           user: null,
@@ -329,6 +356,10 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     set({ retryTimer: null, retryAttempt: 0 });
   }
 
+  function endSessionEpoch(): void {
+    set({ sessionEpoch: get().sessionEpoch + 1 });
+  }
+
   // An impersonation target belongs to the admin session that chose it. When
   // this tab takes on a different account, or one that may not use it, the
   // target goes. That includes a tab starting from an empty store, which can
@@ -336,15 +367,22 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
   function adoptUser(user: User): void {
     const previous = get().user;
     const switchedAccount = previous !== null && previous.id !== user.id;
+    if (switchedAccount || (previous !== null && previous.role !== user.role)) {
+      endSessionEpoch();
+    }
     if (
-      (switchedAccount || !isImpersonationUsableBy(user)) &&
-      ImpersonationState.get()
+      hasImpersonation() &&
+      (switchedAccount || !isImpersonationUsableBy(user))
     ) {
       clearImpersonationEverywhere();
     }
     set({ user });
+    // Requests sent before this tab knew who was signed in went out without
+    // the admin's target; fetch them again as the user they're acting as.
+    if (previous === null && isImpersonationUsableBy(user)) {
+      void refetchEverything();
+    }
   }
-
   function handleStorageEventInternal(event: StorageEvent): void {
     if (isImpersonationClearedEvent(event)) {
       ImpersonationState.clear();
@@ -361,6 +399,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     if (!result.shouldLogout) return;
 
     cancelRetry();
+    endSessionEpoch();
     set({
       user: null,
       hasLoadedUser: false,
@@ -377,12 +416,15 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
   }
 
   async function refreshSessionInternal() {
+    const epoch = get().sessionEpoch;
     const result = await refreshSessionHelper();
+    if (get().sessionEpoch !== epoch) return result;
 
     if (result.user) {
       adoptUser(result.user);
       set({ hasLoadedUser: true, isUserLoading: false });
     } else if (result.error && !result.isUnavailable) {
+      endSessionEpoch();
       clearImpersonationEverywhere();
       set({
         user: null,
@@ -416,6 +458,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     currentPath: "",
     retryTimer: null,
     retryAttempt: 0,
+    sessionEpoch: 0,
     initialize,
     setCurrentRequestContext,
     logOut,
@@ -429,4 +472,10 @@ useAuthStore.subscribe((state, previousState) => {
   if (previousState.user && previousState.user.id !== state.user?.id) {
     resetAnalyticsIdentity();
   }
+});
+
+// Headers are built only for the user this store has signed in, so keep the
+// impersonation module told who that is.
+useAuthStore.subscribe((state, previousState) => {
+  if (state.user !== previousState.user) setImpersonationViewer(state.user);
 });

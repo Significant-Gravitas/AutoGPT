@@ -111,7 +111,13 @@ describe("a session check that can't get an answer changes nothing", () => {
       path: "/library",
     });
 
-    expect(getSystemHeaders()).toEqual({ [ACT_AS]: "user-a" });
+    // Kept for when the admin is known again; nothing is sent meanwhile,
+    // because nobody is known to be signed in.
+    expect(ImpersonationState.read()).toEqual({
+      target: "user-a",
+      owner: admin.id,
+    });
+    expect(getSystemHeaders()).toEqual({});
   });
 
   it("keeps the admin signed in when a refresh can't reach the backend", async () => {

@@ -31,8 +31,14 @@ export function shouldRedirectOnLogout(pathname: string): boolean {
 }
 
 // Cross-tab logout utilities
+// Other tabs only hear a storage write that changes the value, so each
+// signal is unique even when two land in the same millisecond.
+export function uniqueSignal(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function broadcastLogout(): void {
-  storage.set(Key.LOGOUT, Date.now().toString());
+  storage.set(Key.LOGOUT, uniqueSignal());
 }
 
 export function isLogoutEvent(event: StorageEvent): boolean {

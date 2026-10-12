@@ -12,11 +12,19 @@ vi.mock("@/lib/auth/country-token", () => ({
 vi.mock("@/services/environment", () => ({
   environment: {
     getAGPTServerBaseUrl: vi.fn(() => "https://backend.test"),
+    isClientSide: vi.fn(() => false),
+    isServerSide: vi.fn(() => true),
   },
+}));
+
+vi.mock("@/lib/auth/server/getServerSession", () => ({
+  getServerSession: vi.fn(),
 }));
 
 import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
+import { getServerSession } from "@/lib/auth/server/getServerSession";
+import { encodeImpersonation } from "@/lib/impersonation";
 import { GET, POST } from "../route";
 
 const PRIVATE_IMAGE_HEADER_KEYS = [
@@ -585,5 +593,62 @@ describe("proxy route — response-start timeout", () => {
     expect(await res.json()).toMatchObject({
       error: "Proxy request timed out",
     });
+  });
+});
+
+describe("proxy: admin impersonation header", () => {
+  const ACT_AS = "x-act-as-user-id";
+
+  beforeEach(() => {
+    vi.mocked(getServerAuthToken).mockResolvedValue("test-token");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 200 })),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function sessionAs(id: string, role: string) {
+    vi.mocked(getServerSession).mockResolvedValue({
+      user: { id, role },
+    } as never);
+  }
+
+  async function forwardedActAs(cookieRecord: string | null) {
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+      headers: { [ACT_AS]: "target-a" },
+    });
+    // The test Request drops a Cookie header, so set it on the cookie jar.
+    if (cookieRecord)
+      req.cookies.set("admin-impersonate-user-id", cookieRecord);
+    await GET(req, makeParams(["api", "v1", "items"]));
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    return new Headers((init as RequestInit).headers).get(ACT_AS);
+  }
+
+  it("forwards it for the signed-in admin who chose that target", async () => {
+    sessionAs("admin-1", "admin");
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+      ),
+    ).toBe("target-a");
+  });
+
+  it("drops it when the session is a different admin", async () => {
+    sessionAs("admin-2", "admin");
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("drops a header no impersonation cookie backs", async () => {
+    sessionAs("admin-1", "admin");
+    expect(await forwardedActAs(null)).toBeNull();
   });
 });
