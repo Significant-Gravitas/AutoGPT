@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from .invoice import ANTHROPIC_PRICES, KIMI, MOONSHOT_FALLBACK, SONNET, Call
+from .invoice import CLI_ESTIMATE_PRICES, KIMI, MOONSHOT_FALLBACK, SONNET, Call
 from .ledger import CreditBilling, PlannedDrain
 from .provider import PlannedFault
 
@@ -106,23 +106,15 @@ _OPENROUTER = {
 # is configured.
 _DIRECT = {"use_openrouter": False, "api_key": "sk-ant-billing-e2e"}
 
-# Where no provider reports a cost, the platform charges the CLI's own
-# estimate, and the bundled CLI prices Sonnet 5.5 cache reads at $0.20 per
-# million where Anthropic bills $0.10.
-_CLI_SONNET_CACHE_READ_GAP = KnownGap(
-    check="charge",
-    reason="the platform charges the bundled CLI's estimate, which prices "
-    "Sonnet 5.5 cache reads at twice Anthropic's rate",
-)
-
+# Anthropic reports no cost, so a direct turn is charged the CLI's own
+# estimate rather than the invoice (see ``CLI_ESTIMATE_PRICES``).
 _SDK_ANTHROPIC = Scenario(
     id="sdk-anthropic",
     engine="sdk",
     model=SONNET,
-    charge="invoice",
+    charge="cli_estimate",
     cost_log_provider="anthropic",
     config={**_DIRECT, "claude_agent_model": SONNET},
-    known_gap=_CLI_SONNET_CACHE_READ_GAP,
 )
 _SDK_OPENROUTER = Scenario(
     id="sdk-openrouter",
@@ -199,7 +191,6 @@ SCENARIOS = [
         cost_log_provider="open_router",
         config={**_OPENROUTER, "claude_agent_model": f"anthropic/{SONNET}"},
         generation_lookups_fail=True,
-        known_gap=_CLI_SONNET_CACHE_READ_GAP,
     ),
     Scenario(
         id="sdk-openrouter-no-reconcile",
@@ -212,7 +203,6 @@ SCENARIOS = [
             "claude_agent_model": f"anthropic/{SONNET}",
             "sdk_reconcile_openrouter_cost": False,
         },
-        known_gap=_CLI_SONNET_CACHE_READ_GAP,
     ),
     Scenario(
         id="sdk-openrouter-kimi",
@@ -318,8 +308,8 @@ def expected_charge_usd(basis: ChargeBasis, call: Call) -> float:
     if basis == "invoice":
         return call.invoice_usd
     if basis == "cli_estimate":
-        list_price = ANTHROPIC_PRICES[call.model.removeprefix("anthropic/")]
-        return list_price.of(call.usage, call.cache_ttl)
+        cli_price = CLI_ESTIMATE_PRICES[call.model.removeprefix("anthropic/")]
+        return cli_price.of(call.usage, call.cache_ttl)
     if basis == "moonshot_estimate":
         return MOONSHOT_FALLBACK.of(call.usage, None)
     return 0.0
