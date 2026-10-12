@@ -1,3 +1,4 @@
+// Throwaway flake-gate evidence: this touch makes the gate re-run the fixed test.
 import type { SessionDetailResponseMessagesItem } from "@/app/api/__generated__/models/sessionDetailResponseMessagesItem";
 import { server } from "@/mocks/mock-server";
 import {
