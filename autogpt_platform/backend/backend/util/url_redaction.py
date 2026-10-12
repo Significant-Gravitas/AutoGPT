@@ -95,6 +95,9 @@ class RequestURLRedactionFilter(logging.Filter):
 
 
 def _redact_argument(argument: object) -> object:
-    text = argument if isinstance(argument, str) else str(argument)
+    try:
+        text = argument if isinstance(argument, str) else str(argument)
+    except Exception:
+        return argument  # the handler hits, and reports, the same failure
     masked = redact_url(text)
     return argument if masked == text else masked
