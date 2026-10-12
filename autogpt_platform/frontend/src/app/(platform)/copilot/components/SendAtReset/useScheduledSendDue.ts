@@ -11,7 +11,9 @@ export function useScheduledSendDue(runAt: Date | string) {
   useEffect(
     function flipWhenDue() {
       if (due <= now) return;
-      const timer = setTimeout(() => setNow(Date.now()), due - now);
+      // Timed from the clock, not `now`: the send can move while this is up.
+      const wait = Math.max(0, due - Date.now());
+      const timer = setTimeout(() => setNow(Date.now()), wait);
       return () => clearTimeout(timer);
     },
     [due, now],

@@ -73,9 +73,17 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
+const toast = vi.hoisted(() => vi.fn());
+
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast,
+  useToast: () => ({ toast, dismiss: vi.fn() }),
+}));
+
 const SCHEDULE_PLACEHOLDER = "Write now, and it sends when your budget resets…";
 
 beforeEach(() => {
+  toast.mockClear();
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(SATURDAY_1AM);
   resetCopilotChatRegistry();
@@ -178,6 +186,32 @@ describe("Send at reset", () => {
     });
     expect(within(chip).getByText(/Also the changelog/)).toBeDefined();
     expect(within(chip).getByText(/Draft the launch post/)).toBeDefined();
+  });
+
+  it("says when a message is too long to join the one waiting, and keeps it", async () => {
+    const atReset = fakeAtReset();
+    atReset.state.maxMessageChars = 40;
+    server.use(
+      ...budgetHandlers({ usage: weeklyExhausted() }),
+      ...atReset.handlers,
+    );
+    renderChat();
+    await scheduleDraft("Draft the launch post");
+    await screen.findByRole("status", { name: "Scheduled message" });
+
+    await scheduleDraft("Also the changelog for this week");
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Couldn’t schedule your message",
+          description:
+            "Too long to add to the message already waiting — your message is back in the composer.",
+        }),
+      ),
+    );
+    expect(composer().value).toBe("Also the changelog for this week");
+    expect(atReset.state.jobs[0].message).toBe("Draft the launch post");
   });
 
   it("still shows the scheduled message after a reload", async () => {

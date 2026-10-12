@@ -144,6 +144,8 @@ export function fakeAtReset(jobs: AtResetTurn[] = []) {
     scheduled: [] as { sessionId: string; body: unknown }[],
     cancelled: [] as string[],
     refusal: null as "not_out_of_budget" | "no_reset" | null,
+    // The longest a single message may be; the real server allows 64,000.
+    maxMessageChars: Infinity,
   };
   const handlers = [
     http.get("*/api/chat/sessions/:sessionId/at-reset", () =>
@@ -162,13 +164,16 @@ export function fakeAtReset(jobs: AtResetTurn[] = []) {
         }
         // As the server does: a send joins the message already waiting.
         const waiting = state.jobs.find((j) => j.kind === body.kind);
-        const job = {
-          kind: body.kind,
-          run_at: MONDAY_107AM,
-          message: waiting?.message
-            ? `${waiting.message}\n\n${body.message}`
-            : body.message,
-        };
+        const message = waiting?.message
+          ? `${waiting.message}\n\n${body.message}`
+          : body.message;
+        if (message.length > state.maxMessageChars) {
+          return HttpResponse.json(
+            { detail: "message_too_long" },
+            { status: 413 },
+          );
+        }
+        const job = { kind: body.kind, run_at: MONDAY_107AM, message };
         state.jobs = [...state.jobs.filter((j) => j.kind !== body.kind), job];
         return HttpResponse.json(job);
       },

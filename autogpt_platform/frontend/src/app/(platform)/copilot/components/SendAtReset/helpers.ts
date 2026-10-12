@@ -42,6 +42,16 @@ export function atResetRefusal(error: unknown) {
     : null;
 }
 
+/** The server joins a send onto the one already waiting, and refuses when the
+ *  two together would be longer than one message may be. */
+export function isJoinedSendTooLong(error: unknown) {
+  return (
+    error instanceof ApiError &&
+    error.status === 413 &&
+    error.response?.detail === "message_too_long"
+  );
+}
+
 export function scheduledSendLabel(runAt: Date | string, now = new Date()) {
   const date = new Date(runAt);
   const clock = formatResetClock(date);

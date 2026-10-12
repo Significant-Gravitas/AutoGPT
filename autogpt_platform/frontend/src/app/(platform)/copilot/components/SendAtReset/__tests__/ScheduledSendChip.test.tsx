@@ -44,4 +44,18 @@ describe("ScheduledSendChip", () => {
     render(chip(new Date(2026, 9, 12, 0, 59)));
     expect(screen.getByText("Sending…")).toBeDefined();
   });
+
+  it("goes at its new time when the send moves while the chip is up", () => {
+    const view = render(chip(new Date(2026, 9, 12, 1, 7)));
+    act(() => {
+      vi.advanceTimersByTime(5 * 60_000);
+    });
+    view.rerender(chip(new Date(2026, 9, 12, 1, 10)));
+    expect(screen.getByText("Sends at 1:10 AM")).toBeDefined();
+    act(() => {
+      vi.advanceTimersByTime(5 * 60_000);
+    });
+    expect(screen.getByText("Sending…")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
 });

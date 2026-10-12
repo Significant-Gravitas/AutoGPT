@@ -11,6 +11,7 @@ import { describeSendFailure } from "../ChatInput/helpers";
 import { useChatDraft } from "../ChatInput/useChatDraft";
 import {
   atResetRefusal,
+  isJoinedSendTooLong,
   returnToDraft,
   sendAtResetFailureTitle,
   SentNowError,
@@ -49,6 +50,9 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
       const job = response.data;
       await writeJobs((all) => [...all.filter((j) => j.kind !== "send"), job]);
     } catch (error) {
+      if (isJoinedSendTooLong(error)) {
+        throw new Error("Too long to add to the message already waiting");
+      }
       const refusal = atResetRefusal(error);
       if (!refusal) throw error;
       void queryClient.invalidateQueries({

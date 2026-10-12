@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { describe, expect, it } from "vitest";
 import {
   atResetRefusal,
+  isJoinedSendTooLong,
   returnToDraft,
   SCHEDULE_FAILED_TITLE,
   scheduledSendLabel,
@@ -40,6 +41,28 @@ describe("atResetRefusal", () => {
       atResetRefusal(new ApiError("down", 503, { detail: "no_reset" })),
     ).toBe(null);
     expect(atResetRefusal(new Error("offline"))).toBe(null);
+  });
+});
+
+describe("isJoinedSendTooLong", () => {
+  it("reads the server refusing to join a send that would be too long", () => {
+    expect(
+      isJoinedSendTooLong(
+        new ApiError("message_too_long", 413, { detail: "message_too_long" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("leaves any other failure alone", () => {
+    expect(
+      isJoinedSendTooLong(new ApiError("too big", 413, { detail: "other" })),
+    ).toBe(false);
+    expect(
+      isJoinedSendTooLong(
+        new ApiError("refused", 409, { detail: "message_too_long" }),
+      ),
+    ).toBe(false);
+    expect(isJoinedSendTooLong(new Error("message_too_long"))).toBe(false);
   });
 });
 
