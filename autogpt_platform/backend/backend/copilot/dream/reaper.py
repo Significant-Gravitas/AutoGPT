@@ -95,7 +95,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from prisma.enums import DreamPassStatus
+from prisma.enums import DreamPassRoute, DreamPassStatus
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig
@@ -504,8 +504,12 @@ def _phase_models(row: DreamPassRecord) -> dict[str, str] | None:
 
 
 def _landed(row: DreamPassRecord) -> list[DreamPhase]:
-    """The phases whose output *row* recorded: landed, so their usage is
-    lost should their batch state be gone before they were charged."""
+    """The phases of a batch pass whose output *row* recorded: landed, so
+    their usage is lost should their batch state be gone before they were
+    charged. None for a sync pass, which charges each phase as it lands and
+    keeps no batch state."""
+    if row.route != DreamPassRoute.ANTHROPIC_BATCH:
+        return []
     outputs = row.phase_outputs
     recorded: dict[DreamPhase, object] = {
         "consolidate": outputs.consolidate,

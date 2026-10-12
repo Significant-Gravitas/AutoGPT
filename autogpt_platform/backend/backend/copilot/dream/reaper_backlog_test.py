@@ -362,6 +362,28 @@ class TestABatchStateThatLapsed:
             "cannot be recovered"
         ]
 
+    async def test_of_a_sync_pass_reports_nothing(
+        self, fake_dream_db, fake_dream_redis, charges, caplog
+    ):
+        """A sync pass charges each phase as it lands and keeps no batch
+        state: its recorded outputs, with no state and no batch claims, are
+        how an already charged pass looks, not lost usage."""
+        _seed(
+            fake_dream_db,
+            "p1",
+            route=DreamPassRoute.SYNC,
+            status=DreamPassStatus.EXPIRED,
+            cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            phase_outputs={"consolidate": ConsolidationOutput()},
+        )
+
+        with caplog.at_level(logging.ERROR):
+            run = await reap_expired_passes()
+
+        assert run.outcomes == {"cleaned": 1}
+        charges.assert_not_awaited()
+        assert _errors(caplog) == []
+
     @pytest.mark.parametrize(
         "claims",
         [
