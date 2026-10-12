@@ -156,6 +156,7 @@ from backend.copilot.transports import (
     is_deployment_chat_available,
     save_default_chat_route,
 )
+from backend.copilot.trial_reads import sharing_trial_reads
 from backend.copilot.turn_tracing import MODEL_OUTPUT_CHUNKS
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
@@ -1726,6 +1727,9 @@ def _empty_ui_message_stream_response(
         },
     },
 )
+# The paywall and the rate-limit checks below each read a trial user's
+# subscription trial; inside this handler they share one read.
+@sharing_trial_reads
 async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
