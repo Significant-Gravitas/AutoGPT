@@ -182,11 +182,17 @@ def _cache_key(
     return (user_id, provider)
 
 
+class ProviderTokenUnavailable(Exception):
+    """The token could not be looked up or refreshed: unknown, not absent."""
+
+
 async def get_provider_token(
     user_id: str,
     provider: str,
     required_scopes: frozenset[str] = frozenset(),
     credential_id: str | None = None,
+    *,
+    strict: bool = False,
 ) -> str | None:
     """Return the user's access token for *provider*, or ``None`` if not connected.
 
@@ -199,6 +205,10 @@ async def get_provider_token(
     chat; when it is still stored, it is the only candidate.
     Both found tokens and "not connected" results are cached for 60 s, and a
     credential write in any process evicts the entry before that lapses.
+    With *strict*, a failed credential read or a failed refresh with no other
+    token to fall back to raises ``ProviderTokenUnavailable`` instead of
+    returning ``None``: for a caller to whom "not connected" means something
+    (the swap proxy scrubs against it), a failure must not look like one.
     """
     _ensure_cache_invalidation_listener()
     cache_key = _cache_key(user_id, provider, required_scopes, credential_id)
@@ -211,13 +221,15 @@ async def get_provider_token(
     manager = _manager
     try:
         creds_list = await manager.store.get_creds_by_provider(user_id, provider)
-    except Exception:
+    except Exception as e:
         logger.warning(
             "Failed to fetch %s credentials for user %s",
             provider,
             user_id,
             exc_info=True,
         )
+        if strict:
+            raise ProviderTokenUnavailable(provider) from e
         return None
 
     if credential_id is not None:
@@ -278,6 +290,8 @@ async def get_provider_token(
     # the next call should retry the refresh instead of being blocked for 60 s.
     if not refresh_failed:
         _null_cache[cache_key] = True
+    elif strict:
+        raise ProviderTokenUnavailable(provider)
     return None
 
 

@@ -1,5 +1,22 @@
 import twemoji from "twemoji";
 
+// Served from public/emoji so the browser never fetches a third-party CDN,
+// which an offline or self-hosted install may not reach. Add an emoji's SVG
+// there (Twemoji 14.0.2, named by codepoint) before using it; any other emoji
+// renders as the system glyph.
+const BUNDLED_EMOJI = new Set([
+  "1f4a4",
+  "1f4b5",
+  "1f4c5",
+  "1f5c3",
+  "1f6a9",
+  "26a0",
+]);
+
+function bundledEmojiURL(icon: string) {
+  return BUNDLED_EMOJI.has(icon) ? `/emoji/${icon}.svg` : false;
+}
+
 interface Props {
   text: string;
   size?: number;
@@ -22,12 +39,11 @@ function escapeHtml(input: string) {
 
 export function Emoji({ text, size = 24 }: Props) {
   // Strip the default alt (the emoji codepoint) so the browser doesn't flash
-  // the small system-rendered emoji while the SVG loads from the CDN. The
+  // the small system-rendered emoji while the SVG loads. The
   // twemoji API doesn't expose an alt override, hence the regex.
   const html = twemoji
     .parse(escapeHtml(text), {
-      folder: "svg",
-      ext: ".svg",
+      callback: bundledEmojiURL,
       attributes: () => ({
         width: String(size),
         height: String(size),

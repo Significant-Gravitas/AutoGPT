@@ -17,6 +17,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
+from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
+from backend.platform_linking.models import CardTurn
+
 # Callback signature: (ctx, adapter) -> awaitable None
 MessageCallback = Callable[["MessageContext", "PlatformAdapter"], Awaitable[None]]
 
@@ -185,6 +188,8 @@ class MessageContext:
     # failed), as ``(filename, reason)`` pairs — surfaced to the user and the
     # model so neither thinks the file was read.
     skipped_attachments: tuple[tuple[str, str], ...] = ()
+    # Set by a click that answered a card: carry the turn it woke, say nothing.
+    follow: Optional[CardTurn] = None
 
     @property
     def is_dm(self) -> bool:
@@ -276,15 +281,16 @@ class PlatformAdapter(ABC):
         options: list[str],
         token: str,
         mentionable_users: tuple[tuple[str, str], ...] = (),
+        kind: ButtonKind = QUESTION_KIND,
     ) -> bool:
         """Send `text` with native clickable option buttons/select where the
         platform supports it, returning True once sent.
 
-        A click carries `token` and the clicked option's index (not the
-        option text -- Telegram's callback_data caps at 64 bytes); the
-        adapter resolves it via `bot.choices.resolve_choice` and feeds the
-        resolved text through its own `on_message` callback, exactly as if
-        the user had typed it. Returns False when the platform doesn't
+        A click carries `kind`, `token` and the clicked option's index (not
+        the option text -- Telegram's callback_data caps at 64 bytes); the
+        adapter resolves it via `bot.choices.answer_button` and feeds the
+        reply through its own `on_message` callback, exactly as if the user
+        had typed it. Returns False when the platform doesn't
         implement this (or `options` doesn't fit its native widget), telling
         the caller to fall back to plain numbered text. Default: unsupported.
         """

@@ -60,7 +60,7 @@ describe("RecentChatItem — display", () => {
   it("links to the session and shows its title", () => {
     renderItem(makeProps());
     const link = screen.getByRole("link", { name: /my chat/i });
-    expect(link.getAttribute("href")).toBe("/copilot?sessionId=s1");
+    expect(link.getAttribute("href")).toBe("/home?sessionId=s1");
   });
 
   it("falls back to 'Untitled chat' when the title is empty", () => {

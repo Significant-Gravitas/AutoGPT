@@ -28,7 +28,6 @@ interface Props {
   sectionTitle?: string;
   eyebrow?: string;
   eyebrowIcon?: ReactNode;
-  titleIcon?: ReactNode;
   subtitle?: string;
   agents: StoreAgent[];
   hideAvatars?: boolean;
@@ -39,7 +38,6 @@ export function AgentsSection({
   sectionTitle,
   eyebrow,
   eyebrowIcon,
-  titleIcon,
   subtitle,
   agents: allAgents,
   hideAvatars = false,
@@ -51,12 +49,11 @@ export function AgentsSection({
   return (
     <div className="flex flex-col items-center justify-center">
       <div className="w-full max-w-[1360px]">
-        {sectionTitle && (eyebrow || titleIcon || subtitle) ? (
+        {sectionTitle && (eyebrow || subtitle) ? (
           <SectionHeader
             eyebrow={eyebrow}
             eyebrowIcon={eyebrowIcon}
             title={sectionTitle}
-            titleIcon={titleIcon}
             subtitle={subtitle}
           />
         ) : sectionTitle ? (

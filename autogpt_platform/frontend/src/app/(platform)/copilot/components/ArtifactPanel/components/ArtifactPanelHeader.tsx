@@ -5,7 +5,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { cn } from "@/lib/utils";
 import type { ArtifactPanelMode, ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 import { PanelModeSwitch } from "./PanelModeSwitch";
@@ -17,6 +16,8 @@ import {
   Copy01Icon,
   Download01Icon,
   Folder01Icon,
+  ArrowExpandDiagonal01Icon,
+  ArrowShrinkIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -39,10 +40,8 @@ interface Props {
   onDownload: () => void;
   onOpenFiles: () => void;
   onSourceToggle: (isSource: boolean) => void;
-  /** True when a control outside the panel (the chat's sidebar-right
-   *  toggle) already closes it — standalone hosts (share viewer, tour,
-   *  mobile drawer) have no such control and keep the header Close. */
-  hasExternalClose?: boolean;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 function HeaderButton({
@@ -61,7 +60,7 @@ function HeaderButton({
           type="button"
           onClick={onClick}
           aria-label={title}
-          className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+          className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {children}
         </button>
@@ -84,94 +83,93 @@ export function ArtifactPanelHeader({
   onDownload,
   onOpenFiles,
   onSourceToggle,
-  hasExternalClose = false,
+  isFullscreen = false,
+  onToggleFullscreen,
   mode = "artifact",
   showModeSwitch = false,
   onModeChange,
 }: Props) {
   const isComputer = mode === "computer" || artifact == null;
-  // An expert is not a workspace file: nothing to download, and "All files"
-  // would strand the user in the wrong tab.
   const isFile = !isComputer && !artifact?.expert;
-  // Height matches the chat thread header (36px avatar + py-2 + border) so
-  // the two top bars share one seam across the panel split.
+  const hasViewControls =
+    (showModeSwitch && onModeChange) || (!isComputer && hasSourceToggle);
+
   return (
-    <div className="sticky top-0 z-10 flex h-[53px] items-center gap-2 border-b border-b-[#80808017] bg-sidebar px-3">
-      {/* Left section */}
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+    <header className="shrink-0 border-b border-border bg-card">
+      <div className="flex h-12 items-center gap-2 px-3 sm:px-4">
         {!isComputer && canGoBack && (
           <HeaderButton onClick={onBack} title="Back">
-            <Icon icon={ArrowLeft02Icon} size={16} />
+            <Icon icon={ArrowLeft02Icon} size={18} />
           </HeaderButton>
         )}
-        {isComputer || !artifact || !classification ? (
-          <>
-            <Icon
-              icon={ComputerIcon}
-              size={16}
-              className="shrink-0 text-zinc-400"
-            />
-            <span className="truncate text-sm font-medium text-zinc-900">
-              Computer
-            </span>
-          </>
-        ) : (
-          <>
-            <Icon
-              icon={classification.icon}
-              size={16}
-              className="shrink-0 text-zinc-400"
-            />
-            <span className="truncate text-sm font-medium text-zinc-900">
-              {artifact.title}
-            </span>
-            <span
-              className={cn(
-                "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
-                artifact.origin === "user-upload"
-                  ? "bg-blue-50 text-blue-600"
-                  : "bg-violet-50 text-violet-600",
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-muted-foreground">
+          {isComputer ? (
+            <>
+              <Icon icon={ComputerIcon} size={18} className="shrink-0" />
+              <span className="truncate">Computer</span>
+            </>
+          ) : (
+            <>
+              <span className="truncate" title={artifact?.title}>
+                {artifact?.title}
+              </span>
+              {classification && (
+                <span className="shrink-0">· {classification.label}</span>
               )}
+            </>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {!isComputer && canCopy && (
+            <HeaderButton onClick={onCopy} title="Copy">
+              <Icon icon={Copy01Icon} size={18} />
+            </HeaderButton>
+          )}
+          {isFile && (
+            <>
+              <HeaderButton onClick={onOpenFiles} title="All files">
+                <Icon icon={Folder01Icon} size={18} />
+              </HeaderButton>
+              <HeaderButton onClick={onDownload} title="Download">
+                <Icon icon={Download01Icon} size={18} />
+              </HeaderButton>
+            </>
+          )}
+          {onToggleFullscreen && (
+            <HeaderButton
+              onClick={onToggleFullscreen}
+              title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
             >
-              {classification.label}
-            </span>
-          </>
-        )}
-      </div>
-
-      {/* Right section */}
-      <div className="flex items-center gap-1">
-        {showModeSwitch && onModeChange && (
-          <PanelModeSwitch
-            mode={isComputer ? "computer" : "artifact"}
-            hasArtifact={artifact != null}
-            onChange={onModeChange}
-          />
-        )}
-        {!isComputer && hasSourceToggle && (
-          <SourceToggle isSourceView={isSourceView} onToggle={onSourceToggle} />
-        )}
-        {!isComputer && canCopy && (
-          <HeaderButton onClick={onCopy} title="Copy">
-            <Icon icon={Copy01Icon} size={16} />
-          </HeaderButton>
-        )}
-        {isFile && (
-          <HeaderButton onClick={onDownload} title="Download">
-            <Icon icon={Download01Icon} size={16} />
-          </HeaderButton>
-        )}
-        {isFile && (
-          <HeaderButton onClick={onOpenFiles} title="All files">
-            <Icon icon={Folder01Icon} size={16} />
-          </HeaderButton>
-        )}
-        {!hasExternalClose && (
+              <Icon
+                icon={
+                  isFullscreen ? ArrowShrinkIcon : ArrowExpandDiagonal01Icon
+                }
+                size={18}
+              />
+            </HeaderButton>
+          )}
           <HeaderButton onClick={onClose} title="Close">
-            <Icon icon={Cancel01Icon} size={16} />
+            <Icon icon={Cancel01Icon} size={18} />
           </HeaderButton>
-        )}
+        </div>
       </div>
-    </div>
+      {hasViewControls && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-2 sm:px-4">
+          {showModeSwitch && onModeChange && (
+            <PanelModeSwitch
+              mode={isComputer ? "computer" : "artifact"}
+              hasArtifact={artifact != null}
+              onChange={onModeChange}
+            />
+          )}
+          {!isComputer && hasSourceToggle && (
+            <SourceToggle
+              isSourceView={isSourceView}
+              onToggle={onSourceToggle}
+            />
+          )}
+        </div>
+      )}
+    </header>
   );
 }
