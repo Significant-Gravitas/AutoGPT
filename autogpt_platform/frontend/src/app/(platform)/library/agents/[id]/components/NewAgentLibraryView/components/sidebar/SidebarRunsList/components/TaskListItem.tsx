@@ -99,6 +99,7 @@ export function TaskListItem({
       }
       onClick={onClick}
       selected={selected}
+      testID={`library-run-item-${run.id}`}
       actions={
         <TaskActionsDropdown agent={agent} run={run} onDeleted={onDeleted} />
       }
