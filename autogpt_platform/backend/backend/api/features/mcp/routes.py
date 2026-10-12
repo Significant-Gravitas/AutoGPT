@@ -21,6 +21,9 @@ from backend.api.features.integrations.router import (
 )
 from backend.api.features.mcp.oauth_registration import (
     MCPClientRegistration,
+    check_preregistered_endpoints,
+    preregistered_client,
+    preregistered_revocation_endpoint,
     select_client_auth_method,
 )
 from backend.blocks.mcp.client import (
@@ -408,6 +411,37 @@ async def mcp_oauth_login(
             client_id = registration.client_id
             client_secret = registration.client_secret.get_secret_value()
             token_endpoint_auth_method = registration.token_endpoint_auth_method
+    elif (
+        preregistered := preregistered_client(server_url, settings.secrets)
+    ) is not None:
+        client_id, client_secret = preregistered
+        if not (client_id and client_secret):
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail={
+                    "code": NO_OAUTH_CODE,
+                    "message": f"Sign-in to {server_host(server_url)} is not "
+                    "set up on this platform yet: the server only accepts an "
+                    "OAuth app registered with it in advance. "
+                    "You may need to provide an auth credential manually.",
+                },
+            )
+        try:
+            check_preregistered_endpoints(server_url, metadata)
+        except ValueError as e:
+            logger.warning("Refusing pre-registered client sign-in: %s", e)
+            raise fastapi.HTTPException(status_code=400, detail=str(e))
+        trusted_revoke_url = preregistered_revocation_endpoint(server_url, revoke_url)
+        if revoke_url and not trusted_revoke_url:
+            logger.warning(
+                "Ignoring off-host revocation endpoint advertised by %s",
+                server_host(server_url),
+            )
+        revoke_url = trusted_revoke_url
+        try:
+            token_endpoint_auth_method = select_client_auth_method(metadata)
+        except ValueError as e:
+            raise fastapi.HTTPException(status_code=400, detail=str(e))
 
     if not client_id:
         client_id = "autogpt-platform"
