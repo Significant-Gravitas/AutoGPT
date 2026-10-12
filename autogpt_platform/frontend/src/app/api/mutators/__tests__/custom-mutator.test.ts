@@ -332,6 +332,16 @@ describe("customMutator validation errors", () => {
       "Schedules are temporarily unavailable.",
     ],
     [
+      {
+        detail: {
+          type: "validation_error",
+          message: "Agent Output › Name: This field is required",
+          node_errors: { "node-1": { name: "This field is required" } },
+        },
+      },
+      "Agent Output › Name: This field is required",
+    ],
+    [
       { detail: [{ reason: "Invalid input" }, null] },
       '{"reason":"Invalid input"}; null',
     ],

@@ -1155,7 +1155,13 @@ class RunAgentTool(BaseTool):
                 await _safe_link_to_chat_share(
                     session_id=session_id, execution_id=execution.id
                 )
-                health_warning = build_run_health_warning(outputs, node_failures)
+                health_warning = build_run_health_warning(
+                    outputs,
+                    node_failures,
+                    failed_node_count=(
+                        completed.stats.node_error_count if completed.stats else 0
+                    ),
+                )
                 if health_warning:
                     message = (
                         f"Agent '{library_agent.name}' finished with status "

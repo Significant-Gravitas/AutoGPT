@@ -5,6 +5,7 @@ import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Emoji } from "@/components/atoms/Emoji/Emoji";
 import { cn } from "@/lib/utils";
 import { formatCents } from "@/app/(platform)/copilot/components/usageHelpers";
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import type { FleetSummary, AgentStatusFilter } from "../../../../types";
 
 interface Props {
@@ -67,9 +68,19 @@ const TILES: {
 ];
 
 export function StatsGrid({ summary, activeTab, onTabChange }: Props) {
+  const isBillingEnabled = useIsBillingEnabled();
+  const tiles = isBillingEnabled
+    ? TILES
+    : TILES.filter((tile) => tile.key !== "monthlySpend");
+
   return (
-    <div className="grid grid-cols-1 gap-3 min-[450px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-      {TILES.map((tile) => {
+    <div
+      className={cn(
+        "grid grid-cols-1 gap-3 min-[450px]:grid-cols-2 sm:grid-cols-3",
+        isBillingEnabled ? "lg:grid-cols-6" : "lg:grid-cols-5",
+      )}
+    >
+      {tiles.map((tile) => {
         const rawValue = summary[tile.key];
         // Without the scheduler, a scheduled agent is indistinguishable from
         // an idle one; show neither count rather than a wrong one.
@@ -87,7 +98,10 @@ export function StatsGrid({ summary, activeTab, onTabChange }: Props) {
           <button
             key={tile.label}
             type="button"
-            onClick={() => onTabChange(tile.filter)}
+            aria-pressed={isActive}
+            // A second click goes back to the overview, which has no tile of
+            // its own when billing is off.
+            onClick={() => onTabChange(isActive ? "all" : tile.filter)}
             title={
               isUnknown ? "Schedules are temporarily unavailable" : undefined
             }

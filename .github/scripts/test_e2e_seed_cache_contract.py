@@ -41,6 +41,18 @@ class E2EMatrixContractTests(unittest.TestCase):
                 )[0]
                 self.assertIn("matrix.suite == 'smoke'", body)
 
+    def test_only_journeys_answer_copilot_from_scripts(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(_matrix_leg(workflow, "smoke")["scripted_model"], "false")
+        self.assertEqual(_matrix_leg(workflow, "journeys")["scripted_model"], "true")
+        prepare = workflow.split("- name: Set up Platform - Prepare Docker build\n", 1)[
+            1
+        ].split("\n      - name:", 1)[0]
+        self.assertIn("-f docker-compose.journeys.yml", prepare)
+        self.assertIn("matrix.scripted_model", prepare)
+
     def test_journeys_check_is_advisory(self):
         checker = (
             Path(__file__).resolve().parents[1]
@@ -121,7 +133,7 @@ class E2ECoverageContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("--min-tests ${{ matrix.min_tests }}", workflow)
         self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "28")
-        self.assertEqual(_matrix_leg(workflow, "journeys")["min_tests"], "5")
+        self.assertEqual(_matrix_leg(workflow, "journeys")["min_tests"], "11")
         # Smoke stays strict: no test.fail() known failures.
         self.assertEqual(_matrix_leg(workflow, "smoke")["known_failures"], "false")
 

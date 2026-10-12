@@ -1,9 +1,12 @@
 import inspect
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from multiprocessing import get_all_start_methods, get_context, set_forkserver_preload
 from threading import Thread
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
 import pytest
@@ -14,6 +17,24 @@ from backend.data import subscription_lookup_cache
 from backend.util.logging import configure_logging
 
 load_dotenv()
+
+
+def _with_query_param(url: str, key: str, value: str) -> str:
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query))
+    query[key] = value
+    return urlunparse(parsed._replace(query=urlencode(query)))
+
+
+# Every database connection this session opens, the server fixture's service
+# processes included, carries this name, so no_leaked_db_transaction can tell
+# them from any other client of the same database. Set before anything imports
+# backend.data.db, which reads the URL once; the default is that module's own.
+os.environ["DATABASE_URL"] = _with_query_param(
+    os.environ.get("DATABASE_URL", "postgresql://localhost:5432"),
+    "application_name",
+    f"autogpt-tests-{uuid4().hex[:8]}",
+)
 
 #  NOTE: You can run tests like with the --log-cli-level=INFO to see the logs
 # Set up logging
@@ -55,6 +76,51 @@ async def server():
     async with SpinTestServer() as server:
         async with _track_test_graphs(server):
             yield server
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def no_leaked_db_transaction(request: pytest.FixtureRequest):
+    """Fail a test that leaves a database transaction open.
+
+    A connection back in the pool inside an open transaction runs every later
+    test's statements inside it: their writes are never committed, and the
+    first one that fails aborts the rest. Checked while the session's client
+    is connected, i.e. once a test has started the server.
+    """
+    started = datetime.now(timezone.utc)
+    yield
+    # Nothing can leak through a database layer this session never loaded,
+    # and checking that keeps Prisma out of unit-only runs.
+    if "backend.data.db" not in sys.modules:
+        return
+    from prisma import get_client
+
+    from backend.data.db_transaction_guard import end_leaked_transactions
+
+    # The registered client, not backend.data.db.prisma: a test's patch of that
+    # attribute can still be in place while this teardown runs.
+    client = get_client()
+    if not client.is_connected():
+        return
+    report = await end_leaked_transactions(client)
+    if not report.leaks:
+        return
+    pytest.fail(
+        f"{request.node.nodeid} left a database transaction open (test began "
+        f"{started.isoformat()}); every later test would have run inside it:\n"
+        + "\n".join(
+            f"  pid {leak.pid}, {leak.state}, opened {leak.xact_start.isoformat()},"
+            f" last statement: {leak.last_query}"
+            for leak in report.leaks
+        )
+        + (
+            f"\nBackends {report.survivors} could not be confirmed ended, so "
+            "later tests may still see their transactions."
+            if report.survivors
+            else ""
+        ),
+        pytrace=False,
+    )
 
 
 @pytest.fixture(autouse=True)

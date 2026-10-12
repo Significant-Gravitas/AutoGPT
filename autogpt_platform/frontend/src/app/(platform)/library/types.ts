@@ -51,6 +51,7 @@ export type SitrepPriority =
   | "error"
   | "running"
   | "stale"
+  | "warning"
   | "success"
   | "listening"
   | "scheduled"
