@@ -61,7 +61,7 @@ class _Redis:
 def gate():
     """The gate on, no approval on record, chat rules on a fresh store."""
     store = SimpleNamespace(
-        find_review=AsyncMock(return_value=None),
+        read_review=AsyncMock(return_value=None),
         open_review=AsyncMock(side_effect=_opened),
         consume=AsyncMock(return_value=True),
         own_review=AsyncMock(return_value="copilot-mcp-x:1"),
@@ -69,7 +69,7 @@ def gate():
     )
     with (
         patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=True)),
-        patch(f"{_GATE}.review_store.find_review", store.find_review),
+        patch(f"{_GATE}.review_store.read_review", store.read_review),
         patch(f"{_GATE}.review_store.open_review", store.open_review),
         patch(f"{_GATE}.review_store.consume", store.consume),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
@@ -220,10 +220,10 @@ async def test_a_rejection_revokes_the_expert_and_team_rules_that_ran_it(gate, r
     await chat_rules.set_scoped_rule("team", "user-1", None, subject.key, "allow")
 
     max_again = _session(session_id="chat-b2", expert_id="max")
-    gate.find_review.return_value = SimpleNamespace(status=ReviewStatus.REJECTED)
+    gate.read_review.return_value = SimpleNamespace(status=ReviewStatus.REJECTED)
     with patch(f"{_GATE}.held.rule_key", AsyncMock(return_value=subject.key)):
         assert _is_held(await _call(max_again, _OPEN_WORLD, "do_thing", {"n": 2}))
-    gate.find_review.return_value = None
+    gate.read_review.return_value = None
 
     for chat, reason in [
         (
@@ -285,7 +285,7 @@ async def test_an_irreversible_tool_asks_once_on_the_gate_row_only(gate, ran):
     assert subject.irreversible
     gate.open_review.assert_awaited_once()
 
-    gate.find_review.return_value = SimpleNamespace(
+    gate.read_review.return_value = SimpleNamespace(
         status=ReviewStatus.APPROVED, payload={}
     )
     approved = await _call(_session(), _GITHUB, "merge_pull_request", {"n": 7})
@@ -296,7 +296,7 @@ async def test_an_irreversible_tool_asks_once_on_the_gate_row_only(gate, ran):
 
 async def test_an_approved_first_use_runs_without_a_second_card(gate, ran):
     """The server-side review would ask again for an uncatalogued server."""
-    gate.find_review.return_value = SimpleNamespace(
+    gate.read_review.return_value = SimpleNamespace(
         status=ReviewStatus.APPROVED, payload={}
     )
     result = await _call(_session(), _OPEN_WORLD, "do_thing")
