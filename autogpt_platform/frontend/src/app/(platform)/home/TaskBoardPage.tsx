@@ -17,7 +17,7 @@ export function TaskBoardPage() {
     isError,
     errorMessage,
     includeOlder,
-    isNewLayout,
+    showNewLayout,
     retry,
     toggleOlder,
     openCard,
@@ -27,7 +27,7 @@ export function TaskBoardPage() {
     <div
       className="flex min-h-0 w-full flex-col"
       style={{
-        height: isNewLayout
+        height: showNewLayout
           ? "100svh"
           : `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
       }}
@@ -35,7 +35,7 @@ export function TaskBoardPage() {
       <div
         className={cn(
           "flex h-16 shrink-0 items-center px-6 md:px-8",
-          isNewLayout && "max-md:pl-20",
+          showNewLayout && "max-md:pl-20",
         )}
       >
         <Text variant="h4" as="h1">

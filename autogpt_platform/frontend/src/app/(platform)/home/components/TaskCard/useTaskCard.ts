@@ -7,11 +7,16 @@ import { type Card, cardState, stateLineText } from "../../board-helpers";
 import { OTTO_OPTION } from "../AssigneePicker/helpers";
 
 export function useTaskCard(card: Card) {
-  const { expertsById, hasExpertsSettled, hasExpertsErrored } = useExpertMap();
+  const {
+    isExpertsEnabled,
+    expertsById,
+    hasExpertsSettled,
+    hasExpertsErrored,
+  } = useExpertMap();
   const state = cardState(card);
   const expertId = card.expert_id ?? null;
   const expert = resolveExpertIdentity(expertId, expertsById, {
-    settled: hasExpertsSettled,
+    settled: !isExpertsEnabled || hasExpertsSettled,
     errored: hasExpertsErrored,
   });
 

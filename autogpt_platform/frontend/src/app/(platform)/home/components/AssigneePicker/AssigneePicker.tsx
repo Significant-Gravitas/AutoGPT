@@ -35,6 +35,7 @@ export function AssigneePicker({
       open={open}
       onOpenChange={onOpenChange}
       onCloseAutoFocus={onCloseAutoFocus}
+      ariaLabel={`Assignee: ${recipient.name} — change assignee`}
       className="ml-0 h-7 rounded-full pl-0.5 text-xs shadow-none"
     />
   );

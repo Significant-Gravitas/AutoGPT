@@ -19,6 +19,8 @@ import { NuqsTestingAdapter, type UrlUpdateEvent } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { TaskBoardPage } from "../TaskBoardPage";
 
+const flags = vi.hoisted(() => ({ hireExperts: true }));
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -26,7 +28,8 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flag === actual.Flag.HIRE_EXPERTS,
+    useGetFlag: (flag: string) =>
+      flag === actual.Flag.HIRE_EXPERTS && flags.hireExperts,
   };
 });
 
@@ -127,7 +130,13 @@ async function findColumn(name: string) {
   return screen.findByRole("region", { name });
 }
 
+// Long enough for a stray POST (MSW answers after a 0 ms delay) to land.
+function settle() {
+  return new Promise((resolve) => setTimeout(resolve, 50));
+}
+
 beforeEach(() => {
+  flags.hireExperts = true;
   boardRequests = [];
   createBodies = [];
   server.use(
@@ -172,6 +181,19 @@ describe("task board", () => {
 
     const ship = within(done).getByRole("article", { name: "Ship v1" });
     expect(within(ship).getByText("Shipped the release notes.")).toBeDefined();
+  });
+
+  test("names an expert's card when experts are off instead of loading forever", async () => {
+    flags.hireExperts = false;
+    serveBoard(BOARD);
+    renderBoard();
+
+    const inProgress = await findColumn("In progress");
+    const research = within(inProgress).getByRole("article", {
+      name: "Research competitors",
+    });
+    expect(within(research).getByText("This expert")).toBeDefined();
+    expect(research.querySelector("span.bg-zinc-100[aria-hidden]")).toBeNull();
   });
 
   test("adds a task to Backlog and refreshes the board", async () => {
@@ -226,12 +248,12 @@ describe("task board", () => {
     await userEvent.click(
       within(backlog).getByRole("button", { name: "Add a task…" }),
     );
-    await userEvent.type(
-      within(backlog).getByRole("textbox", { name: "New task" }),
-      "   {Enter}",
-    );
+    const input = within(backlog).getByRole("textbox", { name: "New task" });
+    await userEvent.type(input, "   {Enter}");
+    await settle();
 
     expect(createBodies).toHaveLength(0);
+    expect((input as HTMLInputElement).value).toBe("   ");
   });
 
   test("typing @ opens the assignee picker and assigns the task", async () => {
@@ -250,7 +272,7 @@ describe("task board", () => {
     );
     expect((input as HTMLInputElement).value).toBe("Plan offsite ");
     expect(
-      within(backlog).getByRole("button", { name: /Sending to Priya/ }),
+      within(backlog).getByRole("button", { name: /Assignee: Priya/ }),
     ).toBeDefined();
 
     await userEvent.type(input, "{Enter}");
@@ -275,6 +297,7 @@ describe("task board", () => {
       within(backlog).getByRole("textbox", { name: "New task" }),
       "Never mind{Escape}",
     );
+    await settle();
 
     expect(within(backlog).queryByRole("textbox", { name: "New task" })).toBe(
       null,

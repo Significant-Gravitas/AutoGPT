@@ -31,6 +31,7 @@ interface Props {
   onOpenChange?: (open: boolean) => void;
   onCloseAutoFocus?: (event: Event) => void;
   className?: string;
+  ariaLabel?: string;
 }
 
 const CHIP_CLASSNAME =
@@ -45,6 +46,7 @@ export function RecipientChip({
   onOpenChange,
   onCloseAutoFocus,
   className,
+  ariaLabel,
 }: Props) {
   if (isLoading) {
     return (
@@ -64,7 +66,9 @@ export function RecipientChip({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={`Sending to ${recipient.name} — change recipient`}
+          aria-label={
+            ariaLabel ?? `Sending to ${recipient.name} — change recipient`
+          }
           className={cn(
             CHIP_CLASSNAME,
             "group transition-colors hover:bg-neutral-50",

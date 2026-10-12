@@ -20,12 +20,12 @@ export function TaskCard({ card, onOpen }: Props) {
   return (
     <article
       aria-label={title}
-      className="group relative rounded-lg border border-zinc-200 bg-white p-3 shadow-sm transition-[border-color,box-shadow] focus-within:border-zinc-400 hover:border-zinc-300 hover:shadow"
+      className="group relative rounded-lg border border-zinc-200 bg-white p-3 shadow-sm transition-[border-color,box-shadow] hover:border-zinc-300 hover:shadow"
     >
       <button
         type="button"
         onClick={() => onOpen(card.id)}
-        className="block w-full truncate text-left text-sm font-medium text-zinc-900 after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none"
+        className="block w-full truncate text-left text-sm font-medium text-zinc-900 after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-zinc-800"
       >
         {title}
       </button>
