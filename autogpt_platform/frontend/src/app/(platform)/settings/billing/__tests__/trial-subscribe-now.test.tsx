@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { render, screen } from "@/tests/integrations/test-utils";
 import {
   setTrialUser,
   trialResponse,
@@ -50,17 +50,25 @@ describe("arriving from the canceled-trial popup's Subscribe now", () => {
     expect(mockReplace).toHaveBeenCalledWith("/settings/billing");
   });
 
-  it("opens nothing once the trial is no longer cancel-pending", async () => {
+  it("opens nothing once a paid plan has replaced the trial", async () => {
     mockSearchParams.current = new URLSearchParams({ subscribe: "trial-plan" });
-    const { state } = mockBilling(trialResponse());
+    const { state } = mockBilling(
+      trialResponse({
+        active: false,
+        status: "canceled",
+        cancel_at_period_end: true,
+      }),
+    );
     state.subscription = { ...state.subscription, tier: "PRO" };
     render(<SettingsBillingPage />);
 
-    await waitFor(() =>
-      expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull(),
-    );
+    // The plan card reads "Active" only once the PRO subscription has
+    // loaded, so nothing below can pass on a response still in flight.
+    expect(await screen.findByText("Active")).toBeDefined();
+    expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
     expect(
       screen.queryByRole("dialog", { name: "Start Pro today?" }),
     ).toBeNull();
+    expect(mockReplace).not.toHaveBeenCalledWith("/settings/billing");
   });
 });
