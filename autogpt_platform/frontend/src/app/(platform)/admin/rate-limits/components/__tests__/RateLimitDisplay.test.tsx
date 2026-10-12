@@ -9,14 +9,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RateLimitDisplay } from "../RateLimitDisplay";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 
+const toastSpy = vi.hoisted(() => vi.fn());
+
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
-  useToast: () => ({ toast: vi.fn() }),
+  useToast: () => ({ toast: toastSpy }),
 }));
 
 const mockConfirm = vi.fn();
 
 beforeEach(() => {
   mockConfirm.mockReset();
+  toastSpy.mockClear();
   window.confirm = mockConfirm;
 });
 
@@ -228,6 +231,59 @@ describe("RateLimitDisplay", () => {
     await waitFor(() => {
       expect(onTierChange).toHaveBeenCalledWith("PRO");
     });
+  });
+
+  it("shows a success toast when the tier change carries no warning", async () => {
+    const onTierChange = vi.fn().mockResolvedValue(null);
+    mockConfirm.mockReturnValue(true);
+
+    render(
+      <RateLimitDisplay
+        data={makeData({ tier: "BASIC" })}
+        onReset={vi.fn()}
+        onTierChange={onTierChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Subscription tier"), {
+      target: { value: "PRO" },
+    });
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Tier updated" }),
+      );
+    });
+  });
+
+  it("shows the backend warning when the Stripe sweep will revert the grant", async () => {
+    const warning =
+      "This user already has a Stripe customer with no active subscription.";
+    const onTierChange = vi.fn().mockResolvedValue(warning);
+    mockConfirm.mockReturnValue(true);
+
+    render(
+      <RateLimitDisplay
+        data={makeData({ tier: "BASIC" })}
+        onReset={vi.fn()}
+        onTierChange={onTierChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Subscription tier"), {
+      target: { value: "PRO" },
+    });
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith({
+        title: "Tier set to PRO, but Stripe will revert it",
+        description: warning,
+        variant: "destructive",
+      });
+    });
+    expect(toastSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Tier updated" }),
+    );
   });
 
   it("does not call onTierChange when selecting the same tier", () => {

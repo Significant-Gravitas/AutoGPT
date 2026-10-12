@@ -790,7 +790,7 @@ class TestEnsurePersonalOrg:
             org_migration, "create_personal_org", new_callable=AsyncMock
         )
 
-        await org_migration.ensure_personal_org("user-new")
+        assert await org_migration.ensure_personal_org("user-new") is True
 
         create.assert_awaited_once()
         assert create.await_args.args[0] == "user-new"
@@ -807,7 +807,7 @@ class TestEnsurePersonalOrg:
             org_migration, "create_personal_org", new_callable=AsyncMock
         )
 
-        await org_migration.ensure_personal_org("user-has-org")
+        assert await org_migration.ensure_personal_org("user-has-org") is False
 
         create.assert_not_called()
 
@@ -835,7 +835,8 @@ class TestEnsurePersonalOrg:
             side_effect=UniqueViolationError({}),
         )
 
-        await org_migration.ensure_personal_org("user-racer")
+        # Only the winner reports the creation (it drives the sign-up signal).
+        assert await org_migration.ensure_personal_org("user-racer") is False
 
         # Only one create attempt — the loser did not retry into a 2nd org.
         create.assert_awaited_once()
@@ -860,7 +861,7 @@ class TestEnsurePersonalOrg:
             side_effect=[UniqueViolationError({}), None],
         )
 
-        await org_migration.ensure_personal_org("user-dup")
+        assert await org_migration.ensure_personal_org("user-dup") is True
 
         assert create.await_count == 2
 

@@ -1,7 +1,6 @@
-import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
-import { okData } from "@/app/api/helpers";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import {
   Alert01Icon,
   Calendar03Icon,
@@ -41,22 +40,18 @@ const STATUS = {
 
 interface Args {
   workflow: ExpertWorkflowRef;
+  libraryAgent: LibraryAgent | undefined;
   expertId?: string;
 }
 
-export function useExpertWorkflowCard({ workflow, expertId }: Args) {
+export function useExpertWorkflowCard({
+  workflow,
+  libraryAgent,
+  expertId,
+}: Args) {
   const router = useRouter();
   const name = workflow.name ?? "Unnamed workflow";
   const needsSetup = workflowNeedsSetup(workflow);
-  const { data: libraryAgent } = useGetV2GetLibraryAgent(
-    workflow.library_agent_id ?? "",
-    {
-      query: {
-        select: okData,
-        enabled: Boolean(workflow.library_agent_id),
-      },
-    },
-  );
   const libraryHref = workflow.library_agent_id
     ? `/library/agents/${workflow.library_agent_id}`
     : null;
@@ -84,7 +79,6 @@ export function useExpertWorkflowCard({ workflow, expertId }: Args) {
   return {
     name,
     needsSetup,
-    libraryAgent,
     runCount: libraryAgent?.execution_count,
     isTriggerWorkflow,
     status: STATUS[statusKind],
@@ -97,7 +91,7 @@ export function useExpertWorkflowCard({ workflow, expertId }: Args) {
       ? `/build?flowID=${workflow.graph_id}`
       : null,
     chatPrompt,
-    chatHref: `/copilot?${expertId ? `expertId=${expertId}&` : ""}autosubmit=true#prompt=${encodeURIComponent(chatPrompt)}`,
+    chatHref: `/home?${expertId ? `expertId=${expertId}&` : ""}autosubmit=true#prompt=${encodeURIComponent(chatPrompt)}`,
     openRun,
     openTriggers,
   };

@@ -10,7 +10,9 @@ import { toChainRow } from "../ToolChain/helpers";
 import { AttentionRow } from "../../../home/components/NeedsYou/components/AttentionRow";
 import { ApprovalQueue } from "./ApprovalQueue";
 import { toApprovalItem } from "./helpers";
+import { useHeldAnswersStore } from "./heldAnswersStore";
 import {
+  createAgent,
   deleteFolder,
   folder,
   heldRead,
@@ -104,6 +106,9 @@ export const RuleMenu: Story = {
 
 export const RuleMenuWithOtto: Story = { args: queueOf([mcpTool()]) };
 
+// A bare tool's card rules on the tool itself.
+export const RuleMenuOnATool: Story = { args: queueOf([createAgent()]) };
+
 // A paid read over the task's spend ceiling.
 export const OverTheSpendCeiling: Story = { args: queueOf([spendCard()]) };
 
@@ -194,6 +199,18 @@ export const UnresolvedId: Story = {
   args: queueOf([referenceCard("Unresolved id")]),
 };
 
+export const FollowUpInTwoDays: Story = {
+  args: queueOf([referenceCard("Follow-up in two days")]),
+};
+
+export const WeeklyFollowUp: Story = {
+  args: queueOf([referenceCard("Weekly follow-up")]),
+};
+
+export const DelegateAndWait: Story = {
+  args: queueOf([referenceCard("Delegate and wait")]),
+};
+
 export const FiveWaiting: Story = {
   args: queueOf([
     heldReview({
@@ -278,6 +295,25 @@ export const ChainRows: StoryObj = {
             isLast={i === rows.length - 1}
           />
         ))}
+      </div>
+    );
+  },
+};
+
+// Approve the card: the row above it shows the answer at the click.
+export const RowFlipsAtTheClick: StoryObj = {
+  parameters: { msw: { handlers: [answerAfter(0)] } },
+  render: function Render() {
+    const answers = useHeldAnswersStore((state) => state.answers);
+    const row = applyHeldOutcome(
+      toChainRow(HELD_PART("a", "Q3 reports"), 0)!,
+      new Map(),
+      answers,
+    );
+    return (
+      <div className="flex flex-col gap-4">
+        <ChainRowView row={row} isLast />
+        <ApprovalQueue {...queueOf([folder("a", "Q3 reports")])} />
       </div>
     );
   },
@@ -424,3 +460,5 @@ export const RealExecuteCodeStep = realStory("Execute Code Step");
 export const RealSendWebRequest = realStory("Send Web Request");
 export const RealPostToX = realStory("Post To X");
 export const RealWorkflow = realStory("Workflow");
+export const RealSandboxCommand = realStory("Sandbox Command");
+export const RealGmailNewsletter = realStory("Gmail Newsletter");

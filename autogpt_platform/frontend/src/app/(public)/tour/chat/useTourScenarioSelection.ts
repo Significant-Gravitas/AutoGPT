@@ -4,7 +4,7 @@ import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useTourStore } from "./tourStore";
 
 /** Switching scenarios always closes the previous run's artifact panel —
- * shared by the sidebar sessions, the end card and the nudge chip. */
+ * shared by the end card and the nudge chip. */
 export function useTourScenarioSelection() {
   const setActiveScenario = useTourStore((s) => s.setActiveScenario);
   const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);

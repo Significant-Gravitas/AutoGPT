@@ -5,7 +5,7 @@ import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { CopilotPendingReviews } from "../../CopilotPendingReviews/CopilotPendingReviews";
-import { mail, mcpTool, CHAT_SESSION } from "./fixtures";
+import { createAgent, mail, mcpTool, CHAT_SESSION } from "./fixtures";
 
 function serve(
   review: ReturnType<typeof mail> = mail("m1", ["allow", "judge"]),
@@ -48,12 +48,15 @@ async function openMenu() {
 
 const MAIL = "Gmail Send";
 const MCP = "create_issue on mcp.linear.app";
+const TOOL = "“Create an agent”";
 
 test.each([
   [`Approve ${MAIL} from now on`, "allow", mail("m1")],
   [`Let Otto judge ${MAIL} from now on`, "judge", mail("m1")],
   [`Approve ${MCP} from now on`, "allow", mcpTool("m1")],
   [`Let Otto judge ${MCP} from now on`, "judge", mcpTool("m1")],
+  [`Approve ${TOOL} from now on`, "allow", createAgent("m1")],
+  [`Let Otto judge ${TOOL} from now on`, "judge", createAgent("m1")],
 ])(
   "choosing %s approves the call and sets the %s rule for the Expert by default",
   async (item, rule, review) => {

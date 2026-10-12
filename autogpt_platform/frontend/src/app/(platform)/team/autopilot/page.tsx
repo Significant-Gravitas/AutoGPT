@@ -26,6 +26,7 @@ import { AutopilotAboutSection } from "./components/AutopilotAboutSection";
 import { AutopilotHeader } from "./components/AutopilotHeader";
 import { AutopilotSkillsSection } from "./components/AutopilotSkillsSection";
 import { useAutopilotPage } from "./useAutopilotPage";
+import { useAutopilotTab } from "./useAutopilotTab";
 
 const MAIN_CLASS =
   "container min-h-screen max-w-[1180px] space-y-5 pb-16 pt-6 sm:px-8 md:px-12";
@@ -39,6 +40,7 @@ const TABS = [
 
 export default function AutopilotPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
+  const { activeTab, onTabChange } = useAutopilotTab();
   const { schedules, workflows, skills, isLoading, isError, refetch } =
     useAutopilotPage({ enabled: Boolean(enabled) && ready });
 
@@ -78,7 +80,7 @@ export default function AutopilotPage() {
         Built in, always on your team.
       </Text>
 
-      <TabsLine variant="compact" defaultValue="basics">
+      <TabsLine variant="compact" value={activeTab} onValueChange={onTabChange}>
         <TabsLineList className="overflow-x-auto">
           {TABS.map((tab) => (
             <TabsLineTrigger key={tab.value} value={tab.value} icon={tab.icon}>

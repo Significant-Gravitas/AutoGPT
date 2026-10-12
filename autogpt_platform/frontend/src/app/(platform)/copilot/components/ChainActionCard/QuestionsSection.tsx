@@ -24,10 +24,10 @@ interface Props {
   onProceed: () => void;
 }
 
-/** One question per step. Picking an option advances on its own — except on a
- *  multi-select question, where there is a second pick to make; the footer
- *  pager (chevrons + ring dots) moves between questions, and the round action
- *  button advances and, on the last step, sends every answer as one message. */
+/** One question per step. Picking an option only selects it, so the user can
+ *  change their mind or edit it first; the footer pager (chevrons + ring dots)
+ *  moves between questions, and the round action button advances and, on the
+ *  last step, sends every answer as one message. */
 export function QuestionsSection({ requests, isReady, onProceed }: Props) {
   const [step, setStep] = useState(0);
   const sectionId = useId();
@@ -56,13 +56,6 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
     } else if (answered) {
       setStep(current + 1);
     }
-  }
-
-  // A tap on an option is the whole answer, so the pager moves on by itself;
-  // the last question keeps the send button as its explicit final step.
-  function handlePick(value: string) {
-    request.onAnswer(question.keyword, value);
-    if (!isLast) setStep(current + 1);
   }
 
   return (
@@ -117,7 +110,6 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
             labelId={labelId}
             autoFocus={current > 0}
             onChange={(value) => request.onAnswer(question.keyword, value)}
-            onPick={handlePick}
             onSubmit={handleAction}
           />
         )}

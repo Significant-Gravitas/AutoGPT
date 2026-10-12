@@ -1,16 +1,33 @@
 """Tests for P0 guardrails: _resolve_fallback_model, security env vars, TMPDIR."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.constants import is_transient_api_error
+from backend.copilot.constants import (
+    COMPACTION_TOOL_NAME,
+    is_transient_api_error,
+    is_transient_assistant_error,
+)
 from backend.copilot.model import ChatSession
-from backend.copilot.response_model import StreamCompactionProgress
+from backend.copilot.response_model import (
+    StreamCompactionProgress,
+    StreamToolInputAvailable,
+    StreamToolInputStart,
+    StreamToolOutputAvailable,
+)
 from backend.copilot.sdk.compaction import CompactionTracker
-from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES
+from backend.copilot.sdk.openrouter_cost import TurnGenerations
+from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES, _TokenUsage
+from backend.copilot.sdk.transient_retry_test import _overloaded, _reply, _Turn
+
+_TOOL_ROW_EVENTS = (
+    StreamToolInputStart,
+    StreamToolInputAvailable,
+    StreamToolOutputAvailable,
+)
 
 
 def _make_config(**overrides) -> ChatConfig:
@@ -431,6 +448,35 @@ class TestIsTransientApiError:
         assert is_transient_api_error("econnreset")
 
 
+# The bundled CLI's (2.1.284) wording for API errors it gives up on.
+_CLI_529 = (
+    "API Error: 529 Overloaded. This is a server-side issue, usually temporary "
+    "— try again in a moment."
+)
+_CLI_AT_CAPACITY = (
+    "API Error: Repeated 529 Overloaded errors. The API is at capacity — this "
+    "is usually temporary. Try again in a moment."
+)
+
+
+class TestIsTransientAssistantError:
+    """An API error the CLI reports in an AssistantMessage is transient by its
+    category, whatever the CLI's current wording says."""
+
+    @pytest.mark.parametrize("content", [_CLI_529, _CLI_AT_CAPACITY, ""])
+    @pytest.mark.parametrize("category", ["server_error", "rate_limit"])
+    def test_retryable_categories(self, category: str, content: str):
+        assert is_transient_assistant_error(category, content)
+
+    @pytest.mark.parametrize(
+        "category",
+        ["authentication_failed", "billing_error", "invalid_request", "unknown"],
+    )
+    def test_other_categories_need_a_transient_text(self, category: str):
+        assert not is_transient_assistant_error(category, "Prompt is too long")
+        assert is_transient_assistant_error(category, "upstream status code 503")
+
+
 # ---------------------------------------------------------------------------
 # _HandledStreamError.already_yielded contract
 # ---------------------------------------------------------------------------
@@ -687,6 +733,13 @@ class TestNextTransientBackoff:
 # ---------------------------------------------------------------------------
 
 
+def _backoff_ctx(message_id: str = "msg-id", session_id: str = "sess-id") -> MagicMock:
+    """The stream a backoff relaunches, with no CLI working dir to clear."""
+    return MagicMock(
+        message_id=message_id, session_id=session_id, sdk_cwd="", log_prefix=""
+    )
+
+
 class TestDoTransientBackoff:
     """Unit tests for _do_transient_backoff.
 
@@ -701,12 +754,12 @@ class TestDoTransientBackoff:
         from backend.copilot.response_model import StreamStatus
         from backend.copilot.sdk.service import _do_transient_backoff
 
-        state = MagicMock()
+        state = MagicMock(generations=TurnGenerations())
         state.usage = MagicMock()
 
         events = []
         with patch("asyncio.sleep", new=AsyncMock()):
-            async for evt in _do_transient_backoff(5, state, "msg-id", "sess-id"):
+            async for evt in _do_transient_backoff(5, state, _backoff_ctx()):
                 events.append(evt)
 
         assert len(events) == 1
@@ -719,63 +772,73 @@ class TestDoTransientBackoff:
 
         from backend.copilot.sdk.service import _do_transient_backoff
 
-        state = MagicMock()
+        state = MagicMock(generations=TurnGenerations())
         state.usage = MagicMock()
 
         mock_sleep = AsyncMock()
         with patch("asyncio.sleep", new=mock_sleep):
-            async for _ in _do_transient_backoff(7, state, "msg-id", "sess-id"):
+            async for _ in _do_transient_backoff(7, state, _backoff_ctx()):
                 pass
 
         mock_sleep.assert_called_once_with(7)
 
     async def test_replaces_adapter_with_new_instance(self):
-        """state.adapter is replaced with a new SDKResponseAdapter after yield,
-        and ``render_reasoning_in_ui`` is threaded from the SDK service config
-        (not hardcoded) so ``CHAT_RENDER_REASONING_IN_UI=false`` at runtime
-        flips the reconstruction consistently with the rest of the path."""
+        """state.adapter is replaced with a new SDKResponseAdapter after yield."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
         from backend.copilot.sdk.service import _do_transient_backoff
 
-        cfg = _make_config(render_reasoning_in_ui=False)
-
         original_adapter = MagicMock()
-        state = MagicMock()
+        state = MagicMock(generations=TurnGenerations())
         state.adapter = original_adapter
         state.usage = MagicMock()
 
         with (
             patch("asyncio.sleep", new=AsyncMock()),
-            patch(f"{_SVC}.config", cfg),
             patch("backend.copilot.sdk.service.SDKResponseAdapter") as mock_cls,
         ):
             new_adapter = MagicMock()
             mock_cls.return_value = new_adapter
-            async for _ in _do_transient_backoff(3, state, "msg-1", "sess-1"):
+            async for _ in _do_transient_backoff(
+                3, state, _backoff_ctx("msg-1", "sess-1")
+            ):
                 pass
 
-        mock_cls.assert_called_once_with(
-            message_id="msg-1",
-            session_id="sess-1",
-            render_reasoning_in_ui=False,
-        )
+        mock_cls.assert_called_once_with(message_id="msg-1", session_id="sess-1")
         assert state.adapter is new_adapter
 
-    async def test_resets_usage_after_yield(self):
-        """state.usage.reset() is called so the next attempt starts with clean counters."""
+    async def test_keeps_reported_usage_and_clears_the_cli_baseline(self):
+        """A retry keeps the spend already reported, but re-reads the CLI
+        baseline at relaunch, so the failed attempt's unreported spend is not
+        charged."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
         from backend.copilot.sdk.service import _do_transient_backoff
 
-        state = MagicMock()
-        state.usage = MagicMock()
+        state = MagicMock(generations=TurnGenerations())
+        state.usage = _TokenUsage(
+            prompt_tokens=100,
+            completion_tokens=10,
+            cache_read_tokens=20,
+            cache_creation_tokens=30,
+            cost_usd=0.02,
+            cli_cost_usd=0.1,
+            cli_session_total_usd=1.1,
+        )
 
         with patch("asyncio.sleep", new=AsyncMock()):
-            async for _ in _do_transient_backoff(2, state, "msg-id", "sess-id"):
+            async for _ in _do_transient_backoff(2, state, _backoff_ctx()):
                 pass
 
-        state.usage.reset.assert_called_once()
+        assert state.usage == _TokenUsage(
+            prompt_tokens=100,
+            completion_tokens=10,
+            cache_read_tokens=20,
+            cache_creation_tokens=30,
+            cost_usd=0.02,
+            cli_cost_usd=0.1,
+            cli_session_total_usd=None,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -856,37 +919,74 @@ class TestEphemeralEventTypesConstant:
         assert StreamHeartbeat in _EPHEMERAL_EVENT_TYPES
 
     def test_compaction_progress_is_in_ephemeral_types(self):
-        """SDK-internal compaction emits progress phases inside the attempt
-        loop, alongside the tool-row events that are already exempt.  Counting
-        them would make a transient failure after a compaction unretryable.
+        """A compaction row's progress phases ride along with the row's own
+        tool events, which decide whether the row counts; a phase is not
+        output of its own.
         """
         assert StreamCompactionProgress in _EPHEMERAL_EVENT_TYPES, (
             "StreamCompactionProgress must be in _EPHEMERAL_EVENT_TYPES — a "
             "cosmetic progress phase must not suppress the transient retry"
         )
 
-    def test_every_compaction_row_event_is_ephemeral(self):
-        """The whole compaction row — open, close and progress — is cosmetic.
+    async def test_a_compaction_the_cli_ran_counts_as_output(self):
+        """The CLI's own compaction streams a row and persists it with the
+        attempt, so a relaunch would roll the row the user watched back out
+        of the chat: the row's tool events count, its progress phases do not.
 
-        Guards the class of bug where a new compaction event type is added to
-        the stream but not exempted here.
+        Not relaunching keeps only a row that closed. A compaction cut short
+        never closes or persists its row: see
+        ``test_a_compaction_cut_short_by_a_529_leaves_its_row_unfinished``.
+
+        A pre-query compaction row never reaches this count: the retry loop
+        yields it outside the attempt.
         """
         tracker = CompactionTracker()
         session = ChatSession.new(user_id="test-user", dry_run=False)
+        tracker.on_compact()
         events = [
-            *tracker.emit_pre_query_start(),
-            *tracker.emit_pre_query_end(session, None),
+            *tracker.emit_start_if_ready(),
+            *(await tracker.emit_end_if_ready(session)).events,
         ]
-        assert events
-        non_ephemeral = [
+        counted = {
             type(e).__name__
             for e in events
             if not isinstance(e, _EPHEMERAL_EVENT_TYPES)
+        }
+        assert counted == {
+            "StreamToolInputStart",
+            "StreamToolInputAvailable",
+            "StreamToolOutputAvailable",
+        }
+
+    async def test_a_compaction_cut_short_by_a_529_leaves_its_row_unfinished(
+        self, tmp_path, monkeypatch
+    ):
+        """The real loop: the CLI starts compacting, the row opens, then a 529.
+
+        The open row counts as streamed, so the launch is not relaunched and
+        the turn ends in the retryable error. The compaction never finished,
+        so its row is neither closed on the wire nor persisted. The frontend
+        hides a row left unfinished, so nothing the user can still see goes
+        missing on refresh.
+        """
+        turn = _Turn(tmp_path, monkeypatch)
+
+        await turn.run([[turn.precompact(), _overloaded()], _reply("gen-ok")])
+
+        assert len(turn.launched) == 1
+        assert [error.code for error in turn.errors()] == ["transient_api_error"]
+        row = {
+            type(e).__name__
+            for e in turn.events
+            if isinstance(e, _TOOL_ROW_EVENTS) and e.toolName == COMPACTION_TOOL_NAME
+        }
+        assert row == {"StreamToolInputStart", "StreamToolInputAvailable"}
+        persisted = [
+            tc["function"]["name"]
+            for message in turn.persisted_messages()
+            for tc in message.tool_calls or []
         ]
-        assert not non_ephemeral, (
-            f"compaction emits non-ephemeral event(s) {non_ephemeral} — they "
-            "would be counted toward events_yielded and block transient retries"
-        )
+        assert COMPACTION_TOOL_NAME not in persisted
 
     def test_is_a_tuple(self):
         """isinstance() requires a tuple (not a list) as second argument."""
@@ -1090,7 +1190,7 @@ class TestHandledStreamErrorTransientRetry:
             # Second call: success — yield a content event
             yield StreamFinish()
 
-        state = MagicMock()
+        state = MagicMock(generations=TurnGenerations())
         state.usage = MagicMock()
         state.transcript_builder = MagicMock()
         state.transcript_builder.snapshot.return_value = ([], None)
@@ -1120,7 +1220,7 @@ class TestHandledStreamErrorTransientRetry:
                     if backoff is not None:
                         with patch("asyncio.sleep", new=AsyncMock()):
                             async for evt in _do_transient_backoff(
-                                backoff, state, "msg-id", "sess-id"
+                                backoff, state, _backoff_ctx()
                             ):
                                 emitted.append(evt)
                         continue  # retry
@@ -1174,7 +1274,7 @@ class TestHandledStreamErrorTransientRetry:
             return
             yield  # noqa: B901
 
-        state = MagicMock()
+        state = MagicMock(generations=TurnGenerations())
         state.usage = MagicMock()
         state.transcript_builder = MagicMock()
         state.transcript_builder.snapshot.return_value = ([], None)
@@ -1202,7 +1302,7 @@ class TestHandledStreamErrorTransientRetry:
                     if backoff is not None:
                         with patch("asyncio.sleep", new=AsyncMock()):
                             async for evt in _do_transient_backoff(
-                                backoff, state, "m", "s"
+                                backoff, state, _backoff_ctx()
                             ):
                                 emitted.append(evt)
                         continue
@@ -1279,7 +1379,7 @@ class TestGenericExceptionTransientRetry:
                 raise Exception("ECONNRESET")
             yield StreamFinish()
 
-        state = MagicMock()
+        state = MagicMock(generations=TurnGenerations())
         state.usage = MagicMock()
         state.transcript_builder = MagicMock()
         state.transcript_builder.snapshot.return_value = ([], None)
@@ -1308,7 +1408,7 @@ class TestGenericExceptionTransientRetry:
                     if backoff is not None:
                         with patch("asyncio.sleep", new=AsyncMock()):
                             async for evt in _do_transient_backoff(
-                                backoff, state, "m", "s"
+                                backoff, state, _backoff_ctx()
                             ):
                                 emitted.append(evt)
                         continue

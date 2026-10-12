@@ -20,6 +20,7 @@ const config: StorybookConfig = {
     "@storybook/addon-onboarding",
     "@storybook/addon-links",
     "@storybook/addon-docs",
+    "msw-storybook-addon",
   ],
   features: {
     experimentalRSC: true,

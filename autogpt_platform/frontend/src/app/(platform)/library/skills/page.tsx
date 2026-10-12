@@ -15,7 +15,7 @@ export default function SkillsPage() {
   }, []);
 
   function handleGuidedPrompt(prompt: string) {
-    router.push(`/copilot#prompt=${encodeURIComponent(prompt)}`);
+    router.push(`/home#prompt=${encodeURIComponent(prompt)}`);
   }
 
   return (

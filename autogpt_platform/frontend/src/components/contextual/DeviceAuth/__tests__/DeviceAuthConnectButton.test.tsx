@@ -50,10 +50,16 @@ describe("DeviceAuthConnectButton", () => {
     // code, so it must not be recorded. Regression test for that default.
     state.phase = "polling";
     state.userCode = "glow-relish-chaste-soft";
+    state.verificationUrl =
+      "https://app.link.com/device/setup?user_code=glow-relish-chaste-soft";
     renderButton();
 
     const code = screen.getByText("glow-relish-chaste-soft");
     expect(code.className).not.toContain("sentry-unmask");
+    const blocked = code.closest(".ph-no-capture");
+    expect(blocked).not.toBeNull();
+    // verification_uri_complete carries the code in the link's href.
+    expect(blocked?.contains(screen.getByRole("link"))).toBe(true);
   });
 
   // Between clicking Connect and the initiate call returning there is no code

@@ -7,6 +7,7 @@ import {
   CLAMP_LINES,
   CODE_MAX_LINES,
   fieldKind,
+  formattedText,
   humanize,
   lineCount,
   listText,
@@ -18,13 +19,16 @@ interface Props {
   name: string;
   value: unknown;
   clipped: boolean;
+  format?: string | null;
 }
 
-export function FieldValue({ name, value, clipped }: Props) {
+export function FieldValue({ name, value, clipped, format }: Props) {
   const kind = fieldKind(name, value);
   const shortened = clipped ? (
     <span className="ml-1 text-zinc-400">(shortened)</span>
   ) : null;
+  const formatted = formattedText(format, value);
+  if (formatted) return <span>{formatted}</span>;
 
   switch (kind) {
     case "secret":
@@ -98,7 +102,14 @@ function LongText({ text, shortened }: LongTextProps) {
   const [open, setOpen] = useState(false);
   return (
     <div className="flex flex-col items-start gap-1">
-      <div className="w-full rounded-lg bg-zinc-50 px-3 py-2">
+      <div
+        tabIndex={open ? 0 : undefined}
+        className={cn(
+          "w-full rounded-lg bg-zinc-50 px-3 py-2",
+          open &&
+            "max-h-96 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300",
+        )}
+      >
         <p
           className={cn("whitespace-pre-wrap", !open && "line-clamp-3")}
           style={{ WebkitLineClamp: open ? undefined : CLAMP_LINES }}
