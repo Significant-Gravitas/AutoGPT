@@ -55,6 +55,10 @@ from backend.data.subscription_pending_cache import (
     invalidate_pending_subscription_change,
 )
 from backend.data.subscription_trial import get_subscription_trial
+from backend.data.subscription_upgrade_models import (
+    StoredUpgradePreview,
+    UpgradePreviewUnavailable,
+)
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.queue import queue_notification_async
 from backend.util import posthog_client
@@ -2120,11 +2124,14 @@ async def modify_stripe_subscription_for_tier(
     user_id: str,
     tier: SubscriptionTier,
     billing_cycle: BillingCycle = "monthly",
+    *,
+    proration_date: int | None = None,
+    upgrade_preview: StoredUpgradePreview | None = None,
 ) -> bool:
     """Change a Stripe subscription to a new paid tier.
 
     Upgrades (e.g. PRO→BUSINESS) apply immediately via ``stripe.Subscription.modify``
-    with ``proration_behavior="create_prorations"``: Stripe credits unused time on
+    with ``proration_behavior="always_invoice"``: Stripe credits unused time on
     the old plan and charges the pro-rated amount for the new plan in the same
     billing cycle.
 
@@ -2162,6 +2169,18 @@ async def modify_stripe_subscription_for_tier(
     if not items:
         return False
     sub_id = sub.id
+    if upgrade_preview and (
+        upgrade_preview.user_id != user_id
+        or upgrade_preview.subscription_id != sub_id
+        or upgrade_preview.target_price_id != price_id
+        or upgrade_preview.item_id != items[0].id
+        or upgrade_preview.current_price_id != items[0].price.id
+        or upgrade_preview.quantity != items[0].quantity
+        or upgrade_preview.preview.proration_date != proration_date
+    ):
+        raise UpgradePreviewUnavailable(
+            "Your subscription changed. Review the upgrade again."
+        )
 
     # Invalidate the cache unconditionally on exit (success OR failure): any
     # Stripe mutation below — clearing cancel_at_period_end, releasing an old
@@ -2221,6 +2240,13 @@ async def modify_stripe_subscription_for_tier(
                 "billing_cycle": billing_cycle,
             },
         }
+        if proration_date is not None:
+            modify_kwargs["proration_date"] = proration_date
+        if upgrade_preview is not None:
+            modify_kwargs["items"][0]["quantity"] = upgrade_preview.quantity
+            modify_kwargs["idempotency_key"] = (
+                f"subscription-upgrade:{upgrade_preview.preview.preview_id}"
+            )
         if sub.cancel_at_period_end:
             modify_kwargs["cancel_at_period_end"] = False
 

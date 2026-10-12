@@ -11,7 +11,7 @@ import {
   copilotStreamHandler,
   streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UIMessageChunk } from "ai";
 import { http, HttpResponse } from "msw";
@@ -432,23 +432,24 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       renderHost();
       usageExhaustedAfterSending();
       await typeAndSend("over the cap");
+      const dialog = await screen.findByRole("dialog");
 
       // Our own cap, so our own dialog: the upgrade path survives ...
       expect(
-        await screen.findByText(/More room for what’s next/i, undefined, {
+        await within(dialog).findByText(/You’ve hit today’s limit/i, undefined, {
           timeout: 5000,
         }),
       ).toBeDefined();
       expect(screen.queryByText(/hit this connection's limit/i)).toBeNull();
       expect(
-        screen.getByRole("button", { name: /review max upgrade/i }),
+        within(dialog).getByRole("button", { name: /upgrade to max/i }),
       ).toBeDefined();
 
       // ... and the linked subscription is offered next to it, because the cap
       // does not apply to a turn billed to the user's own credential.
       const user = userEvent.setup();
       await user.click(
-        await screen.findByRole(
+        await within(dialog).findByRole(
           "button",
           { name: /continue on chatgpt/i },
           { timeout: 5000 },
@@ -461,9 +462,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
           llm_credential_id: "cred-1",
         }),
       );
-      await waitFor(() =>
-        expect(screen.queryByText(/More room for what’s next/i)).toBeNull(),
-      );
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     });
 
     it("offers nothing to continue on when the platform is the only connection", async () => {
@@ -483,14 +482,15 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       renderHost();
       usageExhaustedAfterSending();
       await typeAndSend("over the cap");
+      const dialog = await screen.findByRole("dialog");
 
       expect(
-        await screen.findByText(/More room for what’s next/i, undefined, {
+        await within(dialog).findByText(/You’ve hit today’s limit/i, undefined, {
           timeout: 5000,
         }),
       ).toBeDefined();
       expect(
-        screen.getByRole("button", { name: /review max upgrade/i }),
+        within(dialog).getByRole("button", { name: /upgrade to max/i }),
       ).toBeDefined();
       // The connection that just refused is never offered back. Were it not
       // excluded, "Continue on AutoGPT Platform" would appear once the offers
@@ -549,7 +549,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
           timeout: 5000,
         }),
       ).toBeDefined();
-      expect(screen.queryByText(/More room for what’s next/i)).toBeNull();
+      expect(screen.queryByText(/You’ve hit today’s limit/i)).toBeNull();
     });
   });
 });

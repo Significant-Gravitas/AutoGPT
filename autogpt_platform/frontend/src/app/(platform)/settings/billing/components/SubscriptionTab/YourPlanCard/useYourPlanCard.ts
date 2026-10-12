@@ -14,6 +14,7 @@ import type { GetV1ManagePaymentMethods200 } from "@/app/api/__generated__/model
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import type { SubscriptionTierRequestBillingCycle } from "@/app/api/__generated__/models/subscriptionTierRequestBillingCycle";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
+import type { SubscriptionUpgradePreview } from "@/app/api/__generated__/models/subscriptionUpgradePreview";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import {
@@ -29,6 +30,7 @@ import {
 
 import { formatCents, formatShortDate } from "../../../helpers";
 import { getCheckoutReturnURLs } from "../helpers";
+import { useTierUpgradePreview } from "./useTierUpgradePreview";
 
 const PLAN_LABEL: Record<string, string> = {
   NO_TIER: "No active subscription",
@@ -121,6 +123,12 @@ export function useYourPlanCard() {
   // explicit feedback that the action took effect.
   const [pendingTierDowngrade, setPendingTierDowngrade] =
     useState<SubscriptionTierRequestTier | null>(null);
+  const upgradeReview = useTierUpgradePreview(
+    pendingTierUpgrade === "MAX" &&
+      effectiveTier === "PRO" &&
+      subscription.data?.has_active_stripe_subscription === true,
+    serverCycle,
+  );
 
   // Re-sync local toggle when the server response updates (e.g. after refetch
   // post-mutation). Avoids stale "yearly" pill after a successful switch.
@@ -230,11 +238,12 @@ export function useYourPlanCard() {
   async function changeTier(
     tier: SubscriptionTierRequestTier,
     billingCycle?: SubscriptionTierRequestBillingCycle,
+    preview?: SubscriptionUpgradePreview,
   ) {
     if (isUpdatingTier) return false;
     setIsChangingTier(true);
     try {
-      return await requestTierChange(tier, billingCycle);
+      return await requestTierChange(tier, billingCycle, preview);
     } finally {
       setIsChangingTier(false);
     }
@@ -243,6 +252,7 @@ export function useYourPlanCard() {
   async function requestTierChange(
     tier: SubscriptionTierRequestTier,
     billingCycle?: SubscriptionTierRequestBillingCycle,
+    preview?: SubscriptionUpgradePreview,
   ) {
     const cycle = billingCycle ?? "monthly";
     const { successURL, cancelURL } = getCheckoutReturnURLs({ tier, cycle });
@@ -253,6 +263,12 @@ export function useYourPlanCard() {
           success_url: successURL,
           cancel_url: cancelURL,
           ...(billingCycle ? { billing_cycle: billingCycle } : {}),
+          ...(preview
+            ? {
+                preview_id: preview.preview_id,
+                proration_date: preview.proration_date,
+              }
+            : {}),
           surface: "billing",
         },
       });
@@ -281,6 +297,10 @@ export function useYourPlanCard() {
       ]);
       return true;
     } catch (error) {
+      if (preview && error instanceof ApiError && error.status === 409) {
+        upgradeReview.invalidate();
+        return false;
+      }
       // 422 fail-closed on a YEARLY request = LD missing the *_YEARLY price for
       // this tier. Match billingCycle === "yearly" specifically — a 422 on a
       // monthly request is a different failure (e.g. tier unconfigured) and
@@ -550,10 +570,10 @@ export function useYourPlanCard() {
 
   async function confirmTierUpgrade() {
     if (!pendingTierUpgrade) return;
+    if (upgradeReview.required && !upgradeReview.preview) return;
     const target = pendingTierUpgrade;
-    const ok = await changeTier(target, serverCycle);
-    setPendingTierUpgrade(null);
-    if (!ok) return;
+    const ok = await changeTier(target, serverCycle, upgradeReview.preview);
+    if (ok) setPendingTierUpgrade(null);
   }
 
   function cancelTierUpgrade() {
@@ -601,6 +621,16 @@ export function useYourPlanCard() {
         : tierCosts[nextTierKey]
       : undefined,
     isUpdatingTier,
+    upgradeReview,
+    upgradeUsageMultiplier:
+      subscription.data?.tier_multipliers?.MAX &&
+      subscription.data.tier_multipliers.PRO
+        ? Math.round(
+            (subscription.data.tier_multipliers.MAX /
+              subscription.data.tier_multipliers.PRO) *
+              10,
+          ) / 10
+        : undefined,
     // ENTERPRISE has no Stripe subscription to manage; the Payment method
     // card still exposes the portal for cards and invoices.
     canManagePortal: Boolean(paymentPortal.data) && !isAdminManaged,

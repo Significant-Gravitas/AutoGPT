@@ -39,7 +39,9 @@ it.each(["past_due", "unpaid", "incomplete_expired", "trialing", "canceled"])(
     expect(
       await screen.findByText("Pick a plan to continue using AutoGPT."),
     ).toBeDefined();
-    expect(screen.getByRole("button", { name: "Get Pro" })).toBeDefined();
+    expect(
+      screen.getAllByRole("button", { name: "Start Pro" }).length,
+    ).toBeGreaterThan(0);
   },
 );
 
@@ -57,8 +59,8 @@ it("shows the trial as the current plan during an active trial", async () => {
   );
   render(<SettingsBillingPage />);
   await screen.findByRole("button", { name: "Cancel trial" });
-  expect(screen.getByText("Your plan")).toBeDefined();
-  expect(screen.queryByRole("button", { name: "Get Pro" })).toBeNull();
+  expect(screen.getAllByText("Your plan").length).toBeGreaterThan(0);
+  expect(screen.queryByRole("button", { name: "Start Pro" })).toBeNull();
 });
 
 const trialSubscription = {
