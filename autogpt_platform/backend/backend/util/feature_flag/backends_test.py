@@ -664,6 +664,29 @@ class TestShutdownStopsShadowEvaluations:
 
         assert ff._shadow_evaluations == set()
 
+    def test_a_read_left_on_a_closed_loop_does_not_stop_teardown(
+        self, mocker, ld_client, user_context
+    ):
+        use_backend(mocker, FeatureFlagBackend.DUAL)
+        mocker.patch.object(ff, "shutdown_launchdarkly")
+        posthog_shutdown = mocker.patch.object(ph, "shutdown_posthog_flags")
+        ld_client.variation_detail.return_value = served(True)
+
+        async def never_finishes(*args, **kwargs):
+            await asyncio.sleep(30)
+            return False, True
+
+        mocker.patch.object(ph, "evaluate_flag", side_effect=never_finishes)
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1"))
+        # What an AppService's cleanup does to its loop before flags shut down.
+        loop.close()
+
+        ff.shutdown_feature_flags()
+
+        posthog_shutdown.assert_called_once()
+        assert ff._shadow_evaluations == set()
+
     @pytest.mark.asyncio
     async def test_a_read_during_teardown_starts_no_new_client(
         self, mocker, ld_client, user_context

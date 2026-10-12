@@ -146,14 +146,16 @@ export class LibraryPage extends BasePage {
 
   async openUploadDialog(): Promise<void> {
     console.log(`opening upload dialog`);
-    // Open the unified Import dialog first
-    await this.page.getByRole("button", { name: "Import" }).click();
-
-    // Wait for dialog to appear
-    await this.page.getByRole("dialog", { name: "Import" }).waitFor({
-      state: "visible",
-      timeout: 5_000,
-    });
+    // Open the unified Import dialog first. A click that lands before the
+    // page hydrates does nothing, so click again until the dialog shows.
+    const importButton = this.page.getByRole("button", { name: "Import" });
+    const dialog = this.page.getByRole("dialog", { name: "Import" });
+    await expect(async () => {
+      if (!(await dialog.isVisible())) {
+        await importButton.click({ timeout: 2_000 });
+      }
+      await expect(dialog).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
 
     // Click the "AutoGPT agent" tab
     await this.page.getByRole("tab", { name: "AutoGPT agent" }).click();
@@ -882,7 +884,13 @@ export async function isLoaded(page: Page): Promise<boolean> {
 }
 
 const SUCCESS_RUN_STATUS = "completed";
-const FAILURE_RUN_STATUSES = new Set(["failed", "terminated", "incomplete"]);
+// A run whose step failed still ends COMPLETED; its badge says so.
+const FAILURE_RUN_STATUSES = new Set([
+  "failed",
+  "terminated",
+  "incomplete",
+  "completed with errors",
+]);
 const RUN_ERROR_RECOVERY_GRACE_PERIOD_MS = 1500;
 const RUN_ERROR_RECOVERY_ATTEMPTS = 2;
 
@@ -1351,6 +1359,7 @@ export async function clickExportAgent(page: Page): Promise<void> {
 // elsewhere on the page (filter chips, tooltips, etc.).
 const RUN_STATUS_WORDS = [
   "completed",
+  "completed with errors",
   "failed",
   "terminated",
   "incomplete",

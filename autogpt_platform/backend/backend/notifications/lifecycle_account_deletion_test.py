@@ -188,6 +188,17 @@ def _ended_trial(deleted: bool) -> dict:
     }
 
 
+def _stripe_with_no_other_plan(subscription: dict) -> AsyncMock:
+    """Stripe returns the trial itself, and no other live plan when listed."""
+
+    async def call(fn, *args, **kwargs):
+        if fn == notices.stripe.Subscription.list_async:
+            return SimpleNamespace(data=[], has_more=False)
+        return subscription
+
+    return AsyncMock(side_effect=call)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("deleted", [False, True])
 async def test_a_deleted_accounts_trial_ends_without_notice_or_audience(deleted):
@@ -195,10 +206,10 @@ async def test_a_deleted_accounts_trial_ends_without_notice_or_audience(deleted)
     notice = AsyncMock(return_value=NotificationResult(success=True))
     trial_audience = AsyncMock(return_value=NotificationResult(success=True))
     track = MagicMock()
-    retrieve = AsyncMock(return_value=subscription)
     paid_email = AsyncMock()
+    stripe_api = _stripe_with_no_other_plan(subscription)
     with (
-        patch.object(notices, "stripe_call", retrieve),
+        patch.object(notices, "stripe_call", stripe_api),
         patch.object(
             notices,
             "credit_db",
@@ -232,7 +243,7 @@ async def test_a_deleted_accounts_trial_ends_without_notice_or_audience(deleted)
         assert trial_audience.await_args.args[0].action.value == "remove_trial"
         assert track.call_args.args[0] == "trial_ended"
         return
-    retrieve.assert_not_awaited()
+    stripe_api.assert_not_awaited()
     notice.assert_not_awaited()
     trial_audience.assert_not_awaited()
     track.assert_not_called()

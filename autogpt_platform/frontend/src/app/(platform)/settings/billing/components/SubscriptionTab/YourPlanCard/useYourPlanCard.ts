@@ -29,6 +29,7 @@ import {
 } from "@/services/billing/subscription-plan";
 
 import { formatCents, formatShortDate } from "../../../helpers";
+import { getCheckoutReturnURLs } from "../helpers";
 
 // ENTERPRISE seats are provisioned by an administrator and the backend
 // rejects every self-service change from them with 403, so the card must
@@ -212,16 +213,13 @@ export function useYourPlanCard() {
     billingCycle?: SubscriptionTierRequestBillingCycle,
   ) {
     const cycle = billingCycle ?? "monthly";
-    // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
-    // report the subscription to Google Ads.
-    const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${tier}&cycle=${cycle}`;
-    const cancelUrl = `${window.location.origin}${window.location.pathname}?subscription=cancelled`;
+    const { successURL, cancelURL } = getCheckoutReturnURLs({ tier, cycle });
     try {
       const result = await updateTier({
         data: {
           tier,
-          success_url: successUrl,
-          cancel_url: cancelUrl,
+          success_url: successURL,
+          cancel_url: cancelURL,
           ...(billingCycle ? { billing_cycle: billingCycle } : {}),
           surface: "billing",
         },

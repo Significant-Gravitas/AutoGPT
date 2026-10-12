@@ -92,6 +92,15 @@ def redis():
 
 
 @pytest.fixture
+def fetches(mocker):
+    """Every definitions fetch the SDK makes, with one canned answer."""
+    return mocker.patch(
+        "posthog.client.get",
+        return_value=GetResponse(data=DEFINITIONS, etag="e1"),
+    )
+
+
+@pytest.fixture
 def logs():
     """`caplog` captures nothing for `backend.*` under the app's logging config."""
     captured: list[str] = []
@@ -428,14 +437,6 @@ class TestDefaultBackendIsUntouched:
 class TestAgainstTheRealSDK:
     """The SDK's own poll, driven through the provider."""
 
-    @pytest.fixture
-    def fetches(self, mocker):
-        """Every definitions fetch the SDK makes, with one canned answer."""
-        return mocker.patch(
-            "posthog.client.get",
-            return_value=GetResponse(data=DEFINITIONS, etag="e1"),
-        )
-
     def client(self, provider_impl) -> Posthog:
         return Posthog(
             "phc_test",
@@ -516,6 +517,79 @@ class TestAgainstTheRealSDK:
         follower._load_feature_flags()
 
         fetches.assert_called_once()
+
+
+class TestStartupLoad:
+    """The SDK loads definitions on the first read unless startup has already."""
+
+    @pytest.fixture(autouse=True)
+    def configured(self, mocker, redis):
+        mocker.patch.object(ph, "_client", None)
+        mocker.patch.object(ph, "_init_attempted", False)
+        mocker.patch.object(ph, "_shut_down", False)
+        mocker.patch.object(ph.settings.secrets, "posthog_api_key", "phc_test")
+        mocker.patch.object(ph.settings.secrets, "posthog_secret_key", "phx_personal")
+        mocker.patch.object(
+            ph, "get_flag_definition_cache", return_value=provider(redis)
+        )
+        # A read reports itself to PostHog analytics, which would leave the machine.
+        mocker.patch.object(Posthog, "capture")
+        yield
+        ph.shutdown_posthog_flags()
+
+    @pytest.mark.asyncio
+    async def test_definitions_are_loaded_before_the_first_read(self, fetches):
+        ph.initialize_posthog_flags()
+        fetches.assert_called_once()
+
+        assert await ph.evaluate_flag("shared-flag", "u-1") == (True, True)
+        fetches.assert_called_once()
+
+    def test_a_follower_loads_the_shared_copy_without_fetching(self, redis, fetches):
+        provider(redis).should_fetch_flag_definitions()  # someone else leads
+        store_definitions(redis)
+
+        ph.initialize_posthog_flags()
+
+        fetches.assert_not_called()
+        client = ph.get_flag_client()
+        assert client is not None
+        assert client.feature_flags == DEFINITIONS["flags"]
+
+    @pytest.mark.asyncio
+    async def test_a_failed_startup_fetch_leaves_the_first_read_to_retry(
+        self, mocker, fetches
+    ):
+        fetches.side_effect = [
+            ConnectionError("PostHog is unreachable"),
+            fetches.return_value,
+        ]
+        warn = mocker.patch.object(ph.logger, "warning")
+
+        ph.initialize_posthog_flags()
+
+        warn.assert_called_once()
+        assert await ph.evaluate_flag("shared-flag", "u-1") == (True, True)
+
+    @pytest.mark.asyncio
+    async def test_a_startup_load_that_raises_does_not_stop_startup(
+        self, mocker, fetches
+    ):
+        load = Posthog.load_feature_flags
+        failures = iter([RuntimeError("can't start new thread")])
+
+        def first_load_raises(client):
+            if error := next(failures, None):
+                raise error
+            load(client)
+
+        mocker.patch.object(Posthog, "load_feature_flags", first_load_raises)
+        warn = mocker.patch.object(ph.logger, "warning")
+
+        ph.initialize_posthog_flags()
+
+        warn.assert_called()
+        assert await ph.evaluate_flag("shared-flag", "u-1") == (True, True)
 
 
 @pytest.mark.skipif(

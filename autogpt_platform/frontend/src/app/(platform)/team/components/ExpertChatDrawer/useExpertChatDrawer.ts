@@ -8,6 +8,7 @@ import {
   markKickoffPending,
   withKickoffLock,
 } from "@/app/(platform)/copilot/expertKickoff";
+import { describeChatError } from "@/app/(platform)/copilot/chatErrorGuidance";
 import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
 import { queueFollowUpMessage } from "@/app/(platform)/copilot/helpers/queueFollowUpMessage";
 import { latestExpertSessionParams } from "@/app/(platform)/copilot/expertSessionQuery";
@@ -29,11 +30,13 @@ type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
 
 class SessionStartingError extends Error {}
 
-function notifyStartFailed() {
+function notifyStartFailed(error: unknown) {
   toast({
     variant: "destructive",
     title: "Could not start the chat",
-    description: "Please try sending your message again.",
+    description: describeChatError(
+      error instanceof Error ? error : new Error(String(error)),
+    ).title,
   });
 }
 
@@ -452,7 +455,7 @@ export function useExpertChatDrawer({
     try {
       await onSend(message);
     } catch (err) {
-      if (!(err instanceof SessionStartingError)) notifyStartFailed();
+      if (!(err instanceof SessionStartingError)) notifyStartFailed(err);
       throw err;
     }
   }

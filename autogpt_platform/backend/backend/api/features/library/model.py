@@ -307,7 +307,9 @@ class LibraryAgent(pydantic.BaseModel):
                 for e in executions
                 if e.executionStatus == prisma.enums.AgentExecutionStatus.COMPLETED
             )
-            success_rate = (success_count / execution_count) * 100
+            # Over the included runs, not the total: an override counts runs
+            # the include never loaded, so their outcomes are unknown here.
+            success_rate = (success_count / len(executions)) * 100
 
             correctness_scores = []
             for e in executions:
