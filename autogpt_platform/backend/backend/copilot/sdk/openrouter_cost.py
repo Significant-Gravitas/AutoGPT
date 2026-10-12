@@ -233,7 +233,7 @@ def _turn_subagent_gen_ids(
     project_dir: Path, session_id: str, turn_start_ts: float
 ) -> list[str]:
     """Gen-IDs in this session's subagent files written during this turn,
-    deduplicated in file order. Scoped as
+    deduplicated, file by file and sorted within each file. Scoped as
     :func:`_discover_turn_subagent_gen_ids` describes."""
     ids: dict[str, None] = {}
     subagents_dir = project_dir / session_id / "subagents"
