@@ -11,12 +11,13 @@ from typing import (
     TypeVar,
 )
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from redis.asyncio.client import PubSub as AsyncPubSub
 from redis.client import PubSub
 
 from backend.data import redis_client as redis
 from backend.util import json
+from backend.util.logging import describe_validation_errors
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -87,7 +88,10 @@ class BaseRedisEventBus(Generic[M], ABC):
             )
 
         channel_name = f"{self.event_bus_name}/{channel_key}"
-        logger.debug(f"[{channel_name}] Publishing an event to Redis {message}")
+        # Not the event itself, which can carry user data and credentials.
+        logger.debug(
+            f"[{channel_name}] Publishing an event to Redis ({len(message)} chars)"
+        )
         return message, channel_name
 
     def _deserialize_message(self, msg: Any, channel_key: str) -> M | None:
@@ -95,10 +99,21 @@ class BaseRedisEventBus(Generic[M], ABC):
         if msg["type"] not in ("smessage", "message", "pmessage"):
             return None
         try:
-            logger.debug(f"[{channel_key}] Consuming an event from Redis {msg['data']}")
+            logger.debug(
+                f"[{channel_key}] Consuming an event from Redis "
+                f"({len(msg['data'])} chars)"
+            )
             return self.Message.model_validate_json(msg["data"]).payload
         except Exception as e:
-            logger.error(f"Failed to parse event result from Redis {msg} {e}")
+            # The event, and pydantic's message, which quotes it, are left out.
+            reason = (
+                describe_validation_errors(e.errors())
+                if isinstance(e, ValidationError)
+                else type(e).__name__
+            )
+            logger.error(
+                f"Failed to parse an event from Redis [{channel_key}]: {reason}"
+            )
 
     def _build_channel_name(self, channel_key: str) -> str:
         return f"{self.event_bus_name}/{channel_key}"

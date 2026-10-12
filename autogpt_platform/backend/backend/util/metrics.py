@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+from collections.abc import Collection
 from enum import Enum
 from types import TracebackType
 
@@ -8,6 +9,7 @@ from pydantic import SecretStr
 from sentry_sdk._init_implementation import init as _sentry_init
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 from sentry_sdk.api import flush as _sentry_flush
+from sentry_sdk.consts import SPANDATA
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST
@@ -20,7 +22,14 @@ except ImportError:
 from backend.util.exceptions import get_execution_failure_reason
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.settings import BehaveAs, Settings
-from backend.util.url_redaction import REDACTED, redact_url
+from backend.util.url_redaction import (
+    REDACTED,
+    credentials_in_url,
+    is_credential_header,
+    redact_query_string,
+    redact_url,
+    redact_urls_in_text,
+)
 
 settings = Settings()
 
@@ -74,6 +83,7 @@ _SENTRY_SENSITIVE_FIELDS = sorted(
     | SENSITIVE_FIELD_NAMES
     | {
         "anthropic_auth_token",
+        "bot_token",
         "client_secret",
         "codex_access_token",
         "codex_api_key",
@@ -81,11 +91,22 @@ _SENTRY_SENSITIVE_FIELDS = sorted(
         "id_token",
         "login_code",
         "openai_api_key",
+        "plain_text_key",
+        "plaintext_key",
+        "plaintext_secret",
+        "plaintext_token",
         "provider_state",
+        "secret_token",
         "secrets",
         "state_token",
         "user_code",
         "verification_url",
+        # The credentials a route takes in its path, under their own names and
+        # the database's: a route that raises sends Sentry its variables.
+        "share_token",
+        "shareToken",
+        "webhook_id",
+        "webhookId",
     }
 )
 # Matched case-insensitively against every key in the event, as sentry's
@@ -97,7 +118,8 @@ _EMBEDDED_SECRET_ASSIGNMENT = re.compile(
     r"(?i)(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|"
     r"authorization|client[_-]?secret|password|provider[_-]?state|secret|"
     r"device[_-]?code|login[_-]?code|state[_-]?token|user[_-]?code|"
-    r"verification[_-]?url)"
+    r"verification[_-]?url|(?:bot|secret|share)[_-]?token|webhook[_-]?id|"
+    r"plain[_-]?text[_-]?(?:key|token))"
     r"(?:\\?[\"']?)\s*[:=]"
 )
 _TOKEN_SHAPED_VALUE = re.compile(
@@ -106,25 +128,59 @@ _TOKEN_SHAPED_VALUE = re.compile(
     r"\b(?:sk-(?:proj-)?|gh[pousr]_|github_pat_|xox[baprs]-)[a-z0-9_-]{8,})"
 )
 _FILTERED_VALUE = "[Filtered]"
+# The HTTP client integrations record each outgoing request's query and
+# fragment as sent, an API key in ``?key=`` included, and an ASGI scope in a
+# frame's variables holds the raw query of the request.
+_QUERY_KEYS = frozenset({SPANDATA.HTTP_QUERY, SPANDATA.HTTP_FRAGMENT, "query_string"})
 
 
-def _scrub_secrets(value: object) -> object:
+def _scrub_secrets(value: object, credentials: Collection[str] = ()) -> object:
+    """Scrub ``value`` in place: sensitive keys, secret-shaped strings, the
+    credentials in any URL, and each of ``credentials`` wherever it appears."""
     if isinstance(value, dict):
         for key, nested in value.items():
             if isinstance(key, str) and key.lower() in _SENTRY_SENSITIVE_KEYS:
                 value[key] = _FILTERED_VALUE
+            elif key in _QUERY_KEYS and isinstance(nested, str):
+                value[key] = redact_query_string(nested)
+            elif key == "headers":
+                value[key] = _scrub_secrets(_mask_headers(nested), credentials)
             else:
-                value[key] = _scrub_secrets(nested)
+                value[key] = _scrub_secrets(nested, credentials)
         return value
     if isinstance(value, list):
         for index, nested in enumerate(value):
-            value[index] = _scrub_secrets(nested)
+            value[index] = _scrub_secrets(nested, credentials)
         return value
-    if isinstance(value, str) and (
-        _EMBEDDED_SECRET_ASSIGNMENT.search(value) or _TOKEN_SHAPED_VALUE.search(value)
-    ):
+    if not isinstance(value, str):
+        return value
+    if _EMBEDDED_SECRET_ASSIGNMENT.search(value) or _TOKEN_SHAPED_VALUE.search(value):
         return _FILTERED_VALUE
-    return value
+    for credential in credentials:
+        value = value.replace(credential, REDACTED)
+    return redact_urls_in_text(value)
+
+
+def _mask_headers(headers: object) -> object:
+    """Mask every credential header, whatever it is called: EventScrubber knows
+    a fixed list of names, which misses a webhook provider's secret token such
+    as Telegram's. Headers come as a mapping, or, in an ASGI scope or request
+    among a frame's variables, as name and value pairs, the names reprs of
+    bytes, such as ``["b'cookie'", "b'session=...'"]``."""
+    if isinstance(headers, dict):
+        for name in headers:
+            if isinstance(name, str) and is_credential_header(name):
+                headers[name] = _FILTERED_VALUE
+    elif isinstance(headers, list):
+        for pair in headers:
+            if (
+                isinstance(pair, list)
+                and len(pair) == 2
+                and isinstance(pair[0], str)
+                and is_credential_header(pair[0])
+            ):
+                pair[1] = _FILTERED_VALUE
+    return headers
 
 
 def _scrub_sentry_event(event: dict) -> None:
@@ -135,11 +191,26 @@ def _scrub_sentry_event(event: dict) -> None:
     JSON: sentry's EventScrubber writes ``AnnotatedValue`` objects, and one of
     those here made the SDK drop the whole event as an internal error. ``_meta``
     is the SDK's own annotation tree and is left alone.
+
+    An event raised in a request carries the local variables of every frame,
+    the route's included, so each credential the request URL held is masked
+    wherever the route passed it.
     """
+    credentials = _request_credentials(event)
     _redact_request_urls(event)
     for key, value in event.items():
-        if key != "_meta":
-            event[key] = _scrub_secrets(value)
+        # A transaction is named after its route's template, such as
+        # .../shared/{share_token}, which would read as a credential.
+        if key not in ("_meta", "transaction"):
+            event[key] = _scrub_secrets(value, credentials)
+
+
+def _request_credentials(event: dict) -> set[str]:
+    request = event.get("request") or {}
+    url, query = request.get("url"), request.get("query_string")
+    if not isinstance(url, str):
+        return set()
+    return credentials_in_url(f"{url}?{query}" if isinstance(query, str) else url)
 
 
 def _redact_request_urls(event: dict) -> None:
@@ -290,8 +361,10 @@ def _before_send(event, hint):
 
 def _before_send_transaction(event, hint):
     """Transactions skip ``before_send`` but carry the same request data, and
-    every WebSocket connection is one."""
-    _redact_request_urls(event)
+    every WebSocket connection is one. Their spans record what the request did
+    with its credentials too: each outgoing request's URL and query, and each
+    Redis command's key."""
+    _scrub_sentry_event(event)
     return event
 
 

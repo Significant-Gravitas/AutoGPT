@@ -31,13 +31,14 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
-from pydantic import BaseModel, TypeAdapter, create_model
+from pydantic import BaseModel, TypeAdapter, ValidationError, create_model
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 
 import backend.util.exceptions as exceptions
 from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util.json import to_dict
+from backend.util.logging import describe_validation_errors
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess
 from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
@@ -268,16 +269,23 @@ class AppService(BaseAppService, ABC):
     @staticmethod
     def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
         def handler(request: Request, exc: Exception):
+            if isinstance(exc, ValidationError):
+                # pydantic's message, and so its traceback, quotes the input
+                # that failed, which can be a whole object holding secrets.
+                cause = f"{describe_validation_errors(exc.errors())} for {exc.title}"
+                exc_info = None
+            else:
+                cause, exc_info = str(exc), exc
             if log_error:
                 if status_code >= 500:
                     logger.error(
-                        f"{request.method} {request.url.path} failed: {exc}",
-                        exc_info=exc,
+                        f"{request.method} {request.url.path} failed: {cause}",
+                        exc_info=exc_info,
                     )
                 else:
                     logger.warning(
-                        f"{request.method} {request.url.path} failed: {exc}",
-                        exc_info=exc,
+                        f"{request.method} {request.url.path} failed: {cause}",
+                        exc_info=exc_info,
                     )
             extras: Optional[RemoteCallExtras] = None
             if isinstance(exc, exceptions.GraphValidationError):

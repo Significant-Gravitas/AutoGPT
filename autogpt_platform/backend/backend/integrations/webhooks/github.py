@@ -10,6 +10,7 @@ from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.request import Requests, Response
+from backend.util.url_redaction import mask_credential
 
 from ._base import BaseWebhooksManager
 
@@ -154,7 +155,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
         webhook_type = self.WebhookType(webhook.webhook_type)
         if webhook.credentials_id != credentials.id:
             raise ValueError(
-                f"Webhook #{webhook.id} does not belong to credentials {credentials.id}"
+                f"Webhook #{mask_credential(webhook.id)} does not belong to credentials {credentials.id}"
             )
 
         headers = {

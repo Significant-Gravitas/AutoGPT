@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from typing import Literal, Optional, overload
 
@@ -21,6 +22,7 @@ from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import webhook_ingress_url
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
+from backend.util.url_redaction import mask_credential
 
 from .db import BaseDbModel
 from .graph import NodeModel
@@ -145,7 +147,7 @@ async def get_webhook(
         include=INTEGRATION_WEBHOOK_INCLUDE if include_relations else None,
     )
     if not webhook:
-        raise NotFoundError(f"Webhook #{webhook_id} not found")
+        raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
     return (WebhookWithRelations if include_relations else Webhook).from_db(webhook)
 
 
@@ -278,7 +280,7 @@ async def set_webhook_tenancy(
         data={"organizationId": organization_id, "teamId": team_id},
     )
     if updated_webhook is None:
-        raise NotFoundError(f"Webhook #{webhook_id} not found")
+        raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
     return Webhook.from_db(updated_webhook)
 
 
@@ -301,7 +303,7 @@ async def update_webhook(
         data=data,
     )
     if _updated_webhook is None:
-        raise NotFoundError(f"Webhook #{webhook_id} not found")
+        raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
     return Webhook.from_db(_updated_webhook)
 
 
@@ -381,7 +383,7 @@ async def delete_webhook(user_id: str, webhook_id: str) -> None:
         where={"id": webhook_id, "userId": user_id}
     )
     if deleted < 1:
-        raise NotFoundError(f"Webhook #{webhook_id} not found")
+        raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
 
 
 # --------------------- WEBHOOK EVENTS --------------------- #
@@ -407,7 +409,7 @@ _webhook_event_bus = WebhookEventBus()
 
 async def publish_webhook_event(event: WebhookEvent):
     await _webhook_event_bus.publish_event(
-        event, f"{event.webhook_id}/{event.event_type}"
+        event, _webhook_channel_key(event.webhook_id, event.event_type)
     )
 
 
@@ -416,5 +418,11 @@ async def wait_for_webhook_event(
 ) -> WebhookEvent | None:
     # Concrete event_type required: sharded pub/sub has no pattern support.
     return await _webhook_event_bus.wait_for_event(
-        f"{webhook_id}/{event_type}", timeout
+        _webhook_channel_key(webhook_id, event_type), timeout
     )
+
+
+def _webhook_channel_key(webhook_id: str, event_type: str) -> str:
+    # A channel's name is logged and traced, and a webhook's ID is the
+    # credential in its ingress URL, so the channel is named after its digest.
+    return f"{hashlib.sha256(webhook_id.encode()).hexdigest()}/{event_type}"

@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import logging
 import platform
+from collections.abc import Sequence
 from enum import Enum
 from typing import Any, Optional
 
@@ -106,6 +107,7 @@ from backend.util.exceptions import (
     NotFoundError,
     PreconditionFailed,
 )
+from backend.util.logging import describe_validation_errors
 from backend.util.service import UnhealthyServiceError
 from backend.util.url_redaction import redact_url
 from backend.util.workspace_storage import shutdown_workspace_storage
@@ -335,17 +337,20 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
 async def validation_error_handler(
     request: fastapi.Request, exc: Exception
 ) -> fastapi.responses.Response:
+    errors: Sequence[Any] | str
+    if isinstance(exc, (RequestValidationError, pydantic.ValidationError)):
+        errors = exc.errors()
+        # Each error holds the input that failed, so the log keeps only where
+        # and why: a body that fails whole can carry an API key or a secret.
+        description = describe_validation_errors(errors)
+    else:
+        errors = description = str(exc)
     logger.error(
         "Validation failed for %s %s: %s. Fix the request payload and try again.",
         request.method,
         redact_url(request.url.path),
-        exc,
+        description,
     )
-    errors: list | str
-    if hasattr(exc, "errors"):
-        errors = exc.errors()  # type: ignore[call-arg]
-    else:
-        errors = str(exc)
 
     response_content = {
         "message": f"Invalid data for {request.method} {request.url.path}",

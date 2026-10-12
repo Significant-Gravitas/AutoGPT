@@ -12,6 +12,7 @@ from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import MissingConfigError, WebhookRegistrationError
 from backend.util.settings import Config
+from backend.util.url_redaction import mask_credential
 
 from .utils import webhook_ingress_url
 
@@ -165,14 +166,16 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         if webhook.triggered_nodes or webhook.triggered_presets:
             # Don't prune webhook if in use
             logger.info(
-                f"Webhook #{webhook_id} kept as it has triggers in other graphs"
+                f"Webhook #{mask_credential(webhook_id)} kept as it has triggers in other graphs"
             )
             return False
 
         if credentials:
             await self._deregister_webhook(webhook, credentials)
         await integrations.delete_webhook(user_id, webhook.id)
-        logger.info(f"Webhook #{webhook_id} deleted as it had no remaining triggers")
+        logger.info(
+            f"Webhook #{mask_credential(webhook_id)} deleted as it had no remaining triggers"
+        )
         return True
 
     # --8<-- [start:BaseWebhooksManager6]

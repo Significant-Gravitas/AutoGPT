@@ -2,9 +2,11 @@
 
 Every credential route is covered and nothing else is touched, and a seeded
 randomized test buries the credential among junk chosen to end a match early.
-request_url_logging_test.py checks the same masking end to end.
+request_url_logging_test.py and credential_scrubbing_test.py check the same
+masking end to end.
 """
 
+import logging
 import random
 import re
 import time
@@ -14,7 +16,15 @@ import pytest
 from starlette.routing import BaseRoute, Mount, Route, WebSocketRoute
 
 from backend.api import rest_api
-from backend.util.url_redaction import REDACTED, redact_url, redact_urls_in_text
+from backend.util.url_redaction import (
+    REDACTED,
+    CredentialHeaderFilter,
+    credentials_in_url,
+    mask_credential,
+    redact_query_string,
+    redact_url,
+    redact_urls_in_text,
+)
 
 
 @pytest.mark.parametrize(
@@ -85,6 +95,15 @@ from backend.util.url_redaction import REDACTED, redact_url, redact_urls_in_text
             "/backend/api/invitations/i-1/accept",
             f"/backend/api/invitations/{REDACTED}/accept",
         ),
+        # Telegram takes a bot's token in the path of every call.
+        (
+            "https://api.telegram.org/bot123:AA-b_c/getMe",
+            f"https://api.telegram.org/bot{REDACTED}/getMe",
+        ),
+        (
+            "https://api.telegram.org/file/bot123:AA/photos/p.jpg",
+            f"https://api.telegram.org/file/bot{REDACTED}/photos/p.jpg",
+        ),
         # Already masked stays the same, and IDs that grant nothing are kept.
         (f"/ws?token={REDACTED}", f"/ws?token={REDACTED}"),
         ("/api/orgs/o-1/invitations/i-1", "/api/orgs/o-1/invitations/i-1"),
@@ -119,11 +138,89 @@ def test_redact_url(url: str, expected: str) -> None:
             '"GET /ws?a=1#&token=t HTTP/1.1"',
             f'"GET /ws?a={REDACTED}&token={REDACTED} HTTP/1.1"',
         ),
+        # Telegram's bot token is in the path, with no query and no /api/.
+        (
+            "POST https://api.telegram.org/bot123:AA-b_c/getMe",
+            f"POST https://api.telegram.org/bot{REDACTED}/getMe",
+        ),
         ("Did it work? Yes.", "Did it work? Yes."),
     ],
 )
 def test_redact_urls_in_text(text: str, expected: str) -> None:
     assert redact_urls_in_text(text) == expected
+
+
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        ("key=AIza-1&alt=json", f"key={REDACTED}&alt={REDACTED}"),
+        ("flag&key=", f"flag&key={REDACTED}"),
+        ("", ""),
+    ],
+)
+def test_redact_query_string(query: str, expected: str) -> None:
+    assert redact_query_string(query) == expected
+
+
+_UUID = "0b5e55ed-0000-4000-8000-00000000beef"
+
+
+@pytest.mark.parametrize(
+    "url, expected",
+    [
+        (f"http://h/api/public/shared/{_UUID}", {_UUID}),
+        (f"/api/integrations/github/webhooks/{_UUID}/ingress?x=1", {_UUID}),
+        (f"/ws?a=1&token={_UUID}", {_UUID}),
+        # A crafted Host header doesn't hide the path behind it.
+        (f"http://evil?/api/invitations/{_UUID}/accept", {_UUID}),
+        # Too short to be a credential, and not a credential's place.
+        ("/api/public/shared/s-1?token=t-1", set()),
+        (f"/api/library/agents/{_UUID}?page={_UUID}", set()),
+    ],
+)
+def test_credentials_in_url(url: str, expected: set[str]) -> None:
+    assert credentials_in_url(url) == expected
+
+
+def test_mask_credential_keeps_only_a_prefix_of_a_long_one() -> None:
+    assert mask_credential(_UUID) == "0b5e55ed..."
+    assert mask_credential("short-secret") == REDACTED
+
+
+def test_credential_header_filter_passes_any_record() -> None:
+    """A filter that raises fails the logging call, so any message passes."""
+    for msg in ({"event": "x"}, ["x"], None, 42, "%s %s"):
+        record = logging.makeLogRecord({"msg": msg, "args": ("a", "b")})
+        assert CredentialHeaderFilter().filter(record)
+
+
+@pytest.mark.parametrize(
+    "name, masked",
+    [
+        ("Authorization", True),
+        ("proxy-authorization", True),
+        ("Cookie", True),
+        ("set-cookie", True),
+        ("X-API-Key", True),
+        ("x-goog-api-key", True),
+        ("X-Telegram-Bot-Api-Secret-Token", True),
+        ("X-Hub-Signature-256", True),
+        ("Sec-WebSocket-Protocol", True),
+        ("Host", False),
+        ("User-Agent", False),
+        ("Origin", False),
+        ("Sec-WebSocket-Version", False),
+    ],
+)
+def test_credential_header_filter(name: str, masked: bool) -> None:
+    for direction in "<>":
+        record = logging.makeLogRecord(
+            {"msg": f"{direction} %s: %s", "args": (name, "v-1")}
+        )
+        assert CredentialHeaderFilter().filter(record)
+        assert record.getMessage() == f"{direction} {name}: " + (
+            REDACTED if masked else "v-1"
+        )
 
 
 def test_every_route_with_a_credential_in_its_path_is_masked_and_no_other() -> None:
@@ -156,6 +253,8 @@ def test_no_request_target_keeps_its_credential_whatever_surrounds_it(
         masked = redact_url(target)
         assert _SECRET not in masked, target
         assert redact_url(masked) == masked, target
+        # Found whole too, so it can be masked wherever a route passed it on.
+        assert any(_SECRET in found for found in credentials_in_url(target)), target
         line = f'1.2.3.4:5 - "GET {target} HTTP/1.1" 200'
         masked_line = redact_urls_in_text(line)
         assert _SECRET not in masked_line, line
@@ -184,7 +283,7 @@ def _route_paths(routes: list[BaseRoute], prefix: str = "") -> Iterator[str]:
             yield prefix + route.path
 
 
-_SECRET = "SeCrEt-7f3a"
+_SECRET = "SeCrEt-7f3a-c0ffee-42"
 # A request target has no whitespace, and & always separates pairs; anything
 # else may sit next to the credential, a raw # included.
 _JUNK = ["", "a", "it's", '"', "?", "#", "=", ";", "/", "%26", "%3D", "[x]", "{"]
@@ -197,6 +296,8 @@ _CREDENTIAL_PATHS = [
     "/api/public/shared/chats/{}/messages",
     "/api/invitations/{}/accept",
     "/api/invitations/{}",
+    "//api.telegram.org/bot{}/getMe",
+    "//api.telegram.org/file/bot{}/photos/p.jpg",
 ]
 
 
