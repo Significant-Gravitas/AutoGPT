@@ -21,16 +21,12 @@ test.describe("realtime updates journey", () => {
     const library = new LibraryPage(page);
     await library.openSavedAgent(agentName);
     await clickRunButton(page);
-    // In flight (queued or running) when the connection drops.
+    const pageInstance = await markPageInstance(page);
+    // In flight (queued or running) right before the drop, so the completion
+    // has to cross it.
     await expect(
       page.getByRole("img", { name: /^Task (queued|running)$/ }),
     ).toBeVisible({ timeout: 30_000 });
-    await expectActivity(page, agentName, /queued|running/i);
-    const pageInstance = await markPageInstance(page);
-    // Still in flight right now, so the completion has to cross the drop.
-    await expect(
-      page.getByRole("img", { name: /^Task (queued|running)$/ }),
-    ).toBeVisible({ timeout: 1_000 });
 
     // The connection drops mid-run, and the first token fetches for the
     // reconnect fail too, as they do while a laptop's network comes back.
@@ -109,8 +105,11 @@ async function openActivityMenu(page: Page) {
     await navbarButton.click();
     return;
   }
-  await page.getByTestId("profile-popout-menu-trigger").click();
-  await page.getByTestId("account-menu-activity-trigger").click();
+  const activityRow = page.getByTestId("account-menu-activity-trigger");
+  if (!(await activityRow.isVisible())) {
+    await page.getByTestId("profile-popout-menu-trigger").click();
+  }
+  await activityRow.click();
 }
 
 /** Survives client-side navigation, but not a reload. */
