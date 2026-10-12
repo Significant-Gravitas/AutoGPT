@@ -323,7 +323,12 @@ async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
                 user_id=user_id,
             ):
                 return False
-            if pending is not None and _is_spawned(pending):
+            spawned = pending is not None and _is_spawned(pending)
+            logger.info(
+                f"cancel_queued_turn: session={session_id} user={user_id} "
+                f"cancelled before it started, spawned={spawned}"
+            )
+            if spawned and pending is not None:
                 child = _child_node(pending.metadata or {})
                 await _note_cancel(db, session_id)
             await invalidate_session_cache(session_id)
@@ -554,6 +559,11 @@ async def _promote_head(user_id: str) -> bool | None:
                 restore_exc,
             )
         raise
+
+    logger.info(
+        f"dispatch_next_for_user: started queued session={head.session_id} "
+        f"user={user_id} turn={turn_id} sub_work={sub_work[head.session_id]}"
+    )
 
     if pending.role == "user" and pending.content and not spawned:
         try:
