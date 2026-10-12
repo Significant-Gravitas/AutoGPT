@@ -9,14 +9,18 @@ rest, every ``REAPER_INTERVAL_MINUTES``, across every user. The row's lease
 is the authority: a pass whose Redis renewals kept landing while every row
 write failed looks dead too, and is stopped at its next check.
 
-Each run lists ``REAPER_ROW_LIMIT`` rows at most, two kinds taking turns:
-the open rows whose lease lapsed more than ``REAP_GRACE_SECONDS`` (one sync
-lock TTL) ago, the oldest lapse first, and the closed rows whose cleanup
-(``cleanup.py``) is pending and due, the least recently tried first. So
-neither kind can fill a run while the other waits: cleanups that keep
+Each run lists ``REAPER_ROW_LIMIT`` rows at most, of two kinds, each kept
+to half the cap when the other has rows: the open rows whose lease lapsed
+more than ``REAP_GRACE_SECONDS`` (one sync lock TTL) ago, the oldest lapse
+first, and the closed rows whose cleanup (``cleanup.py``) is pending and due,
+the least recently written first. Each kind gets its own share of the run's
+time (``_reap_both``), so neither can spend the other's: cleanups that keep
 failing (a provider that hangs on every cancel) do not keep a dead pass from
-being closed and charged before its batch state lapses, and each attempt
-that does not finish puts its row behind the others (``_to_the_back``).
+being closed and charged before its batch state lapses, and a stream of
+lapsing passes does not keep the pending cleanups waiting. Within its kind,
+a pending cleanup is written once more (``_to_the_back``) before it is tried,
+so one that does not finish, however its attempt ends, is not the first
+tried next run either.
 A cleanup is due once its lease lapsed a grace ago, or it was marked a grace
 ago: time for a pass stopped while it ran to reach its next check, and for
 the executor's drop to clean up after it. The grace is a bound, not a fence:
@@ -35,9 +39,8 @@ gated, and the reaper never calls it.
 Then it cleans up after the pass (``cleanup.clean_up_pass``), releasing the
 lock under the token the row kept unless the reaper holds the scope itself,
 and clears the mark and the lease only once every step has finished
-(``expired``, ``cleaned``); else the row stays marked (``retry``), goes behind
-the other pending cleanups, and a later run does every step again, the
-finished ones doing nothing. A row
+(``expired``, ``cleaned``); else the row stays marked (``retry``), and a
+later run does every step again, the finished ones doing nothing. A row
 marked longer ago than a batch can run no longer waits on the provider. A
 row that kept no token (one written before leases, say) cannot have its
 pass's lock released: its unlock finishes once the scope's lock is gone or
@@ -48,10 +51,11 @@ can be matched to, so such a row stays marked until its lock lapses, 24 h
 Bounded: a run takes at most ``REAPER_BUDGET_SECONDS``, from before its
 listing to the release of its hold on a scope. Rows are worked until
 ``RELEASE_TIMEOUT_SECONDS`` before the end, each started only with
-``ROW_RESERVE_SECONDS`` left; the release that may follow the cut has those
-last seconds, and finishes even if the cut lands during it. A row the budget
-does not reach, or cuts short, is listed again next run; a phase charge it
-cuts into finishes on its own (``batch_costs.py``).
+``ROW_RESERVE_SECONDS`` left in its kind's share and cut off at the end of
+that share; the release that may follow a cut has its own last seconds, and
+finishes even if the cut lands during it. A row the budget does not reach,
+or cuts short, is listed again next run; a phase charge it cuts into
+finishes on its own (``batch_costs.py``).
 
 Not bounded here: the scheduler's ``run_async`` stops waiting on a timeout
 but does not cancel the run, so the run's own budget is what stops it; rows
@@ -70,7 +74,6 @@ import logging
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone
-from itertools import zip_longest
 from typing import Literal
 
 from prisma.enums import DreamPassStatus
@@ -127,38 +130,71 @@ async def reap_expired_passes(*, now: datetime | None = None) -> ReaperRun:
     """One reaper run, within ``REAPER_BUDGET_SECONDS``; never raises."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + REAPER_BUDGET_SECONDS - RELEASE_TIMEOUT_SECONDS
-    rows: list[DreamPassRecord] = []
+    lapsed: list[DreamPassRecord] = []
+    pending: list[DreamPassRecord] = []
     done: dict[str, ReapOutcome] = {}
     try:
         async with asyncio.timeout_at(deadline):
-            rows = await _list(now or datetime.now(timezone.utc))
-            await _reap_rows(rows, done, deadline)
+            lapsed, pending = await _list(now or datetime.now(timezone.utc))
+            await _reap_both(lapsed, pending, done, deadline)
     except Exception:
         logger.warning("Dream pass reaper: the run stopped short", exc_info=True)
-    return _summary(rows, done)
+    return _summary([*lapsed, *pending], done)
 
 
-async def _list(now: datetime) -> list[DreamPassRecord]:
-    """The rows to work, ``REAPER_ROW_LIMIT`` in all: the open rows whose
-    lease lapsed a grace ago (the oldest lapse first) taking turns with the
-    cleanups pending and due (the least recently tried first), so that
-    neither kind can fill a run while the other has rows waiting."""
+async def _list(now: datetime) -> tuple[list[DreamPassRecord], list[DreamPassRecord]]:
+    """The rows to work, ``REAPER_ROW_LIMIT`` in all, each kind kept to half
+    of it when the other has rows: the open rows whose lease lapsed a grace
+    ago (the oldest lapse first), and the cleanups pending and due (the
+    least recently written first)."""
     due_before = now - timedelta(seconds=REAP_GRACE_SECONDS)
-    expired = await read_expired_passes(due_before, limit=REAPER_ROW_LIMIT)
+    lapsed = await read_expired_passes(due_before, limit=REAPER_ROW_LIMIT)
     pending = await read_pending_cleanups(due_before=due_before, limit=REAPER_ROW_LIMIT)
-    turns = [row for pair in zip_longest(expired, pending) for row in pair if row]
-    return turns[:REAPER_ROW_LIMIT]
+    kept = min(len(lapsed), max(REAPER_ROW_LIMIT - len(pending), REAPER_ROW_LIMIT // 2))
+    return lapsed[:kept], pending[: REAPER_ROW_LIMIT - kept]
+
+
+async def _reap_both(
+    lapsed: list[DreamPassRecord],
+    pending: list[DreamPassRecord],
+    done: dict[str, ReapOutcome],
+    deadline: float,
+) -> None:
+    """Work both kinds, each in its own share of the time left: the lapsed
+    passes up to half of it when cleanups are pending too, the pending
+    cleanups up to the run's deadline, then the lapsed passes the first
+    share did not reach, in whatever is left. A row slow enough to use a
+    whole share, its calls each within their own deadlines, spends only its
+    kind's time."""
+    loop = asyncio.get_running_loop()
+    halfway = loop.time() + (deadline - loop.time()) / 2
+    await _reap_rows(lapsed, done, halfway if pending else deadline)
+    await _reap_rows(pending, done, deadline)
+    await _reap_rows(lapsed, done, deadline)
 
 
 async def _reap_rows(
-    rows: list[DreamPassRecord], done: dict[str, ReapOutcome], deadline: float
+    rows: list[DreamPassRecord], done: dict[str, ReapOutcome], until: float
 ) -> None:
-    """Work *rows* in turn while the run's deadline leaves a row's reserve."""
+    """Work the *rows* not yet done, in turn, each started only with
+    ``ROW_RESERVE_SECONDS`` left before *until* and cut off there; a row cut
+    off is done for this run."""
     loop = asyncio.get_running_loop()
     for row in rows:
-        if loop.time() > deadline - ROW_RESERVE_SECONDS:
+        if row.id in done:
+            continue
+        if loop.time() > until - ROW_RESERVE_SECONDS:
             return
-        await _reap(row, done)
+        try:
+            async with asyncio.timeout_at(until):
+                await _reap(row, done)
+        except TimeoutError:
+            logger.warning(
+                f"Dream pass reaper: pass {row.id} cut short by its share of the "
+                "budget; listed again next run"
+            )
+            done[row.id] = "out_of_budget"
+            return
 
 
 def _summary(rows: list[DreamPassRecord], done: dict[str, ReapOutcome]) -> ReaperRun:
@@ -223,8 +259,9 @@ async def _close(
 
 async def _finish_cleanup(row: DreamPassRecord, scope: MemoryScope) -> ReapOutcome:
     """Clean up after a pass whose row closed marked and whose cleanup was
-    not finished: every step again, the ones that already ran doing
-    nothing."""
+    not finished: the row behind the other pending cleanups first, then
+    every step again, the ones that already ran doing nothing."""
+    await _to_the_back(row.id)
     cleanup = await _clean_up(row, scope, release=True)
     done = "cleaned" if cleanup.finished else "not cleaned up yet"
     return _logged(row, cleanup, "cleaned", f"({row.status.value.lower()}) {done}")
@@ -235,9 +272,8 @@ async def _clean_up(
 ) -> PassCleanup:
     """Clean up after *row*'s pass, releasing its lock under the token the
     row kept when *release* (for a row that kept none, finding the lock not
-    the pass's), then clear the row's mark and lease if every step finished,
-    else put the row behind the cleanups tried less recently. Raises when
-    the clearing write fails: the row is listed again."""
+    the pass's), then clear the row's mark and lease if every step finished.
+    Raises when that write fails: the row is listed again."""
     cleanup = await clean_up_pass(
         row.id,
         scope,
@@ -249,15 +285,16 @@ async def _clean_up(
     )
     if cleanup.finished:
         await record_cleanup_finished(row.id)
-    else:
-        await _to_the_back(row.id)
     return cleanup
 
 
 async def _to_the_back(pass_id: str) -> None:
-    """Put a cleanup the reaper did not finish behind the ones it has tried
-    less recently, so a cleanup that keeps failing does not head every run.
-    Best-effort: a write that fails leaves the row where it was."""
+    """Put a pending cleanup behind the ones written less recently before the
+    reaper tries it, so a cleanup that does not finish, however its attempt
+    ends (a step that fails, an error, the budget cutting it off), does not
+    head the next run's list. A row closed by this run needs no such write:
+    its close moved it. Best-effort: a write that fails leaves the row where
+    it was."""
     try:
         await record_cleanup_unfinished(pass_id)
     except Exception:

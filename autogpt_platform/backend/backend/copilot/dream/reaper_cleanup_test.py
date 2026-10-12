@@ -19,7 +19,9 @@ import pytest
 from prisma.enums import DreamPassRoute, DreamPassStatus
 
 from . import cleanup as cleanup_mod
+from . import provider_batch as provider_batch_mod
 from . import reaper as reaper_mod
+from . import store as store_mod
 from .batch_state import state_key
 from .batch_submit import input_bundle_key
 from .reaper import reap_expired_passes
@@ -219,6 +221,109 @@ class TestTheListing:
         assert fake_dream_db.rows["waiting"]["cleanup_pending_at"] is None
         assert fake_dream_db.rows["stuck"]["cleanup_pending_at"] is not None
         assert fake_dream_db.rows["stuck"]["status"] is DreamPassStatus.EXPIRED
+
+    async def test_a_cleanup_the_budget_cuts_off_goes_behind_the_others(
+        self, mocker, fake_dream_db
+    ):
+        """The oldest pending cleanup's state read never answers, so the
+        budget cuts its attempt off every time; it was moved behind the other
+        before it was tried, so a later run reaches the other."""
+        _scale_the_budget(mocker, budget=0.15, release=0.01)
+        now = datetime.now(timezone.utc)
+        for pass_id, written_minutes_ago in (("stuck", 60), ("waiting", 30)):
+            _seed(
+                fake_dream_db,
+                pass_id,
+                route=DreamPassRoute.SYNC,
+                status=DreamPassStatus.EXPIRED,
+                cleanup_pending_at=now - timedelta(hours=1),
+            )
+            fake_dream_db.rows[pass_id]["updated_at"] = now - timedelta(
+                minutes=written_minutes_ago
+            )
+        tried = _hang_the_state_read_of(mocker, "stuck")
+
+        for _ in range(3):
+            await asyncio.wait_for(reap_expired_passes(), 5)
+
+        assert tried[:2] == ["stuck", "waiting"]
+        assert fake_dream_db.rows["waiting"]["cleanup_pending_at"] is None
+
+    async def test_lapsing_passes_leave_the_pending_cleanups_their_share(
+        self, mocker, fake_dream_db
+    ):
+        """Every run a new pass lapses whose cleanup never answers. It gets its
+        share of the run's time and no more: the pending cleanup gets the
+        rest, every run, instead of waiting behind the next lapsed pass."""
+        _scale_the_budget(mocker, budget=0.15, release=0.01)
+        _seed(
+            fake_dream_db,
+            "waiting",
+            route=DreamPassRoute.SYNC,
+            status=DreamPassStatus.EXPIRED,
+            cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        tried = _hang_the_state_read_of(mocker, "lapsed0", "lapsed1", "lapsed2")
+
+        for index in range(3):
+            _seed(fake_dream_db, f"lapsed{index}", route=DreamPassRoute.SYNC)
+            await asyncio.wait_for(reap_expired_passes(), 5)
+
+        assert tried[:2] == ["lapsed0", "waiting"]
+        assert fake_dream_db.rows["waiting"]["cleanup_pending_at"] is None
+        assert all(
+            fake_dream_db.rows[f"lapsed{index}"]["status"] is DreamPassStatus.EXPIRED
+            for index in range(3)
+        )
+
+    async def test_slow_calls_within_their_deadlines_leave_both_kinds_their_share(
+        self, mocker, fake_dream_db, provider_cancel, batch_status
+    ):
+        """Scaled to a hundredth: every listing, close, move to the back,
+        provider cancel and status read takes 9 s of a 10 s deadline. Each
+        run's lapsed pass spends its own half of the budget; the pending
+        cleanup is still reached."""
+        _scale_the_budget(mocker, budget=0.6, release=0.02, reserve=0.15)
+        mocker.patch.object(store_mod, "RECORD_WRITE_TIMEOUT_SECONDS", 0.1)
+        mocker.patch.object(provider_batch_mod, "PROVIDER_CANCEL_TIMEOUT_SECONDS", 0.1)
+        for name in (
+            "read_expired_passes",
+            "read_pending_cleanups",
+            "write_stop",
+            "record_cleanup_unfinished",
+        ):
+            mocker.patch.object(reaper_mod, name, _slowed(getattr(reaper_mod, name)))
+
+        async def refuses_slowly(**_kwargs) -> bool:
+            await asyncio.sleep(0.09)
+            return False
+
+        async def still_running(**_kwargs) -> str:
+            await asyncio.sleep(0.09)
+            return "in_progress"
+
+        provider_cancel.side_effect = refuses_slowly
+        batch_status.side_effect = still_running
+        _seed(
+            fake_dream_db,
+            "waiting",
+            route=DreamPassRoute.SYNC,
+            status=DreamPassStatus.EXPIRED,
+            cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+
+        for index in range(3):
+            _seed(
+                fake_dream_db,
+                f"lapsed{index}",
+                route=DreamPassRoute.ANTHROPIC_BATCH,
+                status=DreamPassStatus.SUBMITTED,
+                provider_batch_id=f"b-{index}",
+            )
+            await asyncio.wait_for(reap_expired_passes(), 5)
+
+        assert fake_dream_db.rows["waiting"]["cleanup_pending_at"] is None
+        assert fake_dream_db.rows["lapsed0"]["status"] is DreamPassStatus.EXPIRED
 
 
 class TestTheBudget:
@@ -420,6 +525,32 @@ def _fail_once(mocker, module, step: str) -> None:
         return await real(*args, **kwargs)
 
     mocker.patch.object(module, step, once)
+
+
+def _hang_the_state_read_of(mocker, *hanging: str) -> list[str]:
+    """Make the cleanup's state read never answer for the *hanging* passes,
+    and answer empty for the rest; returns the passes it was asked for, in
+    order."""
+    tried: list[str] = []
+
+    async def read_state(pass_id: str) -> dict:
+        tried.append(pass_id)
+        if pass_id in hanging:
+            await asyncio.Event().wait()
+        return {}
+
+    mocker.patch.object(cleanup_mod, "read_state", read_state)
+    return tried
+
+
+def _slowed(call):
+    """*call*, taking 9 s scaled to a hundredth first."""
+
+    async def slowed(*args, **kwargs):
+        await asyncio.sleep(0.09)
+        return await call(*args, **kwargs)
+
+    return slowed
 
 
 def _scale_the_budget(
