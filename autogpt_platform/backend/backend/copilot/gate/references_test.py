@@ -13,9 +13,9 @@ from backend.api.features.library.model import LibraryFolder
 from backend.copilot.gate import references
 from backend.copilot.gate.headline import _OBJECT_ID, gated_tools, headline_for
 from backend.copilot.gate.references import (
-    REFERENCES,
     Fact,
     Reference,
+    declared_entities,
     resolve_references,
     wanted_references,
 )
@@ -29,7 +29,7 @@ _ID_NAME = re.compile(r"(^|_)(ids?|uuids?)$|Ids?$")
 _ID_WORD = re.compile(r"\b(id|ID|ids|IDs|uuid|UUID|identifier)\b")
 
 
-def test_every_id_shaped_input_of_a_gated_tool_has_a_decided_row():
+def test_every_id_shaped_input_of_a_gated_tool_declares_its_entity():
     """A new tool's id must not fall back to a raw uuid unnoticed."""
     from backend.copilot.tools import get_tool
 
@@ -41,20 +41,23 @@ def test_every_id_shaped_input_of_a_gated_tool_has_a_decided_row():
             shaped = _ID_NAME.search(key) or _ID_WORD.search(
                 spec.get("description") or ""
             )
-            if shaped and (tool_name, key) not in REFERENCES:
+            if shaped and "entity" not in spec:
                 missing.append(f"{tool_name}.{key}")
-    assert missing == [], "add a row (or a None row) to gate/references.py"
+    assert missing == [], 'give the parameter an "entity" (None if not ours)'
 
 
-def test_every_row_names_a_gated_tool_and_every_entity_a_resolver():
-    assert {tool for tool, _ in REFERENCES} <= gated_tools()
-    entities = {entity for entity in REFERENCES.values() if entity}
-    assert entities == set(references._RESOLVERS)
+def test_every_declared_entity_has_a_resolver_and_every_resolver_a_gated_use():
+    from backend.copilot.tools import TOOL_REGISTRY
+
+    declared = {e for t in TOOL_REGISTRY for e in declared_entities(t).values() if e}
+    assert declared <= set(references._RESOLVERS)
+    gated = {e for t in gated_tools() for e in declared_entities(t).values() if e}
+    assert gated == set(references._RESOLVERS)
 
 
-def test_every_headline_id_is_one_the_table_resolves():
+def test_every_headline_id_is_one_its_schema_resolves():
     for tool, key in _OBJECT_ID.items():
-        assert REFERENCES.get((tool, key)), f"{tool}.{key}"
+        assert declared_entities(tool).get(key), f"{tool}.{key}"
 
 
 async def test_a_single_id_resolves_to_its_name_and_page():
