@@ -269,6 +269,11 @@ describe("board columns", () => {
     expect(
       within(backlog).getByRole("article", { name: "Check the copy" }),
     ).toBeDefined();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(backlog).getByRole("button", { name: "Backlog column actions" }),
+      ),
+    );
   });
 
   test("cancelling the delete keeps the column", async () => {

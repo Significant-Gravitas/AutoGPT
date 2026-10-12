@@ -47,10 +47,7 @@ export function TaskCard({ card, onOpen, sortable, isOverlay = false }: Props) {
         {...sortable?.attributes}
         {...sortable?.listeners}
         onClick={() => onOpen(card.id)}
-        className={cn(
-          "block w-full truncate text-left text-sm font-medium text-zinc-900 after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-zinc-800",
-          sortable && "touch-none after:touch-none",
-        )}
+        className="block w-full truncate text-left text-sm font-medium text-zinc-900 after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-zinc-800"
       >
         {title}
       </button>
