@@ -559,7 +559,7 @@ async def test_build_query_resume_cap_engaged_uses_sequence_gap(monkeypatch):
     # No DB lookup expected — the watermark is already a sequence.
     fake_db = type("FakeDB", (), {})()
     monkeypatch.setattr(
-        "backend.copilot.sdk.service.chat_db",
+        "backend.copilot.sdk.resume_gap.chat_db",
         lambda: fake_db,
     )
 
@@ -632,7 +632,7 @@ async def test_build_query_resume_cap_engaged_hole_fills_above_watermark(monkeyp
         },
     )()
     monkeypatch.setattr(
-        "backend.copilot.sdk.service.chat_db",
+        "backend.copilot.sdk.resume_gap.chat_db",
         lambda: fake_db,
     )
 
@@ -684,7 +684,7 @@ async def test_build_query_resume_cap_engaged_hole_fill_failure_uses_window_only
         },
     )()
     monkeypatch.setattr(
-        "backend.copilot.sdk.service.chat_db",
+        "backend.copilot.sdk.resume_gap.chat_db",
         lambda: fake_db,
     )
 
@@ -740,7 +740,7 @@ async def test_build_query_resume_hole_fill_drops_error_markers(monkeypatch):
             )
         },
     )()
-    monkeypatch.setattr("backend.copilot.sdk.service.chat_db", lambda: fake_db)
+    monkeypatch.setattr("backend.copilot.sdk.resume_gap.chat_db", lambda: fake_db)
 
     result, _ = await _build_query_message(
         "current turn",
@@ -884,7 +884,7 @@ async def test_build_query_resume_cap_warning_fires_when_unloaded_rows_are_left_
             ),
         },
     )()
-    monkeypatch.setattr("backend.copilot.sdk.service.chat_db", lambda: fake_db)
+    monkeypatch.setattr("backend.copilot.sdk.resume_gap.chat_db", lambda: fake_db)
 
     result, _ = await _build_query_message(
         "CURRENT",
@@ -923,7 +923,7 @@ async def test_build_query_resume_cap_warning_fires_when_only_the_window_is_sent
             ),
         },
     )()
-    monkeypatch.setattr("backend.copilot.sdk.service.chat_db", lambda: fake_db)
+    monkeypatch.setattr("backend.copilot.sdk.resume_gap.chat_db", lambda: fake_db)
 
     result, _ = await _build_query_message(
         "CURRENT",

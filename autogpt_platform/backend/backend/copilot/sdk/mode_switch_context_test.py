@@ -319,7 +319,7 @@ class TestSdkToFastModeSwitch:
         sdk_transcript = builder_sdk.to_jsonl()
 
         # Session covers only 2 messages but session has 10 (many SDK turns).
-        # With watermark=2 and 10 total messages, detect_gap will fill the gap
+        # With watermark=2 and 10 total messages, the gap is filled
         # by appending messages 2..8 (positions 2 to total-2).
         restore = TranscriptDownload(
             content=sdk_transcript.encode("utf-8"), message_count=2, mode="sdk"

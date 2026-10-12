@@ -24,7 +24,6 @@ from .transcript import (
     _sanitize_id,
     _transcript_to_messages,
     cli_session_cost_usd,
-    detect_gap,
     extract_context_messages,
     read_compacted_entries,
     read_compacted_entries_detailed,
@@ -1465,7 +1464,7 @@ class TestRestoreCliSession:
 
 
 # ---------------------------------------------------------------------------
-# detect_gap
+# extract_context_messages
 # ---------------------------------------------------------------------------
 
 
@@ -1480,160 +1479,6 @@ def _msgs(*roles: str):
     return [
         ChatMessage(role=r, content=f"{r}-{i}", sequence=i) for i, r in enumerate(roles)
     ]
-
-
-class TestDetectGap:
-    """``detect_gap`` returns messages between transcript watermark and current turn."""
-
-    def _dl(self, message_count: int) -> TranscriptDownload:
-        return TranscriptDownload(content=b"", message_count=message_count, mode="sdk")
-
-    def test_zero_watermark_returns_empty(self):
-        """message_count=0 means no watermark — skip gap detection."""
-        dl = self._dl(0)
-        messages = _msgs("user", "assistant", "user")
-        assert detect_gap(dl, messages) == []
-
-    def test_watermark_covers_all_prefix_returns_empty(self):
-        """Transcript already covers all messages up to the current user turn."""
-        # session: [user, assistant, user(current)] — wm=2 means covers up to assistant
-        dl = self._dl(2)
-        messages = _msgs("user", "assistant", "user")
-        assert detect_gap(dl, messages) == []
-
-    def test_watermark_exceeds_session_returns_empty(self):
-        """Watermark ahead of session count (race / over-count) → no gap."""
-        dl = self._dl(10)
-        messages = _msgs("user", "assistant", "user")
-        assert detect_gap(dl, messages) == []
-
-    def test_misaligned_watermark_not_on_assistant_returns_empty(self):
-        """Watermark at a user-role position is misaligned — skip gap."""
-        # wm=1: position 0 is 'user', not 'assistant' → skip
-        dl = self._dl(1)
-        messages = _msgs("user", "assistant", "user", "assistant", "user")
-        assert detect_gap(dl, messages) == []
-
-    def test_returns_gap_messages(self):
-        """Watermark behind session — gap messages returned (excluding current turn)."""
-        # session: [user0, assistant1, user2, assistant3, user4(current)]
-        # wm=2: transcript covers [0,1]; gap = [user2, assistant3]
-        dl = self._dl(2)
-        messages = _msgs("user", "assistant", "user", "assistant", "user")
-        gap = detect_gap(dl, messages)
-        assert len(gap) == 2
-        assert gap[0].role == "user"
-        assert gap[1].role == "assistant"
-
-    def test_excludes_current_user_turn(self):
-        """The last message (current user turn) is never included in the gap."""
-        # wm=2, session has 4 msgs: gap = [msg2] only (msg3 is current turn → excluded)
-        dl = self._dl(2)
-        messages = _msgs("user", "assistant", "user", "user")
-        gap = detect_gap(dl, messages)
-        assert len(gap) == 1
-        assert gap[0].role == "user"
-
-    def test_single_gap_message(self):
-        """One message between watermark and current turn."""
-        # session: [user0, assistant1, user2, assistant3, user4(current)]
-        # wm=3: position 2 is 'user' → misaligned, returns []
-        # use wm=4: but 4 >= total-1=4 → also empty
-        # wm=3 with session [u, a, u, a, u, a, u(current)]: position 2 is 'user' → empty
-        # Valid case: wm=2 has 3 messages (assistant at 1), wm=4 with [u,a,u,a,u,a,u]:
-        # let's use wm=4 with 7 messages: wm=4 >= total-1=6? no, 4<6. pos[3]=assistant → gap=[msg4,msg5]
-        # simpler: wm=2, [u0,a1,a2,u3(current)] — pos[1]=assistant, gap=[a2] only
-        dl = self._dl(2)
-        messages = _msgs("user", "assistant", "assistant", "user")
-        gap = detect_gap(dl, messages)
-        assert len(gap) == 1
-        assert gap[0].role == "assistant"
-
-    def test_windowed_messages_use_sequence_filter(self):
-        """When the loaded list is a window (not full history), the gap is
-        derived from each message's own ``sequence`` field — not list-index.
-
-        Simulates a session with 1000 total messages but only the most-recent
-        200 loaded; transcript watermark is 950 (transcript covers 0..949).
-        Gap = sequences 950..998 (excluding the current user turn at 999).
-        """
-        from .model import ChatMessage
-
-        # 200 messages with sequences 800..999. Last is current user turn.
-        windowed: list[ChatMessage] = []
-        for seq in range(800, 1000):
-            role = "user" if seq % 2 == 0 else "assistant"
-            windowed.append(
-                ChatMessage(role=role, content=f"{role}-{seq}", sequence=seq)
-            )
-        dl = self._dl(950)
-        gap = detect_gap(dl, windowed)
-        assert len(gap) == 49  # 950..998
-        assert gap[0].sequence == 950
-        assert gap[-1].sequence == 998
-        # Current turn (seq 999) not included.
-        assert all(m.sequence != 999 for m in gap)
-
-    def test_window_above_watermark_returns_gap_when_starts_with_user(self):
-        """When the window starts above the watermark and the first gap
-        message is ``user`` (well-formed boundary), the gap is returned."""
-        from .model import ChatMessage
-
-        # Window covers seq 1000..1199. Watermark at 800 (well below window).
-        # gap[0] is at seq 1000, role 'user' (the next turn after the
-        # assistant at wm-1=799).
-        windowed: list[ChatMessage] = []
-        for seq in range(1000, 1200):
-            role = "user" if seq % 2 == 0 else "assistant"  # 1000 → 'user'
-            windowed.append(
-                ChatMessage(role=role, content=f"{role}-{seq}", sequence=seq)
-            )
-        dl = self._dl(800)
-        gap = detect_gap(dl, windowed)
-        # Returns 199 messages (1000..1198, excluding current turn at 1199).
-        assert len(gap) == 199
-        assert gap[0].sequence == 1000
-        assert gap[0].role == "user"
-
-    def test_window_above_watermark_returned_when_starts_with_assistant(self):
-        """When the window starts above the watermark and the first gap
-        message is ``assistant``, the gap is still returned — boundary
-        expansion in ``get_chat_messages_paginated`` may legitimately leave an
-        assistant at position 0 (window started mid-turn), and the DB-side
-        hole-fill prepends the user turn that bridges the transcript."""
-        from .model import ChatMessage
-
-        # Window starts at seq 1001 with 'assistant' first.
-        windowed: list[ChatMessage] = []
-        for seq in range(1001, 1200):
-            role = "assistant" if seq % 2 == 1 else "user"  # 1001 → 'assistant'
-            windowed.append(
-                ChatMessage(role=role, content=f"{role}-{seq}", sequence=seq)
-            )
-        dl = self._dl(800)
-        gap = detect_gap(dl, windowed)
-        # Returns 198 messages (1001..1198, excluding current turn at 1199).
-        assert len(gap) == 198
-        assert gap[0].sequence == 1001
-        assert gap[0].role == "assistant"
-
-    def test_window_above_watermark_skipped_when_starts_with_tool(self):
-        """An unmatched tool row at gap[0] is malformed (boundary expansion
-        couldn't find the owner) — reject the gap to avoid an orphan
-        tool_result reaching the LLM."""
-        from .model import ChatMessage
-
-        windowed: list[ChatMessage] = [
-            ChatMessage(role="tool", content="tool-1001", sequence=1001),
-            ChatMessage(role="user", content="user-1002", sequence=1002),
-        ]
-        dl = self._dl(800)
-        assert detect_gap(dl, windowed) == []
-
-
-# ---------------------------------------------------------------------------
-# extract_context_messages
-# ---------------------------------------------------------------------------
 
 
 def _make_valid_transcript(*roles: str) -> str:
@@ -1803,7 +1648,7 @@ class TestExtractContextMessages:
         )
         mock_db = mocker.MagicMock()
         mock_db.get_chat_messages_paginated = mocker.AsyncMock(return_value=hole_page)
-        mocker.patch("backend.copilot.transcript.chat_db", return_value=mock_db)
+        mocker.patch("backend.copilot.sdk.resume_gap.chat_db", return_value=mock_db)
 
         result = await extract_context_messages(dl, windowed, session_id="sess-hole")
 
@@ -1858,7 +1703,7 @@ class TestExtractContextMessages:
         )
         mock_db = mocker.MagicMock()
         mock_db.get_chat_messages_paginated = mocker.AsyncMock(return_value=hole_page)
-        mocker.patch("backend.copilot.transcript.chat_db", return_value=mock_db)
+        mocker.patch("backend.copilot.sdk.resume_gap.chat_db", return_value=mock_db)
 
         result = await extract_context_messages(dl, windowed, session_id="sess-hole")
 
@@ -1872,6 +1717,72 @@ class TestExtractContextMessages:
             "user",  # gap user-6
             "assistant",  # gap assistant-7
         ]
+
+    @pytest.mark.asyncio
+    async def test_markers_and_notices_in_the_gap_are_not_sent(self):
+        """An error marker or a "stopped" notice the transcript has not seen is
+        UI state, not something the model said: it is never sent as history."""
+        from .constants import COPILOT_ERROR_PREFIX, STOPPED_BY_USER_MARKER
+        from .model import ChatMessage
+
+        transcript_content = _make_valid_transcript("user", "assistant")
+        dl = TranscriptDownload(
+            content=transcript_content.encode("utf-8"), message_count=2, mode="sdk"
+        )
+        messages = _msgs("user", "assistant", "user") + [
+            ChatMessage(
+                role="assistant", content=f"{COPILOT_ERROR_PREFIX} boom", sequence=3
+            ),
+            ChatMessage(role="user", content="again", sequence=4),
+            ChatMessage(role="assistant", content=STOPPED_BY_USER_MARKER, sequence=5),
+            ChatMessage(role="user", content="current", sequence=6),
+        ]
+
+        result = await extract_context_messages(dl, messages)
+
+        assert [m.content for m in result[2:]] == ["user-2", "again"]
+
+    @pytest.mark.asyncio
+    async def test_the_gap_is_sent_whatever_row_the_transcript_ends_on(self):
+        """A transcript that ends on a user row (its turn failed before a reply)
+        still gets the rows after it: the gap is read by sequence."""
+        transcript_content = _make_valid_transcript("user")
+        dl = TranscriptDownload(
+            content=transcript_content.encode("utf-8"), message_count=1, mode="sdk"
+        )
+        messages = _msgs("user", "assistant", "user")
+
+        result = await extract_context_messages(dl, messages)
+
+        assert [m.role for m in result] == ["user", "assistant"]
+        assert result[1].content == "assistant-1"
+
+    @pytest.mark.asyncio
+    async def test_a_tool_result_whose_call_is_in_the_transcript_is_left_out(self):
+        """The transcript part is flattened to text, so a result whose call it
+        holds would reach the baseline's chat messages with no call to answer."""
+        from .model import ChatMessage
+
+        transcript_content = _make_valid_transcript("user", "assistant")
+        dl = TranscriptDownload(
+            content=transcript_content.encode("utf-8"), message_count=2, mode="sdk"
+        )
+        call = {"id": "call-2", "type": "function", "function": {"name": "t"}}
+        messages = _msgs("user", "assistant") + [
+            ChatMessage(
+                role="tool", content="orphan", tool_call_id="call-1", sequence=2
+            ),
+            ChatMessage(role="user", content="next", sequence=3),
+            ChatMessage(role="assistant", content="", tool_calls=[call], sequence=4),
+            ChatMessage(
+                role="tool", content="answered", tool_call_id="call-2", sequence=5
+            ),
+            ChatMessage(role="user", content="current", sequence=6),
+        ]
+
+        result = await extract_context_messages(dl, messages)
+
+        assert [m.content for m in result[2:]] == ["next", "", "answered"]
 
 
 # ---------------------------------------------------------------------------

@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
-from backend.data.db_accessors import chat_db
 from backend.util import json
 from backend.util.clients import get_openai_client
 from backend.util.prompt import (
@@ -38,6 +37,7 @@ from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_st
 
 from .config import ChatConfig
 from .model import ChatMessage
+from .sdk.resume_gap import unseen_rows
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -927,109 +927,6 @@ def next_uncovered_sequence(session_messages: list[ChatMessage]) -> int:
     return max(seqs) + 1 if seqs else 0
 
 
-def _gap_by_index(
-    session_messages: list[ChatMessage], watermark: int
-) -> list[ChatMessage]:
-    """Index-based gap fallback: ``session_messages`` is treated as the full
-    history (list-index == absolute sequence).  Used when no message in the
-    candidate set carries a sequence — only test fixtures and the post-DB-
-    failure cache state hit this in practice.
-    """
-    total = len(session_messages)
-    if watermark >= total - 1:
-        return []
-    if session_messages[watermark - 1].role != "assistant":
-        return []
-    return list(session_messages[watermark : total - 1])
-
-
-def _gap_by_sequence(
-    candidates: list[tuple[int, ChatMessage]],
-    watermark: int,
-) -> list[ChatMessage]:
-    """Sequence-based gap with role-shape sanity check.
-
-    ``watermark`` is the "next uncovered DB sequence" — the value persisted in
-    the transcript's ``message_count`` field.  Gap = candidates whose sequence
-    is at or above the watermark.
-
-    Returns [] when:
-    - No post-watermark candidates (transcript is current).
-    - The pre-watermark message immediately before the gap isn't an assistant
-      turn (data shift / deletion).
-    - The window starts above the watermark and the first gap message is a
-      tool row that boundary expansion failed to pair with its owner
-      (malformed window — would emit an orphan tool_result).
-    """
-    gap = [m for seq, m in candidates if seq >= watermark]
-    pre_gap = [(seq, m) for seq, m in candidates if seq < watermark]
-    if not gap:
-        return []
-
-    if pre_gap:
-        _, prev = max(pre_gap, key=lambda item: item[0])
-        if prev.role != "assistant":
-            return []
-        return gap
-
-    # Window starts above the watermark — can't see the pre-gap row to verify
-    # its role. ``get_chat_messages_paginated`` already does tool-pair boundary
-    # expansion so ``gap[0]`` is normally user (fresh turn) or assistant (turn
-    # that began before the cap).  Reject only when it's still a tool row
-    # (boundary expansion couldn't find the owner) — leaving that in would
-    # emit an unmatched tool_result.  The DB-side hole-fill prepends the
-    # missing user turn that bridges the transcript and ``gap[0]``.
-    if gap[0].role == "tool":
-        return []
-    window_start = min(seq for seq, _ in candidates if seq >= watermark)
-    if window_start > watermark:
-        logger.warning(
-            "detect_gap: window starts at seq=%d but watermark is %d — "
-            "DB-side hole-fill required",
-            window_start,
-            watermark,
-        )
-    return gap
-
-
-def detect_gap(
-    download: TranscriptDownload,
-    session_messages: list[ChatMessage],
-) -> list[ChatMessage]:
-    """Return chat-db messages at or after the transcript watermark
-    (excluding the current user turn).
-
-    ``download.message_count`` is the *next uncovered DB sequence* — the
-    sequence the next message will receive.  The gap is candidates with
-    ``sequence >= watermark`` after dropping reasoning rows (those are
-    persisted for frontend replay only and never sent to the model).
-
-    Two paths:
-    - **Sequence-based** (production): every prior message has a ``sequence``
-      (NOT NULL in schema). Filter by ``sequence >= watermark`` with a
-      role-shape sanity check at the boundary.
-    - **Index fallback**: triggered when no prior message has a sequence —
-      only test fixtures and the post-DB-failure cache state. Treats the list
-      as the full history and slices by index.
-
-    Hole-fill (sequences in DB but neither in transcript nor window) is
-    performed by ``extract_context_messages``, not here — this function stays
-    pure / sync.
-    """
-    if download.message_count == 0:
-        return []
-    session_messages = [m for m in session_messages if m.role != "reasoning"]
-    if len(session_messages) < 2:
-        return []
-
-    candidates: list[tuple[int, ChatMessage]] = [
-        (m.sequence, m) for m in session_messages[:-1] if m.sequence is not None
-    ]
-    if not candidates:
-        return _gap_by_index(session_messages, download.message_count)
-    return _gap_by_sequence(candidates, download.message_count)
-
-
 def _decode_transcript_content(content: bytes | str) -> str | None:
     """Return decoded transcript content, or ``None`` on UTF-8 errors."""
     if isinstance(content, str):
@@ -1056,46 +953,6 @@ def _parse_transcript_to_messages(
     return [ChatMessage(role=m["role"], content=m.get("content") or "") for m in raw]
 
 
-async def fill_hole_between_transcript_and_gap(
-    session_id: str,
-    watermark: int,
-    gap: list[ChatMessage],
-) -> list[ChatMessage]:
-    """Fetch DB rows in the range ``[watermark, gap[0].sequence)``.
-
-    When the cap engaged and the transcript is stale, the windowed view
-    starts above the watermark — sequences in between live in DB but
-    neither in transcript nor in the loaded gap.  Returns [] when there is
-    no hole or the fetch fails (best-effort — partial context beats crash).
-    Reasoning rows in the range are filtered.
-    """
-    if not gap or gap[0].sequence is None:
-        return []
-    hole_end = gap[0].sequence
-    if watermark >= hole_end:
-        return []
-    try:
-        page = await chat_db().get_chat_messages_paginated(
-            session_id,
-            limit=hole_end - watermark,
-            after_sequence=watermark,
-            before_sequence=hole_end,
-        )
-        if page is None:
-            return []
-        return [m for m in page.messages if m.role != "reasoning"]
-    except Exception as e:
-        logger.error(
-            "fill_hole_between_transcript_and_gap: fetch failed for "
-            "session=%s range=[%d,%d): %s",
-            session_id,
-            watermark,
-            hole_end,
-            e,
-        )
-        return []
-
-
 async def extract_context_messages(
     download: TranscriptDownload | None,
     session_messages: "list[ChatMessage]",
@@ -1111,11 +968,13 @@ async def extract_context_messages(
     Layered structure:
     - **Transcript**: GCS-cached compaction (preserves ``isCompactSummary=True``).
       Tool-use blocks are flattened to text via ``_flatten_assistant_content``.
-    - **Hole-fill** (only when cap-engaged + stale-transcript): sequences
-      ``[watermark, window_start)`` fetched directly from DB so the LLM never
-      sees a mid-conversation hole.  Requires ``session_id``.
-    - **Gap**: DB messages from the loaded window with ``sequence >= watermark``,
-      preserving structured ``tool_calls``.
+    - **Gap**: the rows the transcript has not seen, from
+      :func:`~backend.copilot.sdk.resume_gap.unseen_rows` (the same rows the
+      SDK's resumed turn sends: a capped window's hole fetched from the DB
+      when ``session_id`` is given, error markers, notices and compaction
+      rows left out), preserving structured ``tool_calls``.  A tool result
+      whose call is in the transcript part, which is flattened to text, is
+      left out too: a structured history has no call for it to answer.
 
     Falls back to full prior messages (``session_messages[:-1]``) when no
     transcript is available.  Excludes ``role="reasoning"`` rows.  The
@@ -1135,13 +994,25 @@ async def extract_context_messages(
     if transcript_msgs is None:
         return prior
 
-    gap = detect_gap(download, session_messages)
-    hole: list[ChatMessage] = []
-    if session_id and download.message_count > 0:
-        hole = await fill_hole_between_transcript_and_gap(
-            session_id, download.message_count, gap
-        )
-    return transcript_msgs + hole + gap
+    gap = await unseen_rows(
+        prior,
+        download.message_count,
+        session_id=session_id,
+        log_prefix="[transcript]",
+    )
+    return transcript_msgs + _answerable(gap)
+
+
+def _answerable(rows: list[ChatMessage]) -> list[ChatMessage]:
+    """*rows* without a tool result whose call is not among them."""
+    calls = {
+        call.get("id")
+        for message in rows
+        if message.role == "assistant"
+        for call in message.tool_calls or []
+        if isinstance(call, dict)
+    }
+    return [m for m in rows if m.role != "tool" or m.tool_call_id in calls]
 
 
 async def delete_transcript(user_id: str, session_id: str) -> None:

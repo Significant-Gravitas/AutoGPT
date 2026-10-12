@@ -68,7 +68,6 @@ from backend.copilot.sdk.cost_tracking import (
     read_cli_session_usage,
 )
 from backend.copilot.tool_display import tool_calls_for_provider
-from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUsage
@@ -248,7 +247,12 @@ from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .openrouter_cost import TurnGenerations, record_turn_cost_from_openrouter
 from .query_blocks import scan_context_blocks
 from .response_adapter import SDKResponseAdapter
-from .resume_gap import missing_range, sendable_gap, uncovered_rows
+from .resume_gap import (
+    fetch_missing_rows,
+    missing_range,
+    sendable_gap,
+    uncovered_rows,
+)
 from .security_hooks import create_security_hooks
 from .system_prompt import SystemPromptParts, assemble_system_prompt
 from .tool_adapter import (
@@ -3704,7 +3708,9 @@ async def _resume_query_with_gap(
     compaction rows are never sent.
     """
     hole_range = missing_range(prior_rows, transcript_msg_count)
-    hole = await _fetch_gap_hole(session_id, hole_range) if hole_range else []
+    hole = (
+        await fetch_missing_rows(session_id, hole_range, "[SDK]") if hole_range else []
+    )
     gap = sendable_gap((hole or []) + uncovered_rows(prior_rows, transcript_msg_count))
     rows_left_out = hole_range is not None and hole is None
     if rows_left_out:
@@ -3741,33 +3747,6 @@ async def _resume_query_with_gap(
     if turn_summary is not None:
         turn_summary.note_history_rows(len(gap), compressed=stats is not None)
     return f"{gap_context}\n\nNow, the user says:\n{current_message}", stats
-
-
-async def _fetch_gap_hole(
-    session_id: str, hole_range: tuple[int, int]
-) -> list[ChatMessage] | None:
-    """The rows in ``[start, end)`` from the DB, or ``None`` if the fetch failed."""
-    start, end = hole_range
-    try:
-        page = await chat_db().get_chat_messages_paginated(
-            session_id,
-            limit=end - start,
-            after_sequence=start,
-            before_sequence=end,
-        )
-    except Exception as e:
-        logger.warning(
-            "[SDK] [%s] hole-fill DB fetch failed (range=[%d,%d)):"
-            " %s — sending gap without hole",
-            session_id[:8],
-            start,
-            end,
-            e,
-        )
-        return None
-    if not page:
-        return []
-    return [m for m in page.messages if m.role != "reasoning"]
 
 
 def _log_gap_sent(

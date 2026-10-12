@@ -1048,11 +1048,13 @@ class TestRestoreCliSessionModeCheck:
         # context_messages must be populated — new behaviour uses transcript content + gap
         # instead of full DB reconstruction.
         assert result.context_messages is not None
-        # The baseline transcript has 1 user message (BASELINE_SENTINEL).
-        # Watermark=1 but position 0 is 'user', not 'assistant', so detect_gap returns [].
-        # Result: 1 message from transcript, no gap.
-        assert len(result.context_messages) == 1
-        assert "BASELINE_SENTINEL" in (result.context_messages[0].content or "")
+        # The baseline transcript has 1 user message (BASELINE_SENTINEL) and
+        # watermark 1, so the assistant reply at sequence 1 is the row it
+        # lacks: the transcript's message, then that reply.
+        assert [m.content for m in result.context_messages] == [
+            "BASELINE_SENTINEL",
+            "world-unique-marker",
+        ]
 
     @pytest.mark.asyncio
     async def test_sdk_mode_transcript_allows_resume(self, tmp_path):

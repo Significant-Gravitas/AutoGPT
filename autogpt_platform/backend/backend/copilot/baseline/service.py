@@ -117,6 +117,7 @@ from backend.copilot.response_model import (
     StreamUsage,
     ToolDisplayData,
 )
+from backend.copilot.sdk.resume_gap import unseen_rows
 from backend.copilot.service import (
     _build_system_prompt,
     _get_main_client,
@@ -159,10 +160,8 @@ from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
     STOP_REASON_TOOL_USE,
     TranscriptDownload,
-    detect_gap,
     download_transcript,
     extract_context_messages,
-    fill_hole_between_transcript_and_gap,
     next_uncovered_sequence,
     strip_for_upload,
     upload_transcript,
@@ -1495,11 +1494,9 @@ def _append_gap_to_builder(
     Converts ChatMessage (OpenAI format) to TranscriptBuilder entries
     (Claude CLI JSONL format) so the uploaded transcript covers all turns.
 
-    Pre-condition: ``gap`` always starts at a user or assistant boundary
-    (never mid-turn at a ``tool`` role), because ``detect_gap`` enforces
-    ``session_messages[wm-1].role == 'assistant'`` before returning a non-empty
-    gap.  Any ``tool`` role messages within the gap always follow an assistant
-    entry that already exists in the builder or in the gap itself.
+    ``gap`` is what :func:`~backend.copilot.sdk.resume_gap.unseen_rows`
+    returns: a ``tool`` row's call is in the gap or in the transcript the
+    builder already holds.
     """
     for msg in gap:
         if msg.role == "user":
@@ -1598,24 +1595,21 @@ async def _load_prior_transcript(
         restore.message_count,
     )
 
-    gap = detect_gap(restore, session_messages)
-    # Hole-fill: when the cap engaged AND the windowed view starts above the
-    # transcript watermark, the sequences in between live in DB but neither
-    # the transcript nor the loaded gap.  Persisting them to the builder here
-    # (so the next-turn upload includes them) closes the loop — without this,
-    # detect_gap on every subsequent turn would re-discover the same hole.
-    hole: list[ChatMessage] = []
-    if restore.message_count > 0:
-        hole = await fill_hole_between_transcript_and_gap(
-            session_id, restore.message_count, gap
-        )
-    if hole or gap:
-        _append_gap_to_builder(hole + gap, transcript_builder)
+    # The rows the stored transcript lacks, a capped window's hole included,
+    # go into the builder so the next upload covers them; otherwise every
+    # later turn would find the same gap again.
+    rows = [m for m in session_messages if m.role != "reasoning"]
+    gap = await unseen_rows(
+        rows[:-1],
+        restore.message_count,
+        session_id=session_id,
+        log_prefix="[Baseline]",
+    )
+    if gap:
+        _append_gap_to_builder(gap, transcript_builder)
         logger.info(
-            "[Baseline] Filled gap: loaded %d transcript msgs + %d hole msgs "
-            "+ %d gap msgs from DB",
+            "[Baseline] Filled gap: loaded %d transcript msgs + %d msgs from DB",
             restore.message_count,
-            len(hole),
             len(gap),
         )
 
