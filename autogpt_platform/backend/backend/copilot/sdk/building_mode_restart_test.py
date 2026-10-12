@@ -139,7 +139,6 @@ class TestApplyBuildingModeRestart:
         assert state.options.resume == "sess-1"
         assert state.options.session_id is None
         assert state.use_resume is True
-        assert state.resume_file == "sess-1"
         assert state.query_message == continuation
         assert "building mode" in status.message.lower()
 

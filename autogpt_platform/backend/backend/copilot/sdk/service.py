@@ -1414,25 +1414,9 @@ def _is_sdk_disconnect_error(exc: BaseException) -> bool:
     return False
 
 
-def _is_tool_only_message(sdk_msg: object) -> bool:
-    """Return True if *sdk_msg* is an AssistantMessage containing only ToolUseBlocks.
-
-    Such a message represents a parallel tool-call batch (no text output yet).
-    The ``bool(…content)`` guard prevents vacuous-truth evaluation on an empty list.
-    """
-    return (
-        isinstance(sdk_msg, AssistantMessage)
-        and bool(sdk_msg.content)
-        and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
-    )
-
-
 class ReducedContext(NamedTuple):
     builder: TranscriptBuilder
-    use_resume: bool
-    resume_file: str | None
     transcript_lost: bool
-    tried_compaction: bool
     # Token budget for the retry's history compression, from the pinned
     # window: ``compaction_target_tokens`` when the transcript compaction
     # landed, else ``retry_target_tokens``, smaller each retry so
@@ -1454,7 +1438,6 @@ class _RetryState:
     query_message: str
     compaction_stats: "CompactionStats | None"
     use_resume: bool
-    resume_file: str | None
     transcript_msg_count: int
     adapter: SDKResponseAdapter
     transcript_builder: TranscriptBuilder
@@ -1588,16 +1571,14 @@ def _seed_target_tokens(
 
 async def _reduce_context(
     transcript_content: str,
-    tried_compaction: bool,
-    session_id: str,
-    sdk_cwd: str,
     log_prefix: str,
+    *,
     attempt: int = 1,
     runtime_model: str | None = None,
     codex_route: bool = False,
     codex_engine: CodexEngineWindow | None = None,
 ) -> ReducedContext:
-    """Prepare reduced context for a retry attempt.
+    """Prepare reduced context for retry *attempt* (1 is the first retry).
 
     On the first retry, compacts the transcript via LLM summarization.
     On subsequent retries (or if compaction fails), drops the transcript
@@ -1609,8 +1590,7 @@ async def _reduce_context(
     → middle-out delete → first/last trim).  The budget applies in
     ``_build_query_message`` and is halved on each retry.
 
-    ``transcript_lost`` is True when the transcript was dropped (caller
-    should set ``skip_transcript_upload``).
+    ``transcript_lost`` is True when the transcript was dropped.
     """
     # The compactor LLM is fixed (config.thinking_standard_model); every
     # budget below is sized against the RUNTIME model, the one whose CLI
@@ -1625,9 +1605,8 @@ async def _reduce_context(
     # First retry: try compacting our transcript builder state.
     # Note: the CLI native --resume file is not updated with the compacted
     # content (it would require emitting CLI-native JSONL format), so the
-    # retry runs without --resume.  The compacted builder state is still
-    # useful for the eventual upload_transcript call that seeds future turns.
-    if transcript_content and not tried_compaction:
+    # retry runs without --resume.
+    if transcript_content and attempt <= 1:
         compaction_target = _compaction_target_tokens(
             target_model, codex_route=codex_route, codex_engine=codex_engine
         )
@@ -1651,7 +1630,7 @@ async def _reduce_context(
             # The retry still rebuilds its history from the DB rows; it is
             # held to the budget the transcript was compacted to, never to the
             # catalog's window, which can be far past the pin (Codex).
-            return ReducedContext(tb, False, None, False, True, compaction_target)
+            return ReducedContext(tb, False, compaction_target)
         logger.warning("%s Compaction failed, dropping transcript", log_prefix)
 
     # Subsequent retry or compaction failed: drop transcript entirely.
@@ -1661,7 +1640,7 @@ async def _reduce_context(
         log_prefix,
         retry_target,
     )
-    return ReducedContext(TranscriptBuilder(), False, None, True, True, retry_target)
+    return ReducedContext(TranscriptBuilder(), True, retry_target)
 
 
 def _humanise_tool_list(names: list[str]) -> str:
@@ -1888,7 +1867,6 @@ async def _apply_building_mode_restart(
     sdk_options_restart.session_id = None
     state.options = sdk_options_restart
     state.use_resume = True
-    state.resume_file = session_id
     state.query_message = (
         _BUILDING_MODE_CONTINUATION
         if building_suffix
@@ -2314,25 +2292,6 @@ def _normalize_model_name(raw_model: str) -> str:
     return normalize_model_for_transport(raw_model, config)
 
 
-def _resolve_sdk_model() -> str | None:
-    """Resolve the SDK-CLI model name from static config (no LD lookup).
-
-    ``config.claude_agent_model`` is an explicit override that wins
-    unconditionally.  When the Claude Code subscription is enabled and no
-    override is set, returns ``None`` so the CLI picks the model for the
-    user's subscription plan.  Otherwise derives from
-    ``config.thinking_standard_model``.
-
-    For per-user routing (LaunchDarkly overrides), see
-    :func:`_resolve_sdk_model_for_request`.
-    """
-    if config.claude_agent_model:
-        return config.claude_agent_model
-    if config.use_claude_code_subscription:
-        return None
-    return _normalize_model_name(config.thinking_standard_model)
-
-
 async def _resolve_thinking_model_for_user(
     tier: "CopilotLLMModel",
     user_id: str | None,
@@ -2431,10 +2390,9 @@ async def _resolve_sdk_model_for_request(
         # The per-user LD value didn't pass ``_normalize_model_name``'s
         # vendor check (most commonly: a ``moonshotai/kimi-*`` slug on a
         # direct-Anthropic deployment that has no OpenRouter route).  Fail
-        # soft to the TIER-SPECIFIC config default — using the generic
-        # ``_resolve_sdk_model()`` here would pin advanced-tier requests to
-        # ``thinking_standard_model`` (Sonnet) whenever LD misconfigures
-        # the advanced cell, silently downgrading the user's chosen tier.
+        # soft to the TIER-SPECIFIC config default, never to
+        # ``thinking_standard_model``: that would silently downgrade an
+        # advanced-tier user whenever LD misconfigures the advanced cell.
         try:
             sdk_model = _normalize_model_name(tier_default)
         except ValueError:
@@ -4614,20 +4572,16 @@ async def _run_stream_attempt(
 async def _seed_transcript(
     session: ChatSession,
     transcript_builder: TranscriptBuilder,
-    transcript_covers_prefix: bool,
     transcript_msg_count: int,
     log_prefix: str,
     msg_ceiling: int,
     seed_target: int,
-) -> tuple[str, bool, int]:
+) -> tuple[str, int]:
     """Seed the transcript builder from compressed DB messages.
 
-    Called when ``use_resume=False`` and no prior transcript exists in storage
-    so that ``upload_transcript`` saves a compact version for future turns.
-    This ensures the next turn can use the full-session compression path with
-    the benefit of an already-compressed baseline, and a restored CLI session
-    on the next pod gets a usable compact base even for sessions that started
-    on old pods.
+    Called when ``use_resume=False`` and no prior transcript exists in
+    storage, so the builder holds the conversation so far and a first
+    retry has a transcript to compact.
 
     ``msg_ceiling`` is ``len(session.messages)`` as of *before* the compaction
     row was persisted.  Slicing off just the last entry is not enough: closing
@@ -4636,20 +4590,20 @@ async def _seed_transcript(
     turn appends it again via ``append_user``, duplicating the live message in
     the transcript and inflating the watermark by two.
 
-    Returns ``(transcript_content, transcript_covers_prefix, transcript_msg_count)``
-    updated values — unchanged if seeding is not possible.
+    Returns ``(transcript_content, transcript_msg_count)`` updated values —
+    ``""`` and the count passed in if seeding is not possible.
     """
     if msg_ceiling <= 1:
-        return "", transcript_covers_prefix, transcript_msg_count
+        return "", transcript_msg_count
 
     _prior = session.messages[: msg_ceiling - 1]
     _comp, _, _ = await _compress_messages(_prior, seed_target)
     if not _comp:
-        return "", transcript_covers_prefix, transcript_msg_count
+        return "", transcript_msg_count
 
     _seeded = _session_messages_to_transcript(_comp)
     if not _seeded or not validate_transcript(_seeded):
-        return "", transcript_covers_prefix, transcript_msg_count
+        return "", transcript_msg_count
 
     transcript_builder.load_previous(_seeded, log_prefix=log_prefix)
     logger.info(
@@ -4659,7 +4613,7 @@ async def _seed_transcript(
         len(_comp),
         seed_target,
     )
-    return _seeded, True, len(_prior)
+    return _seeded, len(_prior)
 
 
 @dataclass
@@ -4667,7 +4621,6 @@ class _RestoreResult:
     """Return value from ``_restore_cli_session_for_turn``."""
 
     transcript_content: str = ""
-    transcript_covers_prefix: bool = True
     use_resume: bool = False
     resume_file: str | None = None
     transcript_msg_count: int = 0
@@ -4733,13 +4686,12 @@ async def _restore_cli_session_for_turn(
     # "Session ID already in use" because the file exists at the expected
     # session path, so we validate BEFORE any disk write.
     stripped = ""
-    if cli_restore is not None and sdk_cwd:
+    if cli_restore is not None:
         stripped, ok = process_cli_restore(cli_restore, sdk_cwd, session_id, log_prefix)
         if not ok:
-            result.transcript_covers_prefix = False
             cli_restore = None
 
-    if cli_restore is None and sdk_cwd:
+    if cli_restore is None:
         # Validation failed or GCS returned no session.  Delete any
         # existing local session file so the CLI doesn't reject the
         # session_id with "Session ID already in use".  T1 may have
@@ -4775,7 +4727,6 @@ async def _restore_cli_session_for_turn(
         and result.baseline_download.message_count > 0
         else len(history) - 1
     )
-    result.transcript_covers_prefix = True
     logger.info(
         "%s Context built from %s: %d messages (transcript watermark=%d, "
         "will inject as <conversation_history>)",
@@ -5099,12 +5050,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     resume_file: str | None = None
     transcript_builder = TranscriptBuilder()
     sdk_cwd = ""
-    # True when transcript_builder represents a full prefix of session history.
-    # First turn (<=1 prior message) is fully covered even without a download.
-    # Set to True when load_previous succeeds; stays False when download fails
-    # on a session with prior messages, preventing a partial upload that would
-    # mislead _build_query_message into skipping gap reconstruction next turn.
-    transcript_covers_prefix = True
 
     # Acquire stream lock to prevent concurrent streams to the same session
     lock = AsyncClusterLock(
@@ -5135,7 +5080,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # ``propagate_attributes`` alone doesn't create a span, so without this
     # wrapper ``get_current_trace_id()`` returns None at the finally block.
     _lf_span: Any = None
-    skip_transcript_upload = False
     has_history = len(session.messages) > 1
     transcript_content: str = ""
     state: _RetryState | None = None
@@ -5340,7 +5284,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         )
 
         transcript_content = _restore.transcript_content
-        transcript_covers_prefix = _restore.transcript_covers_prefix
         use_resume = _restore.use_resume
         resume_file = _restore.resume_file
         transcript_msg_count = _restore.transcript_msg_count
@@ -5898,10 +5841,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # graph via ``metadata.builder_graph_id``.  Runs on EVERY user turn
         # (including resumes) so the LLM always sees the live graph snapshot
         # — if the user edits the graph between turns, the next turn carries
-        # the updated nodes/links.  The block also carries the full
-        # agent-building guide, replacing the per-turn
-        # ``get_agent_building_guide`` round-trip.  Not persisted to the
-        # transcript: the snapshot is stale-by-definition after the turn ends.
+        # the updated nodes/links; the agent-building guide rides in the
+        # system prompt.  Not persisted to the transcript: the snapshot is
+        # stale-by-definition after the turn ends.
         query_message = await _maybe_prepend_builder_context(
             session, user_id, is_user_message, query_message
         )
@@ -5922,17 +5864,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         )
 
         # When running without --resume and no prior transcript in storage,
-        # seed the transcript builder from compressed DB messages so that
-        # upload_transcript saves a compact version for future turns.
-        if not use_resume and not transcript_content and not skip_transcript_upload:
-            (
-                transcript_content,
-                transcript_covers_prefix,
-                transcript_msg_count,
-            ) = await _seed_transcript(
+        # seed the transcript builder from compressed DB messages, so it holds
+        # the conversation so far and a first retry has a transcript to compact.
+        if not use_resume and not transcript_content:
+            transcript_content, transcript_msg_count = await _seed_transcript(
                 session,
                 transcript_builder,
-                transcript_covers_prefix,
                 transcript_msg_count,
                 log_prefix,
                 pre_compaction_msg_count,
@@ -5940,8 +5877,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     sdk_model, codex_route=is_codex_transport, codex_engine=codex_engine
                 ),
             )
-
-        tried_compaction = False
 
         # Build the per-request context carrier (shared across attempts).
         # Scalar fields are immutable; session/compaction/lock are shared
@@ -5983,7 +5918,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             query_message=query_message,
             compaction_stats=compaction_stats,
             use_resume=use_resume,
-            resume_file=resume_file,
             transcript_msg_count=transcript_msg_count,
             adapter=adapter,
             transcript_builder=transcript_builder,
@@ -6047,9 +5981,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
                 ctx = await _reduce_context(
                     transcript_content,
-                    tried_compaction,
-                    session_id,
-                    sdk_cwd,
                     log_prefix,
                     attempt=attempt,
                     runtime_model=sdk_model,
@@ -6057,39 +5988,31 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     codex_engine=codex_engine,
                 )
                 state.transcript_builder = ctx.builder
-                state.use_resume = ctx.use_resume
-                state.resume_file = ctx.resume_file
-                tried_compaction = ctx.tried_compaction
+                state.use_resume = False
                 state.transcript_msg_count = 0
                 state.target_tokens = ctx.target_tokens
-                if ctx.transcript_lost:
-                    skip_transcript_upload = True
 
                 # Rebuild SDK options and query for the reduced context. The
                 # options start from the last launch's, so the retry sends the
                 # prompt that launch sent: after a building-mode restart, the
                 # one with the guide (``guide_in_system_prompt`` stays True).
                 sdk_options_retry = copy(state.options)
-                if ctx.use_resume and ctx.resume_file:
-                    sdk_options_retry.resume = ctx.resume_file
-                    sdk_options_retry.session_id = None
-                else:
-                    # No --resume on this retry. Whether we entered with
-                    # ``session_id`` (T1, mode-switch) or with ``--resume`` (T2+),
-                    # we want the recovery turn's CLI write to land on the
-                    # predictable ``cli_session_path(.., session_id)`` so the
-                    # post-turn ``upload_transcript`` actually picks up the
-                    # rescued (compacted) content.  Without this, a T2+ retry
-                    # would drop session_id to dodge "Session ID already in use",
-                    # write to a random path, and the upload would silently grab
-                    # the stale pre-failure file — leaving GCS bloated and
-                    # guaranteeing the next turn re-trips prompt-too-long.
-                    if sdk_cwd:
-                        delete_stale_cli_session_file(sdk_cwd, session_id, log_prefix)
-                    sdk_options_retry.resume = None
-                    sdk_options_retry.session_id = session_id
-                    # The new CLI total starts at zero; retain the turn's spend.
-                    state.usage.cli_session_total_usd = None
+                # No --resume on a context retry. Whether we entered with
+                # ``session_id`` (T1, mode-switch) or with ``--resume`` (T2+),
+                # we want the recovery turn's CLI write to land on the
+                # predictable ``cli_session_path(.., session_id)`` so the
+                # post-turn ``upload_transcript`` actually picks up the
+                # rescued (compacted) content.  Without this, a T2+ retry
+                # would drop session_id to dodge "Session ID already in use",
+                # write to a random path, and the upload would silently grab
+                # the stale pre-failure file — leaving GCS bloated and
+                # guaranteeing the next turn re-trips prompt-too-long.
+                if sdk_cwd:
+                    delete_stale_cli_session_file(sdk_cwd, session_id, log_prefix)
+                sdk_options_retry.resume = None
+                sdk_options_retry.session_id = session_id
+                # The new CLI total starts at zero; retain the turn's spend.
+                state.usage.cli_session_total_usd = None
                 state.options = sdk_options_retry
                 # Retry intentionally omits prior_messages (transcript+gap context) and
                 # falls back to full session.messages[:-1] from DB — the authoritative
@@ -6097,13 +6020,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # on retry the extra overhead of full-DB context is acceptable.
                 # Keep the ``budget_status +`` prefix through any reflow of this
                 # call: dropping it silently un-ships the retry path's budget line.
-                # A resumed turn whose retry drops --resume needs the first-turn
-                # context just as a turn that never resumed does.
-                if (
-                    has_history
-                    and not state.use_resume
-                    and resume_fallback_prefix is None
-                ):
+                # A resumed turn's retry drops --resume, so it needs the
+                # first-turn context just as a turn that never resumed does.
+                if has_history and resume_fallback_prefix is None:
                     resume_fallback_prefix = await _rebuild_first_turn_prefix(
                         session,
                         user_id,
@@ -6143,7 +6062,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # warm_ctx is already baked into current_message via
                 # inject_user_context — no separate injection needed.
                 # Re-inject per-turn builder context so retries carry the
-                # same live graph snapshot + guide as the initial attempt.
+                # same live graph snapshot as the initial attempt.
                 state.query_message = await _maybe_prepend_builder_context(
                     session, user_id, is_user_message, state.query_message
                 )
@@ -6287,10 +6206,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     exc.code or "transient",
                     events_yielded,
                 )
-                # transcript_builder still contains entries from the aborted
-                # attempt that no longer match session.messages.  Skip upload
-                # so a future --resume doesn't replay rolled-back content.
-                skip_transcript_upload = True
                 interrupted.handled_error = _HandledErrorInfo(
                     error_msg=exc.error_msg or FRIENDLY_TRANSIENT_MSG,
                     code=exc.code or "transient_api_error",
@@ -6337,7 +6252,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         log_prefix,
                         events_yielded,
                     )
-                    skip_transcript_upload = True
                     ended_with_stream_error = True
                     break
                 # Transient API errors (ECONNRESET, 429, 5xx) — retry
@@ -6364,22 +6278,19 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     # Mirrors the _HandledStreamError exhausted-retry path
                     # at line ~2310.
                     transient_exhausted = True
-                    skip_transcript_upload = True
                     ended_with_stream_error = True
                     break
 
                 if not is_context_error:
                     # Non-context, non-transient errors (auth, fatal)
                     # should not trigger compaction — surface immediately.
-                    skip_transcript_upload = True
                     ended_with_stream_error = True
                     break
                 attempt += 1  # advance to next context-level attempt
                 continue
         else:
             # while condition became False — all attempts exhausted without
-            # break.  skip_transcript_upload is already set by _reduce_context
-            # when the transcript was dropped (transcript_lost=True).
+            # break.
             ended_with_stream_error = True
             attempts_exhausted = True
             logger.error(
@@ -6746,9 +6657,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # Reconcile disabled, OpenRouter inactive, or subscription
                 # path (no gen-IDs).  Record the SDK CLI's
                 # ``total_cost_usd`` synchronously: accurate for Anthropic
-                # (same rate card as billing); for non-Anthropic it's the
-                # rate-card estimate that ``_override_cost_for_non_anthropic``
-                # caps (still 1.5-2x off vs real OpenRouter bill, but much
+                # (same rate card as billing); for a Moonshot model it's the
+                # rate-card estimate ``moonshot.override_cost_usd`` computes
+                # (still 1.5-2x off vs real OpenRouter bill, but much
                 # closer than the ~5x Sonnet-rate fallback).
                 await persist_and_record_usage(
                     session=session,
@@ -6883,23 +6794,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # read_cli_session_from_disk returns None when the file is absent, so
             # this is always safe.
             #
-            # Intentionally NOT gated on skip_transcript_upload: that flag is set
-            # when our custom JSONL transcript is dropped (transcript_lost=True on
-            # reduced-context retries) but the CLI's native session file is written
-            # independently.  Blocking CLI upload on transcript_lost would prevent
-            # T1 prompt-too-long retries from uploading their valid session file,
-            # breaking --resume on the next pod.  The ended_with_stream_error gate
-            # above already covers actual turn failures.
             # ``upload_skip is None`` implies both; spelled out for the type
             # checker.
             if upload_skip is None and session is not None and state is not None:
                 logger.info(
-                    "%s Attempting CLI session upload"
-                    " (use_resume=%s, has_history=%s, skip_transcript=%s)",
+                    "%s Attempting CLI session upload (use_resume=%s, has_history=%s)",
                     log_prefix,
                     state.use_resume,
                     has_history,
-                    skip_transcript_upload,
                 )
                 try:
                     # Read the CLI's native session file from disk (written by the CLI
@@ -6911,21 +6813,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         _cli_content = _strip_synthetic_reprompt_from_cli_jsonl(
                             _cli_content
                         )
-                        # Watermark = number of DB messages this transcript covers.
-                        # len(session.messages) is accurate: the CLI session file
-                        # was just written after the turn completed, so it covers
-                        # all messages through this turn.  Any gap from a prior
-                        # missed upload was already detected by detect_gap and
-                        # injected as context, so the model has the full history.
-                        #
-                        # Previously this used _final_tmsg_count + 2, which
-                        # under-counted for tool-use turns (delta = 2 + 2*N_tool_calls),
-                        # causing persistent spurious gap-fills on every subsequent turn.
-                        # That concern was addressed by the inflated-watermark fix
-                        # (using the GCS watermark as the anchor for gap detection),
-                        # which makes len(session.messages) safe to use here.
-                        #
-                        # Watermark = next uncovered DB sequence.
+                        # Watermark = next uncovered DB sequence: the CLI wrote
+                        # the session file after the turn, so it covers every
+                        # row through this turn.
                         _jsonl_covered = _transcript_watermark_after_turn(
                             session.messages
                         )

@@ -1,7 +1,7 @@
 """Unit tests for extracted service helpers.
 
-Covers ``_is_prompt_too_long``, ``_reduce_context``, ``_iter_sdk_messages``,
-``ReducedContext``, and the ``is_parallel_continuation`` logic.
+Covers ``_is_prompt_too_long``, ``_reduce_context``, ``_iter_sdk_messages``
+and ``ReducedContext``.
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 
 from backend.copilot import config as cfg_mod
 from backend.copilot.config import ChatConfig
@@ -39,7 +38,6 @@ from .service import (
     _context_limit_without_compaction,
     _expect_pre_query_compaction,
     _is_prompt_too_long,
-    _is_tool_only_message,
     _iter_sdk_messages,
     _normalize_model_name,
     _reduce_context,
@@ -136,9 +134,6 @@ class TestIsPromptTooLong:
 class TestReduceContext:
     @pytest.mark.asyncio
     async def test_first_retry_compaction_success(self) -> None:
-        # After compaction the retry runs WITHOUT --resume because we cannot
-        # inject the compacted content into the CLI's native session file format.
-        # The compacted builder state is still set for future upload_transcript.
         transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
         compacted = _build_transcript([("user", "hi"), ("assistant", "[summary]")])
 
@@ -153,15 +148,10 @@ class TestReduceContext:
                 return_value=True,
             ),
         ):
-            ctx = await _reduce_context(
-                transcript, False, "sess-123", "/tmp/cwd", "[test]"
-            )
+            ctx = await _reduce_context(transcript, "[test]")
 
         assert isinstance(ctx, ReducedContext)
-        assert ctx.use_resume is False
-        assert ctx.resume_file is None
         assert ctx.transcript_lost is False
-        assert ctx.tried_compaction is True
 
     @pytest.mark.asyncio
     async def test_compaction_success_keeps_the_pinned_budget(self) -> None:
@@ -180,9 +170,7 @@ class TestReduceContext:
                 return_value=True,
             ),
         ):
-            ctx = await _reduce_context(
-                transcript, False, "sess-123", "/tmp/cwd", "[test]", runtime_model=model
-            )
+            ctx = await _reduce_context(transcript, "[test]", runtime_model=model)
 
         assert ctx.transcript_lost is False
         assert ctx.target_tokens == _compaction_target_tokens(model)
@@ -197,30 +185,25 @@ class TestReduceContext:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            ctx = await _reduce_context(
-                transcript, False, "sess-123", "/tmp/cwd", "[test]"
-            )
+            ctx = await _reduce_context(transcript, "[test]")
 
-        assert ctx.use_resume is False
-        assert ctx.resume_file is None
         assert ctx.transcript_lost is True
-        assert ctx.tried_compaction is True
 
     @pytest.mark.asyncio
-    async def test_already_tried_compaction_skips(self) -> None:
+    async def test_a_later_retry_skips_compaction(self) -> None:
         transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
+        compact = AsyncMock()
 
-        ctx = await _reduce_context(transcript, True, "sess-123", "/tmp/cwd", "[test]")
+        with patch("backend.copilot.sdk.service.compact_transcript", new=compact):
+            ctx = await _reduce_context(transcript, "[test]", attempt=2)
 
-        assert ctx.use_resume is False
+        compact.assert_not_awaited()
         assert ctx.transcript_lost is True
-        assert ctx.tried_compaction is True
 
     @pytest.mark.asyncio
     async def test_empty_transcript_drops(self) -> None:
-        ctx = await _reduce_context("", False, "sess-123", "/tmp/cwd", "[test]")
+        ctx = await _reduce_context("", "[test]")
 
-        assert ctx.use_resume is False
         assert ctx.transcript_lost is True
 
     @pytest.mark.asyncio
@@ -232,9 +215,7 @@ class TestReduceContext:
             new_callable=AsyncMock,
             return_value=transcript,  # same content
         ):
-            ctx = await _reduce_context(
-                transcript, False, "sess-123", "/tmp/cwd", "[test]"
-            )
+            ctx = await _reduce_context(transcript, "[test]")
 
         assert ctx.transcript_lost is True
 
@@ -255,27 +236,25 @@ class TestReduceContext:
                 return_value=False,
             ),
         ):
-            ctx = await _reduce_context(
-                transcript, False, "sess-123", "/tmp/cwd", "[test]"
-            )
+            ctx = await _reduce_context(transcript, "[test]")
 
         assert ctx.transcript_lost is True
 
     @pytest.mark.asyncio
     async def test_drop_returns_target_tokens_attempt_1(self) -> None:
-        ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=1)
+        ctx = await _reduce_context("", "[t]", attempt=1)
         assert ctx.transcript_lost is True
         assert ctx.target_tokens == _retry_target_tokens(None)[0]
 
     @pytest.mark.asyncio
     async def test_drop_returns_target_tokens_attempt_2(self) -> None:
-        ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=2)
+        ctx = await _reduce_context("", "[t]", attempt=2)
         assert ctx.transcript_lost is True
         assert ctx.target_tokens == _retry_target_tokens(None)[1]
 
     @pytest.mark.asyncio
     async def test_drop_clamps_attempt_beyond_limits(self) -> None:
-        ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=99)
+        ctx = await _reduce_context("", "[t]", attempt=99)
         assert ctx.transcript_lost is True
         assert ctx.target_tokens == _retry_target_tokens(None)[-1]
 
@@ -394,58 +373,6 @@ class TestIterSdkMessages:
         first = await gen.__anext__()
         assert first == "first"
         await gen.aclose()  # should cancel pending task cleanly
-
-
-# ---------------------------------------------------------------------------
-# is_parallel_continuation logic
-# ---------------------------------------------------------------------------
-
-
-class TestIsParallelContinuation:
-    """Unit tests for the is_parallel_continuation expression in the streaming loop.
-
-    Verifies the vacuous-truth guard (empty content must return False) and the
-    boundary cases for mixed TextBlock+ToolUseBlock messages.
-    """
-
-    def _make_tool_block(self) -> MagicMock:
-        block = MagicMock(spec=ToolUseBlock)
-        return block
-
-    def test_all_tool_use_blocks_is_parallel(self):
-        """AssistantMessage with only ToolUseBlocks is a parallel continuation."""
-        msg = MagicMock(spec=AssistantMessage)
-        msg.content = [self._make_tool_block(), self._make_tool_block()]
-        assert _is_tool_only_message(msg) is True
-
-    def test_empty_content_is_not_parallel(self):
-        """AssistantMessage with empty content must NOT be treated as parallel.
-
-        Without the bool(sdk_msg.content) guard, all() on an empty iterable
-        returns True via vacuous truth — this test ensures the guard is present.
-        """
-        msg = MagicMock(spec=AssistantMessage)
-        msg.content = []
-        assert _is_tool_only_message(msg) is False
-
-    def test_mixed_text_and_tool_blocks_not_parallel(self):
-        """AssistantMessage with text + tool blocks is NOT a parallel continuation."""
-        msg = MagicMock(spec=AssistantMessage)
-        text_block = MagicMock(spec=TextBlock)
-        msg.content = [text_block, self._make_tool_block()]
-        assert _is_tool_only_message(msg) is False
-
-    def test_non_assistant_message_not_parallel(self):
-        """Non-AssistantMessage types are never parallel continuations."""
-        assert _is_tool_only_message("not a message") is False
-        assert _is_tool_only_message(None) is False
-        assert _is_tool_only_message(42) is False
-
-    def test_single_tool_block_is_parallel(self):
-        """Single ToolUseBlock AssistantMessage is a parallel continuation."""
-        msg = MagicMock(spec=AssistantMessage)
-        msg.content = [self._make_tool_block()]
-        assert _is_tool_only_message(msg) is True
 
 
 # ---------------------------------------------------------------------------
@@ -860,26 +787,17 @@ def _build_sdk_options(
     return kwargs
 
 
-def _build_retry_sdk_options(
-    initial_kwargs: dict,
-    ctx_use_resume: bool,
-    ctx_resume_file: str | None,
-    session_id: str,
-) -> dict:
+def _build_retry_sdk_options(initial_kwargs: dict, session_id: str) -> dict:
     """Mirror the retry branch in stream_chat_completion_sdk.
 
     Production-side companion: ``delete_stale_cli_session_file`` is invoked
-    on every non-resume retry path so the CLI doesn't trip "Session ID
-    already in use" when we re-attach ``session_id``.  This helper only
-    mirrors the kwarg shape (file-system side effect is tested separately).
+    on every retry so the CLI doesn't trip "Session ID already in use"
+    when we re-attach ``session_id``.  This helper only mirrors the kwarg
+    shape (file-system side effect is tested separately).
     """
     retry: dict = dict(initial_kwargs)
-    if ctx_use_resume and ctx_resume_file:
-        retry["resume"] = ctx_resume_file
-        retry.pop("session_id", None)
-    else:
-        retry.pop("resume", None)
-        retry["session_id"] = session_id
+    retry.pop("resume", None)
+    retry["session_id"] = session_id
     return retry
 
 
@@ -947,7 +865,7 @@ class TestSdkSessionIdSelection:
     def test_retry_keeps_session_id_for_t1(self):
         """Retry for T1 (or mode-switch T1) preserves session_id."""
         initial = _build_sdk_options(False, None, self.SESSION_ID)
-        retry = _build_retry_sdk_options(initial, False, None, self.SESSION_ID)
+        retry = _build_retry_sdk_options(initial, self.SESSION_ID)
         assert retry.get("session_id") == self.SESSION_ID
         assert "resume" not in retry
 
@@ -963,19 +881,10 @@ class TestSdkSessionIdSelection:
         bloated and every subsequent turn re-tripped prompt-too-long.
         """
         initial = _build_sdk_options(True, self.SESSION_ID, self.SESSION_ID)
-        # T2+ retry where context reduction dropped --resume
-        retry = _build_retry_sdk_options(initial, False, None, self.SESSION_ID)
+        # T2+ retry: context reduction drops --resume
+        retry = _build_retry_sdk_options(initial, self.SESSION_ID)
         assert retry.get("session_id") == self.SESSION_ID
         assert "resume" not in retry
-
-    def test_retry_t2_with_resume_sets_resume(self):
-        """Retry that still uses --resume keeps --resume and drops session_id."""
-        initial = _build_sdk_options(True, self.SESSION_ID, self.SESSION_ID)
-        retry = _build_retry_sdk_options(
-            initial, True, self.SESSION_ID, self.SESSION_ID
-        )
-        assert retry.get("resume") == self.SESSION_ID
-        assert "session_id" not in retry
 
 
 # ---------------------------------------------------------------------------
@@ -1494,9 +1403,6 @@ class TestCompactionTargetTokens:
         ):
             await _reduce_context(
                 transcript,
-                False,
-                "sess",
-                "/tmp",
                 "[t]",
                 runtime_model="moonshotai/kimi-k2.6",
             )
@@ -1524,9 +1430,6 @@ class TestCompactionTargetTokens:
         ):
             await _reduce_context(
                 transcript,
-                False,
-                "sess",
-                "/tmp",
                 "[t]",
                 runtime_model="gpt-6-astra",
                 codex_route=True,
@@ -2594,7 +2497,7 @@ class TestWillCompactThresholdMatchesCompressContext:
 
 def _summarized() -> ReducedContext:
     """``_reduce_context``'s success exit: the transcript came back compacted."""
-    return ReducedContext(TranscriptBuilder(), False, None, False, True)
+    return ReducedContext(TranscriptBuilder(), False)
 
 
 def _dropped() -> ReducedContext:
@@ -2603,7 +2506,7 @@ def _dropped() -> ReducedContext:
     Reached both when ``compact_transcript`` fails on the first retry and on
     every later retry.
     """
-    return ReducedContext(TranscriptBuilder(), False, None, True, True, 50_000)
+    return ReducedContext(TranscriptBuilder(), True, 50_000)
 
 
 class TestRetryReducedContext:
@@ -2653,9 +2556,7 @@ class TestRetryReducedContext:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            ctx = await _reduce_context(
-                transcript, False, "sess-123", "/tmp/cwd", "[test]"
-            )
+            ctx = await _reduce_context(transcript, "[test]")
 
         assert ctx.transcript_lost is True
         assert _retry_reduced_context(reduced=ctx, compaction_stats=None) is False
@@ -2747,10 +2648,9 @@ class TestSeedTranscript:
             "backend.copilot.sdk.service._compress_messages", _passthrough
         )
 
-        content, covers, count = await _seed_transcript(
+        content, count = await _seed_transcript(
             session,
             TranscriptBuilder(),
-            False,
             0,
             "[test]",
             ceiling,
@@ -2762,7 +2662,6 @@ class TestSeedTranscript:
             ("assistant", "a1"),
         ]
         assert "current turn" not in content
-        assert covers is True
         assert count == 2
 
 

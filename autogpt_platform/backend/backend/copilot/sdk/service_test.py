@@ -37,7 +37,6 @@ from .service import (
     _record_result_usage,
     _redact_cli_stderr,
     _resolve_dynamic_max_budget_usd,
-    _resolve_sdk_model,
     _resolve_sdk_model_for_request,
     _safe_close_sdk_client,
     _strip_synthetic_reprompt_from_cli_jsonl,
@@ -497,83 +496,16 @@ class TestNormalizeModelName:
         assert _normalize_model_name("claude-sonnet-4-6") == "claude-sonnet-4-6"
 
 
-class TestResolveSdkModel:
-    """Tests for _resolve_sdk_model — model ID resolution for the SDK CLI."""
+class TestResolveSdkModelForRequestLdFallback:
+    """``_resolve_sdk_model_for_request`` must fail soft when the LD value
+    can't be normalised for the active routing mode — flagged as MAJOR by
+    CodeRabbit + HIGH by Sentry when it was a hard ValueError."""
 
-    def test_openrouter_active_keeps_full_slug(self, monkeypatch, _clean_config_env):
-        """When OpenRouter is fully active, the canonical vendor/model slug
-        is preserved so OpenRouter can route to the correct provider."""
-        from backend.copilot import config as cfg_mod
-
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-opus-4.6",
-            claude_agent_model=None,
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=False,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _resolve_sdk_model() == "anthropic/claude-opus-4.6"
-
-    def test_openrouter_active_kimi_slug(self, monkeypatch, _clean_config_env):
-        """Non-Anthropic models (Kimi via Moonshot) require the prefix to
-        survive OpenRouter routing — strip would leave an unroutable slug."""
-        from backend.copilot import config as cfg_mod
-
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="moonshotai/kimi-k2.6",
-            claude_agent_model=None,
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=False,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _resolve_sdk_model() == "moonshotai/kimi-k2.6"
-
-    def test_openrouter_disabled_normalizes_to_hyphens(
+    @pytest.mark.asyncio
+    async def test_explicit_claude_agent_model_skips_ld(
         self, monkeypatch, _clean_config_env
     ):
-        """When OpenRouter is disabled, dots are replaced with hyphens."""
-        from backend.copilot import config as cfg_mod
-
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-opus-4.6",
-            claude_agent_model=None,
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            aux_api_key="or-aux-key",
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _resolve_sdk_model() == "claude-opus-4-6"
-
-    def test_openrouter_enabled_but_missing_key_normalizes(
-        self, monkeypatch, _clean_config_env
-    ):
-        """When OpenRouter is enabled but api_key is missing, falls back to
-        direct Anthropic and normalizes dots to hyphens."""
-        from backend.copilot import config as cfg_mod
-
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-opus-4.6",
-            claude_agent_model=None,
-            use_openrouter=True,
-            api_key=None,
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=False,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _resolve_sdk_model() == "claude-opus-4-6"
-
-    def test_explicit_claude_agent_model_takes_precedence(
-        self, monkeypatch, _clean_config_env
-    ):
-        """When claude_agent_model is explicitly set, it is returned as-is."""
-        from backend.copilot import config as cfg_mod
-
+        """``claude_agent_model`` is returned as-is, before any LD lookup."""
         cfg = cfg_mod.ChatConfig(
             thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model="claude-sonnet-4-5-20250514",
@@ -583,50 +515,15 @@ class TestResolveSdkModel:
             use_claude_code_subscription=False,
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _resolve_sdk_model() == "claude-sonnet-4-5-20250514"
-
-    def test_subscription_mode_returns_none(self, monkeypatch, _clean_config_env):
-        """When using Claude Code subscription, returns None (CLI picks model)."""
-        from backend.copilot import config as cfg_mod
-
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-opus-4.6",
-            claude_agent_model=None,
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=True,
-            # ``_validate_aux_client_for_direct_main`` now also runs in
-            # subscription mode (see PR #13034 review).  Provide an
-            # Anthropic title model + direct key so the aux 401-trap
-            # validator passes — orthogonal to what this test checks.
-            direct_anthropic_api_key="sk-ant-test",
-            title_model="anthropic/claude-haiku-4-5",
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _resolve_sdk_model() is None
-
-    def test_model_without_provider_prefix(self, monkeypatch, _clean_config_env):
-        """When model has no provider prefix, it still normalizes correctly."""
-        from backend.copilot import config as cfg_mod
-
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="claude-opus-4.6",
-            claude_agent_model=None,
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            aux_api_key="or-aux-key",
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _resolve_sdk_model() == "claude-opus-4-6"
-
-
-class TestResolveSdkModelForRequestLdFallback:
-    """``_resolve_sdk_model_for_request`` must fail soft when the LD value
-    can't be normalised for the active routing mode — flagged as MAJOR by
-    CodeRabbit + HIGH by Sentry when it was a hard ValueError."""
+        ld = AsyncMock()
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user", new=ld
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-abc", user_id="user-1"
+            )
+        assert resolved == ("claude-sonnet-4-5-20250514", "env")
+        ld.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_direct_anthropic_mode_rejects_kimi_ld_value_and_falls_back(
@@ -691,7 +588,7 @@ class TestResolveSdkModelForRequestLdFallback:
     ):
         """An LD-rejected ADVANCED slug must fall back to the advanced
         config default (Opus) — not the standard default (Sonnet).
-        Using ``_resolve_sdk_model()`` as the fallback silently
+        Falling back to the standard default silently
         downgraded the user's chosen tier.  Flagged MAJOR by CodeRabbit
         + HIGH by Sentry on the first fail-soft commit."""
         cfg = cfg_mod.ChatConfig(
@@ -1224,7 +1121,6 @@ class TestRetryStateObservedModel:
             query_message="",
             compaction_stats=None,
             use_resume=False,
-            resume_file=None,
             transcript_msg_count=0,
             adapter=MagicMock(),
             transcript_builder=MagicMock(),
@@ -1649,7 +1545,6 @@ class TestConsumeSdkUntilDone:
             query_message="hello",
             compaction_stats=None,
             use_resume=False,
-            resume_file=None,
             transcript_msg_count=0,
             adapter=adapter,
             transcript_builder=transcript_builder,
@@ -2203,7 +2098,6 @@ class TestStreamEndedWithoutResultMessage:
             query_message="hello",
             compaction_stats=None,
             use_resume=False,
-            resume_file=None,
             transcript_msg_count=0,
             adapter=adapter,
             transcript_builder=transcript_builder,

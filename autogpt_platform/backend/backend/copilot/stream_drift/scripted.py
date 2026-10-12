@@ -112,7 +112,6 @@ async def sdk_turn(
         query_message="",
         compaction_stats=None,
         use_resume=False,
-        resume_file=None,
         transcript_msg_count=0,
         adapter=SDKResponseAdapter(
             message_id=message_id, session_id=session.session_id
@@ -189,7 +188,6 @@ async def sdk_service_turn(
         "get_copilot_tool_names": MagicMock(return_value=[]),
         "get_sdk_disallowed_tools": MagicMock(return_value=[]),
         "build_sdk_env": MagicMock(return_value={}),
-        "_resolve_sdk_model": MagicMock(return_value=None),
         "set_execution_context": MagicMock(),
         "get_user_tier": AsyncMock(return_value=None),
         "_resolve_dynamic_max_budget_usd": AsyncMock(return_value=100.0),

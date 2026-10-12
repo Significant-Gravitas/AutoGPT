@@ -241,7 +241,6 @@ def _retry_state() -> _RetryState:
         query_message="",
         compaction_stats=None,
         use_resume=False,
-        resume_file=None,
         transcript_msg_count=0,
         adapter=MagicMock(),
         transcript_builder=MagicMock(),

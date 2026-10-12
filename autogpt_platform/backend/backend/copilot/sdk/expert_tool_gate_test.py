@@ -135,7 +135,6 @@ def _make_patches(*, hire_experts_enabled: bool):
         (f"{_SVC}.get_copilot_tool_names", dict(return_value=[])),
         (f"{_SVC}.get_sdk_disallowed_tools", dict(return_value=[])),
         (f"{_SVC}.build_sdk_env", dict(return_value={})),
-        (f"{_SVC}._resolve_sdk_model", dict(return_value=None)),
         (f"{_SVC}.set_execution_context", {}),
         (f"{_SVC}.is_feature_enabled", dict(new=is_feature_enabled_mock)),
         (
