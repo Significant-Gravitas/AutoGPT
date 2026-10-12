@@ -260,6 +260,7 @@ from .tool_adapter import (
     reset_pending_tool_outputs,
     reset_stash_event,
     reset_tool_failure_counters,
+    sdk_declared_tool_name,
     set_execution_context,
     wait_for_stash,
 )
@@ -3372,9 +3373,9 @@ def _session_messages_to_transcript(messages: list[ChatMessage]) -> str:
 
     This gives the model the same fidelity as an on-disk session JSONL file —
     preserving tool call names, IDs, inputs, and *complete* (un-truncated)
-    tool results — rather than the lossy plain-text injection produced by
-    :func:`_format_conversation_context` (which caps tool results at 500 chars
-    and discards structural linkage).
+    tool results — rather than the plain-text injection produced by
+    :func:`_format_conversation_context` (which renders tool calls and results
+    as text and discards structural linkage).
 
     Args:
         messages: Prior session messages, typically ``session.messages[:-1]``
@@ -3456,9 +3457,12 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
         elif msg.role == "assistant":
             if msg.content:
                 lines.append(f"You responded: {msg.content}")
+            # A tool is written under the name the SDK declares it by: the
+            # model copies a bare ``run_capability`` from text into a call
+            # the CLI refuses as undeclared.
             for call in msg.tool_calls or []:
                 function = call.get("function", {}) if isinstance(call, dict) else {}
-                name = function.get("name") or "tool"
+                name = sdk_declared_tool_name(function.get("name") or "tool")
                 lines.append(f"You called {name}: {function.get('arguments') or ''}")
         elif msg.role == "tool":
             # Rendered as the compressor left it.  Cutting every tool result

@@ -62,6 +62,44 @@ def test_format_assistant_tool_calls():
     assert 'You called search: {"q": "test"}' in result
 
 
+def test_format_names_autopilot_tools_as_the_sdk_declares_them():
+    """History must not show the bare call notation the model copies into a
+    call the CLI refuses: AutoPilot's own tools carry their declared
+    ``mcp__copilot__`` name, CLI built-ins and other names stay as stored."""
+    calls = [
+        ("run_capability", '{"id": "tool:read_skill", "input": {"name": "x"}}'),
+        ("glob", '{"pattern": "*.md"}'),
+        ("TodoWrite", '{"todos": []}'),
+        ("search", '{"q": "test"}'),
+    ]
+    msgs = [
+        ChatMessage(
+            role="assistant",
+            content="",
+            tool_calls=[
+                {
+                    "id": f"tc{i}",
+                    "type": "function",
+                    "function": {"name": name, "arguments": arguments},
+                }
+                for i, (name, arguments) in enumerate(calls)
+            ],
+        )
+    ]
+
+    result = _format_conversation_context(msgs)
+
+    assert result is not None
+    assert (
+        'You called mcp__copilot__run_capability: {"id": "tool:read_skill", '
+        '"input": {"name": "x"}}' in result
+    )
+    assert 'You called mcp__copilot__glob: {"pattern": "*.md"}' in result
+    assert 'You called TodoWrite: {"todos": []}' in result
+    assert 'You called search: {"q": "test"}' in result
+    assert "You called run_capability" not in result
+
+
 def test_format_tool_result_is_rendered_as_the_compressor_left_it():
     """No 500-character cut here: the compressor already sized this content,
     and cutting it again made the compression budget a fiction."""

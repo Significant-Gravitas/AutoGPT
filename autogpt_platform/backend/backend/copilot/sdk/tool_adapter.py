@@ -1245,6 +1245,30 @@ COPILOT_TOOL_NAMES = [
     *_SDK_BUILTIN_TOOLS,
 ]
 
+# AutoPilot's own tools by the bare name chat history stores them under:
+# ``response_adapter`` strips ``MCP_TOOL_PREFIX`` from what the SDK declares.
+_SDK_MCP_TOOL_SHORT_NAMES: frozenset[str] = frozenset(
+    [
+        *(
+            name.removeprefix(MCP_TOOL_PREFIX)
+            for name in COPILOT_TOOL_NAMES
+            if name.startswith(MCP_TOOL_PREFIX)
+        ),
+        *E2B_FILE_TOOL_NAMES,
+    ]
+)
+
+
+def sdk_declared_tool_name(name: str) -> str:
+    """The name the SDK declares a tool under, from the name history stores.
+
+    ``mcp__copilot__<name>`` for AutoPilot's own tools; a CLI built-in or any
+    other name is declared as it is stored.
+    """
+    if name in _SDK_MCP_TOOL_SHORT_NAMES:
+        return f"{MCP_TOOL_PREFIX}{name}"
+    return name
+
 
 def get_copilot_tool_names(
     *,
