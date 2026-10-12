@@ -5,7 +5,7 @@ import { expect, test } from "./fixtures";
 
 const COUNTDOWN_TIMER_BLOCK_ID = "d67a9c52-5e4e-11e2-bcfd-0800200c9a71";
 // Long enough that the connection drops while the run is still going.
-const RUN_SECONDS = 10;
+const RUN_SECONDS = 20;
 
 test.describe("realtime updates journey", () => {
   test("a run's completion reaches the run view and the Activity menu after the live connection drops, without a reload", async ({
@@ -27,6 +27,10 @@ test.describe("realtime updates journey", () => {
     ).toBeVisible({ timeout: 30_000 });
     await expectActivity(page, agentName, /queued|running/i);
     const pageInstance = await markPageInstance(page);
+    // Still in flight right now, so the completion has to cross the drop.
+    await expect(
+      page.getByRole("img", { name: /^Task (queued|running)$/ }),
+    ).toBeVisible({ timeout: 1_000 });
 
     // The connection drops mid-run, and the first token fetches for the
     // reconnect fail too, as they do while a laptop's network comes back.

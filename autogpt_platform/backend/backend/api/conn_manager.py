@@ -69,9 +69,11 @@ _SUBSCRIBE_OPEN_TIMEOUT_S = 15.0
 # client can fill that gap, by reconnecting, resubscribing and refetching.
 WS_CLOSE_EVENT_STREAM_LOST = 1011
 WS_CLOSE_EVENT_STREAM_LOST_REASON = "Event stream interrupted"
-# Handshakes are refused with "try again later" when a socket's event stream
-# can't open, or too many are opening at once (e.g. everyone reconnecting
-# after a Redis outage), so clients back off instead of piling in.
+# Handshakes are refused when a socket's event stream can't open, or too many
+# are opening at once (e.g. everyone reconnecting after a Redis outage). Closing
+# before accept() fails the handshake (HTTP 403), so the client never gets an
+# open socket and keeps backing off; 1013 ("try again later") is the code the
+# refusal is logged and counted under here.
 WS_CLOSE_TRY_AGAIN_LATER = 1013
 _MAX_CONCURRENT_STREAM_OPENS = 64
 
