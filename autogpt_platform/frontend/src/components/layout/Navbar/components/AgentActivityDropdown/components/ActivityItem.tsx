@@ -186,7 +186,6 @@ export function ActivityItem({ execution }: Props) {
       <Link
         className="flex cursor-pointer items-center justify-between gap-2 rounded-xl px-2 py-3 transition-colors hover:bg-bgLightGrey"
         href={linkUrl}
-        role="button"
       >
         <div className="min-w-0 flex-1">{content}</div>
         <ActivityNavIndicator />
