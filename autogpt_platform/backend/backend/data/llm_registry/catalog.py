@@ -331,21 +331,20 @@ def _build_catalog() -> CatalogPayload:
                 supports_json_output=True,
                 supports_reasoning=True,
                 # Sticker price $2/$10 per Mtok, undercutting Sonnet 5's
-                # $3/$15 sticker. Cache read $0.20/1M, cache write (5m)
-                # $2.50/1M, (1h) $4.00/1M. Verified 2026-09-28 against
-                # Anthropic's sonnet-5-5 docs, the vendored rate card and
-                # OpenRouter's live listing — no intro-pricing end date is
-                # published, unlike Sonnet 5. Credits at the standard 1.5x
-                # margin.
+                # $3/$15 sticker. Cache read $0.10/1M (5% of input on Sonnet
+                # 5.5, not the usual 10%), cache write (5m) $2.50/1M, (1h)
+                # $4.00/1M, per Anthropic's sonnet-5-5 overview (checked
+                # 2026-10-12); no intro-pricing end date is published,
+                # unlike Sonnet 5. Credits at the standard 1.5x margin.
                 cost=CatalogModelCost(
                     run_credits=9,
                     input_credits_per_1m=300.0,
                     output_credits_per_1m=1500.0,
-                    cache_read_credits_per_1m=30.0,
+                    cache_read_credits_per_1m=15.0,
                     cache_creation_credits_per_1m=375.0,
                     provider_input_usd_per_1m=2.00,
                     provider_output_usd_per_1m=10.00,
-                    provider_cache_read_usd_per_1m=0.20,
+                    provider_cache_read_usd_per_1m=0.10,
                     provider_cache_creation_usd_per_1m=2.50,
                 ),
             ),

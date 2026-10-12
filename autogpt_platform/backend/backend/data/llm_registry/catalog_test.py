@@ -201,10 +201,11 @@ def test_claude_sonnet_5_5_bills_at_authored_rates():
     model, so a silent repricing here moves every standard chat."""
     s55 = LLMModel("claude-sonnet-5-5")
     assert MODEL_COST[s55] == 9
+    # Cache reads at 1.5x Anthropic's $0.10/1M (5% of input on Sonnet 5.5).
     assert TOKEN_COST[s55].model_dump() == {
         "input": 300.0,
         "output": 1500.0,
-        "cache_read": 30.0,
+        "cache_read": 15.0,
         "cache_creation": 375.0,
     }
     assert MODEL_METADATA[s55].max_output_tokens == 128000
