@@ -29,13 +29,12 @@ def _with_query_param(url: str, key: str, value: str) -> str:
 # Every database connection this session opens, the server fixture's service
 # processes included, carries this name, so no_leaked_db_transaction can tell
 # them from any other client of the same database. Set before anything imports
-# backend.data.db, which reads the URL once.
-if os.environ.get("DATABASE_URL"):
-    os.environ["DATABASE_URL"] = _with_query_param(
-        os.environ["DATABASE_URL"],
-        "application_name",
-        f"autogpt-tests-{uuid4().hex[:8]}",
-    )
+# backend.data.db, which reads the URL once; the default is that module's own.
+os.environ["DATABASE_URL"] = _with_query_param(
+    os.environ.get("DATABASE_URL", "postgresql://localhost:5432"),
+    "application_name",
+    f"autogpt-tests-{uuid4().hex[:8]}",
+)
 
 #  NOTE: You can run tests like with the --log-cli-level=INFO to see the logs
 # Set up logging
