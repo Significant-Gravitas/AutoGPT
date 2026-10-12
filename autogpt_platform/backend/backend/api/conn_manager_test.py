@@ -1,6 +1,6 @@
 import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import WebSocket
@@ -941,4 +941,53 @@ async def test_connect_socket_starts_notification_subscription(
         AsyncMock(return_value=True),
     ) as mock_start:
         await connection_manager.connect_socket(mock_websocket, user_id="user-1")
-    mock_start.assert_awaited_once_with(mock_websocket, user_id="user-1")
+    mock_start.assert_awaited_once_with(mock_websocket, user_id="user-1", accepted=ANY)
+
+
+@pytest.mark.asyncio
+async def test_a_notification_arriving_before_accept_waits_for_it(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    """The notification stream opens before the handshake is accepted; a
+    notification arriving while accept() is in flight is delivered after it,
+    not sent on a socket that is still connecting (and dropped)."""
+    captured: dict = {}
+    order: list[str] = []
+    finish_accept = asyncio.Event()
+
+    def _factory(full_channel: str) -> MagicMock:
+        sub = MagicMock()
+
+        async def _start(on_message, on_lost) -> None:
+            captured["on_message"] = on_message
+
+        sub.start = _start
+        sub.stop = AsyncMock()
+        return sub
+
+    async def _accept() -> None:
+        await finish_accept.wait()
+        order.append("accept")
+
+    async def _forward(websocket, user_id, data) -> None:
+        order.append("forward")
+
+    mock_websocket.accept = AsyncMock(side_effect=_accept)
+    with (
+        patch("backend.api.conn_manager._Subscription", side_effect=_factory),
+        patch.object(connection_manager, "_forward_notification", _forward),
+    ):
+        connect = asyncio.create_task(
+            connection_manager.connect_socket(mock_websocket, user_id="user-1")
+        )
+        while mock_websocket.accept.await_count == 0:
+            await asyncio.sleep(0)
+        # accept() is now in flight; a notification arrives.
+        delivered = asyncio.create_task(captured["on_message"](b"{}"))
+        for _ in range(10):
+            await asyncio.sleep(0)
+        finish_accept.set()
+        assert await connect
+        await asyncio.wait_for(delivered, timeout=1)
+
+    assert order == ["accept", "forward"]
