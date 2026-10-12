@@ -10,6 +10,7 @@ from contextvars import ContextVar
 
 from pydantic import BaseModel, ConfigDict
 
+from backend.copilot.trial_reads import shared_trial_read
 from backend.data import db_accessors
 
 
@@ -28,7 +29,9 @@ _trial_cost_context: ContextVar[TrialCostContext | None] = ContextVar(
 @asynccontextmanager
 async def trial_cost_context(user_id: str | None) -> AsyncIterator[None]:
     trial = (
-        await db_accessors.credit_db().get_subscription_trial(user_id)
+        await shared_trial_read(
+            user_id, lambda: db_accessors.credit_db().get_subscription_trial(user_id)
+        )
         if user_id is not None
         else None
     )

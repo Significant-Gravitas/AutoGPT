@@ -110,6 +110,16 @@ async def test_a_task_started_in_a_block_reads_afresh_once_it_ends():
 
 
 @pytest.mark.asyncio
+async def test_a_closed_block_reads_afresh():
+    read = AsyncMock(return_value=_trial())
+    with trial_reads_shared() as shared:
+        await shared_trial_read("u1", read)
+        shared.close()
+        await shared_trial_read("u1", read)
+    assert read.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_a_failed_read_fails_every_check_that_shares_it():
     read = AsyncMock(side_effect=ConnectionError("db down"))
     with trial_reads_shared():
