@@ -1495,7 +1495,8 @@ export function isUnexpectedRefusal(status: number) {
   return status >= 400 && status < 500 && !EXPECTED_4XX.has(status);
 }
 
-const EXPECTED_4XX = new Set([401, 404, 408, 409, 425, 429]);
+// 402: the account has no plan, a state the app expects and offers plans for.
+const EXPECTED_4XX = new Set([401, 402, 404, 408, 409, 425, 429]);
 
 /** A send the server refused; its status says whether a resend can help. */
 export class SendRefusedError extends Error {
