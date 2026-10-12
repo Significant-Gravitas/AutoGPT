@@ -33,15 +33,20 @@ Fields = dict[SubscriberField, str | None]
 
 
 def mailerlite_date(value: datetime | int | float | None) -> str:
-    """A Stripe timestamp or a datetime as a MailerLite date, in UTC. Only an
-    event without a timestamp of its own falls back to now."""
+    """A Stripe timestamp or a datetime as a MailerLite date, in UTC."""
+    return utc_moment(value).strftime("%Y-%m-%d")
+
+
+def utc_moment(value: datetime | int | float | None) -> datetime:
+    """A Stripe timestamp or a datetime, in UTC. Only an event without a
+    timestamp of its own falls back to now."""
     if value is None:
         moment = datetime.now(UTC)
     elif isinstance(value, datetime):
         moment = value if value.tzinfo else value.replace(tzinfo=UTC)
     else:
         moment = datetime.fromtimestamp(value, UTC)
-    return moment.astimezone(UTC).strftime("%Y-%m-%d")
+    return moment.astimezone(UTC)
 
 
 def signed(created_at: datetime) -> Fields:

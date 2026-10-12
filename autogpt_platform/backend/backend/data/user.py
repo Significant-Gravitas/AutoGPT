@@ -35,6 +35,7 @@ from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.profile import ensure_profile
 from backend.data.subscription_trial import get_subscription_trial
 from backend.notifications.audience_enrichment import points_at_excluded_country
+from backend.notifications.posthog_audience import set_account_properties
 from backend.notifications.queue import queue_audience_change
 from backend.notifications.subscriber_fields import audience_event
 from backend.util.cache import cached
@@ -129,9 +130,9 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         # new account: the personal org this call bootstraps does.
         was_created = row_created or org_created
         if was_created:
-            track_signup_completed(
-                user_id=user.id, signup_method=await _signup_method(user.id, user_data)
-            )
+            signup_method = await _signup_method(user.id, user_data)
+            track_signup_completed(user_id=user.id, signup_method=signup_method)
+            set_account_properties(user.id, user.email, signup_method)
             schedule_posthog_lifecycle_sync(user.id)
 
         return UserCreationResult(user=User.from_db(user), was_created=was_created)

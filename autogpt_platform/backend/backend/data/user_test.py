@@ -1139,6 +1139,7 @@ class TestGetOrCreateUserStatus:
             ) as posthog_sync,
             patch.object(user_module, "AuthAccount") as auth_account,
             patch.object(user_module, "track_signup_completed"),
+            patch.object(user_module, "set_account_properties"),
         ):
             auth_account.prisma.return_value.find_first = AsyncMock(return_value=None)
             yield ensure_org, posthog_sync
@@ -1175,6 +1176,7 @@ class TestGetOrCreateUserStatus:
                 "from_db",
                 return_value=_application_user("user-existing", "bob@example.com"),
             ),
+            patch.object(user_module, "set_account_properties") as person,
         ):
             mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
 
@@ -1184,6 +1186,7 @@ class TestGetOrCreateUserStatus:
 
         assert result.was_created is False
         mock_prisma.user.create.assert_not_called()
+        person.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_reports_created_for_a_row_the_auth_hook_inserted_bare(
@@ -1206,6 +1209,7 @@ class TestGetOrCreateUserStatus:
             ),
             patch.object(user_module, "AuthAccount") as auth_account,
             patch.object(user_module, "track_signup_completed") as track,
+            patch.object(user_module, "set_account_properties") as person,
         ):
             mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
             auth_account.prisma.return_value.find_first = AsyncMock(
@@ -1220,6 +1224,8 @@ class TestGetOrCreateUserStatus:
         mock_prisma.user.create.assert_not_called()
         posthog_sync.assert_called_once_with("user-hooked")
         track.assert_called_once_with(user_id="user-hooked", signup_method="email")
+        # The email type and sign-in method MailerLite segments on.
+        person.assert_called_once_with("user-hooked", "hook@example.com", "email")
 
     @pytest.mark.asyncio
     async def test_a_row_created_concurrently_is_read_back_not_an_error(self):

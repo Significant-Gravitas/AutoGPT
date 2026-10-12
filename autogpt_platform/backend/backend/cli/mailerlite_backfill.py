@@ -234,14 +234,14 @@ async def stripe_billing_countries(
     async for customer in stripe_list_items(page):
         country = (customer.get("address") or {}).get("country")
         _keep_country(countries, customer.id, country)
-    for session in sessions if sessions is not None else await _checkout_sessions():
+    for session in sessions if sessions is not None else await checkout_sessions():
         customer = session.get("customer")
         if isinstance(customer, str):
             _keep_country(countries, customer, billing_country(session))
     return countries
 
 
-async def _checkout_sessions() -> list[dict]:
+async def checkout_sessions() -> list[dict]:
     """Every Stripe Checkout Session."""
     import stripe
 
@@ -249,6 +249,18 @@ async def _checkout_sessions() -> list[dict]:
 
     page = await stripe_call(stripe.checkout.Session.list_async, limit=100)
     return [session async for session in stripe_list_items(page)]
+
+
+def first_opens(sessions: list[dict]) -> dict[str, int]:
+    """When each Stripe customer first opened checkout: its first Checkout
+    Session's creation, as a Unix timestamp, by customer ID."""
+    opens: dict[str, int] = {}
+    for session in sessions:
+        customer = session.get("customer")
+        if isinstance(customer, str):
+            created = int(session["created"])
+            opens[customer] = min(opens.get(customer, created), created)
+    return opens
 
 
 def _keep_country(
@@ -442,20 +454,15 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
 
     stripe.api_key = settings.secrets.stripe_api_key
     # Listed once, for the first opens and the billing countries alike.
-    sessions = await _checkout_sessions()
-    first_open: dict[str, int] = {}
-    for session in sessions:
-        customer = session.get("customer")
-        if isinstance(customer, str):
-            created = int(session["created"])
-            first_open[customer] = min(first_open.get(customer, created), created)
+    sessions = await checkout_sessions()
+    first_open = first_opens(sessions)
     billing_countries = await stripe_billing_countries(sessions)
     subscriptions = await _stripe_subscriptions()
 
     await connect()
     try:
         people = await _people(subscriptions, billing_countries)
-        providers = await _signin_providers()
+        providers = await signin_providers_by_account()
     finally:
         await disconnect()
 
@@ -521,7 +528,7 @@ def _finish_checkout(ok: int, failed: int, skipped: int) -> None:
     click.echo("Run the dry run again to confirm nothing is left.")
 
 
-async def _signin_providers() -> dict[str, list[str]]:
+async def signin_providers_by_account() -> dict[str, list[str]]:
     """Every account's Better Auth providers, by account id."""
     from backend.data.db import query_raw_with_schema
 
