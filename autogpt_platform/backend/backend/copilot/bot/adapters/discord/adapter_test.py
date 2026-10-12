@@ -16,6 +16,7 @@ from backend.copilot.bot.adapters.discord.adapter import (
     _resolve_mentions,
 )
 from backend.copilot.bot.adapters.discord.choice_ui import _ChoiceButton
+from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.turn_stream import _clarification_message
 
 
@@ -29,6 +30,7 @@ def _bare_adapter(bot_id: int | None = 1000) -> tuple[DiscordAdapter, MagicMock]
     client = MagicMock()
     client.user = MagicMock(id=bot_id) if bot_id is not None else None
     adapter._client = cast(discord.Client, client)
+    adapter._api = cast(BotBackend, MagicMock())
     adapter._on_message_callback = None
     adapter._commands_synced = False
     return adapter, client

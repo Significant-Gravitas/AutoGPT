@@ -3,12 +3,10 @@ import { Text } from "@/components/atoms/Text/Text";
 import { formatHeaderDate, getHomeStatusLine } from "../../helpers";
 
 interface Props {
-  greeting: string;
-  name: string;
   dashboard: HomeDashboardResponse;
 }
 
-export function HomeHeader({ greeting, name, dashboard }: Props) {
+export function HomeHeader({ dashboard }: Props) {
   const date = formatHeaderDate(dashboard.generated_at, dashboard.timezone);
   const status = getHomeStatusLine(dashboard);
 
@@ -17,11 +15,11 @@ export function HomeHeader({ greeting, name, dashboard }: Props) {
       <div className="min-w-0">
         <Text
           variant="lead-semibold"
-          as="h1"
+          as="h2"
           tone="primary"
           className="text-pretty tracking-[-0.01em]"
         >
-          {greeting}, {name}
+          Your recap
         </Text>
         <Text variant="body" tone="primary" className="mt-0.5 text-pretty">
           {status.split(/(\d+)/).map((part, index) =>

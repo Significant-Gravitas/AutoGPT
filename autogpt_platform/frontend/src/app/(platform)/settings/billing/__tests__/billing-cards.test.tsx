@@ -708,6 +708,62 @@ describe("YourPlanCard cycle toggle", () => {
     await waitFor(() => expect(screen.queryAllByRole("radio").length).toBe(0));
   });
 
+  it("ENTERPRISE account sees the Enterprise label, the managed-by line and a contact link, with no plan controls", async () => {
+    // The backend rejects every self-service change from ENTERPRISE with
+    // 403, so the card must not offer upgrade/downgrade/resume or the
+    // Stripe "Manage subscription" portal — even when a stray schedule is
+    // attached to the account.
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "ENTERPRISE",
+        monthly_cost: 0,
+        billing_cycle: "monthly",
+        has_active_stripe_subscription: true,
+        status: "active",
+        pending_tier: "NO_TIER",
+        pending_tier_effective_at: "2026-05-30T00:00:00Z",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    expect(await screen.findByText("Enterprise")).toBeDefined();
+    expect(screen.queryByText("ENTERPRISE")).toBeNull();
+    expect(screen.getByText("Active")).toBeDefined();
+    expect(
+      screen.getByText(/Managed by your AutoGPT account team/i),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: /contact us/i }).getAttribute("href"),
+    ).toBe("mailto:contact@agpt.co");
+    expect(screen.queryByText(/\$0\.00/)).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("BASIC account still sees Upgrade to Pro (backend accepts BASIC → PRO)", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "BASIC",
+        monthly_cost: 0,
+        billing_cycle: "monthly",
+        has_active_stripe_subscription: false,
+        status: "inactive",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    render(<YourPlanCard />);
+
+    expect(await screen.findByText("Basic")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /upgrade to pro/i }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /downgrade to/i })).toBeNull();
+  });
+
   it("hides the cycle toggle entirely for BASIC tier", async () => {
     // BASIC is a reserved internal slot (no Stripe sub, no upgrade target);
     // showing a cycle toggle would imply user-manageable billing.
@@ -1303,10 +1359,39 @@ describe("YourPlanCard begin_checkout", () => {
       expect(gtagCalls).toContainEqual([
         "event",
         "conversion",
-        { send_to: "AW-123/BC", value: 49, currency: "USD" },
+        {
+          send_to: "AW-123/BC",
+          value: 49,
+          currency: "USD",
+          event_callback: expect.any(Function),
+        },
       ]);
     });
-    expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test");
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
+  });
+
+  it("stays busy while the conversion goes out, so a second click starts no second checkout", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const location = stubLocation();
+    const hits = freeAccount("https://checkout.stripe.com/pay/cs_test");
+
+    render(<YourPlanCard />);
+    const upgrade = await screen.findByRole("button", { name: /get pro/i });
+    fireEvent.click(upgrade);
+    await waitFor(() =>
+      expect(gtagCalls.some((call) => call[1] === "conversion")).toBe(true),
+    );
+    expect(upgrade.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(upgrade);
+
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
+    expect(hits.post).toBe(1);
   });
 
   it("reports no begin_checkout when the tier changes in place", async () => {

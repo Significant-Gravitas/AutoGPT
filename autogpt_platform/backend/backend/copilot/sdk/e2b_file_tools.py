@@ -34,6 +34,7 @@ from backend.copilot.context import (
     is_within_allowed_dirs,
     resolve_sandbox_path,
 )
+from backend.util.sandbox_login import run_internal
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,8 @@ async def _check_sandbox_symlink_escape(
     replaced between the two operations.  This is acceptable in the E2B
     sandbox model since the sandbox is single-user and ephemeral.
     """
-    canonical_res = await sandbox.commands.run(
+    canonical_res = await run_internal(
+        sandbox,
         f"readlink -f {shlex.quote(parent or E2B_WORKDIR)}",
         cwd=E2B_WORKDIR,
         timeout=5,
@@ -199,10 +201,23 @@ def _is_allowed_local(path: str) -> bool:
     return is_allowed_local_path(path, get_sdk_cwd())
 
 
-def _mcp(text: str, *, error: bool = False) -> dict[str, Any]:
+def _mcp(
+    text: str, *, error: bool = False, outside: tuple[str, ...] | None = None
+) -> dict[str, Any]:
     if error:
         text = json.dumps({"error": text, "type": "error"})
-    return {"content": [{"type": "text", "text": text}], "isError": error}
+    result = {"content": [{"type": "text", "text": text}], "isError": error}
+    return result if outside is None else DeclaredResult(result, outside=outside)
+
+
+class DeclaredResult(dict[str, Any]):
+    """An MCP result whose ``outside`` names what in it came from outside
+    AutoGPT (see ``ToolResponseBase.from_outside``). The wrapper reads it
+    before the cap, which builds a plain dict."""
+
+    def __init__(self, result: dict[str, Any], *, outside: tuple[str, ...]):
+        super().__init__(result)
+        self.outside = outside
 
 
 def _get_sandbox_and_path(
@@ -240,7 +255,8 @@ async def _sandbox_write(sandbox: Any, path: str, content: str | bytes) -> None:
     if path == "/tmp" or path.startswith("/tmp/"):
         raw = content.encode() if isinstance(content, str) else content
         encoded = base64.b64encode(raw).decode()
-        result = await sandbox.commands.run(
+        result = await run_internal(
+            sandbox,
             f"echo {shlex.quote(encoded)} | base64 -d > {shlex.quote(path)}",
             cwd=E2B_WORKDIR,
             timeout=10,
@@ -326,7 +342,7 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         numbered = "".join(
             f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
         )
-        return _mcp(numbered)
+        return _mcp(numbered, outside=(numbered,))
 
     # Non-E2B path — read from SDK working directory
     sdk_cwd = get_sdk_cwd()
@@ -358,7 +374,7 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
     numbered = "".join(
         f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
     )
-    return _mcp(numbered)
+    return _mcp(numbered, outside=(numbered,))
 
 
 async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
@@ -488,7 +504,10 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
             return _mcp(str(exc), error=True)
 
         parent = os.path.dirname(remote)
-        canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
+        try:
+            canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
+        except Exception as exc:
+            return _mcp(f"Failed to edit {os.path.basename(remote)}: {exc}", error=True)
         if canonical_parent is None:
             return _mcp(
                 f"Path must be within {E2B_ALLOWED_DIRS_STR}: {os.path.basename(parent)}",
@@ -616,12 +635,12 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
 
     cmd = f"find {shlex.quote(search_dir)} -name {shlex.quote(pattern)} -type f 2>/dev/null | head -500"
     try:
-        result = await sandbox.commands.run(cmd, cwd=E2B_WORKDIR, timeout=10)
+        result = await run_internal(sandbox, cmd, cwd=E2B_WORKDIR, timeout=10)
     except Exception as exc:
         return _mcp(f"Glob failed: {exc}", error=True)
 
     files = [line for line in (result.stdout or "").strip().splitlines() if line]
-    return _mcp(json.dumps(files, indent=2))
+    return _mcp(json.dumps(files, indent=2), outside=tuple(files))
 
 
 async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
@@ -656,12 +675,14 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
     cmd = " ".join(shlex.quote(p) for p in parts) + " 2>/dev/null | head -200"
 
     try:
-        result = await sandbox.commands.run(cmd, cwd=E2B_WORKDIR, timeout=15)
+        result = await run_internal(sandbox, cmd, cwd=E2B_WORKDIR, timeout=15)
     except Exception as exc:
         return _mcp(f"Grep failed: {exc}", error=True)
 
     output = (result.stdout or "").strip()
-    return _mcp(output if output else "No matches found.")
+    if not output:
+        return _mcp("No matches found.", outside=())
+    return _mcp(output, outside=(output,))
 
 
 # Bridging: copy SDK-internal files into E2B sandbox
@@ -775,7 +796,7 @@ def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
         numbered = "".join(
             f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
         )
-        return _mcp(numbered)
+        return _mcp(numbered, outside=(numbered,))
     except FileNotFoundError:
         return _mcp(f"File not found: {file_path}", error=True)
     except Exception as exc:

@@ -27,7 +27,7 @@ export function BuildTabIntro() {
 
   function askAutoPilot() {
     takeAction("ask_autopilot");
-    router.push("/copilot");
+    router.push("/copilot?new=1");
   }
 
   function learnToBuild() {

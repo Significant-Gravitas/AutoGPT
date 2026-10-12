@@ -14,10 +14,10 @@ function renderHeader() {
 }
 
 describe("AppSidebarHeader", () => {
-  it("renders the AutoGPT home link pointing at /copilot", () => {
+  it("renders the AutoGPT home link pointing at /home", () => {
     renderHeader();
     const homeLink = screen.getByRole("link", { name: "AutoGPT" });
-    expect(homeLink.getAttribute("href")).toBe("/copilot");
+    expect(homeLink.getAttribute("href")).toBe("/home");
   });
 
   it("shows the 'Collapse sidebar' control while expanded", () => {

@@ -320,6 +320,16 @@ jobs:
           filter: blob:none
           submodules: true
 
+      - name: Checkout skills catalog
+        # The expert roster and the marketplace skills live in a separate
+        # repo. The shards read it from SKILLS_CATALOG_PATH so no test
+        # resolves `main` through the GitHub API: runners share one
+        # unauthenticated rate limit and hit 403s under load.
+        uses: actions/checkout@v6
+        with:
+          repository: Significant-Gravitas/skills-catalog
+          path: skills-catalog
+
       - name: Configure test shard
         shell: bash
         env:
@@ -636,6 +646,8 @@ jobs:
       RUN_ENV: local
       PORT: 8080
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      SKILLS_CATALOG_PATH: ${{ github.workspace }}/skills-catalog
+      SKILLS_CATALOG_TOKEN: ${{ github.token }}
       # We know these are here, don't report this as a security vulnerability
       # This is used as the default credential for the entire system's RabbitMQ instance
       # If you want to replace this, you can do so by making our entire system generate
