@@ -8,6 +8,7 @@ import {
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import {
   getGetV2GetSessionQueryKey,
+  useGetV2ListChatTransports,
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { GraphModel } from "@/app/api/__generated__/models/graphModel";
@@ -24,6 +25,7 @@ import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendi
 import { useGetV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { isKey } from "@/lib/keyboard";
 import { retryUnlessClientError } from "../../helpers/graphLoadError";
+import { getDeploymentModelStatus, isNoModelError } from "./helpers";
 
 interface UseBuilderChatPanelArgs {
   panelRef?: React.RefObject<HTMLElement | null>;
@@ -77,6 +79,9 @@ export function useBuilderChatPanel({
   // surfaced by the panel.  Cleared on each retry attempt and on success.
   const [bindError, setBindError] = useState<string | null>(null);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  // Set when the server refuses the session for having no model, in case the
+  // transports check below could not answer first.
+  const [sessionRefusedNoModel, setSessionRefusedNoModel] = useState(false);
   const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
     flowID: parseAsString,
     flowExecutionID: parseAsString,
@@ -84,6 +89,24 @@ export function useBuilderChatPanel({
   });
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Checked before anything is created: with no model the chat can never
+  // answer, so neither the blank agent nor the session below is worth making.
+  const transportsQuery = useGetV2ListChatTransports({
+    query: { enabled: isOpen },
+  });
+  const modelStatus = sessionRefusedNoModel
+    ? "missing"
+    : getDeploymentModelStatus({
+        isPending: transportsQuery.isPending,
+        isError: transportsQuery.isError,
+        transports:
+          transportsQuery.data?.status === 200
+            ? transportsQuery.data.data.transports
+            : undefined,
+      });
+  const isWaitingForModel =
+    modelStatus === "checking" || modelStatus === "missing";
 
   const { data: graph, refetch: refetchGraph } = useGetV1GetSpecificGraph(
     flowID ?? "",
@@ -200,6 +223,7 @@ export function useBuilderChatPanel({
   useEffect(() => {
     if (!isOpen) return;
     if (!flowID) return;
+    if (isWaitingForModel) return;
     if (boundGraphRef.current === flowID && sessionId) return;
     if (bindingRef.current) return;
     const effectFlowID = flowID;
@@ -228,10 +252,13 @@ export function useBuilderChatPanel({
         setSessionId(response.data.id);
       } catch (err) {
         if (currentFlowIDRef.current !== effectFlowID) return;
+        boundGraphRef.current = null;
+        if (isNoModelError(err)) {
+          setSessionRefusedNoModel(true);
+          return;
+        }
         Sentry.captureException(err);
         setBindError("failed_to_bind_builder_session");
-        // Clear the bound marker so the panel can re-trigger on retry.
-        boundGraphRef.current = null;
         toast({
           variant: "destructive",
           title: "Could not start the builder chat",
@@ -244,7 +271,15 @@ export function useBuilderChatPanel({
     // `bindRetryToken` is intentionally in the dep array so retrying bumps
     // the token and forces this effect to re-run even when flowID+sessionId
     // haven't changed.
-  }, [isOpen, flowID, sessionId, bindRetryToken, createBuilderSession, toast]);
+  }, [
+    isOpen,
+    flowID,
+    sessionId,
+    bindRetryToken,
+    isWaitingForModel,
+    createBuilderSession,
+    toast,
+  ]);
 
   // Auto-create a blank agent when the panel is opened without one.
   // The saved graph's id becomes the builder session's binding.  On
@@ -253,6 +288,7 @@ export function useBuilderChatPanel({
   const isBootstrappingRef = useRef(false);
   useEffect(() => {
     if (!isOpen || flowID || isBootstrappingRef.current) return;
+    if (isWaitingForModel) return;
     isBootstrappingRef.current = true;
     setBootstrapError(null);
     void (async () => {
@@ -294,6 +330,7 @@ export function useBuilderChatPanel({
     isOpen,
     flowID,
     bootstrapRetryToken,
+    isWaitingForModel,
     createNewGraph,
     setQueryStates,
     toast,
@@ -428,6 +465,7 @@ export function useBuilderChatPanel({
 
   function handleToggle() {
     setIsOpen((o) => !o);
+    setSessionRefusedNoModel(false);
   }
 
   async function handleRevert() {
@@ -491,7 +529,9 @@ export function useBuilderChatPanel({
   // the loading spinner — so the computed bootstrapping flag must read
   // false in that case.  Without this, a bind / create-graph failure would
   // still render "Preparing builder chat…" forever.
+  const hasNoModel = modelStatus === "missing";
   const isBootstrapping =
+    !hasNoModel &&
     !bindError &&
     !bootstrapError &&
     (isBootstrappingGraph ||
@@ -522,6 +562,7 @@ export function useBuilderChatPanel({
     onSend,
     queuedMessages,
     isBootstrapping,
+    hasNoModel,
     revertTargetVersion,
     handleRevert,
     bindError,

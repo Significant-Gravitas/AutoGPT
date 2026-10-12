@@ -5,6 +5,7 @@ import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatM
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { cn } from "@/lib/utils";
 import { useRef } from "react";
+import { NoModelNotice } from "./components/NoModelNotice";
 import { PanelHeader } from "./components/PanelHeader";
 import { useBuilderChatPanel } from "./useBuilderChatPanel";
 import { BubbleChatIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
@@ -27,6 +28,7 @@ export function BuilderChatPanel({ className }: Props) {
     onSend,
     queuedMessages,
     isBootstrapping,
+    hasNoModel,
     revertTargetVersion,
     handleRevert,
     bindError,
@@ -69,7 +71,9 @@ export function BuilderChatPanel({ className }: Props) {
             />
 
             <div className="flex h-0 min-h-0 flex-1 flex-col">
-              {activeError && activeRetry ? (
+              {hasNoModel ? (
+                <NoModelNotice />
+              ) : activeError && activeRetry ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-slate-600">
                   <p className="font-medium text-slate-800">
                     {activeErrorTitle}
