@@ -14,6 +14,10 @@ A client becomes process-wide when it is:
 - returned from a function cached for the process (``@cached``,
   ``@functools.cache``, ``@functools.lru_cache``).
 
+It can't see a client kept at runtime on a long-lived object
+(``self._session = aiohttp.ClientSession()`` on a singleton) or in a dict keyed
+by ``id(loop)``; review those by hand.
+
 Usage: check_loop_bound_clients.py [PATH ...]  (default: the backend packages)
 """
 

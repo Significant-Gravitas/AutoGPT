@@ -25,9 +25,6 @@ import {
 // once trip unrelated frontend errors.
 const SCRIPT: ModelScript = quickAnswerScript;
 const ANSWER = SCRIPT.turns[0].text ?? "";
-// The platform's title model (`_DEFAULT_TITLE_MODEL` in
-// backend/copilot/config.py). Other requests without tools use other models.
-const TITLE_MODEL = "anthropic/claude-haiku-4-5";
 const CHATS_PER_WAVE = 4;
 const WAVES = 2;
 
@@ -91,10 +88,9 @@ async function chatToTitle(api: APIRequestContext) {
   return { nonce: run.nonce, sessionID };
 }
 
+/** The chat's requests without tools: its title is the only one. */
 function titleRequests(journal: JournalEntry[]) {
-  return journal.filter(
-    (entry) => entry.kind === "side_call" && entry.model === TITLE_MODEL,
-  );
+  return journal.filter((entry) => entry.kind === "side_call");
 }
 
 async function savedTitle(api: APIRequestContext, sessionID: string) {

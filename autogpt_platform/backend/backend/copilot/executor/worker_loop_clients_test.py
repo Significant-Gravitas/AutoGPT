@@ -242,7 +242,9 @@ def provider() -> Iterator[_Provider]:
 
 
 @pytest.fixture
-def local_transport(provider: _Provider, monkeypatch: pytest.MonkeyPatch) -> None:
+def local_transport(
+    provider: _Provider, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[None]:
     """Point every chat client at the provider, the way a self-hoster's
     ``CHAT_USE_LOCAL=true`` + ``CHAT_BASE_URL`` does."""
     cfg = ChatConfig(use_local=True, api_key="local-key", base_url=provider.base_url)
