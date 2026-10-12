@@ -15,9 +15,7 @@ It is advisory: Check PR Status ignores its result (``ADVISORY_CHECK_RUNS`` in
     run --suite S FILE...   re-run the files and report (CI or local)
     stress -- CMD...        run CMD once under the gate's CPU load (local repro)
 
-Every run has coverage on, as the suites' CI jobs do: tracing slows tests
-down, and some only fail with it. Each ``run`` starts with one run in file
-order without load. A test that fails there too is a real failure, or needs a
+Each ``run`` starts with one run in file order without load. A test that fails there too is a real failure, or needs a
 service the gate doesn't start; it is listed, not counted. Then come up to
 ``--runs`` runs under load, each in a new seeded order, while the time budget
 lasts. A test that passes in some runs and fails in others is flaky.
@@ -44,14 +42,9 @@ REPO_ROOT = SCRIPTS_DIR.parents[1]
 
 DEFAULT_RUNS = 10
 DEFAULT_BUDGET_SECONDS = 360
-# Busy processes per CPU core during a loaded run. Three per core leave a
-# test about a third of a core, which is how W26 reproduced the frontend tests
-# that ejected merge groups (3 of 3 runs failed) while their fixes held (10 of
-# 10 passed). At two per core a CI runner didn't slow them enough to fail.
-DEFAULT_LOAD_PER_CORE = 3
 # A loaded run that takes HANG_FACTOR times as long as the run without load,
 # and at least HANG_FLOOR_SECONDS, is stuck: it is stopped and counted.
-HANG_FACTOR = 5
+HANG_FACTOR = 10
 HANG_FLOOR_SECONDS = 120
 # Until a loaded run has finished, assume one takes this many times as long as
 # the run without load when deciding whether another fits the budget.
@@ -191,7 +184,11 @@ class Suite:
     def file_of(self, test: str, files: list[str]) -> str:
         return max((f for f in files if test.startswith(f)), key=len, default=test)
 
-    def repro(self, file: str, seed: Optional[int], load: int) -> str:
+    def pressure(self) -> Pressure:
+        """The load a loaded run of this suite runs under."""
+        raise NotImplementedError
+
+    def repro(self, file: str, seed: Optional[int], pressure: Pressure) -> str:
         """The command that repeats a run: under load in the seed's order, or
         as usual when the run that failed was the one without load."""
         raise NotImplementedError
@@ -202,10 +199,11 @@ class BackendSuite(Suite):
     directory = REPO_ROOT / "autogpt_platform" / "backend"
     report_suffix = "jsonl"
 
-    # How the backend test job runs pytest. Coverage tracing slows tests
-    # down, on Python 3.11 most of all, and #15427's test only ever failed
-    # with it on, so the gate measures under it too.
-    OPTIONS = ["-c", "pyproject.toml", "--cov=backend", "--cov-branch", "--cov-report="]
+    # Without the test job's coverage: tracing the backend's imports and
+    # saving its data takes most of a run's time (43 s of 63 s for a file
+    # whose tests take 2 s), so it would leave room for a run or two, and it
+    # made no difference to the tests it was tried on.
+    OPTIONS = ["-c", "pyproject.toml"]
 
     def __init__(
         self,
@@ -218,6 +216,12 @@ class BackendSuite(Suite):
 
     def default_prefix(self) -> list[str]:
         return ["poetry", "run", "pytest"]
+
+    def pressure(self) -> Pressure:
+        # Three busy processes per core, everywhere: the tests start
+        # services in processes of their own, which need cores to run on.
+        # It slows a run about 3.5 times, more than coverage slows CI's.
+        return Pressure(load=3 * (os.cpu_count() or 1))
 
     def command(self, files: list[str], seed: Optional[int], report: Path) -> list[str]:
         cmd = [
@@ -237,7 +241,6 @@ class BackendSuite(Suite):
 
     def env(self, seed: Optional[int], report: Path) -> dict[str, str]:
         env = _with_plugin_path(dict(os.environ))
-        env["COVERAGE_FILE"] = str(report.with_suffix(".coverage"))
         if seed is not None:
             # Set iteration order follows the hash seed, so pinning it lets a
             # failing run be repeated exactly.
@@ -279,13 +282,13 @@ class BackendSuite(Suite):
                 )
         return outcomes
 
-    def repro(self, file: str, seed: Optional[int], load: int) -> str:
+    def repro(self, file: str, seed: Optional[int], pressure: Pressure) -> str:
         if seed is None:
-            return f"poetry run test --cov=backend --cov-branch {shlex.quote(file)}"
+            return f"poetry run test {shlex.quote(file)}"
         return (
             f"PYTHONHASHSEED={seed} python3 ../../.github/scripts/flake_gate.py "
-            f"stress --load {load} -- poetry run test --cov=backend --cov-branch "
-            f"-p flake_gate_pytest --flake-gate-seed={seed} {shlex.quote(file)}"
+            f"stress {pressure.flags()} -- poetry run test -p flake_gate_pytest "
+            f"--flake-gate-seed={seed} {shlex.quote(file)}"
         )
 
 
@@ -296,6 +299,15 @@ class FrontendSuite(Suite):
 
     def default_prefix(self) -> list[str]:
         return ["pnpm", "exec", "vitest", "run"]
+
+    def pressure(self) -> Pressure:
+        # Vitest and its worker held to one core with two busy processes:
+        # how W26 reproduced the tests that ejected merge groups (3 of 3 runs
+        # failed) while their fixes held (10 of 10). Spreading the same load
+        # over a runner's cores didn't fail them: the worker loads modules
+        # through the main process, and on one core every one of those calls
+        # waits its turn.
+        return Pressure(load=2, cores=1)
 
     def command(self, files: list[str], seed: Optional[int], report: Path) -> list[str]:
         # Coverage on, as the integration test job runs Vitest, so the tests
@@ -344,12 +356,12 @@ class FrontendSuite(Suite):
                 outcomes[file] = Outcome(FAILED, result.get("message", ""))
         return outcomes
 
-    def repro(self, file: str, seed: Optional[int], load: int) -> str:
+    def repro(self, file: str, seed: Optional[int], pressure: Pressure) -> str:
         if seed is None:
             return f"pnpm exec vitest run {shlex.quote(file)} --coverage"
         return (
-            f"python3 ../../.github/scripts/flake_gate.py stress --load {load} -- "
-            f"pnpm exec vitest run {shlex.quote(file)} --coverage "
+            f"python3 ../../.github/scripts/flake_gate.py stress {pressure.flags()} "
+            f"-- pnpm exec vitest run {shlex.quote(file)} --coverage "
             f"--sequence.shuffle --sequence.seed={seed}"
         )
 
@@ -374,22 +386,54 @@ def _relative_to(path: str, directory: Path) -> str:
 # ---------------------------------------------------------------- load
 
 
-class Load:
-    """``workers`` busy processes, for as long as the context is open."""
+@dataclass(frozen=True)
+class Pressure:
+    """What a loaded run runs under: ``load`` busy processes and, when
+    ``cores`` is set, the tests and those processes held to that many CPUs."""
 
-    def __init__(self, workers: int):
-        self.workers = workers
+    load: int
+    cores: int = 0
+
+    def cpus(self) -> Optional[set[int]]:
+        if not self.cores or not hasattr(os, "sched_getaffinity"):
+            return None
+        return set(sorted(os.sched_getaffinity(0))[: self.cores])
+
+    def pin(self) -> Optional[Callable[[], None]]:
+        """A ``preexec_fn`` that holds a process to ``cpus()``."""
+        cpus = self.cpus()
+        if cpus is None:
+            return None
+        return lambda: os.sched_setaffinity(0, cpus)
+
+    def describe(self) -> str:
+        if self.cpus() is not None:
+            return f"{_processes(self.load)} sharing {_count(self.cores, 'core')} with the tests"
+        return f"{_processes(self.load)} on {_count(os.cpu_count() or 1, 'core')}"
+
+    def flags(self) -> str:
+        return f"--load {self.load}" + (f" --cores {self.cores}" if self.cores else "")
+
+
+class Load:
+    """The pressure's busy processes, for as long as the context is open."""
+
+    def __init__(self, pressure: Optional[Pressure]):
+        self.pressure = pressure
         self._procs: list[subprocess.Popen] = []
 
     def __enter__(self) -> "Load":
+        if self.pressure is None:
+            return self
         self._procs = [
             subprocess.Popen(
                 [sys.executable, "-c", "while True: pass"],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                preexec_fn=self.pressure.pin(),
             )
-            for _ in range(self.workers)
+            for _ in range(self.pressure.load)
         ]
         return self
 
@@ -398,10 +442,6 @@ class Load:
             proc.kill()
         for proc in self._procs:
             proc.wait()
-
-
-def default_load() -> int:
-    return DEFAULT_LOAD_PER_CORE * (os.cpu_count() or 1)
 
 
 # ---------------------------------------------------------------- runs
@@ -430,7 +470,7 @@ def execute(
     *,
     index: int,
     seed: Optional[int],
-    load: int,
+    pressure: Optional[Pressure],
     timeout: float,
     out_dir: Path,
 ) -> Run:
@@ -439,7 +479,7 @@ def execute(
     report.unlink(missing_ok=True)
     cmd = suite.command(files, seed, report)
     stopped_after = None
-    with Load(load), log.open("w", encoding="utf-8") as out:
+    with Load(pressure), log.open("w", encoding="utf-8") as out:
         out.write(f"$ {shlex.join(cmd)}\n\n")
         out.flush()
         started = time.monotonic()
@@ -452,6 +492,7 @@ def execute(
                 stdout=out,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
+                preexec_fn=pressure.pin() if pressure else None,
             )
         except OSError as e:
             out.write(f"Could not start the tests: {e}\n")
@@ -467,6 +508,7 @@ def execute(
     outcomes = suite.parse(report)
     reported = bool(outcomes) or report.exists()
     _add_file_outcomes(suite, files, outcomes, exit_code, stopped_after)
+    load = pressure.load if pressure else 0
     return Run(
         index, seed, load, duration, exit_code, stopped_after, reported, outcomes, log
     )
@@ -523,7 +565,7 @@ class GateResult:
     files: list[str]
     left_out: list[str]
     budget: float
-    load: int
+    pressure: Pressure
     runs: list[Run] = field(default_factory=list)
     elapsed: float = 0.0
     note: str = ""
@@ -540,21 +582,21 @@ def run_gate(
     *,
     runs: int,
     budget: float,
-    load: int,
+    pressure: Pressure,
     seed: Optional[int],
     out_dir: Path,
     clock: Callable[[], float] = time.monotonic,
     log: Callable[[str], None] = lambda line: print(line, flush=True),
 ) -> GateResult:
     files = sorted({_suite_relative(f, suite) for f in files})
-    result = GateResult(suite, files[:MAX_FILES], files[MAX_FILES:], budget, load)
+    result = GateResult(suite, files[:MAX_FILES], files[MAX_FILES:], budget, pressure)
     files = result.files
     out_dir.mkdir(parents=True, exist_ok=True)
     started = clock()
     deadline = started + budget
 
     baseline = execute(
-        suite, files, index=0, seed=None, load=0, timeout=budget, out_dir=out_dir
+        suite, files, index=0, seed=None, pressure=None, timeout=budget, out_dir=out_dir
     )
     log(_progress(baseline))
     result.runs.append(baseline)
@@ -595,7 +637,7 @@ def run_gate(
                 files,
                 index=i + 1,
                 seed=seed + i,
-                load=load,
+                pressure=pressure,
                 timeout=timeout,
                 out_dir=out_dir,
             )
@@ -694,7 +736,7 @@ def render(result: GateResult) -> str:
         "",
         f"Re-ran {_count(len(result.files), 'changed test file')} once in file "
         f"order without load, then {_count(len(loaded), 'time')} under CPU load "
-        f"({_processes(result.load)} on {os.cpu_count() or 1} cores), each "
+        f"({result.pressure.describe()}), each "
         f"in a new random order: {_duration(result.elapsed)} of a "
         f"{_duration(result.budget)} budget.",
     ]
@@ -765,7 +807,7 @@ def _flaky_section(result: GateResult) -> list[str]:
     for file, verdicts in by_file.items():
         failed = [r for v in verdicts for r, _ in v.failures]
         loaded = next((r for r in failed if r.seed is not None), failed[0])
-        lines.append(suite.repro(file, loaded.seed, result.load))
+        lines.append(suite.repro(file, loaded.seed, result.pressure))
     lines += [
         "```",
         "",
@@ -894,13 +936,18 @@ def cmd_run(args: argparse.Namespace) -> int:
         return 0
     suite_type = SUITES[args.suite]
     suite = suite_type(shlex.split(args.command)) if args.command else suite_type()
+    pressure = suite.pressure()
+    pressure = Pressure(
+        load=pressure.load if args.load is None else args.load,
+        cores=pressure.cores if args.cores is None else args.cores,
+    )
     out_dir = Path(args.out_dir).resolve()
     result = run_gate(
         suite,
         files,
         runs=args.runs,
         budget=args.budget,
-        load=args.load,
+        pressure=pressure,
         seed=args.seed,
         out_dir=out_dir,
     )
@@ -918,12 +965,16 @@ def cmd_run(args: argparse.Namespace) -> int:
 def cmd_stress(args: argparse.Namespace) -> int:
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
-        print("usage: flake_gate.py stress [--load N] -- COMMAND...", file=sys.stderr)
+        print(
+            "usage: flake_gate.py stress [--load N] [--cores N] -- COMMAND...",
+            file=sys.stderr,
+        )
         return 2
-    print(f"Under CPU load ({_processes(args.load)}): {shlex.join(command)}")
-    with Load(args.load):
+    pressure = Pressure(load=args.load, cores=args.cores)
+    print(f"Under CPU load ({pressure.describe()}): {shlex.join(command)}")
+    with Load(pressure):
         env = _with_plugin_path(dict(os.environ))
-        return subprocess.run(command, env=env).returncode
+        return subprocess.run(command, env=env, preexec_fn=pressure.pin()).returncode
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -955,8 +1006,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     run.add_argument(
         "--load",
         type=int,
-        default=int(os.environ.get("FLAKE_GATE_LOAD", default_load())),
-        help="busy processes during a loaded run (default: 3 per core)",
+        help="busy processes during a loaded run (default: the suite's)",
+    )
+    run.add_argument(
+        "--cores",
+        type=int,
+        help="hold the tests and the busy processes to this many cores, 0 for "
+        "none (default: the suite's)",
     )
     run.add_argument("--seed", type=int, help="seed of the first loaded run")
     run.add_argument(
@@ -968,7 +1024,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     run.set_defaults(func=cmd_run)
 
     stress = sub.add_parser("stress", help="run a command once under CPU load")
-    stress.add_argument("--load", type=int, default=default_load())
+    stress.add_argument("--load", type=int, default=3 * (os.cpu_count() or 1))
+    stress.add_argument("--cores", type=int, default=0)
     stress.add_argument("command", nargs=argparse.REMAINDER)
     stress.set_defaults(func=cmd_stress)
 
