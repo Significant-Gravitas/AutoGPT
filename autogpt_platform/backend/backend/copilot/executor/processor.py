@@ -222,19 +222,6 @@ async def _normalize_private_expert_session_tenancy(
     return await upsert_chat_session(session, persist_tenancy=True)
 
 
-def _engine_label(stream_fn: Callable) -> str:
-    """The ``copilot.engine`` tag for the engine a turn streams from."""
-    if stream_fn is sdk_service.stream_chat_completion_sdk:
-        return "sdk"
-    if stream_fn is stream_chat_completion_baseline:
-        return "baseline"
-    if stream_fn is stream_chat_completion_microsoft_365:
-        return "microsoft_365_copilot"
-    if stream_fn is stream_chat_completion_dummy:
-        return "dummy"
-    return "unknown"
-
-
 async def _wait_for_expert_setup(session: "ChatSession") -> None:
     """Hold a fresh hire's turn until its skills and workflows are installed,
     or give up after ``EXPERT_SETUP_WAIT_SECONDS`` and run without them."""
@@ -664,6 +651,7 @@ class CoPilotProcessor:
                         credential_lease = None
                     raise RuntimeError("codex_credential_not_found") from None
                 stream_fn = sdk_service.stream_chat_completion_sdk
+                engine = "sdk"
                 log.info("Using Claude SDK with Codex subscription transport")
             elif entry.llm_auth_provider == "microsoft_365_copilot":
                 if entry.user_id is None:
@@ -703,6 +691,7 @@ class CoPilotProcessor:
                     )
                     raise RuntimeError(code) from error
                 stream_fn = cast(Callable, stream_chat_completion_microsoft_365)
+                engine = "microsoft_365_copilot"
                 log.info("Using Microsoft 365 Copilot Chat API transport")
             else:
                 if entry.llm_credential_id is not None:
@@ -713,6 +702,7 @@ class CoPilotProcessor:
 
                 if config.test_mode:
                     stream_fn = stream_chat_completion_dummy
+                    engine = "dummy"
                     log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
                 else:
                     use_sdk = await resolve_use_sdk(
@@ -738,6 +728,7 @@ class CoPilotProcessor:
                         if use_sdk
                         else stream_chat_completion_baseline
                     )
+                    engine = "sdk" if use_sdk else "baseline"
                     log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
 
             await cost_context_stack.enter_async_context(
@@ -752,7 +743,7 @@ class CoPilotProcessor:
             envelope = taint_for_source_platform(entry.envelope, session)
             set_turn_unattended(session, scheduled=entry.unattended)
             set_turn_credential_pins(entry.credential_pins)
-            turn.engine_started(_engine_label(stream_fn))
+            turn.engine_started(engine)
             raw_stream = stream_fn(
                 session_id=entry.session_id,
                 message=entry.message or None,
