@@ -63,9 +63,7 @@ def source_revision_from_record(record: LearningSourceRecord) -> SourceRevision:
         epoch=record.epoch,
         origin="requested" if record.origin == "requested" else "ordinary",
         evidence_refs=[EvidenceRef.model_validate(r) for r in record.evidence_refs],
-        outcome_signals=[
-            OutcomeSignal.model_validate(s) for s in record.outcome_signals
-        ],
+        outcome_signals=_unprocessed_outcome_signals(record),
         approval=(
             ApprovalCheckpoint(
                 event_id=record.approval_event_id,
@@ -76,6 +74,23 @@ def source_revision_from_record(record: LearningSourceRecord) -> SourceRevision:
             else None
         ),
     )
+
+
+def _unprocessed_outcome_signals(record: LearningSourceRecord) -> list[OutcomeSignal]:
+    signals = [OutcomeSignal.model_validate(s) for s in record.outcome_signals]
+    if record.source_kind != CHAT_SOURCE_KIND or record.processed_revision is None:
+        return signals
+    processed = revision_sequence(record.processed_revision)
+    if processed is None:
+        return signals
+    return [s for s in signals if _signal_after_cursor(s, processed)]
+
+
+def _signal_after_cursor(signal: OutcomeSignal, processed: int) -> bool:
+    prefix, _, sequence = signal.ref.partition(":")
+    if prefix != "msg" or not (sequence.isascii() and sequence.isdigit()):
+        return True
+    return int(sequence) > processed
 
 
 def revision_sequence(revision: str) -> int | None:
