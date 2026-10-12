@@ -147,6 +147,20 @@ describe("kickoff message identification", () => {
     expect(visible.map((message) => message.id)).toEqual(["m2"]);
   });
 
+  it("drops a reassigned task's brief from the transcript", () => {
+    const visible = hideKickoffMessages([
+      userMessage("m1", "The user reassigned this task from Otto to you.", {
+        hidden: true,
+        kind: "reassign_brief",
+        expert_id: EXPERT_ID,
+      }),
+      assistantMessage("m2", "You re-assigned this task to me."),
+      userMessage("m3", "Go ahead."),
+    ]);
+
+    expect(visible.map((message) => message.id)).toEqual(["m2", "m3"]);
+  });
+
   it("keeps a user message that merely repeats the kickoff wording", () => {
     const kickoff = buildKickoffMessage(EXPERT_ID);
 

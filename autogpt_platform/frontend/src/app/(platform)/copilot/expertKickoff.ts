@@ -3,6 +3,7 @@ import type { UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
 const EXPERT_KICKOFF_KIND = "expert_kickoff";
+const REASSIGN_BRIEF_KIND = "reassign_brief";
 const KICKOFF_STORAGE_PREFIX = "expert-kickoff-status:";
 const LEGACY_MARKER_PATTERN =
   /^\[\[EXPERT_KICKOFF:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]\](?:\n\n)?/i;
@@ -127,12 +128,24 @@ export function shouldClearKickoffParam(
   return !isExpertsEnabled || (hasExpertsSettled && expertId === null);
 }
 
-// The kickoff prompt is a control turn the client sends on the user's behalf.
-// It reads as an instruction, not as something the user typed, so the thread
-// never shows it. The backend marks the persisted row hidden for the same
-// reason.
+function isReassignBriefMessage(message: UIMessage): boolean {
+  if (message.role !== "user") return false;
+  const metadata = message.metadata;
+  return (
+    !!metadata &&
+    typeof metadata === "object" &&
+    (metadata as Record<string, unknown>).kind === REASSIGN_BRIEF_KIND
+  );
+}
+
+// The kickoff prompt and a reassigned task's brief are control turns sent on
+// the user's behalf. They read as instructions, not as something the user
+// typed, so the thread never shows them. The backend marks the persisted rows
+// hidden for the same reason.
 export function hideKickoffMessages<T extends UIMessage>(messages: T[]): T[] {
-  return messages.filter((message) => !isKickoffMessage(message));
+  return messages.filter(
+    (message) => !isKickoffMessage(message) && !isReassignBriefMessage(message),
+  );
 }
 
 export function kickoffStorageKey(userId: string, expertId: string): string {
