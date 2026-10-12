@@ -131,14 +131,11 @@ export function useCopilotNotifications(activeSessionID: string | null) {
   }, [api]);
 
   // Completions sent while the socket was down are lost; refetch the session
-  // list after a reconnect so it doesn't keep showing them as running.
+  // list whenever the socket opens (the notification stream is live by then)
+  // so it doesn't keep showing them as running.
   useEffect(() => {
-    let hasConnected = false;
     return api.onWebSocketConnect(() => {
-      if (hasConnected) {
-        queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
-      }
-      hasConnected = true;
+      queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
     });
   }, [api, queryClient]);
 

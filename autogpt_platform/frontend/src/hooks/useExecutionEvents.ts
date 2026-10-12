@@ -13,7 +13,7 @@ interface UseExecutionEventsOptions {
   graphIds?: (GraphID | string)[];
   enabled?: boolean;
   onExecutionUpdate?: ExecutionEventHandler;
-  onReconnect?: () => void;
+  onSubscribed?: () => void;
 }
 
 /**
@@ -25,24 +25,26 @@ interface UseExecutionEventsOptions {
  * @param options.graphIds - Array of graph IDs to subscribe to (multiple graphs)
  * @param options.enabled - Whether the subscription is enabled (default: true)
  * @param options.onExecutionUpdate - Callback invoked when an execution is updated
- * @param options.onReconnect - Called once subscriptions are restored after a
- *   reconnect; refetch here, since events sent while disconnected are lost
+ * @param options.onSubscribed - Called once the server has confirmed the
+ *   subscriptions, on the first connect and every reconnect. Refetch here:
+ *   events sent before the subscription was live (or while disconnected)
+ *   are never delivered
  */
 export function useExecutionEvents({
   graphId,
   graphIds,
   enabled = true,
   onExecutionUpdate,
-  onReconnect,
+  onSubscribed,
 }: UseExecutionEventsOptions) {
   const api = useBackendAPI();
   const onExecutionUpdateRef = useRef(onExecutionUpdate);
-  const onReconnectRef = useRef(onReconnect);
+  const onSubscribedRef = useRef(onSubscribed);
 
   useEffect(() => {
     onExecutionUpdateRef.current = onExecutionUpdate;
-    onReconnectRef.current = onReconnect;
-  }, [onExecutionUpdate, onReconnect]);
+    onSubscribedRef.current = onSubscribed;
+  }, [onExecutionUpdate, onSubscribed]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -52,8 +54,6 @@ export function useExecutionEvents({
 
     // Normalize IDs to strings for consistent comparison
     const normalizedIds = idsToSubscribe.map((id) => String(id));
-    let hasConnected = false;
-
     const handleExecutionEvent = (execution: GraphExecution) => {
       // Filter by graphIds if provided, using normalized string comparison
       if (normalizedIds.length > 0) {
@@ -67,9 +67,6 @@ export function useExecutionEvents({
     // The server drops every subscription along with the socket, so they
     // are all re-sent on each (re)connect.
     const connectHandler = api.onWebSocketConnect(() => {
-      const isReconnect = hasConnected;
-      hasConnected = true;
-
       const subscriptions = normalizedIds.map((id) =>
         api.subscribeToGraphExecutions(id as GraphID).catch((error) => {
           if (error instanceof WebSocketSubscriptionInterrupted) return;
@@ -82,9 +79,7 @@ export function useExecutionEvents({
           });
         }),
       );
-      if (isReconnect) {
-        void Promise.all(subscriptions).then(() => onReconnectRef.current?.());
-      }
+      void Promise.all(subscriptions).then(() => onSubscribedRef.current?.());
     });
 
     const messageHandler = api.onWebSocketMessage(

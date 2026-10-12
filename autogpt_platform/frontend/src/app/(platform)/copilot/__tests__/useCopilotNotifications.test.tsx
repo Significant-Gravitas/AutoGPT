@@ -116,7 +116,7 @@ describe("useCopilotNotifications — OS notification dispatch", () => {
 });
 
 describe("useCopilotNotifications — reconnect", () => {
-  it("refetches the session list after a reconnect, not on the first connect", () => {
+  it("refetches the session list every time the socket opens", () => {
     const queryClient = new QueryClient();
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
     function Wrapper({ children }: { children: ReactNode }) {
@@ -128,11 +128,11 @@ describe("useCopilotNotifications — reconnect", () => {
     }
     renderHook(() => useCopilotNotifications(null), { wrapper: Wrapper });
 
+    // A completion before the first connect, or while the socket was down,
+    // is never delivered.
     act(() => capturedConnectHandler?.());
-    expect(invalidate).not.toHaveBeenCalled();
-
-    // Completions sent while the socket was down never arrive.
     act(() => capturedConnectHandler?.());
+    expect(invalidate).toHaveBeenCalledTimes(2);
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["copilot", "session-list"],
     });
