@@ -15,11 +15,11 @@ REDACTED = "[REDACTED]"
 
 # The segment after each of these prefixes is a credential, even on a route
 # that doesn't exist. /api/invitations/pending is the one static route among
-# them, so it alone is kept.
+# them, so it alone is kept. The match is zero-width so that overlapping
+# prefixes, which a crafted path or Host header can stack, are all found.
 _CREDENTIAL_PATH_SEGMENT = re.compile(
-    r"(/api/(?:integrations/(?:[^/?\s]+/)?webhooks|platform-linking/(?:user-)?tokens"
-    r"|public/shared(?:/chats)?|invitations(?!/pending(?:[/?\s\"']|$)))/)"
-    r"[^/?\s]+"
+    r"(?=/api/(?:integrations/(?:[^/?\s]+/)?webhooks|platform-linking/(?:user-)?tokens"
+    r"|public/shared(?:/chats)?|invitations(?!/pending(?:[/?\s\"']|$)))/([^/?\s]+))"
 )
 # A request target can't contain whitespace, so in a longer message its query
 # runs to the next whitespace. Nothing else ends it: a raw quote can sit in a
@@ -49,7 +49,11 @@ def redact_urls_in_text(text: str) -> str:
 
 
 def _redact_path(text: str) -> str:
-    return _CREDENTIAL_PATH_SEGMENT.sub(lambda match: match[1] + REDACTED, text)
+    # Right to left, so each span still points at the original text.
+    for match in reversed(list(_CREDENTIAL_PATH_SEGMENT.finditer(text))):
+        start, end = match.span(1)
+        text = text[:start] + REDACTED + text[end:]
+    return text
 
 
 def _redact_query(query: str) -> str:

@@ -225,6 +225,12 @@ async def test_sentry_gets_no_credentials_from_request_urls(
             "http://evil?/api/public/shared/chats/s-1/messages",
             f"http://evil?/api/public/shared/chats/{REDACTED}/messages",
         ),
+        # A prefix stacked in front of a real one doesn't hide the real one.
+        (
+            "http://x/api/invitations/api/public/shared/chats/s-1/messages",
+            f"http://x/api/invitations/{REDACTED}/public/shared/chats/{REDACTED}"
+            "/messages",
+        ),
         # Characters that can end a URL in a message don't end this one.
         ("/ws?q=it's&token=a", f"/ws?q={REDACTED}&token={REDACTED}"),
         ('/ws?q="&token=a', f"/ws?q={REDACTED}&token={REDACTED}"),
@@ -453,7 +459,9 @@ def _random_request_target(rng: random.Random) -> str:
         pairs.insert(rng.randint(0, len(pairs)), f"token={junk()}{_SECRET}{junk()}")
         path = rng.choice(["/ws", "/api/email/unsubscribe", "/"])
     else:
-        path = rng.choice(_CREDENTIAL_PATHS).format(_SECRET)
+        # A crafted path or Host header can stack another prefix in front.
+        stacked = rng.choice(["", "", "/api/public/shared", "/api/invitations"])
+        path = stacked + rng.choice(_CREDENTIAL_PATHS).format(_SECRET)
     # Sentry prefixes the scheme and the Host header, which the client controls.
     origin = f"http://h{junk()}" if rng.random() < 0.3 else ""
     query = "?" + "&".join(pairs) if pairs or rng.random() < 0.5 else ""
