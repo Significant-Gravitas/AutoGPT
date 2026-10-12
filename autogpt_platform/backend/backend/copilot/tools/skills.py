@@ -985,6 +985,7 @@ async def store_user_skills(
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
     origin: str = SKILL_ORIGIN_USER,
+    notify_updates: bool = True,
 ) -> list[StoredSkill | Exception]:
     """:func:`store_user_skill` for several skills under one write lock and
     one listing of the owner's folder; returns each write's outcome in order,
@@ -1076,7 +1077,10 @@ async def store_user_skills(
             outcomes[index] = StoredSkill(skill.parsed, is_new, checksums)
         if stored:
             await invalidate_skills_index_cache(user_id, expert_id)
-            await _remember_updated(user_id, expert_id, [name for _, name in stored])
+            if notify_updates:
+                await _remember_updated(
+                    user_id, expert_id, [name for _, name in stored]
+                )
         if expert_id is not None and stored:
             await _record_skill_names(user_id, expert_id, stored, outcomes)
         return cast(list[StoredSkill | Exception], outcomes)
@@ -2093,7 +2097,8 @@ async def _write_copy(
 ) -> None:
     """Write a whole package over the copy through the ordinary install path,
     so it is validated, capped, locked and delta-written like any install,
-    and only if the copy still hashes to what the decision was made on."""
+    and only if the copy still hashes to what the decision was made on.
+    Reconciliation owns change notices so baseline-only stamps stay silent."""
     [outcome] = await store_user_skills(
         user_id,
         [
@@ -2119,6 +2124,7 @@ async def _write_copy(
         expert_id=expert_id,
         scope=scope,
         origin=SKILL_ORIGIN_MARKETPLACE,
+        notify_updates=False,
     )
     if isinstance(outcome, Exception):
         raise outcome
