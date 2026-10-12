@@ -449,6 +449,7 @@ class SessionDetailResponse(BaseModel):
     created_at: str
     updated_at: str
     user_id: str | None
+    title: str | None = None
     chat_status: str = "idle"
     messages: list[dict]
     active_stream: ActiveStreamInfo | None = None  # Present if stream is still active
@@ -1390,6 +1391,7 @@ async def get_session(
         created_at=page.session.started_at.isoformat(),
         updated_at=page.session.updated_at.isoformat(),
         user_id=page.session.user_id or None,
+        title=page.session.title,
         chat_status=page.session.chat_status,
         messages=messages,
         active_stream=active_stream_info,

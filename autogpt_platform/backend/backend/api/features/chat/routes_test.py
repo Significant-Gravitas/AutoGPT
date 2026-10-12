@@ -3961,6 +3961,21 @@ def test_get_session_returns_backward_paginated(
     assert "newest_sequence" not in data
 
 
+def test_get_session_returns_title(mocker: pytest_mock.MockerFixture) -> None:
+    page, _ = _make_paginated_messages(mocker)
+    page.session.title = "Write PRD"
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(None, None),
+    )
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Write PRD"
+
+
 def test_get_session_serves_history_for_an_archived_expert_session(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

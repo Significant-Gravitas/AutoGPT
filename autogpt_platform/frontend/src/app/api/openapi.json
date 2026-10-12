@@ -4281,7 +4281,7 @@
       "patch": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Update session board",
-        "description": "Move a card. A card leaving Backlog that has not started yet starts\nwith its title as the first message.",
+        "description": "Move a card. A card that has not started yet starts with its title as\nthe first message when it moves to any column but Backlog or Done.",
         "operationId": "patchV2Update session board",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -30103,6 +30103,10 @@
           "user_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Id"
+          },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
           },
           "chat_status": {
             "type": "string",

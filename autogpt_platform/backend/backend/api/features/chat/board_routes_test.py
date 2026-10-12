@@ -357,6 +357,18 @@ def test_patch_board_to_backlog_does_not_start(
     mocks.start.assert_not_awaited()
 
 
+def test_patch_board_to_done_does_not_start(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_card(mocker)
+
+    response = client.patch(f"/sessions/{SESSION_ID}/board", json={"column": "done"})
+
+    assert response.status_code == 200
+    mocks.set_board.assert_awaited_once()
+    mocks.start.assert_not_awaited()
+
+
 def test_patch_board_started_card_does_not_restart(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

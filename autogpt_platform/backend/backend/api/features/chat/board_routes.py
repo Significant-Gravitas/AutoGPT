@@ -18,7 +18,13 @@ from backend.api.features.chat.routes import (
 )
 from backend.api.features.chat.server_turn import dispatch_server_turn, start_board_card
 from backend.api.features.experts import experts_db
-from backend.copilot.board import BACKLOG, IN_PROGRESS, BoardColumn, BoardColumnsError
+from backend.copilot.board import (
+    BACKLOG,
+    DONE,
+    IN_PROGRESS,
+    BoardColumn,
+    BoardColumnsError,
+)
 from backend.copilot.board_db import (
     BoardExtras,
     BoardSessionRow,
@@ -163,8 +169,8 @@ async def update_session_board(
     user_id: Annotated[str, Security(auth.get_user_id)],
     ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
 ) -> SessionSummaryResponse:
-    """Move a card. A card leaving Backlog that has not started yet starts
-    with its title as the first message."""
+    """Move a card. A card that has not started yet starts with its title as
+    the first message when it moves to any column but Backlog or Done."""
     session = await _validate_and_get_session(session_id, user_id)
     column = request.column
     position = request.position
@@ -176,7 +182,7 @@ async def update_session_board(
 
     starts = (
         column is not None
-        and column != BACKLOG
+        and column not in (BACKLOG, DONE)
         and bool((session.title or "").strip())
         and session.chat_status == CHAT_STATUS_IDLE
         and not (await _session_extras(user_id, session_id)).started
