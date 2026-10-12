@@ -504,6 +504,8 @@ def execute(
                 stopped_after = time.monotonic() - started
                 _stop(proc)
                 exit_code = None
+            else:
+                _kill_group(proc)
         duration = time.monotonic() - started
     outcomes = suite.parse(report)
     reported = bool(outcomes) or report.exists()
@@ -515,17 +517,24 @@ def execute(
 
 
 def _stop(proc: subprocess.Popen) -> None:
-    """Stop the test process and everything it started."""
-    for sig, grace in ((signal.SIGTERM, 10), (signal.SIGKILL, None)):
-        try:
-            os.killpg(proc.pid, sig)
-        except ProcessLookupError:
-            return
-        try:
-            proc.wait(timeout=grace)
-            return
-        except subprocess.TimeoutExpired:
-            continue
+    """Stop a run that is out of time: ask it to end, then end what's left."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+        proc.wait(timeout=10)
+    except (ProcessLookupError, subprocess.TimeoutExpired):
+        pass
+    _kill_group(proc)
+
+
+def _kill_group(proc: subprocess.Popen) -> None:
+    """Kill whatever is left of a run's process group: a service its tests
+    started can outlive them, and must not hold a port, a connection or a CPU
+    while the next run runs."""
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    proc.wait()
 
 
 def _add_file_outcomes(

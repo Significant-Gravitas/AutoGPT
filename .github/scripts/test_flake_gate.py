@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import time
 import unittest
 from importlib.util import find_spec
 from pathlib import Path
@@ -523,6 +524,49 @@ class DetectCommandTests(unittest.TestCase):
             output.splitlines(), ["backend=[]", "frontend=[]", "self_test=true"]
         )
         self.assertIn("nothing to re-run", summary)
+
+
+@unittest.skipUnless(Path("/proc/self/stat").exists(), "reads /proc")
+class CleanupTests(unittest.TestCase):
+    """A run leaves nothing of its own running for the next run to trip on."""
+
+    def leftover_after(self, script: str, timeout: float) -> int:
+        with tempfile.TemporaryDirectory() as tmp:
+            pid_file = Path(tmp) / "child.pid"
+            # A child that ignores SIGTERM, as a service can.
+            child = f"(trap '' TERM; exec sleep 300) & echo $! > {pid_file}; "
+            suite = BackendSuite(
+                prefix=["sh", "-c", child + script], directory=Path(tmp), options=[]
+            )
+            flake_gate.execute(
+                suite,
+                ["x_test.py"],
+                index=0,
+                seed=None,
+                pressure=None,
+                timeout=timeout,
+                out_dir=Path(tmp),
+            )
+            return int(pid_file.read_text())
+
+    def assert_gone(self, pid: int) -> None:
+        for _ in range(100):
+            try:
+                state = (
+                    Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+                )
+            except (FileNotFoundError, ProcessLookupError):
+                return
+            if state == "Z":
+                return
+            time.sleep(0.05)
+        self.fail(f"process {pid} is still running")
+
+    def test_after_a_run_that_exits(self):
+        self.assert_gone(self.leftover_after("exit 0", timeout=60))
+
+    def test_after_a_run_that_is_stopped(self):
+        self.assert_gone(self.leftover_after("sleep 300", timeout=1))
 
 
 class LoadTests(unittest.TestCase):
