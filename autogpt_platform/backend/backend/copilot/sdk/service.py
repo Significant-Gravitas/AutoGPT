@@ -1164,6 +1164,15 @@ _RETRYABLE_STREAM_ERROR_CODES: frozenset[str] = frozenset(
 )
 
 
+# Limits the platform sets on purpose: the turn spent its USD budget or made its
+# maximum number of LLM calls, and the user is told how to carry on. They are
+# outcomes, not failures, so they log at info: Sentry's LoggingIntegration files
+# every ERROR record as an issue (AUTOGPT-SERVER-8C4).
+_EXPECTED_STOP_CODES: frozenset[str] = frozenset(
+    {"max_budget_exhausted", "max_turns_exhausted"}
+)
+
+
 # Handled-error codes whose StreamError the outer retry loop yields itself,
 # after it has persisted the history marker, rather than the attempt.
 _OUTER_LOOP_YIELDS_ERROR_CODES: frozenset[str] = frozenset(
@@ -3828,7 +3837,8 @@ def _dispatch_response(
 
     # Persist error markers so they survive page refresh
     if isinstance(response, StreamError):
-        logger.error(
+        logger.log(
+            logging.INFO if response.code in _EXPECTED_STOP_CODES else logging.ERROR,
             "%s Sending error to frontend: %s (code=%s)",
             log_prefix,
             response.errorText,

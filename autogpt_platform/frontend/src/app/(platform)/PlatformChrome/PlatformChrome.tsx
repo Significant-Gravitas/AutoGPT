@@ -31,7 +31,7 @@ interface Props {
 // Mobile header buttons float over the content, so they get a pill surface to
 // stay readable against whatever scrolls underneath.
 const mobileTriggerClassName =
-  "rounded-full border border-[#DADADC] bg-white hover:bg-[#F5F5F6]";
+  "rounded-full border border-[#DADADC] bg-white shadow-md hover:bg-[#F5F5F6]";
 
 export function PlatformChrome({ children }: Props) {
   const {

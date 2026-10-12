@@ -282,6 +282,31 @@ describe("dual backend", () => {
     expect(postHog.capture).toHaveBeenCalledTimes(1);
   });
 
+  it("stays quiet when a flag PostHog has switched off is off in LaunchDarkly too", async () => {
+    // PostHog leaves an inactive flag out of its answer and LaunchDarkly says
+    // `false`: both serve the default, so no user sees a difference
+    // (BUILDER-94P).
+    const { Flag, useGetFlag } = await loadWithBackend("dual");
+    launchDarkly.flags = { [Flag.CHAT_PINNING]: false };
+    postHog.enabled.mockReturnValue(undefined);
+
+    const { result } = renderHook(() => useGetFlag(Flag.CHAT_PINNING));
+
+    expect(result.current).toBe(false);
+    expect(postHog.capture).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it("stays quiet when PostHog's bare toggle stands in for a JSON flag's default", async () => {
+    const { Flag, useGetFlag } = await loadWithBackend("dual");
+    launchDarkly.flags = { [Flag.COPILOT_BOT_PLATFORMS]: {} };
+    postHog.enabled.mockReturnValue(true);
+
+    renderHook(() => useGetFlag(Flag.COPILOT_BOT_PLATFORMS));
+
+    expect(postHog.capture).not.toHaveBeenCalled();
+  });
+
   it("reports a flag LaunchDarkly has and PostHog has never heard of", async () => {
     const { Flag, useGetFlag } = await loadWithBackend("dual");
     vi.spyOn(console, "info").mockImplementation(() => {});

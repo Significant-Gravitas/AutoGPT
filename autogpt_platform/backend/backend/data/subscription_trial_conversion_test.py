@@ -527,7 +527,7 @@ async def test_the_paid_plan_is_saved_before_the_lookup_is_dropped(
     async def invalidate(customer_id: str) -> None:
         boundaries.calls.append(f"invalidate:{customer_id}")
 
-    with patch.object(conversion, "invalidate_active_subscription_cache", invalidate):
+    with patch.object(conversion, "invalidate_billing_lookups", invalidate):
         assert await conversion.convert_cancel_pending_trial(pending_trial, PRO) is None
 
     assert boundaries.calls[-4:] == ["modify", "sync", "invalidate:cus_1", "unlock"]
