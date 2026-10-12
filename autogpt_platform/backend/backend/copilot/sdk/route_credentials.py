@@ -61,8 +61,11 @@ def direct_anthropic_env(api_key: str | None) -> dict[str, str]:
     """An Anthropic API key, sent as ``x-api-key`` to api.anthropic.com."""
     if not api_key:
         raise RuntimeError(
-            "The direct-Anthropic route has no API key. Set "
-            "CHAT_DIRECT_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY."
+            "No API key configured: the direct-Anthropic route has no API key. "
+            "Set CHAT_DIRECT_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY, set "
+            "OPEN_ROUTER_API_KEY or CHAT_API_KEY to use OpenRouter, or set "
+            "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true to use a Claude Code "
+            "subscription (requires `claude login`)."
         )
     return {
         "ANTHROPIC_API_KEY": api_key,

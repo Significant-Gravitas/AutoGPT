@@ -237,16 +237,43 @@ class TestBuildSdkEnvDirectAnthropic:
 
     def test_refuses_without_an_anthropic_key(self):
         """With no key the CLI would fall back to a ``claude login``
-        credentials file on the host, so the route refuses to start."""
+        credentials file on the host, so the route refuses to start, and
+        says how to configure one."""
         cfg = _make_config(use_openrouter=False)
         object.__setattr__(cfg, "direct_anthropic_api_key", None)
         with patch("backend.copilot.sdk.env.config", cfg):
             from backend.copilot.sdk.env import build_sdk_env
 
-            with pytest.raises(
-                RuntimeError, match="direct-Anthropic route has no API key"
-            ):
+            with pytest.raises(RuntimeError) as refused:
                 build_sdk_env()
+        message = str(refused.value)
+        assert "direct-Anthropic route has no API key" in message
+        for setting in (
+            "ANTHROPIC_API_KEY",
+            "OPEN_ROUTER_API_KEY",
+            "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
+        ):
+            assert setting in message
+
+    def test_anthropic_api_key_alone_runs_the_direct_route(
+        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
+    ) -> None:
+        """``ANTHROPIC_API_KEY`` alone selects direct Anthropic and is enough
+        to run it, though ``api_key`` never reads that variable."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-only-key")
+        cfg = ChatConfig(
+            use_openrouter=False,
+            use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+        )
+        assert cfg.effective_transport == "direct_anthropic"
+        assert not cfg.api_key
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+        assert result["ANTHROPIC_API_KEY"] == "sk-ant-only-key"
 
 
 # ---------------------------------------------------------------------------

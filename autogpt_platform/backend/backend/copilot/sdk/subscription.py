@@ -11,6 +11,8 @@ import os
 import shutil
 import subprocess
 
+from backend.copilot.sdk.route_credentials import subscription_env
+
 logger = logging.getLogger(__name__)
 
 
@@ -113,12 +115,7 @@ def validate_subscription() -> None:
         capture_output=True,
         text=True,
         timeout=10,
-        env={
-            **os.environ,
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_AUTH_TOKEN": "",
-            "ANTHROPIC_BASE_URL": "",
-        },
+        env={**os.environ, **subscription_env()},
     )
     if auth_result.returncode != 0:
         raise RuntimeError(

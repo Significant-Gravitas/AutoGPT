@@ -20,6 +20,7 @@ from backend.copilot.sdk.context_window import (
 )
 from backend.copilot.sdk.route_credentials import (
     CLAUDE_OAUTH_BLANK,
+    LOOPBACK_HOSTS,
     attribution_header_env,
     direct_anthropic_env,
     openrouter_user_key_env,
@@ -37,7 +38,6 @@ config = ChatConfig()
 # RFC 7230 §3.2.6 — keep only printable ASCII; strip control chars and non-ASCII.
 _HEADER_SAFE_RE = re.compile(r"[^\x20-\x7e]")
 _MAX_HEADER_VALUE_LEN = 128
-_LOOPBACK_NO_PROXY_HOSTS = ("127.0.0.1", "localhost", "::1")
 
 
 def _loopback_no_proxy_value() -> str:
@@ -47,7 +47,7 @@ def _loopback_no_proxy_value() -> str:
             entry = entry.strip()
             if entry and entry.lower() not in {item.lower() for item in entries}:
                 entries.append(entry)
-    for host in _LOOPBACK_NO_PROXY_HOSTS:
+    for host in LOOPBACK_HOSTS:
         if host.lower() not in {item.lower() for item in entries}:
             entries.append(host)
     return ",".join(entries)

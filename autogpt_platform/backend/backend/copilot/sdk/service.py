@@ -2363,19 +2363,6 @@ def _resolve_env_model(sdk_model: str | None, fallback_model: str | None) -> str
     return sdk_model
 
 
-def _deployment_route_has_credential() -> bool:
-    """Whether the deployment-wide SDK route has what ``build_sdk_env`` needs.
-
-    The direct-Anthropic route runs on ``direct_anthropic_api_key`` (which
-    reads ``ANTHROPIC_API_KEY``), not ``api_key``.
-    """
-    return bool(
-        config.use_claude_code_subscription
-        or config.openrouter_active
-        or config.direct_anthropic_api_key
-    )
-
-
 async def _resolve_sdk_model_for_request(
     model: "CopilotLLMModel | None",
     session_id: str,
@@ -5384,14 +5371,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             permissions=permissions,
             envelope=envelope,
         )
-
-        if not is_codex_transport and not _deployment_route_has_credential():
-            raise RuntimeError(
-                "No API key configured. Set OPEN_ROUTER_API_KEY, "
-                "CHAT_API_KEY, or ANTHROPIC_API_KEY for API access, "
-                "or CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true to use "
-                "Claude Code CLI subscription (requires `claude login`)."
-            )
 
         disabled_tool_groups: list[ToolGroup] = []
         if not graphiti_enabled:
