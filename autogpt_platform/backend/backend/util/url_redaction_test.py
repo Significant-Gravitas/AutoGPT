@@ -183,6 +183,12 @@ async def test_sentry_gets_no_credentials_from_request_urls(
             f"/api/public/shared/chats/{SHARE_TOKEN}/x",
             params={"token": f"&{SESSION_TOKEN}"},
         )
+        # Sentry builds request.url from the Host header, which the client sets.
+        await client.get(
+            f"/api/public/shared/chats/{SHARE_TOKEN}/messages",
+            params={"limit": "many"},
+            headers={"host": "evil?"},
+        )
         await client.get(
             f"/api/integrations/generic_webhook/webhooks/{WEBHOOK_ID}/ingress",
             params=query,
@@ -212,7 +218,13 @@ async def test_sentry_gets_no_credentials_from_request_urls(
         ("/x?token=a=b;c=d", f"/x?token={REDACTED}"),
         ("/x?a=1?token=b", f"/x?a={REDACTED}"),
         ("/x?=bare", f"/x?={REDACTED}"),
-        ("/x?token=a#frag", f"/x?token={REDACTED}#frag"),
+        # uvicorn's WebSocket scope keeps a raw # in the query.
+        ("/ws?a=1#&token=b", f"/ws?a={REDACTED}&token={REDACTED}"),
+        # Sentry builds the URL from the Host header, which can hold a ?.
+        (
+            "http://evil?/api/public/shared/chats/s-1/messages",
+            f"http://evil?/api/public/shared/chats/{REDACTED}/messages",
+        ),
         # Characters that can end a URL in a message don't end this one.
         ("/ws?q=it's&token=a", f"/ws?q={REDACTED}&token={REDACTED}"),
         ('/ws?q="&token=a', f"/ws?q={REDACTED}&token={REDACTED}"),
@@ -247,6 +259,9 @@ async def test_sentry_gets_no_credentials_from_request_urls(
             f"/api/public/shared/chats/{REDACTED}/messages?limit={REDACTED}",
         ),
         ("/api/invitations/i-1/accept", f"/api/invitations/{REDACTED}/accept"),
+        # A route that doesn't exist still carries the token.
+        ("/api/invitations/i-1", f"/api/invitations/{REDACTED}"),
+        ("/api/invitations/pending-1/x", f"/api/invitations/{REDACTED}/x"),
         # A path prefix in front of the app.
         (
             "/backend/api/invitations/i-1/accept",
@@ -281,6 +296,10 @@ def test_redact_url(url: str, expected: str) -> None:
             "acting as user u for requesting GET https://h/api/public/shared/s-1?x=1",
             "acting as user u for requesting GET "
             f"https://h/api/public/shared/{REDACTED}?x={REDACTED}",
+        ),
+        (
+            '"GET /ws?a=1#&token=t HTTP/1.1"',
+            f'"GET /ws?a={REDACTED}&token={REDACTED} HTTP/1.1"',
         ),
         ("Did it work? Yes.", "Did it work? Yes."),
     ],
@@ -373,11 +392,27 @@ async def _open_websockets(host: str) -> None:
         async with connect(url):
             pass
     # ...and with auth off it is accepted, as a live session's is. A raw quote
-    # earlier in the query must not end the masking before the token.
+    # or # earlier in the query must not end the masking before the token.
     with override_config(ws_api.settings, "enable_auth", False):
-        for accepted_url in (url, f"ws://{host}/ws?q=it's&token={SESSION_TOKEN}"):
-            async with connect(accepted_url):
-                pass
+        async with connect(url):
+            pass
+        target = f"/ws?q=it's#&token={SESSION_TOKEN}"
+        assert b" 101 " in await _raw_websocket_handshake(host, target)
+
+
+async def _raw_websocket_handshake(host: str, target: str) -> bytes:
+    """Sent as bytes, since a client library drops a # before sending."""
+    address, port = host.split(":")
+    reader, writer = await asyncio.open_connection(address, int(port))
+    writer.write(
+        f"GET {target} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\n"
+        "Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+        "Sec-WebSocket-Version: 13\r\n\r\n".encode()
+    )
+    status_line = await reader.readline()
+    writer.close()
+    await writer.wait_closed()
+    return status_line
 
 
 _PATH_PARAM = re.compile(r"{(\w+)(?::\w+)?}")
@@ -394,9 +429,9 @@ def _route_paths(routes: list[BaseRoute], prefix: str = "") -> Iterator[str]:
 
 
 _SECRET = "SeCrEt-7f3a"
-# A target that reached the server has no fragment or whitespace, and & always
-# separates pairs; anything else may sit next to the credential.
-_JUNK = ["", "a", "it's", '"', "?", "=", ";", "/", "%26", "%3D", "[x]", "{", ".."]
+# A request target has no whitespace, and & always separates pairs; anything
+# else may sit next to the credential, a raw # included.
+_JUNK = ["", "a", "it's", '"', "?", "#", "=", ";", "/", "%26", "%3D", "[x]", "{"]
 _CREDENTIAL_PATHS = [
     "/api/integrations/generic_webhook/webhooks/{}/ingress",
     "/api/integrations/webhooks/{}/ping",
@@ -405,7 +440,7 @@ _CREDENTIAL_PATHS = [
     "/api/public/shared/{}",
     "/api/public/shared/chats/{}/messages",
     "/api/invitations/{}/accept",
-    "/api/invitations/{}/decline",
+    "/api/invitations/{}",
 ]
 
 
@@ -419,7 +454,10 @@ def _random_request_target(rng: random.Random) -> str:
         path = rng.choice(["/ws", "/api/email/unsubscribe", "/"])
     else:
         path = rng.choice(_CREDENTIAL_PATHS).format(_SECRET)
-    return path + ("?" + "&".join(pairs) if pairs or rng.random() < 0.5 else "")
+    # Sentry prefixes the scheme and the Host header, which the client controls.
+    origin = f"http://h{junk()}" if rng.random() < 0.3 else ""
+    query = "?" + "&".join(pairs) if pairs or rng.random() < 0.5 else ""
+    return origin + path + query
 
 
 class _CapturingTransport(Transport):

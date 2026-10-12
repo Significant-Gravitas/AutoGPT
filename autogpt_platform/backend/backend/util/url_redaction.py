@@ -13,16 +13,18 @@ import re
 
 REDACTED = "[REDACTED]"
 
-# The segment after each of these prefixes is a credential. /api/invitations/
-# also has static routes (/pending), so there only an invitation's own count.
+# The segment after each of these prefixes is a credential, even on a route
+# that doesn't exist. /api/invitations/pending is the one static route among
+# them, so it alone is kept.
 _CREDENTIAL_PATH_SEGMENT = re.compile(
-    r"(/api/(?:integrations/(?:[^/?#\s]+/)?webhooks|platform-linking/(?:user-)?tokens"
-    r"|public/shared(?:/chats)?|invitations(?=/[^/?#\s]+/(?:accept|decline)))/)"
-    r"[^/?#\s]+"
+    r"(/api/(?:integrations/(?:[^/?\s]+/)?webhooks|platform-linking/(?:user-)?tokens"
+    r"|public/shared(?:/chats)?|invitations(?!/pending(?:[/?\s\"']|$)))/)"
+    r"[^/?\s]+"
 )
 # A request target can't contain whitespace, so in a longer message its query
-# runs to the next whitespace. Quotes don't end it: a raw one can be in a value.
-_QUERY_IN_TEXT = re.compile(r"\?([^\s#]+)")
+# runs to the next whitespace. Nothing else ends it: a raw quote can sit in a
+# value, and uvicorn's WebSocket scope keeps even a raw # in the query.
+_QUERY_IN_TEXT = re.compile(r"\?(\S+)")
 _QUERY_VALUE = re.compile(r"=[^&]*")
 
 
@@ -31,17 +33,12 @@ def redact_url(url: str) -> str:
 
     Every query value is masked and its key kept, so ``/ws?token=abc&page=2``
     becomes ``/ws?token=[REDACTED]&page=[REDACTED]``, and so is every path
-    segment that is a credential in its own right.
+    segment that is a credential in its own right. Paths are masked across the
+    whole string: Sentry builds a URL from the Host header, which can hold a
+    ``?`` of its own.
     """
-    target, question_mark, rest = url.partition("?")
-    query, hash_mark, fragment = rest.partition("#")
-    return (
-        _redact_path(target)
-        + question_mark
-        + _redact_query(query)
-        + hash_mark
-        + fragment
-    )
+    target, question_mark, query = _redact_path(url).partition("?")
+    return target + question_mark + _redact_query(query)
 
 
 def redact_urls_in_text(text: str) -> str:
