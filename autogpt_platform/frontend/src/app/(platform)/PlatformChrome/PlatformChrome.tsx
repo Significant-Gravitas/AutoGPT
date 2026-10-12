@@ -31,7 +31,7 @@ interface Props {
 // Mobile header buttons float over the content, so they get a pill surface to
 // stay readable against whatever scrolls underneath.
 const mobileTriggerClassName =
-  "rounded-full border border-[#DADADC] bg-white hover:bg-[#F5F5F6]";
+  "rounded-full border border-[#DADADC] bg-white shadow-md hover:bg-[#F5F5F6]";
 
 export function PlatformChrome({ children }: Props) {
   const {
@@ -54,8 +54,7 @@ export function PlatformChrome({ children }: Props) {
     </TopUpPromptProvider>
   );
 
-  // Logged-out marketplace visitors browse with the tour demo sidebar as an
-  // upsell — clicking a demo session takes them into /tour/chat.
+  // Logged-out marketplace visitors get public navigation and a trial CTA.
   if (showTourSidebar) {
     return (
       <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>

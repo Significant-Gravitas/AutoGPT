@@ -89,8 +89,10 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     )
     mocker.patch.object(
         chat_transports,
-        "get_user_default_chat_route",
-        new=AsyncMock(return_value=(None, None)),
+        "user_db",
+        return_value=MagicMock(
+            get_user_default_chat_route=AsyncMock(return_value=(None, None))
+        ),
     )
     mocker.patch.object(
         chat_transports,
@@ -593,6 +595,39 @@ def test_stream_chat_does_not_queue_kickoff_behind_an_unrelated_turn(
     assert response.status_code == 409
     queue_pending.assert_not_awaited()
     mocks.enqueue.assert_not_awaited()
+
+
+def test_stream_chat_marks_a_send_queued_behind_a_running_turn(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    queue_pending = mocker.patch(
+        "backend.api.features.chat.routes.queue_pending_for_http",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream", json={"message": "And example.org?"}
+    )
+
+    assert response.status_code == 200
+    queue_pending.assert_awaited_once()
+    mocks.enqueue.assert_not_awaited()
+    assert '"type": "data-follow-up-queued"' in response.text
+
+
+async def test_other_empty_streams_carry_no_follow_up_marker() -> None:
+    # The queued-at-cap and kicked-off-already streams are empty too.
+    response = chat_routes._empty_ui_message_stream_response()
+    body = "".join([str(chunk) async for chunk in response.body_iterator])
+
+    assert "data: [DONE]" in body
+    assert "data-follow-up-queued" not in body
 
 
 def test_stream_chat_rejects_kickoff_for_plain_session(
@@ -1501,7 +1536,10 @@ def test_list_chat_transports_marks_the_saved_default(
     chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         _codex_credentials()
     ]
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-codex",
+    )
 
     response = client.get("/transports")
 
@@ -1535,7 +1573,10 @@ def test_set_default_transport_saves_the_choice(
 def test_set_default_transport_clears_the_choice(
     test_user_id: str,
 ) -> None:
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-codex",
+    )
 
     response = client.put("/transports/default", json={})
 
@@ -1605,7 +1646,10 @@ def test_create_session_uses_the_saved_default(
     chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         _codex_credentials()
     ]
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-codex",
+    )
     mock_create = _mock_create_chat_session(mocker)
     mock_paywall = mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",
@@ -1628,7 +1672,10 @@ def test_an_explicit_route_still_beats_the_saved_default(
     chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         _codex_credentials()
     ]
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-codex",
+    )
     mock_create = _mock_create_chat_session(mocker)
     mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",
@@ -1647,7 +1694,10 @@ def test_a_saved_default_that_vanished_falls_back_instead_of_failing(
     test_user_id: str,
 ) -> None:
     """The saved ChatGPT account was disconnected since it was chosen."""
-    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-gone")
+    chat_transports.user_db().get_user_default_chat_route.return_value = (
+        "codex",
+        "cred-gone",
+    )
     mock_create = _mock_create_chat_session(mocker)
     mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",

@@ -20,8 +20,7 @@ interface Props {
   expertIdentity?: ExpertIdentity | null;
   /** The roster has not settled yet for an expert-scoped session. */
   isResolvingExpertIdentity?: boolean;
-  /** The new layout floats the sidebar and workspace-files controls over the
-   *  chat's top-left corner below `lg`; the chip clears them. */
+  /** Floating mobile controls need a separate row above the chip. */
   hasFloatingControls?: boolean;
 }
 
@@ -48,7 +47,7 @@ export function ThreadHeader({
       <div
         className={cn(
           "pointer-events-none absolute inset-x-0 top-3 flex justify-start px-4",
-          hasFloatingControls && "max-md:pl-28 md:max-lg:pl-20",
+          hasFloatingControls && "max-lg:top-16",
         )}
       >
         <TooltipProvider>
@@ -59,7 +58,7 @@ export function ThreadHeader({
                 aria-label={
                   isResolving ? "Loading expert" : `${name} — ${roleLabel}`
                 }
-                className="pointer-events-auto flex min-w-0 items-center gap-2 whitespace-nowrap rounded-full border border-zinc-200/70 bg-white/75 py-1 pl-1.5 pr-5 shadow-sm backdrop-blur-md"
+                className="pointer-events-auto flex min-w-0 items-center gap-2 whitespace-nowrap rounded-full border border-zinc-200/70 bg-white/75 py-1 pl-1.5 pr-5 shadow-sm backdrop-blur-md max-lg:shadow-md"
               >
                 <ExpertAvatar
                   name={name}

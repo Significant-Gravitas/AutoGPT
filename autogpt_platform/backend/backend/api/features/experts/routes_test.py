@@ -290,7 +290,41 @@ def test_hire_expert_returns_expert(
     assert response.status_code == 200
     data = response.json()
     assert data["expert"]["id"] == "expert-1"
-    mock_hire.assert_awaited_once_with(test_user_id, "template-1", None)
+    mock_hire.assert_awaited_once_with(test_user_id, "template-1", None, None)
+
+
+def test_hire_expert_passes_the_hiring_surface_through(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_hire = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.hire_expert",
+        new_callable=AsyncMock,
+        return_value=HireResult(expert=_make_expert()),
+    )
+
+    response = client.post(
+        "/experts", json={"template_id": "template-1", "surface": "onboarding"}
+    )
+
+    assert response.status_code == 200
+    mock_hire.assert_awaited_once_with(test_user_id, "template-1", None, "onboarding")
+
+
+def test_hire_expert_rejects_an_unknown_surface(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_hire = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.hire_expert",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/experts", json={"template_id": "template-1", "surface": "somewhere"}
+    )
+
+    assert response.status_code == 422
+    mock_hire.assert_not_awaited()
 
 
 def test_hire_expert_twice_returns_same_expert_id(

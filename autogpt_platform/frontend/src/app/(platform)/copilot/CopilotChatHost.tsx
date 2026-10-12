@@ -5,6 +5,7 @@ import { RateLimitGate } from "./components/RateLimitResetDialog/RateLimitGate";
 import { useCopilotPage } from "./useCopilotPage";
 import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 interface Props {
   droppedFiles: File[];
@@ -16,14 +17,27 @@ interface Props {
 
 /**
  * Session-scoped chat host. Parent mounts this with `key={sessionId}` so
- * session-local view state resets on switch, while the actual AI SDK Chat
- * instance is preserved in the per-session runtime registry.
+ * session-local view state resets on switch, while the stream itself is
+ * preserved in a per-session runtime registry. Keyed again by the stream
+ * flag, so flags resolving after mount swap the stream hook by remounting.
  */
-export function CopilotChatHost({
+export function CopilotChatHost(props: Props) {
+  const isStreamRuntime = useGetFlag(Flag.COPILOT_STREAM_RUNTIME) === true;
+  return (
+    <ChatHostBody
+      key={isStreamRuntime ? "stream-runtime" : "ai-sdk"}
+      {...props}
+      isStreamRuntime={isStreamRuntime}
+    />
+  );
+}
+
+function ChatHostBody({
   droppedFiles,
   onDroppedFilesConsumed,
   hasFloatingControls,
-}: Props) {
+  isStreamRuntime,
+}: Props & { isStreamRuntime: boolean }) {
   const {
     sessionId,
     messages,
@@ -64,7 +78,7 @@ export function CopilotChatHost({
     isAdoptingExpertSession,
     isKickoffStarting,
     followBackendTurn,
-  } = useCopilotPage();
+  } = useCopilotPage({ isStreamRuntime });
 
   return (
     <>

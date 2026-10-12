@@ -10,7 +10,7 @@ from pydantic import SecretStr
 
 from backend.api.features.integrations.router import router
 from backend.data.model import OAuth2Credentials, OAuthState
-from backend.util import product_analytics
+from backend.util import posthog_client
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -33,7 +33,7 @@ def setup_auth(mock_jwt_user):
 @pytest.fixture
 def capture(monkeypatch: pytest.MonkeyPatch) -> Mock:
     posthog = Mock()
-    monkeypatch.setattr(product_analytics, "get_posthog_client", lambda: posthog)
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: posthog)
     return posthog.capture
 
 
