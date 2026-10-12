@@ -1,6 +1,7 @@
 import inspect
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from multiprocessing import get_all_start_methods, get_context, set_forkserver_preload
@@ -69,19 +70,26 @@ async def no_leaked_db_transaction(request: pytest.FixtureRequest):
     """
     started = datetime.now(timezone.utc)
     yield
-    # Deferred like the server fixture's: unit-only runs never load Prisma.
-    from backend.data import db
-    from backend.util.db_transaction_guard import (
+    # Nothing can leak through a database layer this session never loaded,
+    # and checking that keeps Prisma out of unit-only runs.
+    if "backend.data.db" not in sys.modules:
+        return
+    from prisma import get_client
+
+    from backend.data.db_transaction_guard import (
         find_leaked_transactions,
         release_leaked_transactions,
     )
 
-    if not db.is_connected():
+    # The registered client, not backend.data.db.prisma: a test's patch of that
+    # attribute can still be in place while this teardown runs.
+    client = get_client()
+    if not client.is_connected():
         return
-    leaks = await find_leaked_transactions()
+    leaks = await find_leaked_transactions(client)
     if not leaks:
         return
-    await release_leaked_transactions(leaks)
+    await release_leaked_transactions(client, leaks)
     pytest.fail(
         f"{request.node.nodeid} left a database transaction open (test began "
         f"{started.isoformat()}); every later test would have run inside it:\n"

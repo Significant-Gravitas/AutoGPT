@@ -8,10 +8,11 @@ that fails aborts the rest (Postgres ``25P02``), in whatever test comes next.
 import asyncio
 from datetime import datetime, timezone
 
+from prisma import Prisma
 from prisma.errors import PrismaError
 from pydantic import BaseModel
 
-from backend.data import db
+from backend.data.db import DISCONNECT_TIMEOUT
 
 _UNKNOWN_START = datetime.min.replace(tzinfo=timezone.utc)
 
@@ -45,13 +46,15 @@ class LeakedTransaction(BaseModel):
     last_query: str
 
 
-async def find_leaked_transactions() -> list[LeakedTransaction]:
-    """Transactions on the test database still open after two looks."""
-    first = await _open_transactions()
+async def find_leaked_transactions(client: Prisma) -> list[LeakedTransaction]:
+    """Transactions on the client's database still open after two looks."""
+    first = await _open_transactions(client)
     if not first:
         return []
     await asyncio.sleep(_CONFIRM_AFTER_SECONDS)
-    second = {(leak.pid, leak.xact_start): leak for leak in await _open_transactions()}
+    second = {
+        (leak.pid, leak.xact_start): leak for leak in await _open_transactions(client)
+    }
     return [
         second[(leak.pid, leak.xact_start)]
         for leak in first
@@ -59,7 +62,9 @@ async def find_leaked_transactions() -> list[LeakedTransaction]:
     ]
 
 
-async def release_leaked_transactions(leaks: list[LeakedTransaction]) -> None:
+async def release_leaked_transactions(
+    client: Prisma, leaks: list[LeakedTransaction]
+) -> None:
     """End the leaked transactions and start the client on a fresh pool.
 
     Postgres rolls back a transaction whose connection closes: other backends
@@ -67,20 +72,20 @@ async def release_leaked_transactions(leaks: list[LeakedTransaction]) -> None:
     """
     for leak in leaks:
         try:
-            await db.prisma.query_raw(
+            await client.query_raw(
                 "SELECT pg_terminate_backend($1::int) AS terminated"
                 " WHERE $1::int <> pg_backend_pid()",
                 leak.pid,
             )
         except PrismaError:
             pass  # This connection is the aborted one; the reconnect ends it.
-    await db.disconnect()
-    await db.connect()
+    await client.disconnect(DISCONNECT_TIMEOUT)
+    await client.connect()
 
 
-async def _open_transactions() -> list[LeakedTransaction]:
+async def _open_transactions(client: Prisma) -> list[LeakedTransaction]:
     try:
-        rows = await db.prisma.query_raw(_OPEN_TRANSACTIONS_SQL)
+        rows = await client.query_raw(_OPEN_TRANSACTIONS_SQL)
     except PrismaError as error:
         # Only a connection already inside an aborted transaction refuses a
         # plain SELECT like this one.
