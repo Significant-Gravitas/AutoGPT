@@ -35,18 +35,24 @@ export function BuilderChatPanel({ className }: Props) {
     bootstrapError,
     retryBind,
     retryBootstrap,
+    transportCheckError,
+    retryTransportCheck,
   } = useBuilderChatPanel({ panelRef });
 
   const isStreaming = status === "streaming" || status === "submitted";
-  const activeError = bindError ?? bootstrapError ?? null;
+  const activeError = bindError ?? bootstrapError ?? transportCheckError;
   const activeRetry = bindError
     ? retryBind
     : bootstrapError
       ? retryBootstrap
-      : null;
+      : transportCheckError
+        ? retryTransportCheck
+        : null;
   const activeErrorTitle = bindError
     ? "Could not start the builder chat"
-    : "Could not create a blank agent";
+    : bootstrapError
+      ? "Could not create a blank agent"
+      : "Could not check the AI connection";
 
   return (
     <div

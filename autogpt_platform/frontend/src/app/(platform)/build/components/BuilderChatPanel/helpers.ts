@@ -9,29 +9,30 @@ export type DeploymentModelStatus =
 
 interface TransportsQuery {
   isPending: boolean;
-  isError: boolean;
+  isFetching: boolean;
   transports: ChatTransportResponse[] | undefined;
 }
 
 // Builder sessions only run on this server's own model (the platform
 // transport). A connected ChatGPT plan does not open them up, so it doesn't
-// count here. "unknown" (the check itself failed) leaves the answer to the
-// session request.
+// count here. "unknown" means the check itself failed.
 export function getDeploymentModelStatus({
   isPending,
-  isError,
+  isFetching,
   transports,
 }: TransportsQuery): DeploymentModelStatus {
   if (transports) {
-    return transports.some(
+    const isAvailable = transports.some(
       (transport) =>
         transport.auth_provider === "platform" && transport.available,
-    )
-      ? "available"
-      : "missing";
+    );
+    if (!isAvailable) return "missing";
+    // A cached "available" can be stale (the model may have gone since the
+    // panel last opened), and the agent it lets us create can't be taken
+    // back, so wait for the refetch.
+    return isFetching ? "checking" : "available";
   }
-  if (isError) return "unknown";
-  return isPending ? "checking" : "unknown";
+  return isPending || isFetching ? "checking" : "unknown";
 }
 
 export function isNoModelError(error: unknown) {

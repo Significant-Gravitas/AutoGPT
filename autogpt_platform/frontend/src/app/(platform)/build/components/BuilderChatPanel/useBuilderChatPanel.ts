@@ -99,7 +99,7 @@ export function useBuilderChatPanel({
     ? "missing"
     : getDeploymentModelStatus({
         isPending: transportsQuery.isPending,
-        isError: transportsQuery.isError,
+        isFetching: transportsQuery.isFetching,
         transports:
           transportsQuery.data?.status === 200
             ? transportsQuery.data.data.transports
@@ -107,6 +107,13 @@ export function useBuilderChatPanel({
       });
   const isWaitingForModel =
     modelStatus === "checking" || modelStatus === "missing";
+  // If the check fails, an open agent still binds (the session request
+  // answers for itself), but no blank agent is created on a guess.
+  const canCreateAgent = modelStatus === "available";
+  const transportCheckError =
+    isOpen && !flowID && modelStatus === "unknown"
+      ? "failed_to_check_ai_connection"
+      : null;
 
   const { data: graph, refetch: refetchGraph } = useGetV1GetSpecificGraph(
     flowID ?? "",
@@ -288,7 +295,7 @@ export function useBuilderChatPanel({
   const isBootstrappingRef = useRef(false);
   useEffect(() => {
     if (!isOpen || flowID || isBootstrappingRef.current) return;
-    if (isWaitingForModel) return;
+    if (!canCreateAgent) return;
     isBootstrappingRef.current = true;
     setBootstrapError(null);
     void (async () => {
@@ -330,7 +337,7 @@ export function useBuilderChatPanel({
     isOpen,
     flowID,
     bootstrapRetryToken,
-    isWaitingForModel,
+    canCreateAgent,
     createNewGraph,
     setQueryStates,
     toast,
@@ -532,6 +539,7 @@ export function useBuilderChatPanel({
   const hasNoModel = modelStatus === "missing";
   const isBootstrapping =
     !hasNoModel &&
+    !transportCheckError &&
     !bindError &&
     !bootstrapError &&
     (isBootstrappingGraph ||
@@ -546,6 +554,10 @@ export function useBuilderChatPanel({
   function retryBootstrap() {
     setBootstrapError(null);
     setBootstrapRetryToken((t) => t + 1);
+  }
+
+  function retryTransportCheck() {
+    void transportsQuery.refetch();
   }
 
   return {
@@ -569,5 +581,7 @@ export function useBuilderChatPanel({
     bootstrapError,
     retryBind,
     retryBootstrap,
+    transportCheckError,
+    retryTransportCheck,
   };
 }
