@@ -5,12 +5,7 @@ import {
   CredentialsProvidersContext,
 } from "@/providers/agent-credentials/credentials-provider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectorRow } from "../ConnectorRow";
@@ -101,7 +96,7 @@ beforeEach(() => {
   server.use(
     getGetV1GetAyrshareSsoUrlMockHandler200({
       sso_url: SSO_URL,
-      expires_at: "2026-10-14T00:00:00Z",
+      expires_at: new Date("2026-10-14T00:00:00Z"),
     }),
   );
 });
