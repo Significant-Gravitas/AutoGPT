@@ -148,14 +148,18 @@ class TestASlowCleanup:
         self, mocker, fake_dream_db, fake_dream_redis, charges
     ):
         """Every bound scaled to a tenth, and every listing, and every write
-        to a newly lapsed row, takes 9.5 s of its 10. The open row's close and
-        the write clearing its mark both fall within the open rows' share, so
-        the pending cleanup still starts within its own, and is charged in the
-        first run."""
+        to a newly lapsed row, takes 9.5 s of its 10; the open rows' cycle
+        has just ended, so they are listed twice. The open row's close and the
+        write clearing its mark both end with the open rows' share, the write
+        cut short there (the next run clears the mark), so the pending
+        cleanup still starts within its own, and is charged in the first
+        run."""
         _scale_every_bound(mocker, 0.1)
         _pending(fake_dream_db, ["healthy"])
         await _consolidate_landed("healthy")
         _seed(fake_dream_db, "new", route=DreamPassRoute.SYNC)
+        ended = datetime.now(timezone.utc) - timedelta(days=1)
+        fake_dream_redis.hashes[_OPEN_SCAN] = {"end": ended.isoformat(), "last": ""}
         list_open = fake_dream_db.list_expired_dream_passes
         list_pending = fake_dream_db.list_dream_pass_cleanups
         write = fake_dream_db.update_dream_pass
