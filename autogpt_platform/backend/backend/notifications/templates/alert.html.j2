@@ -1,0 +1,37 @@
+{%- import "_email_ui.j2" as ui with context -%}
+{%- set also_items = also | default([]) -%}
+<!doctype html>
+<html lang="en">
+<head>{{ ui.head_block(subject) }}</head>
+{{ ui.body_open() }}
+{{ ui.preheader(preheader) }}
+{{ ui.page_open() }}
+{{ ui.masthead() }}
+{{ ui.hero_otto() }}
+{{ ui.sheet_open() }}
+{{ ui.strip_amber('NEEDS YOU' ~ (' · ' ~ timestamp_label | upper if timestamp_label else '')) }}
+{% call ui.eyebrow(tone='needs_you') %}THE ALERT{% endcall %}
+{% call ui.headline() %}{{ primary.headline }}{% endcall %}
+{% call ui.para() %}Hi {{ first_name | default('there', true) }}, here is what needs your attention. {{ preheader }}{% endcall %}
+{% set detail = primary.body[preheader | length:] | trim if primary.body.startswith(preheader) else primary.body %}
+<tr><td class="gutter" style="padding:22px 48px 0;">{{ ui.attention_card({'title': primary.headline, 'body': detail, 'cta_label': primary.cta_label, 'cta_url': primary.cta_url}) }}</td></tr>
+{% if primary.microcopy %}{% call ui.para(top=10, size=12, lh=18, color='#575072') %}{{ primary.microcopy }}{% endcall %}{% endif %}
+{% if primary.facts %}
+{% set rows = [] %}
+{% for f in primary.facts %}{% set _ = rows.append((f.label, f.value, true)) %}{% endfor %}
+{{ ui.kvpanel(rows) }}
+{% endif %}
+{% if also_items %}
+{% set rows = [] %}
+{% for a in also_items[:3] %}{% set _ = rows.append((a.agent, a.text, a.link_label, a.url)) %}{% endfor %}
+{{ ui.also_panel(also_label | default('Also waiting', true), rows) }}
+{% if also_items | length > 3 %}
+{% call ui.para(size=14, lh=21) %}+ {{ also_items | length - 3 }} more waiting. <a href="{{ urls.dashboard }}" style="color:#6144DF; font-weight:600; text-decoration:underline;">Review all workflows</a>{% endcall %}
+{% endif %}
+{% endif %}
+{{ ui.close_row('You get this alert because your action is needed.', 'Alert settings', urls.settings) }}
+{{ ui.sheet_close() }}
+{{ ui.page_close() }}
+{{ ui.product_footer('This is a product notification for the AutoGPT account for ' ~ user_email ~ '.', urls.unsubscribe) }}
+</td></tr></table>
+</body></html>

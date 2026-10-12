@@ -1,9 +1,8 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from prisma.enums import NotificationType
+from prisma.enums import AlertCause
 
-from backend.data.notifications import LowBalanceData
 from backend.executor import billing
 from backend.util.test import SpinTestServer
 
@@ -18,12 +17,8 @@ async def test_handle_low_balance_threshold_crossing(server: SpinTestServer):
 
     # Mock dependencies
     with patch(
-        "backend.executor.billing.queue_notification"
-    ) as mock_queue_notif, patch(
         "backend.executor.billing.get_notification_manager_client"
-    ) as mock_get_client, patch(
-        "backend.executor.billing.settings"
-    ) as mock_settings:
+    ) as mock_get_client, patch("backend.executor.billing.settings") as mock_settings:
 
         # Setup mocks
         mock_client = MagicMock()
@@ -34,6 +29,10 @@ async def test_handle_low_balance_threshold_crossing(server: SpinTestServer):
         # Create mock database client
         mock_db_client = MagicMock()
         mock_db_client.get_user_email_by_id.return_value = "test@example.com"
+        # The forecast is derived from the account's real recent spend, not
+        # from the single transaction that crossed the threshold.
+        mock_db_client.get_recent_daily_spend.return_value = 100.0  # 1.00/day
+        mock_db_client.count_scheduled_agents.return_value = 2
 
         # Test the low balance handler
         billing.handle_low_balance(
@@ -43,15 +42,14 @@ async def test_handle_low_balance_threshold_crossing(server: SpinTestServer):
             transaction_cost=transaction_cost,
         )
 
-        # Verify notification was queued
-        mock_queue_notif.assert_called_once()
-        notification_call = mock_queue_notif.call_args[0][0]
-
-        # Verify notification details
-        assert notification_call.type == NotificationType.LOW_BALANCE
-        assert notification_call.user_id == user_id
-        assert isinstance(notification_call.data, LowBalanceData)
-        assert notification_call.data.current_balance == current_balance
+        # The alert engine owns debouncing and the daily cap, so billing
+        # raises a condition rather than sending anything.
+        mock_db_client.raise_alert_condition.assert_called_once()
+        raised = mock_db_client.raise_alert_condition.call_args.kwargs
+        assert raised["cause"] == AlertCause.LOW_BALANCE
+        assert raised["user_id"] == user_id
+        assert raised["cause_key"] == "low_balance"
+        assert raised["data"]["balance_display"] == "4.00 credits"
 
         # Verify Discord alert was sent
         mock_client.discord_system_alert.assert_called_once()
@@ -76,12 +74,8 @@ async def test_handle_low_balance_no_notification_when_not_crossing(
 
     # Mock dependencies
     with patch(
-        "backend.executor.billing.queue_notification"
-    ) as mock_queue_notif, patch(
         "backend.executor.billing.get_notification_manager_client"
-    ) as mock_get_client, patch(
-        "backend.executor.billing.settings"
-    ) as mock_settings:
+    ) as mock_get_client, patch("backend.executor.billing.settings") as mock_settings:
 
         # Setup mocks
         mock_client = MagicMock()
@@ -90,6 +84,8 @@ async def test_handle_low_balance_no_notification_when_not_crossing(
 
         # Create mock database client
         mock_db_client = MagicMock()
+        mock_db_client.get_recent_daily_spend.return_value = 100.0
+        mock_db_client.count_scheduled_agents.return_value = 2
 
         # Test the low balance handler
         billing.handle_low_balance(
@@ -99,8 +95,8 @@ async def test_handle_low_balance_no_notification_when_not_crossing(
             transaction_cost=transaction_cost,
         )
 
-        # Verify no notification was sent
-        mock_queue_notif.assert_not_called()
+        # Verify no alert was raised
+        mock_db_client.raise_alert_condition.assert_not_called()
         mock_client.discord_system_alert.assert_not_called()
 
 
@@ -118,12 +114,8 @@ async def test_handle_low_balance_no_duplicate_when_already_below(
 
     # Mock dependencies
     with patch(
-        "backend.executor.billing.queue_notification"
-    ) as mock_queue_notif, patch(
         "backend.executor.billing.get_notification_manager_client"
-    ) as mock_get_client, patch(
-        "backend.executor.billing.settings"
-    ) as mock_settings:
+    ) as mock_get_client, patch("backend.executor.billing.settings") as mock_settings:
 
         # Setup mocks
         mock_client = MagicMock()
@@ -132,6 +124,8 @@ async def test_handle_low_balance_no_duplicate_when_already_below(
 
         # Create mock database client
         mock_db_client = MagicMock()
+        mock_db_client.get_recent_daily_spend.return_value = 100.0
+        mock_db_client.count_scheduled_agents.return_value = 2
 
         # Test the low balance handler
         billing.handle_low_balance(
@@ -141,6 +135,6 @@ async def test_handle_low_balance_no_duplicate_when_already_below(
             transaction_cost=transaction_cost,
         )
 
-        # Verify no notification was sent (user was already below threshold)
-        mock_queue_notif.assert_not_called()
+        # Verify no alert was raised (user was already below threshold)
+        mock_db_client.raise_alert_condition.assert_not_called()
         mock_client.discord_system_alert.assert_not_called()

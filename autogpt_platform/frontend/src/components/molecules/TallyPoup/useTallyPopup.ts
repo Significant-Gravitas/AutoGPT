@@ -92,7 +92,7 @@ export function useTallyPopup() {
     window.addEventListener("message", handleTallyMessage);
 
     return () => {
-      document.head.removeChild(script);
+      script.parentNode?.removeChild(script);
       window.removeEventListener("message", handleTallyMessage);
     };
   }, []);

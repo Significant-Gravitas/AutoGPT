@@ -8,6 +8,7 @@ import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endp
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
+import { trackAgentRunGoal } from "@/services/analytics/activation-goals";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -87,6 +88,12 @@ export function ScheduleActionsDropdown({
       });
 
       const newRunID = okData(res)?.id;
+      if (newRunID) {
+        trackAgentRunGoal(
+          { id: schedule.graph_id, name: agent.name },
+          "library",
+        );
+      }
 
       await queryClient.invalidateQueries({
         queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),

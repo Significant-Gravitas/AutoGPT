@@ -1,3 +1,4 @@
+import { getFieldDomId } from "../../field-accessibility";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
@@ -5,10 +6,18 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api";
+import { Text } from "@/components/atoms/Text/Text";
 import { FieldProps, getUiOptions } from "@rjsf/utils";
 import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { CredentialFieldTitle } from "./components/CredentialFieldTitle";
+import { useCredentialAvailability } from "./useCredentialAvailability";
+import {
+  credentialNotApplicable,
+  credentialRequiredForSelection,
+  getCredentialProviderFromSchema,
+  getDiscriminatorValue,
+} from "./helpers";
 
 export const CredentialsField = (props: FieldProps) => {
   const { formData, onChange, schema, registry, fieldPathId, required } = props;
@@ -36,7 +45,7 @@ export const CredentialsField = (props: FieldProps) => {
     return typeof value === "boolean" ? value : false;
   }, [node?.data?.metadata?.credentials_optional]);
 
-  const handleChange = (newValue: any) => {
+  const handleChange = (newValue: unknown) => {
     onChange(newValue, fieldPathId?.path);
   };
 
@@ -67,19 +76,99 @@ export const CredentialsField = (props: FieldProps) => {
     [formData?.id, formData?.provider, formData?.title, formData?.type],
   );
 
-  // In builder canvas (nodeId exists): show star based on credentialsOptional toggle
-  // In run dialogs (no nodeId): show star based on schema's required array
-  const isRequired = nodeId ? !credentialsOptional : required;
+  const credentialSchema = schema as BlockIOCredentialsSubSchema;
+  const selectionRequired =
+    required ||
+    credentialRequiredForSelection(hardcodedValues, credentialSchema);
+  const effectiveRequired = nodeId
+    ? !credentialsOptional && selectionRequired
+    : selectionRequired;
+
+  // Nothing to ask for: the selected discriminator value maps to no provider
+  // (Otto's `platform` transport), so the row is not merely unavailable —
+  // it does not apply at all.
+  const notApplicable =
+    !required &&
+    credentialNotApplicable(
+      hardcodedValues,
+      schema as BlockIOCredentialsSubSchema,
+      selectedCredentials?.provider,
+    );
+
+  const availability = useCredentialAvailability(
+    schema as BlockIOCredentialsSubSchema,
+    hardcodedValues,
+    selectedCredentials?.provider,
+  );
+  const isUnavailable = availability === "unavailable";
+  const unsupportedSelection =
+    !notApplicable &&
+    getDiscriminatorValue(hardcodedValues, credentialSchema) !== undefined &&
+    !!credentialSchema.discriminator_mapping &&
+    !getCredentialProviderFromSchema(hardcodedValues, credentialSchema);
+
+  // CredentialsInput renders nothing when the provider is missing from the
+  // providers map, which used to leave a bare title with no control under it.
+  // An optional field then has nothing actionable in it at all, so drop the row.
+  //
+  // Keyed off the schema's own `required`, not `effectiveRequired` above: the
+  // node-level toggle also feeds that value, so turning "Optional" on for a
+  // required gated field would hide the row and the toggle along with it,
+  // leaving no way to turn it back off.
+  if (notApplicable) {
+    return null;
+  }
+
+  if (isUnavailable && !selectionRequired) {
+    return null;
+  }
+
+  // A provider this user cannot connect is not actionable, so the required
+  // marker only misleads: it demands something the UI gives no way to supply.
+  // The schema still requires it and execution-time validation still enforces
+  // that — this only suppresses the star on a field that cannot be filled.
+  const isRequired = isUnavailable ? false : effectiveRequired;
+  // Ties the explanation to the control for assistive tech: dropping the
+  // required marker also removes the only programmatic cue that a visible
+  // field cannot be filled.
+  const unavailableNoteId = getFieldDomId(
+    `${fieldPathId?.$id ?? "credentials"}-unavailable`,
+    formContext,
+  );
+  const optionalToggleId = getFieldDomId(
+    `credentials-optional-${nodeId}`,
+    formContext,
+  );
 
   return (
-    <div className="flex flex-col gap-2">
+    <div
+      className="flex flex-col gap-2"
+      aria-describedby={isUnavailable ? unavailableNoteId : undefined}
+    >
       <CredentialFieldTitle
         fieldPathId={fieldPathId}
         registry={registry}
         uiOptions={uiOptions}
         schema={schema}
         required={isRequired}
+        selectedProvider={selectedCredentials?.provider}
       />
+      {unsupportedSelection && (
+        <Text variant="small" role="alert">
+          This selection is no longer supported. Choose another model or
+          transport.
+        </Text>
+      )}
+      {availability === "unavailable" && (
+        <Text
+          id={unavailableNoteId}
+          variant="small"
+          className="text-zinc-500"
+          aria-live="polite"
+        >
+          Not available on your account.
+        </Text>
+      )}
       <CredentialsInput
         schema={schema as BlockIOCredentialsSubSchema}
         selectedCredentials={selectedCredentials}
@@ -98,14 +187,14 @@ export const CredentialsField = (props: FieldProps) => {
         formContext?.showOptionalToggle !== false && (
           <div className="mt-1 flex items-center gap-2">
             <Switch
-              id={`credentials-optional-${nodeId}`}
+              id={optionalToggleId}
               checked={credentialsOptional}
               onCheckedChange={(checked) =>
                 setCredentialsOptional(nodeId, checked)
               }
             />
             <label
-              htmlFor={`credentials-optional-${nodeId}`}
+              htmlFor={optionalToggleId}
               className="cursor-pointer text-xs text-gray-500"
             >
               Optional - skip block if not configured

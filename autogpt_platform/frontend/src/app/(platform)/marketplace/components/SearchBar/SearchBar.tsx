@@ -7,14 +7,21 @@ interface SearchBarProps {
   placeholder?: string;
   width?: string;
   height?: string;
+  defaultValue?: string;
+  onSubmit?: (query: string) => void;
 }
 
 export function SearchBar({
   placeholder = 'Search for tasks like "optimise SEO"',
   width = "w-full lg:w-[56.25rem]",
   height = "h-[3.8rem]",
+  defaultValue,
+  onSubmit,
 }: SearchBarProps) {
-  const { handleSubmit, setSearchQuery, searchQuery } = useSearchbar();
+  const { handleSubmit, setSearchQuery, searchQuery } = useSearchbar({
+    defaultValue,
+    onSubmit,
+  });
 
   return (
     <form
@@ -30,6 +37,7 @@ export function SearchBar({
       />
       <input
         type="text"
+        aria-label={placeholder}
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder={placeholder}

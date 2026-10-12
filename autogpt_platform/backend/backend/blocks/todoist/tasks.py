@@ -7,6 +7,7 @@ from typing_extensions import Optional
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -633,6 +634,8 @@ class TodoistDeleteTaskBlock(Block):
                 ("success", True),
             ],
             test_mock={"delete_task": lambda *args, **kwargs: (True)},
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

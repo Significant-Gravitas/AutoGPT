@@ -11,6 +11,7 @@ from backend.data.event_bus import (
     RedisEventBus,
     _assert_no_wildcard,
 )
+from backend.util.testing import is_tcp_port_reachable
 
 
 class SampleEvent(BaseModel):
@@ -84,15 +85,7 @@ def test_assert_no_wildcard_guard():
 def _has_live_cluster() -> bool:
     from backend.data import redis_client
 
-    try:
-        c = redis_client.connect()
-    except Exception:  # noqa: BLE001 - any connect failure → skip the test
-        return False
-    try:
-        c.close()
-    except Exception:
-        pass
-    return True
+    return is_tcp_port_reachable(redis_client.HOST, redis_client.PORT)
 
 
 @pytest.mark.asyncio

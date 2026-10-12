@@ -11,7 +11,7 @@ import logging
 
 from pydantic import BaseModel, Field
 
-from backend.platform_linking.models import TurnDenial
+from backend.platform_linking.models import CardTurn, ChatTurnHandle, TurnDenial
 from backend.util.exceptions import LinkAlreadyExistsError
 
 from . import sessions, threads
@@ -52,6 +52,8 @@ class TargetState(BaseModel):
     # turn so it uses the same session (not a separate Redis read that could
     # diverge). None for text-only batches, which resolve the session normally.
     session_id: str | None = None
+    # Turns woken by a card answered here, streamed before the next batch.
+    follows: list[ChatTurnHandle] = Field(default_factory=list)
 
 
 class MessageHandler:
@@ -65,7 +67,15 @@ class MessageHandler:
         self._session_locks: dict[str, asyncio.Lock] = {}
 
     async def handle(self, ctx: MessageContext, adapter: PlatformAdapter) -> None:
-        if not ctx.text.strip() and not ctx.attachments:
+        if ctx.follow is not None:
+            await self._follow(ctx, ctx.follow, adapter)
+            return
+        # Skipped attachments (too large / failed download) count as content:
+        # the user sent something and must hear why nothing happened.
+        has_content = bool(
+            ctx.text.strip() or ctx.attachments or ctx.skipped_attachments
+        )
+        if not has_content:
             if ctx.channel_type == "channel":
                 await adapter.send_reply(
                     ctx.channel_id,
@@ -90,6 +100,14 @@ class MessageHandler:
                 include_thread_history = True
 
         if not await self._ensure_linked(ctx, adapter):
+            return
+
+        if not ctx.text.strip() and not ctx.attachments:
+            # The content gate above guarantees skipped_attachments is
+            # non-empty here. There is no turn to run, so say so in place:
+            # resolving a target first would open a thread (a real, visible
+            # one on Discord) just to hold the note.
+            await self._report_skipped_only(ctx, adapter)
             return
 
         target_id = await self._resolve_target(ctx, adapter)
@@ -162,6 +180,44 @@ class MessageHandler:
         await self._enqueue_and_process(
             ctx, adapter, target_id, message_text, file_ids, session_id
         )
+
+    async def _follow(
+        self, ctx: MessageContext, follow: CardTurn, adapter: PlatformAdapter
+    ) -> None:
+        """A card answered here woke the turn that runs it; its reply belongs
+        where the card was, after any reply already streaming there."""
+        if not await self._ensure_linked(ctx, adapter):
+            return
+        try:
+            turn = await self._api.woken_turn(follow)
+        except Exception:
+            # The answer stands and its turn runs; only the reply here is lost.
+            logger.exception("Could not find the turn a card answer woke")
+            return
+        if turn is None:
+            return
+        target_id = await self._resolve_target(ctx, adapter)
+        if not target_id:
+            return
+        state = self._targets.setdefault(target_id, TargetState())
+        state.follows.append(turn)
+        await self._process(ctx, adapter, target_id, state)
+
+    async def _report_skipped_only(
+        self, ctx: MessageContext, adapter: PlatformAdapter
+    ) -> None:
+        self._api.track_event(
+            platform=ctx.platform,
+            event_type="message_received",
+            server_id=ctx.server_id,
+            channel_type=ctx.channel_type,
+            char_count=0,
+        )
+        note = format_attachment_problems(list(ctx.skipped_attachments))
+        if ctx.channel_type == "channel":
+            await adapter.send_reply(ctx.channel_id, note, ctx.message_id)
+        else:
+            await adapter.send_message(ctx.channel_id, note)
 
     # -- Session + target resolution --
 
@@ -246,9 +302,16 @@ class MessageHandler:
         target_id: str,
         file_ids: list[str] | None = None,
         session_id: str | None = None,
+        turn: ChatTurnHandle | None = None,
     ) -> None:
         await self._streamer.stream_batch(
-            batch, ctx, adapter, target_id, file_ids=file_ids, session_id=session_id
+            batch,
+            ctx,
+            adapter,
+            target_id,
+            file_ids=file_ids,
+            session_id=session_id,
+            turn=turn,
         )
 
     async def _enqueue_and_process(
@@ -268,15 +331,27 @@ class MessageHandler:
         # resolved the same session (serialised by _session_lock), so keep it.
         if session_id and state.session_id is None:
             state.session_id = session_id
+        await self._process(ctx, adapter, target_id, state)
 
+    async def _process(
+        self,
+        ctx: MessageContext,
+        adapter: PlatformAdapter,
+        target_id: str,
+        state: TargetState,
+    ) -> None:
         if state.processing:
             # Another invocation is streaming for this target — it will pick
-            # up the message we just appended when its current stream ends.
+            # up what we just queued when its current stream ends.
             return
 
         state.processing = True
         try:
-            while state.pending:
+            while state.pending or state.follows:
+                if state.follows:
+                    turn = state.follows.pop(0)
+                    await self._stream_batch([], ctx, adapter, target_id, turn=turn)
+                    continue
                 batch = list(state.pending)
                 batch_file_ids = list(state.pending_file_ids)
                 batch_session_id = state.session_id
@@ -302,7 +377,7 @@ class MessageHandler:
             state.processing = False
             # Drop the empty state so the dict doesn't grow unbounded across
             # the bot's lifetime.
-            if not state.pending:
+            if not state.pending and not state.follows:
                 self._targets.pop(target_id, None)
 
     # -- Linking --

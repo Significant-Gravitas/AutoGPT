@@ -5,6 +5,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
@@ -105,6 +106,8 @@ class PostToInstagramBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToInstagramBlock.Input,
             output_schema=PostToInstagramBlock.Output,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

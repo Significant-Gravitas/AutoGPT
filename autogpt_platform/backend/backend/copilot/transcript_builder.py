@@ -251,6 +251,16 @@ class TranscriptBuilder:
         """Total number of entries in the complete context."""
         return len(self._entries)
 
+    def entries_as_dicts(self) -> list[dict[str, Any]]:
+        """The active context in the CLI's own entry shape (``type`` + ``message``).
+
+        Shallow: ``message`` is shared with the builder, so callers must
+        only read it.  Lets the compaction sizing helpers measure our
+        mirror of the CLI context with the same code that measures the
+        CLI's session file.
+        """
+        return [{"type": e.type, "message": e.message} for e in self._entries]
+
     @property
     def is_empty(self) -> bool:
         """Whether this builder has any entries."""

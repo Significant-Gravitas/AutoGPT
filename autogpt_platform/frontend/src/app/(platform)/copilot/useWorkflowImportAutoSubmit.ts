@@ -97,15 +97,17 @@ function extractPromptFromUrl(): {
 export function useWorkflowImportAutoSubmit({
   onSend,
   setPendingFileParts,
+  isSendLocked = false,
 }: {
   onSend: (message: string) => Promise<void>;
   setPendingFileParts: (parts: FileUIPart[]) => void;
+  isSendLocked?: boolean;
 }) {
   const { setInitialPrompt } = useCopilotUIStore();
   const hasProcessedUrlPrompt = useRef(false);
 
   useEffect(() => {
-    if (hasProcessedUrlPrompt.current) return;
+    if (isSendLocked || hasProcessedUrlPrompt.current) return;
 
     const urlPrompt = extractPromptFromUrl();
     if (!urlPrompt) return;
@@ -122,5 +124,5 @@ export function useWorkflowImportAutoSubmit({
     } else {
       setInitialPrompt(urlPrompt.prompt);
     }
-  }, [onSend, setInitialPrompt, setPendingFileParts]);
+  }, [isSendLocked, onSend, setInitialPrompt, setPendingFileParts]);
 }

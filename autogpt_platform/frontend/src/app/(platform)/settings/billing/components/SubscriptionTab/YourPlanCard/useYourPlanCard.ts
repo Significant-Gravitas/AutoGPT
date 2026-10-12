@@ -13,15 +13,33 @@ import type { SubscriptionTierRequestBillingCycle } from "@/app/api/__generated_
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import {
+  centsToUSD,
+  getSubscriptionValue,
+  trackAdsConversionBeforeNavigation,
+} from "@/services/analytics/google-ads";
+import {
+  trackBillingPortalOpened,
+  trackPaywallViewed,
+  trackPlanSelected,
+} from "@/services/analytics/monetization-analytics";
 
 import { formatCents, formatShortDate } from "../../../helpers";
+import { getCheckoutReturnURLs } from "../helpers";
 
 const PLAN_LABEL: Record<string, string> = {
   NO_TIER: "No active subscription",
+  BASIC: "Basic",
   PRO: "Pro",
   MAX: "Max",
   BUSINESS: "Team",
+  ENTERPRISE: "Enterprise",
 };
+
+// ENTERPRISE seats are provisioned by an administrator and the backend
+// rejects every self-service change from them with 403, so the card must
+// not offer any plan controls — point these users at the account team.
+export const ENTERPRISE_CONTACT_URL = "mailto:contact@agpt.co";
 
 // Team upgrade is contact-sales — open the Tally intake form rather than
 // firing a Stripe Checkout from the BUSINESS tier.
@@ -69,11 +87,16 @@ export function useYourPlanCard() {
     },
   });
 
-  const { mutateAsync: updateTier, isPending: isUpdatingTier } =
+  const { mutateAsync: updateTier, isPending: isUpdatePending } =
     useUpdateSubscriptionTier();
+  // The mutation settles before the Checkout redirect starts; this keeps the
+  // plan actions busy across the wait for the Ads conversion too.
+  const [isChangingTier, setIsChangingTier] = useState(false);
+  const isUpdatingTier = isUpdatePending || isChangingTier;
 
   const effectiveTier = subscription.data?.tier ?? null;
   const isPaid = effectiveTier !== null && effectiveTier !== "NO_TIER";
+  const isAdminManaged = effectiveTier === "ENTERPRISE";
 
   const serverCycle: SubscriptionTierRequestBillingCycle =
     subscription.data?.billing_cycle === "yearly" ? "yearly" : "monthly";
@@ -99,10 +122,24 @@ export function useYourPlanCard() {
     setSelectedCycle(serverCycle);
   }, [serverCycle]);
 
-  const nextTierKey = effectiveTier ? getNextTier(effectiveTier) : null;
-  const previousTierKey = effectiveTier ? getPreviousTier(effectiveTier) : null;
+  const hasSubscriptionData = Boolean(subscription.data);
+  useEffect(() => {
+    if (hasSubscriptionData) trackPaywallViewed("billing");
+  }, [hasSubscriptionData]);
 
-  const pendingTier = subscription.data?.pending_tier ?? null;
+  // ENTERPRISE sits above every self-serve tier, so it has no upgrade target
+  // and no self-serve downgrade (getNextTier would otherwise fall back to
+  // PRO and offer a downgrade labelled "Upgrade").
+  const nextTierKey =
+    effectiveTier && !isAdminManaged ? getNextTier(effectiveTier) : null;
+  const previousTierKey =
+    effectiveTier && !isAdminManaged ? getPreviousTier(effectiveTier) : null;
+
+  // Any Stripe schedule attached to an ENTERPRISE account is admin business;
+  // surfacing it would offer a "Resume" the backend rejects.
+  const pendingTier = isAdminManaged
+    ? null
+    : (subscription.data?.pending_tier ?? null);
   const pendingEffectiveAt =
     subscription.data?.pending_tier_effective_at ?? null;
   const pendingBillingCycle = subscription.data?.pending_billing_cycle ?? null;
@@ -171,6 +208,7 @@ export function useYourPlanCard() {
         isPendingDowngrade,
         isPendingCycleSwitch,
         billingCycle: serverCycle,
+        isAdminManaged,
       }
     : undefined;
 
@@ -179,7 +217,7 @@ export function useYourPlanCard() {
   // user-manageable cycle to switch — the toggle would be dead UI.
   const isCycleToggleVisible =
     effectiveTier !== null &&
-    effectiveTier !== "ENTERPRISE" &&
+    !isAdminManaged &&
     effectiveTier !== "BASIC" &&
     effectiveTier !== "NO_TIER";
 
@@ -187,19 +225,43 @@ export function useYourPlanCard() {
     tier: SubscriptionTierRequestTier,
     billingCycle?: SubscriptionTierRequestBillingCycle,
   ) {
-    const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success`;
-    const cancelUrl = `${window.location.origin}${window.location.pathname}?subscription=cancelled`;
+    if (isUpdatingTier) return false;
+    setIsChangingTier(true);
+    try {
+      return await requestTierChange(tier, billingCycle);
+    } finally {
+      setIsChangingTier(false);
+    }
+  }
+
+  async function requestTierChange(
+    tier: SubscriptionTierRequestTier,
+    billingCycle?: SubscriptionTierRequestBillingCycle,
+  ) {
+    const cycle = billingCycle ?? "monthly";
+    const { successURL, cancelURL } = getCheckoutReturnURLs({ tier, cycle });
     try {
       const result = await updateTier({
         data: {
           tier,
-          success_url: successUrl,
-          cancel_url: cancelUrl,
+          success_url: successURL,
+          cancel_url: cancelURL,
           ...(billingCycle ? { billing_cycle: billingCycle } : {}),
+          surface: "billing",
         },
       });
       const url = (result?.data as { url?: string } | undefined)?.url;
       if (url) {
+        // A Checkout URL is the only proof that Stripe Checkout actually
+        // starts: paid users are modified in place and get no URL, which is
+        // not a checkout start.
+        // /credits/subscription returns what Stripe actually charges; the
+        // plan-card figure is only the fallback when the tier isn't priced there.
+        const cents =
+          cycle === "yearly" ? tierCostsYearly[tier] : tierCosts[tier];
+        await trackAdsConversionBeforeNavigation("begin_checkout", {
+          value: centsToUSD(cents) ?? getSubscriptionValue(tier, cycle),
+        });
         // Navigating away — don't refetch (would set state on an
         // unmounting component while Stripe Checkout takes over).
         window.location.href = url;
@@ -502,7 +564,9 @@ export function useYourPlanCard() {
     plan,
     isLoading: subscription.isLoading,
     isUpdatingTier,
-    canManagePortal: Boolean(paymentPortal.data),
+    // ENTERPRISE has no Stripe subscription to manage; the Payment method
+    // card still exposes the portal for cards and invoices.
+    canManagePortal: Boolean(paymentPortal.data) && !isAdminManaged,
     // Don't offer upgrade alongside Resume — pending cancel/downgrade should
     // be released first via resumeSubscription, not stacked with a new tier.
     canUpgrade: Boolean(
@@ -555,6 +619,11 @@ export function useYourPlanCard() {
     onCancelTierDowngrade: cancelTierDowngrade,
     onUpgrade: () => {
       if (!plan?.nextTier) return;
+      trackPlanSelected({
+        subscription_tier: plan.nextTier,
+        billing_cycle: plan.isPaidPlan ? serverCycle : selectedCycle,
+        surface: "billing",
+      });
       // Team (BUSINESS) tier is contact-sales — divert to marketing page
       // instead of POSTing a Checkout the user can't self-serve.
       if (plan.nextTierIsTeamLink) {
@@ -573,13 +642,20 @@ export function useYourPlanCard() {
     },
     onDowngrade: () => {
       if (!plan?.previousTier) return;
+      trackPlanSelected({
+        subscription_tier: plan.previousTier,
+        billing_cycle: serverCycle,
+        surface: "billing",
+      });
       setPendingTierDowngrade(plan.previousTier);
     },
     onResume: () => {
       void resumeSubscription();
     },
     onManage: () => {
-      if (paymentPortal.data) window.location.href = paymentPortal.data;
+      if (!paymentPortal.data) return;
+      trackBillingPortalOpened("billing");
+      window.location.href = paymentPortal.data;
     },
   };
 }

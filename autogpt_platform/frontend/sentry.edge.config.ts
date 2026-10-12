@@ -6,18 +6,14 @@
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
-const isProdOrDev = environment.isProd() || environment.isDev();
-const isCloud = environment.isCloud();
-const isDisabled = process.env.DISABLE_SENTRY === "true";
-
-const shouldEnable = !isDisabled && isProdOrDev && isCloud;
+const dsn = environment.getSentryDSN();
 
 Sentry.init({
-  dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
+  dsn,
 
   environment: environment.getEnvironmentStr(),
 
-  enabled: shouldEnable,
+  enabled: Boolean(dsn),
 
   // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
   tracesSampleRate: 1,

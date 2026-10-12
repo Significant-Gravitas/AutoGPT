@@ -8,6 +8,7 @@ import {
   resolveInterruptedMessage,
 } from "./helpers";
 import { extractDbSequence } from "./helpers/convertChatSessionToUiMessages";
+import { CANCELLED_MARKER } from "./useCopilotStop";
 
 const PROMOTED_BUBBLE_ID_PREFIX = "promoted-";
 
@@ -90,6 +91,27 @@ function preservePromotedUserBubbles(
   if (orphans.length === 0) return hydrated;
 
   return [...hydrated, ...orphans];
+}
+
+/**
+ * A stopped turn is finalised client-side — ``useCopilotStop`` appends the
+ * cancellation marker — and the backend persists nothing for it, so a blind
+ * force-replace drops the partial answer and the marker with it, and the error
+ * banner that marker suppresses takes the stopped card's place. Re-attach the
+ * local bubble while the hydrated view still ends on the user's prompt.
+ */
+function preserveStoppedAssistantMessage(
+  prev: UIMessage[],
+  hydrated: UIMessage[],
+): UIMessage[] {
+  const stopped = prev[prev.length - 1];
+  if (stopped?.role !== "assistant") return hydrated;
+  const isStopped = stopped.parts.some(
+    (part) => part.type === "text" && part.text.includes(CANCELLED_MARKER),
+  );
+  if (!isStopped) return hydrated;
+  if (hydrated[hydrated.length - 1]?.role !== "user") return hydrated;
+  return [...hydrated, stopped];
 }
 
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
@@ -249,7 +271,13 @@ export function useHydrateOnStreamEnd({
       // lands once the backend goes idle, so no timeout fallback is needed.
       if (hasActiveStream) return;
       setMessages((prev) =>
-        preservePromotedUserBubbles(prev, retainOlderHistory(prev, finalized)),
+        preservePromotedUserBubbles(
+          prev,
+          preserveStoppedAssistantMessage(
+            prev,
+            retainOlderHistory(prev, finalized),
+          ),
+        ),
       );
       needsForceHydrateRef.current = false;
       staleRefAtStreamEnd.current = null;

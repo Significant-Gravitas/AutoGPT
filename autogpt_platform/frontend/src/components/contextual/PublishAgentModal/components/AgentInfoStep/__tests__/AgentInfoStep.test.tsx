@@ -53,6 +53,23 @@ describe("AgentInfoStep", () => {
     expect(await screen.findByText("Describe the update")).toBeDefined();
   });
 
+  it("disables the category field when the category list cannot be loaded", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/store/categories", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+    );
+    render(<AgentInfoStep {...baseProps} />);
+
+    // The field is disabled while loading too, so wait for the copy that only
+    // the error state renders before asserting on it. The accordion holding it
+    // opens on a timer after mount.
+    expect(await screen.findByText("Categories unavailable")).toBeDefined();
+
+    const category = screen.getByRole("combobox", { name: /category/i });
+    expect(category.hasAttribute("disabled")).toBe(true);
+  });
+
   it("mounts cleanly when the submissions API would error (handler installed)", async () => {
     server.use(
       http.post("http://localhost:3000/api/proxy/api/store/submissions", () =>

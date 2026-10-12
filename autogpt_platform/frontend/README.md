@@ -81,6 +81,7 @@ Every time a new Front-end dependency is added by you or others, you will need t
 - `pnpm lint` - Run ESLint and Prettier checks
 - `pnpm format` - Format code with Prettier
 - `pnpm types` - Run TypeScript type checking
+- `pnpm knip` - Report unused files, exports and dependencies (run `pnpm generate:api` first)
 - `pnpm test:unit` - Run the Vitest integration and unit suite with coverage
 - `pnpm test` - Run the Playwright E2E suite used in CI
 - `pnpm test-ui` - Run the same Playwright E2E suite with UI
@@ -166,6 +167,7 @@ By integrating Storybook into our development workflow, we can streamline UI dev
 - [**Playwright**](https://playwright.dev/) - End-to-end testing framework
 - [**ESLint**](https://eslint.org/) - JavaScript/TypeScript linting
 - [**Prettier**](https://prettier.io/) - Code formatting
+- [**Knip**](https://knip.dev/) - Finds unused files, exports and dependencies
 
 ### Backend & Services
 

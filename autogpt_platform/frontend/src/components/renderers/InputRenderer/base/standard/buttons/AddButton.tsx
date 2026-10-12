@@ -1,3 +1,4 @@
+import { getFieldDomId } from "../../../field-accessibility";
 import { IconButtonProps, TranslatableString } from "@rjsf/utils";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/atoms/Button/Button";
@@ -7,6 +8,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 export default function AddButton({
   registry,
   className,
+  id,
   uiSchema: _uiSchema,
   ...props
 }: IconButtonProps) {
@@ -15,6 +17,7 @@ export default function AddButton({
     <div className="m-0 w-full p-0">
       <Button
         {...props}
+        id={id ? getFieldDomId(id, registry.formContext) : undefined}
         size="small"
         className={cn("w-full gap-4", className)}
         variant="secondary"

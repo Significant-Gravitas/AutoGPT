@@ -13,9 +13,13 @@
 
 import { fireEvent } from "@testing-library/react";
 import { http, HttpResponse, type JsonBodyType } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "@/mocks/mock-server";
+import {
+  installGtagShim,
+  removeGtagShim,
+} from "@/tests/integrations/gtag-shim";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 
 import { AutoRefillCard } from "../components/AutomationCreditsTab/AutoRefillCard/AutoRefillCard";
@@ -363,7 +367,11 @@ describe("YourPlanCard cycle toggle", () => {
   });
 
   it("fires updateTier with billing_cycle on confirm", async () => {
-    let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
+    let capturedBody: {
+      tier?: string;
+      billing_cycle?: string;
+      success_url?: string;
+    } | null = null;
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "PRO",
@@ -394,6 +402,11 @@ describe("YourPlanCard cycle toggle", () => {
       expect(capturedBody).not.toBeNull();
       expect(capturedBody?.tier).toBe("PRO");
       expect(capturedBody?.billing_cycle).toBe("yearly");
+      // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
+      // report the subscription value to Google Ads.
+      expect(capturedBody?.success_url).toContain(
+        "?subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=PRO&cycle=yearly",
+      );
     });
   });
 
@@ -693,6 +706,62 @@ describe("YourPlanCard cycle toggle", () => {
     render(<YourPlanCard />);
 
     await waitFor(() => expect(screen.queryAllByRole("radio").length).toBe(0));
+  });
+
+  it("ENTERPRISE account sees the Enterprise label, the managed-by line and a contact link, with no plan controls", async () => {
+    // The backend rejects every self-service change from ENTERPRISE with
+    // 403, so the card must not offer upgrade/downgrade/resume or the
+    // Stripe "Manage subscription" portal — even when a stray schedule is
+    // attached to the account.
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "ENTERPRISE",
+        monthly_cost: 0,
+        billing_cycle: "monthly",
+        has_active_stripe_subscription: true,
+        status: "active",
+        pending_tier: "NO_TIER",
+        pending_tier_effective_at: "2026-05-30T00:00:00Z",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    expect(await screen.findByText("Enterprise")).toBeDefined();
+    expect(screen.queryByText("ENTERPRISE")).toBeNull();
+    expect(screen.getByText("Active")).toBeDefined();
+    expect(
+      screen.getByText(/Managed by your AutoGPT account team/i),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: /contact us/i }).getAttribute("href"),
+    ).toBe("mailto:contact@agpt.co");
+    expect(screen.queryByText(/\$0\.00/)).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("BASIC account still sees Upgrade to Pro (backend accepts BASIC → PRO)", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "BASIC",
+        monthly_cost: 0,
+        billing_cycle: "monthly",
+        has_active_stripe_subscription: false,
+        status: "inactive",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    render(<YourPlanCard />);
+
+    expect(await screen.findByText("Basic")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /upgrade to pro/i }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /downgrade to/i })).toBeNull();
   });
 
   it("hides the cycle toggle entirely for BASIC tier", async () => {
@@ -1045,12 +1114,13 @@ describe("TransactionHistoryCard", () => {
     expect(await screen.findByText(/No transactions yet/i)).toBeDefined();
   });
 
-  it("renders a row per transaction with credit/debit colour-coded amounts", async () => {
+  it("renders signed balance changes with neutral debits and highlighted credits", async () => {
     server.use(
       jsonHandler("get", "/api/credits/transactions", {
         transactions: [
           {
             transaction_key: "TXN-A",
+            id: "transaction:TXN-A",
             transaction_time: "2026-04-10T00:00:00Z",
             transaction_type: "TOP_UP",
             amount: 5000,
@@ -1058,6 +1128,9 @@ describe("TransactionHistoryCard", () => {
           },
           {
             transaction_key: "TXN-B",
+            id: "execution:TXN-B",
+            activity_type: "agent_run",
+            agent_name: "Morning briefing",
             transaction_time: "2026-04-11T00:00:00Z",
             transaction_type: "USAGE",
             amount: -250,
@@ -1070,10 +1143,11 @@ describe("TransactionHistoryCard", () => {
 
     render(<TransactionHistoryCard />);
 
-    expect(await screen.findByText("Top up")).toBeDefined();
+    expect(await screen.findByText("Credits added")).toBeDefined();
+    expect(screen.getByText("Morning briefing")).toBeDefined();
     expect(screen.getByText("Agent run")).toBeDefined();
     expect(screen.getByText("+$50.00")).toBeDefined();
-    expect(screen.getByText("-$2.50")).toBeDefined();
+    expect(screen.getByText("−$2.50")).toBeDefined();
     expect(screen.queryByText(/^Balance$/)).toBeNull();
   });
 
@@ -1217,5 +1291,125 @@ describe("Card mutation flows", () => {
     expect(
       screen.queryByRole("button", { name: /manage subscription/i }),
     ).toBeNull();
+  });
+});
+
+describe("YourPlanCard begin_checkout", () => {
+  const originalLocation = window.location;
+
+  function stubLocation() {
+    const location = {
+      origin: "http://localhost",
+      pathname: "/settings/billing",
+      href: "http://localhost/settings/billing",
+    };
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: location,
+    });
+    return location;
+  }
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    });
+    removeGtagShim();
+    vi.unstubAllEnvs();
+  });
+
+  function freeAccount(checkoutURL: string | null) {
+    const hits = { get: 0, post: 0 };
+    server.use(
+      http.get("*/api/credits/subscription", () => {
+        hits.get += 1;
+        return HttpResponse.json({
+          tier: "NO_TIER",
+          monthly_cost: 0,
+          has_active_stripe_subscription: false,
+          status: "inactive",
+          // What Stripe actually charges, which is what Ads should bid on —
+          // deliberately not the $50 the plan card computes.
+          tier_costs: { PRO: 4900 },
+        });
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+      http.post("*/api/credits/subscription", () => {
+        hits.post += 1;
+        return HttpResponse.json({ url: checkoutURL });
+      }),
+    );
+    return hits;
+  }
+
+  it("reports begin_checkout with the authoritative price once Stripe returns a URL", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const location = stubLocation();
+    freeAccount("https://checkout.stripe.com/pay/cs_test");
+
+    render(<YourPlanCard />);
+    fireEvent.click(await screen.findByRole("button", { name: /get pro/i }));
+
+    await waitFor(() => {
+      expect(gtagCalls).toContainEqual([
+        "event",
+        "conversion",
+        {
+          send_to: "AW-123/BC",
+          value: 49,
+          currency: "USD",
+          event_callback: expect.any(Function),
+        },
+      ]);
+    });
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
+  });
+
+  it("stays busy while the conversion goes out, so a second click starts no second checkout", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const location = stubLocation();
+    const hits = freeAccount("https://checkout.stripe.com/pay/cs_test");
+
+    render(<YourPlanCard />);
+    const upgrade = await screen.findByRole("button", { name: /get pro/i });
+    fireEvent.click(upgrade);
+    await waitFor(() =>
+      expect(gtagCalls.some((call) => call[1] === "conversion")).toBe(true),
+    );
+    expect(upgrade.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(upgrade);
+
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
+    expect(hits.post).toBe(1);
+  });
+
+  it("reports no begin_checkout when the tier changes in place", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    stubLocation();
+    const hits = freeAccount(null);
+
+    render(<YourPlanCard />);
+    await waitFor(() => expect(hits.get).toBe(1));
+    fireEvent.click(screen.getByRole("button", { name: /get pro/i }));
+
+    // The in-place branch refetches the subscription after the POST resolves,
+    // so a second GET is proof the whole path ran — not just that the request
+    // was sent.
+    await waitFor(() => expect(hits.post).toBe(1));
+    await waitFor(() => expect(hits.get).toBeGreaterThanOrEqual(2));
+    expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
   });
 });

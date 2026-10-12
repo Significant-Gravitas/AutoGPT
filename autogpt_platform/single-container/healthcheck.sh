@@ -18,11 +18,18 @@ main() {
 }
 
 check_supervised_processes() {
+  # supervisord.conf assigns every program to an explicit stop tier, so status
+  # lines are group-qualified. Keep this list in sync with those groups.
+  # fatal-exit stays bare: supervisor puts each event listener in a group
+  # named after itself, so it reports as `fatal-exit`, not `fatal-exit:...`.
   local programs=(
-    fatal-exit postgres valkey-0 valkey-1 valkey-2 rabbitmq falkordb
-    database-manager scheduler batch-executor notification executor
-    copilot-executor copilot-bot platform-linking-manager websocket rest next nginx
-    watchdog
+    fatal-exit
+    state:postgres state:valkey-0 state:valkey-1 state:valkey-2
+    state:rabbitmq state:falkordb
+    runtime:database-manager runtime:scheduler runtime:batch-executor
+    runtime:notification runtime:executor runtime:copilot-executor
+    runtime:copilot-bot runtime:platform-linking-manager runtime:websocket
+    runtime:rest runtime:next runtime:nginx runtime:watchdog
   )
   local program
   local statuses

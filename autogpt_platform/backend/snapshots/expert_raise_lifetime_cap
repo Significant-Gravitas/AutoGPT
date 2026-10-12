@@ -1,0 +1,6 @@
+{
+  "detail": {
+    "code": "raised_expert_lifetime_limit",
+    "limit": 100
+  }
+}

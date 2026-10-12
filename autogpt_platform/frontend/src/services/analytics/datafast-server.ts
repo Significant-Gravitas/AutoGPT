@@ -1,13 +1,11 @@
 import * as Sentry from "@sentry/nextjs";
 import { cookies } from "next/headers";
 import { after } from "next/server";
-import {
-  ANALYTICS_CONSENT_COOKIE,
-  ANALYTICS_CONSENT_GRANTED,
-} from "@/services/consent/constants";
+import { requestHasConsentFor } from "@/services/consent/consent-server";
 import { environment } from "@/services/environment";
 
 const DATAFAST_GOALS_URL = "https://datafa.st/api/v1/goals";
+const ACCOUNT_CREATED_GOAL = "signup";
 const DATAFAST_VISITOR_COOKIE = "datafast_visitor_id";
 const USER_CREATED_HEADER = "X-AutoGPT-User-Created";
 const VISITOR_ID_PATTERN =
@@ -54,10 +52,25 @@ export async function scheduleAccountCreatedGoal(method: SignupMethod) {
   }
 }
 
+const reportedConfigErrors = new Set<string>();
+
+function reportConfigurationError(message: string) {
+  if (reportedConfigErrors.has(message)) return;
+  reportedConfigErrors.add(message);
+  reportTrackingError(new Error(message));
+}
+
+export function resetConfigErrorReportingForTests() {
+  reportedConfigErrors.clear();
+}
+
 function reportTrackingError(error: unknown) {
   try {
     Sentry.captureException(error, {
-      tags: { analytics_provider: "datafast", analytics_goal: "signup" },
+      tags: {
+        analytics_provider: "datafast",
+        analytics_goal: ACCOUNT_CREATED_GOAL,
+      },
     });
   } catch {
     console.error("Failed to report DataFast signup goal error");
@@ -67,24 +80,23 @@ function reportTrackingError(error: unknown) {
 async function getGoalContext(
   method: SignupMethod,
 ): Promise<GoalContext | null> {
+  if (!(await requestHasConsentFor("analytics"))) return null;
   const cookieStore = await cookies();
-  const hasConsent =
-    cookieStore.get(ANALYTICS_CONSENT_COOKIE)?.value ===
-    ANALYTICS_CONSENT_GRANTED;
-  if (!hasConsent) return null;
 
   const visitorID = cookieStore.get(DATAFAST_VISITOR_COOKIE)?.value;
   if (!visitorID || !VISITOR_ID_PATTERN.test(visitorID)) return null;
 
   const apiKey = process.env.DATAFAST_API_KEY?.trim();
   if (!apiKey) {
-    if (!environment.isCloud()) return null;
-
-    throw new Error("DATAFAST_API_KEY must be configured in cloud");
+    if (environment.isCloud()) {
+      reportConfigurationError("DATAFAST_API_KEY must be configured in cloud");
+    }
+    return null;
   }
 
   if (!apiKey.startsWith("df_")) {
-    throw new Error("DATAFAST_API_KEY must use a df_ website key");
+    reportConfigurationError("DATAFAST_API_KEY must use a df_ website key");
+    return null;
   }
 
   return { apiKey, method, visitorID };
@@ -99,7 +111,7 @@ async function sendAccountCreatedGoal(context: GoalContext) {
     },
     body: JSON.stringify({
       datafast_visitor_id: context.visitorID,
-      name: "signup",
+      name: ACCOUNT_CREATED_GOAL,
       metadata: { method: context.method },
     }),
     cache: "no-store",

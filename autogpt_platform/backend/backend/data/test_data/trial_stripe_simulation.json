@@ -1,0 +1,188 @@
+{
+  "scope": "Captured Stripe test-mode subscription API states, not hosted Checkout or webhook delivery proof. Object identifiers use stable test labels; states, dates, card expiry, and amounts are unchanged.",
+  "api_version": "2025-02-24.acacia",
+  "clock": {
+    "id": "clock_test_1",
+    "livemode": false,
+    "status": "ready",
+    "frozen_time": 1789135200,
+    "error": null
+  },
+  "start_time": 1788523200,
+  "end_time": 1789135200,
+  "price": {
+    "id": "price_test_1",
+    "unit_amount": 5000,
+    "currency": "usd"
+  },
+  "scenarios": {
+    "success": {
+      "before": {
+        "id": "sub_test_1",
+        "livemode": false,
+        "customer": "cus_test_1",
+        "status": "trialing",
+        "test_clock": "clock_test_1",
+        "trial_start": 1788523200,
+        "trial_end": 1789128000,
+        "cancel_at_period_end": false,
+        "default_payment_method": {
+          "id": "pm_test_1",
+          "type": "card",
+          "card": {
+            "exp_month": 9,
+            "exp_year": 2027
+          }
+        },
+        "pending_setup_intent": null,
+        "latest_invoice": {
+          "id": "in_test_1",
+          "created": 1788523200,
+          "status": "paid",
+          "billing_reason": "subscription_create",
+          "amount_paid": 0
+        },
+        "error": null
+      },
+      "after": {
+        "id": "sub_test_1",
+        "livemode": false,
+        "customer": "cus_test_1",
+        "status": "active",
+        "test_clock": "clock_test_1",
+        "trial_start": 1788523200,
+        "trial_end": 1789128000,
+        "cancel_at_period_end": false,
+        "default_payment_method": {
+          "id": "pm_test_1",
+          "type": "card",
+          "card": {
+            "exp_month": 9,
+            "exp_year": 2027
+          }
+        },
+        "pending_setup_intent": null,
+        "latest_invoice": {
+          "id": "in_test_2",
+          "created": 1789128000,
+          "status": "paid",
+          "billing_reason": "subscription_cycle",
+          "amount_paid": 5000
+        },
+        "error": null
+      }
+    },
+    "failure": {
+      "before": {
+        "id": "sub_test_2",
+        "livemode": false,
+        "customer": "cus_test_2",
+        "status": "trialing",
+        "test_clock": "clock_test_1",
+        "trial_start": 1788523200,
+        "trial_end": 1789128000,
+        "cancel_at_period_end": false,
+        "default_payment_method": {
+          "id": "pm_test_2",
+          "type": "card",
+          "card": {
+            "exp_month": 9,
+            "exp_year": 2027
+          }
+        },
+        "pending_setup_intent": null,
+        "latest_invoice": {
+          "id": "in_test_3",
+          "created": 1788523200,
+          "status": "paid",
+          "billing_reason": "subscription_create",
+          "amount_paid": 0
+        },
+        "error": null
+      },
+      "after": {
+        "id": "sub_test_2",
+        "livemode": false,
+        "customer": "cus_test_2",
+        "status": "past_due",
+        "test_clock": "clock_test_1",
+        "trial_start": 1788523200,
+        "trial_end": 1789128000,
+        "cancel_at_period_end": false,
+        "default_payment_method": {
+          "id": "pm_test_3",
+          "type": "card",
+          "card": {
+            "exp_month": 9,
+            "exp_year": 2027
+          }
+        },
+        "pending_setup_intent": null,
+        "latest_invoice": {
+          "id": "in_test_4",
+          "created": 1789128000,
+          "status": "open",
+          "billing_reason": "subscription_cycle",
+          "amount_paid": 0
+        },
+        "error": null
+      }
+    },
+    "cancel": {
+      "before": {
+        "id": "sub_test_3",
+        "livemode": false,
+        "customer": "cus_test_3",
+        "status": "trialing",
+        "test_clock": "clock_test_1",
+        "trial_start": 1788523200,
+        "trial_end": 1789128000,
+        "cancel_at_period_end": false,
+        "default_payment_method": {
+          "id": "pm_test_4",
+          "type": "card",
+          "card": {
+            "exp_month": 9,
+            "exp_year": 2027
+          }
+        },
+        "pending_setup_intent": null,
+        "latest_invoice": {
+          "id": "in_test_5",
+          "created": 1788523200,
+          "status": "paid",
+          "billing_reason": "subscription_create",
+          "amount_paid": 0
+        },
+        "error": null
+      },
+      "after": {
+        "id": "sub_test_3",
+        "livemode": false,
+        "customer": "cus_test_3",
+        "status": "canceled",
+        "test_clock": "clock_test_1",
+        "trial_start": 1788523200,
+        "trial_end": 1789128000,
+        "cancel_at_period_end": true,
+        "default_payment_method": {
+          "id": "pm_test_4",
+          "type": "card",
+          "card": {
+            "exp_month": 9,
+            "exp_year": 2027
+          }
+        },
+        "pending_setup_intent": null,
+        "latest_invoice": {
+          "id": "in_test_5",
+          "created": 1788523200,
+          "status": "paid",
+          "billing_reason": "subscription_create",
+          "amount_paid": 0
+        },
+        "error": null
+      }
+    }
+  }
+}

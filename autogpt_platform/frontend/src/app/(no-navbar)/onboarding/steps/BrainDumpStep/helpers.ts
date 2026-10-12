@@ -3,7 +3,6 @@
 
 // A depth meter, not a limit: the ring fills toward 3:00 and then holds.
 // Nothing stops at 3:00 — the longer someone talks, the better the dump.
-export const RING_TARGET_SECONDS = 180;
 
 // Recording keeps going far past the ring: 30 min is the hard stop, and
 // even then everything captured is kept.
@@ -28,10 +27,10 @@ export const SILENCE_NUDGE_COPY =
 
 const ENCOURAGEMENT_COPY = [
   "Keep going, this is gold",
-  "The more you share, the sharper AutoPilot gets",
-  "You're building AutoPilot's memory right now",
+  "The more you share, the sharper Otto gets",
+  "You're building Otto's memory right now",
   "You're doing great — keep going",
-  "Every detail makes AutoPilot more useful",
+  "Every detail makes Otto more useful",
   "Share whatever comes to mind next",
 ] as const;
 
@@ -76,10 +75,6 @@ export function formatElapsed(totalSeconds: number) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function ringProgress(elapsedSeconds: number) {
-  return Math.min(1, elapsedSeconds / RING_TARGET_SECONDS);
-}
-
 // Chrome/Edge give us webm/opus; Safari only offers mp4. Mirrors the
 // existing copilot recorder so both paths hit the same server allowlist.
 export function pickMimeType() {
@@ -97,12 +92,7 @@ export function isPermissionDenied(error: unknown) {
   return error instanceof DOMException && error.name === "NotAllowedError";
 }
 
-export function headline(name: string) {
-  const trimmed = name.trim();
-  return trimmed
-    ? `What keeps stealing your week, ${trimmed}?`
-    : "What keeps stealing your week?";
-}
+export const BRAIN_DUMP_HEADLINE = "Talk to me about your work";
 
 // The backend's quality gate rejects dumps with these codes when the
 // transcription succeeded but carried nothing to personalize from —

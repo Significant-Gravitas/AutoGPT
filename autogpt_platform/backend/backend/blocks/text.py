@@ -7,6 +7,7 @@ import regex  # Has built-in timeout support
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -18,6 +19,10 @@ from backend.util.file import get_exec_file_path, store_media_file
 from backend.util.type import MediaFileType
 
 formatter = text.TextFormatter()
+
+MAX_REGEX_PATTERN_LENGTH = 10_000
+MAX_REGEX_TEXT_LENGTH = 1_000_000
+REGEX_TIMEOUT_SECONDS = 1.0
 
 
 class MatchTextPatternBlock(Block):
@@ -53,6 +58,7 @@ class MatchTextPatternBlock(Block):
                 ("positive", "Z"),
                 ("negative", "Z"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -68,7 +74,29 @@ class MatchTextPatternBlock(Block):
         else:
             text = json.dumps(input_data.text)
 
-        if re.search(input_data.match, text, flags=flags):
+        if len(input_data.match) > MAX_REGEX_PATTERN_LENGTH:
+            raise ValueError(
+                f"Regex pattern is too large to evaluate safely "
+                f"({len(input_data.match)} characters; "
+                f"maximum {MAX_REGEX_PATTERN_LENGTH})."
+            )
+
+        if len(text) > MAX_REGEX_TEXT_LENGTH:
+            raise ValueError(
+                f"Text is too large to match safely ({len(text)} characters; "
+                f"maximum {MAX_REGEX_TEXT_LENGTH})."
+            )
+
+        try:
+            matched = regex.search(
+                input_data.match, text, flags=flags, timeout=REGEX_TIMEOUT_SECONDS
+            )
+        except TimeoutError as error:
+            raise ValueError("Regex evaluation timed out.") from error
+        except regex.error as error:
+            raise ValueError(f"Invalid regex pattern: {error}") from error
+
+        if matched:
             yield "positive", output
         else:
             yield "negative", output
@@ -143,6 +171,7 @@ class ExtractTextInformationBlock(Block):
                 ("matched_results", ["World!!", "Earth!!"]),
                 ("matched_count", 2),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -286,6 +315,7 @@ class FillTextTemplateBlock(Block):
                 ("output", "Hello World!"),
                 ("output", "Hello, World! Alice"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -320,6 +350,7 @@ class CombineTextsBlock(Block):
                 ("output", "Hello world I like cake and to go for walks"),
                 ("output", "This is a test! Hi!"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -355,6 +386,7 @@ class TextSplitBlock(Block):
                 ("texts", ["Hello", "World!"]),
                 ("texts", ["Hello", " World!"]),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -389,6 +421,7 @@ class TextReplaceBlock(Block):
             test_output=[
                 ("output", "Hi, World!"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -444,6 +477,7 @@ class FileReadBlock(Block):
             test_output=[
                 ("content", "Hello World"),
             ],
+            effect=BlockEffect.READ,
         )
 
     async def run(

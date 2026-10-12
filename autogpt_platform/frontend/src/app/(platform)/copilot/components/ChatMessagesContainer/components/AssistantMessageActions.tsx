@@ -19,6 +19,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   message: UIMessage<unknown, UIDataTypes, UITools>;
   sessionID: string | null;
+  className?: string;
 }
 
 function extractTextFromParts(
@@ -31,22 +32,27 @@ function extractTextFromParts(
     .trim();
 }
 
-export function AssistantMessageActions({ message, sessionID }: Props) {
+export function AssistantMessageActions({
+  message,
+  sessionID,
+  className,
+}: Props) {
   const {
     feedback,
+    canRate,
     showFeedbackModal,
     handleCopy,
     handleUpvote,
     handleDownvoteClick,
     handleDownvoteSubmit,
     handleDownvoteCancel,
-  } = useMessageFeedback({ sessionID, messageID: message.id });
+  } = useMessageFeedback({ sessionID, message });
 
   const text = extractTextFromParts(message.parts);
 
   return (
     <>
-      <MessageActions className="mt-1 opacity-30 transition-opacity group-hover:opacity-100">
+      <MessageActions className={cn("mt-1", className)}>
         <MessageAction
           tooltip="Copy"
           onClick={() => handleCopy(text)}
@@ -61,7 +67,7 @@ export function AssistantMessageActions({ message, sessionID }: Props) {
           onClick={handleUpvote}
           variant="ghost"
           size="icon-sm"
-          disabled={feedback === "downvote"}
+          disabled={!canRate || feedback === "downvote"}
           className={cn(
             feedback === "upvote" && "text-green-300 hover:text-green-300",
             feedback === "downvote" && "!opacity-20",
@@ -75,7 +81,7 @@ export function AssistantMessageActions({ message, sessionID }: Props) {
           onClick={handleDownvoteClick}
           variant="ghost"
           size="icon-sm"
-          disabled={feedback === "upvote"}
+          disabled={!canRate || feedback === "upvote"}
           className={cn(
             feedback === "downvote" && "text-red-300 hover:text-red-300",
             feedback === "upvote" && "!opacity-20",
@@ -84,7 +90,7 @@ export function AssistantMessageActions({ message, sessionID }: Props) {
           <Icon icon={ThumbsDownIcon} size={16} />
         </MessageAction>
 
-        <TTSButton text={text} />
+        <TTSButton text={text} sessionID={sessionID} />
       </MessageActions>
 
       {showFeedbackModal && (

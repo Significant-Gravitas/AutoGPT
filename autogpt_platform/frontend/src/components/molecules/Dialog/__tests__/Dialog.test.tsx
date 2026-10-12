@@ -10,13 +10,16 @@ vi.mock("@/lib/hooks/useBreakpoint", () => ({
 function renderDialog({
   title,
   controlled,
+  forceOpen,
 }: {
   title?: string;
   controlled?: { isOpen: boolean; set: (open: boolean) => void };
+  forceOpen?: boolean;
 }) {
   return render(
     <Dialog
       title={title}
+      forceOpen={forceOpen}
       controlled={controlled ?? { isOpen: true, set: vi.fn() }}
     >
       <Dialog.Content>
@@ -31,7 +34,7 @@ describe("Dialog", () => {
     renderDialog({ title: "My Title" });
 
     const dialog = screen.getByRole("dialog");
-    const heading = within(dialog).getByText("My Title");
+    const heading = within(dialog).getByRole("heading", { name: "My Title" });
     expect(heading).toBeDefined();
     expect(heading.classList.contains("sr-only")).toBe(false);
   });
@@ -40,7 +43,7 @@ describe("Dialog", () => {
     renderDialog({});
 
     const dialog = screen.getByRole("dialog");
-    const fallback = within(dialog).getByText("Dialog");
+    const fallback = within(dialog).getByRole("heading", { name: "Dialog" });
     expect(fallback).toBeDefined();
     expect(fallback.classList.contains("sr-only")).toBe(true);
   });
@@ -49,7 +52,7 @@ describe("Dialog", () => {
     renderDialog({ title: "" });
 
     const dialog = screen.getByRole("dialog");
-    const fallback = within(dialog).getByText("Dialog");
+    const fallback = within(dialog).getByRole("heading", { name: "Dialog" });
     expect(fallback).toBeDefined();
     expect(fallback.classList.contains("sr-only")).toBe(true);
   });
@@ -73,6 +76,38 @@ describe("Dialog", () => {
     expect(set).toHaveBeenCalledWith(false);
   });
 
+  test("does not close when Escape belongs to an IME composition", () => {
+    const set = vi.fn();
+    renderDialog({ title: "Test", controlled: { isOpen: true, set } });
+
+    fireEvent.keyDown(document, { key: "Escape", isComposing: true });
+
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  test("keeps a force-open dialog open on Escape", () => {
+    const set = vi.fn();
+    renderDialog({
+      title: "Test",
+      forceOpen: true,
+      controlled: { isOpen: true, set },
+    });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.keyDown(document, { key: "Escape", isComposing: true });
+
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  test("closes on a plain Escape keydown", () => {
+    const set = vi.fn();
+    renderDialog({ title: "Test", controlled: { isOpen: true, set } });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(set).toHaveBeenCalledWith(false);
+  });
+
   test("does not render dialog when controlled isOpen is false", () => {
     renderDialog({
       title: "Test",
@@ -80,5 +115,27 @@ describe("Dialog", () => {
     });
 
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  test("associates an sr-only Description with constant text Dialog", () => {
+    renderDialog({ title: "My Title" });
+
+    const dialog = screen.getByRole("dialog");
+    const descriptionId = dialog.getAttribute("aria-describedby");
+    expect(descriptionId).toBeTruthy();
+    const description = document.getElementById(descriptionId ?? "");
+    expect(description?.textContent).toBe("Dialog");
+    expect(description?.classList.contains("sr-only")).toBe(true);
+  });
+
+  test("associates the same default sr-only Description when title is missing", () => {
+    renderDialog({});
+
+    const dialog = screen.getByRole("dialog");
+    const descriptionId = dialog.getAttribute("aria-describedby");
+    expect(descriptionId).toBeTruthy();
+    const description = document.getElementById(descriptionId ?? "");
+    expect(description?.textContent).toBe("Dialog");
+    expect(description?.classList.contains("sr-only")).toBe(true);
   });
 });

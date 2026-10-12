@@ -1,13 +1,15 @@
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import {
   UserOnboarding,
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
 import userEvent from "@testing-library/user-event";
 import { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Wallet } from "../Wallet";
+import { TaskGroups } from "../components/WalletTaskGroups";
+import { getTaskGroups } from "../helpers";
 
 const confettiMock = vi.hoisted(() => vi.fn());
 const fetchCreditsMock = vi.hoisted(() => vi.fn());
@@ -112,6 +114,13 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  if (vi.isFakeTimers()) {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  }
+});
+
 describe("Wallet", () => {
   it("renders nothing until credits and onboarding state are both available", () => {
     creditsState.credits = null;
@@ -128,10 +137,12 @@ describe("Wallet", () => {
     expect(screen.getByText(/1 of 8 rewards claimed/)).toBeDefined();
   });
 
-  it("hides the reward dot and tooltip in compact mode", () => {
+  it("shows an accessible icon-only trigger in compact mode", () => {
     render(<Wallet compact />);
 
-    expect(screen.getByText("$9.79")).toBeDefined();
+    const trigger = screen.getByRole("button", { name: "Usage and credits" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("$9.79")).toBeNull();
     expect(screen.queryByText(/rewards claimed/)).toBeNull();
   });
 
@@ -162,6 +173,9 @@ describe("Wallet", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("Add automation credits")).toBeNull();
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Usage and credits" }),
+      );
     });
   });
 
@@ -190,12 +204,55 @@ describe("Wallet", () => {
   });
 });
 
+describe("Wallet timer cleanup", () => {
+  it("cancels delayed task confetti when task groups unmount", () => {
+    vi.useFakeTimers();
+    const { unmount } = render(
+      <TaskGroups groups={getTaskGroups(onboardingState.state)} />,
+    );
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    unmount();
+    vi.runOnlyPendingTimers();
+
+    expect(confettiMock).not.toHaveBeenCalled();
+  });
+
+  it("cancels the pending balance flash when the wallet unmounts", () => {
+    vi.useFakeTimers();
+    const { rerender, unmount } = render(<Wallet compact />);
+
+    creditsState.credits = 1479;
+    rerender(<Wallet compact />);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("resets the balance flash after credits briefly become unavailable", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(<Wallet compact />);
+
+    creditsState.credits = null;
+    rerender(<Wallet compact />);
+    creditsState.credits = 1479;
+    rerender(<Wallet compact />);
+
+    expect(container.querySelector(".bg-violet-400")?.className).toContain(
+      "opacity-50",
+    );
+
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(container.querySelector(".bg-violet-400")?.className).toContain(
+      "opacity-0",
+    );
+  });
+});
+
 describe("Wallet onboarding notifications", () => {
-  // Mounting <Wallet /> also mounts <TaskGroups />, whose celebration effect
-  // schedules its own confetti burst on a 300ms timer. That timer outlives the
-  // test that armed it and lands in a later one, so every assertion on
-  // confettiMock has to start from a clean slate after the render — otherwise
-  // the count depends on how fast the machine runs the suite.
   function emit(notification: WebSocketNotification) {
     const handler = onWebSocketMessageMock.mock.calls.at(-1)?.[1] as (
       n: WebSocketNotification,

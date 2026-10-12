@@ -5,22 +5,31 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { cn } from "@/lib/utils";
-import type { ArtifactRef } from "../../../store";
+import type { ArtifactPanelMode, ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
+import { PanelModeSwitch } from "./PanelModeSwitch";
 import { SourceToggle } from "./SourceToggle";
 import {
   ArrowLeft02Icon,
   Cancel01Icon,
+  ComputerIcon,
   Copy01Icon,
-  Download04Icon,
+  Download01Icon,
   Folder01Icon,
+  ArrowExpandDiagonal01Icon,
+  ArrowShrinkIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
-  artifact: ArtifactRef;
-  classification: ArtifactClassification;
+  /** Null while the panel shows only its computer face. */
+  artifact: ArtifactRef | null;
+  classification: ArtifactClassification | null;
+  mode?: ArtifactPanelMode;
+  /** Render the Artifact/Computer switch; the chat passes a session, the
+   *  share viewer and tour do not. */
+  showModeSwitch?: boolean;
+  onModeChange?: (mode: ArtifactPanelMode) => void;
   canGoBack: boolean;
   isSourceView: boolean;
   hasSourceToggle: boolean;
@@ -31,6 +40,8 @@ interface Props {
   onDownload: () => void;
   onOpenFiles: () => void;
   onSourceToggle: (isSource: boolean) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 function HeaderButton({
@@ -49,7 +60,7 @@ function HeaderButton({
           type="button"
           onClick={onClick}
           aria-label={title}
-          className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+          className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {children}
         </button>
@@ -72,56 +83,93 @@ export function ArtifactPanelHeader({
   onDownload,
   onOpenFiles,
   onSourceToggle,
+  isFullscreen = false,
+  onToggleFullscreen,
+  mode = "artifact",
+  showModeSwitch = false,
+  onModeChange,
 }: Props) {
-  return (
-    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-b-[#80808017] bg-sidebar px-3 py-2">
-      {/* Left section */}
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        {canGoBack && (
-          <HeaderButton onClick={onBack} title="Back">
-            <Icon icon={ArrowLeft02Icon} size={16} />
-          </HeaderButton>
-        )}
-        <Icon
-          icon={classification.icon}
-          size={16}
-          className="shrink-0 text-zinc-400"
-        />
-        <span className="truncate text-sm font-medium text-zinc-900">
-          {artifact.title}
-        </span>
-        <span
-          className={cn(
-            "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
-            artifact.origin === "user-upload"
-              ? "bg-blue-50 text-blue-600"
-              : "bg-violet-50 text-violet-600",
-          )}
-        >
-          {classification.label}
-        </span>
-      </div>
+  const isComputer = mode === "computer" || artifact == null;
+  const isFile = !isComputer && !artifact?.expert;
+  const hasViewControls =
+    (showModeSwitch && onModeChange) || (!isComputer && hasSourceToggle);
 
-      {/* Right section */}
-      <div className="flex items-center gap-1">
-        {hasSourceToggle && (
-          <SourceToggle isSourceView={isSourceView} onToggle={onSourceToggle} />
-        )}
-        {canCopy && (
-          <HeaderButton onClick={onCopy} title="Copy">
-            <Icon icon={Copy01Icon} size={16} />
+  return (
+    <header className="shrink-0 border-b border-border bg-card">
+      <div className="flex h-12 items-center gap-2 px-3 sm:px-4">
+        {!isComputer && canGoBack && (
+          <HeaderButton onClick={onBack} title="Back">
+            <Icon icon={ArrowLeft02Icon} size={18} />
           </HeaderButton>
         )}
-        <HeaderButton onClick={onDownload} title="Download">
-          <Icon icon={Download04Icon} size={16} />
-        </HeaderButton>
-        <HeaderButton onClick={onOpenFiles} title="All files">
-          <Icon icon={Folder01Icon} size={16} />
-        </HeaderButton>
-        <HeaderButton onClick={onClose} title="Close">
-          <Icon icon={Cancel01Icon} size={16} />
-        </HeaderButton>
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-muted-foreground">
+          {isComputer ? (
+            <>
+              <Icon icon={ComputerIcon} size={18} className="shrink-0" />
+              <span className="truncate">Computer</span>
+            </>
+          ) : (
+            <>
+              <span className="truncate" title={artifact?.title}>
+                {artifact?.title}
+              </span>
+              {classification && (
+                <span className="shrink-0">· {classification.label}</span>
+              )}
+            </>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {!isComputer && canCopy && (
+            <HeaderButton onClick={onCopy} title="Copy">
+              <Icon icon={Copy01Icon} size={18} />
+            </HeaderButton>
+          )}
+          {isFile && (
+            <>
+              <HeaderButton onClick={onOpenFiles} title="All files">
+                <Icon icon={Folder01Icon} size={18} />
+              </HeaderButton>
+              <HeaderButton onClick={onDownload} title="Download">
+                <Icon icon={Download01Icon} size={18} />
+              </HeaderButton>
+            </>
+          )}
+          {onToggleFullscreen && (
+            <HeaderButton
+              onClick={onToggleFullscreen}
+              title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            >
+              <Icon
+                icon={
+                  isFullscreen ? ArrowShrinkIcon : ArrowExpandDiagonal01Icon
+                }
+                size={18}
+              />
+            </HeaderButton>
+          )}
+          <HeaderButton onClick={onClose} title="Close">
+            <Icon icon={Cancel01Icon} size={18} />
+          </HeaderButton>
+        </div>
       </div>
-    </div>
+      {hasViewControls && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-2 sm:px-4">
+          {showModeSwitch && onModeChange && (
+            <PanelModeSwitch
+              mode={isComputer ? "computer" : "artifact"}
+              hasArtifact={artifact != null}
+              onChange={onModeChange}
+            />
+          )}
+          {!isComputer && hasSourceToggle && (
+            <SourceToggle
+              isSourceView={isSourceView}
+              onToggle={onSourceToggle}
+            />
+          )}
+        </div>
+      )}
+    </header>
   );
 }

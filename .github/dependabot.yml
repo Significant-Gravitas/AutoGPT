@@ -18,18 +18,27 @@ updates:
         update-types:
           - "minor"
           - "patch"
+        # Critical path arrives one package per PR (see the backend block).
+        exclude-patterns:
+          - "pyjwt"
+          - "cryptography"
       development-dependencies:
         dependency-type: "development"
         update-types:
           - "minor"
           - "patch"
+        # Declared as dev but imported by runtime code.
+        exclude-patterns:
+          - "httpx*"
 
   # backend (Poetry project)
   - package-ecosystem: "pip"
     directory: "autogpt_platform/backend"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
+    # Room for one PR per critical-path package on top of the groups: at the limit
+    # Dependabot silently opens nothing new.
+    open-pull-requests-limit: 20
     target-branch: "dev"
     commit-message:
       prefix: "chore(backend/deps)"
@@ -42,18 +51,47 @@ updates:
         update-types:
           - "minor"
           - "patch"
+        # Critical path (auth, OAuth, Google APIs, payments, LLM providers, the copilot's
+        # Claude Code runtime and sandbox, outbound HTTP) arrives one package per PR so each
+        # gets its own review. A default flipped inside google-auth-oauthlib hid in a
+        # 43-package group and broke Google OAuth (SECRT-2754).
+        exclude-patterns:
+          - "google-auth*"
+          - "google-api-python-client"
+          - "oauthlib"
+          - "requests-oauthlib"
+          - "authlib"
+          - "pyjwt"
+          - "cryptography"
+          - "stripe"
+          - "anthropic"
+          - "openai"
+          - "claude-agent-sdk"
+          - "e2b*"
+          - "httpx*"
+          - "requests"
+          - "aiohttp"
       development-dependencies:
         dependency-type: "development"
         update-types:
           - "minor"
           - "patch"
+        # Declared as dev but imported by runtime code.
+        exclude-patterns:
+          - "httpx*"
+          - "requests"
 
   # frontend (Next.js project)
   - package-ecosystem: "npm"
     directory: "autogpt_platform/frontend"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
+    # Must stay >= `minimum-release-age` in frontend/.npmrc (10080 min = 7 days).
+    # Without it Dependabot picks a release pnpm then refuses to install
+    # (ERR_PNPM_NO_MATCHING_VERSION).
+    cooldown:
+      default-days: 8
+    open-pull-requests-limit: 20
     target-branch: "dev"
     commit-message:
       prefix: "chore(frontend/deps)"
@@ -64,34 +102,87 @@ updates:
         update-types:
           - "minor"
           - "patch"
+        # Critical path (auth, the copilot stream) arrives one package per PR (see the
+        # backend block).
+        exclude-patterns:
+          - "better-auth"
+          - "@better-auth/*"
+          - "ai"
+          - "@ai-sdk/*"
       development-dependencies:
         dependency-type: "development"
         update-types:
           - "minor"
           - "patch"
 
-  # infra (Terraform)
-  - package-ecosystem: "terraform"
-    directory: "autogpt_platform/infra"
+  # Security updates. The entries above set `target-branch`, so none of their options
+  # reach security updates (those always target the default branch), and the
+  # repository setting would bundle them. These entries cover the same directories on
+  # the default branch with version updates off (limit 0), keeping the critical path
+  # out of the security bundle too.
+  - package-ecosystem: "pip"
+    directory: "autogpt_platform/autogpt_libs"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
-    target-branch: "dev"
+    open-pull-requests-limit: 0
     commit-message:
-      prefix: "chore(infra/deps)"
-      prefix-development: "chore(infra/deps-dev)"
-
+      prefix: "chore(libs/deps)"
     groups:
-      production-dependencies:
-        dependency-type: "production"
-        update-types:
-          - "minor"
-          - "patch"
-      development-dependencies:
-        dependency-type: "development"
-        update-types:
-          - "minor"
-          - "patch"
+      security-updates:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "pyjwt"
+          - "cryptography"
+          - "httpx*"
+
+  - package-ecosystem: "pip"
+    directory: "autogpt_platform/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore(backend/deps)"
+    groups:
+      security-updates:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "google-auth*"
+          - "google-api-python-client"
+          - "oauthlib"
+          - "requests-oauthlib"
+          - "authlib"
+          - "pyjwt"
+          - "cryptography"
+          - "stripe"
+          - "anthropic"
+          - "openai"
+          - "claude-agent-sdk"
+          - "e2b*"
+          - "httpx*"
+          - "requests"
+          - "aiohttp"
+
+  - package-ecosystem: "npm"
+    directory: "autogpt_platform/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore(frontend/deps)"
+    groups:
+      security-updates:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "better-auth"
+          - "@better-auth/*"
+          - "ai"
+          - "@ai-sdk/*"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
@@ -114,32 +205,21 @@ updates:
 
   # Docker
   - package-ecosystem: "docker"
-    directory: "autogpt_platform/"
+    # One entry per folder that holds a Dockerfile: the ecosystem does not
+    # look below the directory it is given.
+    directories:
+      - "autogpt_platform/backend"
+      - "autogpt_platform/frontend"
+      - "autogpt_platform/single-container"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
     target-branch: "dev"
-    groups:
-      production-dependencies:
-        dependency-type: "production"
-        update-types:
-          - "minor"
-          - "patch"
-      development-dependencies:
-        dependency-type: "development"
-        update-types:
-          - "minor"
-          - "patch"
-
-  # Docs
-  - package-ecosystem: "pip"
-    directory: "docs/"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 1
-    target-branch: "dev"
-    commit-message:
-      prefix: "chore(docs/deps)"
+    ignore:
+      # frontend/package.json pins `engines.node` to 24.x with engine-strict,
+      # so a newer major image fails `pnpm install`. Bump both together by hand.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
     groups:
       production-dependencies:
         dependency-type: "production"

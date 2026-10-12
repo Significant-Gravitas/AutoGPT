@@ -10,7 +10,7 @@ import {
   getCopilotAuthHeaders,
   getSendSuppressionReason,
   parseSessionIDs,
-  resolveModeChangedMode,
+  isEngineSwitchPart,
   resolveSessionDryRun,
   shouldDebounceReconnect,
   shouldSuppressDuplicateSend,
@@ -37,7 +37,7 @@ describe("formatNotificationTitle", () => {
 
   it("returns formatted title with count", () => {
     expect(formatNotificationTitle(3)).toBe(
-      `(3) AutoPilot is ready - ${ORIGINAL_TITLE}`,
+      `(3) New activity - ${ORIGINAL_TITLE}`,
     );
   });
 
@@ -51,7 +51,7 @@ describe("formatNotificationTitle", () => {
 
   it("returns formatted title for count of 1", () => {
     expect(formatNotificationTitle(1)).toBe(
-      `(1) AutoPilot is ready - ${ORIGINAL_TITLE}`,
+      `(1) New activity - ${ORIGINAL_TITLE}`,
     );
   });
 });
@@ -227,6 +227,80 @@ describe("shouldSuppressDuplicateSend", () => {
 });
 
 describe("getSendSuppressionReason", () => {
+  const failedMessages = [
+    makeMsg("user", "hello"),
+    makeMsg(
+      "assistant",
+      "[__COPILOT_RETRYABLE_ERROR_a9c2__] The model returned an empty response.",
+    ),
+  ];
+
+  it.each(["ready", "error"] as const)(
+    "allows retrying a failed turn when status is %s",
+    (status) => {
+      expect(
+        getSendSuppressionReason({
+          text: "hello",
+          isReconnectScheduled: false,
+          lastSubmittedText: "hello",
+          messages: failedMessages,
+          status,
+        }),
+      ).toBeNull();
+    },
+  );
+
+  it("allows resending after an SDK error without a persisted marker", () => {
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages: [makeMsg("user", "hello")],
+        status: "error",
+      }),
+    ).toBeNull();
+  });
+
+  it.each(["streaming", "submitted"] as const)(
+    "still suppresses duplicates while status is %s",
+    (status) => {
+      expect(
+        getSendSuppressionReason({
+          text: "hello",
+          isReconnectScheduled: false,
+          lastSubmittedText: "hello",
+          messages: failedMessages,
+          status,
+        }),
+      ).toBe("duplicate");
+    },
+  );
+
+  it("still suppresses a retry during reconnect", () => {
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: true,
+        lastSubmittedText: "hello",
+        messages: failedMessages,
+        status: "error",
+      }),
+    ).toBe("reconnecting");
+  });
+
+  it("does not treat an earlier turn's error marker as a failed current turn", () => {
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages: [...failedMessages, makeMsg("user", "hello")],
+        status: "ready",
+      }),
+    ).toBe("duplicate");
+  });
+
   it("returns 'reconnecting' when reconnect is scheduled", () => {
     expect(
       getSendSuppressionReason({
@@ -683,38 +757,38 @@ describe("getCopilotAuthHeaders", () => {
   });
 });
 
-describe("resolveModeChangedMode", () => {
-  it("returns the mode for a data-mode-changed part with a known mode", () => {
+describe("isEngineSwitchPart", () => {
+  it("reports a switch for a data-mode-changed part naming either engine", () => {
     expect(
-      resolveModeChangedMode({
+      isEngineSwitchPart({
         type: "data-mode-changed",
         data: { mode: "extended_thinking" },
       }),
-    ).toBe("extended_thinking");
+    ).toBe(true);
     expect(
-      resolveModeChangedMode({
+      isEngineSwitchPart({
         type: "data-mode-changed",
         data: { mode: "fast" },
       }),
-    ).toBe("fast");
+    ).toBe(true);
   });
 
-  it("returns null for other data part types", () => {
+  it("ignores other data part types", () => {
     expect(
-      resolveModeChangedMode({ type: "data-status", data: { mode: "fast" } }),
-    ).toBeNull();
+      isEngineSwitchPart({ type: "data-status", data: { mode: "fast" } }),
+    ).toBe(false);
   });
 
-  it("returns null for unknown or missing modes", () => {
+  it("ignores unknown or missing engines", () => {
     expect(
-      resolveModeChangedMode({
+      isEngineSwitchPart({
         type: "data-mode-changed",
         data: { mode: "turbo" },
       }),
-    ).toBeNull();
-    expect(resolveModeChangedMode({ type: "data-mode-changed" })).toBeNull();
+    ).toBe(false);
+    expect(isEngineSwitchPart({ type: "data-mode-changed" })).toBe(false);
     expect(
-      resolveModeChangedMode({ type: "data-mode-changed", data: "fast" }),
-    ).toBeNull();
+      isEngineSwitchPart({ type: "data-mode-changed", data: "fast" }),
+    ).toBe(false);
   });
 });

@@ -5,6 +5,7 @@ import {
   _resetInterruptedToastLedgerForTests,
   useHydrateOnStreamEnd,
 } from "../useHydrateOnStreamEnd";
+import { CANCELLED_MARKER } from "../useCopilotStop";
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: vi.fn(),
@@ -94,6 +95,35 @@ function runForceHydrate({
 }
 
 describe("useHydrateOnStreamEnd — sliding-window history retention (SECRT-2424)", () => {
+  it.each(["Hello [1] world", "Goodbye", ""])(
+    "reconciles the streamed preview with rewritten provider text: %j",
+    (finalText) => {
+      const preview: Messages = [
+        seqMessage(1),
+        {
+          id: "live-assistant",
+          role: "assistant",
+          parts: [{ type: "text", text: "Hello world", state: "done" }],
+        },
+      ];
+      const canonical: Messages = [
+        seqMessage(1),
+        {
+          id: `${SESSION_ID}-seq-2`,
+          role: "assistant",
+          parts: [{ type: "text", text: finalText, state: "done" }],
+        },
+      ];
+      expect(
+        runForceHydrate({
+          prev: preview,
+          staleWindow: [seqMessage(1)],
+          freshWindow: canonical,
+        }),
+      ).toEqual(canonical);
+    },
+  );
+
   afterEach(() => {
     _resetInterruptedToastLedgerForTests();
     cleanup();
@@ -340,5 +370,58 @@ describe("useHydrateOnStreamEnd — continuation-turn flash guard", () => {
     );
     expect(setMessages).toHaveBeenCalledTimes(1);
     expect(captured.current!.map(seqOf)).toEqual(range(1, 10).map(seqOf));
+  });
+});
+
+describe("useHydrateOnStreamEnd — a turn the user stopped", () => {
+  afterEach(() => {
+    _resetInterruptedToastLedgerForTests();
+    cleanup();
+  });
+
+  function stoppedAssistant(): UIMessage<unknown, UIDataTypes, UITools> {
+    return {
+      id: "live-assistant",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "Half an answer", state: "done" },
+        { type: "text", text: CANCELLED_MARKER, state: "done" },
+      ],
+    };
+  }
+
+  it("keeps the partial and its marker when the refetch has no reply for the turn", () => {
+    const result = runForceHydrate({
+      prev: [seqMessage(1), stoppedAssistant()],
+      staleWindow: [],
+      freshWindow: [seqMessage(1)],
+    });
+
+    expect(result).toEqual([seqMessage(1), stoppedAssistant()]);
+  });
+
+  it("defers to the database once it carries the stopped turn", () => {
+    const persisted: Messages = [
+      seqMessage(1),
+      {
+        id: `${SESSION_ID}-seq-2`,
+        role: "assistant",
+        parts: [
+          {
+            type: "text",
+            text: `Half an answer ${CANCELLED_MARKER}`,
+            state: "done",
+          },
+        ],
+      },
+    ];
+
+    expect(
+      runForceHydrate({
+        prev: [seqMessage(1), stoppedAssistant()],
+        staleWindow: [],
+        freshWindow: persisted,
+      }),
+    ).toEqual(persisted);
   });
 });

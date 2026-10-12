@@ -12,11 +12,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from backend.copilot.graphiti.ingest import IngestionCompletion
+from backend.data.db_accessors import orgs_db as real_orgs_db
 
 from . import apply as apply_mod
 from .fetch import DreamInput
@@ -72,14 +73,19 @@ def _stub_boundaries(mocker):
     # ChatSession + ChatMessage writes — apply.py imports them lazily inside
     # ``_create_dream_session`` / ``_write_dream_summary_message`` to avoid a
     # circular import. Patch where the symbol is looked up (copilot.db).
-    mocker.patch(
-        "backend.copilot.db.create_chat_session",
-        AsyncMock(return_value=mocker.MagicMock(session_id="s1")),
+    database = mocker.MagicMock()
+    database.create_chat_session = AsyncMock(
+        return_value=mocker.MagicMock(session_id="s1")
     )
+    database.update_chat_session_title = AsyncMock(return_value=True)
+    database.add_chat_message = AsyncMock(return_value=None)
+    mocker.patch("backend.data.db_accessors.chat_db", return_value=database)
+    mocker.patch("backend.copilot.db.create_chat_session", database.create_chat_session)
     mocker.patch(
-        "backend.copilot.db.update_chat_session_title", AsyncMock(return_value=True)
+        "backend.copilot.db.update_chat_session_title",
+        database.update_chat_session_title,
     )
-    mocker.patch("backend.copilot.db.add_chat_message", AsyncMock(return_value=None))
+    mocker.patch("backend.copilot.db.add_chat_message", database.add_chat_message)
     # _create_dream_session's tenant lookup. Unmocked it runs REAL Prisma
     # queries on this test's function-scoped event loop whenever an earlier
     # test already connected Prisma (its except swallows the failure when
@@ -88,8 +94,10 @@ def _stub_boundaries(mocker):
     # next session-loop test touching Prisma dies with "Event loop is
     # closed" (test_chatsession_redis_storage in CI).
     mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
-        AsyncMock(return_value=(None, None)),
+        "backend.data.db_accessors.orgs_db",
+        return_value=MagicMock(
+            get_user_default_team=AsyncMock(return_value=(None, None))
+        ),
     )
     # Entity invalidation is gated on DREAM_PASS_INVALIDATE_ENTITY. Default
     # the flag ON so the existing entity tests exercise the apply path; the
@@ -441,6 +449,57 @@ async def test_title_failure_does_not_abort_apply(mocker):
 
     assert stats["consolidated_count"] == 1
     copilot_db.add_chat_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_expert_dream_session_and_write_keep_expert_scope(mocker):
+    db = mocker.MagicMock()
+    db.create_chat_session = AsyncMock()
+    db.update_chat_session_title = AsyncMock(return_value=True)
+    mocker.patch("backend.data.db_accessors.chat_db", return_value=db)
+
+    await apply_mod._create_dream_session("u1", "p1", "expert-1")
+    assert db.create_chat_session.call_args.kwargs["expert_id"] == "expert-1"
+
+    await apply_mod._write_consolidated_fact(
+        "u1",
+        "p1",
+        0,
+        ConsolidatedFact(content="A likes B", confidence=0.8),
+        "session-1",
+        IngestionCompletion(),
+        expert_id="expert-1",
+    )
+    assert apply_mod.enqueue_episode.call_args.kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_dream_session_resolves_tenant_through_db_manager(mocker):
+    """The dream pass runs in the scheduler, where Prisma is not connected,
+    so the default-team lookup has to go through the DatabaseManager client
+    rather than leaving every dream session tenant-less."""
+    db = mocker.MagicMock()
+    db.create_chat_session = AsyncMock()
+    db.update_chat_session_title = AsyncMock(return_value=True)
+    mocker.patch("backend.data.db_accessors.chat_db", return_value=db)
+    # The autouse stub replaces the accessor; put the real one back so the
+    # connection check below decides where the lookup goes.
+    mocker.patch("backend.data.db_accessors.orgs_db", real_orgs_db)
+    mocker.patch("backend.data.db.is_connected", return_value=False)
+    db_manager = MagicMock(
+        get_user_default_team=AsyncMock(return_value=("org-1", "team-1"))
+    )
+    mocker.patch(
+        "backend.util.clients.get_database_manager_async_client",
+        return_value=db_manager,
+    )
+
+    await apply_mod._create_dream_session("u1", "p1")
+
+    db_manager.get_user_default_team.assert_awaited_once_with("u1")
+    kwargs = db.create_chat_session.call_args.kwargs
+    assert kwargs["organization_id"] == "org-1"
+    assert kwargs["team_id"] == "team-1"
 
 
 @pytest.mark.asyncio

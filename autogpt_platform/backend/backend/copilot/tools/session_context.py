@@ -128,7 +128,7 @@ async def build_session_context(session_id: str, user_id: str) -> str:
 
     # The endpoint already narrows by ``kind`` server-side; the isinstance
     # filter is a belt-and-braces guard against a legacy untyped row that
-    # might slip through (matches ``v1.list_copilot_turn_schedules``).
+    # might slip through (matches ``schedules.routes.list_copilot_turn_schedules``).
     jobs = [j for j in raw_jobs if isinstance(j, CopilotTurnJobInfo)]
 
     if not jobs:

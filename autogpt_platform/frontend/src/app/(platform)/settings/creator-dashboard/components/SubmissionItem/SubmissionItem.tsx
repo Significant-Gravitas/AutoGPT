@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
@@ -100,6 +101,7 @@ export function SubmissionItem({
             {thumbnail ? (
               <Image
                 src={thumbnail}
+                unoptimized={isLocalStoreMediaUrl(thumbnail)}
                 alt={submission.name}
                 fill
                 sizes="80px"

@@ -7,37 +7,26 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
 import type { User } from "@/lib/auth/types";
 import { usePostV1UpdateNotificationPreferences } from "@/app/api/__generated__/endpoints/auth/auth";
-import { NotificationPreferenceDTO } from "@/lib/autogpt-server-api/types";
 
+// The volume knob from the Briefing footer, not a checkbox list. Billing and
+// account messages are service mail and are deliberately absent — they are
+// sent regardless of what is set here.
 const notificationFormSchema = z.object({
-  notifyOnAgentRun: z.boolean(),
-  notifyOnZeroBalance: z.boolean(),
-  notifyOnLowBalance: z.boolean(),
-  notifyOnBlockExecutionFailed: z.boolean(),
-  notifyOnContinuousAgentError: z.boolean(),
-  notifyOnDailySummary: z.boolean(),
-  notifyOnWeeklySummary: z.boolean(),
-  notifyOnMonthlySummary: z.boolean(),
-  notifyOnAgentApproved: z.boolean(),
-  notifyOnAgentRejected: z.boolean(),
+  briefingFrequency: z.enum(["DAILY", "WEEKLY", "MONTHLY", "OFF"]),
+  alertsEnabled: z.boolean(),
+  storeVerdictsEnabled: z.boolean(),
 });
 
-function createNotificationDefaultValues(preferences: {
-  preferences?: Record<string, boolean>;
-}) {
+export type NotificationFormValues = z.infer<typeof notificationFormSchema>;
+
+function createNotificationDefaultValues(
+  preferences: NotificationPreference,
+): NotificationFormValues {
   return {
-    notifyOnAgentRun: preferences.preferences?.AGENT_RUN,
-    notifyOnZeroBalance: preferences.preferences?.ZERO_BALANCE,
-    notifyOnLowBalance: preferences.preferences?.LOW_BALANCE,
-    notifyOnBlockExecutionFailed:
-      preferences.preferences?.BLOCK_EXECUTION_FAILED,
-    notifyOnContinuousAgentError:
-      preferences.preferences?.CONTINUOUS_AGENT_ERROR,
-    notifyOnDailySummary: preferences.preferences?.DAILY_SUMMARY,
-    notifyOnWeeklySummary: preferences.preferences?.WEEKLY_SUMMARY,
-    notifyOnMonthlySummary: preferences.preferences?.MONTHLY_SUMMARY,
-    notifyOnAgentApproved: preferences.preferences?.AGENT_APPROVED,
-    notifyOnAgentRejected: preferences.preferences?.AGENT_REJECTED,
+    briefingFrequency: (preferences.briefing_frequency ??
+      "WEEKLY") as NotificationFormValues["briefingFrequency"],
+    alertsEnabled: preferences.alerts_enabled ?? true,
+    storeVerdictsEnabled: preferences.store_verdicts_enabled ?? true,
   };
 }
 
@@ -51,7 +40,7 @@ export function useNotificationForm({
   const { toast } = useToast();
   const defaultValues = createNotificationDefaultValues(preferences);
 
-  const form = useForm<z.infer<typeof notificationFormSchema>>({
+  const form = useForm<NotificationFormValues>({
     resolver: zodResolver(notificationFormSchema),
     defaultValues,
   });
@@ -71,27 +60,15 @@ export function useNotificationForm({
     },
   });
 
-  async function onSubmit(values: z.infer<typeof notificationFormSchema>) {
+  async function onSubmit(values: NotificationFormValues) {
     try {
-      const notificationPreferences: NotificationPreferenceDTO = {
-        email: user.email || "",
-        preferences: {
-          AGENT_RUN: values.notifyOnAgentRun,
-          ZERO_BALANCE: values.notifyOnZeroBalance,
-          LOW_BALANCE: values.notifyOnLowBalance,
-          BLOCK_EXECUTION_FAILED: values.notifyOnBlockExecutionFailed,
-          CONTINUOUS_AGENT_ERROR: values.notifyOnContinuousAgentError,
-          DAILY_SUMMARY: values.notifyOnDailySummary,
-          WEEKLY_SUMMARY: values.notifyOnWeeklySummary,
-          MONTHLY_SUMMARY: values.notifyOnMonthlySummary,
-          AGENT_APPROVED: values.notifyOnAgentApproved,
-          AGENT_REJECTED: values.notifyOnAgentRejected,
-        },
-        daily_limit: 0,
-      };
-
       await updateNotificationsMutation.mutateAsync({
-        data: notificationPreferences,
+        data: {
+          email: user.email || "",
+          briefing_frequency: values.briefingFrequency,
+          alerts_enabled: values.alertsEnabled,
+          store_verdicts_enabled: values.storeVerdictsEnabled,
+        },
       });
 
       toast({

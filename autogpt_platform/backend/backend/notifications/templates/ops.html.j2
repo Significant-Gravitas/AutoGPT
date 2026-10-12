@@ -1,0 +1,39 @@
+{%- import "_email_ui.j2" as ui with context -%}
+{%- set is_request = kind == 'request' -%}
+{%- set amount_str = '$' ~ '{:,.2f}'.format(amount_cents / 100) -%}
+{%- set balance_str = '$' ~ '{:,.2f}'.format(balance_cents / 100) -%}
+<!doctype html>
+<html lang="en">
+<head>{{ ui.head_block(subject) }}</head>
+{{ ui.body_open() }}
+{{ ui.preheader(preheader) }}
+{{ ui.page_open() }}
+{{ ui.masthead() }}
+{{ ui.ops_band('REFUND REQUEST' if is_request else 'REFUND PROCESSED', amount_str,
+    user_name ~ ' · ' ~ user_email,
+    ('Needs a decision · raised ' ~ age_label) if is_request and age_label else ('Needs a decision' if is_request else 'Completed · no action needed'),
+    '#FFF6E8' if is_request else '#F5F3FC') }}
+{{ ui.sheet_open() }}
+{% call ui.para() %}
+{% if is_request %}{{ user_name }} asked for {{ amount_str }} back on {{ requested_at_label }}.{% else %}{{ amount_str }} was refunded to {{ user_name }} on {{ processed_at_label }}.{% endif %}
+{{ preheader }}
+{% endcall %}
+{% if reason and reason | trim | length > 0 %}
+{{ ui.note_card('In their words', reason) }}
+{% else %}
+{% call ui.para() %}No reason was given with this request{{ ', so ask before deciding.' if is_request else '.' }}{% endcall %}
+{% endif %}
+{{ ui.kvpanel([('Customer', user_name, false), ('Email', user_email, true), ('User ID', user_id, true), ('Transaction', transaction_id, true), ('Request ID', refund_request_id, true), ('Balance now' if is_request else 'Balance after refund', balance_str, true)]) }}
+{% if is_request %}
+{% call ui.para() %}To approve, <a href="{{ stripe_url }}" style="color:#6144DF; font-weight:600; text-decoration:underline;">refund {{ amount_str }} in Stripe</a>. The balance adjustment happens automatically once Stripe confirms.{% endcall %}
+{% call ui.para() %}To reject, open the request in the admin panel, mark it rejected, and write the reason. The customer sees what you write.{% endcall %}
+{% else %}
+{% call ui.para() %}The credits have been deducted. <a href="{{ stripe_url }}" style="color:#6144DF; font-weight:600; text-decoration:underline;">View the transaction in Stripe</a>.{% endcall %}
+{% endif %}
+{{ ui.cta('Open in the admin panel', admin_url) }}
+{{ ui.close_row('This request stays open until someone acts on it.' if is_request else 'Filed automatically when Stripe confirmed the refund.', 'View the transaction in Stripe', stripe_url) }}
+{{ ui.sheet_close() }}
+{{ ui.page_close() }}
+{{ ui.internal_footer('Internal notification for the AutoGPT refunds team. Not customer-facing. Sent to ' ~ recipient ~ '.') }}
+</td></tr></table>
+</body></html>

@@ -13,16 +13,15 @@ to our own hosts.
 """
 
 import asyncio
-import html
 import logging
 import re
-from typing import Literal
 from urllib.parse import urlparse
 
 from autogpt_libs.auth import requires_frontend_service
 from fastapi import APIRouter, HTTPException, Security, status
 from pydantic import BaseModel, EmailStr
 
+from backend.notifications.auth import AuthEmailType, render_auth_email
 from backend.util.clients import get_notification_manager_client
 from backend.util.settings import Settings
 
@@ -34,21 +33,9 @@ auth_email_router = APIRouter()
 # Module-level so tests can override the exact dependency instance.
 requires_auth_email_service = requires_frontend_service("auth-email:send")
 
-_SUBJECTS: dict[str, str] = {
-    "reset_password": "Reset your AutoGPT Platform password",
-    "verify_email": "Verify your AutoGPT Platform email",
-    "change_email": "Confirm your new AutoGPT Platform email",
-}
-
-_ACTIONS: dict[str, str] = {
-    "reset_password": "reset your password",
-    "verify_email": "verify your email",
-    "change_email": "confirm your new email address",
-}
-
 
 class AuthEmailRequest(BaseModel):
-    type: Literal["reset_password", "verify_email", "change_email"]
+    type: AuthEmailType
     to: EmailStr
     url: str
 
@@ -76,16 +63,7 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
             detail="url must point at a trusted frontend origin.",
         )
 
-    subject = _SUBJECTS[request.type]
-    action = _ACTIONS[request.type]
-    # Escape the (host-validated) URL before embedding it in HTML — a path or
-    # query on an allowed host could still carry markup-breaking characters.
-    safe_url = html.escape(request.url, quote=True)
-    body = (
-        f"<p>Click the link below to {action} for the AutoGPT Platform:</p>"
-        f'<p><a href="{safe_url}">{safe_url}</a></p>'
-        "<p>If you didn't request this, you can safely ignore this email.</p>"
-    )
+    email = render_auth_email(request.type, request.url)
 
     # The blocking RPC to the notification service runs off the event loop; a
     # delivery failure there surfaces as a 5xx so a misconfigured mailer fails
@@ -93,8 +71,9 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
     await asyncio.to_thread(
         get_notification_manager_client().send_email_or_raise,
         request.to,
-        subject,
-        body,
+        email.subject,
+        email.html,
+        email.text,
     )
     # Don't log the recipient address — auth emails go to arbitrary users and
     # the address is PII we don't want in application logs.

@@ -33,7 +33,7 @@ export function TourHero() {
           variant="lead"
           className="mt-5 max-w-xl text-balance text-zinc-600"
         >
-          Describe a goal in plain English and watch Autopilot build and run a
+          Describe a goal in plain English and watch Otto build and run a
           working AutoGPT agent for you, in seconds, right in your browser.
         </Text>
 

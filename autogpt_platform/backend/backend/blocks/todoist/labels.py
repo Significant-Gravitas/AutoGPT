@@ -4,6 +4,7 @@ from typing_extensions import Optional
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -377,6 +378,8 @@ class TodoistDeleteLabelBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"delete_label": lambda *args, **kwargs: True},
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -536,6 +539,8 @@ class TodoistRemoveSharedLabelsBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"remove_shared_label": lambda *args, **kwargs: True},
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

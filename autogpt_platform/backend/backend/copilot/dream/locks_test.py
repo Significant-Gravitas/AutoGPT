@@ -76,6 +76,20 @@ async def test_dream_lock_raises_when_already_held(mocker):
 
 
 @pytest.mark.asyncio
+async def test_expert_dream_lock_uses_isolated_memory_scope_key(mocker):
+    redis = _redis_mock()
+    _patch_redis(mocker, redis)
+
+    async with dream_lock("user-a", expert_id="expert-a"):
+        pass
+
+    key = redis.set.call_args.args[0]
+    assert key.startswith("dream:inflight:expert_")
+    assert key != "dream:inflight:user-a"
+    assert redis.eval.call_args.args[2] == key
+
+
+@pytest.mark.asyncio
 async def test_dream_lock_swallows_release_failure(mocker, caplog):
     redis = _redis_mock(eval=AsyncMock(side_effect=Exception("redis down")))
     _patch_redis(mocker, redis)

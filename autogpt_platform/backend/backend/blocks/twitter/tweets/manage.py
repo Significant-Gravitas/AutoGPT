@@ -8,6 +8,7 @@ from tweepy.client import Response
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -161,6 +162,8 @@ class TwitterPostTweetBlock(Block):
                     "https://twitter.com/user/status/1234567890",
                 )
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     def post_tweet(
@@ -279,6 +282,8 @@ class TwitterDeleteTweetBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"delete_tweet": lambda *args, **kwargs: True},
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

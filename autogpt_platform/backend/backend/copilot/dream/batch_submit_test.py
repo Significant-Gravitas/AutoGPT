@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.dream.batch_submit import (
+    INPUT_TTL_SECONDS,
     input_bundle_key,
     persist_input_bundle,
     read_input_bundle,
@@ -26,10 +27,14 @@ from backend.copilot.dream.locks import DREAM_LOCK_KEY_PREFIX
 from backend.util.llm.providers import BatchSubmissionRef
 
 
-def _bundle() -> DreamInput:
+def _bundle(expert_id: str | None = None) -> DreamInput:
     now = datetime.now(timezone.utc)
     return DreamInput(
-        user_id="u1", group_id="user_u1", window_start=now, window_end=now
+        user_id="u1",
+        expert_id=expert_id,
+        group_id="user_u1" if expert_id is None else "expert_resolved",
+        window_start=now,
+        window_end=now,
     )
 
 
@@ -63,7 +68,7 @@ def fake_redis():
 
 
 @pytest.mark.asyncio
-async def test_enqueue_failure_cancels_orphaned_batch_and_reraises():
+async def test_enqueue_failure_cancels_orphaned_batch_and_reraises(fake_redis):
     submitted = BatchSubmissionRef(
         provider="anthropic",
         provider_batch_id="msgbatch_orphan",
@@ -95,7 +100,7 @@ async def test_enqueue_failure_cancels_orphaned_batch_and_reraises():
 
 
 @pytest.mark.asyncio
-async def test_successful_enqueue_does_not_cancel():
+async def test_successful_enqueue_does_not_cancel(fake_redis):
     submitted = BatchSubmissionRef(
         provider="anthropic",
         provider_batch_id="msgbatch_ok",
@@ -122,6 +127,57 @@ async def test_successful_enqueue_does_not_cancel():
     enqueue.assert_awaited_once()
     cancel.assert_not_awaited()
     assert ref.provider_batch_id == "msgbatch_ok"
+    assert enqueue.call_args.args[0].payload["expert_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_submit_phase_refreshes_input_bundle_ttl(fake_redis):
+    """Each phase batch gets its own 24h SLA window, so the input bundle's
+    TTL — stamped once at persist — must be re-armed on every phase submit
+    or a multi-phase chain can outlive its bundle and hard-fail the paid
+    dream at the callback's read_input_bundle guard."""
+    stub, _ = fake_redis
+    submitted = BatchSubmissionRef(
+        provider="anthropic",
+        provider_batch_id="msgbatch_chain",
+        custom_id="p1_recombine",
+        submitted_at=datetime.now(timezone.utc),
+    )
+    with patch(
+        "backend.copilot.dream.batch_submit.call_provider",
+        AsyncMock(return_value=submitted),
+    ), patch(
+        "backend.copilot.dream.batch_submit.enqueue_pending",
+        AsyncMock(return_value=None),
+    ):
+        await submit_phase(
+            user_id="u1",
+            pass_id="p1",
+            job_id="j1",
+            phase="recombine",
+            phase_models={"recombine": "claude-opus-4-6"},
+            api_key="sk-test",
+            input_bundle=_bundle(),
+            consolidated_json="{}",
+        )
+
+    stub.expire.assert_awaited_once_with(input_bundle_key("p1"), INPUT_TTL_SECONDS)
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_round_trips_and_routes_live_lock_lookup(fake_redis):
+    read_live_token = AsyncMock(return_value="tok-expert")
+    with patch(
+        "backend.copilot.dream.batch_submit.read_dream_lock_token",
+        read_live_token,
+    ):
+        await persist_input_bundle("p-expert", _bundle("expert-1"))
+
+    read_live_token.assert_awaited_once_with("u1", "expert-1")
+    bundle = await read_input_bundle("p-expert")
+    assert bundle is not None
+    assert bundle.expert_id == "expert-1"
+    assert bundle.group_id == "expert_resolved"
 
 
 @pytest.mark.asyncio

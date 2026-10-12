@@ -35,6 +35,7 @@ class ProviderName(str, Enum):
     MCP = "mcp"
     MEDIUM = "medium"
     MEM0 = "mem0"
+    MICROSOFT_365_COPILOT = "microsoft_365_copilot"
     NOTION = "notion"
     NVIDIA = "nvidia"
     OLLAMA = "ollama"
@@ -45,14 +46,18 @@ class ProviderName(str, Enum):
     REDDIT = "reddit"
     REPLICATE = "replicate"
     REVID = "revid"
+    RMFG = "rmfg"
     SCREENSHOTONE = "screenshotone"
     SLACK = "slack"
     SLANT3D = "slant3d"
     SMARTLEAD = "smartlead"
     SMTP = "smtp"
+    STRIPE = "stripe"
+    STRIPE_LINK = "stripe_link"
     TELEGRAM = "telegram"
     TWITTER = "twitter"
     TODOIST = "todoist"
+    TYPESAFE = "typesafe"
     UNREAL_SPEECH = "unreal_speech"
     V0 = "v0"
     WEBSHARE_PROXY = "webshare_proxy"
@@ -111,3 +116,15 @@ class ProviderName(str, Enum):
         )
 
     # --8<-- [end:ProviderName]
+
+
+def provider_key(provider: "ProviderName | str") -> str:
+    """Normalize a provider to its plain string key.
+
+    Providers reach the registries as either a ``ProviderName`` member or a
+    bare string (SDK-registered providers, values loaded from the database).
+    ``str(ProviderName.X)`` returns ``"ProviderName.X"`` on Python 3.13, so the
+    enum value has to be preferred explicitly — which had been open-coded with
+    ``hasattr``/``getattr`` at every call site.
+    """
+    return getattr(provider, "value", None) or str(provider)

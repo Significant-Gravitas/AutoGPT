@@ -58,6 +58,32 @@ describe("copilotStreamStore pending first send persistence", () => {
     ).toEqual({ send: null, parts: [] });
   });
 
+  it("restores expert kickoff metadata across the session-creation remount", async () => {
+    const firstModule = await importFreshStore();
+    const metadata = {
+      kind: "expert_kickoff" as const,
+      expertId: "3f8b0f7e-9f30-4a3b-a6a1-000000000001",
+      attemptToken: "attempt-1",
+    };
+    const firstStore = firstModule.useCopilotStreamStore.getState();
+    firstStore.setPendingFirstSend({
+      text: "private kickoff prompt",
+      files: [],
+      metadata,
+    });
+    firstStore.bindPendingFirstSendToSession("expert-session");
+
+    const secondModule = await importFreshStore();
+    expect(
+      secondModule.useCopilotStreamStore
+        .getState()
+        .takePendingFirstSend("expert-session"),
+    ).toEqual({
+      send: { text: "private kickoff prompt", files: [], metadata },
+      parts: [],
+    });
+  });
+
   it("does not consume a pending send for a different session", async () => {
     const firstModule = await importFreshStore();
     const firstStore = firstModule.useCopilotStreamStore.getState();

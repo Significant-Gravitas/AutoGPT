@@ -2,6 +2,7 @@
 Tests for WorkspaceManager.write_file UniqueViolationError handling.
 """
 
+import hashlib
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -263,6 +264,36 @@ async def test_write_file_overwrite_not_double_counted(manager, mock_storage, mo
     assert result == created_file
 
 
+@pytest.mark.parametrize(
+    "scanned, expect_scan",
+    [((), True), (("0" * 64,), True), ((hashlib.sha256(b"hello").hexdigest(),), False)],
+    ids=["none-recorded", "other-bytes", "same-bytes"],
+)
+async def test_write_file_skips_the_scan_only_for_bytes_already_scanned(
+    manager, mock_storage, mock_db, scanned, expect_scan
+):
+    mock_db.get_workspace_file_by_path.return_value = None
+    mock_db.create_workspace_file.return_value = _make_workspace_file()
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage", return_value=mock_storage
+        ),
+        patch("backend.util.workspace.workspace_db", return_value=mock_db),
+        patch(
+            "backend.util.workspace.scan_content_safe", new_callable=AsyncMock
+        ) as scan,
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            return_value=1_000,
+        ),
+    ):
+        await manager.write_file(
+            filename="test.txt", content=b"hello", scanned_checksums=scanned
+        )
+    # Kills: skipping on any recorded hash, or never skipping.
+    assert scan.await_count == (1 if expect_scan else 0)
+
+
 @pytest.mark.asyncio
 async def test_write_file_storage_check_routes_through_workspace_db_accessor(
     manager, mock_storage, mock_db
@@ -290,3 +321,48 @@ async def test_write_file_storage_check_routes_through_workspace_db_accessor(
         await manager.write_file(filename="test.txt", content=b"hello")
 
     mock_db.get_workspace_total_size.assert_awaited_once_with("ws-123")
+
+
+# ---------------------------------------------------------------------------
+# Path resolution: which roots a session-scoped manager takes literally
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def session_manager():
+    return WorkspaceManager(
+        user_id="user-123", workspace_id="ws-123", session_id="sess-1"
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/skills/pdf/SKILL.md",
+        "/skills/pdf/references/guide.md",
+        "/experts/expert-a/skills/pdf/scripts/extract.py",
+        "/sessions/other/report.pdf",
+    ],
+)
+def test_shared_roots_resolve_as_written(session_manager, path: str):
+    """A skill package belongs to the account, not to the chat that opened it:
+    prefixing the session folder would make ``read_workspace_file`` miss every
+    path ``read_skill`` hands the model."""
+    assert session_manager._resolve_path(path) == path
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        ("/report.pdf", "/sessions/sess-1/report.pdf"),
+        ("report.pdf", "/sessions/sess-1/report.pdf"),
+        ("skills/pdf/SKILL.md", "/sessions/sess-1/skills/pdf/SKILL.md"),
+        ("/skillset/notes.md", "/sessions/sess-1/skillset/notes.md"),
+    ],
+)
+def test_everything_else_still_resolves_under_the_session(
+    session_manager, path: str, expected: str
+):
+    """Only an absolute path into a shared root escapes session scoping — a
+    relative ``skills/...`` and a lookalike folder must not."""
+    assert session_manager._resolve_path(path) == expected

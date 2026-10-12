@@ -66,7 +66,9 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
             <div className="flex flex-col gap-1">
               <Text variant="body-medium">Webhook URL:</Text>
               <div className="flex gap-2 rounded-md bg-gray-50 p-2">
-                <code className="flex-1 select-all text-sm">{webhook.url}</code>
+                <code className="ph-no-capture flex-1 select-all text-sm">
+                  {webhook.url}
+                </code>
                 <Button
                   variant="outline"
                   size="icon"

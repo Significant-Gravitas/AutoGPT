@@ -1,0 +1,81 @@
+{%- import "_email_ui.j2" as ui with context -%}
+<!doctype html>
+<html lang="en">
+<head>{{ ui.head_block(subject) }}</head>
+{{ ui.body_open() }}
+{{ ui.preheader(preheader) }}
+{{ ui.page_open() }}
+{{ ui.masthead() }}
+{{ ui.hero_otto() }}
+{{ ui.sheet_open() }}
+{% if kind == 'welcome' %}
+{% call ui.eyebrow(tone='confirmed') %}PLAN ACTIVE · {{ plan.label | upper }}{% endcall %}
+{% call ui.headline() %}You're in. Let's put {{ 'Otto' if experts_enabled | default(false) else 'a workflow' }} to work.{% endcall %}
+{% call ui.para() %}Hi {{ user_name }}, your {{ plan.name }} subscription is active. {{ preheader }}{% endcall %}
+{{ ui.kvpanel([('Plan', plan.label, false), ('Price', plan.price_display, true), ('Renews', renews_label, true)]) }}
+{% if experts_enabled | default(false) %}
+{% call ui.para() %}Start with a real task: hire an AI Expert from the Marketplace, share what you need, and review the result with Otto, your personal Head of AI.{% endcall %}
+{{ ui.cta('Hire your first Expert', urls.marketplace) }}
+{% else %}
+{% call ui.para() %}Start with a real task: install a workflow from the Marketplace, connect the accounts it needs, and review its first run.{% endcall %}
+{{ ui.cta('Install your first workflow', urls.marketplace) }}
+{% endif %}
+{{ ui.also_panel('Three good places to start', [
+    ('The quick-start guide.', 'Set up your first task, step by step.', 'Open the guide', urls.docs),
+    ('The Marketplace.', 'Find an AI Expert for the work you need done.' if experts_enabled | default(false) else 'Find a workflow for the work you need done.', 'Browse Experts' if experts_enabled | default(false) else 'Browse workflows', urls.marketplace),
+    ('Discord.', 'See what other people are building.', 'Join in', urls.discord),
+]) }}
+{{ ui.signature('Toran Bruce Richards', 'Founder · AutoGPT', 'contact@agpt.co') }}
+{{ ui.close_row('You received this because your subscription is active.', 'Billing settings', urls.billing) }}
+{% elif kind == 'payment_failed' %}
+{{ ui.strip_amber('NEEDS YOU · PAYMENT DECLINED') }}
+{% call ui.eyebrow(tone='needs_you') %}YOUR {{ plan.name | upper }} PLAN{% endcall %}
+{% call ui.headline() %}Your payment didn't go through{% endcall %}
+{% call ui.para() %}Hi {{ user_name }}, the renewal payment for your {{ plan.name }} plan was declined. {{ preheader }}{% endcall %}
+{{ ui.kvpanel([('Amount', amount_display, true), ('Card', card.brand ~ ' ···· ' ~ card.last4, true), ('Next retry', next_retry_label ~ ' · automatic', true)]) }}
+{% call ui.para() %}Your plan and scheduled workflows keep running while we retry. If your card details have changed, update them before the next attempt.{% endcall %}
+{{ ui.cta('Update payment method', urls.billing, "Already updated your card? We'll use the new one on the next retry.") }}
+{{ ui.close_row('You received this because your renewal payment was declined.', 'Billing settings', urls.billing) }}
+{% elif kind == 'final_notice' %}
+{{ ui.strip_amber('NEEDS YOU · FINAL PAYMENT NOTICE') }}
+{% call ui.eyebrow(tone='needs_you') %}PLAN PAUSES {{ pauses_label | upper }}{% endcall %}
+{% call ui.headline() %}Keep your scheduled work running{% endcall %}
+{% call ui.para() %}Hi {{ user_name }}, we couldn't collect payment for your {{ plan.name }} plan after several attempts. {{ preheader }}{% endcall %}
+{{ ui.kvpanel([('Amount due', amount_display, true), ('Plan pauses on', pauses_label, true), ('What pauses', 'Scheduled runs and ' ~ plan.name ~ ' features', false)]) }}
+{% call ui.note_card('If the plan pauses', tone='amber') %}Scheduled workflows stop running until payment succeeds. Your workflows and their data stay saved in your account.{% endcall %}
+{{ ui.cta('Update payment method', urls.billing) }}
+{{ ui.close_row('You received this because the payment retries failed.', 'Billing settings', urls.billing) }}
+{% elif kind == 'cancel_confirmed' %}
+{% call ui.eyebrow() %}YOUR PLAN · ENDS {{ access_until_label | upper }}{% endcall %}
+{% call ui.headline() %}Cancellation confirmed{% endcall %}
+{% call ui.para() %}Hi {{ user_name }}, we've cancelled the renewal on your {{ plan.name }} plan, as requested. {{ preheader }}{% endcall %}
+{{ ui.kvpanel([('Plan', plan.label, false), ('Access until', access_until_label, true), ('After that', 'Scheduled workflows pause; work stays saved', false)]) }}
+{% call ui.para() %}Your workflows and data stay in your account when the plan ends. You can resume your plan in billing settings if you change your mind.{% endcall %}
+{{ ui.close_row('This confirmation was sent because you cancelled your renewal.', 'Billing settings', urls.billing) }}
+{% elif kind == 'cancel_reversed' %}
+{% call ui.eyebrow(tone='confirmed') %}YOUR PLAN · RESUMED{% endcall %}
+{% call ui.headline() %}Your plan continues{% endcall %}
+{% call ui.para() %}Hi {{ user_name }}, you've resumed your {{ plan.name }} plan, so the cancellation is off. {{ preheader }}{% endcall %}
+{{ ui.kvpanel([('Plan', plan.label, false), ('Next renewal', renews_label, true), ('Price', plan.price_display, true)]) }}
+{% call ui.note_card('About that earlier email') %}The message saying your plan would end no longer applies. Your scheduled workflows keep running.{% endcall %}
+{{ ui.cta('Open AutoGPT', urls.dashboard) }}
+{{ ui.close_row('You received this because you resumed your plan.', 'Billing settings', urls.billing) }}
+{% elif kind == 'ended' %}
+{% call ui.eyebrow() %}YOUR PLAN · ENDED {{ ended_label | upper }}{% endcall %}
+{% call ui.headline() %}Your plan has ended{% endcall %}
+{% if due_to_payment %}
+{% call ui.para() %}Hi {{ user_name }}, your {{ plan.name }} plan ended on {{ ended_label }} because we couldn't collect payment. {{ preheader }}{% endcall %}
+{{ ui.kvpanel([('Ended on', ended_label, true), ('Why', 'Payment could not be collected', false), ('Scheduled workflows', 'Paused; work stays saved', false), ('Your data', 'Kept in your account', false)]) }}
+{% else %}
+{% call ui.para() %}Hi {{ user_name }}, your {{ plan.name }} plan ended on {{ ended_label }}, as scheduled after your cancellation. {{ preheader }}{% endcall %}
+{{ ui.kvpanel([('Ended on', ended_label, true), ('Scheduled workflows', 'Paused; work stays saved', false), ('Your data', 'Kept in your account', false)]) }}
+{% endif %}
+{% call ui.para() %}You can restart your plan in billing settings whenever you're ready.{% endcall %}
+{{ ui.cta('Restart my plan', urls.billing) }}
+{{ ui.close_row('You received this because your paid plan ended.', 'Billing settings', urls.billing) }}
+{% endif %}
+{{ ui.sheet_close() }}
+{{ ui.page_close() }}
+{{ ui.legal_footer("This is a service message about the AutoGPT account for " ~ user_email ~ ". It's sent even if you've opted out of product news.", 'Email preferences', urls.prefs, discord=true) }}
+</td></tr></table>
+</body></html>

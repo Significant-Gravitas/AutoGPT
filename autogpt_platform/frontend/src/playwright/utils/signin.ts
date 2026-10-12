@@ -29,7 +29,7 @@ export class SigninUtils {
     // Wait for redirect — could land on /onboarding, /marketplace, or /copilot
     await this.page.waitForURL(
       (url: URL) =>
-        /\/(onboarding|marketplace|copilot|library)/.test(url.pathname),
+        /\/(onboarding|marketplace|copilot|home|library)/.test(url.pathname),
       { timeout: 15000 },
     );
 

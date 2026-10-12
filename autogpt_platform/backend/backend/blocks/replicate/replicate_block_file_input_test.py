@@ -1,7 +1,7 @@
 """Unit tests for ReplicateModelBlock file-input handling.
 
 Verifies that uploaded ``files`` are merged into ``model_inputs`` under
-``file_input_field`` so AutoPilot can pass file references instead of inlining
+``file_input_field`` so Otto can pass file references instead of inlining
 base64 into the inputs dict by hand:
 
 1. No files → model_inputs passed through unchanged (and not mutated in place)

@@ -14,7 +14,7 @@ import {
 import { CycleToggle } from "./CycleToggle";
 import { SwitchCycleDialog } from "./SwitchCycleDialog";
 import { SwitchTierDialog } from "./SwitchTierDialog";
-import { useYourPlanCard } from "./useYourPlanCard";
+import { ENTERPRISE_CONTACT_URL, useYourPlanCard } from "./useYourPlanCard";
 import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -57,6 +57,8 @@ export function YourPlanCard({ index = 0 }: Props) {
   } = useYourPlanCard();
 
   const sectionMotion = getSectionMotionProps(index, Boolean(reduceMotion));
+
+  if (plan?.tierKey === "TRIAL") return null;
 
   if (isLoading || !plan) {
     return (
@@ -109,7 +111,18 @@ export function YourPlanCard({ index = 0 }: Props) {
               />
             ) : null}
           </div>
-          {plan.isPaidPlan ? (
+          {plan.isAdminManaged ? (
+            <Text variant="body" as="span" className="text-zinc-700">
+              Managed by your AutoGPT account team.{" "}
+              <a
+                href={ENTERPRISE_CONTACT_URL}
+                className="font-medium text-purple-500 no-underline hover:text-purple-600"
+              >
+                Contact us
+              </a>{" "}
+              for changes.
+            </Text>
+          ) : plan.isPaidPlan ? (
             <Text variant="body" as="span" className="text-zinc-700">
               {formatCents(plan.monthlyCostCents)}
               {plan.billingCycle === "yearly" ? " / year" : " / month"}
@@ -166,12 +179,14 @@ export function YourPlanCard({ index = 0 }: Props) {
               Downgrade to {plan.previousTierLabel}
             </Button>
           ) : null}
-          {plan.isPaidPlan ? (
+          {plan.isPaidPlan && !plan.isAdminManaged ? (
             <Button
               variant="secondary"
               size="small"
               onClick={onManage}
               disabled={!canManagePortal}
+              data-fast-goal="billing_portal_open"
+              data-fast-goal-surface="settings_billing"
             >
               Manage subscription
             </Button>
@@ -183,6 +198,10 @@ export function YourPlanCard({ index = 0 }: Props) {
               onClick={onUpgrade}
               disabled={isUpdatingTier}
               loading={isUpdatingTier && !plan.nextTierIsTeamLink}
+              data-fast-goal="subscription_upgrade_click"
+              data-fast-goal-from={plan.label}
+              data-fast-goal-to={plan.nextTierLabel}
+              data-fast-goal-surface="settings_billing"
               rightIcon={
                 plan.nextTierIsTeamLink ? (
                   <Icon icon={LinkSquare01Icon} size={14} aria-hidden="true" />

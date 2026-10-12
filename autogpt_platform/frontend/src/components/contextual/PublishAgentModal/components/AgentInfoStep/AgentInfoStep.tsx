@@ -12,6 +12,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
+import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { cn } from "@/lib/utils";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
@@ -21,6 +22,7 @@ import { StepFooter } from "../StepFooter";
 import { ThumbnailImages } from "./components/ThumbnailImages";
 import { CharCountedTextarea } from "./components/CharCountedTextarea";
 import { Props, useAgentInfoStep } from "./useAgentInfoStep";
+import { SUB_HEADING_MAX } from "./helpers";
 import {
   Album01Icon,
   AlertCircleIcon,
@@ -61,6 +63,8 @@ export function AgentInfoStep({
     isMarketplaceUpdate,
   });
 
+  const { categories, isUnavailable, placeholder } = useStoreCategories();
+
   const [cronScheduleDialogOpen, setCronScheduleDialogOpen] =
     React.useState(false);
   const [openAccordion, setOpenAccordion] = React.useState("");
@@ -75,18 +79,10 @@ export function AgentInfoStep({
     form.setValue("recommendedScheduleCron", cronExpression);
   };
 
-  const categoryOptions = [
-    { value: "productivity", label: "Productivity" },
-    { value: "writing", label: "Writing & Content" },
-    { value: "development", label: "Development" },
-    { value: "data", label: "Data & Analytics" },
-    { value: "marketing", label: "Marketing & SEO" },
-    { value: "research", label: "Research & Learning" },
-    { value: "creative", label: "Creative & Design" },
-    { value: "business", label: "Business & Finance" },
-    { value: "personal", label: "Personal Assistant" },
-    { value: "other", label: "Other" },
-  ];
+  const categoryOptions = categories.map((category) => ({
+    value: category.value,
+    label: category.label,
+  }));
 
   const isSubmitDisabled =
     Object.keys(form.formState.errors).length > 0 || isSubmitting;
@@ -228,16 +224,22 @@ export function AgentInfoStep({
                     control={form.control}
                     name="subheader"
                     render={({ field }) => (
-                      <Input
-                        id={field.name}
-                        labelVariant="body"
-                        label="Subheader"
-                        labelTooltip="One-sentence tagline displayed under the title."
-                        type="text"
-                        placeholder="A concise tagline for your agent"
-                        error={form.formState.errors.subheader?.message}
-                        {...field}
-                      />
+                      <CharCountedTextarea
+                        max={SUB_HEADING_MAX}
+                        value={field.value ?? ""}
+                      >
+                        <Input
+                          id={field.name}
+                          labelVariant="body"
+                          label="Tagline"
+                          labelTooltip="The one-line subtitle shown under the agent name and on preview cards. Start with a verb and name the outcome for the user."
+                          type="text"
+                          placeholder="Find decision-makers at any company in seconds"
+                          error={form.formState.errors.subheader?.message}
+                          required
+                          {...field}
+                        />
+                      </CharCountedTextarea>
                     )}
                   />
                 </div>
@@ -268,7 +270,8 @@ export function AgentInfoStep({
                       labelVariant="body"
                       label="Category"
                       labelTooltip="Primary category that helps users discover the agent."
-                      placeholder="Select a category"
+                      placeholder={placeholder}
+                      disabled={isUnavailable}
                       value={field.value}
                       onValueChange={field.onChange}
                       error={form.formState.errors.category?.message}

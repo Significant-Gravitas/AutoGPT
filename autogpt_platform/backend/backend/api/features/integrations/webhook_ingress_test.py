@@ -10,7 +10,7 @@ signature checks to each manager's `verify_signature`. This file pins:
   base64-decoded `config["mac_secret"]`).
 * Generic webhook honors an optional `secret_token` on the triggered block:
   passes through when unset, enforces when set.
-* Providers without a signing scheme (Compass, Slant3D) pass through.
+* Unsigned Compass and legacy Slant3D subscriptions pass through; Slant3D v2 verifies signatures.
 * A webhook registered under one provider can't be processed via a different
   provider's ingress path (the manager is selected from the URL provider).
 * `verify_signature` runs before `validate_payload` (call ordering).
@@ -19,11 +19,13 @@ signature checks to each manager's `verify_signature`. This file pins:
 import base64
 import hashlib
 import hmac
+import time
 from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
 import fastapi.testclient
+import pytest
 
 from backend.api.features.integrations.router import router
 from backend.data.integrations import WebhookWithRelations
@@ -49,6 +51,8 @@ def _make_webhook(
     config: dict | None = None,
     triggered_nodes=None,
     triggered_presets=None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> WebhookWithRelations:
     # `model_construct` skips field validation so we can pass duck-typed
     # stubs for `triggered_nodes`/`triggered_presets` instead of full
@@ -66,6 +70,8 @@ def _make_webhook(
         config=config or {},
         secret=secret,
         provider_webhook_id="",
+        organization_id=organization_id,
+        team_id=team_id,
         triggered_nodes=triggered_nodes or [],
         triggered_presets=triggered_presets or [],
     )
@@ -164,17 +170,14 @@ def _run(webhook, provider_path: str, **kwargs):
 
 
 class TestUnsignedProvidersPassThrough:
-    """Compass and Slant3D have no upstream signing scheme. The router must
-    not 403 their deliveries — the default no-op `verify_signature` covers
-    them, and 403'ing here would break every legitimate delivery from those
-    devices/services."""
+    """Compass and legacy Slant3D subscriptions accept unsigned deliveries."""
 
     def test_compass_accepts_unsigned_request(self):
         webhook = _make_webhook(ProviderName.COMPASS)
         resp = _run(webhook, "compass")
         assert resp.status_code != 403, resp.text
 
-    def test_slant3d_accepts_unsigned_request(self):
+    def test_legacy_slant3d_accepts_unsigned_request(self):
         webhook = _make_webhook(ProviderName.SLANT3D)
         # Use a Slant3D-shaped payload so the provider's own payload check
         # doesn't 500; the assertion is about signature, not schema.
@@ -183,6 +186,32 @@ class TestUnsignedProvidersPassThrough:
         )
         resp = _run(webhook, "slant3d", body=body)
         assert resp.status_code != 403, resp.text
+
+
+class TestSlant3DV2Signatures:
+    def test_missing_signature_is_rejected(self):
+        webhook = _make_webhook(ProviderName.SLANT3D, config={"api_version": 2})
+        response = _run(webhook, "slant3d")
+        assert response.status_code == 403
+
+    def test_signed_delivery_passes_ingress(self):
+        webhook = _make_webhook(ProviderName.SLANT3D, config={"api_version": 2})
+        webhook.resource = "platform-1"
+        body = b'{"platform_id":"platform-1","event_type":"order.shipped","data":{"order":{"public_id":"SLANT_123","status":"SHIPPED","tracking_number":"track-1"}}}'
+        timestamp = str(int(time.time() * 1000))
+        digest = hmac.new(
+            WEBHOOK_SECRET.encode(), timestamp.encode() + b"." + body, hashlib.sha256
+        ).hexdigest()
+        response = _run(
+            webhook,
+            "slant3d",
+            body=body,
+            headers={
+                "X-Webhook-Timestamp": timestamp,
+                "X-Webhook-Signature-256": f"sha256={digest}",
+            },
+        )
+        assert response.status_code == 200, response.text
 
 
 # ---------------------------------------------------------------------------
@@ -573,5 +602,183 @@ async def test_preset_trigger_refuses_foreign_owner(mocker):
     )
 
     # Bailed out before touching the graph or enqueuing anything.
+    get_graph.assert_not_awaited()
+    add_exec.assert_not_awaited()
+
+
+async def test_preset_trigger_deactivates_only_when_the_graph_version_is_gone(mocker):
+    """The graph read here locates the webhook input node; authorization to run
+    happens in add_graph_execution. Without `skip_access_check` a read denial
+    also reads as `None` and permanently disables a live trigger, which is a
+    one-way write the user has to undo by hand.
+    """
+    from backend.api.features.integrations import router as ingress_router
+
+    mocker.patch.object(ingress_router, "add_graph_execution", new_callable=AsyncMock)
+    update = mocker.patch.object(
+        ingress_router, "update_preset", new_callable=AsyncMock
+    )
+    get_graph = mocker.patch.object(
+        ingress_router,
+        "get_graph",
+        new_callable=AsyncMock,
+        return_value=_make_trigger_graph(),
+    )
+    preset = _make_expert_preset()
+    preset.expert_id = None
+    webhook = _make_webhook(ProviderName.GITHUB)
+
+    await ingress_router._execute_webhook_preset_trigger(
+        preset, webhook, WEBHOOK_ID, "pull_request", {}
+    )
+
+    assert get_graph.await_args.kwargs["skip_access_check"] is True
+    update.assert_not_awaited()
+
+    # Only a genuinely missing graph version disables the preset.
+    get_graph.return_value = None
+    await ingress_router._execute_webhook_preset_trigger(
+        preset, webhook, WEBHOOK_ID, "pull_request", {}
+    )
+
+    update.assert_awaited_once_with(preset.user_id, preset.id, is_active=False)
+
+
+def _make_expert_preset(
+    *,
+    organization_id: str | None = "personal-org",
+    team_id: str | None = "personal-team",
+):
+    return MagicMock(
+        id="preset-expert",
+        user_id=USER_ID,
+        is_active=True,
+        expert_id="expert-1",
+        organization_id=organization_id,
+        team_id=team_id,
+        graph_id="graph-1",
+        graph_version=1,
+        inputs={},
+        credentials={},
+    )
+
+
+def _make_trigger_graph():
+    trigger = MagicMock(id="trigger-node")
+    trigger.block.is_triggered_by_event_type.return_value = True
+    graph = MagicMock(webhook_input_node=trigger)
+    return graph
+
+
+async def test_expert_preset_trigger_uses_matching_personal_tenancy(mocker):
+    from backend.api.features.integrations import router as ingress_router
+
+    expert_store = MagicMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
+        return_value=("personal-org", "personal-team")
+    )
+    mocker.patch.object(ingress_router, "experts_db", return_value=expert_store)
+    mocker.patch.object(
+        ingress_router,
+        "get_graph",
+        new_callable=AsyncMock,
+        return_value=_make_trigger_graph(),
+    )
+    add_exec = mocker.patch.object(
+        ingress_router, "add_graph_execution", new_callable=AsyncMock
+    )
+    webhook = _make_webhook(
+        ProviderName.GITHUB,
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    preset = _make_expert_preset()
+
+    await ingress_router._execute_webhook_preset_trigger(
+        preset, webhook, WEBHOOK_ID, "pull_request", {"safe": True}
+    )
+
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
+        USER_ID, "expert-1"
+    )
+    add_exec.assert_awaited_once()
+    assert add_exec.await_args.kwargs["organization_id"] == "personal-org"
+    assert add_exec.await_args.kwargs["team_id"] == "personal-team"
+    assert add_exec.await_args.kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.parametrize(
+    ("preset_tenancy", "webhook_tenancy"),
+    [
+        (("shared-org", "shared-team"), ("personal-org", "personal-team")),
+        (("personal-org", "personal-team"), ("shared-org", "shared-team")),
+        (("personal-org", "wrong-team"), ("personal-org", "personal-team")),
+        (("personal-org", "personal-team"), ("personal-org", "wrong-team")),
+        ((None, None), ("personal-org", "personal-team")),
+        (("personal-org", "personal-team"), (None, None)),
+    ],
+)
+async def test_expert_preset_trigger_uses_current_tenancy_after_conversion(
+    mocker, preset_tenancy, webhook_tenancy
+):
+    from backend.api.features.integrations import router as ingress_router
+
+    expert_store = MagicMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
+        return_value=("personal-org", "personal-team")
+    )
+    mocker.patch.object(ingress_router, "experts_db", return_value=expert_store)
+    get_graph = mocker.patch.object(
+        ingress_router,
+        "get_graph",
+        new_callable=AsyncMock,
+        return_value=_make_trigger_graph(),
+    )
+    add_exec = mocker.patch.object(
+        ingress_router, "add_graph_execution", new_callable=AsyncMock
+    )
+    preset = _make_expert_preset(
+        organization_id=preset_tenancy[0], team_id=preset_tenancy[1]
+    )
+    webhook = _make_webhook(
+        ProviderName.GITHUB,
+        organization_id=webhook_tenancy[0],
+        team_id=webhook_tenancy[1],
+    )
+
+    await ingress_router._execute_webhook_preset_trigger(
+        preset, webhook, WEBHOOK_ID, "pull_request", {}
+    )
+
+    get_graph.assert_awaited_once()
+    add_exec.assert_awaited_once()
+    assert add_exec.await_args.kwargs["organization_id"] == "personal-org"
+    assert get_graph.await_args.kwargs["skip_access_check"] is True
+    assert add_exec.await_args.kwargs["team_id"] == "personal-team"
+    assert add_exec.await_args.kwargs["expert_id"] == "expert-1"
+
+
+async def test_expert_preset_trigger_fails_closed_when_tenancy_lookup_fails(mocker):
+    from backend.api.features.integrations import router as ingress_router
+
+    expert_store = MagicMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
+        side_effect=RuntimeError("private lookup detail")
+    )
+    mocker.patch.object(ingress_router, "experts_db", return_value=expert_store)
+    get_graph = mocker.patch.object(ingress_router, "get_graph", new_callable=AsyncMock)
+    add_exec = mocker.patch.object(
+        ingress_router, "add_graph_execution", new_callable=AsyncMock
+    )
+    webhook = _make_webhook(
+        ProviderName.GITHUB,
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+
+    await ingress_router._execute_webhook_preset_trigger(
+        _make_expert_preset(), webhook, WEBHOOK_ID, "pull_request", {}
+    )
+
     get_graph.assert_not_awaited()
     add_exec.assert_not_awaited()

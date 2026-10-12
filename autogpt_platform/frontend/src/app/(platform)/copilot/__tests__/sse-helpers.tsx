@@ -16,18 +16,34 @@ import userEvent from "@testing-library/user-event";
 import type { UIMessageChunk } from "ai";
 import { http, type HttpHandler } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { ReactNode, useState } from "react";
+import { ReactNode, StrictMode, useState } from "react";
 import { expect } from "vitest";
 import { CopilotChatHost } from "../CopilotChatHost";
+import { resetCopilotChatRegistry } from "../copilotChatRegistry";
+import { resetTurnRuntimes } from "../stream/turnRuntime";
 
 export const TEST_BACKEND_BASE_URL = "http://localhost:18006";
 export const TEST_SESSION_ID = "test-session-stream-1";
+
+/** The two chat streams a test can drive: the AI SDK's, the default, and the
+ *  turn runtime behind `copilot-stream-runtime`. */
+export const STREAM_PATHS = ["AI SDK", "stream runtime"] as const;
+export type StreamPath = (typeof STREAM_PATHS)[number];
+export const STREAM_RUNTIME_FLAG = "copilot-stream-runtime";
+
+/** Both paths keep a per-session runtime in a module-level map. */
+export function resetChatRuntimes() {
+  resetCopilotChatRegistry();
+  resetTurnRuntimes();
+}
 
 export interface SessionOverride {
   active_stream?: SessionDetailResponse["active_stream"];
   messages?: SessionDetailResponse["messages"];
   has_more_messages?: boolean;
   chat_status?: string;
+  expert_id?: string | null;
+  metadata?: SessionDetailResponse["metadata"];
 }
 
 /**
@@ -46,7 +62,8 @@ export function sessionHandler(opts: SessionOverride = {}) {
     has_more_messages: opts.has_more_messages ?? false,
     oldest_sequence: null,
     active_stream: opts.active_stream ?? null,
-    metadata: { dry_run: false, builder_graph_id: null },
+    metadata: opts.metadata ?? { dry_run: false, builder_graph_id: null },
+    expert_id: opts.expert_id ?? null,
   });
 }
 
@@ -106,9 +123,21 @@ function Wrapper({
  * messages). The default Orval mocks return random faker data that flips the
  * input into "limit reached" or injects ghost queued chips, so we pin them.
  */
-export function renderHost(opts: { sessionOverride?: SessionOverride } = {}) {
+export function renderHost(
+  opts: {
+    sessionOverride?: SessionOverride;
+    searchParams?: string;
+    /** Follow-ups the backend still holds in the session's pending buffer. */
+    pendingMessages?: string[];
+    /** Replaces the default session GET, e.g. to answer it with an error. */
+    sessionResponse?: HttpHandler;
+    /** Mount under React Strict Mode, as the dev server does: every effect
+     *  runs twice on mount, so load-time requests fire twice. */
+    strictMode?: boolean;
+  } = {},
+) {
   server.use(
-    sessionHandler(opts.sessionOverride),
+    opts.sessionResponse ?? sessionHandler(opts.sessionOverride),
     getGetV2GetCopilotUsageMockHandler200({
       daily: {
         percent_used: 0,
@@ -122,8 +151,8 @@ export function renderHost(opts: { sessionOverride?: SessionOverride } = {}) {
       reset_cost: 0,
     }),
     getGetV2GetPendingMessagesMockHandler200({
-      count: 0,
-      messages: [],
+      count: opts.pendingMessages?.length ?? 0,
+      messages: opts.pendingMessages ?? [],
     }),
     // useCopilotStop POSTs here when the user clicks Stop. The default
     // Orval handler returns random faker fields; pin to a deterministic
@@ -135,16 +164,18 @@ export function renderHost(opts: { sessionOverride?: SessionOverride } = {}) {
       reason: null,
     }),
   );
-  return render(
-    <CopilotChatHost droppedFiles={[]} onDroppedFilesConsumed={() => {}} />,
-    {
-      wrapper: ({ children }) => (
-        <Wrapper searchParams={`?sessionId=${TEST_SESSION_ID}`}>
-          {children}
-        </Wrapper>
-      ),
-    },
+  const host = (
+    <CopilotChatHost droppedFiles={[]} onDroppedFilesConsumed={() => {}} />
   );
+  return render(opts.strictMode ? <StrictMode>{host}</StrictMode> : host, {
+    wrapper: ({ children }) => (
+      <Wrapper
+        searchParams={opts.searchParams ?? `?sessionId=${TEST_SESSION_ID}`}
+      >
+        {children}
+      </Wrapper>
+    ),
+  });
 }
 
 /**

@@ -23,6 +23,7 @@ from typing import (
     Type,
     TypeVar,
     cast,
+    get_type_hints,
     overload,
 )
 
@@ -358,6 +359,21 @@ class AppService(BaseAppService, ABC):
 
             return sync_endpoint
 
+    @classmethod
+    def _register_exception_handlers(cls, app: FastAPI) -> None:
+        app.add_exception_handler(ValueError, cls._handle_internal_http_error(400))
+        app.add_exception_handler(
+            exceptions.NotFoundError, cls._handle_internal_http_error(404)
+        )
+        app.add_exception_handler(DataError, cls._handle_internal_http_error(400))
+        app.add_exception_handler(
+            UniqueViolationError, cls._handle_internal_http_error(400)
+        )
+        app.add_exception_handler(
+            exceptions.MissingConfigError, cls._handle_internal_http_error(503)
+        )
+        app.add_exception_handler(Exception, cls._handle_internal_http_error(500))
+
     @conn_retry("FastAPI server", "Running FastAPI server")
     def __start_fastapi(self):
         logger.info(
@@ -492,18 +508,7 @@ class AppService(BaseAppService, ABC):
         self.fastapi_app.add_api_route(
             "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
-        self.fastapi_app.add_exception_handler(
-            ValueError, self._handle_internal_http_error(400)
-        )
-        self.fastapi_app.add_exception_handler(
-            DataError, self._handle_internal_http_error(400)
-        )
-        self.fastapi_app.add_exception_handler(
-            UniqueViolationError, self._handle_internal_http_error(400)
-        )
-        self.fastapi_app.add_exception_handler(
-            Exception, self._handle_internal_http_error(500)
-        )
+        self._register_exception_handlers(self.fastapi_app)
 
         # Start the FastAPI server in a separate thread.
         api_thread = threading.Thread(
@@ -540,6 +545,61 @@ class AppServiceClient(ABC):
 
 
 ASC = TypeVar("ASC", bound=AppServiceClient)
+
+
+def _build_return_adapter(
+    func: Callable[..., Any], annotation: Any, method_name: str
+) -> TypeAdapter | None:
+    """Build the TypeAdapter that validates an RPC method's return value.
+
+    A return annotation written as a forward reference — ``list["SomeModel"]`` —
+    arrives here as ``list[ForwardRef("SomeModel")]``, and pydantic resolves that
+    name against the namespace of whoever builds the adapter, which is this module
+    rather than the one that declared the endpoint. Such an adapter is never fully
+    defined, so validating with it raises ``PydanticUserError`` on *every* call.
+    Re-resolving the hints against the declaring module fixes those.
+
+    Returns ``None`` when no usable adapter can be built, so the call falls back to
+    the raw payload (as a failed validation already does) with one warning at client
+    build time instead of an exception on every request.
+    """
+    adapter = _usable_adapter(annotation)
+    if adapter is not None:
+        return adapter
+
+    try:
+        # include_extras keeps Annotated metadata — a constraint or discriminator
+        # carried there is part of the validation contract.
+        resolved = get_type_hints(inspect.unwrap(func), include_extras=True).get(
+            "return", annotation
+        )
+    except Exception as e:
+        logger.warning(
+            f"RPC return annotation {annotation!r} of {method_name} could not be "
+            f"resolved ({type(e).__name__}: {e}); returning results unvalidated"
+        )
+        return None
+
+    adapter = _usable_adapter(resolved)
+    if adapter is None:
+        logger.warning(
+            f"RPC return annotation {annotation!r} of {method_name} has no usable "
+            "TypeAdapter; returning results unvalidated"
+        )
+    return adapter
+
+
+def _usable_adapter(annotation: Any) -> TypeAdapter | None:
+    """A TypeAdapter for *annotation*, or None if it cannot be built or rebuilt.
+
+    ``rebuild()`` returns None when the adapter is already complete and False when
+    it still has unresolved references.
+    """
+    try:
+        adapter = TypeAdapter(annotation)
+        return None if adapter.rebuild(raise_errors=False) is False else adapter
+    except Exception:
+        return None
 
 
 @conn_retry("AppService client", "Creating service client", max_retry=api_comm_retry)
@@ -829,7 +889,9 @@ def get_service_client(
             sig = inspect.signature(original_func)
             ret_ann = sig.return_annotation
             expected_return = (
-                None if ret_ann is inspect.Signature.empty else TypeAdapter(ret_ann)
+                None
+                if ret_ann is inspect.Signature.empty
+                else _build_return_adapter(original_func, ret_ann, rpc_name)
             )
 
             if inspect.iscoroutinefunction(original_func):

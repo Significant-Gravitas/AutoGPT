@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockManualWebhookConfig,
     BlockOutput,
     BlockSchema,
@@ -104,9 +105,10 @@ except ImportError:
 
 # OAuth handlers
 try:
-    from backend.integrations.oauth.base import BaseOAuthHandler
+    from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scopes
 except ImportError:
     BaseOAuthHandler = None
+    parse_granted_scopes = None
 
 
 # Credential type with proper provider name
@@ -122,6 +124,7 @@ __all__ = [
     # Core Block System
     "Block",
     "BlockCategory",
+    "BlockEffect",
     "BlockOutput",
     "BlockSchema",
     "BlockSchemaInput",
@@ -151,6 +154,7 @@ __all__ = [
     "update_webhook",
     # Provider-Specific (when available)
     "BaseOAuthHandler",
+    "parse_granted_scopes",
     # Utilities
     "json",
     "store_media_file",

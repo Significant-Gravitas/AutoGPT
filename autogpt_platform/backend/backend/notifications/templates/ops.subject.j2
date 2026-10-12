@@ -1,0 +1,10 @@
+{%- import "_email_ui.j2" as ui -%}
+{%- set amount_str = '$' ~ '{:,.2f}'.format(amount_cents / 100) -%}
+{%- set balance_str = '$' ~ '{:,.2f}'.format(balance_cents / 100) -%}
+{%- if kind == 'request' -%}
+Refund needs a decision: {{ amount_str }} for {{ ui.trunc(user_name, 38) }}
+Their balance right now is {{ balance_str }}.
+{%- else -%}
+Refunded {{ amount_str }} to {{ ui.trunc(user_name, 38) }}
+Their balance after the refund is {{ balance_str }}.
+{%- endif -%}

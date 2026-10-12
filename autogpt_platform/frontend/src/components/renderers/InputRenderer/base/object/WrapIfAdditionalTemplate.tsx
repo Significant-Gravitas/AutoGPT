@@ -1,4 +1,8 @@
 import {
+  getFieldDomId,
+  useFieldAccessibility,
+} from "../../field-accessibility";
+import {
   ADDITIONAL_PROPERTY_FLAG,
   buttonId,
   getTemplate,
@@ -37,6 +41,11 @@ export default function WrapIfAdditionalTemplate(
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;
   const { nodeId } = formContext;
   const handleId = uiOptions.handleId;
+  const accessibility = useFieldAccessibility(
+    id,
+    `${label || "Property"} key`,
+    formContext,
+  );
 
   const TitleFieldTemplate = getTemplate(
     "TitleFieldTemplate",
@@ -53,18 +62,14 @@ export default function WrapIfAdditionalTemplate(
   }
 
   const keyId = `${id}-key`;
-  const generateObjectPropertyTitleId = (id: string, label: string) => {
-    return id.replace(`_${label}`, `_#_${label}`);
-  };
-  const title_id = generateObjectPropertyTitleId(id, label);
 
-  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    if (e.target.value == "") {
-      onRemoveProperty();
-    } else {
-      onKeyRenameBlur(e);
+  function handleBlur(e: React.FocusEvent<HTMLInputElement>) {
+    if (e.currentTarget.value === "") {
+      e.currentTarget.value = label;
+      return;
     }
-  };
+    onKeyRenameBlur(e);
+  }
 
   const isHandleConnected = isInputConnected(nodeId, handleId);
 
@@ -72,7 +77,7 @@ export default function WrapIfAdditionalTemplate(
     <>
       <div className={`mb-4 flex flex-col gap-1`} style={style}>
         <TitleFieldTemplate
-          id={titleId(title_id)}
+          id={titleId(id)}
           title={`#${label}`}
           required={required}
           schema={schema}
@@ -82,12 +87,13 @@ export default function WrapIfAdditionalTemplate(
         {!isHandleConnected && (
           <div className="nodrag flex flex-1 items-center gap-2">
             <Input
-              label={""}
+              label={`${label || "Property"} key`}
               hideLabel={true}
               required={required}
               defaultValue={label}
               disabled={disabled || readonly}
-              id={keyId}
+              id={getFieldDomId(keyId, formContext)}
+              aria-describedby={accessibility["aria-describedby"]}
               wrapperClassName="mb-2 w-30"
               name={keyId}
               onBlur={!readonly ? handleBlur : undefined}

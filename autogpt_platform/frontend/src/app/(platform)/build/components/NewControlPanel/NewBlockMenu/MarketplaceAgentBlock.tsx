@@ -2,6 +2,7 @@ import { Button } from "@/components/__legacy__/ui/button";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import React, { ButtonHTMLAttributes } from "react";
 import Link from "next/link";
 import { highlightText } from "./helpers";
@@ -11,6 +12,7 @@ import {
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useImageFallback } from "@/hooks/useImageFallback";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -37,6 +39,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
   slug,
   ...rest
 }) => {
+  const { showImage, handleImageError } = useImageFallback(image_url);
+
   return (
     <Button
       className={cn(
@@ -47,13 +51,15 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
       {...rest}
     >
       <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-[0.375rem] bg-white">
-        {image_url && (
+        {showImage && image_url && (
           <Image
             src={image_url}
+            unoptimized={isLocalStoreMediaUrl(image_url)}
             alt="integration-icon"
             fill
             sizes="5.625rem"
             className="w-full object-contain group-disabled:opacity-50"
+            onError={handleImageError}
           />
         )}
       </div>

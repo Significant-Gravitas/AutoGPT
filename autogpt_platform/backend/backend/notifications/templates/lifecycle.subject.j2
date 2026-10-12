@@ -1,0 +1,13 @@
+{% if kind == 'welcome' %}Welcome to AutoGPT: your {{ plan.name }} plan is live
+Here's your setup at a glance.
+{% elif kind == 'payment_failed' %}We couldn't process your payment
+We'll retry automatically on {{ next_retry_label }}.
+{% elif kind == 'final_notice' %}Action needed: your AutoGPT plan pauses on {{ pauses_label }}
+Update your payment method before your plan pauses on {{ pauses_label }}.
+{% elif kind == 'cancel_confirmed' %}Your cancellation is confirmed
+No further renewal charges will be made, and your access continues until {{ access_until_label }}.
+{% elif kind == 'cancel_reversed' %}Your AutoGPT plan will continue
+Your plan renews on {{ renews_label }} as usual.
+{% elif kind == 'ended' %}Your AutoGPT plan has ended
+Your scheduled workflows are paused, and your work stays saved in your account.
+{% endif %}

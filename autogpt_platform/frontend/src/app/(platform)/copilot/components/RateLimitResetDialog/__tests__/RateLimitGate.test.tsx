@@ -1,5 +1,5 @@
 import { cleanup, render } from "@/tests/integrations/test-utils";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockToast = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
@@ -25,6 +25,15 @@ vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
     mockUseGetSubscriptionStatus(...args),
 }));
 
+// The switch-connection mechanics are borrowed from the provider-limit
+// dialog's hook. Stubbed here so these tests stay about the gate: what it
+// asks that hook for, and what it hands the dialog back.
+const mockUseProviderLimitDialog = vi.fn();
+vi.mock("../../ProviderLimitDialog/useProviderLimitDialog", () => ({
+  useProviderLimitDialog: (...args: unknown[]) =>
+    mockUseProviderLimitDialog(...args),
+}));
+
 // Capture props the dialog was rendered with so we can assert on them.
 const dialogSpy = vi.fn();
 vi.mock("../RateLimitResetDialog", () => ({
@@ -33,6 +42,9 @@ vi.mock("../RateLimitResetDialog", () => ({
     onClose: () => void;
     resetsAt?: string | Date | null;
     tier?: string | null;
+    alternative?: { display_name: string } | null;
+    onContinue?: () => void;
+    isSwitching?: boolean;
   }) => {
     dialogSpy(props);
     return <div data-testid="reset-dialog" data-open={String(props.isOpen)} />;
@@ -41,11 +53,28 @@ vi.mock("../RateLimitResetDialog", () => ({
 
 import { RateLimitGate } from "../RateLimitGate";
 
+function noAlternative() {
+  mockUseProviderLimitDialog.mockReturnValue({
+    alternative: null,
+    continueHere: vi.fn(),
+    isSwitching: false,
+    isLoadingOffers: false,
+    failedToLoadOffers: false,
+    retryOffers: vi.fn(),
+    resetHint: null,
+  });
+}
+
+beforeEach(() => {
+  noAlternative();
+});
+
 afterEach(() => {
   cleanup();
   mockToast.mockReset();
   mockUseGetV2GetCopilotUsage.mockReset();
   mockUseGetSubscriptionStatus.mockReset();
+  mockUseProviderLimitDialog.mockReset();
   dialogSpy.mockReset();
 });
 
@@ -303,5 +332,89 @@ describe("RateLimitGate", () => {
 
     const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
     expect(lastProps.resetsAt).toBe(dailyFuture);
+  });
+});
+
+describe("RateLimitGate — continuing on a linked subscription", () => {
+  const capFailure = {
+    kind: "usage_limit" as const,
+    message: "You've reached your daily usage limit. Resets in 1h 0m.",
+    authProvider: "platform",
+    credentialId: null,
+    resetsAt: null,
+    retryable: false,
+    reconnectFixesIt: false,
+  };
+
+  function usageLoaded() {
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: { daily: { percent_used: 100, resets_at: null }, weekly: null },
+      isSuccess: true,
+      isError: false,
+    });
+    setSubscription("MAX");
+  }
+
+  it("asks for an alternative only when the cap came with an envelope", () => {
+    usageLoaded();
+
+    render(
+      <RateLimitGate
+        rateLimitMessage="limit reached"
+        sessionId="sess-1"
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    // A bare-string 429 -- an older backend, or a 429 that is not the usage
+    // cap -- has no envelope to name the failed connection with, so there is
+    // nothing to exclude and nothing to offer. The hook is told so.
+    expect(mockUseProviderLimitDialog).toHaveBeenCalledWith(
+      expect.objectContaining({ failure: null, sessionId: "sess-1" }),
+    );
+    const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
+    expect(lastProps.alternative).toBeNull();
+  });
+
+  it("hands the envelope to the switch hook and the offer to the dialog", () => {
+    usageLoaded();
+    const continueHere = vi.fn();
+    mockUseProviderLimitDialog.mockReturnValue({
+      alternative: {
+        display_name: "ChatGPT",
+        auth_provider: "codex",
+        credential_id: "cred-1",
+      },
+      continueHere,
+      isSwitching: true,
+      isLoadingOffers: false,
+      failedToLoadOffers: false,
+      retryOffers: vi.fn(),
+      resetHint: null,
+    });
+    const onDismiss = vi.fn();
+
+    render(
+      <RateLimitGate
+        rateLimitMessage={capFailure.message}
+        failure={capFailure}
+        sessionId="sess-1"
+        onDismiss={onDismiss}
+      />,
+    );
+
+    expect(mockUseProviderLimitDialog).toHaveBeenCalledWith({
+      failure: capFailure,
+      sessionId: "sess-1",
+      onDismiss,
+    });
+    const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
+    expect(lastProps.isOpen).toBe(true);
+    expect(lastProps.alternative?.display_name).toBe("ChatGPT");
+    expect(lastProps.onContinue).toBe(continueHere);
+    expect(lastProps.isSwitching).toBe(true);
+    // The upgrade path is untouched by the offer: the tier still reaches the
+    // dialog so it can keep its Upgrade / Contact us CTA beside the switch.
+    expect(lastProps.tier).toBe("MAX");
   });
 });

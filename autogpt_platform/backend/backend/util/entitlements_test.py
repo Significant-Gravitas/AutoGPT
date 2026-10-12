@@ -37,6 +37,7 @@ async def test_local_entitlement_bypasses_database_manager():
     ("tier", "allowed"),
     [
         (SubscriptionTier.NO_TIER, False),
+        (SubscriptionTier.TRIAL, False),
         (SubscriptionTier.BASIC, False),
         (SubscriptionTier.PRO, False),
         (SubscriptionTier.MAX, True),
@@ -154,3 +155,7 @@ def test_codex_policy_is_centralized_as_max_plus_with_local_access():
 
     assert policy.minimum_tier == SubscriptionTier.MAX
     assert policy.allow_local is True
+
+
+def test_tier_order_covers_all_persisted_tiers():
+    assert set(entitlements._TIER_ORDER) == set(SubscriptionTier)

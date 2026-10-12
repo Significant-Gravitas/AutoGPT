@@ -24,13 +24,13 @@ export function CardPreview({ file }: Props) {
   );
 }
 
-function PreviewBody({
-  file,
-  kind,
-}: {
+interface PreviewBodyProps {
   file: WorkspaceFileItem;
   kind: PreviewKind;
-}) {
+  imageWidth?: number;
+}
+
+export function PreviewBody({ file, kind, imageWidth }: PreviewBodyProps) {
   const [hasError, setHasError] = useState(false);
   const handleError = useCallback(() => setHasError(true), []);
 
@@ -40,7 +40,9 @@ function PreviewBody({
     case "image":
     case "pdf":
     case "office":
-      return <ImagePreview file={file} onError={handleError} />;
+      return (
+        <ImagePreview file={file} width={imageWidth} onError={handleError} />
+      );
     case "video":
       return <VideoPreview file={file} onError={handleError} />;
     case "csv":

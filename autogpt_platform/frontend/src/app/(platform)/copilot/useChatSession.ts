@@ -9,6 +9,9 @@ import type { CreateSessionRequest } from "@/app/api/__generated__/models/create
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 import { useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { trackFunnel } from "@/services/experts/experts-analytics";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
@@ -18,20 +21,33 @@ import {
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
+import { isPaywallError } from "./helpers/sendFailureToast";
+import { getSessionSentFrom } from "./sentFrom";
 import {
   getAvailableLLMTransports,
   resolveCopilotLLMAuthSelection,
 } from "./helpers/copilotLlmAuth";
+import { useAutopilotModeStore } from "./autopilotModeStore";
 import { useCopilotStreamStore } from "./copilotStreamStore";
+import { latestExpertSessionParams } from "./expertSessionQuery";
+import {
+  compareShadowWithSession,
+  setStreamShadowRate,
+} from "./stream/turnShadow";
+import { ReportedSendError } from "./helpers/reportedSendError";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
   expertId?: string | null;
+  /** Off = keep the fresh new-task state addressed to the expert instead of
+   *  jumping into their latest thread (``/copilot?expertId=…&new=1``). */
+  adoptLatestExpertThread?: boolean;
 }
 
 export function useChatSession({
   dryRun = false,
   expertId = null,
+  adoptLatestExpertThread = true,
 }: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
@@ -55,6 +71,8 @@ export function useChatSession({
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       refetchOnMount: true,
+      retry: (failureCount, error) =>
+        !isDefinitiveSessionFailure(error) && failureCount < 3,
     },
   });
 
@@ -112,13 +130,14 @@ export function useChatSession({
   // change, so a late adoption would post that message into the old thread.
   const sendStartedRef = useRef(false);
   const canAdoptExpertSession =
+    adoptLatestExpertThread &&
     !!expertId &&
     !sessionId &&
     expertId === mountExpertIdRef.current &&
     !adoptedExpertThreads.has(expertId);
 
   const latestExpertSessionQuery = useGetV2ListSessions(
-    { expert_id: expertId ?? undefined, limit: 1 },
+    latestExpertSessionParams(expertId),
     {
       query: {
         enabled: canAdoptExpertSession,
@@ -159,6 +178,17 @@ export function useChatSession({
       ? sessionQuery.data.data
       : null;
 
+  const streamShadowRate = useGetFlag(Flag.COPILOT_STREAM_SHADOW);
+  useEffect(() => {
+    setStreamShadowRate(streamShadowRate);
+  }, [streamShadowRate]);
+
+  useEffect(() => {
+    if (sessionId && freshSessionData) {
+      compareShadowWithSession(sessionId, freshSessionData);
+    }
+  }, [sessionId, freshSessionData]);
+
   // Expose active_stream info so the caller can trigger manual resume
   // after hydration completes (rather than relying on AI SDK's built-in
   // resume which fires before hydration).
@@ -187,27 +217,33 @@ export function useChatSession({
   // array reference every render. Re-derives only when query data changes.
   // When the session is complete (no active stream), mark dangling tool
   // calls as completed so stale spinners don't persist after refresh.
-  const { hydratedMessages, historicalTurnStats } = useMemo(() => {
-    if (!freshSessionData || !sessionId)
+  const { hydratedMessages, historicalTurnStats, activeTurnStartMessageId } =
+    useMemo(() => {
+      if (!freshSessionData || !sessionId)
+        return {
+          hydratedMessages: undefined,
+          historicalTurnStats: new Map() as TurnStatsMap,
+          activeTurnStartMessageId: null,
+        };
+      const result = convertChatSessionMessagesToUiMessages(
+        sessionId,
+        freshSessionData.messages ?? [],
+        {
+          isComplete: !hasActiveStream,
+          activeTurnStartedAt: activeStreamStartedAt,
+        },
+      );
       return {
-        hydratedMessages: undefined,
-        historicalTurnStats: new Map() as TurnStatsMap,
+        hydratedMessages: result.messages,
+        historicalTurnStats: result.stats,
+        activeTurnStartMessageId: result.activeTurnStartId,
       };
-    const result = convertChatSessionMessagesToUiMessages(
-      sessionId,
-      freshSessionData.messages ?? [],
-      { isComplete: !hasActiveStream },
-    );
-    return {
-      hydratedMessages: result.messages,
-      historicalTurnStats: result.stats,
-    };
-  }, [freshSessionData, sessionId, hasActiveStream]);
+    }, [freshSessionData, sessionId, hasActiveStream, activeStreamStartedAt]);
 
   const { mutateAsync: createSessionMutation, isPending: isCreatingSession } =
     usePostV2CreateSession();
 
-  async function createSession() {
+  async function createSession(options?: { expertKickoff?: boolean }) {
     if (sessionId) return sessionId;
     // Latched for the life of this mount, including on failure: once the user
     // has asked for a new thread, auto-navigating them into an old one is
@@ -224,16 +260,18 @@ export function useChatSession({
         title: "Could not check AI connections",
         description: "Refresh the page and try again.",
       });
-      throw new Error("Could not load AI connections");
+      throw new ReportedSendError("Could not load AI connections");
     }
     if (chatTransports !== undefined && availableTransports.length === 0) {
+      // NoAIConnectionNotice above the composer says how to fix this and
+      // stays put; the toast only marks that this send went nowhere.
       toast({
         variant: "destructive",
-        title: "AutoPilot needs an AI connection",
+        title: "No AI connection is set up",
         description:
-          "Sign in with ChatGPT under OpenAI in Settings → Integrations, or configure a chat API or local model on this server.",
+          "Your message is back in the composer. See the notice above it for how to connect a model.",
       });
-      throw new Error("chat_transport_not_configured");
+      throw new ReportedSendError("No AI connection is set up");
     }
     if (!resolvedLLMAuth) {
       const connectionsAreLoading = chatTransports === undefined;
@@ -244,34 +282,43 @@ export function useChatSession({
           : "Choose an AI connection",
         description: connectionsAreLoading
           ? "Wait a moment and try again."
-          : "Select the connection AutoPilot should use before starting a new task.",
+          : "Select the connection your expert should use before starting a new task.",
       });
-      throw new Error(
+      throw new ReportedSendError(
         connectionsAreLoading
           ? "AI connections are still loading"
           : "AI connection selection required",
       );
     }
     if (
+      copilotLlmAuth !== null &&
       copilotLlmAuth.authProvider !== "platform" &&
       resolvedLLMAuth.authProvider === "platform"
     ) {
       toast({
         title: "AI connections changed",
         description:
-          "The next AutoPilot task will resolve the currently available connection before it starts.",
+          "The next task will use the available connection when it starts.",
       });
     }
 
     try {
-      const sessionData: CreateSessionRequest = {
-        llm_auth_provider: resolvedLLMAuth.authProvider,
-      };
-      if (resolvedLLMAuth.authProvider === "codex") {
-        sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
+      const sessionData: CreateSessionRequest = {};
+      // Only an explicit choice travels. Naming the route unconditionally
+      // makes every new chat an override, which is how a connection picked
+      // once quietly became the account's default and how a default changed
+      // in Settings stopped taking effect: the server skips its own default
+      // whenever the client names one. `copilotLlmAuth` is null until the
+      // user actually picks, and null means "use whatever the server says".
+      if (copilotLlmAuth !== null) {
+        sessionData.llm_auth_provider = resolvedLLMAuth.authProvider;
+        if (resolvedLLMAuth.authProvider !== "platform") {
+          sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
+        }
       }
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;
+      if (options?.expertKickoff) sessionData.expert_kickoff = true;
       const body =
         Object.keys(sessionData).length > 0
           ? { data: sessionData }
@@ -282,34 +329,32 @@ export function useChatSession({
         Sentry.captureException(error, {
           extra: { status: response.status },
         });
-        toast({
-          variant: "destructive",
-          title: "Could not start a new chat session",
-          description: "Please try again.",
-        });
         throw error;
       }
       useCopilotStreamStore
         .getState()
         .bindPendingFirstSendToSession(response.data.id);
+      useAutopilotModeStore.getState().bindNewChatToSession(response.data.id);
       setSessionId(response.data.id);
+      if (expertId) {
+        trackFunnel("expert_thread_created", { expert_id: expertId });
+      }
       queryClient.invalidateQueries({
         queryKey: SESSION_LIST_QUERY_KEY,
       });
       return response.data.id;
     } catch (error) {
+      // The caller owns the one toast for this failure (see
+      // toastSendFailure); toasting here as well stacked two contradictory
+      // messages. A paywall is an account state, not a fault.
       if (
-        error instanceof Error &&
-        error.message === "Failed to create session"
+        !isPaywallError(error) &&
+        !(
+          error instanceof Error && error.message === "Failed to create session"
+        )
       ) {
-        throw error; // already handled above
+        Sentry.captureException(error);
       }
-      Sentry.captureException(error);
-      toast({
-        variant: "destructive",
-        title: "Could not start a new chat session",
-        description: "Please try again.",
-      });
       throw error;
     }
   }
@@ -337,11 +382,23 @@ export function useChatSession({
     freshSessionData as { chat_status?: string } | undefined
   )?.chat_status;
 
-  const sessionLlmAuthProvider: "platform" | "codex" | null =
+  const storedLlmAuthProvider =
+    sessionQuery.data?.status === 200
+      ? sessionQuery.data.data.metadata?.llm_auth_provider
+      : null;
+  const sessionLlmAuthProvider:
+    | "platform"
+    | "codex"
+    | "microsoft_365_copilot"
+    | null = sessionId
+    ? storedLlmAuthProvider === "codex" ||
+      storedLlmAuthProvider === "microsoft_365_copilot"
+      ? storedLlmAuthProvider
+      : "platform"
+    : null;
+  const sessionLlmCredentialId =
     sessionId && sessionQuery.data?.status === 200
-      ? sessionQuery.data.data.metadata?.llm_auth_provider === "codex"
-        ? "codex"
-        : "platform"
+      ? (sessionQuery.data.data.metadata?.llm_credential_id ?? null)
       : null;
 
   // The expert this session actually belongs to, straight off the session
@@ -354,15 +411,29 @@ export function useChatSession({
       ? (sessionQuery.data.data.expert_id ?? null)
       : null;
 
+  const sessionAutopilotMode =
+    sessionQuery.data?.status === 200
+      ? (sessionQuery.data.data.metadata?.autopilot_mode ?? null)
+      : null;
+
+  const sessionSentFrom =
+    sessionQuery.data?.status === 200
+      ? getSessionSentFrom(sessionQuery.data.data.metadata)
+      : null;
+
   return {
     sessionId,
     setSessionId,
+    /** The session GET as last fetched; null while a fetch is in flight. */
+    sessionView: freshSessionData,
     sessionLlmAuthProvider,
+    sessionLlmCredentialId,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,
     rawSessionMessages,
     historicalTurnStats,
+    activeTurnStartMessageId,
     hasActiveStream,
     activeStreamStartedAt,
     hasMoreMessages,
@@ -373,10 +444,20 @@ export function useChatSession({
     // flips back to ``true`` mid-refetch, silently dropping the message.
     isLoadingSession: sessionQuery.isLoading,
     isSessionError: sessionQuery.isError,
+    // Another account's session and a missing one are the same 404 by design.
+    isSessionNotFound: isDefinitiveSessionFailure(sessionQuery.error),
     createSession,
     isCreatingSession,
     refetchSession: sessionQuery.refetch,
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
+    sessionAutopilotMode,
   };
+}
+
+function isDefinitiveSessionFailure(error: unknown) {
+  return (
+    error instanceof ApiError && (error.status === 403 || error.status === 404)
+  );
 }

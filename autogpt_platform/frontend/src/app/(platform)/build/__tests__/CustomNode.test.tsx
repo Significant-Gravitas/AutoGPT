@@ -92,13 +92,6 @@ vi.mock(
 );
 
 vi.mock(
-  "@/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/AyrshareConnectButton",
-  () => ({
-    AyrshareConnectButton: () => <div data-testid="ayrshare-connect-button" />,
-  }),
-);
-
-vi.mock(
   "@/app/(platform)/build/components/FlowEditor/nodes/FormCreator",
   () => ({
     FormCreator: () => <div data-testid="form-creator" />,
@@ -331,16 +324,27 @@ describe("CustomNode", () => {
   });
 
   describe("AYRSHARE type rendering", () => {
-    it("renders AyrshareConnectButton for AYRSHARE type", () => {
+    // The connect button now lives in CredentialsFlatView, which every Ayrshare
+    // block reaches through its `credentials` field. Rendering it from the node
+    // shell as well would show the user two identical buttons.
+    it("does not render its own AyrshareConnectButton for AYRSHARE type", () => {
       renderCustomNode({ uiType: BlockUIType.AYRSHARE });
 
-      expect(screen.getByTestId("ayrshare-connect-button")).toBeDefined();
+      expect(
+        screen.queryByRole("button", {
+          name: /Connect Social Media Accounts/i,
+        }),
+      ).toBeNull();
     });
 
     it("does not render AyrshareConnectButton for non-AYRSHARE types", () => {
       renderCustomNode({ uiType: BlockUIType.STANDARD });
 
-      expect(screen.queryByTestId("ayrshare-connect-button")).toBeNull();
+      expect(
+        screen.queryByRole("button", {
+          name: /Connect Social Media Accounts/i,
+        }),
+      ).toBeNull();
     });
   });
 

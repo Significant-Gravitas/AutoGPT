@@ -3,6 +3,7 @@ import codecs
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -38,6 +39,7 @@ World!
 This is a "quoted" string.""",
                 )
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:

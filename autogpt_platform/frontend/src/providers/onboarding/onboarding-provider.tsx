@@ -203,10 +203,15 @@ export default function OnboardingProvider({
           isOnOnboardingRoute &&
           shouldRedirectFromOnboarding(onboarding.completedSteps, pathname)
         ) {
-          router.replace("/copilot");
+          router.replace("/home");
         }
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
+          hasInitialized.current = false;
+          return;
+        }
+
+        if (error instanceof DOMException && error.name === "AbortError") {
           hasInitialized.current = false;
           return;
         }

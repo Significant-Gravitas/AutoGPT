@@ -6,7 +6,9 @@ import {
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { validateYouTubeUrl } from "@/lib/utils";
+import { SUB_HEADING_MAX } from "../../PublishAgentModal/components/AgentInfoStep/helpers";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
@@ -34,8 +36,12 @@ export const useEditAgentForm = ({
       .max(100, "Title must be less than 100 characters"),
     subheader: z
       .string()
-      .min(1, "Subheader is required")
-      .max(200, "Subheader must be less than 200 characters"),
+      .trim()
+      .min(1, "Tagline is required")
+      .max(
+        SUB_HEADING_MAX,
+        `Tagline must be ${SUB_HEADING_MAX} characters or less`,
+      ),
     youtubeLink: z
       .string()
       .refine(validateYouTubeUrl, "Please enter a valid YouTube URL"),
@@ -65,6 +71,12 @@ export const useEditAgentForm = ({
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  const {
+    categories,
+    isUnavailable: categoriesUnavailable,
+    placeholder: categoryPlaceholder,
+  } = useStoreCategories();
+
   const form = useForm<EditAgentFormData>({
     resolver: zodResolver(editAgentSchema),
     defaultValues: {
@@ -78,18 +90,10 @@ export const useEditAgentForm = ({
     },
   });
 
-  const categoryOptions = [
-    { value: "productivity", label: "Productivity" },
-    { value: "writing", label: "Writing & Content" },
-    { value: "development", label: "Development" },
-    { value: "data", label: "Data & Analytics" },
-    { value: "marketing", label: "Marketing & SEO" },
-    { value: "research", label: "Research & Learning" },
-    { value: "creative", label: "Creative & Design" },
-    { value: "business", label: "Business & Finance" },
-    { value: "personal", label: "Personal Assistant" },
-    { value: "other", label: "Other" },
-  ];
+  const categoryOptions = categories.map((category) => ({
+    value: category.value,
+    label: category.label,
+  }));
 
   const handleImagesChange = React.useCallback((newImages: string[]) => {
     setImages(newImages);
@@ -105,8 +109,7 @@ export const useEditAgentForm = ({
       return;
     }
 
-    const categories = data.category ? [data.category] : [];
-    const filteredCategories = categories.filter(Boolean);
+    const filteredCategories = [data.category].filter(Boolean);
     setIsSubmitting(true);
 
     try {
@@ -164,5 +167,7 @@ export const useEditAgentForm = ({
     handleFormSubmit,
     handleImagesChange,
     categoryOptions,
+    categoriesUnavailable,
+    categoryPlaceholder,
   };
 };

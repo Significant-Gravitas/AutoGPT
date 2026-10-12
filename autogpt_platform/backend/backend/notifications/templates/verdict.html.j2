@@ -1,0 +1,38 @@
+{%- import "_email_ui.j2" as ui with context -%}
+{%- set approved = outcome == 'approved' -%}
+{%- set has_note = comments and comments | trim | length > 0 -%}
+<!doctype html>
+<html lang="en">
+<head>{{ ui.head_block(subject) }}</head>
+{{ ui.body_open() }}
+{{ ui.preheader(preheader) }}
+{{ ui.page_open() }}
+{{ ui.masthead() }}
+{{ ui.hero_otto() }}
+{{ ui.sheet_open() }}
+{% call ui.eyebrow(tone='confirmed' if approved else 'needs_you') %}MARKETPLACE REVIEW · VERSION {{ version | default(1) }} · {{ 'APPROVED' if approved else 'CHANGES NEEDED' }}{% endcall %}
+{% call ui.headline() %}{{ agent_name }} {{ 'is live in the Marketplace' if approved else 'needs one more pass' }}{% endcall %}
+{% call ui.para() %}Hi {{ first_name | default('there', true) }}, your workflow {{ 'passed review' if approved else 'needs changes before it can go live' }}. {{ preheader }}{% endcall %}
+{% call ui.para() %}{{ reviewer_name }} {{ 'approved' if approved else 'reviewed' }} version {{ version | default(1) }} on {{ reviewed_at_label }}.{% endcall %}
+{% if not approved and changes %}
+{% call ui.note_card((changes | length) ~ (' thing to change' if changes | length == 1 else ' things to change'), tone='amber') %}
+{% for c in changes %}<div style="{{ 'padding-top:10px;' if not loop.first }}">{{ loop.index }}. {{ c }}</div>{% endfor %}
+{% if closing_note %}<div style="padding-top:12px; margin-top:12px; border-top:1px solid #F2DCB0;">{{ closing_note }}</div>{% endif %}
+{% endcall %}
+{% elif not approved %}
+{{ ui.note_card('What needs to change', comments if has_note else 'The reviewer did not leave a written note. Reply to this email to ask for details.', tone='amber') }}
+{% elif has_note %}
+{{ ui.note_card('Note from ' ~ reviewer_name, comments) }}
+{% endif %}
+{{ ui.cta('View in the Marketplace' if approved else 'Edit and resubmit', store_url if approved else resubmit_url) }}
+{% if approved and share_url %}
+{{ ui.also_panel('What happens now', [('Share your workflow.', 'New versions go through review.', 'Open the sharing link', share_url)]) }}
+{% elif not approved %}
+{% call ui.para(size=14, lh=21) %}Your submission is saved. Make the requested changes, then submit it for review again. Reply to this email if anything is unclear.{% endcall %}
+{% endif %}
+{{ ui.close_row('You get this because you submitted a workflow to the AutoGPT Marketplace.', 'Notification settings', urls.settings) }}
+{{ ui.sheet_close() }}
+{{ ui.page_close() }}
+{{ ui.product_footer('This is a product notification for the AutoGPT account for ' ~ user_email ~ '.', urls.unsubscribe) }}
+</td></tr></table>
+</body></html>

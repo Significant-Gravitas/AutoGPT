@@ -11,7 +11,7 @@ Step 1 — one-time setup (creates schema, role, grants):
 
   poetry run analytics-setup
 
-Step 2 — create / refresh all 14 analytics views:
+Step 2 — create / refresh every analytics view (one per .sql file):
 
   poetry run analytics-views
 

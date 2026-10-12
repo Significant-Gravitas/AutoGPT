@@ -13,6 +13,7 @@ import { useParams } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  activeItemParamFor,
   deriveSelectedTriggerKind,
   parseActiveItemParam,
   retryUnlessClientError,
@@ -108,6 +109,7 @@ export function useNewAgentLibraryView() {
   });
 
   const [sidebarLoading, setSidebarLoading] = useState(true);
+  const [sidebarHasError, setSidebarHasError] = useState(false);
 
   const hasAnyItems = useMemo(
     () =>
@@ -219,6 +221,7 @@ export function useNewAgentLibraryView() {
       templatesCount: number;
       triggersCount: number;
       loading?: boolean;
+      hasError?: boolean;
     }) => {
       setSidebarCounts({
         runsCount: counts.runsCount,
@@ -228,6 +231,9 @@ export function useNewAgentLibraryView() {
       });
       if (counts.loading !== undefined) {
         setSidebarLoading(counts.loading);
+      }
+      if (counts.hasError !== undefined) {
+        setSidebarHasError(counts.hasError);
       }
     },
     [],
@@ -239,16 +245,12 @@ export function useNewAgentLibraryView() {
       | { type: "triggers"; item: LibraryAgentPreset }
       | { type: "scheduled"; item: GraphExecutionJobInfo },
   ) {
-    if (!hasAnyItems) {
-      // Manually increment item count to flip hasAnyItems and showSidebarLayout
-      const counts = {
-        runsCount: createEvent.type === "runs" ? 1 : 0,
-        triggersCount: createEvent.type === "triggers" ? 1 : 0,
-        schedulesCount: createEvent.type === "scheduled" ? 1 : 0,
-        templatesCount: 0,
-      };
-      handleCountsChange(counts);
-    }
+    handleSelectRun(
+      createEvent.type === "triggers"
+        ? activeItemParamFor("webhook-trigger", createEvent.item.id)
+        : createEvent.item.id,
+      createEvent.type,
+    );
   }
 
   function onRunInitiated(newRun: GraphExecutionMeta) {
@@ -301,6 +303,7 @@ export function useNewAgentLibraryView() {
     retryTriggerLists,
     sidebarLoading,
     activeTab,
+    sidebarHasError,
     setActiveTab: handleSetActiveTab,
     handleClearSelectedRun,
     handleScheduleDeleted,

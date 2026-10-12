@@ -48,13 +48,18 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
     """Block for handling Slant3D order webhooks"""
 
     class Input(Slant3DTriggerBase.Input):
-        class EventsFilter(BaseModel):
-            """
-            Currently Slant3D only supports 'SHIPPED' status updates
-            Could be expanded in the future with more status types
-            """
+        platform_id: str = SchemaField(
+            default="",
+            description="Required for new v2 subscriptions; retained v1 subscriptions may omit this platform ID. Use a platform without another webhook.",
+        )
 
+        class EventsFilter(BaseModel):
             shipped: bool = True
+            created: bool = False
+            updated: bool = False
+            cancelled: bool = False
+            delivered: bool = False
+            error: bool = False
 
         events: EventsFilter = SchemaField(
             title="Events",
@@ -65,9 +70,11 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
     class Output(Slant3DTriggerBase.Output):
         status: str = SchemaField(description="The new status of the order")
         tracking_number: str = SchemaField(
-            description="The tracking number for the shipment"
+            description="Shipment tracking number, empty before shipment"
         )
-        carrier_code: str = SchemaField(description="The carrier code (e.g., 'usps')")
+        carrier_code: str = SchemaField(
+            description="Carrier code when supplied by Slant3D, otherwise empty"
+        )
 
     def __init__(self):
         super().__init__(
@@ -86,13 +93,14 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
             output_schema=self.Output,
             webhook_config=BlockWebhookConfig(
                 provider=ProviderName.SLANT3D,
-                webhook_type="orders",  # Only one type for now
-                resource_format="",  # No resource format needed
+                webhook_type="orders",
+                resource_format="{platform_id}",
                 event_filter_input="events",
                 event_format="order.{event}",
             ),
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
+                "platform_id": "55555555-5555-4555-8555-555555555555",
                 "events": {"shipped": True},
                 "payload": {
                     "orderId": "1234567890",
@@ -119,7 +127,7 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
             ],
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:  # type: ignore
+    async def run(self, input_data: Slant3DTriggerBase.Input, **kwargs) -> BlockOutput:
         async for name, value in super().run(input_data, **kwargs):
             yield name, value
 

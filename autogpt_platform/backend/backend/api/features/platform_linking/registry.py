@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.bot.adapters.discord import config as discord_config
 from backend.copilot.bot.adapters.slack import config as slack_config
+from backend.copilot.bot.adapters.teams import config as teams_config
 from backend.copilot.bot.adapters.telegram import config as telegram_config
 from backend.util.settings import Settings
 
@@ -26,8 +27,14 @@ _SERVER_NOUNS = {
     "DISCORD": "server",
     "SLACK": "workspace",
     "TELEGRAM": "group",
+    "TEAMS": "team",
 }
 _DEFAULT_SERVER_NOUN = "server"
+
+# Payload on the Telegram DM deep link. Telegram sends it as "/start <payload>";
+# the bot only needs the /start, but a payload makes Telegram send it again for
+# users who already have a chat with the bot.
+TELEGRAM_DM_START_PAYLOAD = "connect"
 
 
 class PlatformMeta(BaseModel):
@@ -41,6 +48,9 @@ class PlatformMeta(BaseModel):
     server_noun: str  # see _SERVER_NOUNS
     enabled: bool
     add_bot_url: str | None  # null when the platform has no invite URL we can build
+    # Deep link that opens a DM with the bot, for platforms where that is the
+    # easiest way in. Null when the platform can't open a DM from a URL.
+    dm_url: str | None = None
 
 
 def enabled_platforms() -> list[PlatformMeta]:
@@ -49,7 +59,12 @@ def enabled_platforms() -> list[PlatformMeta]:
     Platforms whose adapter isn't configured (missing credentials) are
     omitted entirely so the Bots page hides them.
     """
-    all_platforms = [_discord_meta(), _slack_meta(), _telegram_meta()]
+    all_platforms = [
+        _discord_meta(),
+        _slack_meta(),
+        _telegram_meta(),
+        _teams_meta(),
+    ]
     return [platform for platform in all_platforms if platform.enabled]
 
 
@@ -96,24 +111,43 @@ def _slack_meta() -> PlatformMeta:
 
 
 def _telegram_meta() -> PlatformMeta:
-    # Enabled on the same gate the webhook adapter mounts on. The t.me
-    # startgroup deep link opens Telegram's own "add to group" picker, so the
-    # button only renders when the bot's public username is configured.
+    # Enabled on the same gate the webhook adapter mounts on. Both deep links
+    # need the bot's public username, so the buttons only render when it's set.
+    # The DM link comes first: ?start= opens the bot chat and sends /start,
+    # which replies with the Link Account button. ?startgroup= opens
+    # Telegram's "add to group" picker, which is a dead end for anyone who has
+    # no group yet.
     enabled = bool(
         telegram_config.get_bot_token() and telegram_config.get_webhook_secret()
     )
     username = telegram_config.get_bot_username().lstrip("@")
+    has_links = enabled and bool(username)
     return PlatformMeta(
         platform="TELEGRAM",
         display_name="Telegram",
         icon="telegram.png",
         server_noun=_SERVER_NOUNS["TELEGRAM"],
         enabled=enabled,
-        add_bot_url=(
-            f"https://t.me/{username}?startgroup=true"
-            if (enabled and username)
+        add_bot_url=f"https://t.me/{username}?startgroup=true" if has_links else None,
+        dm_url=(
+            f"https://t.me/{username}?start={TELEGRAM_DM_START_PAYLOAD}"
+            if has_links
             else None
         ),
+    )
+
+
+def _teams_meta() -> PlatformMeta:
+    # Enabled on the same gate the webhook adapter mounts on. Teams has no
+    # invite URL to build: installing means sideloading the app package (see
+    # adapters/teams/manifest.json) or publishing it to the org's app catalog.
+    return PlatformMeta(
+        platform="TEAMS",
+        display_name="Microsoft Teams",
+        icon="teams.png",
+        server_noun=_SERVER_NOUNS["TEAMS"],
+        enabled=teams_config.is_configured(),
+        add_bot_url=None,
     )
 
 

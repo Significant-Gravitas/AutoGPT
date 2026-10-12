@@ -55,6 +55,19 @@ describe("AutoGPT server URL resolution", () => {
     );
   });
 
+  it.each([
+    ["http://localhost:8006/api", "http://localhost:8006"],
+    ["https://api.example.com/api", "https://api.example.com"],
+    ["https://example.com/apis/api", "https://example.com/apis"],
+    ["https://api.example.com/api/", "https://api.example.com"],
+    ["https://backend.example.com", "https://backend.example.com"],
+  ])("strips only a trailing /api from %s", (apiUrl, baseUrl) => {
+    vi.stubGlobal("window", undefined);
+    vi.stubEnv("AGPT_SERVER_URL", apiUrl);
+
+    expect(environment.getAGPTServerBaseUrl()).toBe(baseUrl);
+  });
+
   it("leaves explicit server-side backend URLs untouched", () => {
     vi.stubGlobal("window", undefined);
     vi.stubEnv("AGPT_SERVER_URL", "http://backend.internal:8006/api");
@@ -68,5 +81,102 @@ describe("AutoGPT server URL resolution", () => {
     expect(environment.getAGPTWsServerUrl()).toBe(
       "ws://backend.internal:8001/ws",
     );
+  });
+});
+
+describe("Sentry environment tagging", () => {
+  function stubDeployment(appEnv: string, vercelEnv: string) {
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", appEnv);
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", vercelEnv);
+  }
+
+  it("tags a Vercel preview as preview, not as the app env it inherits", () => {
+    stubDeployment("prod", "preview");
+
+    expect(environment.getEnvironmentStr()).toBe("app:preview-behave:cloud");
+  });
+
+  it("tags the production deployment as prod", () => {
+    stubDeployment("prod", "production");
+
+    expect(environment.getEnvironmentStr()).toBe("app:prod-behave:cloud");
+  });
+
+  it("keeps the dev deployment distinct from production", () => {
+    stubDeployment("dev", "production");
+
+    expect(environment.getEnvironmentStr()).toBe("app:dev-behave:cloud");
+  });
+
+  it("tags a self-hosted instance by its own env", () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", "local");
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+
+    expect(environment.getEnvironmentStr()).toBe("app:local-behave:local");
+  });
+
+  it("detects a preview from the server-only VERCEL_ENV as well", () => {
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+    vi.stubEnv("VERCEL_ENV", "preview");
+
+    expect(environment.isVercelPreview()).toBe(true);
+  });
+});
+
+describe("Sentry enablement", () => {
+  const HOSTED_DSN_PROJECT = "/4507946746380288";
+
+  it("stays off under the test runner, where no cloud deployment env is set", () => {
+    expect(environment.isSentryEnabled()).toBe(false);
+  });
+
+  it("reports to AutoGPT's Sentry from a hosted deployment on Vercel", () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", "prod");
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "production");
+
+    expect(environment.isSentryEnabled()).toBe(true);
+    expect(environment.getSentryDSN()).toContain(HOSTED_DSN_PROJECT);
+  });
+
+  it("reports from a hosted preview deployment", () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", "dev");
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "preview");
+
+    expect(environment.isSentryEnabled()).toBe(true);
+  });
+
+  it("is off for a self-hosted instance", () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", "prod");
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
+
+    expect(environment.isSentryEnabled()).toBe(false);
+  });
+
+  it("does not report to AutoGPT's Sentry from a self-hosted build configured like the cloud", () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", "prod");
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+    vi.stubEnv("VERCEL", "");
+
+    expect(environment.isSentryEnabled()).toBe(false);
+  });
+
+  it("reports to a self-hoster's own Sentry once they opt in with a DSN", () => {
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "https://key@sentry.example.com/7");
+
+    expect(environment.getSentryDSN()).toBe("https://key@sentry.example.com/7");
+  });
+
+  it("honours the DISABLE_SENTRY kill switch on a cloud deployment", () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", "prod");
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "production");
+    vi.stubEnv("DISABLE_SENTRY", "true");
+
+    expect(environment.isSentryEnabled()).toBe(false);
   });
 });

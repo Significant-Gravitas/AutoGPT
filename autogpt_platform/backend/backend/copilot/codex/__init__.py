@@ -1,1 +1,1 @@
-"""Codex subscription support for AutoPilot."""
+"""Codex subscription support for Otto."""

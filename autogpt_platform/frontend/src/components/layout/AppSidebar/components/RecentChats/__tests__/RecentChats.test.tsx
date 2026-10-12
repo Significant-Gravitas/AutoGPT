@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { RecentChats } from "../RecentChats";
 
-const mockEnabledFlags = new Set<string>(["chat-sharing"]);
+const mockEnabledFlags = new Set<string>();
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =

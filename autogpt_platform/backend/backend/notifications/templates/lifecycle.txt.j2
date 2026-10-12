@@ -1,0 +1,99 @@
+{{ subject }}
+
+{% if kind == 'welcome' %}
+Hi {{ user_name }}, your {{ plan.name }} subscription is active. {{ preheader }}
+
+Plan: {{ plan.label }}
+Price: {{ plan.price_display }}
+Renews: {{ renews_label }}
+
+{% if experts_enabled | default(false) %}
+Start with a real task: hire an AI Expert from the Marketplace, share what you need,
+and review the result with Otto, your personal Head of AI.
+Hire your first Expert: {{ urls.marketplace }}
+{% else %}
+Start with a real task: install a workflow from the Marketplace, connect the accounts
+it needs, and review its first run.
+Install your first workflow: {{ urls.marketplace }}
+{% endif %}
+
+Three good places to start
+- Quick-start guide: {{ urls.docs }}
+- {{ 'Browse Experts' if experts_enabled | default(false) else 'Browse workflows' }} in the Marketplace: {{ urls.marketplace }}
+- Join Discord: {{ urls.discord }}
+
+Toran Bruce Richards
+Founder · AutoGPT
+contact@agpt.co
+
+You received this because your subscription is active.
+{% elif kind == 'payment_failed' %}
+Hi {{ user_name }}, the renewal payment for your {{ plan.name }} plan was declined. {{ preheader }}
+
+Amount: {{ amount_display }}
+Card: {{ card.brand }} ···· {{ card.last4 }}
+Next retry: {{ next_retry_label }} · automatic
+
+Your plan and scheduled workflows keep running while we retry. If your card details
+have changed, update them before the next attempt.
+Update payment method: {{ urls.billing }}
+Already updated your card? We'll use the new one on the next retry.
+
+You received this because your renewal payment was declined.
+{% elif kind == 'final_notice' %}
+Hi {{ user_name }}, we couldn't collect payment for your {{ plan.name }} plan after several attempts. {{ preheader }}
+
+Amount due: {{ amount_display }}
+Plan pauses on: {{ pauses_label }}
+What pauses: Scheduled runs and {{ plan.name }} features
+
+Scheduled workflows stop running until payment succeeds. Your workflows and their
+data stay saved in your account.
+Update payment method: {{ urls.billing }}
+
+You received this because the payment retries failed.
+{% elif kind == 'cancel_confirmed' %}
+Hi {{ user_name }}, we've cancelled the renewal on your {{ plan.name }} plan, as requested. {{ preheader }}
+
+Plan: {{ plan.label }}
+Access until: {{ access_until_label }}
+After that: Scheduled workflows pause; work stays saved
+
+Your workflows and data stay in your account when the plan ends. You can resume
+your plan in billing settings if you change your mind.
+This confirmation was sent because you cancelled your renewal.
+{% elif kind == 'cancel_reversed' %}
+Hi {{ user_name }}, you've resumed your {{ plan.name }} plan, so the cancellation is off. {{ preheader }}
+
+Plan: {{ plan.label }}
+Next renewal: {{ renews_label }}
+Price: {{ plan.price_display }}
+
+The message saying your plan would end no longer applies. Your scheduled workflows
+keep running.
+Open AutoGPT: {{ urls.dashboard }}
+You received this because you resumed your plan.
+{% elif kind == 'ended' %}
+{% if due_to_payment %}
+Hi {{ user_name }}, your {{ plan.name }} plan ended on {{ ended_label }} because we couldn't collect payment. {{ preheader }}
+Why: Payment could not be collected
+{% else %}
+Hi {{ user_name }}, your {{ plan.name }} plan ended on {{ ended_label }}, as scheduled after your cancellation. {{ preheader }}
+{% endif %}
+
+Ended on: {{ ended_label }}
+Scheduled workflows: Paused; work stays saved
+Your data: Kept in your account
+
+You can restart your plan in billing settings whenever you're ready.
+Restart my plan: {{ urls.billing }}
+You received this because your paid plan ended.
+{% endif %}
+Billing settings: {{ urls.billing }}
+
+This is a service message about the AutoGPT account for {{ user_email }}.
+It's sent even if you've opted out of product news.
+Email preferences: {{ urls.prefs }}
+Discord: {{ urls.discord }}
+AutoGPT: https://agpt.co
+AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK

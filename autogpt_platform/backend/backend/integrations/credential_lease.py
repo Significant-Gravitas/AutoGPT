@@ -29,8 +29,6 @@ class CredentialLease:
     def start_heartbeat(self) -> None:
         if self.credentials.type != "oauth2":
             return
-        if self.credentials.refresh_strategy != "provider_runtime":
-            return
         if self._heartbeat_task is None:
             self._heartbeat_task = asyncio.create_task(self._heartbeat())
 

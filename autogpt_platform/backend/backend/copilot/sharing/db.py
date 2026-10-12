@@ -28,6 +28,7 @@ from prisma.models import (
 from backend.blocks import get_block
 from backend.blocks._base import BlockType
 from backend.copilot.db import get_chat_messages_paginated
+from backend.copilot.expert_kickoff import is_hidden_chat_message
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.sharing.models import (
     ChatShareState,
@@ -349,7 +350,11 @@ async def get_shared_chat_messages_paginated(
         return None
 
     return SharedChatMessagesPage(
-        messages=[sanitize_chat_message(m) for m in page.messages],
+        messages=[
+            sanitize_chat_message(message)
+            for message in page.messages
+            if not is_hidden_chat_message(message.metadata)
+        ],
         has_more=page.has_more,
         oldest_sequence=page.oldest_sequence,
     )

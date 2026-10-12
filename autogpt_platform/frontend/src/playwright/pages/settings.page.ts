@@ -11,13 +11,11 @@ export class SettingsPage extends BasePage {
     await expect(this.page).toHaveURL(/\/profile\/settings/);
     await expect(
       this.page.getByText("Manage your account settings and preferences."),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15000 });
   }
 
-  getAgentRunNotificationsSwitch(): Locator {
-    return this.page.getByRole("switch", {
-      name: "Agent Run Notifications",
-    });
+  getAlertsSwitch(): Locator {
+    return this.page.getByRole("switch", { name: "Alerts" });
   }
 
   async savePreferences(): Promise<void> {

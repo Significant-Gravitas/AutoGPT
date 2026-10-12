@@ -1,6 +1,6 @@
-from .notifications import NotificationManager, NotificationManagerClient
+"""Email notifications.
 
-__all__ = [
-    "NotificationManager",
-    "NotificationManagerClient",
-]
+Deliberately empty of re-exports: `backend.data.execution` imports the run
+scorer from here, so an eager import of the service would close an import
+cycle. Import the concrete module you need.
+"""

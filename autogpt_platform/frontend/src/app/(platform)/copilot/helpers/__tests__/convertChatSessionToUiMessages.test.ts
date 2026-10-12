@@ -8,6 +8,42 @@ import {
 const SESSION_ID = "sess-test";
 
 describe("convertChatSessionMessagesToUiMessages", () => {
+  it("keeps a run-post as its own bubble carrying run metadata", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "assistant", content: "Earlier turn.", sequence: 0 },
+        {
+          role: "assistant",
+          content: "I just finished a run.",
+          sequence: 1,
+          metadata: {
+            kind: "expert_run",
+            execution_id: "exec-1",
+            graph_id: "graph-1",
+            output_type: "table",
+          },
+        },
+      ],
+      { isComplete: true },
+    );
+
+    // The run-post is not folded into the preceding assistant bubble.
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[1].metadata).toMatchObject({ kind: "expert_run" });
+  });
+
+  it("does not attach metadata to legacy assistant messages", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "assistant", content: "Plain reply.", sequence: 0 }],
+      { isComplete: true },
+    );
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].metadata).toBeUndefined();
+  });
+
   it("does not drop user messages with null content", () => {
     const result = convertChatSessionMessagesToUiMessages(
       SESSION_ID,
@@ -59,6 +95,21 @@ describe("convertChatSessionMessagesToUiMessages", () => {
 
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0].role).toBe("user");
+  });
+
+  it("preserves persisted kickoff metadata on the hydrated UI message", () => {
+    const metadata = {
+      hidden: true,
+      kind: "expert_kickoff",
+      expert_id: "3f8b0f7e-9f30-4a3b-a6a1-000000000001",
+    };
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "user", content: "kickoff", sequence: 0, metadata }],
+      { isComplete: true },
+    );
+
+    expect(result.messages[0].metadata).toEqual(metadata);
   });
 
   it("attaches a reasoning row between user/assistant to the surrounding assistant bubble", () => {
@@ -340,6 +391,29 @@ describe("concatWithAssistantMerge", () => {
     expect(result[1].id).toBe(`${SESSION_ID}-seq-6`);
   });
 
+  it("does NOT absorb a run-post WorkCard into the preceding assistant bubble", () => {
+    const a = [uiAssistant(SESSION_ID, 2, "plain reply")];
+    const runPost = {
+      ...uiAssistant(SESSION_ID, 3, "I finished a run."),
+      metadata: { kind: "expert_run", execution_id: "exec-1" },
+    };
+    const result = concatWithAssistantMerge(a, [runPost]);
+    expect(result).toHaveLength(2);
+    expect(result[1].metadata).toMatchObject({ kind: "expert_run" });
+  });
+
+  it("does NOT let a run-post WorkCard absorb the following assistant bubble", () => {
+    const runPost = {
+      ...uiAssistant(SESSION_ID, 2, "I finished a run."),
+      metadata: { kind: "expert_run", execution_id: "exec-1" },
+    };
+    const b = [uiAssistant(SESSION_ID, 3, "plain reply")];
+    const result = concatWithAssistantMerge([runPost], b);
+    expect(result).toHaveLength(2);
+    expect(result[0].metadata).toMatchObject({ kind: "expert_run" });
+    expect(result[1].metadata).toBeUndefined();
+  });
+
   it("does NOT merge when last-of-a is user and first-of-b is assistant", () => {
     const a = [uiUser(SESSION_ID, 4, "follow up")];
     const b = [uiAssistant(SESSION_ID, 5, "got it")];
@@ -545,5 +619,76 @@ describe("convertChatSessionMessagesToUiMessages — latest user marker", () => 
       expect(toolPart?.state).toBe("output-available");
       expect(toolPart?.output).toEqual({ ok: true });
     });
+  });
+});
+
+// Exactly what `build_files_block` emits: the files hint first, then the
+// folders hint, either or both present.
+const FILE_HINT =
+  "Use read_workspace_file with the file_id to access file contents.";
+const FOLDER_HINT =
+  "Use list_workspace_files with the folder_id to see what is in a folder.";
+
+function userParts(content: string) {
+  const { messages } = convertChatSessionMessagesToUiMessages(
+    SESSION_ID,
+    [{ role: "user", content, sequence: 0 }],
+    { isComplete: true },
+  );
+  return messages[0].parts;
+}
+
+describe("the [Attached files] block", () => {
+  it("parses a folder-only block, leaving no raw text in the bubble", () => {
+    const parts = userParts(
+      `Look at this.\n\n[Attached files]\n- Reports (folder, 3 file(s) directly inside), folder_id=0fd0aaaa-1111-4222-8333-444455556666\n${FOLDER_HINT}`,
+    );
+
+    expect(parts).toEqual([
+      { type: "text", text: "Look at this.", state: "done" },
+      {
+        type: "data-workspace-folder",
+        data: {
+          id: "0fd0aaaa-1111-4222-8333-444455556666",
+          name: "Reports",
+          fileCount: 3,
+        },
+      },
+    ]);
+  });
+
+  it("parses a block with both a file and a folder, dropping both hint lines", () => {
+    const parts = userParts(
+      `Compare these.\n\n[Attached files]\n- a.txt (text/plain, 1.0 KB), file_id=0f11eeee-1111-4222-8333-444455556666\n- Reports (folder, 3 file(s) directly inside), folder_id=0fd0aaaa-1111-4222-8333-444455556666\n${FILE_HINT}\n${FOLDER_HINT}`,
+    );
+
+    const text = parts.find((p) => p.type === "text");
+    expect(text).toEqual({
+      type: "text",
+      text: "Compare these.",
+      state: "done",
+    });
+    expect(parts.map((p) => p.type)).toEqual([
+      "text",
+      "file",
+      "data-workspace-folder",
+    ]);
+    // Neither hint may survive as prose in the user's own bubble.
+    expect(JSON.stringify(parts)).not.toContain("list_workspace_files");
+    expect(JSON.stringify(parts)).not.toContain("read_workspace_file");
+  });
+
+  it("still parses a legacy files-only block", () => {
+    const parts = userParts(
+      `Here.\n\n[Attached files]\n- a.txt (text/plain, 1.0 KB), file_id=0f11eeee-1111-4222-8333-444455556666\n${FILE_HINT}`,
+    );
+    expect(parts.map((p) => p.type)).toEqual(["text", "file"]);
+    expect(JSON.stringify(parts)).not.toContain("[Attached files]");
+  });
+
+  it("leaves a message with no block alone", () => {
+    expect(userParts("just text")).toEqual([
+      { type: "text", text: "just text", state: "done" },
+    ]);
   });
 });

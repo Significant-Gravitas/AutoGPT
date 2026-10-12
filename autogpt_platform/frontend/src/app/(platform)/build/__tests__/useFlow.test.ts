@@ -15,6 +15,16 @@ vi.mock("@xyflow/react", async () => {
   };
 });
 
+const mockPush = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush }),
+}));
+
+const mockToast = vi.fn();
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  useToast: () => ({ toast: mockToast }),
+}));
+
 const mockSetQueryStates = vi.fn();
 let mockQueryStateValues: {
   flowID: string | null;
@@ -34,11 +44,14 @@ vi.mock("nuqs", () => ({
 
 let mockGraphLoading = false;
 let mockBlocksLoading = false;
+let mockGraphError: unknown = undefined;
 
 vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
   useGetV1GetSpecificGraph: vi.fn(() => ({
     data: undefined,
     isLoading: mockGraphLoading,
+    isError: !!mockGraphError,
+    error: mockGraphError,
   })),
   useGetV1GetExecutionDetails: vi.fn(() => ({
     data: undefined,
@@ -80,6 +93,7 @@ describe("useFlow", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     mockGraphLoading = false;
     mockBlocksLoading = false;
+    mockGraphError = undefined;
     mockIsReadOnly = false;
     mockQueryStateValues = {
       flowID: null,
@@ -173,6 +187,54 @@ describe("useFlow", () => {
       });
 
       expect(result.current.isLocked).toBe(true);
+    });
+  });
+
+  describe("graph load failure", () => {
+    it("toasts the reason and redirects to the library when the fetch fails", async () => {
+      mockGraphError = new Error("not found");
+      mockQueryStateValues = {
+        flowID: "test-flow",
+        flowVersion: 1,
+        flowExecutionID: null,
+      };
+
+      const { useFlow } = await import("../components/FlowEditor/Flow/useFlow");
+      renderHook(() => useFlow());
+
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ variant: "destructive" }),
+      );
+      expect(mockPush).toHaveBeenCalledWith("/library");
+    });
+
+    it("does nothing when there is no flowID to load", async () => {
+      mockGraphError = new Error("not found");
+      mockQueryStateValues = {
+        flowID: null,
+        flowVersion: null,
+        flowExecutionID: null,
+      };
+
+      const { useFlow } = await import("../components/FlowEditor/Flow/useFlow");
+      renderHook(() => useFlow());
+
+      expect(mockToast).not.toHaveBeenCalled();
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it("does not toast or redirect when the graph loads successfully", async () => {
+      mockQueryStateValues = {
+        flowID: "test-flow",
+        flowVersion: 1,
+        flowExecutionID: null,
+      };
+
+      const { useFlow } = await import("../components/FlowEditor/Flow/useFlow");
+      renderHook(() => useFlow());
+
+      expect(mockToast).not.toHaveBeenCalled();
+      expect(mockPush).not.toHaveBeenCalled();
     });
   });
 });

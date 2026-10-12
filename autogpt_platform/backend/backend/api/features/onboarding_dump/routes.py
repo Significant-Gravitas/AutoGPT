@@ -26,6 +26,7 @@ from backend.api.features.onboarding_dump.models import (
     FinalizeResponse,
     GreetingDoneResponse,
     IntroCardResponse,
+    RecommendedExpertsResponse,
     RecommendedProvidersResponse,
     UploadPartResponse,
 )
@@ -222,6 +223,20 @@ async def get_brain_dump_recommended_providers(
     row read here. ``ready=false`` means keep polling.
     """
     return await service.get_recommended_providers(user_id)
+
+
+@router.get("/recommended-experts", operation_id="get_brain_dump_recommended_experts")
+async def get_brain_dump_recommended_experts(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> RecommendedExpertsResponse:
+    """The team Otto proposes: who to hire first, and the raise door.
+
+    Written by a background job beside the greeting one; a plain read
+    here, with the deterministic fallback filled in for takes the job
+    never ran on. ``ready=false`` means keep polling. ``team`` is null
+    when the expert-team feature is off for this user.
+    """
+    return await service.get_recommended_experts(user_id)
 
 
 @router.post("/intro/complete", operation_id="complete_brain_dump_greeting")

@@ -1,11 +1,20 @@
 import React from "react";
 import { cn } from "@/lib/utils";
-import { As, Variant, variantElementMap, variants } from "./helpers";
+import {
+  As,
+  Tone,
+  tones,
+  Variant,
+  variantElementMap,
+  variants,
+} from "./helpers";
 
 type CustomProps = {
   variant: Variant;
   as?: As;
   size?: Variant;
+  /** Semantic colour: primary zinc-900, secondary zinc-600, muted zinc-500, danger red-600. */
+  tone?: Tone;
   className?: string;
   /**
    * Adds the sentry-unmask class for static text visibility in replays.
@@ -23,6 +32,7 @@ export function Text({
   variant,
   as: outerAs,
   size,
+  tone,
   className = "",
   unmask = true,
   ...rest
@@ -31,6 +41,7 @@ export function Text({
   const Element = outerAs || variantElementMap[variant];
   const combinedClassName = cn(
     variantClasses,
+    tone && tones[tone],
     unmask && "sentry-unmask",
     className,
   );
@@ -47,4 +58,5 @@ export function Text({
 
 // Export variant names for use in stories
 export const textVariants = Object.keys(variants) as Variant[];
+export const textTones = Object.keys(tones) as Tone[];
 export type TextVariant = Variant;

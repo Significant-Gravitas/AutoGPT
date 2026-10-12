@@ -230,6 +230,45 @@ class TestRebuildCommunitiesForUser:
         client.build_communities.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_expert_scope_uses_resolved_group_for_client_and_lock(
+        self, _free_rebuild_lock
+    ) -> None:
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([], None, None)
+        client = MagicMock()
+        client.graph_driver = driver
+        client.build_communities = AsyncMock(return_value=[])
+        make_client = AsyncMock(return_value=client)
+
+        with (
+            patch(
+                "backend.copilot.graphiti.communities.derive_memory_group_id",
+                return_value="expert_resolved_group",
+            ) as derive_group,
+            patch(
+                "backend.copilot.graphiti.communities.make_flex_graphiti_client",
+                make_client,
+            ),
+            patch(
+                "backend.copilot.graphiti.communities.close_graphiti_client",
+                new=AsyncMock(),
+            ),
+        ):
+            result = await rebuild_communities_for_user(
+                "883cc9da-fe37-4863-839b-acba022bf3ef",
+                expert_id="expert-1",
+                force=True,
+            )
+
+        assert result["error"] is None
+        derive_group.assert_called_once_with(
+            "883cc9da-fe37-4863-839b-acba022bf3ef", "expert-1"
+        )
+        make_client.assert_awaited_once_with("expert_resolved_group")
+        lock_key = _free_rebuild_lock.set.call_args.args[0]
+        assert lock_key == "graphiti:community_rebuild_lock:expert_resolved_group"
+
+    @pytest.mark.asyncio
     async def test_failure_path_returns_error_in_result(self) -> None:
         driver = AsyncMock()
         driver.execute_query.return_value = ([], None, None)

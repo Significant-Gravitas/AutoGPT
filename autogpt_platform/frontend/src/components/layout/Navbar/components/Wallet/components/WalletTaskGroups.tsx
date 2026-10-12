@@ -13,6 +13,7 @@ interface Props {
 export function TaskGroups({ groups }: Props) {
   const { state, updateState } = useOnboarding();
   const refs = useRef<Record<string, HTMLDivElement | null>>({});
+  const confettiTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initialState: Record<string, boolean> = {};
@@ -83,7 +84,8 @@ export function TaskGroups({ groups }: Props) {
   }, []);
 
   const delayConfetti = useCallback((el: HTMLDivElement, count: number) => {
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      confettiTimers.current.delete(timer);
       if (!el) return;
       const rect = el.getBoundingClientRect();
       const shared: ConfettiOptions = {
@@ -104,6 +106,14 @@ export function TaskGroups({ groups }: Props) {
       confetti({ ...shared, angle: 45 });
       confetti({ ...shared, angle: 135 });
     }, 300);
+    confettiTimers.current.add(timer);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      confettiTimers.current.forEach(clearTimeout);
+      confettiTimers.current.clear();
+    };
   }, []);
 
   useEffect(() => {

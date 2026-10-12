@@ -7,6 +7,7 @@ from pydantic import SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -108,6 +109,7 @@ class ScreenshotWebPageBlock(Block):
                     "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAB5JREFUOE9jZPjP8J+BAsA4agDDaBgwjIYBw7AIAwCV5B/xAsMbygAAAABJRU5ErkJggg==",
                 }
             },
+            effect=BlockEffect.WORKSPACE,
         )
 
     @staticmethod

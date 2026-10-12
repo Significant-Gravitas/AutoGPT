@@ -7,6 +7,7 @@ from replicate.client import Client as ReplicateClient
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -144,6 +145,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
                 "run_model": lambda api_key, model_name, prompt, seed, steps, guidance, interval, aspect_ratio, output_format, output_quality, safety_tolerance: "https://replicate.com/output/generated-image-url.jpg",
             },
             test_credentials=TEST_CREDENTIALS,
+            effect=BlockEffect.READ,
         )
 
     async def run(

@@ -17,8 +17,10 @@ import {
 import { http, HttpResponse } from "msw";
 import { RateLimitManager } from "../RateLimitManager";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
+import { isKey } from "@/lib/keyboard";
 
 const toastSpy = vi.hoisted(() => vi.fn());
+const tierChangeResult = vi.hoisted(() => ({ value: undefined as unknown }));
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: toastSpy }),
@@ -41,7 +43,7 @@ vi.mock("../../../components/AdminUserSearch", () => ({
         placeholder={placeholder}
         disabled={isLoading}
         onKeyDown={(e) => {
-          if (e.key === "Enter") onSearch((e.target as HTMLInputElement).value);
+          if (isKey(e, "Enter")) onSearch((e.target as HTMLInputElement).value);
         }}
       />
     </div>
@@ -56,7 +58,7 @@ vi.mock("../RateLimitDisplay", () => ({
   }: {
     data: UserRateLimitResponse;
     onReset: (rw: boolean) => Promise<void>;
-    onTierChange: (t: string) => Promise<void>;
+    onTierChange: (t: string) => Promise<string | null>;
   }) => (
     <div data-testid="rate-limit-display">
       <span>{data.user_email ?? data.user_id}</span>
@@ -73,7 +75,11 @@ vi.mock("../RateLimitDisplay", () => ({
       </button>
       <button
         onClick={() => {
-          onTierChange("PRO").catch(() => {});
+          onTierChange("PRO")
+            .then((result) => {
+              tierChangeResult.value = result;
+            })
+            .catch(() => {});
         }}
       >
         mock-tier
@@ -113,6 +119,7 @@ function typeAndSearch(query: string) {
 
 beforeEach(() => {
   toastSpy.mockClear();
+  tierChangeResult.value = undefined;
 });
 
 afterEach(() => {
@@ -372,6 +379,54 @@ describe("RateLimitManager - reset and tier change", () => {
     await waitFor(() =>
       expect(screen.getByTestId("display-tier").textContent).toBe("PRO"),
     );
+  });
+
+  it("passes the sweep-revert warning from the set-tier response to the display", async () => {
+    const warning =
+      "The Stripe reconciliation sweep will revert this PRO grant to NO_TIER within 6 hours.";
+    server.use(
+      http.get(RATE_LIMIT_URL, () =>
+        HttpResponse.json(makeRateLimit({ tier: "PRO" }), { status: 200 }),
+      ),
+      http.post(TIER_URL, () =>
+        HttpResponse.json(
+          { user_id: "user-123", tier: "PRO", warning },
+          { status: 200 },
+        ),
+      ),
+    );
+
+    render(<RateLimitManager />);
+    typeAndSearch("alice@example.com");
+
+    await screen.findByTestId("rate-limit-display");
+    fireEvent.click(screen.getByText("mock-tier"));
+
+    await waitFor(() => {
+      expect(tierChangeResult.value).toBe(warning);
+    });
+  });
+
+  it("resolves with no warning when the set-tier response has none", async () => {
+    server.use(
+      getGetV2GetUserRateLimitMockHandler200(makeRateLimit({ tier: "PRO" })),
+      http.post(TIER_URL, () =>
+        HttpResponse.json(
+          { user_id: "user-123", tier: "PRO" },
+          { status: 200 },
+        ),
+      ),
+    );
+
+    render(<RateLimitManager />);
+    typeAndSearch("alice@example.com");
+
+    await screen.findByTestId("rate-limit-display");
+    fireEvent.click(screen.getByText("mock-tier"));
+
+    await waitFor(() => {
+      expect(tierChangeResult.value).toBeNull();
+    });
   });
 
   it("does not update tier when the set-tier endpoint fails", async () => {

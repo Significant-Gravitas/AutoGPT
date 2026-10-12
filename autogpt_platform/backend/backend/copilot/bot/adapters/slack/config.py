@@ -23,8 +23,9 @@ def get_client_secret() -> str:
 # for readability.
 MAX_MESSAGE_LENGTH = 4000
 
-# Flush at 3800 — leaves 200-char headroom under the cap for the boundary
-# splitter to reach a natural break point.
+# Flush at 3800 canonical chars — headroom under the cap for the boundary
+# splitter to reach a natural break point. Escaping can expand the wire text
+# past it; the adapter re-splits a chunk when that happens.
 CHUNK_FLUSH_AT = 3800
 
 # Cap on a single inbound/outbound file. Slack allows far larger, but the bot

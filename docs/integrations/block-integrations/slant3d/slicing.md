@@ -6,20 +6,24 @@ Blocks for slicing 3D models and getting pricing information from Slant3D.
 ## Slant3D Slicer
 
 ### What it is
-Slice a 3D model file and get pricing information
+Get a live 3D printing quote for physical parts from STL URLs or attached workspace files. Use this to price printable parts and complete project part sets before ordering from Slant3D, which manufactures and ships the parts. Binary STL URLs are accepted directly; no browser upload is needed. For complete projects, first read the assembly bill of materials: include repeated parts across subassemblies, select a design variant for alternative parts while keeping the required number of copies, and exclude reference assembly meshes. One copy of each STL is not necessarily a complete set. Quote each required file with its full assembly quantity and sum the returned prices, which already include quantity. Before reporting a complete quote, reconcile all quoted files and quantities against the parts list. Printing-only quotes need no shipping address or payment method. Returns a reusable file_id for ordering; this block does not place or charge an order.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block sends an STL file to Slant3D's slicing service to analyze the 3D model. The slicer calculates print parameters and returns pricing information based on the model's complexity, size, and material requirements.
+This block loads an STL URL, workspace attachment, or data URI through the shared media loader, streams it through Slant3D's signed upload flow, confirms the upload, and requests a printing estimate. Supply `file_id` to reuse an upload. Set `platform_id`, or omit it only when the account has exactly one enabled platform.
 
-Provide the URL to your STL file, and the block returns the calculated price for printing the model.
+The USD price includes the requested positive `quantity` and excludes shipping. A `filament_id` selects a material; omitting it uses default black PLA. Missing file inputs, inaccessible files, invalid quantities, ambiguous platforms, and provider failures surface as errors. A missing total or a response priced for a different quantity is rejected before any output. Reuse the returned `file_id` when preparing an order.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| file_url | URL of the 3D model file to slice (STL) | str | Yes |
+| file_url | STL file URL, workspace file, or data URI; ignored when file_id is set | str (file) | No |
+| file_id | Previously uploaded Slant3D public file service ID | str | No |
+| platform_id | Platform ID for uploads; may be omitted with one enabled platform | str | No |
+| filament_id | Filament public ID; defaults to Slant3D's PLA Black | str | No |
+| quantity | Number of prints to estimate | int | No |
 
 ### Outputs
 
@@ -27,7 +31,8 @@ Provide the URL to your STL file, and the block returns the calculated price for
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | message | Response message | str |
-| price | Calculated price for printing | float |
+| price | Estimated printing price for the requested quantity in USD | float |
+| file_id | Slant3D public file service ID for order items | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

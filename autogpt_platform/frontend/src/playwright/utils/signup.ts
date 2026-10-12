@@ -3,6 +3,14 @@ import { getSelectors } from "./selectors";
 import { isVisible } from "./assertion";
 import { BuildPage } from "../pages/build.page";
 import { skipOnboardingIfPresent } from "./onboarding";
+import { expect } from "@playwright/test";
+
+export function isAuthenticatedAppURL(currentURL: string) {
+  const { pathname } = new URL(currentURL, "http://localhost");
+  return ["/home", "/copilot", "/library"].some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
+}
 
 export async function signupTestUser(
   page: any,
@@ -15,27 +23,24 @@ export async function signupTestUser(
   const userEmail = email || faker.internet.email();
   const userPassword = password || faker.internet.password({ length: 12 });
 
-  const { getText, getField, getRole, getButton, getId } = getSelectors(page);
+  const { getText, getField, getButton, getId } = getSelectors(page);
 
   try {
     // Navigate to signup page
     await page.goto("/signup");
 
-    // Wait for page to load
-    getText("Create a new account");
+    // Wait for the hydrated form, not the server-rendered loading shell.
+    await getText("Create your account").waitFor({ state: "visible" });
 
     // Fill form
     const emailInput = getField("Email");
     await emailInput.fill(userEmail);
+    await expect(emailInput).toHaveValue(userEmail);
     const passwordInput = page.locator("#password");
     await passwordInput.fill(userPassword);
     const confirmPasswordInput = page.locator("#confirmPassword");
     await confirmPasswordInput.fill(userPassword);
 
-    // Agree to terms and submit. Scope to the Terms checkbox by accessible
-    // name — in dev/local the AgentationDevtool renders extra checkboxes
-    // globally, so a bare getByRole("checkbox") trips Playwright strict mode.
-    await getRole("checkbox", /agree to the terms/i).click();
     const signupButton = getButton("Sign up");
     await signupButton.click();
 
@@ -46,7 +51,7 @@ export async function signupTestUser(
       // Use a single waitForURL with a callback to avoid Promise.race race conditions
       await page.waitForURL(
         (url: URL) =>
-          /\/(onboarding|marketplace|copilot|library)/.test(url.pathname),
+          /\/(onboarding|marketplace|copilot|home|library)/.test(url.pathname),
         { timeout: 15000 },
       );
     } catch (error) {
@@ -65,7 +70,7 @@ export async function signupTestUser(
     }
 
     // Verify we're on an expected final page and user is authenticated
-    if (currentUrl.includes("/copilot") || currentUrl.includes("/library")) {
+    if (isAuthenticatedAppURL(currentUrl)) {
       await page
         .getByTestId("profile-popout-menu-trigger")
         .waitFor({ state: "visible", timeout: 10000 });

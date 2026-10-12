@@ -1,0 +1,23 @@
+{"id": "1-0", "data": {"type": "data-status", "message": "Message received…"}}
+{"id": "2-0", "data": {"type": "data-status", "message": "Setting up your environment…"}}
+{"id": "3-0", "data": {"type": "start", "messageId": "00000000-0000-4000-8000-000000000001", "sessionId": "drift-session"}}
+{"id": "4-0", "data": {"type": "start-step"}}
+{"id": "5-0", "data": {"type": "reasoning-start", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "6-0", "data": {"type": "reasoning-delta", "id": "00000000-0000-4000-8000-000000000002", "delta": "List the files first."}}
+{"id": "7-0", "data": {"type": "reasoning-end", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "8-0", "data": {"type": "tool-input-start", "toolCallId": "bash-1", "toolName": "bash_exec"}}
+{"id": "9-0", "data": {"type": "tool-input-available", "toolCallId": "bash-1", "toolName": "bash_exec", "input": {"command": "ls"}}}
+{"id": "10-0", "data": {"type": "tool-output-available", "toolCallId": "bash-1", "output": "a.md b.py", "toolName": "bash_exec", "success": true}}
+{"id": "11-0", "data": {"type": "data-pending-drained", "drainedCount": 1, "messages": [{"id": "00000000-0000-4000-8000-000000000003", "content": "Only count markdown files."}]}}
+{"id": "12-0", "data": {"type": "finish-step"}}
+{"id": "13-0", "data": {"type": "data-status", "message": "Analyzing result…"}}
+{"id": "14-0", "data": {"type": "start-step"}}
+{"id": "15-0", "data": {"type": "reasoning-start", "id": "00000000-0000-4000-8000-000000000004"}}
+{"id": "16-0", "data": {"type": "reasoning-delta", "id": "00000000-0000-4000-8000-000000000004", "delta": "One markdown file."}}
+{"id": "17-0", "data": {"type": "reasoning-end", "id": "00000000-0000-4000-8000-000000000004"}}
+{"id": "18-0", "data": {"type": "text-start", "id": "00000000-0000-4000-8000-000000000005"}}
+{"id": "19-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000005", "delta": "There is one markdown file: a.md."}}
+{"id": "20-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000005"}}
+{"id": "21-0", "data": {"type": "finish-step"}}
+{"id": "22-0", "data": {"type": "data-checkpoint", "rows": 6, "sequence": 1, "digest": "1d2b2f0ea8a34fb221dc8adcfb314ed001a23c0ae01c20e54113126f488af85c"}}
+{"id": "23-0", "data": {"type": "finish"}}

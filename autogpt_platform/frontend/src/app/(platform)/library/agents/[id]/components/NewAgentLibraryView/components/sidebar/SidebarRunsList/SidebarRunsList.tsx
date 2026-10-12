@@ -40,6 +40,7 @@ interface Props {
     templatesCount: number;
     triggersCount: number;
     loading?: boolean;
+    hasError?: boolean;
   }) => void;
 }
 
@@ -64,6 +65,7 @@ export function SidebarRunsList({
     triggersCount,
     error,
     loading,
+    retryFailedQueries,
     fetchMoreRuns,
     hasMoreRuns,
     isFetchingMoreRuns,
@@ -75,7 +77,7 @@ export function SidebarRunsList({
   });
 
   if (error) {
-    return <ErrorCard responseError={error} />;
+    return <ErrorCard responseError={error} onRetry={retryFailedQueries} />;
   }
 
   if (loading) {
@@ -117,7 +119,7 @@ export function SidebarRunsList({
           onClearSelectedRun?.();
         }
       }}
-      className="flex min-h-0 flex-col overflow-hidden"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
       <div className="relative overflow-hidden">
         <div className="pointer-events-none absolute right-0 top-0 z-10 h-[46px] w-12 bg-gradient-to-l from-[#FAFAFA] to-transparent" />
@@ -159,7 +161,7 @@ export function SidebarRunsList({
             hasMore={!!hasMoreRuns}
             isFetchingMore={isFetchingMoreRuns}
             onEndReached={fetchMoreRuns}
-            className="flex max-h-[76vh] flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden"
+            className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden"
             itemWrapperClassName="w-auto lg:w-full"
             renderItem={(run) => (
               <div className="w-[15rem] lg:w-full">
@@ -181,7 +183,7 @@ export function SidebarRunsList({
             AGENT_LIBRARY_SECTION_PADDING_X,
           )}
         >
-          <div className="flex h-full flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
+          <div className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
             {schedules.length > 0 ? (
               schedules.map((s: GraphExecutionJobInfo) => (
                 <div className="w-[15rem] lg:w-full" key={s.id}>
@@ -212,7 +214,7 @@ export function SidebarRunsList({
               AGENT_LIBRARY_SECTION_PADDING_X,
             )}
           >
-            <div className="flex h-full flex-col gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
               {triggers.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <Text variant="body-medium" className="px-1 !text-zinc-500">
@@ -273,7 +275,7 @@ export function SidebarRunsList({
                     No triggers set up
                   </Text>
                   <Text variant="body" className="!text-zinc-500">
-                    Ask AutoPilot to set up a trigger for this agent (e.g.
+                    Ask an expert to set up a trigger for this agent (e.g.
                     &ldquo;run this when a new email arrives&rdquo;).
                   </Text>
                 </div>
@@ -288,7 +290,7 @@ export function SidebarRunsList({
             AGENT_LIBRARY_SECTION_PADDING_X,
           )}
         >
-          <div className="flex h-full flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
+          <div className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
             {templates.length > 0 ? (
               templates.map((template) => (
                 <div className="w-[15rem] lg:w-full" key={template.id}>

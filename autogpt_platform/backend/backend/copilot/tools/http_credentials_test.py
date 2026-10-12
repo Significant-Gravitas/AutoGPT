@@ -124,6 +124,19 @@ class TestResolveDiscriminatedCredentials:
         assert ProviderName.OPENAI in field_info.provider
         assert "gpt-4o-mini" in field_info.discriminator_values
 
+    def test_optional_unmapped_discriminator_needs_no_credentials(self):
+        from backend.blocks.autopilot import AutoPilotBlock
+
+        block = AutoPilotBlock()
+
+        assert (
+            _resolve_discriminated_credentials(block, {"transport": "platform"}) == {}
+        )
+        assert "codex_credentials" in _resolve_discriminated_credentials(
+            block, {"transport": "codex_app_server"}
+        )
+        assert "codex_credentials" in _resolve_discriminated_credentials(block, {})
+
 
 # ---------------------------------------------------------------------------
 # find_matching_credential tests (host-scoped)

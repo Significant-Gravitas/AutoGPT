@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { consent } from "@/services/consent/cookies";
+import { hasConsentFor } from "@/services/consent/consent";
+import { configureCookiebot } from "@/tests/integrations/cookiebot";
+import {
+  installGtagShim,
+  removeGtagShim,
+} from "@/tests/integrations/gtag-shim";
 import { analytics, flushDatafastQueue } from "./index";
 
-vi.mock("@/services/consent/cookies", () => ({
-  consent: { hasConsentFor: vi.fn() },
+vi.mock("@/services/consent/consent", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/services/consent/consent")>()),
+  hasConsentFor: vi.fn(),
 }));
 
 function drainQueue() {
@@ -15,12 +21,13 @@ function drainQueue() {
 describe("sendDatafastEvent", () => {
   beforeEach(() => {
     drainQueue();
-    vi.mocked(consent.hasConsentFor).mockReturnValue(true);
+    vi.mocked(hasConsentFor).mockReturnValue(true);
     window.history.pushState({}, "", "/");
   });
 
   afterEach(() => {
     drainQueue();
+    vi.unstubAllEnvs();
   });
 
   it("sends immediately when the DataFast script has loaded", () => {
@@ -89,7 +96,7 @@ describe("sendDatafastEvent", () => {
   });
 
   it("does not queue pre-consent events outside the tour", () => {
-    vi.mocked(consent.hasConsentFor).mockReturnValue(false);
+    vi.mocked(hasConsentFor).mockReturnValue(false);
 
     analytics.sendDatafastEvent("run_agent", { agent_name: "x" });
 
@@ -100,8 +107,23 @@ describe("sendDatafastEvent", () => {
     expect(datafast).not.toHaveBeenCalled();
   });
 
+  it("does not send without consent once the script has loaded", () => {
+    // DataFast loaded under the tour exemption stays on window after the
+    // visitor navigates away from /tour.
+    vi.mocked(hasConsentFor).mockReturnValue(false);
+    configureCookiebot();
+    window.history.pushState({}, "", "/marketplace");
+    const datafast = vi.fn();
+    window.datafast = datafast;
+
+    analytics.sendDatafastEvent("run_agent", { agent_name: "x" });
+
+    expect(datafast).not.toHaveBeenCalled();
+  });
+
   it("queues pre-consent events on the consent-exempt tour pages", () => {
-    vi.mocked(consent.hasConsentFor).mockReturnValue(false);
+    vi.mocked(hasConsentFor).mockReturnValue(false);
+    configureCookiebot();
     window.history.pushState({}, "", "/tour/chat");
 
     analytics.sendDatafastEvent("tour_start", {});
@@ -113,8 +135,34 @@ describe("sendDatafastEvent", () => {
     expect(datafast).toHaveBeenCalledWith("tour_start", {});
   });
 
+  it("sends tour events without consent once the script has loaded", () => {
+    vi.mocked(hasConsentFor).mockReturnValue(false);
+    configureCookiebot();
+    window.history.pushState({}, "", "/tour");
+    const datafast = vi.fn();
+    window.datafast = datafast;
+
+    analytics.sendDatafastEvent("tour_start", {});
+
+    expect(datafast).toHaveBeenCalledWith("tour_start", {});
+  });
+
+  it("does not exempt the tour without a consent banner", () => {
+    vi.mocked(hasConsentFor).mockReturnValue(false);
+    vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
+    window.history.pushState({}, "", "/tour/chat");
+
+    analytics.sendDatafastEvent("tour_start", {});
+
+    const datafast = vi.fn();
+    window.datafast = datafast;
+    flushDatafastQueue();
+
+    expect(datafast).not.toHaveBeenCalled();
+  });
+
   it("does not treat /tourism as a consent-exempt tour page", () => {
-    vi.mocked(consent.hasConsentFor).mockReturnValue(false);
+    vi.mocked(hasConsentFor).mockReturnValue(false);
     window.history.pushState({}, "", "/tourism");
 
     analytics.sendDatafastEvent("tour_start", {});
@@ -155,5 +203,30 @@ describe("sendDatafastEvent", () => {
     );
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
+  });
+});
+
+describe("sendGAEvent", () => {
+  afterEach(() => {
+    removeGtagShim();
+  });
+
+  it("routes the command through the tag's own gtag shim", () => {
+    // Regression: the arguments used to be spread into the dataLayer as a
+    // plain array, and gtag.js only executes real `arguments` objects — so
+    // every custom GA event was silently dropped.
+    const calls = installGtagShim();
+
+    analytics.sendGAEvent("event", "tour_start", { scenario: "chat" });
+
+    expect(calls).toEqual([["event", "tour_start", { scenario: "chat" }]]);
+  });
+
+  it("drops the event when the tag never loaded", () => {
+    removeGtagShim();
+
+    expect(() =>
+      analytics.sendGAEvent("event", "tour_start", {}),
+    ).not.toThrow();
   });
 });

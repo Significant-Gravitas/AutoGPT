@@ -8,6 +8,7 @@ from replicate.client import Client as ReplicateClient
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -108,6 +109,7 @@ class ReplicateModelBlock(Block):
     def __init__(self):
         super().__init__(
             id="c40d75a2-d0ea-44c9-a4f6-634bb3bdab1a",
+            capability_kind="primitive",
             description="Run Replicate models synchronously",
             categories={BlockCategory.AI},
             input_schema=ReplicateModelBlock.Input,
@@ -133,6 +135,7 @@ class ReplicateModelBlock(Block):
                     "Mock response from Replicate model"
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -194,7 +197,7 @@ class ReplicateModelBlock(Block):
         """Merge uploaded ``files`` into ``model_inputs`` under ``file_input_field``.
 
         Files are converted to data URIs so Replicate can fetch them, letting
-        AutoPilot pass file references instead of inlining base64 by hand. A
+        Otto pass file references instead of inlining base64 by hand. A
         single file is bound as one value; multiple files as a list — matching
         how most Replicate model schemas type their file fields.
         """

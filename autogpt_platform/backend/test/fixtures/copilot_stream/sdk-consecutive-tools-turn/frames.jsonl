@@ -1,0 +1,22 @@
+{"id": "1-0", "sse": "id: drift-turn:1-0\ndata: {\"type\": \"data-status\", \"data\": {\"message\": \"Message received\\u2026\"}}\n\n"}
+{"id": "2-0", "sse": "id: drift-turn:2-0\ndata: {\"type\": \"data-status\", \"data\": {\"message\": \"Setting up your environment\\u2026\"}}\n\n"}
+{"id": "3-0", "sse": "id: drift-turn:3-0\ndata: {\"type\": \"start\", \"messageId\": \"00000000-0000-4000-8000-000000000001\"}\n\n"}
+{"id": "4-0", "sse": "id: drift-turn:4-0\ndata: {\"type\":\"start-step\"}\n\n"}
+{"id": "5-0", "sse": "id: drift-turn:5-0\ndata: {\"type\":\"tool-input-start\",\"toolCallId\":\"bash-1\",\"toolName\":\"bash_exec\"}\n\n"}
+{"id": "6-0", "sse": "id: drift-turn:6-0\ndata: {\"type\":\"tool-input-available\",\"toolCallId\":\"bash-1\",\"toolName\":\"bash_exec\",\"input\":{\"command\":\"ls\"}}\n\n"}
+{"id": "7-0", "sse": "id: drift-turn:7-0\ndata: {\"type\": \"tool-output-available\", \"toolCallId\": \"bash-1\", \"output\": \"a.md\"}\n\n"}
+{"id": "8-0", "sse": "id: drift-turn:8-0\ndata: {\"type\":\"finish-step\"}\n\n"}
+{"id": "9-0", "sse": "id: drift-turn:9-0\ndata: {\"type\": \"data-status\", \"data\": {\"message\": \"Analyzing result\\u2026\"}}\n\n"}
+{"id": "10-0", "sse": "id: drift-turn:10-0\ndata: {\"type\":\"start-step\"}\n\n"}
+{"id": "11-0", "sse": "id: drift-turn:11-0\ndata: {\"type\":\"tool-input-start\",\"toolCallId\":\"bash-2\",\"toolName\":\"bash_exec\"}\n\n"}
+{"id": "12-0", "sse": "id: drift-turn:12-0\ndata: {\"type\":\"tool-input-available\",\"toolCallId\":\"bash-2\",\"toolName\":\"bash_exec\",\"input\":{\"command\":\"wc a.md\"}}\n\n"}
+{"id": "13-0", "sse": "id: drift-turn:13-0\ndata: {\"type\": \"tool-output-available\", \"toolCallId\": \"bash-2\", \"output\": \"3 a.md\"}\n\n"}
+{"id": "14-0", "sse": "id: drift-turn:14-0\ndata: {\"type\":\"finish-step\"}\n\n"}
+{"id": "15-0", "sse": "id: drift-turn:15-0\ndata: {\"type\": \"data-status\", \"data\": {\"message\": \"Analyzing result\\u2026\"}}\n\n"}
+{"id": "16-0", "sse": "id: drift-turn:16-0\ndata: {\"type\":\"start-step\"}\n\n"}
+{"id": "17-0", "sse": "id: drift-turn:17-0\ndata: {\"type\":\"text-start\",\"id\":\"00000000-0000-4000-8000-000000000002\"}\n\n"}
+{"id": "18-0", "sse": "id: drift-turn:18-0\ndata: {\"type\":\"text-delta\",\"id\":\"00000000-0000-4000-8000-000000000002\",\"delta\":\"One file, three lines.\"}\n\n"}
+{"id": "19-0", "sse": "id: drift-turn:19-0\ndata: {\"type\":\"text-end\",\"id\":\"00000000-0000-4000-8000-000000000002\"}\n\n"}
+{"id": "20-0", "sse": "id: drift-turn:20-0\ndata: {\"type\":\"finish-step\"}\n\n"}
+{"id": "21-0", "sse": "id: drift-turn:21-0\ndata: {\"type\": \"data-checkpoint\", \"data\": {\"rows\": 5, \"sequence\": 1, \"digest\": \"3eb6f34443eff2670c7a01b27df87e04347fa85372f65fbff5dd5684eb693fe4\"}, \"transient\": true}\n\n"}
+{"id": "22-0", "sse": "id: drift-turn:22-0\ndata: {\"type\":\"finish\"}\n\n"}

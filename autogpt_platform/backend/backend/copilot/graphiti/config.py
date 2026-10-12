@@ -25,13 +25,13 @@ _DEFAULT_RERANKER_MODEL = "gpt-4.1-nano"
 _DEFAULT_EMBEDDER_MODEL = "text-embedding-3-small"
 
 # Local-transport defaults. Mirrors dev's chat-side ``--with-ollama``
-# default (``hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M``, per
-# ``docs/platform/copilot-local-llm.md`` — 4B params, ~3.4GB resident,
-# 256k native context, vetted for OpenAI-shim structured output). The
+# default (``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M``, per
+# ``docs/platform/copilot-local-llm.md`` — 9B params, ~5.8GB model file,
+# 262k native context, and OpenAI-compatible tool calling). The
 # reranker reuses the same model since the prompts are simpler than
 # extraction and pulling a second model for it would double the local
 # install's disk + RAM footprint.
-_LOCAL_LLM_MODEL = "hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M"
+_LOCAL_LLM_MODEL = "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
 _LOCAL_RERANKER_MODEL = _LOCAL_LLM_MODEL
 # Embedder defaults to Ollama's ``nomic-embed-text`` (~270MB, 768-dim
 # vectors, well-supported by the OpenAI ``/v1/embeddings`` shim).
@@ -45,9 +45,9 @@ class GraphitiConfig(BaseSettings):
     """Configuration for Graphiti memory integration.
 
     All fields use the ``GRAPHITI_`` env-var prefix, e.g. ``GRAPHITI_ENABLED``.
-    LLM/embedder keys fall back to the AutoPilot-dedicated keys
+    LLM/embedder keys fall back to the Otto-dedicated keys
     (``CHAT_API_KEY`` / ``CHAT_OPENAI_API_KEY``) so that memory costs are
-    tracked under AutoPilot, then to the platform-wide OpenRouter / OpenAI
+    tracked under Otto, then to the platform-wide OpenRouter / OpenAI
     keys as a last resort.
     """
 
@@ -215,7 +215,7 @@ class GraphitiConfig(BaseSettings):
     def resolve_llm_api_key(self) -> str:
         if self.llm_api_key:
             return self.llm_api_key
-        # Prefer the AutoPilot-dedicated key so memory costs are tracked
+        # Prefer the Otto-dedicated key so memory costs are tracked
         # separately from the platform-wide OpenRouter key.
         cloud_key = os.getenv("CHAT_API_KEY") or os.getenv("OPEN_ROUTER_API_KEY")
         if cloud_key:
@@ -242,7 +242,7 @@ class GraphitiConfig(BaseSettings):
     def resolve_embedder_api_key(self) -> str:
         if self.embedder_api_key:
             return self.embedder_api_key
-        # Prefer the AutoPilot-dedicated OpenAI key so memory costs are
+        # Prefer the Otto-dedicated OpenAI key so memory costs are
         # tracked separately from the platform-wide OpenAI key.
         cloud_key = os.getenv("CHAT_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
         if cloud_key:
@@ -275,10 +275,10 @@ class GraphitiConfig(BaseSettings):
         still at their cloud defaults and the operator hasn't pinned
         a ``GRAPHITI_*_MODEL`` override:
 
-        - ``llm_model`` (``gpt-4.1-mini``) → ``hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M``
+        - ``llm_model`` (``gpt-4.1-mini``) → ``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M``
           (matches dev's chat default — one Ollama pull powers both
           surfaces; vetted for structured output / tool-calling shape).
-        - ``reranker_model`` (``gpt-4.1-nano``) → same Qwen slug.
+        - ``reranker_model`` (``gpt-4.1-nano``) → same Ornith slug.
           Reranker prompts are simpler than extraction; reusing the
           chat model avoids pulling a second model just for reranking.
         - ``embedder_model`` (``text-embedding-3-small``) →
