@@ -8,6 +8,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { useIsMobile } from "../../useIsMobile";
 import { IntegrationsToggle } from "./components/IntegrationsToggle/IntegrationsToggle";
 import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
+import { WorkToggle } from "./components/WorkToggle/WorkToggle";
 
 interface Props {
   sessionId?: string | null;
@@ -20,8 +21,9 @@ interface Props {
 const toggleClass =
   "shrink-0 rounded-md transition-[background-color,transform] duration-150 ease-out hover:bg-zinc-100 active:scale-[0.97] motion-reduce:transition-none";
 
-/** The chat's top-right controls: the expert's integrations, the Computer
- *  toggle and the files toggle, each opening its face of the side panel. The
+/** The chat's top-right controls: the expert's integrations, the work handed
+ *  to experts, the Computer toggle and the files toggle, each opening its
+ *  face of the side panel. The
  *  Computer toggle is always there for a chat with a session: the panel's
  *  own "Turn on screen" button lives on that face, so it must be reachable
  *  before any desktop exists. */
@@ -70,6 +72,7 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
       )}
     >
       {expert && <IntegrationsToggle expert={expert} className={toggleClass} />}
+      <WorkToggle sessionId={sessionId} className={toggleClass} />
       {showComputerToggle && (
         <Button
           type="button"

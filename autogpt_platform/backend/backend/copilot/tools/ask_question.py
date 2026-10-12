@@ -114,7 +114,7 @@ class AskQuestionTool(BaseTool):
 
         text = "; ".join(q.question for q in questions)
         if session:
-            await _mark_pending(session, text)
+            await _mark_pending(session, text, questions[0].options)
         return ClarificationNeededResponse(
             message=text,
             session_id=session.session_id if session else None,
@@ -122,17 +122,19 @@ class AskQuestionTool(BaseTool):
         )
 
 
-async def _mark_pending(session: ChatSession, text: str) -> None:
+async def _mark_pending(session: ChatSession, text: str, options: list[str]) -> None:
     """Park the question on the session so Home can surface it.
 
     Best-effort: a failure here costs the user a "Needs You" row, and must
     never cost them the answer they were about to be asked for.
     """
     asked_at = datetime.now(UTC)
-    session.metadata.pending_question = PendingQuestion(text=text, asked_at=asked_at)
+    session.metadata.pending_question = PendingQuestion(
+        text=text, asked_at=asked_at, options=options
+    )
     try:
         await chat_db().set_session_pending_question(
-            session.session_id, session.user_id, text, asked_at
+            session.session_id, session.user_id, text, asked_at, options=options
         )
     except Exception as e:
         logger.warning(

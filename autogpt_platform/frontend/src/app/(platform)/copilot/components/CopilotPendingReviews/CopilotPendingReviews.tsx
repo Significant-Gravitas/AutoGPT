@@ -9,6 +9,7 @@ import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotC
 import { okData } from "@/app/api/helpers";
 import { ApprovalQueue } from "../ApprovalQueue/ApprovalQueue";
 import { isGateReview, toApprovalItem } from "../ApprovalQueue/helpers";
+import { HANDOFF_TOOLS } from "../ToolChain/HandoffApprovalNode";
 import { useCopilotPendingReviews } from "./useCopilotPendingReviews";
 
 type Props =
@@ -31,10 +32,13 @@ export function CopilotPendingReviews(props: Props) {
   const expertName = "expertName" in props ? props.expertName : null;
   const { pendingReviews, refetch } = useCopilotPendingReviews(props);
 
+  // A held hand-off renders as a node on its own chain row, so the queue
+  // leaves it out rather than showing the same card twice.
   const heldCalls = pendingReviews
     .filter(isGateReview)
     .sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))
-    .map(toApprovalItem);
+    .map(toApprovalItem)
+    .filter((item) => !HANDOFF_TOOLS.has(item.toolName));
   const otherReviews = pendingReviews.filter(
     (r) => !r.node_exec_id.startsWith(COPILOT_GATE_NODE_PREFIX),
   );

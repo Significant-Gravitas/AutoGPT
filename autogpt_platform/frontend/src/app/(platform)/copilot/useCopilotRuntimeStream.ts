@@ -221,6 +221,7 @@ export function useCopilotRuntimeStream({
     stopStream: () => runtime?.stop(),
     isUserStoppingRef,
     setIsUserStopping: () => {},
+    messages,
   });
 
   // A failure the chat is still sitting on survives a reload: the backend

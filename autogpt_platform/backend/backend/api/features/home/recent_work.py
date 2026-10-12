@@ -10,6 +10,7 @@ the same day from different angles.
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
+from backend.api.features.experts.delegations import DelegationSummary
 from backend.api.features.experts.models import Expert
 from backend.blocks.llm import LLM_PROVIDER_NAMES
 from backend.copilot.briefing.models import BriefingRunItem
@@ -19,9 +20,11 @@ from backend.data.activity_event import ActivityEvent
 from backend.data.execution import GraphExecutionMeta
 
 from .briefing import live_run_items, to_outcome
+from .delegation_items import finished_delegation_items
 from .helpers import UNKNOWN_AGENT, AgentRef, to_home_expert
 from .models import (
     HomeBriefingOutcome,
+    HomeDelegationItem,
     HomeRecentWork,
     HomeRecentWorkGroup,
     HomeRecentWorkItem,
@@ -47,6 +50,7 @@ class _Bucket:
         self.actor = actor
         self.runs: list[HomeBriefingOutcome] = []
         self.items: list[HomeRecentWorkItem] = []
+        self.delegations: list[HomeDelegationItem] = []
         self.latest_at: datetime | None = None
 
     def touch(self, at: datetime | None) -> None:
@@ -65,6 +69,8 @@ def compose_recent_work(
     expert_by_id: dict[str, Expert],
     agent_by_graph: dict[str, AgentRef],
     session_titles: dict[str, str | None],
+    delegations: list[DelegationSummary] | None = None,
+    timezone_name: str = "UTC",
 ) -> HomeRecentWork:
     since = now - _WINDOW
     exec_by_id = {execution.id: execution for execution in executions}
@@ -94,6 +100,13 @@ def compose_recent_work(
         target.items.append(_compose_item(event, session_titles))
         target.touch(event.created_at)
 
+    for expert_id, row in finished_delegation_items(
+        delegations or [], since, timezone_name
+    ):
+        target = bucket(("expert", expert_id))
+        target.delegations.append(row)
+        target.touch(row.occurred_at)
+
     groups = sorted(
         (_compose_group(found) for found in buckets.values()),
         key=lambda group: group.latest_at,
@@ -117,7 +130,9 @@ def _compose_group(found: _Bucket) -> HomeRecentWorkGroup:
         latest_at=found.latest_at or datetime.min.replace(tzinfo=timezone.utc),
         runs=found.runs[:_MAX_RUNS_PER_GROUP],
         items=found.items[:_MAX_ITEMS_PER_GROUP],
+        delegations=found.delegations[:_MAX_ITEMS_PER_GROUP],
         run_count=len(found.runs),
+        delegation_count=len(found.delegations),
         file_count=categories.count("file"),
         integration_count=categories.count("integration"),
         schedule_count=categories.count("schedule"),

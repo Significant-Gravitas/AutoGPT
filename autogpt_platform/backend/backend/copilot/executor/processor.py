@@ -19,6 +19,7 @@ from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import set_turn_unattended
 from backend.copilot.credential_selection import set_turn_credential_pins
+from backend.copilot.delegation_cancel import cancel_delegated_children
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
@@ -43,6 +44,7 @@ from backend.integrations.oauth.microsoft_365_copilot import (
     Microsoft365CopilotDeviceAuthHandler,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.background import spawn_background_task
 from backend.util.decorator import error_logged
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -241,6 +243,19 @@ async def _wait_for_expert_setup(session: "ChatSession") -> None:
             )
             return
         await asyncio.sleep(EXPERT_SETUP_POLL_SECONDS)
+
+
+def _cascade_cancel(entry: CoPilotExecutionEntry) -> None:
+    """Stop the threads this cancelled turn handed work to.
+
+    Detached, never awaited here: the caller is the turn's teardown, and a
+    slow or cancelled wait on the children must not keep this turn from
+    releasing its lease and finishing as cancelled. The helper logs failures.
+    """
+    spawn_background_task(
+        cancel_delegated_children(entry.session_id, entry.user_id),
+        name=f"cancel-children-{entry.session_id[:12]}",
+    )
 
 
 def execute_copilot_turn(
@@ -821,6 +836,8 @@ class CoPilotProcessor:
             # If no exception but user cancelled, still mark as cancelled
             if not error_msg and cancel.is_set():
                 error_msg = stream_registry.CANCELLED_MESSAGE
+            if error_msg == stream_registry.CANCELLED_MESSAGE:
+                _cascade_cancel(entry)
             try:
                 if credential_lease is not None:
                     try:

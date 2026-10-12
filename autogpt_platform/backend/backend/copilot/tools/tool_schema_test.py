@@ -258,7 +258,16 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-_CHAR_BUDGET = 77_014
+# Bumped 77_014 -> 77_488 for delegate_to_expert's optional ``reason``
+# argument (the "why this teammate" line on the hand-off card) and the
+# ``status=needs_input`` sentence telling the delegator to wait for the
+# user. No tool was added (89 either side). Measured on this branch rebased
+# on dev 7aaa60f999:
+#     dev 7aaa60f999                              76,975 (89 tools)
+#     + this PR's two descriptions   +213         77,188 (89 tools)
+#     + headroom                       +300       77,488
+# Same deliberate margin as the note above, for the same reason.
+_CHAR_BUDGET = 77_488
 
 
 @pytest.fixture(scope="module")

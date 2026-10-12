@@ -85,5 +85,10 @@ export function RecentWork({ dashboard, className }: Props) {
 }
 
 function groupKey(group: HomeRecentWorkGroup) {
-  return group.runs?.[0]?.id ?? group.items?.[0]?.id ?? group.actor.name;
+  return (
+    group.runs?.[0]?.id ??
+    group.items?.[0]?.id ??
+    group.delegations?.[0]?.id ??
+    group.actor.name
+  );
 }

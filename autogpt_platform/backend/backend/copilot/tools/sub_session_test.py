@@ -733,6 +733,9 @@ class TestGetSubSessionResult:
     async def test_wait_returns_running(self, monkeypatch, mock_waiter):
         sub = MagicMock(user_id="alice", expert_id=None, messages=[])
         sub.metadata.delegated_by_session_id = None
+        # Explicit: a bare MagicMock reads as a parked question and a cap.
+        sub.metadata.pending_question = None
+        sub.metadata.delegation_cap_usd = None
 
         async def fake_get(_sid):
             return sub
@@ -768,6 +771,9 @@ class TestGetSubSessionResult:
             user_id="alice", expert_id=None, messages=[]
         )  # not terminal-looking
         sub.metadata.delegated_by_session_id = None
+        # Explicit: a bare MagicMock reads as a parked question and a cap.
+        sub.metadata.pending_question = None
+        sub.metadata.delegation_cap_usd = None
 
         async def fake_get(_sid):
             return sub
@@ -806,6 +812,9 @@ class TestGetSubSessionResult:
         persisted message instead."""
         sub = MagicMock(user_id="alice", expert_id=None)
         sub.metadata.delegated_by_session_id = None
+        # Explicit: a bare MagicMock reads as a parked question and a cap.
+        sub.metadata.pending_question = None
+        sub.metadata.delegation_cap_usd = None
         assistant = MagicMock()
         assistant.metadata = None
         assistant.role = "assistant"
@@ -861,6 +870,9 @@ class TestGetSubSessionResult:
         prior.tool_calls = None
         sub = MagicMock(user_id="alice", expert_id=None, messages=[prior])
         sub.metadata.delegated_by_session_id = None
+        # Explicit: a bare MagicMock reads as a parked question and a cap.
+        sub.metadata.pending_question = None
+        sub.metadata.delegation_cap_usd = None
 
         async def fake_get(_sid):
             return sub
@@ -904,6 +916,7 @@ class TestGetSubSessionResult:
             user_id="alice", expert_id=None, messages=[asked], chat_status="idle"
         )
         sub.metadata.delegated_by_session_id = None
+        sub.metadata.pending_question = None
         mock_waiter.result_mock.return_value = ("failed", SessionResult())
 
         with (
@@ -935,6 +948,9 @@ class TestGetSubSessionResult:
         without waiting for the sub to finish (the worker will finalise)."""
         sub = MagicMock(user_id="alice", expert_id=None, messages=[])
         sub.metadata.delegated_by_session_id = None
+        # Explicit: a bare MagicMock reads as a parked question and a cap.
+        sub.metadata.pending_question = None
+        sub.metadata.delegation_cap_usd = None
 
         async def fake_get(_sid):
             return sub
@@ -966,6 +982,9 @@ class TestGetSubSessionResult:
 
         sub = MagicMock(user_id="alice", expert_id=None)
         sub.metadata.delegated_by_session_id = None
+        # Explicit: a bare MagicMock reads as a parked question and a cap.
+        sub.metadata.pending_question = None
+        sub.metadata.delegation_cap_usd = None
         assistant = MagicMock()
         assistant.metadata = None
         assistant.role = "assistant"

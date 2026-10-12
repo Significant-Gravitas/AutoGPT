@@ -306,9 +306,18 @@ async def test_an_approved_first_use_runs_without_a_second_card(gate, ran):
 
 
 async def test_unsupervised_runs_a_first_use_without_asking(gate, ran):
+    """With the user's "ask before anything external" toggle off."""
     result = await _call(_session("unsupervised"), _OPEN_WORLD, "do_thing")
     assert not _is_held(result)
     ran.assert_awaited_once()
+
+
+async def test_unsupervised_asks_a_first_use_while_the_toggle_is_on(
+    gate, ran, external_toggle_on
+):
+    result = await _call(_session("unsupervised"), _OPEN_WORLD, "do_thing")
+    assert _is_held(result)
+    ran.assert_not_awaited()
 
 
 async def test_listing_a_servers_tools_never_asks(gate, ran):

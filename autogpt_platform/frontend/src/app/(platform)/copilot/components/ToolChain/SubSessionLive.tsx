@@ -37,7 +37,7 @@ const MAX_STEPS = 3;
 // every few seconds indefinitely. The card keeps its last snapshot.
 const POLL_CAP_MS = 5 * 60_000;
 
-interface LiveStep {
+export interface LiveStep {
   name: string;
   input: unknown;
   displayName?: unknown;
@@ -85,7 +85,7 @@ export function SubSessionLive({ subSessionId, active }: Props) {
  *  nothing at all: a failed fetch, and the poll cap expiring while the run
  *  is still live. Both stop the polling, so both have to be visible —
  *  otherwise a dead card is indistinguishable from a working one. */
-function useLiveSubSession(subSessionId: string, active: boolean) {
+export function useLiveSubSession(subSessionId: string, active: boolean) {
   const [isCapped, setIsCapped] = useState(false);
   useEffect(
     function stopPollingAfterCap() {
@@ -177,7 +177,7 @@ function LiveSteps({ rows }: { rows: ChainRow[] }) {
 /** A re-delegation reuses the same sub-session, so only the CURRENT turn
  *  (everything after the last user message) belongs to this card — the full
  *  history would replay the previous delegation's final answer here. */
-function collectCurrentTurn(session: SessionDetailResponse) {
+export function collectCurrentTurn(session: SessionDetailResponse) {
   const allMessages = Array.isArray(session.messages) ? session.messages : [];
   const lastUserIndex = allMessages.findLastIndex((m) => m.role === "user");
   const messages =
@@ -217,7 +217,11 @@ function collectCurrentTurn(session: SessionDetailResponse) {
 
 /** Dress a polled tool call as a ChainRow so the delegate's steps reuse the
  *  main chain's icons and labels instead of raw tool names. */
-function toMiniRow(step: LiveStep, index: number, running: boolean): ChainRow {
+export function toMiniRow(
+  step: LiveStep,
+  index: number,
+  running: boolean,
+): ChainRow {
   const state = running ? "running" : "done";
   const catalog = getCatalogLabel(step.name, step.input, state, {
     displayName: step.displayName,
@@ -255,13 +259,9 @@ function toMiniRow(step: LiveStep, index: number, running: boolean): ChainRow {
  *  SubSessionCard the moment the tool returns. */
 interface PendingCardProps {
   input: unknown;
-  minimal?: boolean;
 }
 
-export function SubSessionPendingCard({
-  input,
-  minimal = false,
-}: PendingCardProps) {
+export function SubSessionPendingCard({ input }: PendingCardProps) {
   const { expertsById } = useExpertMap();
   const args = asObject(input) ?? {};
   const inputExpertId = str(args, "expert_id");
@@ -313,14 +313,12 @@ export function SubSessionPendingCard({
           </Link>
         )}
       </div>
-      {!minimal && prompt && (
+      {prompt && (
         <p className="mt-1.5 line-clamp-2 pl-9 text-sm text-zinc-500">
           {prompt}
         </p>
       )}
-      {!minimal && liveSessionId && (
-        <SubSessionLive subSessionId={liveSessionId} active />
-      )}
+      {liveSessionId && <SubSessionLive subSessionId={liveSessionId} active />}
     </div>
   );
 }
@@ -368,9 +366,9 @@ function useDelegatedSessionId(expertId: string | null) {
  *  polled session and flip to completed once it goes idle.
  *
  *  Owns the poll through `useLiveSubSession` rather than piggybacking on a
- *  mounted live view: a minimal delegate card renders no live view, so this
- *  is the only thing left that can flip running → completed. On a full card
- *  it is the same query key, so the two share one poll. */
+ *  mounted live view: a delegated row renders no card at all, so this is
+ *  the only thing left that can flip its label running → completed. On a
+ *  card with a live view it is the same query key, so they share one poll. */
 export function useSubSessionEffectiveStatus(
   subSessionId: string | null,
   status: string | null,
@@ -382,14 +380,14 @@ export function useSubSessionEffectiveStatus(
   );
   if (!stale) return status;
   // The frozen status is only trustworthy while the poll can refute it. A
-  // minimal card has no "Live updates paused" notice to fall back on, so a
-  // dead poll has to show up in the pill or it reads as fact.
+  // delegated row has no "Live updates paused" notice to fall back on, so a
+  // dead poll has to show up in its label or it reads as fact.
   if (isError || isPaused) return "unknown";
   if (!session) return status;
   return isSessionLive(session) ? status : "completed";
 }
 
-function isSessionLive(session: SessionDetailResponse): boolean {
+export function isSessionLive(session: SessionDetailResponse): boolean {
   if (session.active_stream) return true;
   const status = session.chat_status?.toLowerCase();
   return status === "running" || status === "queued";

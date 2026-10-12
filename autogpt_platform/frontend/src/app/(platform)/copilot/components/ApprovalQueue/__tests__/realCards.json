@@ -62,7 +62,8 @@
           "object": "Gmail Send",
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "Gmail Send",
       "editable": false,
@@ -252,7 +253,8 @@
           "object": "Google Sheets Update Row",
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "Google Sheets Update Row",
       "editable": false,
@@ -475,7 +477,8 @@
           "object": "Execute Code Step",
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "Execute Code Step",
       "editable": false,
@@ -628,7 +631,8 @@
           "object": "Send Web Request",
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "Send Web Request",
       "editable": false,
@@ -775,7 +779,8 @@
           "object": "Post To X",
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "Post To X",
       "editable": false,
@@ -1124,7 +1129,8 @@
           "object": "Gmail Send",
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "Gmail Send",
       "editable": false,
@@ -1299,7 +1305,8 @@
           "object": "Morning digest",
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "Morning digest",
       "editable": false,
@@ -1358,7 +1365,8 @@
           "object": null,
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "handoff": null
       },
       "instructions": "Run a command in the sandbox",
       "editable": false,

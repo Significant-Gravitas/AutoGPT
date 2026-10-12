@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from backend.api.features.experts.delegations import DelegationSummary
 from backend.api.features.experts.models import Expert
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.api.features.library.model import LibraryAgentRef
@@ -36,6 +37,8 @@ def compose_home_dashboard(
     credits_balance: int | None,
     timezone_name: str,
     questions: list[ChatSessionInfo] | None = None,
+    delegated_questions: list[DelegationSummary] | None = None,
+    recent_delegations: list[DelegationSummary] | None = None,
     persisted_briefing: BriefingContent | None = None,
     work_events: list[ActivityEvent] | None = None,
     session_titles: dict[str, str | None] | None = None,
@@ -78,6 +81,7 @@ def compose_home_dashboard(
             schedules=schedules,
             credits_balance=credits_balance,
             questions=questions,
+            delegated_questions=delegated_questions,
         ),
         briefing=compose_briefing(
             now=now,
@@ -102,5 +106,7 @@ def compose_home_dashboard(
             expert_by_id=expert_by_id,
             agent_by_graph=agent_by_graph,
             session_titles=session_titles or {},
+            delegations=recent_delegations,
+            timezone_name=timezone_name,
         ),
     )

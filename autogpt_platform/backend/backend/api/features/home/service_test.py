@@ -10,7 +10,7 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
 from backend.util.feature_flag import Flag
 
-from .service import _get_pending_questions, build_home_dashboard
+from .service import _get_delegations, _get_pending_questions, build_home_dashboard
 
 
 def _execution() -> GraphExecutionMeta:
@@ -102,6 +102,14 @@ def home_dependencies(mocker: MockerFixture):
     )
     mocker.patch(
         "backend.api.features.home.service.activity_db.list_activity_events",
+        AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.delegations.delegated_questions",
+        AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.delegations.recent_delegations",
         AsyncMock(return_value=[]),
     )
 
@@ -543,3 +551,26 @@ class TestPooledOrgBalanceGate:
 
         assert dashboard.week.credits_balance == 100
         get_credit_model.assert_awaited_once_with("user-1", "personal-org")
+
+
+@pytest.mark.asyncio
+async def test_home_loads_hand_offs_only_with_the_expert_team(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    """Hand-off rows ship with the expert-team surface, like questions: the
+    loaders are not even asked while the flag is off."""
+    load = AsyncMock(return_value=[])
+    mocker.patch(
+        "backend.api.features.home.service.is_feature_enabled",
+        AsyncMock(return_value=False),
+    )
+    assert await _get_delegations("user-1", load) == []
+    load.assert_not_awaited()
+
+    mocker.patch(
+        "backend.api.features.home.service.is_feature_enabled",
+        AsyncMock(return_value=True),
+    )
+    load.side_effect = RuntimeError("db down")
+    # A broken read costs its rows, not the page.
+    assert await _get_delegations("user-1", load) == []
