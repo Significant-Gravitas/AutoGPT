@@ -139,6 +139,24 @@ async def test_briefing_chat_has_an_initial_title(user_id: str):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_briefing_chat_sanitizes_content_and_title(user_id: str):
+    session_id = await copilot_db.append_plain_session_message(
+        user_id=user_id,
+        content="## Morning\x00 briefing\n\nToday's updates",
+        message_id=str(uuid4()),
+        title="Morning\x00 briefing — 2026-10-07",
+    )
+    assert session_id is not None
+    created = await PrismaChatSession.prisma().find_unique(
+        where={"id": session_id}, include={"Messages": True}
+    )
+    assert created is not None
+    assert created.title == "Morning briefing — 2026-10-07"
+    assert created.Messages is not None and len(created.Messages) == 1
+    assert created.Messages[0].content == "## Morning briefing\n\nToday's updates"
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_concurrent_deliveries_create_one_chat_without_orphans(
     user_id: str, mocker
 ):
