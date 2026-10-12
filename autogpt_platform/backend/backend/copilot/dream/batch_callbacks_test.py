@@ -1497,6 +1497,59 @@ class TestDreamPassRecord:
         assert state_key("p1") not in fake_redis[1]
 
     @pytest.mark.asyncio
+    async def test_a_dead_end_payload_naming_another_owner_ends_the_pass_as_its_rows(
+        self, fake_redis, fake_dream_db
+    ):
+        """The payload is the part that went wrong: the landed phase is
+        charged to the owner the row names, and that owner's lock released,
+        never the payload's."""
+        _seed_submitted_pass(fake_dream_db)
+        fake_dream_db.rows["p1"]["lease_token"] = "tok-u1"
+        await write_phase_to_state(
+            pass_id="p1",
+            phase="consolidate",
+            row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        entry = _entry(phase="recombine", expert_id="e-other")
+        entry.payload.update({"phase": "daydream", "user_id": "someone-else"})
+        release_lock = AsyncMock(return_value=True)
+        charge = AsyncMock()
+        with patch(
+            "backend.copilot.dream.cleanup.release_dream_lock", release_lock
+        ), patch("backend.copilot.dream.batch_costs.record_phase_cost", charge):
+            await handle_dream_batch_result(entry, [])
+
+        assert fake_dream_db.rows["p1"]["status"] is DreamPassStatus.ERRORED
+        charged_scope = charge.await_args.args[0].scope
+        assert (charged_scope.user_id, charged_scope.expert_id) == ("u1", None)
+        assert release_lock.await_args.args == (MemoryScope.for_user("u1"), "tok-u1")
+
+    @pytest.mark.asyncio
+    async def test_a_dead_end_payload_whose_row_cannot_be_read_goes_by_the_payload(
+        self, fake_redis, fake_dream_db
+    ):
+        """As a drop does: with no row to say whose pass it is, the payload's
+        owner stands, rather than the landed phase going uncharged."""
+        _seed_submitted_pass(fake_dream_db)
+        fake_dream_db.rows["p1"]["lease_token"] = "tok-u1"
+        await write_phase_to_state(
+            pass_id="p1",
+            phase="consolidate",
+            row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        entry = _entry(phase="recombine")
+        entry.payload.update({"phase": "daydream"})
+        charge = AsyncMock()
+        with patch(
+            "backend.copilot.dream.batch_deliveries.read_pass",
+            AsyncMock(side_effect=TimeoutError("dream pass database stalled")),
+        ), patch("backend.copilot.dream.batch_costs.record_phase_cost", charge):
+            await handle_dream_batch_result(entry, [])
+
+        assert fake_dream_db.rows["p1"]["status"] is DreamPassStatus.ERRORED
+        assert charge.await_args.args[0].scope.user_id == "u1"
+
+    @pytest.mark.asyncio
     async def test_an_unreadable_state_still_closes_the_row_errored(
         self, fake_dream_db, fake_dream_redis, monkeypatch
     ):

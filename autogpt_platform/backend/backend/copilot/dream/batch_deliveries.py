@@ -75,13 +75,11 @@ async def drop_closed(entry: PendingEntry) -> None:
     the row, its batch stopped at the provider as part of the cleanup. The
     row refuses the failure ``fail_pass`` writes: it keeps how it closed."""
     bp = BatchPass.from_payload(entry.payload or {})
-    row = await _closed_row(bp.pass_id)
+    row = await _row_again(bp.pass_id, "end it; going by its batch's payload")
     owner = bp
     reason = "pass already closed"
     if row is not None:
-        owner = bp.model_copy(
-            update={"user_id": row.user_id, "expert_id": row.expert_id}
-        )
+        owner = _as_row_owner(bp, row)
         reason = stop_error(row) or f"pass already {row.status.value.lower()}"
     logger.info(
         f"Dream batch {entry.provider_batch_id} of pass {bp.pass_id} dropped "
@@ -92,13 +90,16 @@ async def drop_closed(entry: PendingEntry) -> None:
 
 async def end_dead_end(bp: BatchPass, error: str) -> None:
     """A payload no phase handler can take ends its pass as far as the
-    payload names it: with an owner and a pass, like any failure. Without an
-    owner, the admin job closes and so does the record, marked: the reaper
-    cleans up after the pass from its row, which names the owner to charge
-    and keeps the token to release the lock with. Without a pass there is
-    nothing more to end."""
+    payload names it: with an owner and a pass, like any failure, as the
+    owner the pass's row names, as a drop is (the payload is the part that
+    went wrong; only a row that cannot be read, or that is missing, leaves
+    the payload's owner standing). Without an owner, the admin job closes
+    and so does the record, marked: the reaper cleans up after the pass from
+    its row, which names the owner to charge and keeps the token to release
+    the lock with. Without a pass there is nothing more to end."""
     if bp.user_id and bp.pass_id:
-        await fail_pass(bp, error)
+        row = await _row_again(bp.pass_id, "end it; going by its batch's payload")
+        await fail_pass(_as_row_owner(bp, row) if row is not None else bp, error)
         return
     await mark_job_errored(bp.job_id, error, dead_end=True)
     if bp.pass_id:
@@ -124,18 +125,29 @@ async def finish_duplicate(bp: BatchPass, ops: DreamOperations) -> None:
     await clean_up_after(bp)
 
 
-async def _closed_row(pass_id: str) -> DreamPassRecord | None:
-    """The dropped pass's row again, for its owner and how it closed; ``None``
-    when the store cannot say in time, and the payload's owner stands."""
+async def _row_again(pass_id: str, otherwise: str) -> DreamPassRecord | None:
+    """The ended pass's row again, for its owner and how it closed; ``None``
+    when there is none or the store cannot say in time (*otherwise* says
+    what the caller does then)."""
     try:
         return await read_pass(pass_id, timeout=DISPATCH_CHECK_READ_TIMEOUT_SECONDS)
     except Exception:
         logger.warning(
-            f"Dream pass {pass_id}: could not read its row again to end it; "
-            "going by its batch's payload",
+            f"Dream pass {pass_id}: could not read its row again to {otherwise}",
             exc_info=True,
         )
         return None
+
+
+def _as_row_owner(bp: BatchPass, row: DreamPassRecord) -> BatchPass:
+    """*bp* with the owner its row names: the row is the authority on whose
+    pass it is, a batch's payload only a copy."""
+    if bp.user_id and (bp.user_id, bp.expert_id) != (row.user_id, row.expert_id):
+        logger.warning(
+            f"Dream pass {bp.pass_id}: its batch's payload names another owner "
+            "than its row; ending it as the row's"
+        )
+    return bp.model_copy(update={"user_id": row.user_id, "expert_id": row.expert_id})
 
 
 async def _row(pass_id: str) -> DreamPassRecord | None:
