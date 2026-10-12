@@ -39,7 +39,6 @@ PAUSED_STATUSES = frozenset(
 # Statuses that mean "stop waiting" (terminal or paused)
 STOP_WAITING_STATUSES = TERMINAL_STATUSES | PAUSED_STATUSES
 
-_POST_SUBSCRIBE_RECHECK_DELAY = 0.1  # seconds to wait for subscription to establish
 _RESUBSCRIBE_DELAY = 1.0  # seconds between resubscribes while Redis is down
 
 
@@ -141,10 +140,13 @@ async def _subscribe_and_wait(
     To avoid the race condition where the execution completes between the
     initial DB check and the Redis subscription, we:
     1. Start listening (which subscribes internally)
-    2. Re-check the DB after subscription is active
+    2. Re-check the DB once Redis has confirmed the subscription
     3. If still running, wait for pubsub events
     """
-    listen_iter = event_bus.listen_events(channel_key).__aiter__()
+    subscribed = asyncio.Event()
+    listen_iter = event_bus.listen_events(
+        channel_key, on_subscribed=subscribed.set
+    ).__aiter__()
 
     done = asyncio.Event()
     result_execution: GraphExecution | None = None
@@ -194,21 +196,11 @@ async def _subscribe_and_wait(
             # change can't fall between the check and the subscription.
             task_holder.append(asyncio.create_task(_recheck_when(resubscribed)))
 
-    consume_task = asyncio.create_task(_consume())
-    task_holder.append(consume_task)
+    task_holder.append(asyncio.create_task(_consume()))
+    task_holder.append(asyncio.create_task(_recheck_when(subscribed)))
 
-    # Give the subscription a moment to establish, then re-check DB
-    await asyncio.sleep(_POST_SUBSCRIBE_RECHECK_DELAY)
-
-    execution = await exec_db.get_graph_execution(
-        user_id=user_id,
-        execution_id=execution_id,
-        include_node_executions=False,
-    )
-    if execution and execution.status in STOP_WAITING_STATUSES:
-        return execution
-
-    # Wait for the pubsub consumer to find a terminal event
+    # Done when the confirmed-subscription DB check or a pubsub event finds a
+    # terminal status.
     await done.wait()
     return result_execution
 

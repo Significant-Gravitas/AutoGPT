@@ -177,9 +177,9 @@ async def test_wait_checks_the_database_when_the_event_stream_is_lost():
     bus = _LostThenSilentBus()
     finished = SimpleNamespace(status=ExecutionStatus.COMPLETED)
     exec_db = MagicMock()
-    exec_db.get_graph_execution = AsyncMock(
-        side_effect=[SimpleNamespace(status=ExecutionStatus.RUNNING), finished]
-    )
+    # The first stream never confirmed, so the first read is after the
+    # resubscription is live.
+    exec_db.get_graph_execution = AsyncMock(return_value=finished)
     tasks: list[asyncio.Task] = []
 
     with patch("backend.copilot.tools.execution_utils._RESUBSCRIBE_DELAY", 0):
@@ -196,5 +196,55 @@ async def test_wait_checks_the_database_when_the_event_stream_is_lost():
         )
 
     assert result is finished
+    for task in tasks:
+        task.cancel()
+
+
+class _SlowToConfirmBus:
+    """The first subscription confirms only when the test opens ``gate``."""
+
+    def __init__(self) -> None:
+        self.gate = asyncio.Event()
+        self.confirmed = False
+
+    async def listen_events(self, channel_key: str, on_subscribed=None):
+        await self.gate.wait()
+        self.confirmed = True
+        if on_subscribed is not None:
+            on_subscribed()
+        await asyncio.sleep(3600)
+        yield  # pragma: no cover — unreachable
+
+
+@pytest.mark.asyncio
+async def test_wait_reads_the_database_only_once_the_first_subscription_is_live():
+    """The run finishes, and its COMPLETED is published, before the first
+    subscription is live, so it is never delivered. Read before confirmation
+    and the wait sees RUNNING and then blocks until its timeout; read after it
+    and the wait sees COMPLETED."""
+    bus = _SlowToConfirmBus()
+    finished = SimpleNamespace(status=ExecutionStatus.COMPLETED)
+    running = SimpleNamespace(status=ExecutionStatus.RUNNING)
+    exec_db = MagicMock()
+    exec_db.get_graph_execution = AsyncMock(
+        side_effect=lambda **_: finished if bus.confirmed else running
+    )
+    tasks: list[asyncio.Task] = []
+
+    wait = asyncio.create_task(
+        _subscribe_and_wait(
+            cast(AsyncRedisExecutionEventBus, bus),
+            "chan",
+            "user-1",
+            "exec-1",
+            exec_db,
+            tasks,
+        )
+    )
+    await asyncio.sleep(0.3)
+    exec_db.get_graph_execution.assert_not_awaited()
+
+    bus.gate.set()
+    assert await asyncio.wait_for(wait, timeout=2) is finished
     for task in tasks:
         task.cancel()
