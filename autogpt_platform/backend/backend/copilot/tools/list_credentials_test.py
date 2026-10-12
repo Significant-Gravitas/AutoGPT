@@ -251,7 +251,7 @@ class TestListUserCredentialsTool:
 
         assert result.count == 0
         assert result.ungranted_providers == ["notion"]
-        assert "connect_integration" not in result.message
+        assert "sign-in card" not in result.message
         assert "grant access" in result.message
 
     @pytest.mark.asyncio
@@ -372,6 +372,7 @@ class TestListUserCredentialsTool:
         assert result.count == 0
         assert result.credentials == []
         assert "google" in result.message
+        assert 'run_capability(id, input={"connect": true})' in result.message
 
     @pytest.mark.asyncio
     async def test_whitespace_provider_treated_as_absent(self, tool, mock_session):
@@ -408,7 +409,7 @@ class TestListUserCredentialsTool:
 
         assert result.provisioning_complete is False
         assert "Credential discovery is incomplete" in result.message
-        assert "connect_integration" not in result.message
+        assert "sign-in card" not in result.message
 
     @pytest.mark.asyncio
     async def test_empty_credentials(self, tool, mock_session):

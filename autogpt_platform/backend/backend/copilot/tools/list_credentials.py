@@ -38,6 +38,10 @@ _ProvisionTasks = dict[str, "asyncio.Task[bool]"]
 _managed_provision_tasks_by_loop: (
     "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _ProvisionTasks]"
 ) = weakref.WeakKeyDictionary()
+_CONNECT_HINT = (
+    "If one is needed, find it with find_capability; "
+    'run_capability(id, input={"connect": true}) surfaces its sign-in card.'
+)
 _DNS_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
 _HOSTNAME_RE = re.compile(rf"{_DNS_LABEL}(?:\.{_DNS_LABEL})*")
 
@@ -107,9 +111,9 @@ class ListUserCredentialsTool(BaseTool):
 
         register_all()
 
-        # The managed-credential sweep only affects managed providers, and it
-        # sits on the hot path (the model calls this before every sign-in
-        # prompt). Skip it when filtering to a provider that is never managed.
+        # The managed-credential sweep only affects managed providers and can
+        # take seconds, so skip it when filtering to a provider that is never
+        # managed.
         wanted_provider = provider.strip().lower() if provider else ""
         if wanted_provider and get_managed_provider(wanted_provider) is None:
             provisioning_complete = True
@@ -243,14 +247,10 @@ def _build_inventory_message(
     elif wanted:
         message = (
             f"The user has no connected credentials for provider "
-            f"'{wanted}'. Use connect_integration to surface a "
-            "sign-in card if this integration is needed."
+            f"'{wanted}'. {_CONNECT_HINT}"
         )
     else:
-        message = (
-            "The user has not connected any integrations yet. Use "
-            "connect_integration to surface a sign-in card if one is needed."
-        )
+        message = f"The user has not connected any integrations yet. {_CONNECT_HINT}"
 
     if ungranted:
         message += (
