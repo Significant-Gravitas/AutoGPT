@@ -326,3 +326,55 @@ async def test_unfinished_wallet_payment_is_settled_under_the_lock():
 
     assert world.ledger.transactions == {"in_1": -2000, "in_1:wallet-refund": 2000}
     assert world.ledger.balance == 5000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("lost_response", [False, True])
+async def test_wallet_payment_drops_the_shared_lookup_after_paying(lost_response):
+    """An out-of-band payment sends no ``invoice.payment_succeeded``, so the
+    billing page's shared lookup is dropped here, once the plan is active,
+    not left to the subscription update that follows."""
+    with World(balance=5000) as world:
+        event = _renewal_failed(world)
+        if lost_response:
+            world.stripe.fail_next["pay_response"] = 1
+        seen: list[tuple[str, str, str]] = []
+
+        async def invalidate(customer_id: str) -> None:
+            seen.append(
+                (
+                    customer_id,
+                    world.stripe.invoices["in_1"]["status"],
+                    world.stripe.subscriptions["sub_1"]["status"],
+                )
+            )
+
+        with patch(
+            "backend.data.subscription_wallet_payment.invalidate_active_subscription_cache",
+            invalidate,
+        ):
+            await handle_subscription_payment_failure(event)
+
+    assert world.ledger.settled("in_1")
+    assert seen == [(CUSTOMER, "paid", "active")]
+
+
+@pytest.mark.asyncio
+async def test_refunded_wallet_debit_does_not_drop_the_shared_lookup():
+    """A card that paid first changed Stripe, and its own success event
+    drops the lookup; the wallet only refunds, which changes nothing there."""
+    with World(balance=5000) as world:
+        event = _renewal_failed(world)
+        world.stripe.fail_next["pay"] = 1
+        with pytest.raises(stripe.APIConnectionError):
+            await handle_subscription_payment_failure(event)
+        world.stripe.card_pays("in_1")
+        invalidate = AsyncMock()
+        with patch(
+            "backend.data.subscription_wallet_payment.invalidate_active_subscription_cache",
+            invalidate,
+        ):
+            await reconcile_wallet_payment_on_paid_invoice(world.stripe.view("in_1"))
+
+    assert world.ledger.transactions == {"in_1": -2000, "in_1:wallet-refund": 2000}
+    invalidate.assert_not_awaited()

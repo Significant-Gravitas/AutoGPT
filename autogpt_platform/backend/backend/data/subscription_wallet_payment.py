@@ -26,6 +26,7 @@ from backend.data.credit import UserCredit
 from backend.data.redis_client import get_redis_async
 from backend.data.stripe_client import stripe_call
 from backend.data.stripe_invoice_payments import paid_by_stripe_collection
+from backend.data.subscription_lookup_cache import invalidate_active_subscription_cache
 from backend.data.wallet_payment_state import (
     WalletPayment,
     WalletPaymentState,
@@ -123,6 +124,7 @@ async def _settle_locked(payment: WalletPayment, *, may_pay: bool) -> None:
                 )
                 raise
         else:
+            await _drop_cached_lookup(invoice)
             await mark_wallet_payment_settled(payment)
             logger.info(
                 f"Paid invoice {invoice_id} of user {payment.user_id} from wallet"
@@ -197,7 +199,21 @@ async def _settle_unpayable(payment: WalletPayment, invoice: dict) -> None:
         await _refund(payment, "invoice_paid_by_card")
         return
     # Paid out of band by our own earlier attempt, before it was recorded.
+    await _drop_cached_lookup(invoice)
     await mark_wallet_payment_settled(payment)
+
+
+async def _drop_cached_lookup(invoice: dict) -> None:
+    """Paying the invoice makes its plan active again, with a new period.
+
+    Stripe sends ``invoice.paid`` for an out-of-band payment, not
+    ``invoice.payment_succeeded``, so the success handler that drops the
+    billing page's shared lookup for a card payment may never run; without
+    this the page waits for ``customer.subscription.updated`` to see it.
+    """
+    customer_id = invoice.get("customer")
+    if isinstance(customer_id, str) and customer_id:
+        await invalidate_active_subscription_cache(customer_id)
 
 
 async def _refund(payment: WalletPayment, reason: str) -> None:
