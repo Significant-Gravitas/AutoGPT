@@ -312,6 +312,59 @@ describe("move a card to another project", () => {
     ).toEqual(["Launch", "Hiring"]);
   });
 
+  test("clicking the card's menu button opens the menu, not the panel", async () => {
+    serve();
+    const onUrlUpdate = vi.fn<(event: UrlUpdateEvent) => void>();
+    renderBoard("default", { onUrlUpdate });
+
+    const article = await screen.findByRole("article", {
+      name: "Plan offsite",
+    });
+    await userEvent.click(
+      within(article).getByRole("button", { name: "Task actions" }),
+    );
+
+    expect(await screen.findByRole("menu")).toBeDefined();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(onUrlUpdate).not.toHaveBeenCalled();
+  });
+
+  test("Enter on the card's menu button opens the menu, not the panel", async () => {
+    serve();
+    const onUrlUpdate = vi.fn<(event: UrlUpdateEvent) => void>();
+    renderBoard("default", { onUrlUpdate });
+
+    const article = await screen.findByRole("article", {
+      name: "Plan offsite",
+    });
+    within(article).getByRole("button", { name: "Task actions" }).focus();
+    await userEvent.keyboard("{Enter}");
+
+    expect(await screen.findByRole("menu")).toBeDefined();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(onUrlUpdate).not.toHaveBeenCalled();
+  });
+
+  test("a project list that fails to load says so", async () => {
+    serve();
+    server.use(
+      http.get("*/api/chat/boards", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+    );
+    renderBoard("default");
+
+    const article = await screen.findByRole("article", {
+      name: "Plan offsite",
+    });
+    const submenu = await openMoveMenu(article);
+
+    expect(
+      await within(submenu).findByText("Couldn't load projects"),
+    ).toBeDefined();
+    expect(within(submenu).queryByText("No projects yet")).toBeNull();
+  });
+
   test("a failed move puts the card back", async () => {
     serve({ failMove: true });
     renderBoard("default");

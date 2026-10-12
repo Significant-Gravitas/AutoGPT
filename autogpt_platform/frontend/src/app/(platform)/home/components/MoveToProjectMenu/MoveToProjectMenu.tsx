@@ -28,7 +28,7 @@ function stopPropagation(event: React.SyntheticEvent) {
 }
 
 export function MoveToProjectMenu({ cardId, triggerClassName }: Props) {
-  const { isOpen, setIsOpen, targets, isLoading, moveTo } =
+  const { isOpen, setIsOpen, targets, isLoading, isError, moveTo } =
     useMoveToProject(cardId);
 
   return (
@@ -72,7 +72,12 @@ export function MoveToProjectMenu({ cardId, triggerClassName }: Props) {
             {isLoading && (
               <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
             )}
-            {!isLoading && targets.length === 0 && (
+            {isError && (
+              <DropdownMenuItem disabled>
+                Couldn&apos;t load projects
+              </DropdownMenuItem>
+            )}
+            {!isLoading && !isError && targets.length === 0 && (
               <DropdownMenuItem disabled>No projects yet</DropdownMenuItem>
             )}
           </DropdownMenuSubContent>

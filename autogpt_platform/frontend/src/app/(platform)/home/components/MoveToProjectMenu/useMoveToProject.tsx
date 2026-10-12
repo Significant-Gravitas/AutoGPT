@@ -97,6 +97,7 @@ export function useMoveToProject(cardId: string) {
     setIsOpen,
     targets,
     isLoading: boardsQuery.isLoading,
+    isError: boardsQuery.isError,
     moveTo,
   };
 }
