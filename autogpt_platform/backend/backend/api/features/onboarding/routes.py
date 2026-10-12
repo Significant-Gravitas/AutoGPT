@@ -28,10 +28,7 @@ from backend.data.onboarding import (
 from backend.data.onboarding_role import OnboardingRole
 from backend.data.onboarding_wizard import OnboardingWizardConflict
 from backend.data.tally import extract_business_understanding
-from backend.data.understanding import (
-    BusinessUnderstandingInput,
-    upsert_business_understanding,
-)
+from backend.data.understanding import BusinessUnderstandingInput
 from backend.util.product_analytics import set_onboarding_role
 
 # Tags stay per-route: /onboarding/completed publishes ["onboarding", "public"]
@@ -167,7 +164,7 @@ async def submit_onboarding_profile(
     if not understanding_input.pain_points:
         understanding_input.pain_points = data.pain_points
 
-    await upsert_business_understanding(user_id, understanding_input)
+    await understanding_db().upsert_business_understanding(user_id, understanding_input)
     await _keep_role(user_id, data.user_role)
 
     return {"status": "ok"}

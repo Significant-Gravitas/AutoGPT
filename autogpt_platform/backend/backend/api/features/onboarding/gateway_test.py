@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from prisma.errors import ClientNotConnectedError
+from prisma.models import CoPilotUnderstanding
 
 from backend.api.features.onboarding import routes
 from backend.data.db_manager import DatabaseManagerAsyncClient
@@ -10,26 +11,29 @@ from backend.data.understanding import BusinessUnderstandingInput
 
 
 @pytest.mark.asyncio
-async def test_profile_routes_role_writes_through_rpc_without_prisma(mocker):
+async def test_profile_submission_goes_through_rpc_without_prisma(mocker):
     rpc = MagicMock(spec_set=DatabaseManagerAsyncClient)
     rpc.get_business_understanding = AsyncMock(return_value=None)
+    rpc.upsert_business_understanding = AsyncMock()
     rpc.save_onboarding_role = AsyncMock()
     rpc.queue_onboarding_role = AsyncMock()
     mocker.patch("backend.data.db.is_connected", return_value=False)
     mocker.patch(
         "backend.util.clients.get_database_manager_async_client", return_value=rpc
     )
-    local_write = mocker.patch.object(
-        type(UserOnboarding.prisma()),
-        "upsert",
-        new=AsyncMock(side_effect=ClientNotConnectedError()),
-    )
+    local_writes = [
+        mocker.patch.object(
+            type(model.prisma()),
+            "upsert",
+            new=AsyncMock(side_effect=ClientNotConnectedError()),
+        )
+        for model in (UserOnboarding, CoPilotUnderstanding)
+    ]
     mocker.patch.object(
         routes,
         "extract_business_understanding",
         new=AsyncMock(return_value=BusinessUnderstandingInput.model_construct()),
     )
-    mocker.patch.object(routes, "upsert_business_understanding", new=AsyncMock())
     mocker.patch.object(routes, "enforce_personalization_budget", new=AsyncMock())
     mocker.patch.object(routes, "set_onboarding_role")
 
@@ -40,7 +44,11 @@ async def test_profile_routes_role_writes_through_rpc_without_prisma(mocker):
 
     assert result == {"status": "ok"}
     rpc.get_business_understanding.assert_awaited_once_with("authenticated-user")
+    user_id, understanding = rpc.upsert_business_understanding.await_args.args
+    assert user_id == "authenticated-user"
+    assert (understanding.user_name, understanding.user_role) == ("Nick", "Marketing")
     role = OnboardingRole(choice="Marketing")
     rpc.save_onboarding_role.assert_awaited_once_with("authenticated-user", role)
     rpc.queue_onboarding_role.assert_awaited_once_with("authenticated-user", role)
-    local_write.assert_not_awaited()
+    for local_write in local_writes:
+        local_write.assert_not_awaited()
