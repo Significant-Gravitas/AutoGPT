@@ -63,3 +63,4 @@ src/app/api/__generated__/
 *.mov
 *.mp4
 !public/onboarding/*.mp4
+!public/videos/workflows-moved.mp4

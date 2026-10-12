@@ -9,6 +9,7 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from claude_agent_sdk import ResultMessage
 
 from backend.copilot import config as cfg_mod
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
@@ -17,6 +18,7 @@ from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
 from .codex_compat_gateway import CodexAnthropicGateway
+from .cost_tracking import TokenUsage
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
@@ -31,6 +33,7 @@ from .service import (
     _normalize_model_name,
     _prepare_file_attachments,
     _raise_deferred_codex_cleanup_error,
+    _record_result_usage,
     _redact_cli_stderr,
     _resolve_dynamic_max_budget_usd,
     _resolve_sdk_model,
@@ -1159,18 +1162,7 @@ class TestRetryStateObservedModel:
 
 
 class TestMoonshotCostOverrideGate:
-    """Regression guards for the decision logic in
-    ``_run_stream_attempt`` that picks between the CLI-reported cost
-    and the Moonshot rate-card override.  The code:
-
-        active_model = state.observed_model or getattr(state.options, "model", None)
-        if _is_moonshot_model(active_model):
-            state.usage.cost_usd = _override_cost_for_moonshot(...)
-        else:
-            state.usage.cost_usd = sdk_msg.total_cost_usd
-
-    is critical-path billing logic — make sure observed_model wins over
-    the requested primary, and Anthropic turns pass through untouched."""
+    """Observed model wins over requested primary when pricing a billed result."""
 
     def _decide_cost(
         self,
@@ -1181,21 +1173,25 @@ class TestMoonshotCostOverrideGate:
         prompt_tokens: int = 0,
         completion_tokens: int = 0,
     ) -> float:
-        """Mirror of the real decision block — lets us assert the gate
-        without constructing the whole 1000-line generator."""
-        from .service import _is_moonshot_model, _override_cost_for_moonshot
-
-        active_model = observed_model or options_model
-        if _is_moonshot_model(active_model):
-            return _override_cost_for_moonshot(
-                model=active_model,
-                sdk_reported_usd=sdk_reported_usd,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                cache_read_tokens=0,
-                cache_creation_tokens=0,
-            )
-        return sdk_reported_usd
+        """Exercise the production result handler with a minimal SDK result."""
+        state = MagicMock(
+            observed_model=observed_model,
+            options=SimpleNamespace(model=options_model),
+            usage=TokenUsage(),
+        )
+        result = ResultMessage(
+            subtype="success",
+            duration_ms=0,
+            duration_api_ms=0,
+            is_error=False,
+            num_turns=1,
+            session_id="test",
+            total_cost_usd=sdk_reported_usd,
+            usage={"input_tokens": prompt_tokens, "output_tokens": completion_tokens},
+        )
+        _record_result_usage(result, state, "")
+        assert state.usage.cost_usd is not None
+        return state.usage.cost_usd
 
     def test_anthropic_turn_passes_sdk_cost_through(self):
         """Anthropic — the CLI's pricing table is authoritative, so
@@ -1283,10 +1279,7 @@ class TestMoonshotCostOverrideGate:
 
 
 class TestMoonshotHelperReexports:
-    """``sdk/service.py`` imports the Moonshot helpers under local
-    aliases (``_is_moonshot_model``, ``_override_cost_for_moonshot``).
-    Regression guard so a refactor doesn't silently break the import
-    path the hot-loop code relies on."""
+    """The service's model-dependent environment gates use the shared predicate."""
 
     def test_is_moonshot_model_aliased(self):
         from backend.copilot.moonshot import is_moonshot_model as canonical
@@ -1294,13 +1287,6 @@ class TestMoonshotHelperReexports:
         from .service import _is_moonshot_model
 
         assert _is_moonshot_model is canonical
-
-    def test_override_cost_for_moonshot_aliased(self):
-        from backend.copilot.moonshot import override_cost_usd as canonical
-
-        from .service import _override_cost_for_moonshot
-
-        assert _override_cost_for_moonshot is canonical
 
 
 class TestIdleTimeoutThreshold:
@@ -2098,7 +2084,7 @@ class TestStreamEndedWithoutResultMessage:
         transcript_builder.append_assistant = MagicMock()
         transcript_builder.append_tool_result = MagicMock()
         return _RetryState(
-            options=MagicMock(),
+            options=MagicMock(resume=None, session_id=session_id),
             query_message="hello",
             compaction_stats=None,
             use_resume=False,

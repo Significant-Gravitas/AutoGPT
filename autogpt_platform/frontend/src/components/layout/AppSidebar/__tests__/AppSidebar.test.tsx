@@ -16,6 +16,14 @@ import { fireEvent } from "@testing-library/react";
 import { AppSidebar } from "../AppSidebar";
 import { Flag } from "@/services/feature-flags/use-get-flag";
 
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
+    user: { id: "user-1", email: "alice@example.com", role: "user" },
+    isLoggedIn: true,
+    isUserLoading: false,
+  }),
+}));
+
 function dashboardWith(agents: HomeAgentStatus[]): HomeDashboardResponse {
   return { ...getGetHomeDashboardResponseMock200(), agents };
 }
@@ -107,7 +115,7 @@ describe("AppSidebar", () => {
     expect(event.defaultPrevented).toBe(false);
 
     fireEvent.keyDown(document, { key: "O", ctrlKey: true, shiftKey: true });
-    expect(routerPush).toHaveBeenCalledWith("/copilot");
+    expect(routerPush).toHaveBeenCalledWith("/home");
   });
 
   it("renders the primary navigation links", () => {
@@ -116,8 +124,7 @@ describe("AppSidebar", () => {
     expect(screen.getByText("Marketplace")).toBeDefined();
     expect(screen.getByText("Build")).toBeDefined();
     expect(screen.queryByText("Files")).toBeNull();
-    // /home 404s without the experts flag, so it must not be offered here.
-    expect(screen.queryByText("Home")).toBeNull();
+    expect(screen.getByText("Home")).toBeDefined();
   });
 
   it("shows Team instead of Agents when the hire-experts flag is on", () => {
@@ -128,17 +135,18 @@ describe("AppSidebar", () => {
     expect(screen.queryByText("Agents")).toBeNull();
   });
 
-  it("adds a Home link when the hire-experts flag is on", () => {
+  it("keeps a Home link when the hire-experts flag is on", () => {
     useGetFlagMock.mockReturnValue(true);
     renderSidebar();
     const homeLink = screen.getByRole("link", { name: /home/i });
     expect(homeLink.getAttribute("href")).toBe("/home");
   });
 
-  it("renders the New Task call-to-action pointing at /copilot", () => {
+  it("combines Home and New Task into one navigation entry", () => {
     renderSidebar();
-    const newTask = screen.getByRole("link", { name: /new task/i });
-    expect(newTask.getAttribute("href")).toBe("/copilot");
+    expect(screen.queryByRole("link", { name: /new task/i })).toBeNull();
+    const home = screen.getByRole("link", { name: /^home/i });
+    expect(home.getAttribute("href")).toBe("/home");
   });
 
   it("renders the workspace and recent chats group headers", () => {

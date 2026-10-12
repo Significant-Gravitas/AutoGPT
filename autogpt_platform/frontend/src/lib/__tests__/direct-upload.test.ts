@@ -57,6 +57,7 @@ afterEach(() => {
 describe("getFileSizeError", () => {
   it("returns null when the file is within the limit", () => {
     const file = makeFile(1024);
+    expect(SUBMISSION_MEDIA_MAX_SIZE_MB).toBe(4);
     expect(getFileSizeError(file, SUBMISSION_MEDIA_MAX_SIZE_MB)).toBeNull();
   });
 

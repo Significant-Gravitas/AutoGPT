@@ -23,6 +23,10 @@ class Effect(str, Enum):
     UNGATED = "ungated"
 
 
+# What the gate can hold for an answer, and so what a rule can be set on.
+PARKABLE = frozenset({Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL})
+
+
 class Verdict(str, Enum):
     RUN = "run"
     JUDGE = "judge"
@@ -159,10 +163,12 @@ _EFFECTS: dict[str, Effect] = {
 }
 
 _MODE_VERDICTS: dict[AutopilotMode, dict[Effect, Verdict]] = {
+    # Work in the chat's own sandbox never asks; the supervisor still holds a
+    # command that reaches outside it.
     "ask_first": {
         Effect.READ: Verdict.RUN,
         Effect.WORKSPACE: Verdict.RUN,
-        Effect.SHELL: Verdict.ASK,
+        Effect.SHELL: Verdict.JUDGE,
         Effect.PLATFORM: Verdict.ASK,
         Effect.EXTERNAL: Verdict.ASK,
     },

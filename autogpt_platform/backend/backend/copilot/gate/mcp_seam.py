@@ -77,10 +77,16 @@ async def screen_non_registry_read(
     user_id: str | None,
     session: ChatSession,
     result: dict[str, Any],
+    *,
+    outside: tuple[Any, ...] | None = None,
+    full: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """``result`` as capped for the model, or the stub that replaces it."""
+    """``result`` as capped for the model, or the stub that replaces it.
+
+    ``outside`` is what the handler declared came from outside AutoGPT, placed
+    in ``full``, its result before the cap; None judges all of ``result``."""
+    text = _text_of(result)
     blocks = [b for b in result.get("content") or () if isinstance(b, dict)]
-    text = "\n".join(str(b.get("text", "")) for b in blocks if b.get("type") == "text")
     images = tuple(
         Image(mime_type=str(b.get("mimeType", "")), data_base64=str(b["data"]))
         for b in blocks
@@ -98,10 +104,17 @@ async def screen_non_registry_read(
         # The MCP handler never sees the SDK's tool_use_id; registry tools
         # on this engine use the same stand-in.
         tool_call_id=f"sdk-{uuid.uuid4().hex[:12]}",
+        outside=outside,
+        full=_text_of(full or result),
     )
     if stub is None:
         return result
     return {"content": [{"type": "text", "text": stub}], "isError": True}
+
+
+def _text_of(result: dict[str, Any]) -> str:
+    blocks = [b for b in result.get("content") or () if isinstance(b, dict)]
+    return "\n".join(str(b.get("text", "")) for b in blocks if b.get("type") == "text")
 
 
 def _error(

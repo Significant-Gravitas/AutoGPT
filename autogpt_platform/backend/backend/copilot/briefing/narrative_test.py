@@ -1,3 +1,4 @@
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -353,6 +354,32 @@ async def test_failed_attempt_that_the_provider_billed_is_still_recorded(cost_lo
 
     assert cost_log.await_count == 2
     assert cost_log.await_args.kwargs["prompt_tokens"] == 500
+
+
+@pytest.mark.asyncio
+async def test_a_billed_failure_reaches_the_trace_priced(cost_log):
+    """The span of an attempt whose answer did not parse carries the cost the
+    ledger charged, not the provider's unpriced usage."""
+    usage = InferenceUsage(
+        model="claude-haiku-4-5-20251001",
+        input_tokens=1_000_000,
+        payer="platform_allowance",
+    )
+    written: list[InferenceUsage | None] = []
+    with patch_llm(side_effect=InferenceError("bad json", usage)), patch(
+        "backend.copilot.inference.trace._open_spans", return_value=ExitStack()
+    ), patch(
+        "backend.copilot.inference.trace._current_trace_id", return_value=None
+    ), patch(
+        "backend.copilot.inference.trace._write_usage", side_effect=written.append
+    ):
+        assert await compose_narrative(USER, make_content()) is None
+
+    assert cost_log.await_count == 2
+    assert [u.cost_usd if u else None for u in written] == [
+        pytest.approx(1.0),
+        pytest.approx(1.0),
+    ]
 
 
 @pytest.mark.asyncio

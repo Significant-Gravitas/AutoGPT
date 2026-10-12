@@ -4,6 +4,7 @@ import { useExperiment } from "@/services/experiments/useExperiment";
 import { useEffect } from "react";
 import { useOnboardingWizardStore } from "../../store";
 import {
+  getReportedPricingVariant,
   getSubscriptionPricingExperimentConfig,
   getSubscriptionPricingExperimentPlans,
   SUBSCRIPTION_PRICING_EXPERIMENT_FLAG,
@@ -33,7 +34,7 @@ export function useSubscriptionPricingExperiment() {
   return {
     billing: hasUserSelectedBilling ? selectedBilling : config.billing,
     plans: getSubscriptionPricingExperimentPlans(config.highlightedPlan),
-    variant: config.variant,
+    pricingVariant: getReportedPricingVariant(variant, isResolved),
     isResolved,
   };
 }

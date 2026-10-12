@@ -20,10 +20,12 @@ from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, Field
 from typing_extensions import Optional
 
+from backend.api.features.billing.client_country import ClientCountry
 from backend.api.features.billing.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
 from backend.copilot.rate_limit import get_tier_multipliers
+from backend.data import checkout_audience
 from backend.data.credit import (
     PendingChangeUnknown,
     UserCredit,
@@ -46,10 +48,20 @@ from backend.data.credit import (
 )
 from backend.data.notifications import PassWorkEvent, PassWorkKind
 from backend.data.redis_client import get_redis_async
+from backend.data.stripe_authentication import requires_authentication
 from backend.data.stripe_client import stripe_call
+from backend.data.subscription_checkout import AnotherPlanLive
+from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_billing import (
     TRIAL_BILLING_EVENTS,
     sync_trials_for_billing_event,
+)
+from backend.data.subscription_trial_conversion import (
+    TRIAL_RUNNING,
+    TrialConversionRefused,
+    convert_cancel_pending_trial,
+    get_cancel_pending_trial,
+    is_trial_plan,
 )
 from backend.data.user import get_user_by_id
 from backend.notifications import lifecycle
@@ -57,6 +69,7 @@ from backend.notifications.queue import queue_pass_work
 from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
 from backend.util.feature_flag import Flag, evaluate_feature_flag
+from backend.util.product_analytics import track_checkout_started
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -72,6 +85,10 @@ class SubscriptionTierRequest(BaseModel):
     success_url: str = ""
     cancel_url: str = ""
     billing_cycle: Literal["monthly", "yearly"] = "monthly"
+    surface: Optional[Literal["onboarding", "paywall_gate", "billing"]] = Field(
+        default=None,
+        description="Where the plan was picked; analytics only.",
+    )
 
 
 class SubscriptionStatusResponse(BaseModel):
@@ -138,8 +155,10 @@ class SubscriptionStatusResponse(BaseModel):
         default="",
         description=(
             "Populated only when POST /credits/subscription starts a Stripe Checkout"
-            " Session (BASIC → paid upgrade). Empty string in all other branches —"
-            " the client redirects to this URL when non-empty."
+            " Session (BASIC → paid upgrade), or when a trial ending early needs"
+            " the customer's bank to confirm its payment, on Stripe's invoice page."
+            " Empty string in all other branches — the client sends the customer"
+            " to this URL when non-empty."
         ),
     )
 
@@ -345,6 +364,7 @@ async def update_subscription_tier(
     x_datafast_session_id: Annotated[
         str | None, Header(include_in_schema=False)
     ] = None,
+    country: ClientCountry = None,
 ) -> SubscriptionStatusResponse:
     # Pydantic validates tier is one of BASIC/PRO/MAX/BUSINESS via Literal type.
     tier = SubscriptionTier(request.tier)
@@ -373,11 +393,20 @@ async def update_subscription_tier(
     # admin-granted tiers (DB tier set, no Stripe sub) must fall through to the
     # Checkout flow so "start paying for my current tier" is not a no-op.
     current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
-    if current_tier == SubscriptionTier.TRIAL and tier != SubscriptionTier.NO_TIER:
-        raise HTTPException(
-            409,
-            "Your accepted plan starts after your trial. Manage the trial in billing.",
-        )
+    pending_trial = None
+    if tier != SubscriptionTier.NO_TIER and current_tier in (
+        SubscriptionTier.TRIAL,
+        SubscriptionTier.NO_TIER,
+    ):
+        # Only a trial scheduled to end may start a paid plan before trial_end.
+        # One that lost its card (NO_TIER) takes the same path, or the trial
+        # subscription would refuse every plan until trial_end.
+        pending_trial = await get_cancel_pending_trial(user_id)
+        if pending_trial is None and current_tier == SubscriptionTier.TRIAL:
+            raise HTTPException(409, TRIAL_RUNNING)
+    converts_trial = pending_trial is not None and is_trial_plan(
+        pending_trial, tier, request.billing_cycle
+    )
     current_cycle = await get_user_billing_cycle(user_id) or "monthly"
     has_active_stripe_subscription = (
         await get_active_subscription_period_end(user_id) is not None
@@ -460,8 +489,9 @@ async def update_subscription_tier(
             detail=f"Subscription not available for tier {tier.value}",
         )
 
-    # Target has no LD price — not provisionable (matches the GET hiding).
-    if target_price_id is None:
+    # Target has no LD price — not provisionable (matches the GET hiding). The
+    # trial's own plan converts on the price it accepted, which needs none.
+    if target_price_id is None and not converts_trial:
         raise HTTPException(
             status_code=422,
             detail=f"Subscription not available for tier {tier.value}",
@@ -469,25 +499,27 @@ async def update_subscription_tier(
 
     # Modify in place if there's a sub; else fall through to Checkout below.
     try:
-        modified = await modify_stripe_subscription_for_tier(
+        if pending_trial is not None:
+            return await _convert_trial(
+                user_id,
+                pending_trial,
+                tier,
+                None if converts_trial else target_price_id,
+            )
+        if await modify_stripe_subscription_for_tier(
             user_id, tier, request.billing_cycle
-        )
-        if modified:
+        ):
             return await get_subscription_status(user_id)
+    except TrialConversionRefused as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except stripe.CardError as e:
         # Auto-charge failed under payment_behavior=error_if_incomplete: the
         # modify was rolled back, so 402 lets the UI prompt for a new card or
         # surface SCA. SCA codes mean the card is fine but the bank wants 3DS —
-        # different message so the user doesn't try a new card. Stripe emits
-        # ``authentication_required`` for raw PaymentIntent confirms but
-        # ``subscription_payment_intent_requires_action`` for Subscription.modify
-        # under ``error_if_incomplete``; both must map to the SCA branch.
-        if e.code in {
-            "authentication_required",
-            "subscription_payment_intent_requires_action",
-        }:
+        # different message so the user doesn't try a new card.
+        if requires_authentication(e):
             logger.warning(
                 "SCA required on subscription upgrade for user %s: %s", user_id, e
             )
@@ -626,6 +658,8 @@ async def update_subscription_tier(
             datafast_visitor_id=x_datafast_visitor_id,
             datafast_session_id=x_datafast_session_id,
         )
+    except AnotherPlanLive as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except stripe.StripeError as e:
@@ -639,9 +673,44 @@ async def update_subscription_tier(
                 "Please try again or contact support."
             ),
         )
+    await track_checkout_started(
+        user_id=user_id,
+        checkout_kind="subscription",
+        surface=request.surface,
+        subscription_tier=tier.value,
+        billing_cycle=request.billing_cycle,
+    )
 
+    if url:
+        checkout_audience.schedule_checkout_opened(user_id, ip_country=country)
     status = await get_subscription_status(user_id)
     status.url = url
+    return status
+
+
+async def _convert_trial(
+    user_id: str,
+    trial: TrialState,
+    tier: SubscriptionTier,
+    price_id: str | None,
+) -> SubscriptionStatusResponse:
+    """Start the chosen plan on the cancel-pending trial's own subscription.
+
+    Stripe limits a customer to one subscription, so Checkout would refuse a
+    plan beside the trial. A bank that wants to confirm the payment gets
+    Stripe's invoice page as ``url``; nothing changes until it is paid.
+    """
+    payment_page = await convert_cancel_pending_trial(trial, tier, price_id)
+    status = await get_subscription_status(user_id)
+    if payment_page:
+        status.url = payment_page
+    elif status.tier != tier.value:
+        # Stripe charged the card but the reconcile did not see a
+        # conversion; the person needs the paid plan they bought.
+        logger.error(
+            f"Trial conversion for user {user_id} left tier {status.tier},"
+            f" not {tier.value}"
+        )
     return status
 
 
@@ -824,6 +893,13 @@ async def stripe_webhook(request: Request):
             # `customer.subscription.created` fires at signup too; listening to
             # both would double-send.
             if event_type == "checkout.session.completed":
+                # The billing address is the strongest country signal, and
+                # it only exists once checkout completes. First, so that an
+                # Iranian or Russian one is on record before the trial notice
+                # queues its MailerLite change. It raises only when such a
+                # country could not be recorded, so Stripe retries the event
+                # instead of the notice going out without it.
+                await checkout_audience.record_checkout_completed(data_object)
                 await _notify_checkout_completed(data_object)
 
         if event_type in (
@@ -912,6 +988,12 @@ async def stripe_webhook(request: Request):
 async def manage_payment_method(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> dict[str, str]:
+) -> dict[str, str | None]:
+    """Return a Stripe billing-portal URL for the caller.
+
+    ``url`` is ``None`` when the user has no Stripe customer yet: this route is
+    requested on every Settings > Billing load, so it must never provision a
+    customer as a side effect (see ``create_billing_portal_session``).
+    """
     credit_model = await get_credit_model(user_id, ctx.org_id)
     return {"url": await credit_model.create_billing_portal_session(user_id)}

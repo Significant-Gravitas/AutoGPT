@@ -29,6 +29,7 @@ from backend.copilot.dream.structured_output import (
 from backend.copilot.transport_routing import ProviderRoutingKwargs
 from backend.util.llm.providers import (
     BatchSubmissionRef,
+    ProviderLiteral,
     ProviderResponse,
     call_provider,
     is_forced_tool_choice_rejection,
@@ -167,17 +168,35 @@ def _usage(
     response: ProviderResponse, model: str, ctx: InferenceContext
 ) -> InferenceUsage:
     """The call's usage, named for the model that was called (the spelling
-    the price card resolves), with the provider's cost when it reported one."""
+    the price card resolves), with the provider's cost when it reported one.
+    Its four token buckets are disjoint, as the price card prices them."""
     cost_source: CostSource = "provider" if response.cost_usd is not None else "none"
     return InferenceUsage(
         model=model,
-        input_tokens=response.prompt_tokens,
+        input_tokens=_uncached_input_tokens(response, ctx.route.provider),
         output_tokens=response.completion_tokens,
         cache_read_tokens=response.cache_read_tokens,
         cache_creation_tokens=response.cache_creation_tokens,
         cost_usd=response.cost_usd,
         cost_source=cost_source,
         payer=ctx.route.payer,
+    )
+
+
+def _uncached_input_tokens(
+    response: ProviderResponse, provider: ProviderLiteral
+) -> int:
+    """The input tokens outside the cache buckets. Anthropic's Messages API
+    reports them that way; the OpenAI-compatible routes (OpenRouter among
+    them) count cached reads and writes inside ``prompt_tokens``, so they come
+    off here, as baseline chat takes them off before it records a turn."""
+    if provider == "anthropic":
+        return response.prompt_tokens
+    return max(
+        0,
+        response.prompt_tokens
+        - response.cache_read_tokens
+        - response.cache_creation_tokens,
     )
 
 

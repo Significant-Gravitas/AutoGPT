@@ -22,7 +22,7 @@ export function useRecentChats() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const activeSessionId =
-    pathname === "/copilot" ? searchParams.get("sessionId") : null;
+    pathname === "/home" ? searchParams.get("sessionId") : null;
 
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");

@@ -50,6 +50,12 @@ vi.mock("../PaywallModal", () => ({
   PaywallModal: () => <div data-testid="paywall-modal">paywall</div>,
 }));
 
+vi.mock("../../components/WorkflowsMovedNotice/WorkflowsMovedNotice", () => ({
+  WorkflowsMovedNotice: () => (
+    <div data-testid="migration-notice">migration</div>
+  ),
+}));
+
 import { PaywallGate } from "../PaywallGate";
 
 describe("PaywallGate", () => {
@@ -72,6 +78,7 @@ describe("PaywallGate", () => {
     );
     expect(screen.getByText("protected")).toBeDefined();
     expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(screen.getByTestId("migration-notice")).toBeDefined();
   });
 
   it("renders modal over children when paid cohort + tier is NO_TIER", () => {
@@ -84,6 +91,7 @@ describe("PaywallGate", () => {
     );
     expect(screen.getByText("protected")).toBeDefined();
     expect(screen.getByTestId("paywall-modal")).toBeDefined();
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
   });
 
   it("does not render modal once the user is logged out, even when paid cohort + tier is NO_TIER", () => {
@@ -123,6 +131,7 @@ describe("PaywallGate", () => {
         </PaywallGate>,
       );
       expect(screen.queryByTestId("paywall-modal")).toBeNull();
+      expect(screen.getByTestId("migration-notice")).toBeDefined();
       unmount();
     }
   });
@@ -162,5 +171,23 @@ describe("PaywallGate", () => {
       </PaywallGate>,
     );
     expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
+  });
+
+  it("defers the migration notice until the paywall clears", () => {
+    mockIsPaymentEnabled = true;
+    mockSubscriptionResult = { data: undefined, isLoading: true };
+    const { rerender } = render(<PaywallGate>protected</PaywallGate>);
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
+
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
+    rerender(<PaywallGate>protected</PaywallGate>);
+    expect(screen.getByTestId("paywall-modal")).toBeDefined();
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
+
+    mockSubscriptionResult = { data: { tier: "PRO" }, isLoading: false };
+    rerender(<PaywallGate>protected</PaywallGate>);
+    expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(screen.getByTestId("migration-notice")).toBeDefined();
   });
 });

@@ -10,8 +10,6 @@ import { SearchBar } from "../../../components/SearchBar/SearchBar";
 import { SectionHeader } from "../../../components/SectionHeader";
 import { SkillCard } from "../../../components/SkillsSection/components/SkillCard";
 import { ExpertCard } from "../../../components/ExpertsSection/components/ExpertCard";
-import { UserAiIcon } from "@hugeicons/core-free-icons";
-import { BookOpen01Icon } from "@hugeicons/core-free-icons";
 import { useMainSearchResultPage } from "./useMainSearchResultPage";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -121,7 +119,6 @@ export const MainSearchResultPage = ({
               {showExperts && expertsCount > 0 ? (
                 <section aria-labelledby="search-experts-heading">
                   <SectionHeader
-                    titleIcon={<Icon icon={UserAiIcon} size={30} aria-hidden />}
                     title="Experts"
                     titleId="search-experts-heading"
                   />
@@ -142,9 +139,6 @@ export const MainSearchResultPage = ({
               {showSkills && skillsCount > 0 ? (
                 <section aria-labelledby="search-skills-heading">
                   <SectionHeader
-                    titleIcon={
-                      <Icon icon={BookOpen01Icon} size={30} aria-hidden />
-                    }
                     title="Skills"
                     titleId="search-skills-heading"
                   />
