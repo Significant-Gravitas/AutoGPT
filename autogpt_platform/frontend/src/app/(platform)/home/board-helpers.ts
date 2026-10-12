@@ -12,12 +12,15 @@ export const BOARD_COLUMNS_MUTATION_KEY = [...BOARD_MUTATION_KEY, "columns"];
 export const BOARD_CREATE_MUTATION_KEY = [...BOARD_MUTATION_KEY, "create"];
 export const MAX_COLUMNS = 6;
 export const MAX_COLUMN_NAME = 40;
+export const MAX_BOARD_NAME = 40;
+export const DEFAULT_BOARD_REF = "default";
 export const BUILTIN_KEYS = ["backlog", "in_progress", "done"] as const;
 
 const SESSION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const POSITION_GAP = 1024;
+const DEFAULT_RETRIES = 3;
 // Parameters only the chat page acts on: a link carrying one must not land
 // on the board.
 const CHAT_ONLY_PARAMS = ["expertId", "kickoff", "new", "autosubmit", "source"];
@@ -33,8 +36,37 @@ export function isSessionId(value: string | null): value is string {
   return value !== null && SESSION_ID_PATTERN.test(value);
 }
 
-export function boardQueryKey(params: GetV2GetBoardParams) {
-  return [...BOARD_QUERY_KEY, params] as const;
+export function isBoardRef(value: string): boolean {
+  return value === DEFAULT_BOARD_REF || isSessionId(value);
+}
+
+export function boardScopeKey(boardRef: string) {
+  return [...BOARD_QUERY_KEY, boardRef] as const;
+}
+
+export function boardQueryKey(boardRef: string, params: GetV2GetBoardParams) {
+  return [...boardScopeKey(boardRef), params] as const;
+}
+
+export function boardHref(boardId: string | null, sessionId?: string): string {
+  const path = boardId ? `/boards/${boardId}` : "/home";
+  return sessionId ? `${path}?sessionId=${sessionId}` : path;
+}
+
+export function isNotFoundError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
+}
+
+// Retries as the app's query client would, but a missing board stays missing.
+export function retryUnlessNotFound(defaultRetry: unknown) {
+  const limit =
+    defaultRetry === false
+      ? 0
+      : typeof defaultRetry === "number"
+        ? defaultRetry
+        : DEFAULT_RETRIES;
+  return (failureCount: number, error: unknown) =>
+    !isNotFoundError(error) && failureCount < limit;
 }
 
 function byPosition(a: Card, b: Card) {

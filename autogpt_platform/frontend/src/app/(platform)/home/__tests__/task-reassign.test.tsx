@@ -55,6 +55,13 @@ vi.mock("@/app/(platform)/copilot/CopilotChatHost", () => ({
   CopilotChatHost: () => <div>chat host</div>,
 }));
 
+const HOME_BOARD = {
+  id: "home-id",
+  name: "Home",
+  is_default: true,
+  position: 0,
+};
+
 const NOW = new Date().toISOString();
 const OLD_ID = "3f2b8c1e-9a4d-4e6f-8b7a-1c2d3e4f5a6b";
 const NEW_ID = "8d7c6b5a-4f3e-4d2c-9b1a-0f9e8d7c6b5a";
@@ -122,7 +129,7 @@ const SAM = {
 };
 
 function board(...sessions: SessionSummaryResponse[]): BoardResponse {
-  return { columns: COLUMNS, sessions };
+  return { board: HOME_BOARD, columns: COLUMNS, sessions };
 }
 
 let boardRequests = 0;
@@ -143,7 +150,7 @@ function renderPanel(onUrlUpdate?: (event: UrlUpdateEvent) => void) {
       onUrlUpdate={onUrlUpdate}
       hasMemory
     >
-      <TaskBoardPage />
+      <TaskBoardPage boardRef="default" />
     </NuqsTestingAdapter>,
   );
 }

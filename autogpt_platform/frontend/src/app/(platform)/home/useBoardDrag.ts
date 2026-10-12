@@ -11,7 +11,7 @@ import {
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  BOARD_QUERY_KEY,
+  boardScopeKey,
   type ColumnWithCards,
   dragLabel,
   planDrop,
@@ -29,13 +29,14 @@ const SCREEN_READER_INSTRUCTIONS =
   "To pick up a task, press Space. Use the arrow keys to move it, Space or Enter to drop it, and Escape to cancel.";
 
 interface Args {
+  boardRef: string;
   columns: ColumnWithCards[];
   onDraggingChange: (cardId: string | null) => void;
 }
 
-export function useBoardDrag({ columns, onDraggingChange }: Args) {
+export function useBoardDrag({ boardRef, columns, onDraggingChange }: Args) {
   const queryClient = useQueryClient();
-  const { move } = useMoveCard();
+  const { move } = useMoveCard(boardRef);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -66,7 +67,7 @@ export function useBoardDrag({ columns, onDraggingChange }: Args) {
 
   function handleDragStart({ active }: DragStartEvent) {
     onDraggingChange(String(active.id));
-    void queryClient.cancelQueries({ queryKey: BOARD_QUERY_KEY });
+    void queryClient.cancelQueries({ queryKey: boardScopeKey(boardRef) });
   }
 
   function handleDragEnd({ active, over }: DragEndEvent) {

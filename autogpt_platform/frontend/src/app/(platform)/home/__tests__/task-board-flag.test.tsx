@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Flag } from "@/services/feature-flags/use-get-flag";
+import BoardPage from "../../boards/[boardId]/page";
 import ChatPage from "../../chat/page";
 import HomePage from "../page";
 
@@ -43,6 +44,7 @@ vi.mock("next/navigation", async (importOriginal) => {
     }),
     usePathname: () => navigation.pathname,
     useSearchParams: () => new URLSearchParams(),
+    useParams: () => ({ boardId: "b1a2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d" }),
   };
 });
 
@@ -68,7 +70,7 @@ describe("/home with the task board flag", () => {
     setFlag(true);
     render(<HomePage />);
 
-    expect(screen.getByRole("heading", { name: /board/i })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Home" })).toBeDefined();
     expect(screen.queryByText("chat page")).toBeNull();
   });
 
@@ -77,7 +79,7 @@ describe("/home with the task board flag", () => {
     render(<HomePage />);
 
     expect(screen.getByText("chat page")).toBeDefined();
-    expect(screen.queryByRole("heading", { name: /board/i })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Home" })).toBeNull();
   });
 
   test("renders the chat page until the flag resolves", () => {
@@ -85,7 +87,7 @@ describe("/home with the task board flag", () => {
     render(<HomePage />);
 
     expect(screen.getByText("chat page")).toBeDefined();
-    expect(screen.queryByRole("heading", { name: /board/i })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Home" })).toBeNull();
   });
 });
 
@@ -109,7 +111,7 @@ describe("chat links on /home with the task board flag", () => {
     render(<HomePage />);
 
     await waitFor(() => expect(routerReplace).toHaveBeenCalledWith(to));
-    expect(screen.queryByRole("heading", { name: /board/i })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Home" })).toBeNull();
   });
 
   test("opens the board for a session link", () => {
@@ -121,7 +123,7 @@ describe("chat links on /home with the task board flag", () => {
     );
     render(<HomePage />);
 
-    expect(screen.getByRole("heading", { name: /board/i })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Home" })).toBeDefined();
     expect(routerReplace).not.toHaveBeenCalled();
   });
 
@@ -174,6 +176,34 @@ describe("/chat with the task board flag", () => {
     render(<ChatPage />);
 
     expect(screen.queryByText("chat page")).toBeNull();
+    expect(routerReplace).not.toHaveBeenCalled();
+  });
+});
+
+describe("/boards/[boardId] with the task board flag", () => {
+  beforeEach(() => {
+    navigation.pathname = "/boards/b1a2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
+  });
+
+  test("renders the board when the flag is on", () => {
+    setFlag(true);
+    render(<BoardPage />);
+
+    expect(screen.getByRole("status", { name: "Loading board" })).toBeDefined();
+    expect(routerReplace).not.toHaveBeenCalled();
+  });
+
+  test("sends the user to /home when the flag is off", async () => {
+    setFlag(false);
+    render(<BoardPage />);
+
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
+  });
+
+  test("waits for the flag before choosing", () => {
+    setFlag(false, false);
+    render(<BoardPage />);
+
     expect(routerReplace).not.toHaveBeenCalled();
   });
 });

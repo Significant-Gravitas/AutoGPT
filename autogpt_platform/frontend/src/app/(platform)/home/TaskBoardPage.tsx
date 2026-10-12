@@ -6,22 +6,33 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { closestCorners, DndContext, DragOverlay } from "@dnd-kit/core";
+import { BoardProvider } from "./BoardContext";
 import { BoardColumn } from "./components/BoardColumn/BoardColumn";
+import { BoardHeader } from "./components/BoardHeader/BoardHeader";
 import { BoardSkeleton } from "./components/BoardSkeleton/BoardSkeleton";
 import { AddColumnButton } from "./components/ColumnEditor/AddColumnButton";
 import { ColumnMenu } from "./components/ColumnEditor/ColumnMenu";
 import { DeleteColumnDialog } from "./components/ColumnEditor/DeleteColumnDialog";
 import { useColumnEditor } from "./components/ColumnEditor/useColumnEditor";
 import { ReassignDialog } from "./components/ReassignDialog/ReassignDialog";
+import { Redirect } from "./components/Redirect/Redirect";
 import { TaskCard } from "./components/TaskCard/TaskCard";
 import { TaskPanel } from "./components/TaskPanel/TaskPanel";
 import { useTaskBoardPage } from "./useTaskBoardPage";
 
-export function TaskBoardPage() {
+interface Props {
+  boardRef: string;
+}
+
+export function TaskBoardPage({ boardRef }: Props) {
   const {
+    boardContext,
+    name,
+    redirectHref,
     columns,
     isEmpty,
     isLoading,
+    isNotFound,
     isError,
     errorMessage,
     includeOlder,
@@ -37,111 +48,132 @@ export function TaskBoardPage() {
     startReassign,
     closeReassign,
     openReassigned,
-  } = useTaskBoardPage();
-  const editor = useColumnEditor(columns.map(({ column }) => column));
+  } = useTaskBoardPage(boardRef);
+  const editor = useColumnEditor(
+    boardRef,
+    columns.map(({ column }) => column),
+  );
+
+  if (redirectHref) return <Redirect href={redirectHref} />;
 
   return (
-    <div
-      className="flex min-h-0 w-full flex-col"
-      style={{
-        height: showNewLayout
-          ? "100svh"
-          : `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
-      }}
-    >
+    <BoardProvider value={boardContext}>
       <div
-        className={cn(
-          "flex h-16 shrink-0 items-center px-6 md:px-8",
-          showNewLayout && "max-md:pl-20",
-        )}
+        className="flex min-h-0 w-full flex-col"
+        style={{
+          height: showNewLayout
+            ? "100svh"
+            : `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
+        }}
       >
-        <Text variant="h4" as="h1">
-          Board
-        </Text>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col px-6 pb-6 md:px-8">
-        {isLoading && <BoardSkeleton />}
-        {isError && (
-          <ErrorCard
-            context="your board"
-            httpError={{ message: errorMessage }}
-            onRetry={retry}
-            className="max-w-xl"
+        <div
+          className={cn(
+            "flex h-16 shrink-0 items-center px-6 md:px-8",
+            showNewLayout && "max-md:pl-20",
+          )}
+        >
+          <BoardHeader name={name} />
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col px-6 pb-6 md:px-8">
+          {isLoading && <BoardSkeleton />}
+          {isNotFound && (
+            <div className="flex flex-col items-start gap-3">
+              <Text variant="body" className="text-zinc-700">
+                This project doesn&apos;t exist
+              </Text>
+              <Button
+                as="NextLink"
+                href="/home"
+                variant="secondary"
+                size="small"
+              >
+                Go to Home
+              </Button>
+            </div>
+          )}
+          {isError && (
+            <ErrorCard
+              context="your board"
+              httpError={{ message: errorMessage }}
+              onRetry={retry}
+              className="max-w-xl"
+            />
+          )}
+          {columns.length > 0 && (
+            <DndContext collisionDetection={closestCorners} {...drag}>
+              <div className="-mx-6 flex min-h-0 flex-1 items-start gap-3 overflow-x-auto px-6 md:-mx-8 md:px-8">
+                {columns.map(({ column, cards }) => (
+                  <BoardColumn
+                    key={column.key}
+                    column={column}
+                    cards={cards}
+                    onOpenCard={openCard}
+                    autoExpandAdd={isEmpty && column.key === "backlog"}
+                    isRenaming={editor.renamingKey === column.key}
+                    onRename={(name) => editor.rename(column.key, name)}
+                    onCancelRename={() => editor.cancelRename(column.key)}
+                    onDismissRename={editor.dismissRename}
+                    menuRef={editor.menuRef(column.key)}
+                    menu={
+                      <ColumnMenu
+                        column={column}
+                        canAddColumn={editor.canAddColumn}
+                        onRename={() => editor.startRename(column.key)}
+                        onAddAfter={() => editor.addColumnAfter(column.key)}
+                        onDelete={() => editor.askDelete(column)}
+                      />
+                    }
+                    footer={
+                      boardContext.isDefault &&
+                      column.key === "done" && (
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={toggleOlder}
+                          className="self-center text-zinc-500"
+                        >
+                          {includeOlder ? "Hide older" : "Show older"}
+                        </Button>
+                      )
+                    }
+                  />
+                ))}
+                {editor.canAddColumn && (
+                  <AddColumnButton onAdd={editor.addColumn} />
+                )}
+              </div>
+              <DragOverlay>
+                {draggingCard && (
+                  <TaskCard card={draggingCard} onOpen={openCard} isOverlay />
+                )}
+              </DragOverlay>
+            </DndContext>
+          )}
+        </div>
+        {editor.pendingDelete && (
+          <DeleteColumnDialog
+            column={editor.pendingDelete}
+            onConfirm={editor.confirmDelete}
+            onCancel={editor.cancelDelete}
           />
         )}
-        {columns.length > 0 && (
-          <DndContext collisionDetection={closestCorners} {...drag}>
-            <div className="-mx-6 flex min-h-0 flex-1 items-start gap-3 overflow-x-auto px-6 md:-mx-8 md:px-8">
-              {columns.map(({ column, cards }) => (
-                <BoardColumn
-                  key={column.key}
-                  column={column}
-                  cards={cards}
-                  onOpenCard={openCard}
-                  autoExpandAdd={isEmpty && column.key === "backlog"}
-                  isRenaming={editor.renamingKey === column.key}
-                  onRename={(name) => editor.rename(column.key, name)}
-                  onCancelRename={() => editor.cancelRename(column.key)}
-                  onDismissRename={editor.dismissRename}
-                  menuRef={editor.menuRef(column.key)}
-                  menu={
-                    <ColumnMenu
-                      column={column}
-                      canAddColumn={editor.canAddColumn}
-                      onRename={() => editor.startRename(column.key)}
-                      onAddAfter={() => editor.addColumnAfter(column.key)}
-                      onDelete={() => editor.askDelete(column)}
-                    />
-                  }
-                  footer={
-                    column.key === "done" && (
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        onClick={toggleOlder}
-                        className="self-center text-zinc-500"
-                      >
-                        {includeOlder ? "Hide older" : "Show older"}
-                      </Button>
-                    )
-                  }
-                />
-              ))}
-              {editor.canAddColumn && (
-                <AddColumnButton onAdd={editor.addColumn} />
-              )}
-            </div>
-            <DragOverlay>
-              {draggingCard && (
-                <TaskCard card={draggingCard} onOpen={openCard} isOverlay />
-              )}
-            </DragOverlay>
-          </DndContext>
+        {panel && (
+          <TaskPanel
+            key={panel.sessionId}
+            card={panel.card}
+            sessionId={panel.sessionId}
+            columns={panel.columns}
+            onClose={closePanel}
+            onReassign={startReassign}
+          />
         )}
+        <ReassignDialog
+          key={`reassign-${reassignTarget?.id}`}
+          card={reassignTarget}
+          onClose={closeReassign}
+          onReassigned={openReassigned}
+        />
       </div>
-      {editor.pendingDelete && (
-        <DeleteColumnDialog
-          column={editor.pendingDelete}
-          onConfirm={editor.confirmDelete}
-          onCancel={editor.cancelDelete}
-        />
-      )}
-      {panel && (
-        <TaskPanel
-          key={panel.sessionId}
-          card={panel.card}
-          sessionId={panel.sessionId}
-          columns={panel.columns}
-          onClose={closePanel}
-          onReassign={startReassign}
-        />
-      )}
-      <ReassignDialog
-        key={`reassign-${reassignTarget?.id}`}
-        card={reassignTarget}
-        onClose={closeReassign}
-        onReassigned={openReassigned}
-      />
-    </div>
+    </BoardProvider>
   );
 }

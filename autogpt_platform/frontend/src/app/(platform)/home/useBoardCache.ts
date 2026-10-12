@@ -1,24 +1,25 @@
 import type { getV2GetBoardResponse } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { BoardResponse } from "@/app/api/__generated__/models/boardResponse";
 import { type QueryKey, useQueryClient } from "@tanstack/react-query";
-import { BOARD_MUTATION_KEY, BOARD_QUERY_KEY } from "./board-helpers";
+import { BOARD_MUTATION_KEY, boardScopeKey } from "./board-helpers";
 
 export type BoardSnapshot = [QueryKey, getV2GetBoardResponse | undefined][];
 
-export function useBoardCache() {
+// Every read and write stays inside one board's cache entries, so a change
+// on one board never touches another board's cached cards.
+export function useBoardCache(boardRef: string) {
   const queryClient = useQueryClient();
+  const queryKey = boardScopeKey(boardRef);
 
   async function applyOptimistic(
     transform: (data: BoardResponse) => BoardResponse,
   ): Promise<BoardSnapshot> {
-    await queryClient.cancelQueries({ queryKey: BOARD_QUERY_KEY });
+    await queryClient.cancelQueries({ queryKey });
     const snapshot = queryClient.getQueriesData<getV2GetBoardResponse>({
-      queryKey: BOARD_QUERY_KEY,
+      queryKey,
     });
-    queryClient.setQueriesData<getV2GetBoardResponse>(
-      { queryKey: BOARD_QUERY_KEY },
-      (old) =>
-        old?.status === 200 ? { ...old, data: transform(old.data) } : old,
+    queryClient.setQueriesData<getV2GetBoardResponse>({ queryKey }, (old) =>
+      old?.status === 200 ? { ...old, data: transform(old.data) } : old,
     );
     return snapshot;
   }
@@ -30,7 +31,7 @@ export function useBoardCache() {
   }
 
   function invalidateBoard() {
-    return queryClient.invalidateQueries({ queryKey: BOARD_QUERY_KEY });
+    return queryClient.invalidateQueries({ queryKey });
   }
 
   // Called from onSettled, where the settling mutation still counts: while

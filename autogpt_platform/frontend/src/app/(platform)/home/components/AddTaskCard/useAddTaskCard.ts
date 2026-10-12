@@ -8,6 +8,7 @@ import {
   parseMention,
   refusalReason,
 } from "../../board-helpers";
+import { useBoardRef } from "../../BoardContext";
 import { useBoardCache } from "../../useBoardCache";
 
 interface Args {
@@ -22,7 +23,8 @@ export function useAddTaskCard({ columnKey, autoExpand }: Args) {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   const { isExpertsEnabled } = useExpertMap();
-  const { settleBoard } = useBoardCache();
+  const { boardRef, isDefault } = useBoardRef();
+  const { settleBoard } = useBoardCache(boardRef);
 
   const { mutate: createTask, isPending } = usePostV2CreateSession({
     mutation: {
@@ -74,7 +76,12 @@ export function useAddTaskCard({ columnKey, autoExpand }: Args) {
     const trimmed = title.trim();
     if (!trimmed || isPending) return;
     createTask({
-      data: { title: trimmed, board_column: columnKey, expert_id: expertId },
+      data: {
+        title: trimmed,
+        board_column: columnKey,
+        expert_id: expertId,
+        board_id: isDefault ? undefined : boardRef,
+      },
     });
   }
 

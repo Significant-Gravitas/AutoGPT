@@ -55,6 +55,13 @@ vi.mock("next/navigation", async (importOriginal) => {
   };
 });
 
+const HOME_BOARD = {
+  id: "home-id",
+  name: "Home",
+  is_default: true,
+  position: 0,
+};
+
 const NOW = new Date().toISOString();
 
 const COLUMNS: BoardResponse["columns"] = [
@@ -79,6 +86,7 @@ function card(
 }
 
 const BOARD: BoardResponse = {
+  board: HOME_BOARD,
   columns: COLUMNS,
   sessions: [
     card("s-draft", {
@@ -133,7 +141,7 @@ function serveBoard(board: BoardResponse) {
 function renderBoard(onUrlUpdate?: (event: UrlUpdateEvent) => void) {
   return render(
     <NuqsTestingAdapter onUrlUpdate={onUrlUpdate}>
-      <TaskBoardPage />
+      <TaskBoardPage boardRef="default" />
     </NuqsTestingAdapter>,
   );
 }
@@ -227,6 +235,8 @@ describe("task board", () => {
       board_column: "backlog",
       expert_id: null,
     });
+    expect(createBodies[0]).not.toHaveProperty("board_id");
+    expect(boardRequests[0].pathname).toMatch(/\/api\/chat\/boards\/default$/);
     await waitFor(() =>
       expect(boardRequests.length).toBeGreaterThan(requestsBefore),
     );
@@ -352,7 +362,7 @@ describe("task board", () => {
   });
 
   test("an empty board focuses the Backlog input", async () => {
-    serveBoard({ columns: COLUMNS, sessions: [] });
+    serveBoard({ board: HOME_BOARD, columns: COLUMNS, sessions: [] });
     renderBoard();
 
     const backlog = await findColumn("Backlog");
@@ -430,7 +440,7 @@ describe("task board", () => {
 
   test("shows an error with a retry when the board fails to load", async () => {
     server.use(
-      http.get("*/api/chat/board", () =>
+      http.get("*/api/chat/boards/:boardId", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );

@@ -16,8 +16,8 @@ function wasStarted(snapshot: BoardSnapshot | undefined, cardId: string) {
   );
 }
 
-export function useMoveCard() {
-  const { applyOptimistic, rollback, settleBoard } = useBoardCache();
+export function useMoveCard(boardRef: string) {
+  const { applyOptimistic, rollback, settleBoard } = useBoardCache(boardRef);
 
   const { mutate } = usePatchV2UpdateSessionBoard({
     mutation: {

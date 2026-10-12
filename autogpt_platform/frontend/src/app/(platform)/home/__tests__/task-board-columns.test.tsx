@@ -53,6 +53,13 @@ vi.mock("next/navigation", async (importOriginal) => {
   };
 });
 
+const HOME_BOARD = {
+  id: "home-id",
+  name: "Home",
+  is_default: true,
+  position: 0,
+};
+
 const NOW = new Date().toISOString();
 const REVIEW_KEY = "col_4b9e2f0a-1c3d-4e5f-8a7b-6c5d4e3f2a1b";
 
@@ -97,7 +104,7 @@ let stored: BoardResponse;
 let putBodies: { columns: BoardColumn[] }[] = [];
 
 function serveBoard(columns: BoardColumn[]) {
-  stored = { columns, sessions: SESSIONS };
+  stored = { board: HOME_BOARD, columns, sessions: SESSIONS };
   server.use(
     getGetV2GetBoardMockHandler(() => stored),
     getPutV2UpdateBoardColumnsMockHandler(async ({ request }) => {
@@ -112,7 +119,7 @@ function serveBoard(columns: BoardColumn[]) {
 function renderBoard() {
   return render(
     <NuqsTestingAdapter>
-      <TaskBoardPage />
+      <TaskBoardPage boardRef="default" />
     </NuqsTestingAdapter>,
   );
 }
@@ -340,7 +347,7 @@ describe("board columns", () => {
   test("a failed save puts the columns back and says so", async () => {
     serveBoard(BUILTINS);
     server.use(
-      http.put("*/api/chat/board/columns", () =>
+      http.put("*/api/chat/boards/:boardId/columns", () =>
         HttpResponse.json({ detail: "boom" }, { status: 422 }),
       ),
     );

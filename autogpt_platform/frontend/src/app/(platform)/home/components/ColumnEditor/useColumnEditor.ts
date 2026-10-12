@@ -10,8 +10,8 @@ import {
 } from "../../board-helpers";
 import { useBoardCache } from "../../useBoardCache";
 
-export function useColumnEditor(columns: BoardColumn[]) {
-  const { applyOptimistic, rollback, settleBoard } = useBoardCache();
+export function useColumnEditor(boardRef: string, columns: BoardColumn[]) {
+  const { applyOptimistic, rollback, settleBoard } = useBoardCache(boardRef);
   const [renamingKey, setRenamingKey] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<BoardColumn | null>(null);
   // The column whose actions button takes focus once it is on screen again.
@@ -31,7 +31,7 @@ export function useColumnEditor(columns: BoardColumn[]) {
   });
 
   function save(next: BoardColumn[]) {
-    saveColumns({ data: { columns: next } });
+    saveColumns({ boardId: boardRef, data: { columns: next } });
   }
 
   function finishRename(key: string) {

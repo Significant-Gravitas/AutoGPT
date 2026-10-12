@@ -8,7 +8,7 @@ interface Props {
   href: string;
 }
 
-export function RedirectToChat({ href }: Props) {
+export function Redirect({ href }: Props) {
   const router = useRouter();
 
   useMountEffect(() => {

@@ -8,6 +8,7 @@ import {
   BOARD_MUTATION_KEY,
   type Card,
 } from "../../board-helpers";
+import { useBoardRef } from "../../BoardContext";
 import { useBoardCache } from "../../useBoardCache";
 import { assigneeOptions } from "../AssigneePicker/helpers";
 import { reassignErrorToast } from "./helpers";
@@ -20,7 +21,8 @@ interface Args {
 
 export function useReassignDialog({ card, onClose, onReassigned }: Args) {
   const { activeExperts } = useExpertMap();
-  const { applyOptimistic, settleBoard } = useBoardCache();
+  const { boardRef } = useBoardRef();
+  const { applyOptimistic, settleBoard } = useBoardCache(boardRef);
   const [selected, setSelected] = useState<RecipientOption | null>(null);
 
   const { mutate, isPending } = usePostV2ReassignSession({

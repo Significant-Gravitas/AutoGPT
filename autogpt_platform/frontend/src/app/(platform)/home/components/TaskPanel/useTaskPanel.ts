@@ -18,6 +18,7 @@ import {
   patchCard,
   refusalReason,
 } from "../../board-helpers";
+import { useBoardRef } from "../../BoardContext";
 import { useBoardCache } from "../../useBoardCache";
 import { useMoveCard } from "../../useMoveCard";
 
@@ -35,7 +36,8 @@ const EDITABLE_SELECTOR = "input, textarea, [contenteditable='true']";
 
 export function useTaskPanel({ card, sessionId, columns }: Args) {
   const queryClient = useQueryClient();
-  const { applyOptimistic, rollback, settleBoard } = useBoardCache();
+  const { boardRef } = useBoardRef();
+  const { applyOptimistic, rollback, settleBoard } = useBoardCache(boardRef);
   const [startedLocally, setStartedLocally] = useState(false);
   const { showExpanded: isContextOpen } = useContextPanel();
   const [renamedTitle, setRenamedTitle] = useState<string | null>(null);
@@ -47,7 +49,7 @@ export function useTaskPanel({ card, sessionId, columns }: Args) {
     },
   });
 
-  const { move } = useMoveCard();
+  const { move } = useMoveCard(boardRef);
 
   const { mutate: assignTask } = usePatchV2UpdateSessionExpert({
     mutation: {

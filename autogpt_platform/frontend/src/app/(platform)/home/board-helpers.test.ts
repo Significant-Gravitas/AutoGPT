@@ -1,8 +1,12 @@
 import type { BoardColumn } from "@/app/api/__generated__/models/boardColumn";
+import type { BoardSummary } from "@/app/api/__generated__/models/boardSummary";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { describe, expect, it } from "vitest";
 import {
   applyReassign,
+  boardHref,
+  boardQueryKey,
+  boardScopeKey,
   type Card,
   cardColumnKey,
   cardState,
@@ -10,6 +14,8 @@ import {
   dragLabel,
   dropPosition,
   groupCards,
+  isBoardRef,
+  isNotFoundError,
   isSessionId,
   moveCard,
   moveCardToTop,
@@ -21,11 +27,19 @@ import {
   positionBetween,
   refusalReason,
   resolveDrop,
+  retryUnlessNotFound,
   stateLineText,
 } from "./board-helpers";
 
 const NOW = new Date("2026-10-12T12:00:00Z");
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+const HOME: BoardSummary = {
+  id: "home-id",
+  name: "Home",
+  is_default: true,
+  position: 0,
+};
 
 const COLUMNS: BoardColumn[] = [
   { key: "backlog", name: "Backlog", builtin: true },
@@ -289,6 +303,7 @@ describe("cardColumnKey", () => {
 
 describe("patchCard / moveCard", () => {
   const board = {
+    board: HOME,
     columns: COLUMNS,
     sessions: [
       card("a", { board_column: "backlog", board_position: 0 }),
@@ -330,6 +345,7 @@ describe("patchCard / moveCard", () => {
 describe("moveCardToTop", () => {
   it("goes above the column's first placed card", () => {
     const board = {
+      board: HOME,
       columns: COLUMNS,
       sessions: [
         card("a", { board_column: "backlog", board_position: 0 }),
@@ -350,7 +366,7 @@ describe("moveCardToTop", () => {
   });
 
   it("lands at 0 in a column with no placed cards", () => {
-    const board = { columns: COLUMNS, sessions: [card("a")] };
+    const board = { board: HOME, columns: COLUMNS, sessions: [card("a")] };
     expect(moveCardToTop(board, "a", "done").sessions[0]).toMatchObject({
       board_column: "done",
       board_position: 0,
@@ -359,6 +375,7 @@ describe("moveCardToTop", () => {
 
   it("ignores the moving card's own position", () => {
     const board = {
+      board: HOME,
       columns: COLUMNS,
       sessions: [
         card("a", { board_column: "done", board_position: 3 }),
@@ -373,6 +390,7 @@ describe("moveCardToTop", () => {
 
 describe("applyReassign", () => {
   const board = {
+    board: HOME,
     columns: COLUMNS,
     sessions: [
       card("a", { board_column: "in_progress", board_position: 0 }),
@@ -425,6 +443,51 @@ describe("isSessionId", () => {
       false,
     );
     expect(isSessionId("s1")).toBe(false);
+  });
+});
+
+describe("board keys and links", () => {
+  it("keeps each board's cache entries apart", () => {
+    expect(boardQueryKey("default", {})).not.toEqual(boardQueryKey("b1", {}));
+    expect(boardScopeKey("default")).not.toEqual(boardScopeKey("b1"));
+  });
+
+  it("scopes a board query under that board's scope key", () => {
+    const scope = boardScopeKey("b1");
+    const key = boardQueryKey("b1", { include_older: true });
+    expect(key.slice(0, scope.length)).toEqual([...scope]);
+  });
+
+  it("links Home and projects, with an optional session", () => {
+    expect(boardHref(null)).toBe("/home");
+    expect(boardHref(null, "s1")).toBe("/home?sessionId=s1");
+    expect(boardHref("b1")).toBe("/boards/b1");
+    expect(boardHref("b1", "s1")).toBe("/boards/b1?sessionId=s1");
+  });
+
+  it("accepts only default or a UUID as a board ref", () => {
+    expect(isBoardRef("default")).toBe(true);
+    expect(isBoardRef("3f2b8c1e-9a4d-4e6f-8b7a-1c2d3e4f5a6b")).toBe(true);
+    expect(isBoardRef("../x")).toBe(false);
+    expect(isBoardRef("")).toBe(false);
+  });
+});
+
+describe("retryUnlessNotFound", () => {
+  const notFound = new ApiError("Not found", 404, null);
+  const serverError = new ApiError("Boom", 500, null);
+
+  it("never retries a missing board", () => {
+    expect(isNotFoundError(notFound)).toBe(true);
+    expect(retryUnlessNotFound(undefined)(0, notFound)).toBe(false);
+  });
+
+  it("follows the client's retry setting for other errors", () => {
+    expect(retryUnlessNotFound(undefined)(2, serverError)).toBe(true);
+    expect(retryUnlessNotFound(undefined)(3, serverError)).toBe(false);
+    expect(retryUnlessNotFound(false)(0, serverError)).toBe(false);
+    expect(retryUnlessNotFound(1)(0, serverError)).toBe(true);
+    expect(retryUnlessNotFound(1)(1, serverError)).toBe(false);
   });
 });
 
