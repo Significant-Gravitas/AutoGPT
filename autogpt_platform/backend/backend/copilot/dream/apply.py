@@ -19,6 +19,7 @@ guard at the top of ``apply_operations``.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid as uuidlib
 from collections.abc import Mapping
@@ -47,7 +48,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .batch_submit import read_input_bundle
 from .fetch import DREAM_EPISODE_NAME_PREFIX
-from .locks import DreamLockHandle, DreamLockLostError
+from .locks import LOCK_CHECK_TIMEOUT_SECONDS, DreamLockHandle, DreamLockLostError
 from .schemas import (
     ConsolidatedFact,
     DemotionSummary,
@@ -721,7 +722,7 @@ async def apply_operations(
     if lock_handle is not None and (
         completion.registered or ops.demotions or ops.entity_invalidations
     ):
-        if not await lock_handle.extend(LOCK_DRAIN_RENEWAL_SECONDS):
+        if not await _renewed_for_the_tail(lock_handle, pass_id):
             raise DreamLockLostError(user_id)
 
     # Drain the in-process ingestion queue before anything downstream
@@ -786,3 +787,23 @@ async def apply_operations(
         "ingestion_drain_status": ingestion_drain_status,
         "snapshot": snapshot,
     }
+
+
+async def _renewed_for_the_tail(lock_handle: DreamLockHandle, pass_id: str) -> bool:
+    """Renew the lock for the drain and the writes after it. A renewal Redis
+    does not answer within ``LOCK_CHECK_TIMEOUT_SECONDS`` fails closed, as
+    the lease renewals that admit apply do: ownership unknown is not
+    ownership."""
+    try:
+        return await asyncio.wait_for(
+            lock_handle.extend(LOCK_DRAIN_RENEWAL_SECONDS),
+            timeout=LOCK_CHECK_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        logger.warning(
+            "Dream pass %s: the lock renewal before the drain did not answer "
+            "within %ss; stopping before the destructive tail",
+            pass_id,
+            LOCK_CHECK_TIMEOUT_SECONDS,
+        )
+        return False

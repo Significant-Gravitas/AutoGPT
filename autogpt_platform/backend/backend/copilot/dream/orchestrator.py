@@ -139,7 +139,7 @@ SANITIZE_MAX_TOKENS = 16384
 #   = 1740s <= 1800s SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS  (60s slack)
 #
 # The pass's own bounded round trips to its record, its guard and its lock
-# come on top: DREAM_STORE_IO_SECONDS, 177s should every one of them run to
+# come on top: DREAM_STORE_IO_SECONDS, 179s should every one of them run to
 # its deadline (a stalled DatabaseManager or Redis). Then a pass whose phases
 # also run to their ceilings outlasts the scheduler's wait. That wait is not
 # a kill: ``run_async`` stops waiting and leaves the pass running, and its
@@ -149,7 +149,7 @@ SANITIZE_MAX_TOKENS = 16384
 # The drain no longer counts against the lock TTL: apply renews the dream
 # lock to a fresh budget right before the drain (see
 # apply.LOCK_DRAIN_RENEWAL_SECONDS), so the lock only has to cover
-# LLM + non-drain headroom + store I/O = 1617s <= 0.9 * DEFAULT_LOCK_TTL_SECONDS
+# LLM + non-drain headroom + store I/O = 1619s <= 0.9 * DEFAULT_LOCK_TTL_SECONDS
 # (1620s), even with every store round trip at its deadline (and a lease
 # renewal before each phase shortens that stretch further), and the drain
 # itself runs under the renewed lock. Both invariants are pinned by
@@ -174,9 +174,10 @@ DREAM_NON_LLM_HEADROOM_SECONDS = 120
 # phase's output, the APPLYING write, apply's admission (a stop check and a
 # lease write), and the outcome. Lock round trips: the lease extend before
 # each phase, apply's admission (a lock read and an extend), and apply's own
-# renewal before its first write. Plus the guard's whole budget.
+# renewals, before its first write and before its drain. Plus the guard's
+# whole budget.
 _RECORD_ROUND_TRIPS = 2 + 3 * 3 + 1 + 2 + 1
-_LOCK_ROUND_TRIPS = 3 + 2 + 1
+_LOCK_ROUND_TRIPS = 3 + 2 + 2
 DREAM_STORE_IO_SECONDS = (
     GUARD_BUDGET_SECONDS
     + _RECORD_ROUND_TRIPS * RECORD_WRITE_TIMEOUT_SECONDS
