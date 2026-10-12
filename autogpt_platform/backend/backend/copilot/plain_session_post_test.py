@@ -147,14 +147,16 @@ async def test_concurrent_deliveries_create_one_chat_without_orphans(
     )
     message_actions = ChatMessage.prisma()
     real_find_unique = message_actions.find_unique
-    barrier = asyncio.Barrier(2)
+    both_prechecks_arrived = asyncio.Event()
     arrivals = 0
 
     async def race_precheck(**kwargs):
         nonlocal arrivals
         arrivals += 1
         if arrivals <= 2:
-            await asyncio.wait_for(barrier.wait(), timeout=10)
+            if arrivals == 2:
+                both_prechecks_arrived.set()
+            await asyncio.wait_for(both_prechecks_arrived.wait(), timeout=10)
             return None
         return await real_find_unique(**kwargs)
 
