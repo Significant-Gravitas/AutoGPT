@@ -355,6 +355,57 @@ describe("copilot stream — one live stream per chat", () => {
   );
 
   it(
+    "a send stuck in its auth lookup past the watchdog is still sent, once",
+    { timeout: 20000 },
+    async () => {
+      // The watchdog's reconnect replaces the send while it waits on its
+      // headers; nothing was posted, so its GET finds no turn (204). The send
+      // must not vanish with it.
+      vi.useFakeTimers({
+        toFake: [
+          "setTimeout",
+          "clearTimeout",
+          "setInterval",
+          "clearInterval",
+          "Date",
+        ],
+        shouldAdvanceTime: true,
+      });
+      let posts = 0;
+      let resumes = 0;
+      server.use(
+        http.post(STREAM_URL, ({ request }) => {
+          posts += 1;
+          return liveTurn({ text: "Sent after all.", signal: request.signal });
+        }),
+        http.get(STREAM_URL, () => {
+          resumes += 1;
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      renderHost({ sessionResponse: liveSession(() => null) });
+      await waitForInputReady();
+      const auth = hold();
+      authGate.held = auth.released;
+
+      await typeAndSend("count");
+      await act(() => vi.advanceTimersByTimeAsync(61_000));
+      await act(() => vi.advanceTimersByTimeAsync(1_500));
+
+      await screen.findByText(/Sent after all\./, undefined, {
+        timeout: 5000,
+      });
+      auth.release();
+      await act(() => vi.advanceTimersByTimeAsync(2_000));
+
+      expect(resumes).toBe(1);
+      expect(posts).toBe(1);
+      expect(screen.getAllByText("count")).toHaveLength(1);
+      expect(sdkCleanupCrashes()).toEqual([]);
+    },
+  );
+
+  it(
     "heartbeats keep a quiet stream alive past the stall watchdog",
     { timeout: 20000 },
     async () => {

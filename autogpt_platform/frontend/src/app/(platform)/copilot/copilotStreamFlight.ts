@@ -6,8 +6,15 @@
  */
 export const STREAM_STALL_TIMEOUT_MS = 60_000;
 
-/** Bound on waiting for an aborted request to clean up before replacing it. */
-const SETTLE_TIMEOUT_MS = 5_000;
+/**
+ * Bound on waiting for an aborted request to clean up before replacing it.
+ * An aborted request ends within a tick (its body read and its auth wait
+ * both fail with the abort), so this only guards against a hang.
+ */
+const SETTLE_TIMEOUT_MS = 30_000;
+
+/** A send aborted before it reached the network is retried this many times. */
+export const SEND_ATTEMPTS = 3;
 
 /**
  * "attach" picks up a turn the chat may not be streaming yet (page load, tab
@@ -29,6 +36,10 @@ type StartMode = ResumeReason | "wait";
  */
 export interface StreamFlight {
   request: Promise<unknown> | null;
+  /** The live request's ticket. */
+  ticket: RequestTicket | null;
+  /** Counts Stops: a start queued before one never runs. */
+  stops: number;
   /** Request starts in order: each waits for the one before it to start. */
   queue: Promise<void>;
   /** A resume is queued and has not started yet. */
@@ -40,9 +51,19 @@ export interface StreamFlight {
   abortController: AbortController | null;
 }
 
+/** One started request: whether it reached the network, and whether the
+ *  flight aborted it (a replacement or Stop). */
+export interface RequestTicket {
+  generation: number;
+  sent: boolean;
+  aborted: boolean;
+}
+
 export function createStreamFlight(): StreamFlight {
   return {
     request: null,
+    ticket: null,
+    stops: 0,
     queue: Promise.resolve(),
     resumeQueued: false,
     generation: 0,
@@ -111,51 +132,120 @@ export function trackStreamFetch(
  *   replaces a quiet one (a page-load or wake resume).
  * - `wait` waits for the live request to finish, outside the queue so a
  *   resume replacing a dead stream is never stuck behind it (a send).
- * `ready` runs at the start's turn, before anything is aborted; false stands
- * down. `start` gets the request's generation, which the request must carry
- * as `flightGeneration` in its SDK request metadata. Resolves when the
- * started request ends.
+ * It stands down if Stop lands after the call, or `ready` turns false; both
+ * are checked before anything is aborted and again right before starting.
+ * `start` gets the request's ticket, whose generation the request must carry
+ * as `flightGeneration` in its SDK request metadata. Resolves, once the
+ * started request has ended, with its ticket, or null if nothing started.
  */
-export async function startRequest<T>(
+export async function startRequest(
   flight: StreamFlight,
-  start: (generation: number) => Promise<T> | undefined,
+  start: (ticket: RequestTicket) => Promise<unknown> | undefined,
   { mode, ready = () => true }: { mode: StartMode; ready?: () => boolean },
-) {
+): Promise<RequestTicket | null> {
+  const stops = flight.stops;
+  // `ready` first: a caller may clear its own queued flag in it.
+  const canStart = () => ready() && flight.stops === stops;
   for (;;) {
     if (mode === "wait") await flight.request?.catch(() => {});
     const started = flight.queue.then(async () => {
-      if (!ready()) return { request: undefined };
-      if (mode === "wait" && flight.request) return { retry: true as const };
-      if (mode === "attach" && hasHealthyStream(flight)) {
-        return { request: undefined };
-      }
+      if (!canStart()) return null;
+      if (mode === "wait" && flight.request) return "retry" as const;
+      if (mode === "attach" && hasHealthyStream(flight)) return null;
       await endLiveRequest(flight);
+      // Stop or an unmount can land while the live request cleans up.
+      if (!canStart()) return null;
       flight.abortController = new AbortController();
       // A request is alive from its start: until its fetch runs (after the
       // auth headers) no byte can arrive, and an attach must not mistake the
       // previous request's last byte for this one going quiet.
       flight.lastActivityAt = Date.now();
-      const request = start(++flight.generation);
-      if (request) trackRequest(flight, request);
-      return { request };
+      const ticket = {
+        generation: ++flight.generation,
+        sent: false,
+        aborted: false,
+      };
+      flight.ticket = ticket;
+      const request = start(ticket);
+      if (!request) {
+        flight.ticket = null;
+        return null;
+      }
+      trackRequest(flight, request);
+      return { ticket, request };
     });
     flight.queue = started.then(
       () => {},
       () => {},
     );
     const outcome = await started;
-    if (!("retry" in outcome)) return outcome.request;
+    if (outcome === "retry") continue;
+    if (!outcome) return null;
+    await outcome.request.catch(() => {});
+    return outcome.ticket;
   }
 }
 
-function trackRequest<T>(flight: StreamFlight, request: Promise<T>) {
+interface SendHooks {
+  /** Push the message and start its SDK request. */
+  send: (ticket: RequestTicket) => Promise<unknown>;
+  /** Take an unsent attempt's bubble back off the screen. */
+  retract: () => void;
+  /** Give the user their text back in the composer. */
+  restoreDraft: () => void;
+  /** Say the message was not sent. */
+  notifyNotSent: () => void;
+  isMounted: () => boolean;
+}
+
+/**
+ * A user's send ends in a POST or a visible failure, never in silence. An
+ * attempt aborted before it reached the network (a reconnect replaced it while
+ * it waited on its auth headers) posted nothing, so it is retried; after
+ * `SEND_ATTEMPTS`, a Stop, or an unmount, the user gets the text back and is
+ * told it was not sent.
+ */
+export async function sendThroughFlight(
+  flight: StreamFlight,
+  hooks: SendHooks,
+): Promise<"sent" | "failed" | "not-sent"> {
+  const stops = flight.stops;
+  const live = () => flight.stops === stops && hooks.isMounted();
+  for (let attempt = 1; ; attempt++) {
+    const ticket = await startRequest(flight, hooks.send, {
+      mode: "wait",
+      ready: live,
+    });
+    if (ticket?.sent) return "sent";
+    if (ticket && !ticket.aborted) {
+      // Failed before the network on its own (auth): the chat shows the
+      // error, and the text goes back in the composer.
+      hooks.restoreDraft();
+      return "failed";
+    }
+    if (ticket) hooks.retract();
+    if (!ticket || attempt >= SEND_ATTEMPTS || !live()) {
+      hooks.restoreDraft();
+      hooks.notifyNotSent();
+      return "not-sent";
+    }
+  }
+}
+
+/** The user's Stop: end the live request, and let no queued start run. */
+export function stopFlight(flight: StreamFlight) {
+  flight.stops += 1;
+  if (flight.request && flight.ticket) flight.ticket.aborted = true;
+  flight.abortController?.abort();
+}
+
+function trackRequest(flight: StreamFlight, request: Promise<unknown>) {
   flight.request = request;
   void request
     .catch(() => {})
     .finally(() => {
       if (flight.request === request) flight.request = null;
     });
-  return request;
 }
 
 /**
@@ -184,13 +274,21 @@ export function untilAborted<T>(flight: StreamFlight, work: Promise<T>) {
  * replacement; failing it as an abort ends it quietly.
  */
 export function assertStillCurrent(flight: StreamFlight, metadata: unknown) {
+  const generation = flightGenerationOf(metadata);
+  if (generation === undefined) return;
+  if (generation !== flight.generation) {
+    throw new DOMException("Replaced before it started", "AbortError");
+  }
+  // Nothing stands between here and the fetch: the request is on the wire.
+  if (flight.ticket?.generation === generation) flight.ticket.sent = true;
+}
+
+function flightGenerationOf(metadata: unknown) {
   const generation =
     typeof metadata === "object" && metadata !== null
       ? (metadata as { flightGeneration?: unknown }).flightGeneration
       : undefined;
-  if (typeof generation === "number" && generation !== flight.generation) {
-    throw new DOMException("Replaced before it started", "AbortError");
-  }
+  return typeof generation === "number" ? generation : undefined;
 }
 
 /** A request is live and has received bytes within the stall window. */
@@ -205,6 +303,7 @@ export function hasHealthyStream(flight: StreamFlight) {
 export async function endLiveRequest(flight: StreamFlight) {
   const live = flight.request;
   if (!live) return;
+  if (flight.ticket) flight.ticket.aborted = true;
   flight.abortController?.abort();
   let timer: ReturnType<typeof setTimeout> | undefined;
   await Promise.race([

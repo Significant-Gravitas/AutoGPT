@@ -17,7 +17,9 @@ import {
 import { handleStreamError } from "./copilotStreamErrorHandlers";
 import {
   hasHealthyStream,
+  sendThroughFlight,
   startRequest,
+  stopFlight,
   type ResumeReason,
 } from "./copilotStreamFlight";
 import { useCopilotStreamStore } from "./copilotStreamStore";
@@ -461,14 +463,16 @@ export function useCopilotStream({
     flight.resumeQueued = true;
     void startRequest(
       flight,
-      (generation) => {
+      (ticket) => {
         if (sessionId) {
           markCopilotChatRuntimeHealthy(sessionId);
         }
         // Whatever asked, the page-load resume must not run this turn again.
         hasResumedRef.current = true;
         trimReplayedTurn();
-        return resumeStream({ metadata: { flightGeneration: generation } });
+        return resumeStream({
+          metadata: { flightGeneration: ticket.generation },
+        });
       },
       {
         mode: reason,
@@ -600,25 +604,57 @@ export function useCopilotStream({
     }
     if (!chatRuntime) return sdkSendMessage(...args);
     // A send beside a live request breaks both (see copilotStreamFlight), so
-    // it waits for the live one to finish.
-    await startRequest(
-      chatRuntime.flight,
-      (generation) => {
-        const [message, options] = args;
+    // it waits for the live one to finish, and ends in a POST or in the user
+    // getting their text back.
+    const { chat } = chatRuntime;
+    const [message, options] = args;
+    let before = new Set<string>();
+    await sendThroughFlight(chatRuntime.flight, {
+      send: (ticket) => {
+        before = new Set(chat.messages.map((m) => m.id));
         return sdkSendMessage(message, {
           ...options,
           metadata: {
             ...(options?.metadata as object | undefined),
-            flightGeneration: generation,
+            flightGeneration: ticket.generation,
           },
         });
       },
-      {
-        mode: "wait",
-        // Stop pressed while the previous request was finishing.
-        ready: () => !isUserStoppingRef.current,
-      },
-    );
+      retract: () =>
+        setMessages((prev) => prev.filter((m) => before.has(m.id))),
+      restoreDraft: () => restoreUnsentDraft(text, kickoffExpertId),
+      notifyNotSent: () =>
+        toast({
+          title: "Message not sent",
+          description:
+            "The connection dropped before it went out. Send it again when you're ready.",
+          variant: "destructive",
+        }),
+      isMounted: () => isMountedRef.current,
+    });
+  }
+
+  // The draft goes back in the composer only when the user has not started
+  // typing another; otherwise it stays in the session's recovery slot. An
+  // expert's kickoff prompt is a control message and never surfaces.
+  function restoreUnsentDraft(text: string, kickoffExpertId: string | null) {
+    if (!sessionId || !text) return;
+    if (kickoffExpertId) {
+      useCopilotStreamStore.getState().updateCoord(sessionId, {
+        lastSubmittedMessageText: null,
+        lastSubmittedKickoffExpertId: null,
+        lastSubmittedKickoffAttemptToken: null,
+      });
+      return;
+    }
+    const composer = document.getElementById(
+      "chat-input",
+    ) as HTMLTextAreaElement | null;
+    if (composer && composer.value.length > 0) return;
+    setInitialPrompt(text);
+    useCopilotStreamStore.getState().updateCoord(sessionId, {
+      lastSubmittedMessageText: null,
+    });
   }
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams.
@@ -704,7 +740,7 @@ export function useCopilotStream({
     sessionId,
     stopStream: sdkStopStream(() => {
       // `sdkStop` cannot end a resume: the SDK gives its fetch no signal.
-      chatRuntime?.flight.abortController?.abort();
+      if (chatRuntime) stopFlight(chatRuntime.flight);
       return sdkStop();
     }, setMessages),
     isUserStoppingRef,

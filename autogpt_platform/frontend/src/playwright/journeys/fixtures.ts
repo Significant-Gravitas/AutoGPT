@@ -1,6 +1,10 @@
 import { PW_FLAG_OVERRIDES_STORAGE_KEY } from "../../services/feature-flags/pw-flag-overrides";
 import { expect, test as base } from "../coverage-fixture";
-import { type ExpectedResponse, watchForUnexpectedErrors } from "./guard";
+import {
+  type ExpectedError,
+  type ExpectedResponse,
+  watchForUnexpectedErrors,
+} from "./guard";
 import hostedFlags from "./hosted-flags.json";
 import { type JourneyUser, provisionJourneyUser } from "./journey-user";
 
@@ -8,8 +12,9 @@ interface JourneyOptions {
   /** API responses of 400 or more this journey provokes on purpose. */
   expectedResponses: ExpectedResponse[];
   /** Page or console errors this journey provokes on purpose, e.g. by
-   *  going offline. Each needs a comment saying why it is expected. */
-  expectedErrors: RegExp[];
+   *  going offline. Each needs a comment saying why it is expected, and a
+   *  `while` scoping it to the window that provokes it where there is one. */
+  expectedErrors: ExpectedError[];
   /** Flag values to change from the hosted defaults; the rest are kept. */
   flagOverrides: Record<string, unknown>;
 }

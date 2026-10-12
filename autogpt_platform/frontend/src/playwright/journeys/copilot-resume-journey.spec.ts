@@ -13,10 +13,13 @@ import { expect, test } from "./fixtures";
 // go quiet for 9 s, long enough for one heartbeat and short of the 10 s
 // silence status.
 
+const blip = { offline: false };
+
 test.use({
-  // Going offline leaves an unrelated effect's fetch rejection unhandled; the
-  // AI SDK's BUILDER-777 TypeError is still caught by the guard.
-  expectedErrors: [/^Failed to fetch$/],
+  // Going offline leaves an unrelated effect's fetch rejection unhandled.
+  // Allowed only around the deliberate blip; the AI SDK's BUILDER-777
+  // TypeError is caught by the guard throughout.
+  expectedErrors: [{ message: /^Failed to fetch$/, while: () => blip.offline }],
 });
 
 const ANSWER = "I counted: 1... 2... 3. All done!";
@@ -52,10 +55,12 @@ test("copilot resume journey: one stream per turn through a network blip, a tab 
   // A network blip mid-turn. The turn still completes, on one stream.
   await openNewChat(copilot);
   await send(page, copilot, BLIP_PROMPT);
+  blip.offline = true;
   await context.setOffline(true);
   await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
   await context.setOffline(false);
   await expect(answers).toHaveCount(1, { timeout: 30_000 });
+  blip.offline = false;
 
   // A tab wake and the stall watchdog while the turn is quiet, on a fake
   // clock from here on.
