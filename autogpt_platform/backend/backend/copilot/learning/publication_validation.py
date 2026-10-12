@@ -41,6 +41,18 @@ def _validate_request(request: PublishRequest) -> PublishOutcome | None:
     return None
 
 
+def _validate_skill_metadata(skill: ParsedSkill) -> PublishOutcome | None:
+    try:
+        validate_skill_content(
+            skill.description, skill.body, skill.triggers, name=skill.name
+        )
+    except ValueError as exc:
+        return PublishOutcome(
+            status="invalid_proposal", reason=safe_diagnostic(str(exc))
+        )
+    return None
+
+
 def _validate_version_content(
     content: str, files: list[SkillVersionFile] | None
 ) -> PublishOutcome | None:

@@ -62,7 +62,11 @@ from .publication_eligibility import require_fresh_eligibility
 from .publication_models import PublishOutcome, PublishRequest
 from .publication_models import PublishStatus as PublishStatus
 from .publication_models import SourceSnapshot as SourceSnapshot
-from .publication_validation import _validate_request, _validate_version_content
+from .publication_validation import (
+    _validate_request,
+    _validate_skill_metadata,
+    _validate_version_content,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -326,6 +330,10 @@ async def _record_untracked_edit(
     current = parse_skill_markdown(raw, fallback_name=request.skill_name)
     if current is None:
         return None
+    current = canonicalize_skill(current)
+    invalid = _validate_skill_metadata(current)
+    if invalid is not None:
+        return invalid
     try:
         await store_user_skill(
             request.user_id,
@@ -346,10 +354,6 @@ async def _record_untracked_edit(
             reason=str(exc),
             pattern_class=exc.failure.pattern_class,
             blocked_step=exc.failure.step,
-        )
-    except ValueError as exc:
-        return PublishOutcome(
-            status="invalid_proposal", reason=safe_diagnostic(str(exc))
         )
     return PublishOutcome(
         status="conflict",

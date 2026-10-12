@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.api.features.store.exceptions import StorageUploadError, VirusScanError
 from backend.copilot.tools.skills import (
     MAX_DESCRIPTION_CHARS,
     MAX_TRIGGERS,
@@ -78,17 +79,27 @@ async def test_invalid_untracked_edit_settles_after_one_review(
     assert len(await fake_store.list_versions(USER, EXPERT, NAME)) == 2
     assert (await _run()).skip_reason == "no_eligible_work"
     boundaries["review"].assert_awaited_once()
-    boundaries["write"].assert_awaited_once()
+    boundaries["write"].assert_not_awaited()
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError("workspace unavailable"),
+        VirusScanError("scanner unavailable"),
+        StorageUploadError("upload unavailable"),
+        ValueError("workspace storage quota exceeded"),
+    ],
+    ids=["io", "scanner", "storage", "quota"],
+)
 async def test_transient_edit_write_failure_keeps_source_retryable(
-    fake_store, adapter, boundaries, monkeypatch
+    fake_store, adapter, boundaries, monkeypatch, error
 ):
     await _seed(fake_store)
     source = await _source(fake_store)
     _review_edit(monkeypatch, boundaries)
-    boundaries["write"].side_effect = OSError("workspace unavailable")
+    boundaries["write"].side_effect = error
     failed = await _run()
     assert failed.dispositions == {"provider_error": 1}
     assert (await fake_store.get_source(USER, source.id)).processed_revision is None
