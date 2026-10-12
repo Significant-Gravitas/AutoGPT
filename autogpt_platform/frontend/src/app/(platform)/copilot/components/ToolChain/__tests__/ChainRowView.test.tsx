@@ -32,7 +32,7 @@ afterEach(() => {
 });
 
 describe("ChainRowView - live sub-session rows", () => {
-  it("auto-opens and shows the pending card for a blocking delegate with no output yet", async () => {
+  it("hangs a skeleton card on the wire for a blocking delegate with no output yet", () => {
     render(
       <ChainRowView
         row={row({
@@ -45,9 +45,9 @@ describe("ChainRowView - live sub-session rows", () => {
       />,
     );
 
-    expect(await screen.findByText("Expert")).toBeDefined();
-    // Delegated cards are status-only — the prompt stays in the teammate's
-    // own thread, not in the parent chain.
+    const node = screen.getByTestId("handoff-loading-node");
+    expect(node.querySelector('[aria-busy="true"]')).not.toBeNull();
+    // The prompt stays in the teammate's own thread, not in the parent chain.
     expect(screen.queryByText("Create a chat app")).toBeNull();
   });
 

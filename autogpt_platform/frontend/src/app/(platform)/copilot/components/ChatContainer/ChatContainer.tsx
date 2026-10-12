@@ -21,6 +21,10 @@ import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/Usag
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
+import { DelegationDock } from "../DelegationDock/DelegationDock";
+import { DelegatedThreadNotice } from "./components/DelegatedThreadNotice/DelegatedThreadNotice";
+import { getOpeningText } from "./components/DelegatedThreadNotice/helpers";
+import { hasRunningTaskList } from "../DelegationDock/helpers";
 import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
 import { useShareChatExpert } from "../ContextPanel/useShareChatExpert";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
@@ -346,7 +350,7 @@ export const ChatContainer = ({
       onSend={guardedOnSend}
       onBackendTurn={onBackendTurn}
     >
-      <PendingAnswerContexts messages={messages}>
+      <PendingAnswerContexts messages={messages} sessionId={sessionId}>
         <LayoutGroup id="copilot-2-chat-layout">
           <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
             {/* The chat column runs full width: the max-w-3xl cap lives on the
@@ -362,6 +366,14 @@ export const ChatContainer = ({
                     expert={chatExpert}
                   />
                 </div>
+                {sessionSentFrom && !archivedExpertIdentity && (
+                  <DelegatedThreadNotice
+                    sentFrom={sessionSentFrom}
+                    sessionId={sessionId}
+                    expert={expertIdentity ?? null}
+                    openingText={getOpeningText(messages)}
+                  />
+                )}
                 <NewChatOnboarding
                   expertId={expertIdentity?.id ?? null}
                   enabled={
@@ -435,6 +447,14 @@ export const ChatContainer = ({
                         />
                       </div>
                     )}
+                    <div className="relative z-10">
+                      <DelegationDock
+                        messages={messages}
+                        hasActiveTaskList={
+                          isTaskBarEnabled && hasRunningTaskList(messages)
+                        }
+                      />
+                    </div>
                     <Tooltip
                       open={Boolean(isLimitReached && isUsageTooltipOpen)}
                       onOpenChange={(open) =>

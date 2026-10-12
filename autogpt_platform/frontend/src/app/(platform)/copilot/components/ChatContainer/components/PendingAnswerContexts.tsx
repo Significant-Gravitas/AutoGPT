@@ -7,9 +7,13 @@ import { getPendingOnboardingCallId } from "../../ExpertOnboardingCard/helpers";
 import { PendingOnboardingContext } from "../../ExpertOnboardingCard/PendingOnboardingContext";
 import { getPendingQuestions } from "../../QuestionDock/helpers";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
+import { getChatDelegations, getSupersededCallIds } from "../../../delegations";
+import { SupersededDelegationsContext } from "../../../supersededDelegationsContext";
+import { ChatSessionContext } from "./ChatSessionContext";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
+  sessionId?: string | null;
   children: React.ReactNode;
 }
 
@@ -17,16 +21,28 @@ interface Props {
  *  dock, the hire's onboarding card and a held call's row each decide from
  *  here whether they are live or already history, rather than from local
  *  state a reload would lose. */
-export function PendingAnswerContexts({ messages, children }: Props) {
+export function PendingAnswerContexts({
+  messages,
+  sessionId = null,
+  children,
+}: Props) {
+  const heldOutcomes = getHeldOutcomes(messages);
+  const superseded = getSupersededCallIds(
+    getChatDelegations(messages, heldOutcomes),
+  );
   return (
-    <PendingQuestionsContext.Provider value={getPendingQuestions(messages)}>
-      <PendingOnboardingContext.Provider
-        value={getPendingOnboardingCallId(messages)}
-      >
-        <HeldOutcomesContext.Provider value={getHeldOutcomes(messages)}>
-          {children}
-        </HeldOutcomesContext.Provider>
-      </PendingOnboardingContext.Provider>
-    </PendingQuestionsContext.Provider>
+    <ChatSessionContext.Provider value={sessionId}>
+      <PendingQuestionsContext.Provider value={getPendingQuestions(messages)}>
+        <PendingOnboardingContext.Provider
+          value={getPendingOnboardingCallId(messages)}
+        >
+          <HeldOutcomesContext.Provider value={heldOutcomes}>
+            <SupersededDelegationsContext.Provider value={superseded}>
+              {children}
+            </SupersededDelegationsContext.Provider>
+          </HeldOutcomesContext.Provider>
+        </PendingOnboardingContext.Provider>
+      </PendingQuestionsContext.Provider>
+    </ChatSessionContext.Provider>
   );
 }

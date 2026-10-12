@@ -18,6 +18,7 @@ import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import { useCopilotPendingChips } from "./useCopilotPendingChips";
 import { useCopilotUIStore } from "./store";
+import { useChatPrefillParam } from "./useChatPrefillParam";
 import { useChatSession } from "./useChatSession";
 import {
   buildKickoffMessage,
@@ -124,6 +125,8 @@ export function useCopilotPage({
     kickoffParam,
     setKickoffParam,
   ]);
+
+  useChatPrefillParam();
 
   const { copilotLlmModel, isDryRun, setInitialPrompt } = useCopilotUIStore();
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();

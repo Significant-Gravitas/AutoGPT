@@ -2,6 +2,7 @@ import { postV2CancelSessionTask } from "@/app/api/__generated__/endpoints/chat/
 import { toast } from "@/components/molecules/Toast/use-toast";
 import type { UIMessage } from "ai";
 import { resolveInProgressTools } from "./helpers";
+import { cancelSubSessions, getStoppableSubSessionIds } from "./stopCascade";
 
 /**
  * User-visible marker appended to the last assistant message so the UI
@@ -24,6 +25,9 @@ interface UseCopilotStopArgs {
    *  stop-button UX flips immediately instead of waiting for AI SDK's
    *  ``status`` to transition away from "streaming" on abort. */
   setIsUserStopping: (value: boolean) => void;
+  /** The chat as it stands when Stop is pressed: every teammate still
+   *  working on a hand-off from this turn is stopped along with it. */
+  messages?: UIMessage[];
 }
 
 /**
@@ -32,20 +36,27 @@ interface UseCopilotStopArgs {
  *   2. abort the stream and mark the turn stopped, for instant UI feedback
  *   3. asynchronously tell the backend executor to actually stop the task,
  *      surfacing a toast when the cancel was published but not yet
- *      confirmed (the task should stop shortly) or failed outright.
+ *      confirmed (the task should stop shortly) or failed outright
+ *   5. cancel every teammate sub-session still working on a hand-off this
+ *      turn opened.
  */
 export function useCopilotStop({
   sessionId,
   stopStream,
   isUserStoppingRef,
   setIsUserStopping,
+  messages = [],
 }: UseCopilotStopArgs) {
   async function stop() {
+    const cascade = cancelSubSessions(getStoppableSubSessionIds(messages));
     isUserStoppingRef.current = true;
     setIsUserStopping(true);
     stopStream();
 
-    if (!sessionId) return;
+    if (!sessionId) {
+      await cascade;
+      return;
+    }
     try {
       const res = await postV2CancelSessionTask(sessionId);
       if (
@@ -66,6 +77,7 @@ export function useCopilotStop({
         variant: "destructive",
       });
     }
+    await cascade;
   }
 
   return stop;
