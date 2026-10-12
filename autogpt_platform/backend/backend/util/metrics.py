@@ -9,7 +9,7 @@ from pydantic import SecretStr
 from sentry_sdk._init_implementation import init as _sentry_init
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 from sentry_sdk.api import flush as _sentry_flush
-from sentry_sdk.consts import OP, SPANDATA
+from sentry_sdk.consts import SPANDATA
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST
@@ -25,6 +25,7 @@ from backend.util.settings import BehaveAs, Settings
 from backend.util.url_redaction import (
     REDACTED,
     credentials_in_url,
+    is_credential_header,
     redact_query_string,
     redact_url,
     redact_urls_in_text,
@@ -128,8 +129,9 @@ _TOKEN_SHAPED_VALUE = re.compile(
 )
 _FILTERED_VALUE = "[Filtered]"
 # The HTTP client integrations record each outgoing request's query and
-# fragment as sent, an API key in ``?key=`` included.
-_OUTGOING_QUERY_KEYS = frozenset({SPANDATA.HTTP_QUERY, SPANDATA.HTTP_FRAGMENT})
+# fragment as sent, an API key in ``?key=`` included, and an ASGI scope in a
+# frame's variables holds the raw query of the request.
+_QUERY_KEYS = frozenset({SPANDATA.HTTP_QUERY, SPANDATA.HTTP_FRAGMENT, "query_string"})
 
 
 def _scrub_secrets(value: object, credentials: Collection[str] = ()) -> object:
@@ -139,8 +141,10 @@ def _scrub_secrets(value: object, credentials: Collection[str] = ()) -> object:
         for key, nested in value.items():
             if isinstance(key, str) and key.lower() in _SENTRY_SENSITIVE_KEYS:
                 value[key] = _FILTERED_VALUE
-            elif key in _OUTGOING_QUERY_KEYS and isinstance(nested, str):
+            elif key in _QUERY_KEYS and isinstance(nested, str):
                 value[key] = redact_query_string(nested)
+            elif key == "headers":
+                value[key] = _scrub_secrets(_mask_headers(nested), credentials)
             else:
                 value[key] = _scrub_secrets(nested, credentials)
         return value
@@ -155,6 +159,28 @@ def _scrub_secrets(value: object, credentials: Collection[str] = ()) -> object:
     for credential in credentials:
         value = value.replace(credential, REDACTED)
     return redact_urls_in_text(value)
+
+
+def _mask_headers(headers: object) -> object:
+    """Mask every credential header, whatever it is called: EventScrubber knows
+    a fixed list of names, which misses a webhook provider's secret token such
+    as Telegram's. Headers come as a mapping, or, in an ASGI scope or request
+    among a frame's variables, as name and value pairs, the names reprs of
+    bytes, such as ``["b'cookie'", "b'session=...'"]``."""
+    if isinstance(headers, dict):
+        for name in headers:
+            if isinstance(name, str) and is_credential_header(name):
+                headers[name] = _FILTERED_VALUE
+    elif isinstance(headers, list):
+        for pair in headers:
+            if (
+                isinstance(pair, list)
+                and len(pair) == 2
+                and isinstance(pair[0], str)
+                and is_credential_header(pair[0])
+            ):
+                pair[1] = _FILTERED_VALUE
+    return headers
 
 
 def _scrub_sentry_event(event: dict) -> None:
@@ -335,14 +361,10 @@ def _before_send(event, hint):
 
 def _before_send_transaction(event, hint):
     """Transactions skip ``before_send`` but carry the same request data, and
-    every WebSocket connection is one. Each outgoing HTTP request in one is a
-    span holding its URL and query as sent."""
-    _redact_request_urls(event)
-    for span in event.get("spans") or []:
-        if span.get("op") == OP.HTTP_CLIENT:
-            if isinstance(span.get("description"), str):
-                span["description"] = redact_urls_in_text(span["description"])
-            _scrub_secrets(span.get("data"))
+    every WebSocket connection is one. Their spans record what the request did
+    with its credentials too: each outgoing request's URL and query, and each
+    Redis command's key."""
+    _scrub_sentry_event(event)
     return event
 
 

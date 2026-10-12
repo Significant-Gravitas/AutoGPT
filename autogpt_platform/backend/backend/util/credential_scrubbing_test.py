@@ -22,6 +22,7 @@ from fastapi import FastAPI
 from prisma.models import IntegrationWebhook
 
 from backend.api import rest_api
+from backend.data import redis_client
 from backend.data.model import APIKeyCredentials
 from backend.integrations.webhooks.github import GithubWebhooksManager
 from backend.util import metrics
@@ -38,6 +39,8 @@ REFRESH_TOKEN = "refresh-SECRET678"
 CLIENT_SECRET = "client-SECRET901"
 API_KEY = "AIzaSECRET2345"
 BOT_TOKEN = "123456:SECRET-bot-6789"
+TELEGRAM_SECRET_TOKEN = "telegram-SECRET4567"
+SESSION_COOKIE = "cookie-SECRET8901"
 
 
 async def test_sentry_gets_no_credential_from_a_failing_routes_variables(
@@ -50,13 +53,28 @@ async def test_sentry_gets_no_credential_from_a_failing_routes_variables(
         # No database is connected, so each route raises with the credential
         # in its own variables and in the query it was building.
         shared = await client.get(f"/api/public/shared/{SHARE_TOKEN}")
+        # Telegram signs each delivery with a secret token in a header of its
+        # own, which Sentry's own scrubbing doesn't know; and the ASGI scope
+        # among the frames' variables holds every header, cookies included.
         ingress = await client.post(
-            f"/api/integrations/github/webhooks/{WEBHOOK_ID}/ingress", json={}
+            f"/api/integrations/telegram/webhooks/{WEBHOOK_ID}/ingress",
+            json={},
+            headers={
+                "X-Telegram-Bot-Api-Secret-Token": TELEGRAM_SECRET_TOKEN,
+                "Cookie": f"session={SESSION_COOKIE}",
+            },
         )
     assert (shared.status_code, ingress.status_code) == (500, 500)
 
-    assert SHARE_TOKEN not in sentry.payload
-    assert WEBHOOK_ID not in sentry.payload
+    for credential in (SHARE_TOKEN, WEBHOOK_ID, TELEGRAM_SECRET_TOKEN, SESSION_COOKIE):
+        assert credential not in sentry.payload
+    # Errors and transactions both carry the request's headers.
+    header = "x-telegram-bot-api-secret-token"
+    assert {
+        (event.get("type", "error"), event["request"]["headers"][header])
+        for event in sentry.events
+        if header in (event.get("request") or {}).get("headers", {})
+    } == {("error", "[Filtered]"), ("transaction", "[Filtered]")}
     # The frames are still sent, with the credentials masked.
     route_variables = {
         frame["function"]: frame.get("vars", {})
@@ -148,16 +166,25 @@ async def test_webhook_ingress_logs_its_webhook_ids_only_by_prefix(
         "verify_signature",
         AsyncMock(side_effect=RuntimeError("malformed signature")),
     )
+    # A delivery that gets through is published on a channel of its webhook's,
+    # which the event bus logs when Redis is down.
+    monkeypatch.setattr(
+        redis_client,
+        "get_redis_async",
+        AsyncMock(side_effect=ConnectionError("Redis is down")),
+    )
     async with (
         serve(rest_api.AgentServer(), monkeypatch) as host,
         httpx.AsyncClient(base_url=f"http://{host}") as client,
     ):
-        responses = [
-            (
-                await client.post(f"/api/integrations/github/webhooks/{id}/ingress")
-            ).json()
+        rejected = [
+            await client.post(f"/api/integrations/github/webhooks/{id}/ingress")
             for id in (UNKNOWN_WEBHOOK_ID, COMPASS_WEBHOOK_ID, WEBHOOK_ID)
         ]
+        delivered = await client.post(
+            f"/api/integrations/compass/webhooks/{COMPASS_WEBHOOK_ID}/ingress",
+            json={"transcript": "hello"},
+        )
 
     logs = service_output.getvalue()
     for credential in (UNKNOWN_WEBHOOK_ID, COMPASS_WEBHOOK_ID, WEBHOOK_ID):
@@ -165,17 +192,20 @@ async def test_webhook_ingress_logs_its_webhook_ids_only_by_prefix(
         assert credential not in sentry.payload
     assert SIGNING_SECRET not in logs
     # A webhook registered for another provider reads as one that doesn't exist.
-    assert responses == [
+    assert [response.json() for response in rejected] == [
         {"detail": f"Webhook #{UNKNOWN_WEBHOOK_ID[:8]}... not found"},
         {"detail": f"Webhook #{COMPASS_WEBHOOK_ID[:8]}... not found"},
         {"detail": "Invalid webhook signature"},
     ]
+    assert delivered.status_code == 200
     for line in (
         f"Received github webhook ingress for ID {WEBHOOK_ID[:8]}...",
         f"unknown webhook #{UNKNOWN_WEBHOOK_ID[:8]}...",
         f"Webhook #{COMPASS_WEBHOOK_ID[:8]}... provider mismatch",
         f"Webhook #{WEBHOOK_ID[:8]}...: {{'user_id': 'user-1', 'provider'",
         f"Signature verification failed for webhook #{WEBHOOK_ID[:8]}... (github)",
+        "Failed to publish event to Redis channel ",
+        f"Published transcription event for webhook #{COMPASS_WEBHOOK_ID[:8]}...",
     ):
         assert line in logs
 
@@ -257,10 +287,25 @@ def test_no_part_of_an_error_event_keeps_a_credential_from_its_request_url(
             },
             "breadcrumbs": {"values": [{"message": rng.choice(holders[1:3])}]},
         }
-        scrubbed = metrics._before_send(event, {})
-        assert scrubbed is not None
-        assert secret not in json.dumps(scrubbed), (host, path, query)
-        assert scrubbed["transaction"] == route.replace("{}", "{share_token}")
+        transaction = {
+            "type": "transaction",
+            "request": dict(event["request"]),
+            "transaction": event["transaction"],
+            "transaction_info": event["transaction_info"],
+            # A Redis command names its key, such as a channel named for a
+            # credential, and an outgoing request records its URL.
+            "spans": [
+                {"op": "db.redis", "description": f"SPUBLISH {rng.choice(holders)!r}"},
+                {"op": "http.client", "data": {"url": rng.choice(holders)}},
+            ],
+        }
+        for scrubbed in (
+            metrics._before_send(event, {}),
+            metrics._before_send_transaction(transaction, {}),
+        ):
+            assert scrubbed is not None
+            assert secret not in json.dumps(scrubbed), (host, path, query)
+            assert scrubbed["transaction"] == route.replace("{}", "{share_token}")
 
 
 _URL_SAFE = string.ascii_letters + string.digits + "-_"

@@ -182,6 +182,13 @@ def test_mask_credential_keeps_only_a_prefix_of_a_long_one() -> None:
     assert mask_credential("short-secret") == REDACTED
 
 
+def test_credential_header_filter_passes_any_record() -> None:
+    """A filter that raises fails the logging call, so any message passes."""
+    for msg in ({"event": "x"}, ["x"], None, 42, "%s %s"):
+        record = logging.makeLogRecord({"msg": msg, "args": ("a", "b")})
+        assert CredentialHeaderFilter().filter(record)
+
+
 @pytest.mark.parametrize(
     "name, masked",
     [

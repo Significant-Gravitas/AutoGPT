@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from typing import Literal, Optional, overload
 
@@ -408,7 +409,7 @@ _webhook_event_bus = WebhookEventBus()
 
 async def publish_webhook_event(event: WebhookEvent):
     await _webhook_event_bus.publish_event(
-        event, f"{event.webhook_id}/{event.event_type}"
+        event, _webhook_channel_key(event.webhook_id, event.event_type)
     )
 
 
@@ -417,5 +418,11 @@ async def wait_for_webhook_event(
 ) -> WebhookEvent | None:
     # Concrete event_type required: sharded pub/sub has no pattern support.
     return await _webhook_event_bus.wait_for_event(
-        f"{webhook_id}/{event_type}", timeout
+        _webhook_channel_key(webhook_id, event_type), timeout
     )
+
+
+def _webhook_channel_key(webhook_id: str, event_type: str) -> str:
+    # A channel's name is logged and traced, and a webhook's ID is the
+    # credential in its ingress URL, so the channel is named after its digest.
+    return f"{hashlib.sha256(webhook_id.encode()).hexdigest()}/{event_type}"

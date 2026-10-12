@@ -137,13 +137,20 @@ def _redact_argument(argument: object) -> object:
     return argument if masked == text else masked
 
 
+_CREDENTIAL_HEADER = re.compile(
+    r"(?i)auth|cookie|credential|jwt|key|password|secret|session|signature|token"
+    r"|sec-websocket-protocol"
+)
 # At DEBUG, websockets logs every handshake header it reads as ``< name: value``
 # and every one it writes as ``> name: value``.
 _HEADER_LINES = frozenset({"< %s: %s", "> %s: %s"})
-_CREDENTIAL_HEADER = re.compile(
-    r"(?i)auth|cookie|credential|jwt|key|password|secret|session|signature|token"
-    r"|^sec-websocket-protocol$"
-)
+
+
+def is_credential_header(name: str) -> bool:
+    """Whether a header's value is a credential: the session cookie and
+    ``Authorization``, an API key, or a webhook's signature or secret token,
+    whatever the header is called."""
+    return bool(_CREDENTIAL_HEADER.search(name))
 
 
 class CredentialHeaderFilter(logging.Filter):
@@ -152,11 +159,12 @@ class CredentialHeaderFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         if (
-            record.msg in _HEADER_LINES
+            isinstance(record.msg, str)
+            and record.msg in _HEADER_LINES
             and isinstance(record.args, tuple)
             and len(record.args) == 2
             and isinstance(record.args[0], str)
-            and _CREDENTIAL_HEADER.search(record.args[0])
+            and is_credential_header(record.args[0])
         ):
             record.args = (record.args[0], REDACTED)
         return True
