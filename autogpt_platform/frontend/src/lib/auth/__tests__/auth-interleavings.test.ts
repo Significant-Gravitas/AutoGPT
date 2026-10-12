@@ -68,6 +68,8 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast() {} }),
 }));
 
+import { ImpersonationCookie as cookieWriter } from "@/lib/impersonation";
+
 type StoreModule = typeof import("@/lib/auth/hooks/useAuthStore");
 type ImpersonationModule = typeof import("@/lib/impersonation");
 type BeginModule =
@@ -154,13 +156,10 @@ function makeRouter() {
   } as unknown as AppRouterInstance;
 }
 
+// Cookies are written the way production writes them (Secure,
+// SameSite=Lax), through the impersonation module's own cookie writer.
 function expireAuthCookies() {
-  for (const name of [
-    "admin-impersonate-user-id",
-    "admin-impersonate-owner-id",
-  ]) {
-    document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-  }
+  cookieWriter.clear();
 }
 
 class World {
@@ -450,9 +449,7 @@ class World {
       // session that ended without a clean sign-out.
       const [target, owner] = this.pick([...this.owners.entries()]);
       this.log.push(`cookie left behind: ${target} for ${owner}`);
-      document.cookie = `admin-impersonate-user-id=${encodeURIComponent(
-        JSON.stringify({ target, owner }),
-      )}; path=/`;
+      cookieWriter.set({ target, owner });
     } else if (roll < 0.94 && this.pending.length) {
       const op = this.pick(this.pending);
       this.pending.splice(this.pending.indexOf(op), 1);
