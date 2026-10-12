@@ -2581,6 +2581,8 @@ async def list_all_skills(
     user_id: str | None,
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
+    *,
+    require_complete: bool = False,
 ) -> list[ParsedSkill]:
     """Default seeded skills first, then the owner's own skills.
 
@@ -2592,11 +2594,16 @@ async def list_all_skills(
     *expert_id* selects whose skills follow the defaults: an expert's own
     folder, or personal Otto's when ``None``. Neither ever sees the
     other's skills.
+
+    ``require_complete`` rejects an unavailable registry so callers cannot
+    mistake a partial index for a confirmed removal of owner skills.
     """
     skills = get_default_skills_for_index()
     if user_id:
         owned = await list_user_skills(user_id, expert_id, scope)
         paused = await paused_skill_names(user_id, expert_id)
+        if paused is None and require_complete:
+            raise RuntimeError("Skill registry availability could not be verified")
         if paused is not None:
             skills.extend(s for s in owned if s.name not in paused)
     return skills
@@ -2735,7 +2742,7 @@ async def build_skills_update_notice(
     try:
         if not await is_skills_feature_enabled(user_id):
             return ""
-        current = await list_all_skills(user_id, expert_id)
+        current = await list_all_skills(user_id, expert_id, require_complete=True)
     except Exception:
         logger.exception("[skills] failed to diff skills for update notice")
         return ""
