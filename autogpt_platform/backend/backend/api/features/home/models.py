@@ -180,6 +180,22 @@ class HomeRecentWorkItem(BaseModel):
     link: str | None = None
 
 
+class HomeDelegationItem(BaseModel):
+    """A hand-off that finished this week, under the teammate who took it."""
+
+    id: str
+    sub_session_id: str
+    title: str
+    description: str
+    status: Literal["completed", "failed", "cancelled"]
+    expert: HomeExpert | None = None
+    occurred_at: datetime
+    files_count: int = 0
+    cost_usd: float | None = None
+    # The chat that handed the work off, where its result landed.
+    link: str | None = None
+
+
 class HomeRecentWorkGroup(BaseModel):
     """Everything one actor did this week: the runs it finished and the
     durable things it produced."""
@@ -188,9 +204,11 @@ class HomeRecentWorkGroup(BaseModel):
     latest_at: datetime
     runs: list[HomeBriefingOutcome] = Field(default_factory=list)
     items: list[HomeRecentWorkItem] = Field(default_factory=list)
+    delegations: list[HomeDelegationItem] = Field(default_factory=list)
     # Week totals per kind, uncapped, so the header can state how much the
     # actor did even when the rows below are a slice of it.
     run_count: int = 0
+    delegation_count: int = 0
     file_count: int = 0
     integration_count: int = 0
     schedule_count: int = 0

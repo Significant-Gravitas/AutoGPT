@@ -558,3 +558,22 @@ async def test_pending_question_excludes_explicit_json_null(
     }
     assert no_question.session_id not in pending_ids
     assert with_question.session_id in pending_ids
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_pending_question_round_trips_its_options(
+    setup_test_user, test_user_id
+):
+    session = await create_chat_session(str(uuid4()), test_user_id)
+    await set_session_pending_question(
+        session.session_id,
+        test_user_id,
+        "Which release?",
+        datetime.now(UTC),
+        options=["Q4", "December"],
+    )
+
+    fetched = await get_chat_session_metadata(session.session_id)
+    assert fetched is not None
+    assert fetched.metadata.pending_question is not None
+    assert fetched.metadata.pending_question.options == ["Q4", "December"]
