@@ -1,4 +1,5 @@
 import type BackendAPI from "@/lib/autogpt-server-api/client";
+import { IMPERSONATION_STORAGE_KEY } from "@/lib/constants";
 import {
   getSystemHeaders,
   ImpersonationSession,
@@ -149,8 +150,7 @@ describe("admin impersonation follows the session that chose it", () => {
     await signInTab(admin);
     // This tab's own copy; the other tab's sign-in already cleared the
     // shared cookie and announced it.
-    ImpersonationSession.set("user-a");
-    ImpersonationSession.setOwner(admin.id);
+    ImpersonationSession.set({ target: "user-a", owner: admin.id });
     expect(getSystemHeaders()).toEqual({ [ACT_AS]: "user-a" });
 
     storageEvent("impersonation-cleared");
@@ -161,8 +161,7 @@ describe("admin impersonation follows the session that chose it", () => {
 
   it("is dropped from this tab when another tab signs out", async () => {
     await signInTab(admin);
-    ImpersonationSession.set("user-a");
-    ImpersonationSession.setOwner(admin.id);
+    ImpersonationSession.set({ target: "user-a", owner: admin.id });
 
     storageEvent("supabase-logout");
 
@@ -190,8 +189,7 @@ describe("admin impersonation follows the session that chose it", () => {
     });
 
     it("drops it for an account that can't impersonate", async () => {
-      ImpersonationSession.set("user-a");
-      ImpersonationSession.setOwner(admin.id);
+      ImpersonationSession.set({ target: "user-a", owner: admin.id });
 
       await signInTab(otherUser);
 
@@ -210,7 +208,7 @@ describe("admin impersonation follows the session that chose it", () => {
   it("is never sent from a restored tab that can't say whose it is", async () => {
     // A second tab copied the target from the cookie before owners were
     // recorded, missed the cleanup, and comes back signed in as another admin.
-    ImpersonationSession.set("target-a");
+    sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, "target-a");
 
     await signInTab(otherAdmin);
 
@@ -244,6 +242,53 @@ describe("admin impersonation follows the session that chose it", () => {
       router: makeRouter(),
       path: "/library",
     });
+
+    expect(getSystemHeaders()).toEqual({});
+  });
+});
+
+describe("answers that arrive after a sign-out", () => {
+  it("a refresh started before the sign-out can't sign the tab back in", async () => {
+    await signInTab(admin);
+    let answer!: (value: unknown) => void;
+    actions.refreshSession.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    actions.serverLogout.mockResolvedValue({ success: true });
+
+    const refreshing = useAuthStore.getState().refreshSession();
+    await useAuthStore.getState().logOut();
+    answer({ user: admin });
+    await refreshing;
+
+    expect(useAuthStore.getState().user).toBeNull();
+  });
+
+  it("a validation started before the sign-out can't sign the tab back in", async () => {
+    await signInTab(admin);
+    let answer!: (value: unknown) => void;
+    actions.validateSession.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    actions.serverLogout.mockResolvedValue({ success: true });
+
+    const validating = useAuthStore
+      .getState()
+      .validateSession({ router: makeRouter(), path: "/library", force: true });
+    await useAuthStore.getState().logOut();
+    answer({ user: { ...admin, role: "authenticated" }, isValid: true });
+    await validating;
+
+    expect(useAuthStore.getState().user).toBeNull();
+  });
+
+  it("no target is sent for another admin, however it was stored", async () => {
+    await signInTab(otherAdmin);
+    ImpersonationState.set("target-a", admin.id);
 
     expect(getSystemHeaders()).toEqual({});
   });

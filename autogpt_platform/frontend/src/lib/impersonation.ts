@@ -12,6 +12,40 @@ import {
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 
+/**
+ * An impersonation target and the admin who chose it. They are always stored
+ * together as one value, so a target can never be read back with an owner
+ * that was written for another target.
+ */
+export interface ImpersonationRecord {
+  target: string;
+  owner: string;
+}
+
+export function encodeImpersonation(record: ImpersonationRecord): string {
+  return JSON.stringify({ target: record.target, owner: record.owner });
+}
+
+export function decodeImpersonation(
+  raw: string | null | undefined,
+): ImpersonationRecord | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as { target?: unknown; owner?: unknown };
+    if (
+      typeof value.target === "string" &&
+      value.target &&
+      typeof value.owner === "string" &&
+      value.owner
+    ) {
+      return { target: value.target, owner: value.owner };
+    }
+  } catch {
+    // A legacy bare id or a corrupted value: no owner, so not usable.
+  }
+  return null;
+}
+
 function writeCookie(name: string, value: string): void {
   document.cookie = `${name}=${encodeURIComponent(value)}; path=/; SameSite=Lax; Secure`;
 }
@@ -44,73 +78,115 @@ async function readServerCookie(name: string): Promise<string | null> {
   }
 }
 
+export interface ImpersonationViewer {
+  id: string;
+  role?: string | null;
+}
+
+// This module is in the browser bundle graph, so it can't import the auth
+// server instance; it asks Next for the session over HTTP, as
+// getServerAuthToken does. Route handlers pass an in-process reader instead.
+async function readServerSessionUser(): Promise<ImpersonationViewer | null> {
+  try {
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
+    const cookieHeader = cookieStore
+      .getAll()
+      .map(({ name, value }) => `${name}=${encodeURIComponent(value)}`)
+      .join("; ");
+    const baseURL =
+      process.env.BETTER_AUTH_INTERNAL_URL ||
+      process.env.BETTER_AUTH_URL ||
+      process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
+      "http://localhost:3000";
+    const response = await fetch(`${baseURL}/api/auth/get-session`, {
+      headers: { cookie: cookieHeader },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return null;
+    const session = (await response.json()) as {
+      user?: { id?: string; role?: string | null };
+    } | null;
+    return session?.user?.id
+      ? { id: session.user.id, role: session.user.role }
+      : null;
+  } catch (error) {
+    console.debug("Could not read the server session:", error);
+    return null;
+  }
+}
+
+function isOwnedBy(
+  record: ImpersonationRecord,
+  viewer: ImpersonationViewer | null,
+): boolean {
+  return viewer?.role === "admin" && viewer.id === record.owner;
+}
+
 /**
- * Cookie utility functions. The target cookie travels with an owner cookie
- * naming the admin who chose it, so a tab that picks the target up from the
- * cookie also knows whose it is.
+ * Cookie utility functions. The cookie lets other tabs (and server-side
+ * requests) pick the target up; it holds the whole record.
  */
 export const ImpersonationCookie = {
-  set(userId: string, ownerId: string): void {
+  set(record: ImpersonationRecord): void {
     if (!environment.isClientSide()) return;
-    writeCookie(IMPERSONATION_COOKIE_NAME, userId);
-    writeCookie(IMPERSONATION_OWNER_COOKIE_NAME, ownerId);
+    writeCookie(IMPERSONATION_COOKIE_NAME, encodeImpersonation(record));
   },
 
   clear(): void {
     if (!environment.isClientSide()) return;
     expireCookie(IMPERSONATION_COOKIE_NAME);
+    // Written separately by an earlier version; never read any more.
     expireCookie(IMPERSONATION_OWNER_COOKIE_NAME);
   },
 
-  get(): string | null {
+  getRaw(): string | null {
     if (!environment.isClientSide()) return null;
     return readCookie(IMPERSONATION_COOKIE_NAME);
   },
 
-  getOwner(): string | null {
-    if (!environment.isClientSide()) return null;
-    return readCookie(IMPERSONATION_OWNER_COOKIE_NAME);
+  get(): ImpersonationRecord | null {
+    return decodeImpersonation(ImpersonationCookie.getRaw());
   },
 
   /**
-   * Read the target for server-side requests (Next.js cookies API). A target
-   * without an owner cookie is never used.
+   * The target for a server-side request, only when the session making it is
+   * the admin who chose it.
    */
   async getServerSide(
-    readCookie: (name: string) => Promise<string | null> = readServerCookie,
+    readCookieValue: (
+      name: string,
+    ) => Promise<string | null> = readServerCookie,
+    readUser: () => Promise<ImpersonationViewer | null> = readServerSessionUser,
   ): Promise<string | null> {
     if (environment.isClientSide()) return null;
-    const [target, owner] = await Promise.all([
-      readCookie(IMPERSONATION_COOKIE_NAME),
-      readCookie(IMPERSONATION_OWNER_COOKIE_NAME),
-    ]);
-    return target && owner ? target : null;
+    const record = decodeImpersonation(
+      await readCookieValue(IMPERSONATION_COOKIE_NAME),
+    );
+    if (!record) return null;
+    return isOwnedBy(record, await readUser()) ? record.target : null;
   },
 };
 
-const IMPERSONATION_OWNER_STORAGE_KEY = `${IMPERSONATION_STORAGE_KEY}-owner`;
-
 /**
- * SessionStorage utility functions
+ * SessionStorage utility functions: this tab's own copy of the record.
  */
 export const ImpersonationSession = {
-  /**
-   * Set impersonation in sessionStorage
-   */
-  set(userId: string): void {
+  set(record: ImpersonationRecord): void {
     if (!environment.isClientSide()) return;
 
     try {
-      sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, userId);
+      sessionStorage.setItem(
+        IMPERSONATION_STORAGE_KEY,
+        encodeImpersonation(record),
+      );
     } catch (error) {
       console.error("Failed to set impersonation in sessionStorage:", error);
     }
   },
 
-  /**
-   * Get impersonation from sessionStorage
-   */
-  get(): string | null {
+  getRaw(): string | null {
     if (!environment.isClientSide()) return null;
 
     try {
@@ -121,35 +197,17 @@ export const ImpersonationSession = {
     }
   },
 
-  setOwner(ownerId: string): void {
-    if (!environment.isClientSide()) return;
-
-    try {
-      sessionStorage.setItem(IMPERSONATION_OWNER_STORAGE_KEY, ownerId);
-    } catch (error) {
-      console.error("Failed to record the impersonating admin:", error);
-    }
+  get(): ImpersonationRecord | null {
+    return decodeImpersonation(ImpersonationSession.getRaw());
   },
 
-  getOwner(): string | null {
-    if (!environment.isClientSide()) return null;
-
-    try {
-      return sessionStorage.getItem(IMPERSONATION_OWNER_STORAGE_KEY);
-    } catch {
-      return null;
-    }
-  },
-
-  /**
-   * Clear impersonation from sessionStorage
-   */
   clear(): void {
     if (!environment.isClientSide()) return;
 
     try {
       sessionStorage.removeItem(IMPERSONATION_STORAGE_KEY);
-      sessionStorage.removeItem(IMPERSONATION_OWNER_STORAGE_KEY);
+      // Written separately by an earlier version; never read any more.
+      sessionStorage.removeItem(`${IMPERSONATION_STORAGE_KEY}-owner`);
     } catch (error) {
       console.error(
         "Failed to clear impersonation from sessionStorage:",
@@ -159,75 +217,78 @@ export const ImpersonationSession = {
   },
 };
 
+// The signed-in user as the auth store last saw them. Headers are only built
+// for this viewer, so a target is never sent by anyone but its owner. Browser
+// only: on the server this module is shared by every request.
+let currentViewer: ImpersonationViewer | null = null;
+
+export function setImpersonationViewer(
+  viewer: ImpersonationViewer | null,
+): void {
+  currentViewer = viewer ? { id: viewer.id, role: viewer.role } : null;
+}
+
 /**
- * Main impersonation state management
+ * The record for this tab: its own copy if it has one, otherwise the shared
+ * cookie's (copied in for next time). A stored value that isn't a whole
+ * record is dropped.
  */
-/**
- * The target and the admin who chose it, always read from the same place:
- * this tab's sessionStorage if it holds a target, otherwise the cookies. An
- * owner is never borrowed from the other source.
- */
-function readImpersonation(): { target: string; owner: string | null } | null {
-  const sessionTarget = ImpersonationSession.get();
-  if (sessionTarget) {
-    return { target: sessionTarget, owner: ImpersonationSession.getOwner() };
+function readImpersonation(): ImpersonationRecord | null {
+  const sessionRaw = ImpersonationSession.getRaw();
+  if (sessionRaw) {
+    const record = decodeImpersonation(sessionRaw);
+    if (!record) ImpersonationState.clear();
+    return record;
   }
-  const cookieTarget = ImpersonationCookie.get();
-  if (cookieTarget) {
-    return { target: cookieTarget, owner: ImpersonationCookie.getOwner() };
+
+  const cookieRaw = ImpersonationCookie.getRaw();
+  if (!cookieRaw) return null;
+  const record = decodeImpersonation(cookieRaw);
+  if (!record) {
+    ImpersonationState.clear();
+    return null;
   }
-  return null;
+  ImpersonationSession.set(record);
+  return record;
 }
 
 export const ImpersonationState = {
-  /**
-   * Get the current impersonation target, falling back to the cookie (and
-   * adopting its owner) for tabs that didn't start it. A target that can't be
-   * tied to the admin who chose it is dropped, never sent.
-   */
-  get(): string | null {
-    const stored = readImpersonation();
-    if (!stored) return null;
-
-    if (!stored.owner) {
-      ImpersonationState.clear();
-      return null;
-    }
-    if (!ImpersonationSession.get()) {
-      ImpersonationSession.set(stored.target);
-      ImpersonationSession.setOwner(stored.owner);
-    }
-    return stored.target;
+  /** The stored record, whoever it belongs to. */
+  read(): ImpersonationRecord | null {
+    return readImpersonation();
   },
 
-  /** The admin who chose the current target, from the same source as it. */
+  /**
+   * The user to act as, only while the signed-in user is the admin who chose
+   * them. Anyone else gets null and their requests go out as themselves.
+   */
+  get(): string | null {
+    const record = readImpersonation();
+    if (!record) return null;
+    return isOwnedBy(record, currentViewer) ? record.target : null;
+  },
+
+  /** The admin who chose the stored target, if there is one. */
   getOwner(): string | null {
     return readImpersonation()?.owner ?? null;
   },
 
-  /**
-   * Set the impersonation target, recorded against the admin who chose it,
-   * in both sessionStorage and cookies.
-   */
   set(userId: string, ownerId: string): void {
-    ImpersonationSession.set(userId);
-    ImpersonationSession.setOwner(ownerId);
-    ImpersonationCookie.set(userId, ownerId);
+    const record = { target: userId, owner: ownerId };
+    ImpersonationSession.set(record);
+    ImpersonationCookie.set(record);
   },
 
-  /**
-   * Clear impersonation from both sessionStorage and cookie
-   */
   clear(): void {
     ImpersonationSession.clear();
     ImpersonationCookie.clear();
   },
 
-  /**
-   * Get impersonation user ID for server-side requests
-   */
-  async getServerSide(): Promise<string | null> {
-    return await ImpersonationCookie.getServerSide();
+  async getServerSide(
+    readCookieValue?: (name: string) => Promise<string | null>,
+    readUser?: () => Promise<ImpersonationViewer | null>,
+  ): Promise<string | null> {
+    return await ImpersonationCookie.getServerSide(readCookieValue, readUser);
   },
 };
 
@@ -239,12 +300,16 @@ export const ImpersonationState = {
  */
 export function clearImpersonationEverywhere(): void {
   ImpersonationState.clear();
-  storage.set(Key.IMPERSONATION_CLEARED, Date.now().toString());
+  // Unique, so a second clear in the same millisecond still reaches tabs.
+  storage.set(
+    Key.IMPERSONATION_CLEARED,
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
 }
 
-/** Whether any impersonation target is stored, without reading it. */
+/** Whether anything is stored, without interpreting it. */
 export function hasImpersonation(): boolean {
-  return Boolean(ImpersonationSession.get() ?? ImpersonationCookie.get());
+  return Boolean(ImpersonationSession.getRaw() ?? ImpersonationCookie.getRaw());
 }
 
 export function isImpersonationClearedEvent(event: StorageEvent): boolean {
@@ -256,12 +321,9 @@ export function isImpersonationClearedEvent(event: StorageEvent): boolean {
  * in: only an admin can impersonate, and only the admin recorded as having
  * chosen the target. No recorded owner means no one may use it.
  */
-export function isImpersonationUsableBy(user: {
-  id: string;
-  role?: string;
-}): boolean {
-  if (user.role !== "admin") return false;
-  return ImpersonationState.getOwner() === user.id;
+export function isImpersonationUsableBy(user: ImpersonationViewer): boolean {
+  const record = readImpersonation();
+  return record !== null && isOwnedBy(record, user);
 }
 
 /**

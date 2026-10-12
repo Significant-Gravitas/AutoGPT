@@ -190,12 +190,12 @@ describe("useAuthStore.validateSession", () => {
 describe("useAuthStore.logOut", () => {
   it("clears admin impersonation so the next user doesn't act as someone else", async () => {
     ImpersonationState.set("impersonated-user", "admin-1");
-    expect(ImpersonationState.get()).toBe("impersonated-user");
+    expect(ImpersonationState.read()?.target).toBe("impersonated-user");
 
     await useAuthStore.getState().logOut();
 
     expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBeNull();
     expect(document.cookie).not.toContain(`${IMPERSONATION_STORAGE_KEY}=`);
-    expect(ImpersonationState.get()).toBeNull();
+    expect(ImpersonationState.read()).toBeNull();
   });
 });

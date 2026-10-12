@@ -2,7 +2,10 @@
 
 import { useState, useCallback, useRef } from "react";
 import { ImpersonationState } from "@/lib/impersonation";
-import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import {
+  beginImpersonation,
+  type BeginImpersonationOutcome,
+} from "./beginImpersonation";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { usePostV2NotifyImpersonationStart } from "@/app/api/__generated__/endpoints/admin/admin";
 
@@ -19,6 +22,16 @@ interface AdminImpersonationActions {
 
 type AdminImpersonationHook = AdminImpersonationState &
   AdminImpersonationActions;
+
+const OUTCOME_MESSAGES: Record<
+  Exclude<BeginImpersonationOutcome, "started">,
+  string
+> = {
+  "no-admin": "Sign in again to impersonate a user.",
+  "audit-failed": "Audit alert failed — impersonation blocked.",
+  "admin-changed":
+    "You were signed out or your account changed while it was starting.",
+};
 
 export function useAdminImpersonation(): AdminImpersonationHook {
   const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(
@@ -45,38 +58,23 @@ export function useAdminImpersonation(): AdminImpersonationHook {
         return;
       }
 
-      // Impersonation is recorded against the admin who starts it. Check
-      // before the audit alert, so no "impersonation started" is logged for
-      // a swap that can't happen.
-      const adminId = useAuthStore.getState().user?.id;
-      if (!adminId) {
-        toast({
-          title: "Couldn't start impersonation",
-          description: "Sign in again to impersonate a user.",
-          variant: "destructive",
-        });
-        return;
-      }
-
       startingRef.current = true;
       try {
-        // The audit alert GATES impersonation. Await it BEFORE setting state so
-        // the request authenticates as the admin (the X-Act-As-User-Id header is
-        // derived from sessionStorage, which isn't populated yet). The Orval
-        // mutator throws on non-2xx, so a failed/blocked alert aborts the swap
-        // rather than impersonate without an audit trail.
-        try {
-          await notifyImpersonationStart({ data: { target_user_id: userId } });
-        } catch {
+        // The audit alert GATES impersonation and is sent before any target
+        // is stored, so it authenticates as the admin. The Orval mutator
+        // throws on non-2xx, so a failed/blocked alert aborts the swap.
+        const outcome = await beginImpersonation(userId, () =>
+          notifyImpersonationStart({ data: { target_user_id: userId } }),
+        );
+        if (outcome !== "started") {
           toast({
             title: "Couldn't start impersonation",
-            description: "Audit alert failed — impersonation blocked.",
+            description: OUTCOME_MESSAGES[outcome],
             variant: "destructive",
           });
           return;
         }
 
-        ImpersonationState.set(userId, adminId);
         setImpersonatedUserId(userId);
         window.location.reload();
       } catch (error) {

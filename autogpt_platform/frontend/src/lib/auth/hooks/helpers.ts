@@ -110,8 +110,16 @@ interface RefreshSessionResult {
   error?: string;
 }
 
+// Never rejects: callers always get a result. A call that didn't reach the
+// server is reported as an error, which the store treats as no session.
 export async function refreshSession(): Promise<RefreshSessionResult> {
-  const result = await refreshSessionAction();
+  let result: RefreshSessionResult;
+  try {
+    result = await refreshSessionAction();
+  } catch (error) {
+    console.warn("Session refresh failed:", error);
+    return { user: null, error: "Couldn't reach the server" };
+  }
 
   if (result.user) {
     clearWebSocketDisconnectIntent();
