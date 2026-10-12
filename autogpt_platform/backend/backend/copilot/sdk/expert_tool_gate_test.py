@@ -142,7 +142,6 @@ def _make_patches(*, hire_experts_enabled: bool):
             dict(
                 api_key="test-key",
                 use_claude_code_subscription=False,
-                claude_agent_use_resume=True,
                 claude_agent_max_buffer_size=100_000,
                 claude_agent_max_subtasks=5,
                 stream_lock_ttl=60,

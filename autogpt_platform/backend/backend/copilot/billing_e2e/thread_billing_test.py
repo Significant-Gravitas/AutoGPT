@@ -121,7 +121,6 @@ def _config(base: ChatConfig, scenario: Scenario, provider: FakeProvider) -> Cha
             "use_e2b_sandbox": False,
             "claude_agent_fallback_model": None,
             "claude_agent_cli_path": None,
-            "claude_agent_use_resume": True,
             "claude_agent_max_transient_retries": 3,
             "sdk_reconcile_openrouter_cost": True,
             **overrides,

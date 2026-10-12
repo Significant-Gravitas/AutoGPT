@@ -140,7 +140,6 @@ class TurnUsage(BaseModel):
 
 def upload_gate_reason(
     *,
-    resume_enabled: bool,
     user_id: str | None,
     started: bool,
     ended_with_stream_error: bool,
@@ -150,8 +149,6 @@ def upload_gate_reason(
     ``stream_chat_completion_sdk`` evaluates it once: the upload runs only
     when it is ``None``, and the turn summary reports what it returned.
     """
-    if not resume_enabled:
-        return "resume_disabled"
     if not user_id:
         return "anonymous"
     if not started:

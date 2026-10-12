@@ -4613,7 +4613,7 @@ async def _restore_cli_session_for_turn(
     """
     result = _RestoreResult()
 
-    if not (config.claude_agent_use_resume and user_id and len(session.messages) > 1):
+    if not (user_id and len(session.messages) > 1):
         return result
 
     try:
@@ -6439,7 +6439,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Why the CLI session upload below is skipped, or ``None``: the
         # upload and the summary read this one answer.
         upload_skip = upload_gate_reason(
-            resume_enabled=config.claude_agent_use_resume,
             user_id=user_id,
             started=bool(sdk_cwd) and session is not None and state is not None,
             ended_with_stream_error=ended_with_stream_error,

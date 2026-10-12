@@ -488,4 +488,4 @@ class TestEmit:
 def test_upload_gate_reason_names_why_the_upload_is_skipped(kwargs, expected):
     """The turn evaluates this once and both the CLI session upload and the
     summary's ``transcript_upload_skipped`` read the answer."""
-    assert upload_gate_reason(resume_enabled=True, **kwargs) == expected
+    assert upload_gate_reason(**kwargs) == expected

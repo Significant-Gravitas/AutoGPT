@@ -931,15 +931,12 @@ class TestRestoreCliSessionModeCheck:
             mode="baseline",
         )
 
-        import backend.copilot.sdk.service as _svc_mod
-
         download_mock = AsyncMock(return_value=baseline_restore)
         with (
             patch(
                 "backend.copilot.sdk.service.download_transcript",
                 new=download_mock,
             ),
-            patch.object(_svc_mod.config, "claude_agent_use_resume", True),
         ):
             result = await _restore_cli_session_for_turn(
                 user_id="user-1",
@@ -1022,14 +1019,11 @@ class TestRestoreCliSessionModeCheck:
             mode="sdk",
         )
 
-        import backend.copilot.sdk.service as _svc_mod
-
         with (
             patch(
                 "backend.copilot.sdk.service.download_transcript",
                 new=AsyncMock(return_value=sdk_restore),
             ),
-            patch.object(_svc_mod.config, "claude_agent_use_resume", True),
         ):
             result = await _restore_cli_session_for_turn(
                 user_id="user-1",
@@ -1107,14 +1101,11 @@ class TestRestoreCliSessionModeCheck:
             mode="baseline",
         )
 
-        import backend.copilot.sdk.service as _svc_mod
-
         with (
             patch(
                 "backend.copilot.sdk.service.download_transcript",
                 new=AsyncMock(return_value=baseline_restore),
             ),
-            patch.object(_svc_mod.config, "claude_agent_use_resume", True),
         ):
             result = await _restore_cli_session_for_turn(
                 user_id="user-1",
@@ -1197,14 +1188,11 @@ class TestRestoreCliSessionModeCheck:
             mode="baseline",
         )
 
-        import backend.copilot.sdk.service as _svc_mod
-
         with (
             patch(
                 "backend.copilot.sdk.service.download_transcript",
                 new=AsyncMock(return_value=baseline_restore),
             ),
-            patch.object(_svc_mod.config, "claude_agent_use_resume", True),
         ):
             result = await _restore_cli_session_for_turn(
                 user_id="user-1",

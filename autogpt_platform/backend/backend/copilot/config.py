@@ -497,11 +497,6 @@ class ChatConfig(BaseSettings):
         "disallowed list stay off; a name that is no Claude Code built-in is "
         "logged once and ignored.",
     )
-    claude_agent_use_resume: bool = Field(
-        default=True,
-        description="Use --resume for multi-turn conversations instead of "
-        "history compression. Falls back to compression when unavailable.",
-    )
     claude_agent_fallback_model: str = Field(
         default="",
         description="Fallback model when the primary model is unavailable (e.g. 529 "
