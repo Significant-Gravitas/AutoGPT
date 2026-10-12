@@ -4,26 +4,32 @@ import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
 import { usePlatformChrome } from "../PlatformChrome/usePlatformChrome";
 import {
-  BOARD_MOVE_MUTATION_KEY,
+  BOARD_MUTATION_KEY,
   BOARD_REFETCH_INTERVAL_MS,
   boardQueryKey,
   type Card,
   groupCards,
+  isSessionId,
 } from "./board-helpers";
 
 export function useTaskBoardPage() {
   const [includeOlder, setIncludeOlder] = useState(false);
   const [reassignTarget, setReassignTarget] = useState<Card | null>(null);
-  const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  // A poll landing mid-move would snap the card back until the next one.
-  const movesInFlight = useIsMutating({ mutationKey: BOARD_MOVE_MUTATION_KEY });
+  const [sessionParam, setSessionId] = useQueryState(
+    "sessionId",
+    parseAsString,
+  );
+  // The id ends up in API paths; anything but a UUID opens nothing.
+  const sessionId = isSessionId(sessionParam) ? sessionParam : null;
+  // A poll landing mid-change would snap the card back until the next one.
+  const changesInFlight = useIsMutating({ mutationKey: BOARD_MUTATION_KEY });
   const { showNewLayout } = usePlatformChrome();
   const params = { include_older: includeOlder };
 
   const boardQuery = useGetV2GetBoard(params, {
     query: {
       queryKey: boardQueryKey(params),
-      refetchInterval: movesInFlight > 0 ? false : BOARD_REFETCH_INTERVAL_MS,
+      refetchInterval: changesInFlight > 0 ? false : BOARD_REFETCH_INTERVAL_MS,
       placeholderData: keepPreviousData,
       select: (res) => (res.status === 200 ? res.data : undefined),
     },

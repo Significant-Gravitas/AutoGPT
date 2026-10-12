@@ -48,20 +48,11 @@ export function TaskPanel({
     handleAssign,
     handleMove,
     handleStart,
+    handleEscapeKeyDown,
   } = useTaskPanel({ card, sessionId, columns });
 
   function handleOpenChange(open: boolean) {
     if (!open) onClose();
-  }
-
-  function handleEscapeKeyDown(event: KeyboardEvent) {
-    // Escape in the title editor cancels the edit, not the panel.
-    if (
-      event.target instanceof Element &&
-      event.target.closest("[data-task-title-input]")
-    ) {
-      event.preventDefault();
-    }
   }
 
   return (

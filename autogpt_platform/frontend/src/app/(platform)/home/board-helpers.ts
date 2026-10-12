@@ -5,10 +5,13 @@ import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sess
 
 export const BOARD_QUERY_KEY = ["copilot", "board"] as const;
 export const BOARD_REFETCH_INTERVAL_MS = 10_000;
-export const BOARD_MOVE_MUTATION_KEY = ["patchV2UpdateSessionBoard"];
+export const BOARD_MUTATION_KEY = ["copilot", "board", "mutation"];
+export const BOARD_MOVE_MUTATION_KEY = [...BOARD_MUTATION_KEY, "move"];
 export const MAX_COLUMNS = 6;
 export const BUILTIN_KEYS = ["backlog", "in_progress", "done"] as const;
 
+const SESSION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const POSITION_GAP = 1024;
 
@@ -17,6 +20,10 @@ export type Card = SessionSummaryResponse;
 export interface ColumnWithCards {
   column: BoardColumn;
   cards: Card[];
+}
+
+export function isSessionId(value: string | null): value is string {
+  return value !== null && SESSION_ID_PATTERN.test(value);
 }
 
 export function boardQueryKey(params: GetV2GetBoardParams) {

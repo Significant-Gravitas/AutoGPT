@@ -1,5 +1,6 @@
 import {
   getGetV2GetBoardMockHandler,
+  getGetV2GetSessionMockHandler200,
   getPatchV2UpdateSessionBoardMockHandler,
   getPatchV2UpdateSessionExpertMockHandler,
   getPatchV2UpdateSessionExpertMockHandler409,
@@ -19,7 +20,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { NuqsTestingAdapter, type UrlUpdateEvent } from "nuqs/adapters/testing";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TaskBoardPage } from "../TaskBoardPage";
 
 const toastSpy = vi.hoisted(() => vi.fn());
@@ -61,6 +62,8 @@ vi.mock("@/app/(platform)/copilot/CopilotChatHost", () => ({
 }));
 
 const NOW = new Date().toISOString();
+const S1 = "3f2b8c1e-9a4d-4e6f-8b7a-1c2d3e4f5a6b";
+const ELSEWHERE = "8d7c6b5a-4f3e-4d2c-9b1a-0f9e8d7c6b5a";
 
 const COLUMNS: BoardResponse["columns"] = [
   { key: "backlog", name: "Backlog", builtin: true },
@@ -83,14 +86,14 @@ function card(
   };
 }
 
-const DRAFT = card("s1", {
+const DRAFT = card(S1, {
   title: "Write PRD",
   board_column: "backlog",
   board_position: 0,
   started: false,
 });
 
-const RUNNING = card("s1", {
+const RUNNING = card(S1, {
   title: "Research competitors",
   board_column: "in_progress",
   board_position: 0,
@@ -109,6 +112,7 @@ function board(...sessions: SessionSummaryResponse[]): BoardResponse {
 }
 
 let boardRequests = 0;
+let sessionRequests: string[] = [];
 
 /** Answers the first board request with `first`, every later one with
  *  `later` — the refetch after a move. */
@@ -132,7 +136,7 @@ function captureBodies<T>() {
 }
 
 function renderPanel(
-  sessionId = "s1",
+  sessionId = S1,
   onUrlUpdate?: (event: UrlUpdateEvent) => void,
 ) {
   return render(
@@ -152,10 +156,22 @@ function cardIn(column: string, title: string) {
   return within(region).queryByRole("article", { name: title, hidden: true });
 }
 
+function recordSessionRequests({ request }: { request: Request }) {
+  const { pathname } = new URL(request.url);
+  if (pathname.includes("/api/chat/sessions")) sessionRequests.push(pathname);
+}
+
 beforeEach(() => {
   boardRequests = 0;
+  sessionRequests = [];
   toastSpy.mockReset();
   server.use(getListExpertIdentitiesMockHandler([PRIYA]));
+  server.events.on("request:start", recordSessionRequests);
+});
+
+afterEach(() => {
+  server.events.removeListener("request:start", recordSessionRequests);
+  vi.useRealTimers();
 });
 
 describe("task panel", () => {
@@ -172,12 +188,40 @@ describe("task panel", () => {
     ).toBeDefined();
   });
 
-  test("opens a session that is not on the board with the chat", async () => {
+  test("opens a session that is not on the board with its title and the chat", async () => {
     serveBoard(board(RUNNING));
-    renderPanel("s-elsewhere");
+    server.use(
+      getGetV2GetSessionMockHandler200({
+        id: ELSEWHERE,
+        created_at: NOW,
+        updated_at: NOW,
+        user_id: "user-1",
+        title: "Plan offsite",
+        messages: [],
+      }),
+    );
+    renderPanel(ELSEWHERE);
 
-    const dialog = await screen.findByRole("dialog", { name: "Untitled chat" });
+    const dialog = await screen.findByRole("dialog", { name: "Plan offsite" });
     expect(within(dialog).getByText("chat host")).toBeDefined();
+    expect(
+      within(dialog).queryByRole("combobox", { name: "Column" }),
+    ).toBeNull();
+    expect(
+      within(dialog).queryByRole("button", { name: "Mark done" }),
+    ).toBeNull();
+  });
+
+  test("ignores a sessionId that is not a UUID", async () => {
+    serveBoard(board(RUNNING));
+    renderPanel("../../x");
+
+    expect(
+      await screen.findByRole("region", { name: "In progress" }),
+    ).toBeDefined();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(sessionRequests).toEqual([]);
   });
 
   test("starts a draft card with the first message and then shows the chat", async () => {
@@ -208,18 +252,25 @@ describe("task panel", () => {
     expect(await within(dialog).findByText("chat host")).toBeDefined();
   });
 
-  test("moving through the column select keeps the card in its new column after the refetch", async () => {
+  test("a board poll during a move does not snap the card back", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const moves = captureBodies<Record<string, unknown>>();
     const moved = { ...RUNNING, board_column: "done", board_position: -1024 };
+    let isMoveSaved = false;
     let releaseMove = () => {};
     const moveHeld = new Promise<void>((resolve) => {
       releaseMove = resolve;
     });
-    serveBoard(board(RUNNING), board(moved));
     server.use(
+      getGetV2GetBoardMockHandler(() => {
+        boardRequests += 1;
+        return isMoveSaved ? board(moved) : board(RUNNING);
+      }),
       getPatchV2UpdateSessionBoardMockHandler(async ({ request }) => {
         await moves.push(request);
         await moveHeld;
+        isMoveSaved = true;
         return moved;
       }),
     );
@@ -228,22 +279,22 @@ describe("task panel", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Research competitors",
     });
-    await userEvent.click(
-      within(dialog).getByRole("combobox", { name: "Column" }),
-    );
-    await userEvent.click(await screen.findByRole("option", { name: "Done" }));
+    await user.click(within(dialog).getByRole("combobox", { name: "Column" }));
+    await user.click(await screen.findByRole("option", { name: "Done" }));
 
     await waitFor(() => expect(moves.bodies).toHaveLength(1));
     expect(moves.bodies[0]).toEqual({ column: "done" });
-    // Moved before the server answers.
     expect(cardIn("Done", "Research competitors")).not.toBeNull();
+
+    // Past the 10 s poll while the PATCH is still open: a poll would serve
+    // the stale board and put the card back in In progress.
+    await vi.advanceTimersByTimeAsync(11_000);
     expect(boardRequests).toBe(1);
+    expect(cardIn("Done", "Research competitors")).not.toBeNull();
 
     releaseMove();
     await waitFor(() => expect(boardRequests).toBeGreaterThan(1));
-    await waitFor(() =>
-      expect(cardIn("Done", "Research competitors")).not.toBeNull(),
-    );
+    expect(cardIn("Done", "Research competitors")).not.toBeNull();
     expect(cardIn("In progress", "Research competitors")).toBeNull();
   });
 
@@ -390,10 +441,42 @@ describe("task panel", () => {
     ).toBeDefined();
   });
 
+  test("Escape in a text field leaves the panel open", async () => {
+    serveBoard(board(DRAFT));
+    const onUrlUpdate = vi.fn<(event: UrlUpdateEvent) => void>();
+    renderPanel(S1, onUrlUpdate);
+
+    const dialog = await screen.findByRole("dialog", { name: "Write PRD" });
+    await userEvent.click(
+      within(dialog).getByRole("textbox", { name: "First message" }),
+    );
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.getByRole("dialog", { name: "Write PRD" })).toBeDefined();
+    expect(onUrlUpdate).not.toHaveBeenCalled();
+  });
+
+  test("Escape on the panel itself closes it", async () => {
+    serveBoard(board(RUNNING));
+    const onUrlUpdate = vi.fn<(event: UrlUpdateEvent) => void>();
+    renderPanel(S1, onUrlUpdate);
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Research competitors",
+    });
+    within(dialog).getByRole("button", { name: "Files" }).focus();
+    await userEvent.keyboard("{Escape}");
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(onUrlUpdate.mock.lastCall?.[0].searchParams.has("sessionId")).toBe(
+      false,
+    );
+  });
+
   test("Close clears the session from the URL", async () => {
     serveBoard(board(RUNNING));
     const onUrlUpdate = vi.fn<(event: UrlUpdateEvent) => void>();
-    renderPanel("s1", onUrlUpdate);
+    renderPanel(S1, onUrlUpdate);
 
     const dialog = await screen.findByRole("dialog", {
       name: "Research competitors",
@@ -418,6 +501,6 @@ describe("task panel", () => {
     });
     expect(
       within(dialog).getByRole("link", { name: "Expand" }).getAttribute("href"),
-    ).toBe("/chat?sessionId=s1");
+    ).toBe(`/chat?sessionId=${S1}`);
   });
 });

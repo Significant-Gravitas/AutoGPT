@@ -74,7 +74,6 @@ export function TaskPanelHeader({
               onKeyDown={handleKeyDown}
               onBlur={stopEditing}
               wrapperClassName="mb-0 w-full"
-              data-task-title-input
             />
           </>
         ) : (
@@ -107,7 +106,7 @@ export function TaskPanelHeader({
             Reassign…
           </Button>
         )}
-        {columns.length > 0 && (
+        {card && columns.length > 0 && (
           <Select
             id={`task-column-${sessionId}`}
             label="Column"
@@ -124,7 +123,7 @@ export function TaskPanelHeader({
             className="h-7 w-36 rounded-md px-2.5 text-xs"
           />
         )}
-        {columnKey !== "done" && (
+        {card && columnKey !== "done" && (
           <Button
             variant="secondary"
             size="xs"
