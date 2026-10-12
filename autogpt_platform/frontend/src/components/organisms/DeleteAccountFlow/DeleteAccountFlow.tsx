@@ -28,8 +28,10 @@ export function DeleteAccountFlow({ source, open, onOpenChange }: Props) {
     <Dialog
       title={title}
       styling={{ maxWidth: "28rem", minWidth: "auto" }}
-      // Autocapture would tie the anonymous exit answer to the person.
-      className="ph-no-capture"
+      // Autocapture would tie the anonymous exit answer to the person. The
+      // scroll padding keeps a row or button reached by keyboard from landing
+      // under the sticky footer on short screens.
+      className="ph-no-capture [&_.overflow-y-auto]:scroll-pb-24"
       autoFocus
       forceOpen={isDeleting}
       controlled={{ isOpen: open, set: handleOpenChange }}

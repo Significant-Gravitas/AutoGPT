@@ -193,6 +193,14 @@ describe("DeleteAccountFlow exit feedback", () => {
     );
   });
 
+  test("keyboard focus is kept clear of the sticky footer", () => {
+    renderFlow();
+
+    expect(screen.getByRole("dialog").className).toContain(
+      "[&_.overflow-y-auto]:scroll-pb-24",
+    );
+  });
+
   test("the text box takes at most 1000 characters", () => {
     renderFlow();
 
