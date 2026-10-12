@@ -1,8 +1,9 @@
-"""Randomized interleavings of the subscription lookup cache.
+"""Randomized interleavings of the versioned billing caches: the active
+subscription lookup and the pending subscription change.
 
 The invariant that matters to a customer: once this worker has changed a
-subscription and invalidated the lookup, no read that starts afterwards on
-this worker returns the subscription as it was before the change. Each seed
+subscription and invalidated the cache, no read that starts afterwards on
+this worker returns the state as it was before the change. Each seed
 interleaves reads, changes, Redis outages and blips (failed writes, replies
 lost after the write applied, lost data), slow Stripe answers and slow
 script writes, on a fake clock, with the in-process bounds shrunk so they
@@ -11,11 +12,25 @@ are under pressure. Nothing sleeps; the clock only moves when told to.
 
 import asyncio
 import random
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 import pytest
+from prisma.enums import SubscriptionTier
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from backend.data import subscription_lookup_cache as cache
+from backend.data import credit, versioned_cache
+from backend.data.subscription_lookup_cache import (
+    ACTIVE_SUBSCRIPTIONS,
+    invalidate_active_subscription_cache,
+    read_active_subscription,
+)
+from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
+from backend.data.subscription_pending_cache import (
+    PENDING_CHANGES,
+    PendingChange,
+    invalidate_pending_subscription_change,
+)
 
 SEEDS = range(300)
 STEPS = 80
@@ -114,7 +129,7 @@ class FakeRedis:
 
 
 class Run:
-    def __init__(self, seed: int, monkeypatch: pytest.MonkeyPatch) -> None:
+    def __init__(self, seed: int, target: str, monkeypatch: pytest.MonkeyPatch) -> None:
         self.seed = seed
         self.rng = random.Random(seed)
         self.clock = Clock()
@@ -125,48 +140,57 @@ class Run:
         self.completed = dict.fromkeys(CUSTOMERS, 0)
         self.violations: list[str] = []
         self.tasks: list[asyncio.Task[None]] = []
+        self.cache, self.read_value, self.invalidate = TARGETS[target]
 
         async def get_redis():
             return self.redis
 
-        monkeypatch.setattr(cache, "time", self.clock)
-        monkeypatch.setattr(cache, "get_redis_async", get_redis)
-        monkeypatch.setattr(cache, "_REDIS_DEADLINE_SECONDS", 3600)
-        monkeypatch.setattr(cache, "_FALLBACK_MAXSIZE", 1)
-        monkeypatch.setattr(cache, "_UNCONFIRMED_MAXSIZE", 1)
-        monkeypatch.setattr(cache, "_backoff", cache._Backoff())
-        monkeypatch.setattr(cache, "_unconfirmed", cache._UnconfirmedInvalidations())
-        monkeypatch.setattr(cache, "_fallback", {})
-        monkeypatch.setattr(cache, "_in_flight", {})
-
-    def fetch(self, customer_id: str):
-        async def ask_stripe():
-            value = self.state[customer_id]
-            await self.stripe_holds.maybe_hold()
-            return {
-                "status": "active",
-                "current_period_start": BASE,
-                "current_period_end": BASE + value,
-            }
-
-        return ask_stripe
-
-    async def read(self, customer_id: str) -> None:
-        required = self.completed[customer_id]
-        subscription = await cache.read_active_subscription(
-            customer_id, self.fetch(customer_id)
-        )
-        seen = (subscription.current_period_end or 0) - BASE if subscription else -1
-        if seen < required:
-            self.violations.append(
-                f"seed {self.seed}: {customer_id} read {seen} after change {required}"
+        async def fetch_pending(customer_id: str) -> PendingChange:
+            value = await self.answer(customer_id)
+            return PendingChange(
+                tier=SubscriptionTier.NO_TIER,
+                effective_at=datetime.fromtimestamp(BASE + value, UTC),
             )
 
-    async def change(self, customer_id: str) -> None:
-        self.state[customer_id] += 1
-        value = self.state[customer_id]
-        await cache.invalidate_active_subscription_cache(customer_id)
-        self.completed[customer_id] = max(self.completed[customer_id], value)
+        monkeypatch.setattr(versioned_cache, "time", self.clock)
+        monkeypatch.setattr(versioned_cache, "get_redis_async", get_redis)
+        monkeypatch.setattr(versioned_cache, "_REDIS_DEADLINE_SECONDS", 3600)
+        monkeypatch.setattr(versioned_cache, "_FALLBACK_MAXSIZE", 1)
+        monkeypatch.setattr(versioned_cache, "_backoff", versioned_cache._Backoff())
+
+        async def user_by_id(user_id: str) -> MagicMock:
+            # Each key is both the user id and their Stripe customer id.
+            return MagicMock(stripe_customer_id=user_id)
+
+        monkeypatch.setattr(credit, "_fetch_pending_subscription_change", fetch_pending)
+        monkeypatch.setattr(credit, "get_user_by_id", user_by_id)
+        monkeypatch.setattr(
+            self.cache,
+            "_unconfirmed",
+            UnconfirmedInvalidations(lifetime=self.cache.ttl_seconds + 1, maxsize=1),
+        )
+        monkeypatch.setattr(self.cache, "_fallback", {})
+        monkeypatch.setattr(self.cache, "_in_flight", {})
+
+    async def answer(self, key: str) -> int:
+        """What the source says now, delivered after a possible delay."""
+        value = self.state[key]
+        await self.stripe_holds.maybe_hold()
+        return value
+
+    async def read(self, key: str) -> None:
+        required = self.completed[key]
+        seen = await self.read_value(self, key)
+        if seen < required:
+            self.violations.append(
+                f"seed {self.seed}: {key} read {seen} after change {required}"
+            )
+
+    async def change(self, key: str) -> None:
+        self.state[key] += 1
+        value = self.state[key]
+        await self.invalidate(key)
+        self.completed[key] = max(self.completed[key], value)
 
     def step(self) -> None:
         roll = self.rng.random()
@@ -201,12 +225,45 @@ class Run:
             task.result()
 
 
+async def read_active(run: Run, customer_id: str) -> int:
+    async def ask_stripe():
+        value = await run.answer(customer_id)
+        return {
+            "status": "active",
+            "current_period_start": BASE,
+            "current_period_end": BASE + value,
+        }
+
+    subscription = await read_active_subscription(customer_id, ask_stripe)
+    return (subscription.current_period_end or 0) - BASE if subscription else -1
+
+
+async def read_pending(run: Run, user_id: str) -> int:
+    pending = await credit.get_pending_subscription_change(user_id)
+    return int(pending[1].timestamp()) - BASE if pending else -1
+
+
+TARGETS = {
+    "active-subscription": (
+        ACTIVE_SUBSCRIPTIONS,
+        read_active,
+        invalidate_active_subscription_cache,
+    ),
+    "pending-change": (
+        PENDING_CHANGES,
+        read_pending,
+        invalidate_pending_subscription_change,
+    ),
+}
+
+
 @pytest.mark.asyncio
-async def test_no_read_after_a_change_returns_the_old_subscription(monkeypatch):
+@pytest.mark.parametrize("target", list(TARGETS))
+async def test_no_read_after_a_change_returns_the_old_state(monkeypatch, target):
     violations: list[str] = []
     for seed in SEEDS:
         with monkeypatch.context() as patched:
-            run = Run(seed, patched)
+            run = Run(seed, target, patched)
             await asyncio.wait_for(run.play(), 30)
             violations.extend(run.violations)
     assert violations == []

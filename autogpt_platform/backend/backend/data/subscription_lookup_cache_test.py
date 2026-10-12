@@ -9,6 +9,7 @@ one fake Stripe.
 
 import asyncio
 import importlib.util
+import json
 import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -26,10 +27,14 @@ from redis.exceptions import RedisClusterException
 from backend.data import credit as worker_a
 from backend.data import subscription_lookup_cache as cache_a
 from backend.data import subscription_trial_conversion as conversion
+from backend.data import versioned_cache
 from backend.data.redis_client import get_redis_async
+from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_trial import TrialState
 
 pytest_plugins = ("backend.data.subscription_trial_fixtures",)
+
+ACTIVE = cache_a.ACTIVE_SUBSCRIPTIONS
 
 TRIAL_END = int((datetime.now(UTC) + timedelta(days=7)).timestamp())
 PAID_PERIOD_END = int((datetime.now(UTC) + timedelta(days=31)).timestamp())
@@ -47,7 +52,7 @@ def _load_copy(name: str) -> ModuleType:
 def _load_worker() -> ModuleType:
     """A second, independently loaded credit module with its own cache module."""
     cache = _load_copy("backend.data.subscription_lookup_cache")
-    cache.KEY_PREFIX = cache_a.KEY_PREFIX
+    cache.ACTIVE_SUBSCRIPTIONS.prefix = ACTIVE.prefix
     worker = _load_copy("backend.data.credit")
     worker.read_active_subscription = cache.read_active_subscription
     worker.invalidate_active_subscription_cache = (
@@ -194,20 +199,25 @@ async def worker_b(trial: TrialState, fake_stripe: FakeStripe, save_tier: AsyncM
 
 
 @pytest_asyncio.fixture
-async def redis_up():
+async def redis_up(monkeypatch):
     """These tests prove what the cache does, so a Redis the cache can't use
-    must fail them, not let every lookup fall through to Stripe and pass."""
+    must fail them, not let every lookup fall through to Stripe and pass.
+
+    They assert what is cached, not how fast: a busy CI runner can take
+    longer than the production deadline for one Redis call, which would
+    rightly send that read to Stripe and miscount the lookups."""
+    monkeypatch.setattr(versioned_cache, "_REDIS_DEADLINE_SECONDS", WAIT)
     redis = await asyncio.wait_for(get_redis_async(), WAIT)
     assert await asyncio.wait_for(redis.ping(), WAIT)
     return redis
 
 
 async def _cached_period_end(redis, customer_id: str) -> int | None:
-    raw = await asyncio.wait_for(redis.get(cache_a._lookup_key(customer_id)), WAIT)
+    raw = await asyncio.wait_for(redis.get(ACTIVE._entry_key(customer_id)), WAIT)
     assert raw, "the lookup was not written to Redis"
-    entry = cache_a._CachedLookup.model_validate_json(raw)
-    assert entry.subscription is not None
-    return entry.subscription.current_period_end
+    subscription = json.loads(raw)["value"]
+    assert subscription is not None
+    return subscription["current_period_end"]
 
 
 @pytest.mark.asyncio
@@ -302,15 +312,15 @@ async def test_a_lookup_read_before_redis_lost_its_data_is_not_served(
     await asyncio.wait_for(fake_stripe.reached.wait(), WAIT)
     await conversion.convert_cancel_pending_trial(trial, SubscriptionTier.PRO)
     for key in (
-        cache_a._version_key(trial.customer_id),
-        cache_a._lookup_key(trial.customer_id),
+        ACTIVE._version_key(trial.customer_id),
+        ACTIVE._entry_key(trial.customer_id),
     ):
         await asyncio.wait_for(redis_up.delete(key), WAIT)
 
     release.set()
     assert await asyncio.wait_for(in_flight, WAIT) == TRIAL_END
     assert not await asyncio.wait_for(
-        redis_up.get(cache_a._lookup_key(trial.customer_id)), WAIT
+        redis_up.get(ACTIVE._entry_key(trial.customer_id)), WAIT
     )
 
     assert (
@@ -336,8 +346,8 @@ async def test_a_read_after_redis_lost_its_data_does_not_join_an_older_lookup(
     await asyncio.wait_for(fake_stripe.reached.wait(), WAIT)
     await conversion.convert_cancel_pending_trial(trial, SubscriptionTier.PRO)
     for key in (
-        cache_a._version_key(trial.customer_id),
-        cache_a._lookup_key(trial.customer_id),
+        ACTIVE._version_key(trial.customer_id),
+        ACTIVE._entry_key(trial.customer_id),
     ):
         await asyncio.wait_for(redis_up.delete(key), WAIT)
 
@@ -428,7 +438,7 @@ async def test_a_redis_outage_never_slows_or_blocks_billing(
 ):
     """With Redis hanging or unusable, lookups answer from Stripe within the
     cache's deadline, and a charge still saves the paid plan."""
-    with patch.object(cache_a, "get_redis_async", outage()):
+    with patch.object(versioned_cache, "get_redis_async", outage()):
         started = time.monotonic()
         ends = await asyncio.wait_for(
             asyncio.gather(
@@ -470,7 +480,7 @@ async def test_an_answer_read_before_a_change_is_not_kept_during_an_outage(
     after it. Its callers get the old answer, but this worker must not keep
     it and serve it for the next few seconds."""
     monkeypatch.setattr(
-        cache_a,
+        versioned_cache,
         "get_redis_async",
         AsyncMock(side_effect=RedisConnectionError("refused")),
     )
@@ -530,9 +540,11 @@ async def test_a_write_racing_an_unrecorded_invalidation_is_not_served_later(
     subscription, and Redis blips so the new token isn't stored: the write
     lands under the old token. Once Redis is back, this worker must not
     serve it."""
-    monkeypatch.setattr(cache_a, "_REDIS_DEADLINE_SECONDS", WAIT)
+    monkeypatch.setattr(versioned_cache, "_REDIS_DEADLINE_SECONDS", WAIT)
     redis = _BlippingRedis(redis_up)
-    monkeypatch.setattr(cache_a, "get_redis_async", AsyncMock(return_value=redis))
+    monkeypatch.setattr(
+        versioned_cache, "get_redis_async", AsyncMock(return_value=redis)
+    )
     redis.release_eval = release = asyncio.Event()
     first = asyncio.create_task(worker_a.get_active_subscription_period_end("user-1"))
     await asyncio.wait_for(redis.eval_reached.wait(), WAIT)
@@ -550,7 +562,7 @@ async def test_a_write_racing_an_unrecorded_invalidation_is_not_served_later(
     # The old answer did land in Redis under the unchanged token.
     assert await _cached_period_end(redis_up, trial.customer_id) == TRIAL_END
 
-    monkeypatch.setattr(cache_a._backoff, "until", 0.0)
+    monkeypatch.setattr(versioned_cache._backoff, "until", 0.0)
     assert (
         await worker_a.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
     )
@@ -567,7 +579,7 @@ class _Clock:
 @pytest.fixture
 def redis_down(monkeypatch):
     monkeypatch.setattr(
-        cache_a,
+        versioned_cache,
         "get_redis_async",
         AsyncMock(side_effect=RedisConnectionError("down")),
     )
@@ -580,20 +592,25 @@ async def test_a_live_mark_survives_any_number_of_failed_invalidations(redis_dow
     await cache_a.invalidate_active_subscription_cache("cus_changed")
     for i in range(2100):
         await cache_a.invalidate_active_subscription_cache(f"cus_other_{i}")
-    assert cache_a._is_unconfirmed("cus_changed")
+    assert ACTIVE._is_unconfirmed("cus_changed")
 
 
 @pytest.mark.asyncio
 async def test_a_renewed_mark_outlives_expired_ones(redis_down, monkeypatch):
     """Expired marks must not crowd out a live one, whatever their order."""
     clock = _Clock()
-    monkeypatch.setattr(cache_a, "time", clock)
-    monkeypatch.setattr(cache_a, "_UNCONFIRMED_MAXSIZE", 4, raising=False)
-    monkeypatch.setattr(cache_a, "_FALLBACK_MAXSIZE", 4)
+    monkeypatch.setattr(versioned_cache, "time", clock)
+    monkeypatch.setattr(
+        ACTIVE,
+        "_unconfirmed",
+        UnconfirmedInvalidations(
+            lifetime=cache_a.SUBSCRIPTION_LOOKUP_TTL_SECONDS + 1, maxsize=4
+        ),
+    )
     for customer in ("cus_changed", "cus_1", "cus_2", "cus_3"):
         await cache_a.invalidate_active_subscription_cache(customer)
     clock.now += 60
 
     await cache_a.invalidate_active_subscription_cache("cus_changed")
     await cache_a.invalidate_active_subscription_cache("cus_4")
-    assert cache_a._is_unconfirmed("cus_changed")
+    assert ACTIVE._is_unconfirmed("cus_changed")
