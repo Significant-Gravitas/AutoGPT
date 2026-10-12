@@ -66,6 +66,29 @@ class LeakedTransaction(BaseModel):
     last_query: str
 
 
+class LeakReport(BaseModel):
+    leaks: list[LeakedTransaction]
+    # Backends not confirmed gone after the attempt to end them.
+    survivors: list[int]
+
+
+async def end_leaked_transactions(client: Prisma) -> LeakReport:
+    """Find every transaction left open, end them, and say which.
+
+    An aborted connection refuses the query that finds leaks, so while it is
+    the guard's own it hides every other one: after releasing, which replaces
+    it, look once more.
+    """
+    report = LeakReport(leaks=[], survivors=[])
+    for _ in range(2):
+        leaks = await find_leaked_transactions(client)
+        if not leaks:
+            break
+        report.leaks += leaks
+        report.survivors += await release_leaked_transactions(client, leaks)
+    return report
+
+
 async def find_leaked_transactions(client: Prisma) -> list[LeakedTransaction]:
     """Transactions on the client's database still open after two looks."""
     first = await _open_transactions(client)
@@ -87,27 +110,24 @@ async def release_leaked_transactions(
 ) -> list[int]:
     """End the leaked transactions and start the client on a fresh pool.
 
-    Postgres rolls back a transaction whose connection closes: other backends
-    are terminated, and reconnecting closes this client's own. Returns the
-    backends that were still running when the wait for termination ran out.
+    Postgres rolls back a transaction whose connection closes. Reconnecting
+    first closes this client's own connections, the leaked one included (which
+    may be too aborted to run anything); the fresh connection then terminates
+    the rest. Returns the backends not confirmed gone.
     """
-    survivors = [
-        leak.pid for leak in leaks if not await _terminate_backend(client, leak.pid)
-    ]
     await client.disconnect(DISCONNECT_TIMEOUT)
     await client.connect()
-    return survivors
+    return [
+        leak.pid for leak in leaks if not await _terminate_backend(client, leak.pid)
+    ]
 
 
 async def _terminate_backend(client: Prisma, pid: int) -> bool:
-    """Whether *pid* is gone. Waits for it to exit, not just to be signalled.
-
-    This client's own connection is left to the reconnect, which ends it.
-    """
+    """Whether *pid* is gone. Waits for it to exit, not just to be signalled."""
     try:
         rows = await client.query_raw(_TERMINATE_SQL, pid, _TERMINATE_WAIT_MS)
     except PrismaError:
-        return True  # This connection is the aborted one; the reconnect ends it.
+        return False
     return bool(rows[0]["gone"])
 
 

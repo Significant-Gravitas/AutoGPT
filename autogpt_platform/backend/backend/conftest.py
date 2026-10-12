@@ -95,32 +95,28 @@ async def no_leaked_db_transaction(request: pytest.FixtureRequest):
         return
     from prisma import get_client
 
-    from backend.data.db_transaction_guard import (
-        find_leaked_transactions,
-        release_leaked_transactions,
-    )
+    from backend.data.db_transaction_guard import end_leaked_transactions
 
     # The registered client, not backend.data.db.prisma: a test's patch of that
     # attribute can still be in place while this teardown runs.
     client = get_client()
     if not client.is_connected():
         return
-    leaks = await find_leaked_transactions(client)
-    if not leaks:
+    report = await end_leaked_transactions(client)
+    if not report.leaks:
         return
-    survivors = await release_leaked_transactions(client, leaks)
     pytest.fail(
         f"{request.node.nodeid} left a database transaction open (test began "
         f"{started.isoformat()}); every later test would have run inside it:\n"
         + "\n".join(
             f"  pid {leak.pid}, {leak.state}, opened {leak.xact_start.isoformat()},"
             f" last statement: {leak.last_query}"
-            for leak in leaks
+            for leak in report.leaks
         )
         + (
-            f"\nBackends {survivors} were still running after termination, so "
+            f"\nBackends {report.survivors} could not be confirmed ended, so "
             "later tests may still see their transactions."
-            if survivors
+            if report.survivors
             else ""
         ),
         pytrace=False,

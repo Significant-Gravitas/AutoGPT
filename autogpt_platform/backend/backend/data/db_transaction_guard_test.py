@@ -12,6 +12,7 @@ from prisma.errors import PrismaError
 
 from backend.data import db
 from backend.data.db_transaction_guard import (
+    end_leaked_transactions,
     find_leaked_transactions,
     release_leaked_transactions,
 )
@@ -76,6 +77,31 @@ async def test_a_leak_on_another_connection_of_this_session_is_terminated(
         assert leaks, "an open transaction on another session connection went unnoticed"
 
         assert await release_leaked_transactions(db.prisma, leaks) == []
+        assert await find_leaked_transactions(db.prisma) == []
+    finally:
+        await other.disconnect()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_aborted_guard_connection_does_not_hide_another_leak(
+    server: SpinTestServer,
+):
+    """The aborted connection refuses the query that finds leaks, so a leak on
+    another connection stays hidden until it is gone. The next test must not
+    inherit that one, or be blamed for it."""
+    other = Prisma(datasource={"url": db.DATABASE_URL})
+    await other.connect()
+    try:
+        await other.execute_raw("BEGIN")
+        await other.execute_raw("CREATE TEMP TABLE hidden_leak (id int)")
+        await db.prisma.execute_raw("BEGIN")
+        with pytest.raises(PrismaError):
+            await db.prisma.execute_raw("SELECT 1 / 0")
+
+        report = await end_leaked_transactions(db.prisma)
+
+        assert len(report.leaks) == 2, report.leaks
+        assert report.survivors == []
         assert await find_leaked_transactions(db.prisma) == []
     finally:
         await other.disconnect()
