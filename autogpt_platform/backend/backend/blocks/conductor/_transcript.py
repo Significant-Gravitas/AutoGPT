@@ -25,6 +25,7 @@ from ._paging import (
     expired,
     fetch_after,
     fetch_before,
+    fetch_latest_after,
     fetch_tail_at,
 )
 
@@ -46,6 +47,8 @@ NON_AGENT_TYPES = USER_TYPES | {"system"}
 # started events, say nothing about whether the agent produced anything.
 STARTUP_RAW_TYPES = frozenset({"system", "command_lifecycle"})
 STARTUP_CODEX_EVENTS = frozenset({"thread.started", "turn.started"})
+# Session states in which no agent turn is running.
+SETTLED_STATES = frozenset({"idle", "error"})
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +70,8 @@ async def wait_for_reply(
     the agent, is not a finished one); the transcript is then read once more
     for rows written just before the status changed. Sleeps and requests
     never outlive `timeout_seconds`: nothing is started once it has elapsed,
-    and a reply that completes after it is reported as timed out.
+    and a reply that completes after it is reported as timed out. A timed-out
+    wait is continued with `wait_until_idle` from the prompt's row.
     """
     deadline = time.monotonic() + timeout_seconds
 
@@ -154,17 +158,23 @@ async def prompt_cursor(lookup: Awaitable[str], receipt_id: str) -> str:
 
 
 async def read_after(
-    client: ConductorClient, session_id: str, cursor: str, count: int
+    client: ConductorClient,
+    session_id: str,
+    cursor: str,
+    count: int,
+    latest: bool = False,
 ) -> tuple[Rows, bool, str]:
-    """`fetch_after` for a cursor that is either a row id or a prompt receipt.
+    """`fetch_after` (or `fetch_latest_after` with `latest`) for a cursor
+    that is either a row id or a prompt receipt.
 
     A row id is paged directly. When the API rejects the cursor as not a row
     of the session (404) it is taken to be the receipt returned when a prompt
     was sent and resolved to that prompt's row; the row id actually used is
     returned so callers can continue from it without resolving again.
     """
+    read = fetch_latest_after if latest else fetch_after
     try:
-        rows, has_more = await fetch_after(client, session_id, cursor, count)
+        rows, has_more = await read(client, session_id, cursor, count)
         return rows, has_more, cursor
     except ConductorAPIError as e:
         if e.status != 404:
@@ -175,8 +185,65 @@ async def read_after(
                 f"after={cursor!r} is neither a transcript row ID of session "
                 f"{session_id} nor the ID of a prompt recorded in it ({e})"
             ) from e
-    rows, has_more = await fetch_after(client, session_id, row_id, count)
+    rows, has_more = await read(client, session_id, row_id, count)
     return rows, has_more, row_id
+
+
+async def wait_until_idle(
+    client: ConductorClient,
+    session_id: str,
+    timeout_seconds: float,
+    poll_interval_seconds: float,
+    prompt_message_id: str = "",
+) -> tuple[dict[str, Any], bool]:
+    """Poll the session status until it is `idle` or `error`.
+
+    Returns the last status read and whether `timeout_seconds` elapsed first.
+    The status is checked at once, so a session that is already idle costs a
+    single request; as in `wait_for_reply`, no sleep or request outlives the
+    deadline. With `prompt_message_id` (the receipt of the prompt being
+    waited for) `idle` is accepted only once that prompt's turn has produced
+    an agent event beyond its startup ones, exactly as `wait_for_reply`
+    judges it, so a continued wait does not end on a session that is idle
+    because the prompt is still queued. Without it an idle session is taken
+    at its word.
+    """
+    deadline = time.monotonic() + timeout_seconds
+
+    def remaining() -> float:
+        return deadline - time.monotonic()
+
+    status: dict[str, Any] = {}
+    while True:
+        try:
+            status = await bounded(client.session_status(session_id), remaining)
+            state = str(status.get("status") or "")
+            if state == "error" or (
+                state == "idle"
+                and await _turn_progressed(
+                    client, session_id, prompt_message_id, remaining
+                )
+            ):
+                return status, False
+        except TimeoutError:
+            return status, True
+        if expired(remaining):
+            return status, True
+        await asyncio.sleep(min(poll_interval_seconds, max(0.0, remaining())))
+        if expired(remaining):
+            return status, True
+
+
+async def _turn_progressed(
+    client: ConductorClient, session_id: str, receipt_id: str, remaining: Remaining
+) -> bool:
+    """Whether the prompt's turn has an agent event past its startup ones;
+    trivially true when no prompt is being tracked."""
+    if not receipt_id:
+        return True
+    turn = _TurnCollector(receipt_id)
+    await turn.refresh(client, session_id, remaining)
+    return turn.progressed
 
 
 def reply_text(messages: list[dict[str, Any]]) -> str:
