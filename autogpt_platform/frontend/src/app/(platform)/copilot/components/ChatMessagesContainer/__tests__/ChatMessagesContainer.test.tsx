@@ -455,7 +455,7 @@ describe("ChatMessagesContainer — error banner dedup", () => {
     expect(
       screen.getByText("SDK stream error: Prompt is too long"),
     ).toBeDefined();
-    expect(screen.getByText(/encountered an error/i)).toBeDefined();
+    expect(screen.getByTestId("chat-error-banner")).toBeDefined();
   });
 
   it("suppresses the trailing banner when the last assistant message carries an error marker", () => {
@@ -483,7 +483,7 @@ describe("ChatMessagesContainer — error banner dedup", () => {
         ]}
       />,
     );
-    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+    expect(screen.queryByTestId("chat-error-banner")).toBeNull();
   });
 
   it("suppresses the trailing banner when the marker is retryable", () => {
@@ -511,7 +511,7 @@ describe("ChatMessagesContainer — error banner dedup", () => {
         ]}
       />,
     );
-    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+    expect(screen.queryByTestId("chat-error-banner")).toBeNull();
   });
 });
 
@@ -1039,7 +1039,7 @@ describe("ChatMessagesContainer — readOnly mode", () => {
         ]}
       />,
     );
-    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+    expect(screen.queryByTestId("chat-error-banner")).toBeNull();
     expect(screen.queryByText(/upstream blew up/i)).toBeNull();
   });
 
