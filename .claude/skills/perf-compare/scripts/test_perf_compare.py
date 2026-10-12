@@ -15,7 +15,6 @@ import random
 import socket
 import sys
 import threading
-import time
 import unittest
 import urllib.parse
 from datetime import datetime, timedelta, timezone
@@ -895,9 +894,9 @@ class VerdictTest(unittest.TestCase):
                 self.assertAlmostEqual(
                     pc.fisher_exact_p(*case) / full_support(*case), 1.0, places=9
                 )
-        started = time.perf_counter()
-        pc.fisher_exact_p(5_000_000, 10_000_000, 5_002_000, 10_000_000)
-        self.assertLess(time.perf_counter() - started, 1.0)
+        with mock.patch.object(pc, "log_comb", wraps=pc.log_comb) as counted:
+            pc.fisher_exact_p(5_000_000, 10_000_000, 5_002_000, 10_000_000)
+        self.assertLess(counted.call_count, 200_000)
 
     def test_failure_rate_verdicts(self):
         def check(base, cand, family=1, **overrides):
