@@ -22,6 +22,7 @@ from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
 from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_pending_cache import PENDING_CHANGES
 from backend.util.logging import configure_logging
+from backend.util.tracing import traces_sampler
 
 load_dotenv()
 
@@ -192,8 +193,6 @@ class _SentryTransactionCapture(Transport):
 def sentry_transactions() -> Iterator[list[dict]]:
     """A live Sentry client for the test, sampling as production does. Every
     transaction it finishes is appended, as sent, to the yielded list."""
-    from backend.util.tracing import traces_sampler
-
     capture = _SentryTransactionCapture()
     client = sentry_sdk.Client(
         dsn="https://key@o1.ingest.us.sentry.io/1",

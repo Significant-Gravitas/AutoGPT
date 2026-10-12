@@ -35,6 +35,12 @@ from backend.copilot.expert_context import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
+from backend.copilot.response_model import (
+    StreamError,
+    StreamStatus,
+    StreamTextDelta,
+    StreamToolInputAvailable,
+)
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
@@ -327,12 +333,6 @@ class TestExecuteAsyncAclose:
     async def test_a_turn_is_one_transaction_in_the_dispatchers_trace(
         self, sentry_transactions
     ) -> None:
-        from backend.copilot.response_model import (
-            StreamStatus,
-            StreamTextDelta,
-            StreamToolInputAvailable,
-        )
-
         trace_id, parent_span_id = "a" * 32, "b" * 16
         entry = _make_entry().model_copy(
             update={
@@ -381,8 +381,6 @@ class TestExecuteAsyncAclose:
     async def test_a_turn_that_streams_an_error_is_failed(
         self, sentry_transactions
     ) -> None:
-        from backend.copilot.response_model import StreamError
-
         published = _TrackedStream(events=[StreamError(errorText="provider down")])
 
         patches = self._patches(published)

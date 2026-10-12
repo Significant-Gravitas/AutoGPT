@@ -12,6 +12,9 @@ from typing import Any
 
 import pytest
 import sentry_sdk
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 from sentry_sdk.tracing import NoOpSpan
 
 from backend.util import tracing
@@ -130,10 +133,6 @@ def test_through_the_asgi_middleware_only_the_probe_is_dropped(
     sentry_transactions,
 ) -> None:
     """End to end through the SDK's ASGI middleware, as each service runs."""
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-    from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
-
     app = FastAPI()
 
     @app.get("/health")

@@ -1,5 +1,6 @@
 """Tests for chat API routes: session title update, file attachment validation, usage, and rate limiting."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import get_args
@@ -10,6 +11,7 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 from pydantic import SecretStr
+from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
@@ -18,6 +20,7 @@ from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.model import ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier
+from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
 from backend.data.model import OAuth2Credentials
 from backend.data.workspace_scope import WorkspaceScope
@@ -357,16 +360,6 @@ def test_stream_chat_records_when_the_first_chunk_and_token_reached_the_client(
 ) -> None:
     """The relay's latency lands on the request's own transaction, which the
     ASGI middleware starts for it in production."""
-    import asyncio
-
-    from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
-
-    from backend.copilot.response_model import (
-        StreamFinish,
-        StreamStatus,
-        StreamTextDelta,
-    )
-
     _mock_stream_internals(mocker)
     relayed: asyncio.Queue = asyncio.Queue()
     for chunk in (
