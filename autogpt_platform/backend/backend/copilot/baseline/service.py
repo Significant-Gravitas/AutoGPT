@@ -122,6 +122,7 @@ from backend.copilot.service import (
     _get_main_client,
     _update_title_async,
     config,
+    fetch_business_understanding,
     inject_user_context,
     strip_user_context_tags,
 )
@@ -1900,10 +1901,10 @@ async def stream_chat_completion_baseline(
     # a needless DB lookup for user understanding.
     should_inject_user_context = is_first_turn and is_user_message
 
-    if should_inject_user_context:
-        prompt_task = _build_system_prompt(user_id)
-    else:
-        prompt_task = _build_system_prompt(None)
+    prompt_task = _build_system_prompt()
+    understanding_task = fetch_business_understanding(
+        user_id if should_inject_user_context else None
+    )
 
     # Run download + prompt build concurrently — both are independent I/O
     # on the request critical path.  Use the pre-drain count so pending
@@ -1913,7 +1914,8 @@ async def stream_chat_completion_baseline(
     if user_id and _pre_drain_msg_count > 1:
         (
             (transcript_upload_safe, transcript_download),
-            (base_system_prompt, understanding),
+            base_system_prompt,
+            understanding,
         ) = await asyncio.gather(
             _load_prior_transcript(
                 user_id=user_id,
@@ -1922,9 +1924,12 @@ async def stream_chat_completion_baseline(
                 transcript_builder=transcript_builder,
             ),
             prompt_task,
+            understanding_task,
         )
     else:
-        base_system_prompt, understanding = await prompt_task
+        base_system_prompt, understanding = await asyncio.gather(
+            prompt_task, understanding_task
+        )
 
     # Append user message to transcript after context injection below so the
     # transcript receives the prefixed message when user context is available.

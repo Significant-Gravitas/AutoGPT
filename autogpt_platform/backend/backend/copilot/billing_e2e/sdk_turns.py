@@ -112,8 +112,9 @@ class SdkTurns:
             "get_redis_async": AsyncMock(),
             "propagate_attributes": MagicMock(),
             "_build_system_prompt": AsyncMock(
-                return_value=("You are a test assistant. Reply briefly.", None)
+                return_value="You are a test assistant. Reply briefly."
             ),
+            "fetch_business_understanding": AsyncMock(return_value=None),
             "build_skills_context": AsyncMock(return_value=""),
             "build_skills_update_notice": AsyncMock(return_value=None),
             "build_session_context": AsyncMock(return_value=""),

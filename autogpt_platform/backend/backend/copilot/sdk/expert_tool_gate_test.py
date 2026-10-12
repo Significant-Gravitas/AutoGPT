@@ -120,7 +120,11 @@ def _make_patches(*, hire_experts_enabled: bool):
         ),
         (
             f"{_SVC}._build_system_prompt",
-            dict(new_callable=AsyncMock, return_value=("system prompt", None)),
+            dict(new_callable=AsyncMock, return_value="system prompt"),
+        ),
+        (
+            f"{_SVC}.fetch_business_understanding",
+            dict(new_callable=AsyncMock, return_value=None),
         ),
         (
             f"{_SVC}.ClaudeSDKClient",

@@ -5276,11 +5276,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         e2b_task = asyncio.create_task(_setup_e2b())
         try:
             (
-                (base_system_prompt, understanding),
+                base_system_prompt,
+                understanding,
                 (graphiti_enabled, warm_ctx),
                 _restore,
             ) = await asyncio.gather(
-                _build_system_prompt(user_id if not has_history else None),
+                _build_system_prompt(),
+                fetch_business_understanding(user_id if not has_history else None),
                 _fetch_graphiti_context(user_id, session, message),
                 # Restore CLI session — single GCS round-trip covers both
                 # --resume and builder state.  message_count watermark lives

@@ -142,7 +142,11 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
         ),
         patch(
             f"{svc}._build_system_prompt",
-            new=AsyncMock(return_value=("system prompt", None)),
+            new=AsyncMock(return_value="system prompt"),
+        ),
+        patch(
+            f"{svc}.fetch_business_understanding",
+            new=AsyncMock(return_value=None),
         ),
         patch(f"{svc}.is_enabled_for_user", new=AsyncMock(return_value=False)),
         patch(f"{svc}.is_feature_enabled", new=AsyncMock(return_value=False)),

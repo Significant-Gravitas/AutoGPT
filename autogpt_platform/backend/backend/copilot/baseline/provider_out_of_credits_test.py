@@ -58,7 +58,8 @@ def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
         "resolve_model_route": ResolvedModel(
             model="anthropic/claude-sonnet-4-6", source="env"
         ),
-        "_build_system_prompt": ("System prompt", None),
+        "_build_system_prompt": "System prompt",
+        "fetch_business_understanding": None,
         "is_enabled_for_user": False,
         "is_feature_enabled": False,
         "persist_and_record_usage": None,

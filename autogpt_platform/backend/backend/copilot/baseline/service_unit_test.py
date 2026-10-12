@@ -2937,7 +2937,11 @@ async def _run_baseline_until_experts_gate(
         ),
         patch(
             "backend.copilot.baseline.service._build_system_prompt",
-            new=AsyncMock(return_value=("system prompt", None)),
+            new=AsyncMock(return_value="system prompt"),
+        ),
+        patch(
+            "backend.copilot.baseline.service.fetch_business_understanding",
+            new=AsyncMock(return_value=None),
         ),
         patch(
             "backend.copilot.baseline.service.is_enabled_for_user",
@@ -3008,7 +3012,11 @@ async def test_execution_context_is_set_before_attachments_are_prepared() -> Non
         ),
         patch(
             "backend.copilot.baseline.service._build_system_prompt",
-            new=AsyncMock(return_value=("system prompt", None)),
+            new=AsyncMock(return_value="system prompt"),
+        ),
+        patch(
+            "backend.copilot.baseline.service.fetch_business_understanding",
+            new=AsyncMock(return_value=None),
         ),
         patch(
             "backend.copilot.baseline.service.is_enabled_for_user",

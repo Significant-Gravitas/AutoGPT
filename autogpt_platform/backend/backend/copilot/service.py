@@ -559,22 +559,16 @@ def system_prompt_source(system_prompt: str) -> tuple[str, int | None]:
     return config.langfuse_prompt_name, None
 
 
-async def _build_system_prompt(
-    user_id: str | None,
-) -> tuple[str, BusinessUnderstanding | None]:
-    """Build a fully static system prompt suitable for LLM token caching.
+async def _build_system_prompt() -> str:
+    """The static system prompt: Langfuse's, else the in-code fallback.
 
-    User-specific context is NOT embedded here. Callers must inject the
-    returned understanding into the first user message via inject_user_context()
-    so the system prompt stays identical across all users and sessions,
-    enabling cross-session cache hits.
-
-    Returns:
-        Tuple of (static_prompt, understanding_object_or_None)
+    User-specific context is NOT embedded here: the caller fetches the
+    user's understanding (:func:`fetch_business_understanding`) and
+    ``inject_user_context`` puts it in the first user message, so the
+    system prompt stays identical across users and sessions and caches
+    across them.
     """
-    understanding = await fetch_business_understanding(user_id)
-    prompt = await _fetch_langfuse_prompt() or _CACHEABLE_SYSTEM_PROMPT
-    return prompt, understanding
+    return await _fetch_langfuse_prompt() or _CACHEABLE_SYSTEM_PROMPT
 
 
 async def fetch_business_understanding(

@@ -154,8 +154,9 @@ async def _run_turn(
     transcript = build_test_transcript(
         [("user", _FIRST_TURN_ROW), ("assistant", "Nice to meet you, Sam.")]
     )
-    # The real system-prompt builder runs, so a fallback turn can fetch the
-    # user's business understanding through it like the first turn does.
+    # The real system-prompt builder and understanding fetch run, so a
+    # fallback turn fetches the user's business understanding the way the
+    # first turn does.
     base = [
         (target, kwargs)
         for target, kwargs in _make_sdk_patches(
@@ -164,7 +165,11 @@ async def _run_turn(
             compacted_transcript=None,
             client_side_effect=client_factory,
         )
-        if target != f"{_SVC}._build_system_prompt"
+        if target
+        not in {
+            f"{_SVC}._build_system_prompt",
+            f"{_SVC}.fetch_business_understanding",
+        }
     ]
     with contextlib.ExitStack() as stack:
         mocks = {
