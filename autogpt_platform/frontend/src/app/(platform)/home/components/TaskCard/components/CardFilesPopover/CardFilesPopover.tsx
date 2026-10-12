@@ -1,10 +1,6 @@
 "use client";
 
 import { FileViewerModal } from "@/app/(platform)/artifacts/components/FileViewerModal/FileViewerModal";
-import { downloadArtifact } from "@/app/(platform)/copilot/components/ArtifactPanel/downloadArtifact";
-import { fileItemToArtifactRef } from "@/app/(platform)/copilot/components/ContextPanel/components/FilesTab/helpers";
-import { useListWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
-import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -14,9 +10,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
-import { useToast } from "@/components/molecules/Toast/use-toast";
 import { Attachment01Icon, Download04Icon } from "@hugeicons/core-free-icons";
-import { useState } from "react";
+import { useCardFilesPopover } from "./useCardFilesPopover";
 
 interface Props {
   sessionId: string;
@@ -24,30 +19,18 @@ interface Props {
 }
 
 export function CardFilesPopover({ sessionId, fileCount }: Props) {
-  const [open, setOpen] = useState(false);
-  const [viewing, setViewing] = useState<WorkspaceFileItem | null>(null);
-  const { toast } = useToast();
-  const filesQuery = useListWorkspaceFiles(
-    { session_id: sessionId },
-    {
-      query: {
-        enabled: open,
-        select: (res) => (res.status === 200 ? res.data.files : []),
-      },
-    },
-  );
-  const files = filesQuery.data ?? [];
-
-  function handleOpenFile(file: WorkspaceFileItem) {
-    setOpen(false);
-    setViewing(file);
-  }
-
-  function handleDownload(file: WorkspaceFileItem) {
-    downloadArtifact(fileItemToArtifactRef(file)).catch(() =>
-      toast({ title: "Download failed", variant: "destructive" }),
-    );
-  }
+  const {
+    open,
+    setOpen,
+    viewing,
+    closeViewer,
+    files,
+    isLoading,
+    isError,
+    isEmpty,
+    handleOpenFile,
+    handleDownload,
+  } = useCardFilesPopover(sessionId);
 
   return (
     <>
@@ -67,18 +50,18 @@ export function CardFilesPopover({ sessionId, fileCount }: Props) {
           <Text variant="small-medium" tone="muted" className="px-2 py-1">
             Files
           </Text>
-          {filesQuery.isLoading && (
+          {isLoading && (
             <div className="flex flex-col gap-1.5 p-2">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-4 w-2/3" />
             </div>
           )}
-          {filesQuery.isError && (
+          {isError && (
             <Text variant="small" tone="danger" className="px-2 py-1.5">
               Couldn&apos;t load the files.
             </Text>
           )}
-          {filesQuery.isSuccess && files.length === 0 && (
+          {isEmpty && (
             <Text variant="small" tone="muted" className="px-2 py-1.5">
               No files yet.
             </Text>
@@ -116,7 +99,7 @@ export function CardFilesPopover({ sessionId, fileCount }: Props) {
         <FileViewerModal
           key={viewing.id}
           file={viewing}
-          onClose={() => setViewing(null)}
+          onClose={closeViewer}
         />
       )}
     </>

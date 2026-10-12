@@ -16,9 +16,7 @@ import {
   PencilEdit02Icon,
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
-import { useState } from "react";
-
-type Action = "rename" | "add" | "delete";
+import { useColumnMenu } from "./useColumnMenu";
 
 interface Props {
   column: BoardColumn;
@@ -35,23 +33,9 @@ export function ColumnMenu({
   onAddAfter,
   onDelete,
 }: Props) {
-  const [chosen, setChosen] = useState<Action | null>(null);
+  const { handleCloseAutoFocus, chooseRename, chooseAdd, chooseDelete } =
+    useColumnMenu({ onRename, onAddAfter, onDelete });
   const isCustom = !column.builtin;
-
-  // Runs once the menu has closed and let go of focus, so the rename input
-  // that the action opens keeps it. Delete lets focus return to this button
-  // first, so the confirm dialog hands it back here when it closes.
-  function handleCloseAutoFocus(event: Event) {
-    if (!chosen) return;
-    setChosen(null);
-    if (chosen === "delete") {
-      onDelete();
-      return;
-    }
-    event.preventDefault();
-    if (chosen === "rename") onRename();
-    if (chosen === "add") onAddAfter();
-  }
 
   return (
     <DropdownMenu>
@@ -70,12 +54,12 @@ export function ColumnMenu({
         className="w-48"
         onCloseAutoFocus={handleCloseAutoFocus}
       >
-        <DropdownMenuItem onSelect={() => setChosen("rename")}>
+        <DropdownMenuItem onSelect={chooseRename}>
           <Icon icon={PencilEdit02Icon} size={16} />
           Rename
         </DropdownMenuItem>
         {canAddColumn && (
-          <DropdownMenuItem onSelect={() => setChosen("add")}>
+          <DropdownMenuItem onSelect={chooseAdd}>
             <Icon icon={PlusSignIcon} size={16} />
             Add column after
           </DropdownMenuItem>
@@ -84,7 +68,7 @@ export function ColumnMenu({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onSelect={() => setChosen("delete")}
+              onSelect={chooseDelete}
               className="text-red-600 focus:text-red-700"
             >
               <Icon icon={Delete02Icon} size={16} />
