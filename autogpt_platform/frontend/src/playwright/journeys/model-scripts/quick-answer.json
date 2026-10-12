@@ -1,0 +1,14 @@
+{
+  "description": "One short answer, for a journey that runs several chats at once. copilot-parallel-chats-journey.spec.ts follows it.",
+  "title": "Parallel chat",
+  "turns": [
+    {
+      "text": "Here is a short answer to your question.",
+      "usage": {
+        "input_tokens": 2400,
+        "output_tokens": 9,
+        "cache_read_input_tokens": 20000
+      }
+    }
+  ]
+}

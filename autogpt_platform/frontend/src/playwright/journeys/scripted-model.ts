@@ -99,35 +99,29 @@ export function expectEachTurnOnce(
 
 /**
  * Checks the copilot's cost ledger charged the user exactly what the model
- * billed for its turns: every turn once, none missed, none twice. Each ledger
- * row may be off by rounding, as the backend's billing audit allows.
- *
- * Side calls (the chat's title) are left out. The platform shares one OpenAI
- * client across the copilot executor's worker event loops
- * (`_get_aux_client` in backend/copilot/service.py), so a title request that
- * lands on another loop's pooled connection is sent twice: the provider
- * answers and bills both, the platform records one. Include them once that's
- * fixed.
+ * billed the runs (`nonces`) for their turns and side calls (the chat's
+ * title): every request once, none missed, none twice. Each ledger row may be
+ * off by rounding, as the backend's billing audit allows. The journal is
+ * re-read until both agree, since the title is requested in the background.
  */
 export async function expectChargedWhatWasBilled(
   userID: string,
-  journal: JournalEntry[],
+  nonces: string[],
 ) {
-  const billed = journal
-    .filter((entry) => entry.kind === "turn")
-    .reduce(
-      (sum, entry) => sum + Math.round((entry.cost_usd ?? 0) * 1_000_000),
-      0,
-    );
-  expect(billed, "the model should bill the run").toBeGreaterThan(0);
   await expect(async () => {
-    const rows = (await copilotCostRows(userID)).filter(
-      (row) => row.blockName !== "copilot:title",
-    );
+    const journal = (await Promise.all(nonces.map(readJournal))).flat();
+    const billed = journal
+      .filter((entry) => entry.kind === "turn" || entry.kind === "side_call")
+      .reduce(
+        (sum, entry) => sum + Math.round((entry.cost_usd ?? 0) * 1_000_000),
+        0,
+      );
+    expect(billed, "the model should bill the run").toBeGreaterThan(0);
+    const rows = await copilotCostRows(userID);
     const charged = rows.reduce((sum, row) => sum + row.costMicrodollars, 0);
     expect(
       Math.abs(charged - billed),
-      `charged ${charged} microdollars for turns billed ${billed}: ` +
+      `charged ${charged} microdollars for requests billed ${billed}: ` +
         JSON.stringify(rows),
     ).toBeLessThanOrEqual(2 * Math.max(rows.length, 1));
   }, "the chat should be charged exactly what the model billed").toPass({

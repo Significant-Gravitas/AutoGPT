@@ -13,42 +13,30 @@ BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 # ---------------------------------------------------------------------------
-# Rule: no process-wide @cached(...) around event-loop-bound async clients
+# Rule: no process-wide event-loop-bound async clients
 # ---------------------------------------------------------------------------
 #
-# Motivation: `backend.util.cache.cached` stores its result in a process-wide
-# dict for ttl_seconds. Async clients (AsyncOpenAI, httpx.AsyncClient,
-# AsyncRabbitMQ, ...) wrap connection pools whose internal
-# asyncio primitives lazily bind to the first event loop that uses them. The
-# executor runs two long-lived loops on separate threads; once the cache is
-# populated from loop A, any subsequent call from loop B raises
-# `RuntimeError: ... bound to a different event loop`, surfaced as an opaque
-# `APIConnectionError: Connection error.` and poisons the cache for a full
-# TTL window.
+# Motivation: async clients (AsyncOpenAI, httpx.AsyncClient, AsyncRabbitMQ,
+# ...) wrap connection pools whose internal asyncio primitives bind to the
+# event loop that first uses them, and the executors run one long-lived loop
+# per worker thread. A client cached for the process, by
+# `backend.util.cache.cached` or in a module global, hands a call on loop B an
+# idle connection loop A opened: the request is written, reading the reply
+# raises `RuntimeError: ... bound to a different event loop`, and the SDK
+# retries on a new connection. The provider receives and bills the call twice
+# while the caller sees one success, or `APIConnectionError: Connection
+# error.` once the retries run out.
 #
-# Use `per_loop_cached` (keyed on id(running loop)) or construct per-call.
+# Use `backend.util.per_loop_cache.per_loop_cached` or construct per-call.
 
 LOOP_BOUND_TYPES = frozenset(
     {
         "AsyncOpenAI",
         "LangfuseAsyncOpenAI",
+        "AsyncAnthropic",
         "AsyncClient",  # httpx, openai internal
         "AsyncRabbitMQ",
         "AsyncRedisExecutionEventBus",
-    }
-)
-
-# Pre-existing offenders tracked for future cleanup. Exclude from this test
-# so the rule can still catch NEW violations without blocking unrelated PRs.
-_KNOWN_OFFENDERS = frozenset(
-    {
-        "util/clients.py get_openai_client",
-        # Inner helper extracted from ``get_openai_client`` so the local-
-        # transport branch shares one cached client across both
-        # ``prefer_openrouter`` arms (no semantic change vs the parent
-        # offender — same loop-binding caveat applies, will be migrated
-        # together when ``get_openai_client`` is moved to ``per_loop_cached``).
-        "util/clients.py _get_local_openai_client",
     }
 )
 
@@ -182,13 +170,13 @@ def test_backend_uses_pydantic_not_dataclasses():
 
 
 def test_known_offenders_use_posix_separators():
-    """_KNOWN_OFFENDERS must use forward slashes since the comparison key
-    is built from pathlib.Path.relative_to() which uses OS-native separators.
-    On Windows this would be backslashes, causing false positives.
+    """_DATACLASS_KNOWN_OFFENDERS must use forward slashes since the comparison
+    key is built from pathlib.Path.relative_to() which uses OS-native
+    separators. On Windows this would be backslashes, causing false positives.
 
     Ensure the key construction normalises to forward slashes.
     """
-    for entry in _KNOWN_OFFENDERS | _DATACLASS_KNOWN_OFFENDERS:
+    for entry in _DATACLASS_KNOWN_OFFENDERS:
         path_part = entry.split()[0]
         assert "\\" not in path_part, (
             f"known-offenders entry uses backslash: {entry!r}. "
@@ -203,29 +191,55 @@ def test_no_process_cached_loop_bound_clients():
             tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
         except SyntaxError:
             continue
+        rel = py.relative_to(BACKEND_ROOT)
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             decorators = {_decorator_name(d) for d in node.decorator_list}
-            if "cached" not in decorators:
-                continue
             bound = _annotation_names(node.returns) & LOOP_BOUND_TYPES
-            if bound:
-                rel = py.relative_to(BACKEND_ROOT)
-                key = f"{rel.as_posix()} {node.name}"
-                if key in _KNOWN_OFFENDERS:
-                    continue
+            if "cached" in decorators and bound:
                 offenders.append(
-                    f"{rel}:{node.lineno} {node.name}() -> {sorted(bound)}"
+                    f"{rel}:{node.lineno} @cached {node.name}() -> {sorted(bound)}"
+                )
+            for lineno, name, client in _global_client_assignments(node):
+                offenders.append(
+                    f"{rel}:{lineno} {node.name}() stores {client} in global {name}"
                 )
 
     assert not offenders, (
-        "Process-wide @cached(...) must not wrap functions returning event-"
-        "loop-bound async clients. These objects lazily bind their connection "
-        "pool to the first event loop that uses them; caching them across "
-        "loops poisons the cache and surfaces as opaque connection errors.\n\n"
+        "Event-loop-bound async clients must not be cached for the whole "
+        "process. They bind their connection pool to the first event loop "
+        "that uses them; shared across loops, a call can be sent to the "
+        "provider twice.\n\n"
         "Offenders:\n  " + "\n  ".join(offenders) + "\n\n"
-        "Fix: construct the client per-call, or introduce a per-loop factory "
-        "keyed on id(asyncio.get_running_loop()). See "
-        "backend/util/clients.py::get_openai_client for context."
+        "Fix: construct the client per-call, or decorate the factory with "
+        "backend.util.per_loop_cache.per_loop_cached."
     )
+
+
+def _global_client_assignments(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[tuple[int, str, str]]:
+    """``global x`` followed by ``x = <LoopBoundType>(...)`` in ``func``."""
+    declared = {
+        name
+        for stmt in ast.walk(func)
+        if isinstance(stmt, ast.Global)
+        for name in stmt.names
+    }
+    found: list[tuple[int, str, str]] = []
+    for stmt in ast.walk(func):
+        if not isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+        client = (
+            _decorator_name(stmt.value.func)
+            if isinstance(stmt.value, ast.Call)
+            else None
+        )
+        if client not in LOOP_BOUND_TYPES:
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id in declared:
+                found.append((stmt.lineno, target.id, client))
+    return found
